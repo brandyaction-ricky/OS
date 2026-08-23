@@ -24,3 +24,6 @@
 
 MVP의 `ba new content`는 저장소 내 최대 `BA-NNNN` 다음 번호를 사용한다. 여러 복제본에서 동시에 ID를 발급하는 시점에는 중앙 allocator 또는 충돌 없는 ID 체계가 필요하다.
 
+## ADR-007 · Web UI는 Repository의 읽기 전용 Projection으로 시작한다
+
+Vercel Build가 Process, Content, Skill Markdown을 읽어 정적 JSON 인덱스를 생성하고 웹은 이를 조회한다. 초기부터 별도 DB를 정본처럼 운영하면 Git/Markdown과 상태가 이중화되기 때문이다. 웹에서 상태를 직접 수정하거나 승인하지 않으며, 변경은 BA CLI를 통해서만 정본에 반영한다. Pilot에서 필요성이 검증되면 서버 API가 Git commit을 생성하는 방식으로 확장한다.

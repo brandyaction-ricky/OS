@@ -8,6 +8,12 @@
   "sample_content": "BA-0268",
   "workspace_dir": ".workspace",
   "default_timezone": "Asia/Seoul",
+  "web_ui": {
+    "mode": "read_only",
+    "build_command": "npm run build",
+    "output_directory": "web",
+    "generated_index": "web/data/os-index.json"
+  },
   "content_id": {
     "prefix": "BA",
     "digits": 4
@@ -17,4 +23,3 @@
     "brand": "02_brands/{brand_id}/context"
   }
 }
-

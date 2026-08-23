@@ -90,6 +90,23 @@ Push는 다음 순서로 실패 우선 검증한다.
 
 공정의 기계 판독 규격과 사람이 읽는 설명은 [`03_processes/longform/PROCESS.md`](03_processes/longform/PROCESS.md) 한 파일에서 관리한다.
 
+## Web UI
+
+Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Skill Markdown을 읽어 `web/data/os-index.json`을 생성한다. 웹 UI는 이 인덱스로 다음 화면을 제공한다.
+
+- 전체 업무 공정
+- 내가 할 일
+- 콘텐츠 Run
+- 결재함
+- Skill Library
+
+현재 웹 UI는 **읽기 전용**이다. 정본 변경은 계속 `ba pull → Work → ba push`로만 수행한다.
+
+```bash
+npm run build
+python3 -m http.server 8080 --directory web
+```
+
 ## 테스트
 
 ```bash
