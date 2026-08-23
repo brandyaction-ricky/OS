@@ -100,7 +100,7 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 - 결재함
 - Skill Library
 
-현재 웹 UI는 **읽기 전용**이다. 정본 변경은 계속 `ba pull → Work → ba push`로만 수행한다.
+웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출 → 승인 요청`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. CLI 방식도 고급 사용자와 자동화를 위해 계속 지원한다.
 
 ```bash
 npm run build

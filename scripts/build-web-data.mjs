@@ -96,6 +96,67 @@ async function directories(root) {
   }
 }
 
+async function readIfExists(filePath) {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function quoteBlock(title, source) {
+  if (!source) return "";
+  return `\n\n---\n\n# ${title}\n\n${source.trim()}\n`;
+}
+
+async function writeWorkPackage(content, process, source, metadata) {
+  if (checkOnly) return null;
+  const step = process?.steps.find((item) => item.id === content.currentStep);
+  if (!step) return null;
+
+  const files = [];
+  const addFile = async (label, relativePath) => {
+    if (!relativePath) return;
+    const text = await readIfExists(path.join(repositoryRoot, relativePath));
+    if (text) files.push({ label, path: relativePath, text });
+  };
+
+  await addFile("회사 Context", "01_company/context/COMPANY.md");
+  await addFile("브랜드 Context", `02_brands/${content.brandId}/context/BRAND.md`);
+  await addFile("콘텐츠 현재 상태", `05_contents/${content.id}/CONTENT.md`);
+  await addFile("공정 정의", `03_processes/${content.type}/PROCESS.md`);
+  if (step.skillId) await addFile("현재 단계 Skill", `04_skills/${step.skillId}/SKILL.md`);
+  for (const pointer of step.inputPointers ?? []) {
+    const relative = metadata[pointer];
+    if (relative) await addFile(`입력 · ${pointer}`, `05_contents/${content.id}/${relative}`);
+  }
+
+  const header = `---
+schema_version: "1.0"
+entity_type: work_package
+content_id: ${content.id}
+step: ${content.currentStep}
+owner: ${content.owner}
+generated_at: ${new Date().toISOString()}
+---
+
+# ${content.id} 작업 패키지
+
+- 콘텐츠: ${content.title}
+- 현재 단계: ${step.label ?? step.id}
+- 작업자: ${content.owner}
+- 다음 행동: ${content.nextAction}
+- Skill: ${step.skillId ?? "human"}
+
+이 파일을 작업 도구(Codex, Claude Code, Obsidian 등)에 전달하고 작업하세요.
+완료 후 BrandyAction OS의 **작업 제출** 버튼으로 결과 요약과 자산 링크를 등록합니다.`;
+  const workPackage = `${header}${files.map((file) => quoteBlock(`${file.label} · ${file.path}`, file.text)).join("")}\n`;
+  const outputDirectory = path.join(repositoryRoot, "web", "workspaces", content.id);
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(path.join(outputDirectory, "WORK_PACKAGE.md"), workPackage, "utf8");
+  return `/workspaces/${content.id}/WORK_PACKAGE.md`;
+}
+
 async function buildIndex() {
   const processRoot = path.join(repositoryRoot, "03_processes");
   const skillRoot = path.join(repositoryRoot, "04_skills");
@@ -115,8 +176,11 @@ async function buildIndex() {
         id: step.id,
         order: step.order,
         label: step.label,
+        folder: step.folder,
         type: step.type,
         owner: step.default_owner,
+        skillId: step.skill_id,
+        inputPointers: step.input_pointers ?? [],
         workAction: step.work_action,
         reviewAction: step.review_action,
         nextStep: step.next_step,
@@ -149,7 +213,7 @@ async function buildIndex() {
     const { frontmatter } = splitMarkdown(source);
     const metadata = parseTopLevel(frontmatter);
     const process = processes.find((item) => item.id === metadata.type);
-    contents.push({
+    const content = {
       id: metadata.id ?? contentId,
       title: metadata.title ?? "제목 없음",
       type: metadata.type ?? "-",
@@ -166,7 +230,9 @@ async function buildIndex() {
         owner: step.owner,
         status: metadata[`${step.id}_status`] ?? "-",
       })),
-    });
+    };
+    content.workPackageUrl = await writeWorkPackage(content, process, source, metadata);
+    contents.push(content);
   }
 
   contents.sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));

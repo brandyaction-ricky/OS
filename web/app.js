@@ -8,6 +8,10 @@ const sidebar = document.querySelector("#sidebar");
 const drawer = document.querySelector("#drawer");
 const drawerBackdrop = document.querySelector("#drawer-backdrop");
 const drawerContent = document.querySelector("#drawer-content");
+const submitModal = document.querySelector("#submit-modal");
+const submitBackdrop = document.querySelector("#submit-backdrop");
+const submitForm = document.querySelector("#submit-form");
+const submitFeedback = document.querySelector("#submit-feedback");
 
 const viewTitles = {
   dashboard: "전체 업무 공정",
@@ -206,6 +210,12 @@ function openDrawer(contentId) {
       <div><span>다음 담당자</span><strong>${escapeHtml(content.nextOwner || "-")}</strong></div>
       <div><span>업데이트</span><strong>${escapeHtml(formatDate(content.updatedAt))}</strong></div>
     </div>
+    <div class="work-actions">
+      <a class="primary-action" href="${escapeHtml(content.workPackageUrl || "#")}" download="${escapeHtml(content.id)}_WORK_PACKAGE.md" ${content.workPackageUrl ? "" : 'aria-disabled="true"'}>↓ 작업 시작</a>
+      <button class="secondary-action" data-submit-mode="submit" data-content-id="${escapeHtml(content.id)}">↑ 작업 제출</button>
+      <button class="review-action" data-submit-mode="review" data-content-id="${escapeHtml(content.id)}">◇ 승인 요청</button>
+    </div>
+    <p class="work-help">작업 시작은 최신 Context와 Skill을 내려받고, 제출·승인 요청은 결과 정보를 Repository에 기록합니다.</p>
     <div class="timeline"><h3>공정 진행 상태</h3>${content.steps.map((step) => {
       const state = ["approved", "completed"].includes(step.status) ? "is-done" : step.id === content.currentStep ? "is-current" : "";
       return `<div class="timeline-item ${state}"><i class="timeline-dot"></i><strong>${escapeHtml(step.label)}</strong><span>${escapeHtml(step.owner)} · ${escapeHtml(statusLabel(step.status))}</span></div>`;
@@ -213,6 +223,73 @@ function openDrawer(contentId) {
   drawerBackdrop.hidden = false;
   drawer.classList.add("is-open");
   drawer.setAttribute("aria-hidden", "false");
+}
+
+function openSubmitModal(contentId, mode) {
+  const content = index.contents.find((item) => item.id === contentId);
+  if (!content) return;
+  document.querySelector("#submit-content-id").value = content.id;
+  document.querySelector("#submit-step").value = content.currentStep;
+  document.querySelector("#submit-mode").value = mode;
+  document.querySelector("#submit-title").textContent = mode === "review" ? "승인 요청" : "작업 제출";
+  document.querySelector("#submit-description").textContent = `${content.id} · ${content.currentStep} · ${currentUser}`;
+  document.querySelector("#submit-secret").value = sessionStorage.getItem("ba-os-push-secret") || "";
+  submitFeedback.textContent = "";
+  submitFeedback.className = "submit-feedback";
+  submitBackdrop.hidden = false;
+  submitModal.classList.add("is-open");
+  submitModal.setAttribute("aria-hidden", "false");
+  document.querySelector("#submit-summary").focus();
+}
+
+function closeSubmitModal() {
+  submitModal.classList.remove("is-open");
+  submitModal.setAttribute("aria-hidden", "true");
+  submitBackdrop.hidden = true;
+}
+
+async function submitWork(event) {
+  event.preventDefault();
+  const button = document.querySelector("#submit-button");
+  const secret = document.querySelector("#submit-secret").value;
+  const file = document.querySelector("#submit-markdown").files[0];
+  if (file && file.size > 1_500_000) {
+    submitFeedback.textContent = "Markdown 파일은 1.5MB 이하여야 합니다.";
+    submitFeedback.className = "submit-feedback is-error";
+    return;
+  }
+  const payload = {
+    contentId: document.querySelector("#submit-content-id").value,
+    step: document.querySelector("#submit-step").value,
+    mode: document.querySelector("#submit-mode").value,
+    actor: currentUser,
+    summary: document.querySelector("#submit-summary").value.trim(),
+    assetUrl: document.querySelector("#submit-asset-url").value.trim(),
+    checksum: document.querySelector("#submit-checksum").value.trim(),
+    sourceMarkdown: file ? await file.text() : "",
+  };
+  button.disabled = true;
+  button.textContent = "검증하고 반영하는 중…";
+  submitFeedback.textContent = "";
+  try {
+    const response = await fetch("/api/push", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Push에 실패했습니다.");
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    submitFeedback.textContent = "Repository 반영 완료. 자동 배포 후 화면이 갱신됩니다.";
+    submitFeedback.className = "submit-feedback is-success";
+    button.textContent = "반영 완료";
+    submitForm.querySelectorAll("input:not([type=hidden]):not([type=password]), textarea").forEach((field) => { field.value = ""; });
+  } catch (error) {
+    submitFeedback.textContent = error.message;
+    submitFeedback.className = "submit-feedback is-error";
+    button.disabled = false;
+    button.textContent = "Repository에 반영";
+  }
 }
 
 function closeDrawer() {
@@ -238,8 +315,15 @@ function bindEvents() {
     const viewTarget = event.target.closest("[data-go]");
     if (viewTarget) location.hash = viewTarget.dataset.go;
   });
+  drawerContent.addEventListener("click", (event) => {
+    const submitTarget = event.target.closest("[data-submit-mode]");
+    if (submitTarget) openSubmitModal(submitTarget.dataset.contentId, submitTarget.dataset.submitMode);
+  });
   document.querySelector("#drawer-close").addEventListener("click", closeDrawer);
   drawerBackdrop.addEventListener("click", closeDrawer);
+  document.querySelector("#submit-close").addEventListener("click", closeSubmitModal);
+  submitBackdrop.addEventListener("click", closeSubmitModal);
+  submitForm.addEventListener("submit", submitWork);
   window.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
   window.addEventListener("hashchange", () => {
     currentView = location.hash.replace("#", "") || "dashboard";

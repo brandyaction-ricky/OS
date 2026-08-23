@@ -27,3 +27,7 @@ MVP의 `ba new content`는 저장소 내 최대 `BA-NNNN` 다음 번호를 사�
 ## ADR-007 · Web UI는 Repository의 읽기 전용 Projection으로 시작한다
 
 Vercel Build가 Process, Content, Skill Markdown을 읽어 정적 JSON 인덱스를 생성하고 웹은 이를 조회한다. 초기부터 별도 DB를 정본처럼 운영하면 Git/Markdown과 상태가 이중화되기 때문이다. 웹에서 상태를 직접 수정하거나 승인하지 않으며, 변경은 BA CLI를 통해서만 정본에 반영한다. Pilot에서 필요성이 검증되면 서버 API가 Git commit을 생성하는 방식으로 확장한다.
+
+## ADR-008 · Web Pull/Push Gateway를 추가한다
+
+Pilot 확인 결과 팀원이 Terminal에서 BA CLI를 직접 사용하는 방식은 운영 마찰이 크다. Content 상세 화면에 `작업 시작`, `작업 제출`, `승인 요청`을 제공한다. Web Pull은 현재 단계에 필요한 Markdown을 하나의 `WORK_PACKAGE.md`로 내려받는다. Web Push는 Vercel Server Function이 입력을 검증한 뒤 GitHub Git Data API로 artifact, `CONTENT.md`, 이전 최신본의 `is_latest`를 하나의 Commit으로 갱신한다. 대용량 자산은 Push하지 않고 외부 asset URL, asset ID, checksum만 기록한다. GitHub 토큰과 작업 코드는 Vercel 환경변수에만 둔다.

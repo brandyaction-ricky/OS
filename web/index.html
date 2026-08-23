@@ -70,6 +70,26 @@
       <div id="drawer-content"></div>
     </aside>
 
+    <div class="modal-backdrop" id="submit-backdrop" hidden></div>
+    <section class="submit-modal" id="submit-modal" role="dialog" aria-modal="true" aria-labelledby="submit-title" aria-hidden="true">
+      <button class="drawer-close" id="submit-close" aria-label="닫기">×</button>
+      <p class="drawer-kicker">OS WEB PUSH</p>
+      <h2 id="submit-title">작업 제출</h2>
+      <p class="submit-description" id="submit-description"></p>
+      <form id="submit-form">
+        <input type="hidden" id="submit-content-id" />
+        <input type="hidden" id="submit-step" />
+        <input type="hidden" id="submit-mode" />
+        <label class="form-field"><span>결과 요약 <b>필수</b></span><textarea id="submit-summary" rows="5" maxlength="10000" required placeholder="무엇을 완료했고, 다음 담당자가 무엇을 확인해야 하는지 적어주세요."></textarea></label>
+        <label class="form-field"><span>결과물 링크</span><input id="submit-asset-url" type="url" maxlength="2000" placeholder="Google Drive, NAS, Frame.io 등의 공유 링크" /></label>
+        <label class="form-field"><span>Checksum 또는 Asset ID</span><input id="submit-checksum" type="text" maxlength="300" placeholder="선택 입력" /></label>
+        <label class="form-field"><span>결과 Markdown</span><input id="submit-markdown" type="file" accept=".md,text/markdown,text/plain" /><small>선택 사항 · 1.5MB 이하 · content_id와 step이 일치해야 합니다.</small></label>
+        <label class="form-field"><span>OS 작업 코드 <b>필수</b></span><input id="submit-secret" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>
+        <div class="submit-feedback" id="submit-feedback" role="status"></div>
+        <button class="primary-action submit-button" id="submit-button" type="submit">Repository에 반영</button>
+      </form>
+    </section>
+
     <template id="empty-template">
       <section class="empty-state">
         <span>✓</span>

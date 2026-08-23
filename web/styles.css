@@ -178,6 +178,30 @@ button { color: inherit; }
 .timeline-item strong { display: block; font-size: 11px; }
 .timeline-item span { display: block; margin-top: 3px; color: #9397a1; font-size: 9px; }
 
+.work-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 22px 0 9px; }
+.primary-action, .secondary-action, .review-action { min-height: 42px; padding: 11px 12px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; font-size: 10px; font-weight: 750; text-decoration: none; cursor: pointer; }
+.primary-action { border: 1px solid var(--accent); background: var(--accent); color: white; }
+.secondary-action { border: 1px solid #dfe1e7; background: white; color: #454a55; }
+.review-action { border: 1px solid #ead7ac; background: #fff8e9; color: #9a620f; }
+.work-help { margin: 0; color: #9296a0; font-size: 9px; line-height: 1.55; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(10,12,20,.42); backdrop-filter: blur(3px); }
+.submit-modal { position: fixed; left: 50%; top: 50%; z-index: 90; width: min(560px, calc(100% - 32px)); max-height: calc(100vh - 40px); padding: 30px; overflow-y: auto; border-radius: 18px; background: white; box-shadow: 0 30px 90px rgba(8,11,30,.25); transform: translate(-50%, -46%) scale(.98); opacity: 0; pointer-events: none; transition: .2s ease; }
+.submit-modal.is-open { transform: translate(-50%, -50%) scale(1); opacity: 1; pointer-events: auto; }
+.submit-modal h2 { margin: 8px 35px 5px 0; font-size: 22px; letter-spacing: -.04em; }
+.submit-description { margin: 0 0 22px; color: var(--muted); font-size: 10px; }
+.form-field { display: grid; gap: 7px; margin-bottom: 14px; }
+.form-field > span { color: #575c66; font-size: 10px; font-weight: 700; }
+.form-field b { color: var(--accent); font-size: 8px; }
+.form-field input, .form-field textarea { width: 100%; padding: 11px 12px; border: 1px solid #dfe1e7; border-radius: 10px; background: #fff; color: var(--ink); font-size: 11px; outline: none; }
+.form-field input:focus, .form-field textarea:focus { border-color: #8990e8; box-shadow: 0 0 0 3px rgba(34,45,177,.08); }
+.form-field textarea { resize: vertical; line-height: 1.55; }
+.form-field small { color: #999da6; font-size: 8px; }
+.submit-button { width: 100%; border: 0; margin-top: 5px; }
+.submit-button:disabled { opacity: .65; cursor: wait; }
+.submit-feedback { min-height: 18px; margin: 4px 0 6px; font-size: 10px; line-height: 1.5; }
+.submit-feedback.is-error { color: var(--red); }
+.submit-feedback.is-success { color: var(--mint); }
+
 @media (max-width: 1050px) {
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .skill-grid { grid-template-columns: 1fr; }
@@ -204,4 +228,6 @@ button { color: inherit; }
   .user-select span { display: none; }
   .user-select select { min-width: 86px; }
   .drawer { padding: 28px 22px; }
+  .work-actions { grid-template-columns: 1fr; }
+  .submit-modal { padding: 24px 20px; }
 }

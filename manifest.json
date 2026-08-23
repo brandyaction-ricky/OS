@@ -9,7 +9,7 @@
   "workspace_dir": ".workspace",
   "default_timezone": "Asia/Seoul",
   "web_ui": {
-    "mode": "read_only",
+    "mode": "web_push_gateway",
     "build_command": "npm run build",
     "output_directory": "web",
     "generated_index": "web/data/os-index.json"
