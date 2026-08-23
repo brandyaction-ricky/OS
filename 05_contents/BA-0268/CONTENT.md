@@ -7,9 +7,9 @@ brand_id: brandyaction
 title: AI 시대에 직업이 사라지는 진짜 이유
 status: in_progress
 current_step: edit
-owner: jay
-next_owner: jay
-version: 5
+owner: ricky
+next_owner: ricky
+version: 6
 process_path: 03_processes/longform/PROCESS.md
 process_version: "1.0"
 package_status: approved
@@ -26,19 +26,19 @@ latest_axis: 02_axis/axis_v2.md
 latest_script: 03_script/script_v3.md
 latest_reading_script: 03_script/reading_script_v2.md
 latest_shoot: 04_shoot/shoot_v1.md
-latest_edit: null
+latest_edit: 05_edit/edit_v1.md
 latest_thumbnail: null
 latest_master: null
 latest_approval: null
 latest_publish: null
 latest_metrics: null
-next_action: 편집 1차본 업로드
+next_action: "편집 1차본과 XML 등록"
 created_at: 2026-08-22T17:30:00+09:00
-updated_at: 2026-08-23T11:30:00+09:00
-updated_by: jay
-locked_by: jay
-locked_step: edit
-locked_at: 2026-08-23T10:50:00+09:00
+updated_at: 2026-08-23T05:42:56.100Z
+updated_by: ricky
+locked_by: null
+locked_step: null
+locked_at: null
 ---
 
 # Current Context
