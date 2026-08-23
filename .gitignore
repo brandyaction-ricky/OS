@@ -10,4 +10,5 @@ build/
 *.egg-info/
 .DS_Store
 web/workspaces/
+web/library/
 web/data/os-index.json

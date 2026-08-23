@@ -72,7 +72,19 @@
         "updated_at",
         "updated_by"
       ]
+    },
+    "raw": {
+      "required": [
+        "schema_version", "id", "entity_type", "scope", "category", "owner", "title",
+        "status", "version", "wiki_target", "created_at", "updated_at", "updated_by"
+      ]
+    },
+    "wiki": {
+      "required": [
+        "schema_version", "id", "entity_type", "wiki_id", "wiki_type", "category", "owner",
+        "title", "status", "version", "is_latest", "source_ids", "promoted_by", "promoted_at",
+        "created_at", "updated_at", "updated_by"
+      ]
     }
   }
 }
-

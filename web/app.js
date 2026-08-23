@@ -3,6 +3,7 @@ const pageTitle = document.querySelector("#page-title");
 const userSelect = document.querySelector("#user-select");
 const taskCount = document.querySelector("#task-count");
 const approvalCount = document.querySelector("#approval-count");
+const rawCount = document.querySelector("#raw-count");
 const syncTime = document.querySelector("#sync-time");
 const sidebar = document.querySelector("#sidebar");
 const drawer = document.querySelector("#drawer");
@@ -12,12 +13,18 @@ const submitModal = document.querySelector("#submit-modal");
 const submitBackdrop = document.querySelector("#submit-backdrop");
 const submitForm = document.querySelector("#submit-form");
 const submitFeedback = document.querySelector("#submit-feedback");
+const promoteModal = document.querySelector("#promote-modal");
+const promoteBackdrop = document.querySelector("#promote-backdrop");
+const promoteForm = document.querySelector("#promote-form");
+const promoteFeedback = document.querySelector("#promote-feedback");
 
 const viewTitles = {
   dashboard: "전체 업무 공정",
   tasks: "내가 할 일",
   contents: "콘텐츠 Run",
   approvals: "결재함",
+  raw: "Raw Hub",
+  wiki: "Wiki",
   skills: "Skill Library",
 };
 
@@ -34,6 +41,8 @@ const statusLabels = {
   archived: "보관",
   locked: "잠김",
   active: "활성",
+  raw: "Raw",
+  promoted: "Wiki 승격됨",
 };
 
 let index = null;
@@ -176,14 +185,64 @@ function renderApprovals() {
   app.innerHTML = `${sectionHead("결재함", "검수 또는 승인 상태인 Content Run만 표시합니다.")}${index.approvals.length ? contentTable(index.approvals) : emptyState("대기 중인 결재가 없습니다", "승인 요청이 Push되면 자동으로 표시됩니다.")}`;
 }
 
+function knowledgeFlow(active) {
+  return `<section class="knowledge-flow" aria-label="지식이 실행 규격이 되는 흐름">
+    <div class="flow-node ${active === "raw" ? "is-active" : ""}"><span>01</span><strong>Raw</strong><small>개인·회사 작업 기록</small></div><i>→</i>
+    <div class="flow-node ${active === "wiki" ? "is-active" : ""}"><span>02</span><strong>Wiki</strong><small>현재 재사용할 정본</small></div><i>→</i>
+    <div class="flow-node ${active === "skills" ? "is-active" : ""}"><span>03</span><strong>Skill</strong><small>실행 절차와 품질 기준</small></div>
+  </section>`;
+}
+
+function rawCards(items) {
+  if (!items.length) return emptyState("Raw가 없습니다", "작업 기록을 추가하면 이곳에 표시됩니다.");
+  return `<div class="knowledge-grid">${items.map((raw) => {
+    const canPromote = raw.owner === currentUser;
+    return `<article class="knowledge-card">
+      <header><div><span class="eyebrow">${escapeHtml(raw.scope === "company" ? "COMPANY RAW" : `${raw.owner} RAW`)}</span><h3>${escapeHtml(raw.title)}</h3></div>${statusBadge(raw.status)}</header>
+      <p>${escapeHtml(raw.excerpt)}</p>
+      <div class="knowledge-meta"><span>분류 · ${escapeHtml(raw.category)}</span><span>v${escapeHtml(raw.version)}</span><span>${escapeHtml(formatDate(raw.updatedAt))}</span></div>
+      <footer>${ownerBadge(raw.owner)}<button class="promote-action" data-promote-id="${escapeHtml(raw.id)}" ${canPromote ? "" : "disabled"}>${canPromote ? "Wiki로 승격 →" : `${escapeHtml(raw.owner)}만 승격 가능`}</button></footer>
+      ${raw.promotedTo ? `<small class="provenance">현재 연결 · ${escapeHtml(raw.promotedTo)}</small>` : ""}
+    </article>`;
+  }).join("")}</div>`;
+}
+
+function renderRaw() {
+  const mine = index.rawItems.filter((item) => item.scope !== "company" && item.owner === currentUser);
+  const company = index.rawItems.filter((item) => item.scope === "company");
+  app.innerHTML = `${knowledgeFlow("raw")}
+    <section class="section">${sectionHead("내 Raw", "실무 중 생긴 메모와 시행착오를 쌓고, 재사용할 가치가 생기면 직접 Wiki로 승격합니다.")}${rawCards(mine)}</section>
+    <section class="section">${sectionHead("Company Raw", "운영, 의사결정 과정, 회의록과 데이터의 근거 자료입니다.")}${rawCards(company)}</section>`;
+}
+
+function wikiCards(items) {
+  if (!items.length) return emptyState("Wiki가 없습니다", "Raw를 승격하면 최신 Wiki가 이곳에 표시됩니다.");
+  return `<div class="knowledge-grid">${items.map((wiki) => `<article class="knowledge-card wiki-card">
+    <header><div><span class="eyebrow">${escapeHtml(wiki.wikiType === "company" ? "COMPANY WIKI" : "PRACTICE WIKI")}</span><h3>${escapeHtml(wiki.title)}</h3></div><span class="version-pill">v${escapeHtml(wiki.version)}</span></header>
+    <p>${escapeHtml(wiki.excerpt)}</p>
+    <div class="knowledge-meta"><span>분류 · ${escapeHtml(wiki.category)}</span><span>승격자 · ${escapeHtml(wiki.promotedBy)}</span><span>${escapeHtml(formatDate(wiki.promotedAt))}</span></div>
+    <footer>${ownerBadge(wiki.owner)}<span class="source-count">Raw 근거 ${wiki.sourceIds.length}개</span></footer>
+  </article>`).join("")}</div>`;
+}
+
+function renderWiki() {
+  app.innerHTML = `${knowledgeFlow("wiki")}
+    <section class="section">${sectionHead("Company Wiki", "현재 회사가 따라야 할 확정된 운영 기준과 의사결정입니다.")}${wikiCards(index.wikiItems.filter((item) => item.wikiType === "company"))}</section>
+    <section class="section">${sectionHead("실무 Wiki", "직원이 반복해서 재사용할 수 있는 검증된 실무 지식입니다.")}${wikiCards(index.wikiItems.filter((item) => item.wikiType !== "company"))}</section>`;
+}
+
 function renderSkills() {
-  app.innerHTML = `${sectionHead("Skill Library", "읽을 Context, 작업 절차, Output Contract와 품질 기준의 모음")}
+  app.innerHTML = `${knowledgeFlow("skills")}
+    <section class="storage-guide"><div><span>SKILL SOURCE OF TRUTH</span><strong>GitHub Cloud Repository</strong><p>Skill Markdown과 템플릿은 Git이 버전·복구를 관리하고, 이 화면은 최신본을 읽어 실행하기 쉽게 보여줍니다.</p></div><small>별도 Skill 서버 불필요 · 대용량 자산만 외부 Storage 사용</small></section>
+    ${sectionHead("Skill Library", "Wiki의 맥락을 읽어 실제 결과물을 만드는 실행 절차와 품질 기준")}
     <div class="skill-grid">${index.skills.map((skill) => `
       <article class="skill-card">
-        <header><h3>${escapeHtml(skill.id)}</h3><span class="tag">v${escapeHtml(skill.version)}</span></header>
+        <header><div><span class="eyebrow">${escapeHtml(skill.process)} · ${escapeHtml(skill.step)}</span><h3>${escapeHtml(skill.id)}</h3></div><span class="tag">v${escapeHtml(skill.version)}</span></header>
         <p>${escapeHtml(skill.purpose || "업무 수행 방법과 결과물 규격을 정의합니다.")}</p>
         <div class="chip-row">${skill.tools.map((tool) => `<span class="chip">${escapeHtml(tool)}</span>`).join("") || '<span class="chip">human</span>'}</div>
-        <footer class="skill-foot"><span>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</span><span>${escapeHtml(skill.status)}</span></footer>
+        <div class="skill-links"><span>담당 · ${escapeHtml(skill.owner)}</span><span>연결 Wiki · ${skill.wikiSources.length}개</span></div>
+        <details class="skill-detail"><summary>실행 규격 보기</summary><div><strong>읽을 Context</strong><p>${escapeHtml(skill.readContext || "SKILL.md 참고")}</p><strong>작업 절차</strong><p>${escapeHtml(skill.procedure || "SKILL.md 참고")}</p><strong>Output Contract</strong><p>${escapeHtml(skill.outputContract || "SKILL.md 참고")}</p><strong>품질 기준</strong><p>${escapeHtml(skill.qualityCriteria || "SKILL.md 참고")}</p></div></details>
+        <footer class="skill-foot"><span>${escapeHtml(skill.status)}</span><a href="${escapeHtml(skill.downloadUrl)}" download>SKILL.md 받기 ↓</a></footer>
       </article>`).join("")}</div>`;
 }
 
@@ -191,9 +250,10 @@ function render() {
   if (!viewTitles[currentView]) currentView = "dashboard";
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
-  ({ dashboard: renderDashboard, tasks: renderTasks, contents: renderContents, approvals: renderApprovals, skills: renderSkills })[currentView]();
+  ({ dashboard: renderDashboard, tasks: renderTasks, contents: renderContents, approvals: renderApprovals, raw: renderRaw, wiki: renderWiki, skills: renderSkills })[currentView]();
   taskCount.textContent = tasksForUser().length;
   approvalCount.textContent = index.approvals.length;
+  rawCount.textContent = index.rawItems.filter((item) => item.owner === currentUser && item.status === "raw").length;
   sidebar.classList.remove("is-open");
 }
 
@@ -246,6 +306,50 @@ function closeSubmitModal() {
   submitModal.classList.remove("is-open");
   submitModal.setAttribute("aria-hidden", "true");
   submitBackdrop.hidden = true;
+}
+
+function openPromoteModal(rawId) {
+  const raw = index.rawItems.find((item) => item.id === rawId);
+  if (!raw || raw.owner !== currentUser) return;
+  document.querySelector("#promote-raw-id").value = raw.id;
+  document.querySelector("#promote-raw-path").value = raw.path;
+  document.querySelector("#promote-description").textContent = `${raw.title} · ${raw.owner} → ${raw.scope === "company" ? "Company Wiki" : "실무 Wiki"}`;
+  document.querySelector("#promote-secret").value = sessionStorage.getItem("ba-os-push-secret") || "";
+  promoteFeedback.textContent = "";
+  promoteFeedback.className = "submit-feedback";
+  promoteBackdrop.hidden = false;
+  promoteModal.classList.add("is-open");
+  promoteModal.setAttribute("aria-hidden", "false");
+  document.querySelector("#promote-summary").focus();
+}
+
+function closePromoteModal() {
+  promoteModal.classList.remove("is-open");
+  promoteModal.setAttribute("aria-hidden", "true");
+  promoteBackdrop.hidden = true;
+}
+
+async function promoteRaw(event) {
+  event.preventDefault();
+  const button = document.querySelector("#promote-button");
+  const secret = document.querySelector("#promote-secret").value;
+  button.disabled = true;
+  button.textContent = "Wiki 새 버전을 만드는 중…";
+  promoteFeedback.textContent = "";
+  try {
+    const response = await fetch("/api/promote", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${secret}` }, body: JSON.stringify({ rawId: document.querySelector("#promote-raw-id").value, rawPath: document.querySelector("#promote-raw-path").value, actor: currentUser, summary: document.querySelector("#promote-summary").value.trim() }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Wiki 승격에 실패했습니다.");
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    promoteFeedback.textContent = `Wiki v${result.version} 생성 완료. 자동 배포 후 화면에 반영됩니다.`;
+    promoteFeedback.className = "submit-feedback is-success";
+    button.textContent = "승격 완료";
+  } catch (error) {
+    promoteFeedback.textContent = error.message;
+    promoteFeedback.className = "submit-feedback is-error";
+    button.disabled = false;
+    button.textContent = "검토 없이 Wiki로 승격";
+  }
 }
 
 async function submitWork(event) {
@@ -314,6 +418,8 @@ function bindEvents() {
     if (contentTarget) openDrawer(contentTarget.dataset.contentId);
     const viewTarget = event.target.closest("[data-go]");
     if (viewTarget) location.hash = viewTarget.dataset.go;
+    const promoteTarget = event.target.closest("[data-promote-id]");
+    if (promoteTarget) openPromoteModal(promoteTarget.dataset.promoteId);
   });
   drawerContent.addEventListener("click", (event) => {
     const submitTarget = event.target.closest("[data-submit-mode]");
@@ -324,6 +430,9 @@ function bindEvents() {
   document.querySelector("#submit-close").addEventListener("click", closeSubmitModal);
   submitBackdrop.addEventListener("click", closeSubmitModal);
   submitForm.addEventListener("submit", submitWork);
+  document.querySelector("#promote-close").addEventListener("click", closePromoteModal);
+  promoteBackdrop.addEventListener("click", closePromoteModal);
+  promoteForm.addEventListener("submit", promoteRaw);
   window.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
   window.addEventListener("hashchange", () => {
     currentView = location.hash.replace("#", "") || "dashboard";

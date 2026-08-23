@@ -10,6 +10,7 @@ BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경
 - **Skill**: Context + Procedure + Output Contract + Quality Criteria
 - **Local Workspace**: Claude Code, Codex, Obsidian, Premiere 등 실제 실행 환경
 - **BA CLI**: Pull → Work → Validate → Push 동기화 계층
+- **Raw / Wiki**: 직원·회사 원본 기록을 작성자가 직접 버전형 Wiki로 승격
 
 `CONTENT.md`는 현재 상태와 최신 산출물 포인터를 갖는 가변 인덱스다. 실제 산출물은 `*_vN.md`로 누적하며 본문을 덮어쓰지 않는다. 새 버전 생성 시 이전 버전에 허용되는 유일한 변경은 `is_latest: true`를 `false`로 전환하는 것이다.
 
@@ -98,9 +99,15 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 - 내가 할 일
 - 콘텐츠 Run
 - 결재함
+- Raw Hub
+- Company Wiki / 실무 Wiki
 - Skill Library
 
 웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출 → 승인 요청`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. CLI 방식도 고급 사용자와 자동화를 위해 계속 지원한다.
+
+Raw Hub에서는 각 직원이 자기 실무 Raw를 실무 Wiki로, Company Raw 작성자가 Company Wiki로 직접 승격한다. 별도 검토·승인 절차는 없으며 Raw 원본은 그대로 남고 Wiki 새 버전과 Git 이력이 생성된다. 이 규칙은 콘텐츠 제작 공정의 최종 승인과는 별개다.
+
+Skill Markdown, Template, Check의 정본은 GitHub Repository다. Vercel은 이를 읽어 보여주고 `SKILL.md`로 내려받게 한다. 현재 규모에서는 별도 Skill 서버를 운영하지 않으며, 영상·음원·이미지 같은 대용량 자산만 Drive/NAS/Object Storage로 분리한다.
 
 ```bash
 npm run build
@@ -125,5 +132,5 @@ python3 -m unittest discover -s tests -v
 
 - Markdown과 Git이 정본이며 DB는 아직 인덱스로 사용하지 않는다.
 - 대용량 미디어는 저장하지 않고 산출물 Markdown에 `asset_id`, `path`, `checksum`을 기록한다.
-- Soft Lock 명령과 서버 Worker, 웹 UI는 후속 단계다.
+- 브라우저 작업자 선택은 아직 실제 계정 로그인이 아니다. 개인별 강제 권한은 전용 인증 도입 후 적용한다.
 - 자동 ID는 현재 저장소에서 가장 큰 `BA-NNNN` 다음 번호를 사용한다. 여러 복제본에서 동시에 생성하는 중앙 ID 할당은 후속 단계다.

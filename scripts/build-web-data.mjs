@@ -62,6 +62,25 @@ function section(body, heading) {
     ?.trim() ?? "";
 }
 
+function sectionText(body, heading) {
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  if (start < 0) return "";
+  const candidates = lines.slice(start + 1);
+  const end = candidates.findIndex((line) => line.startsWith("## "));
+  return (end >= 0 ? candidates.slice(0, end) : candidates).join("\n").trim();
+}
+
+function excerpt(body) {
+  return body
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((line) => line.trim() && !line.startsWith("#") && !line.startsWith("<!--"))
+    .slice(0, 2)
+    .join(" ")
+    .slice(0, 220);
+}
+
 function parseProcessSteps(frontmatterLines) {
   const steps = [];
   let current = null;
@@ -94,6 +113,25 @@ async function directories(root) {
   } catch {
     return [];
   }
+}
+
+async function markdownFiles(root) {
+  const results = [];
+  async function visit(directory) {
+    let entries = [];
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) await visit(absolute);
+      if (entry.isFile() && entry.name.endsWith(".md")) results.push(absolute);
+    }
+  }
+  await visit(root);
+  return results.sort();
 }
 
 async function readIfExists(filePath) {
@@ -161,6 +199,8 @@ async function buildIndex() {
   const processRoot = path.join(repositoryRoot, "03_processes");
   const skillRoot = path.join(repositoryRoot, "04_skills");
   const contentRoot = path.join(repositoryRoot, "05_contents");
+  const rawRoot = path.join(repositoryRoot, "09_raw");
+  const wikiRoot = path.join(repositoryRoot, "10_wiki");
 
   const processes = [];
   for (const processId of await directories(processRoot)) {
@@ -193,6 +233,13 @@ async function buildIndex() {
     const source = await readFile(path.join(skillRoot, skillId, "SKILL.md"), "utf8");
     const { frontmatter, body } = splitMarkdown(source);
     const metadata = parseTopLevel(frontmatter);
+    const process = processes.find((item) => item.id === metadata.process);
+    const processStep = process?.steps.find((item) => item.id === metadata.step);
+    if (!checkOnly) {
+      const outputDirectory = path.join(repositoryRoot, "web", "library", skillId);
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(path.join(outputDirectory, "SKILL.md"), source, "utf8");
+    }
     skills.push({
       id: metadata.skill_id ?? skillId,
       version: metadata.version ?? "-",
@@ -203,8 +250,67 @@ async function buildIndex() {
       inputs: metadata.inputs ?? [],
       outputs: metadata.outputs ?? [],
       purpose: section(body, "PURPOSE"),
+      readContext: sectionText(body, "READ CONTEXT"),
+      procedure: sectionText(body, "PROCEDURE"),
+      outputContract: sectionText(body, "OUTPUT CONTRACT"),
+      qualityCriteria: sectionText(body, "QUALITY CRITERIA"),
+      handoff: sectionText(body, "HANDOFF"),
+      owner: metadata.owner ?? processStep?.owner ?? "-",
+      wikiSources: metadata.wiki_sources ?? [],
+      downloadUrl: `/library/${skillId}/SKILL.md`,
     });
   }
+
+  const rawItems = [];
+  for (const filePath of await markdownFiles(rawRoot)) {
+    if (filePath.includes(`${path.sep}templates${path.sep}`)) continue;
+    const source = await readFile(filePath, "utf8");
+    const { frontmatter, body } = splitMarkdown(source);
+    const metadata = parseTopLevel(frontmatter);
+    if (metadata.entity_type !== "raw") continue;
+    rawItems.push({
+      id: metadata.id,
+      title: metadata.title ?? "제목 없음",
+      scope: metadata.scope ?? "person",
+      category: metadata.category ?? "-",
+      owner: metadata.owner ?? "-",
+      status: metadata.status ?? "raw",
+      version: metadata.version ?? 1,
+      wikiTarget: metadata.wiki_target ?? null,
+      promotedTo: metadata.promoted_to ?? null,
+      promotedBy: metadata.promoted_by ?? null,
+      promotedAt: metadata.promoted_at ?? null,
+      updatedAt: metadata.updated_at ?? null,
+      excerpt: excerpt(body),
+      path: path.relative(repositoryRoot, filePath).replaceAll(path.sep, "/"),
+    });
+  }
+  rawItems.sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
+
+  const wikiItems = [];
+  for (const filePath of await markdownFiles(wikiRoot)) {
+    const source = await readFile(filePath, "utf8");
+    const { frontmatter, body } = splitMarkdown(source);
+    const metadata = parseTopLevel(frontmatter);
+    if (metadata.entity_type !== "wiki" || metadata.is_latest === false) continue;
+    wikiItems.push({
+      id: metadata.id,
+      wikiId: metadata.wiki_id,
+      title: metadata.title ?? "제목 없음",
+      wikiType: metadata.wiki_type ?? "practice",
+      category: metadata.category ?? "-",
+      owner: metadata.owner ?? "-",
+      status: metadata.status ?? "active",
+      version: metadata.version ?? 1,
+      sourceIds: metadata.source_ids ?? [],
+      promotedBy: metadata.promoted_by ?? null,
+      promotedAt: metadata.promoted_at ?? null,
+      updatedAt: metadata.updated_at ?? null,
+      excerpt: excerpt(body),
+      path: path.relative(repositoryRoot, filePath).replaceAll(path.sep, "/"),
+    });
+  }
+  wikiItems.sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
 
   const contents = [];
   for (const contentId of await directories(contentRoot)) {
@@ -243,6 +349,8 @@ async function buildIndex() {
   });
   const owners = [...new Set([
     ...contents.map((content) => content.owner),
+    ...rawItems.map((item) => item.owner),
+    ...wikiItems.map((item) => item.owner),
     ...processes.flatMap((process) => process.steps.map((step) => step.owner)),
   ].filter((owner) => owner && owner !== "-"))].sort();
 
@@ -254,12 +362,17 @@ async function buildIndex() {
       activeCount: contents.filter((item) => !["completed", "archived"].includes(item.status)).length,
       approvalCount: approvals.length,
       skillCount: skills.length,
+      rawCount: rawItems.length,
+      unpromotedRawCount: rawItems.filter((item) => item.status === "raw").length,
+      wikiCount: wikiItems.length,
     },
     owners,
     processes,
     contents,
     approvals,
     skills,
+    rawItems,
+    wikiItems,
   };
 }
 
@@ -278,5 +391,5 @@ if (!checkOnly) {
 }
 
 console.log(
-  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} skills`,
+  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} skills, ${index.rawItems.length} raw, ${index.wikiItems.length} wiki`,
 );

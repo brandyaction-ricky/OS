@@ -81,6 +81,10 @@ class Validator:
         paths.extend(sorted((self.repository.root / "03_processes").glob("*/PROCESS.md")))
         paths.extend(sorted((self.repository.root / "01_company" / "context").glob("*.md")))
         paths.extend(sorted((self.repository.root / "02_brands").glob("*/context/*.md")))
+        paths.extend(sorted((self.repository.root / "09_raw" / "company").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "09_raw" / "people").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "10_wiki" / "company").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "10_wiki" / "practice").glob("**/*.md")))
         report = self.validate_paths(paths)
         for content_id in self.repository.content_ids():
             report.extend(self.validate_content_integrity(content_id))
@@ -187,6 +191,16 @@ class Validator:
                         "Context status는 active 또는 archived여야 합니다.",
                     )
                 )
+        elif entity_type == "raw":
+            if metadata.get("scope") not in {"company", "person"}:
+                report.issues.append(ValidationIssue("E_RAW_SCOPE", path, "Raw scope은 company 또는 person이어야 합니다."))
+            if metadata.get("status") not in {"raw", "promoted", "archived"}:
+                report.issues.append(ValidationIssue("E_RAW_STATUS", path, "Raw status는 raw, promoted 또는 archived여야 합니다."))
+        elif entity_type == "wiki":
+            if metadata.get("wiki_type") not in {"company", "practice"}:
+                report.issues.append(ValidationIssue("E_WIKI_TYPE", path, "wiki_type은 company 또는 practice여야 합니다."))
+            if metadata.get("status") not in {"active", "archived"}:
+                report.issues.append(ValidationIssue("E_WIKI_STATUS", path, "Wiki status는 active 또는 archived여야 합니다."))
 
     def _validate_content_document(
         self, document: MarkdownDocument, report: ValidationReport

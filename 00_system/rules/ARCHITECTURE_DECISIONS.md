@@ -31,3 +31,11 @@ Vercel Build가 Process, Content, Skill Markdown을 읽어 정적 JSON 인덱스
 ## ADR-008 · Web Pull/Push Gateway를 추가한다
 
 Pilot 확인 결과 팀원이 Terminal에서 BA CLI를 직접 사용하는 방식은 운영 마찰이 크다. Content 상세 화면에 `작업 시작`, `작업 제출`, `승인 요청`을 제공한다. Web Pull은 현재 단계에 필요한 Markdown을 하나의 `WORK_PACKAGE.md`로 내려받는다. Web Push는 Vercel Server Function이 입력을 검증한 뒤 GitHub Git Data API로 artifact, `CONTENT.md`, 이전 최신본의 `is_latest`를 하나의 Commit으로 갱신한다. 대용량 자산은 Push하지 않고 외부 asset URL, asset ID, checksum만 기록한다. GitHub 토큰과 작업 코드는 Vercel 환경변수에만 둔다.
+
+## ADR-009 · Raw에서 Wiki로의 승격은 작성자가 직접 한다
+
+Raw는 검토 대기열이 아니라 작업 중 생긴 근거와 학습을 축적하는 영역이다. 별도 검토·승인 단계를 두면 실무 지식의 기록과 갱신이 느려지므로 작성자가 OS의 `Wiki로 승격` 버튼으로 즉시 승격한다. 승격은 Raw를 이동하거나 삭제하지 않고 Wiki의 새 `WIKI_vN.md`를 만든다. 원본 Raw ID, 승격자, 승격 시각을 기록하고 이전 Wiki의 `is_latest`만 `false`로 바꿔 추적성과 복구 가능성을 유지한다. 이 결정은 Longform Content Run의 최종 승인 절차를 제거하지 않는다.
+
+## ADR-010 · Skill 파일 정본은 별도 서버가 아니라 Git Repository다
+
+Skill의 Markdown, Template, Check는 용량이 작고 변경 이력·비교·복구가 중요하다. 초기에는 GitHub Repository를 정본으로 유지하고 Vercel은 최신본을 읽어 보여주고 내려받게 하는 Projection과 Gateway 역할만 한다. MP4, WAV, PNG 같은 대용량 자산은 Skill에 넣지 않고 Drive, NAS 또는 Object Storage에 저장한다. 동시 편집과 세밀한 권한이 Git 운영 한계를 넘을 때만 별도 DB·서비스를 검토한다.
