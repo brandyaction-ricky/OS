@@ -1,0 +1,20 @@
+{
+  "name": "BrandyAction OS",
+  "repository_format": "1.0",
+  "spec_version": "1.0",
+  "source_of_truth": "git+markdown",
+  "sync_model": "pull-work-push",
+  "pilot_process": "longform",
+  "sample_content": "BA-0268",
+  "workspace_dir": ".workspace",
+  "default_timezone": "Asia/Seoul",
+  "content_id": {
+    "prefix": "BA",
+    "digits": 4
+  },
+  "context_paths": {
+    "company": "01_company/context",
+    "brand": "02_brands/{brand_id}/context"
+  }
+}
+

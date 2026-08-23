@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "status_values": [
+    "draft",
+    "ready",
+    "in_progress",
+    "waiting_human",
+    "waiting_approval",
+    "review",
+    "approved",
+    "rejected",
+    "completed",
+    "archived",
+    "locked"
+  ],
+  "approval_status_values": [
+    "not_required",
+    "pending",
+    "approved",
+    "conditional",
+    "rejected"
+  ],
+  "entity_rules": {
+    "content": {
+      "required": [
+        "schema_version",
+        "id",
+        "entity_type",
+        "type",
+        "title",
+        "status",
+        "current_step",
+        "owner",
+        "version",
+        "process_path",
+        "process_version",
+        "created_at",
+        "updated_at",
+        "updated_by",
+        "next_action"
+      ]
+    },
+    "artifact": {
+      "required": [
+        "schema_version",
+        "id",
+        "entity_type",
+        "content_id",
+        "artifact_key",
+        "title",
+        "process",
+        "step",
+        "status",
+        "owner",
+        "version",
+        "is_latest",
+        "created_at",
+        "updated_at",
+        "updated_by",
+        "approval_status"
+      ]
+    },
+    "context": {
+      "required": [
+        "schema_version",
+        "id",
+        "entity_type",
+        "scope",
+        "title",
+        "status",
+        "version",
+        "updated_at",
+        "updated_by"
+      ]
+    }
+  }
+}
+

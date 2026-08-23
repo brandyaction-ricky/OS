@@ -1,29 +1,85 @@
-# BRANDYACTION ERP · 연월차 관리 대장
+# BrandyAction OS
 
-직원 정보, 근로계약, 연차와 회사 비용을 통합 관리하는 관리자 전용 내부 운영 서비스입니다.
+BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경을 연결하는 첫 번째 실제 저장소다.
 
-## 주요 기능
+## 핵심 구조
 
-- 입사일 기준 연차 자동 계산
-- 직원 등록·수정·삭제
-- 직원별 기본 인사 정보와 재직 상태 관리
-- 근로계약 기간·급여·근로 조건 관리
-- 연차·오전 반차·오후 반차 등록
-- 연도·팀·직원 검색
-- 회사 비용 직접 입력·월별 집계
-- Supabase 영구 저장
-- 공용 접근 비밀번호 보호
+- **OS Repository**: 회사 맥락, 상태, 결재, 버전의 정본
+- **Skill**: Context + Procedure + Output Contract + Quality Criteria
+- **Local Workspace**: Claude Code, Codex, Obsidian, Premiere 등 실제 실행 환경
+- **BA CLI**: Pull → Work → Validate → Push 동기화 계층
 
-## 운영 구성
+`CONTENT.md`는 현재 상태와 최신 산출물 포인터를 갖는 가변 인덱스다. 실제 산출물은 `*_vN.md`로 누적하며 본문을 덮어쓰지 않는다. 새 버전 생성 시 이전 버전에 허용되는 유일한 변경은 `is_latest: true`를 `false`로 전환하는 것이다.
 
-- Frontend / API: Next.js + Vercel
-- Database: Supabase PostgreSQL
-- Design: BRANDYACTION Design System
+## 요구 환경
 
-## 환경 변수
+- Python 3.11 이상
+- Git 2.x
 
-`.env.example`의 네 값을 Vercel 환경 변수로 등록합니다. `SUPABASE_SERVICE_ROLE_KEY`, `ERP_ACCESS_PASSWORD`, `ERP_AUTH_SECRET`은 브라우저에 노출하면 안 됩니다.
+## 설치
 
-## 데이터베이스
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -e .
+```
 
-Supabase SQL Editor에서 `supabase/migrations/0001_erp_leave_schema.sql`을 실행합니다.
+설치하지 않고 저장소 안에서 바로 실행할 수도 있다.
+
+```bash
+./bin/ba status
+```
+
+작업자 식별자는 `--by`, `BA_USER`, Git 사용자명 순으로 결정한다.
+
+```bash
+export BA_USER=ricky
+```
+
+## 기본 사용법
+
+```bash
+ba status
+ba status BA-0268
+ba pull BA-0268
+ba skill BA-0268 brandyaction-video-ppt
+ba push BA-0268 --step edit
+ba validate
+ba new content --type longform --title "새 콘텐츠"
+```
+
+`ba pull`은 `.workspace/CONTENT_ID/`에 현재 Context, 필요한 Input, Skill, 다음 버전 Output 초안을 만든다. AI 또는 사람이 `output/`의 Markdown을 작업한 뒤 Frontmatter의 상태와 승인값을 갱신하고 `ba push`한다.
+
+## Push 안전장치
+
+Push는 다음 순서로 실패 우선 검증한다.
+
+1. Pull 당시 저장소 스냅샷과 현재 상태 비교
+2. Git upstream이 있으면 원격 최신 상태 확인
+3. Frontmatter Schema 검사
+4. 필수 Output과 `content_id` 검사
+5. 버전 번호와 파일명 검사
+6. 최신 포인터, 상태, 담당자 갱신
+7. Completion Condition 평가와 다음 Step 전환
+8. Git commit 및 upstream이 있으면 push
+
+원격 또는 저장소가 Pull 이후 바뀌면 자동 병합하지 않고 중단한다. 네트워크 없이 로컬 Git에만 기록할 때는 `--offline`을 사용한다.
+
+## Longform Pilot
+
+기획 → 축 → 설계/원고 → 촬영 → 편집 → 썸네일 → 최종 승인 → 게시 → 성과 회수
+
+공정의 기계 판독 규격과 사람이 읽는 설명은 [`03_processes/longform/PROCESS.md`](03_processes/longform/PROCESS.md) 한 파일에서 관리한다.
+
+## 테스트
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+## 현재 MVP 경계
+
+- Markdown과 Git이 정본이며 DB는 아직 인덱스로 사용하지 않는다.
+- 대용량 미디어는 저장하지 않고 산출물 Markdown에 `asset_id`, `path`, `checksum`을 기록한다.
+- Soft Lock 명령과 서버 Worker, 웹 UI는 후속 단계다.
+- 자동 ID는 현재 저장소에서 가장 큰 `BA-NNNN` 다음 번호를 사용한다. 여러 복제본에서 동시에 생성하는 중앙 ID 할당은 후속 단계다.
