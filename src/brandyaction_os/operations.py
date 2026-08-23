@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import os
 import shutil
+import sys
 import tempfile
 from copy import deepcopy
 from dataclasses import dataclass
@@ -18,7 +19,14 @@ from .frontmatter import (
     write_document,
 )
 from .repository import CONTENT_ID_PATTERN, Repository
-from .util import atomic_write_json, atomic_write_text, now_iso, read_json, sha256_file
+from .util import (
+    actor_slug,
+    atomic_write_json,
+    atomic_write_text,
+    now_iso,
+    read_json,
+    sha256_file,
+)
 from .validation import ValidationReport, Validator
 
 
@@ -50,6 +58,24 @@ class NewContentResult:
     path: Path
     commit: str | None
     remote_pushed: bool
+
+
+@dataclass(slots=True)
+class SetupResult:
+    user: str
+    email: str
+    config_path: Path
+    git_configured: bool
+
+
+@dataclass(slots=True)
+class DoctorCheck:
+    name: str
+    level: str
+    message: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"name": self.name, "level": self.level, "message": self.message}
 
 
 class TextTransaction:
@@ -106,6 +132,113 @@ class BAService:
                 hint="--by 또는 BA_USER를 지정하세요.",
             )
         return value
+
+    def setup(self, user: str, email: str | None = None) -> SetupResult:
+        actor = user.strip()
+        if not actor:
+            raise BAError("E_ACTOR", "작업자 이름을 입력해야 합니다.")
+        resolved_email = (email or f"{actor_slug(actor)}@brandyaction.local").strip()
+        if "@" not in resolved_email:
+            raise BAError(
+                "E_EMAIL",
+                f"올바르지 않은 이메일 형식입니다: {resolved_email}",
+            )
+        config = {
+            "config_version": "1.0",
+            "user": actor,
+            "email": resolved_email,
+        }
+        self.repository.write_local_config(config)
+        self.repository.workspace_root.mkdir(parents=True, exist_ok=True)
+        git_configured = self.repository.configure_git_identity(actor, resolved_email)
+        return SetupResult(
+            user=actor,
+            email=resolved_email,
+            config_path=self.repository.local_config_path,
+            git_configured=git_configured,
+        )
+
+    def doctor(self, *, offline: bool = False) -> dict[str, Any]:
+        checks: list[DoctorCheck] = []
+
+        python_ok = sys.version_info >= (3, 11)
+        checks.append(
+            DoctorCheck(
+                "Python",
+                "pass" if python_ok else "fail",
+                f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            )
+        )
+
+        config = self.repository.local_config()
+        actor = config.get("user") if isinstance(config.get("user"), str) else None
+        checks.append(
+            DoctorCheck(
+                "작업자 설정",
+                "pass" if actor else "fail",
+                actor or "ba setup을 실행하세요",
+            )
+        )
+
+        git_available = shutil.which("git") is not None
+        checks.append(
+            DoctorCheck(
+                "Git",
+                "pass" if git_available else "fail",
+                "사용 가능" if git_available else "설치되어 있지 않습니다",
+            )
+        )
+
+        git_state = None
+        if git_available:
+            try:
+                git_state = self.repository.git_state(refresh=not offline)
+                checks.append(
+                    DoctorCheck(
+                        "Git 저장소",
+                        "pass" if git_state.is_repository else "fail",
+                        "정상" if git_state.is_repository else "Git 저장소가 아닙니다",
+                    )
+                )
+            except BAError as exc:
+                checks.append(DoctorCheck("원격 동기화", "fail", exc.message))
+
+        if git_state and git_state.is_repository:
+            remote = self.repository.git_remote_url()
+            if git_state.upstream_ref:
+                remote_message = f"{git_state.upstream_ref} · {remote or 'origin'}"
+                level = "pass"
+            else:
+                remote_message = "upstream이 없습니다"
+                level = "warn"
+            checks.append(DoctorCheck("원격 저장소", level, remote_message))
+            dirty = self.repository.git_worktree_status()
+            checks.append(
+                DoctorCheck(
+                    "작업 트리",
+                    "warn" if dirty else "pass",
+                    f"추적 파일 변경 {len(dirty)}개" if dirty else "깨끗함",
+                )
+            )
+
+        report = self.validate()
+        checks.append(
+            DoctorCheck(
+                "Markdown 검사",
+                "pass" if report.valid else "fail",
+                f"{report.checked}개 검사 완료"
+                if report.valid
+                else f"오류 {len(report.issues)}개",
+            )
+        )
+
+        return {
+            "healthy": not any(check.level == "fail" for check in checks),
+            "checks": [check.as_dict() for check in checks],
+        }
+
+    def sync(self) -> dict[str, Any]:
+        return self.repository.sync_upstream()
 
     def status(self, content_id: str | None = None) -> dict[str, Any]:
         if content_id:

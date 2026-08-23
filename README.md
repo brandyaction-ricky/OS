@@ -2,6 +2,8 @@
 
 BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경을 연결하는 첫 번째 실제 저장소다.
 
+처음 사용하는 사람은 **[`START_HERE.md`](START_HERE.md)**부터 읽는다.
+
 ## 핵심 구조
 
 - **OS Repository**: 회사 맥락, 상태, 결재, 버전의 정본
@@ -17,6 +19,18 @@ BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경
 - Git 2.x
 
 ## 설치
+
+가장 간단한 설치 방법:
+
+```bash
+./setup.sh ricky
+source .venv/bin/activate
+ba guide
+```
+
+`ricky`는 각자의 작업자 이름으로 바꾼다.
+
+수동 설치가 필요한 경우:
 
 ```bash
 python3 -m venv .venv
@@ -40,6 +54,11 @@ export BA_USER=ricky
 
 ```bash
 ba status
+ba setup --user ricky
+ba doctor
+ba sync
+ba guide
+ba guide BA-0268
 ba status BA-0268
 ba pull BA-0268
 ba skill BA-0268 brandyaction-video-ppt
@@ -76,6 +95,14 @@ Push는 다음 순서로 실패 우선 검증한다.
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+`main` Push와 Pull Request에서도 GitHub Actions가 동일한 Validator와 테스트를 자동 실행한다.
+
+## 운영 문서
+
+- [처음 시작하기](START_HERE.md)
+- [Longform Pilot 운영 가이드](docs/TEAM_PILOT_GUIDE.md)
+- [자주 생기는 문제](docs/TROUBLESHOOTING.md)
 
 ## 현재 MVP 경계
 

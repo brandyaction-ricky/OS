@@ -63,6 +63,37 @@ class WorkflowTests(unittest.TestCase):
         report = self.service.validate()
         self.assertTrue(report.valid, [issue.message for issue in report.issues])
 
+    def test_setup_and_doctor(self) -> None:
+        setup = self.service.setup("ricky", "ricky@example.com")
+        self.assertEqual(setup.user, "ricky")
+        self.assertTrue(setup.git_configured)
+        self.assertTrue(setup.config_path.is_file())
+        self.assertEqual(self.service.actor(), "ricky")
+
+        doctor = self.service.doctor(offline=True)
+        self.assertTrue(doctor["healthy"], doctor["checks"])
+        levels = {item["name"]: item["level"] for item in doctor["checks"]}
+        self.assertEqual(levels["작업자 설정"], "pass")
+        self.assertEqual(levels["Markdown 검사"], "pass")
+
+    def test_guide_explains_next_action(self) -> None:
+        result = subprocess.run(
+            [str(self.repo_path / "bin" / "ba"), "guide", "BA-0268"],
+            cwd=self.repo_path,
+            check=False,
+            text=True,
+            capture_output=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("현재 단계: edit", result.stdout)
+        self.assertIn("ba pull BA-0268", result.stdout)
+
+    def test_sync_requires_upstream(self) -> None:
+        with self.assertRaises(BAError) as captured:
+            self.service.sync()
+        self.assertEqual(captured.exception.code, "E_GIT_UPSTREAM")
+
     def test_bin_wrapper_discovers_repo_outside_working_directory(self) -> None:
         result = subprocess.run(
             [str(self.repo_path / "bin" / "ba"), "status"],

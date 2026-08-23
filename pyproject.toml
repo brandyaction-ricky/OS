@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "brandyaction-os"
-version = "0.1.0"
+version = "0.2.0"
 description = "BrandyAction OS repository and local workspace CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,4 +18,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

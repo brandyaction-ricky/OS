@@ -25,6 +25,19 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("content_id", nargs="?")
     status_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    setup_parser = subparsers.add_parser("setup", help="이 컴퓨터의 작업자와 Git 설정 초기화")
+    setup_parser.add_argument("--user", help="OS에 기록할 작업자 이름")
+    setup_parser.add_argument("--email", help="Git commit에 사용할 이메일")
+
+    doctor_parser = subparsers.add_parser("doctor", help="설치·Git·저장소 상태 한 번에 점검")
+    doctor_parser.add_argument("--offline", action="store_true")
+    doctor_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    subparsers.add_parser("sync", help="GitHub의 최신 OS 상태를 안전하게 받기")
+
+    guide_parser = subparsers.add_parser("guide", help="지금 해야 할 다음 행동 안내")
+    guide_parser.add_argument("content_id", nargs="?")
+
     pull_parser = subparsers.add_parser("pull", help="업무 Context를 로컬 Workspace로 가져오기")
     pull_parser.add_argument("content_id")
     pull_parser.add_argument("--step")
@@ -66,6 +79,47 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repository = Repository.discover()
         service = BAService(repository)
+        if args.command == "setup":
+            user = args.user
+            if not user:
+                try:
+                    user = input("OS에서 사용할 작업자 이름을 입력하세요 (예: ricky): ").strip()
+                except EOFError as exc:
+                    raise BAError(
+                        "E_ACTOR",
+                        "작업자 이름을 입력받을 수 없습니다.",
+                        hint="ba setup --user ricky 형식으로 실행하세요.",
+                    ) from exc
+            result = service.setup(user, args.email)
+            print("초기 설정이 완료되었습니다.")
+            print(f"작업자 : {result.user}")
+            print(f"이메일 : {result.email}")
+            print(f"설정   : {result.config_path}")
+            print(f"Git    : {'설정 완료' if result.git_configured else 'Git 저장소 아님'}")
+            print("\n다음 명령: ba doctor")
+            return 0
+
+        if args.command == "doctor":
+            result = service.doctor(offline=args.offline)
+            if args.as_json:
+                print_json(result)
+            else:
+                print_doctor(result)
+            return 0 if result["healthy"] else 1
+
+        if args.command == "sync":
+            result = service.sync()
+            if result["updated"]:
+                print(f"최신화 완료: {result['before'][:7]} → {result['after'][:7]}")
+            else:
+                print(f"이미 최신 상태입니다: {result['after'][:7]}")
+            print(f"원격 브랜치: {result['upstream']}")
+            return 0
+
+        if args.command == "guide":
+            print_guide(service, repository, args.content_id)
+            return 0
+
         if args.command == "status":
             result = service.status(args.content_id)
             if args.as_json:
@@ -217,6 +271,61 @@ def print_status_detail(result: dict[str, Any]) -> None:
     print(format_table(["#", "LABEL", "STEP", "STATUS", "OWNER", "LATEST"], rows))
 
 
+def print_doctor(result: dict[str, Any]) -> None:
+    labels = {"pass": "정상", "warn": "확인", "fail": "오류"}
+    rows = [
+        [labels.get(check["level"], check["level"]), check["name"], check["message"]]
+        for check in result["checks"]
+    ]
+    print(format_table(["결과", "항목", "내용"], rows))
+    print()
+    if result["healthy"]:
+        print("사용 준비가 완료되었습니다. 다음 명령: ba guide")
+    else:
+        print("오류 항목을 해결한 뒤 ba doctor를 다시 실행하세요.")
+
+
+def print_guide(
+    service: BAService,
+    repository: Repository,
+    content_id: str | None,
+) -> None:
+    if not content_id:
+        print("BrandyAction OS는 아래 순서만 기억하면 됩니다.\n")
+        print("1. 최신화  : ba sync")
+        print("2. 현황확인: ba status")
+        print("3. 작업준비: ba pull CONTENT_ID")
+        print("4. 실제작업: .workspace/CONTENT_ID/output/ 파일 수정")
+        print("5. 결과반영: ba push CONTENT_ID")
+        print("\n특정 콘텐츠의 다음 행동: ba guide BA-0268")
+        return
+
+    result = service.status(content_id)
+    content = result["content"]
+    current_step = str(content.get("current_step"))
+    workspace_state = result.get("workspace_state")
+    print(f"{content_id} · {content.get('title')}")
+    print(f"현재 단계: {current_step} / 상태: {content.get('status')}")
+    print(f"담당자   : {content.get('owner')}")
+    print(f"할 일    : {content.get('next_action')}")
+    print()
+
+    workspace = repository.workspace_path(content_id)
+    if workspace_state == "working":
+        outputs = sorted((workspace / "output").glob("*.md"))
+        print("지금은 작업 중입니다.")
+        for output in outputs:
+            print(f"- 수정할 파일: {output}")
+        if (workspace / "SKILL.md").is_file():
+            print(f"- 작업 방법: {workspace / 'SKILL.md'}")
+        print("\n작업 결과를 저장한 뒤 실행:")
+        print(f"ba push {content_id} --step {current_step}")
+        return
+
+    print("다음 명령:")
+    print(f"ba pull {content_id}")
+    print(f"\nPull 후 다시 확인: ba guide {content_id}")
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
-

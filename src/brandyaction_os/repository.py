@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 from .errors import BAError
 from .frontmatter import MarkdownDocument, parse_versioned_filename, read_document
-from .util import actor_slug, read_json, sha256_file
+from .util import actor_slug, atomic_write_json, read_json, sha256_file
 
 
 CONTENT_ID_PATTERN = re.compile(r"^BA-[0-9]{4}$")
@@ -71,6 +71,25 @@ class Repository:
     def workspace_root(self) -> Path:
         value = str(self.manifest.get("workspace_dir", ".workspace"))
         return self.root / value
+
+    @property
+    def local_config_path(self) -> Path:
+        return self.root / ".ba" / "config.json"
+
+    def local_config(self) -> dict[str, Any]:
+        if not self.local_config_path.is_file():
+            return {}
+        try:
+            return read_json(self.local_config_path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise BAError(
+                "E_LOCAL_CONFIG_INVALID",
+                f"로컬 설정을 읽을 수 없습니다: {exc}",
+                hint=".ba/config.json을 확인하거나 ba setup을 다시 실행하세요.",
+            ) from exc
+
+    def write_local_config(self, values: dict[str, Any]) -> None:
+        atomic_write_json(self.local_config_path, values)
 
     def workspace_path(self, content_id: str) -> Path:
         self.validate_content_id(content_id)
@@ -351,9 +370,76 @@ class Repository:
             )
         return True
 
+    def sync_upstream(self) -> dict[str, Any]:
+        state = self.git_state(refresh=False)
+        if not state.is_repository:
+            raise BAError("E_GIT_REPOSITORY", "Git 저장소가 아닙니다.")
+        if self.git_worktree_status():
+            raise BAError(
+                "E_GIT_DIRTY",
+                "수정 중인 정본 파일이 있어 원격 최신화를 중단했습니다.",
+                hint="변경 내용을 먼저 commit하거나 별도 보존한 뒤 다시 실행하세요.",
+            )
+        if not state.upstream_ref:
+            raise BAError(
+                "E_GIT_UPSTREAM",
+                "연결된 원격 브랜치가 없습니다.",
+                hint="GitHub에서 clone한 저장소인지 확인하세요.",
+            )
+        remote_name = state.upstream_ref.split("/", 1)[0]
+        fetched = self._git(["fetch", "--quiet", remote_name], check=False, timeout=60)
+        if fetched.returncode != 0:
+            raise BAError(
+                "E_REMOTE_CHECK_FAILED",
+                "Git 원격 최신 상태를 가져오지 못했습니다.",
+                hint="네트워크와 GitHub 접근 권한을 확인하세요.",
+            )
+        before = self._git_text(["rev-parse", "HEAD"])
+        merged = self._git(
+            ["merge", "--ff-only", state.upstream_ref],
+            check=False,
+            timeout=60,
+        )
+        if merged.returncode != 0:
+            raise BAError(
+                "E_GIT_DIVERGED",
+                "로컬과 원격 이력이 갈라져 자동 최신화를 중단했습니다.",
+                hint="작업 파일을 보존하고 저장소 관리자에게 문의하세요. 자동 merge는 하지 않습니다.",
+            )
+        after = self._git_text(["rev-parse", "HEAD"])
+        return {
+            "updated": before != after,
+            "before": before,
+            "after": after,
+            "upstream": state.upstream_ref,
+        }
+
     def configured_actor(self) -> str | None:
+        value = self.local_config().get("user")
+        if isinstance(value, str) and value.strip():
+            return value.strip()
         value = self._git_text(["config", "user.name"])
         return value.strip() if value and value.strip() else None
+
+    def configure_git_identity(self, actor: str, email: str) -> bool:
+        state = self.git_state(refresh=False)
+        if not state.is_repository:
+            return False
+        self._git(["config", "--local", "user.name", actor])
+        self._git(["config", "--local", "user.email", email])
+        return True
+
+    def git_remote_url(self) -> str | None:
+        return self._git_text(["remote", "get-url", "origin"])
+
+    def git_worktree_status(self) -> list[str]:
+        result = self._git(
+            ["status", "--porcelain", "--untracked-files=no"],
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return [line for line in result.stdout.splitlines() if line.strip()]
 
     def _git_text(self, arguments: list[str]) -> str | None:
         result = self._git(arguments, check=False)
@@ -389,4 +475,3 @@ class Repository:
                 f"Git 명령이 실패했습니다: {result.stderr.strip() or 'unknown error'}",
             )
         return result
-
