@@ -95,6 +95,8 @@ class Validator:
         paths.extend(sorted((self.repository.root / "03_processes").glob("*/PROCESS.md")))
         paths.extend(sorted((self.repository.root / "01_company" / "context").glob("*.md")))
         paths.extend(sorted((self.repository.root / "02_brands").glob("*/context/*.md")))
+        paths.extend(sorted((self.repository.root / "06_meetings").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "07_automations").glob("**/*.md")))
         paths.extend(sorted((self.repository.root / "08_people").glob("*/WORKSPACE.md")))
         paths.extend(sorted((self.repository.root / "10_wiki" / "company").glob("**/*.md")))
         paths.extend(sorted((self.repository.root / "10_wiki" / "process").glob("**/*.md")))
@@ -102,6 +104,7 @@ class Validator:
         report = self.validate_paths(paths)
         for content_id in self.repository.content_ids():
             report.extend(self.validate_content_integrity(content_id))
+        report.extend(self.validate_automation_integrity())
         return report
 
     def validate_paths(self, paths: Iterable[Path]) -> ValidationReport:
@@ -213,6 +216,26 @@ class Validator:
                 report.issues.append(ValidationIssue("E_WIKI_TYPE", path, "wiki_type은 company, process 또는 people이어야 합니다."))
             if metadata.get("status") not in {"active", "archived"}:
                 report.issues.append(ValidationIssue("E_WIKI_STATUS", path, "Wiki status는 active 또는 archived여야 합니다."))
+        elif entity_type == "meeting":
+            if metadata.get("status") not in {"inbox", "organized", "decision", "archived"}:
+                report.issues.append(ValidationIssue("E_MEETING_STATUS", path, "Meeting status는 inbox, organized, decision 또는 archived여야 합니다."))
+            if metadata.get("source_type") not in {"manual", "recording", "upload"}:
+                report.issues.append(ValidationIssue("E_MEETING_SOURCE", path, "source_type은 manual, recording 또는 upload여야 합니다."))
+            if metadata.get("transcript_status") not in {"not_required", "pending", "completed", "failed"}:
+                report.issues.append(ValidationIssue("E_TRANSCRIPT_STATUS", path, "허용되지 않은 transcript_status입니다."))
+            if metadata.get("summary_status") not in {"draft", "completed"}:
+                report.issues.append(ValidationIssue("E_SUMMARY_STATUS", path, "summary_status는 draft 또는 completed여야 합니다."))
+        elif entity_type == "automation_result":
+            if metadata.get("status") not in {"needs_input", "needs_decision", "approved", "completed"}:
+                report.issues.append(ValidationIssue("E_AUTOMATION_RESULT_STATUS", path, "Automation 결과 status가 올바르지 않습니다."))
+            if metadata.get("provider") not in {"human", "human_ai", "openai", "gemini_image", "render_worker", "premiere_bridge", "youtube", "youtube_data"}:
+                report.issues.append(ValidationIssue("E_AUTOMATION_PROVIDER", path, "Automation provider가 올바르지 않습니다."))
+        elif entity_type == "automation_recipe":
+            if metadata.get("status") not in {"active", "inactive", "deprecated"}:
+                report.issues.append(ValidationIssue("E_AUTOMATION_RECIPE_STATUS", path, "Automation Recipe status가 올바르지 않습니다."))
+            pipeline_path = metadata.get("pipeline_path")
+            if not isinstance(pipeline_path, str) or not (self.repository.root / pipeline_path).is_file():
+                report.issues.append(ValidationIssue("E_AUTOMATION_PIPELINE_POINTER", path, "Automation Pipeline 파일을 찾을 수 없습니다."))
 
     def _validate_content_document(
         self, document: MarkdownDocument, report: ValidationReport
@@ -534,6 +557,8 @@ class Validator:
                 document = read_document(path)
             except BAError:
                 continue
+            if document.metadata.get("entity_type") != "artifact":
+                continue
             groups.setdefault((str(document.metadata.get("step")), key), []).append(
                 (version, path, document)
             )
@@ -578,6 +603,79 @@ class Validator:
                             f"{pointer_key}는 {expected_pointer!r}이어야 합니다.",
                         )
                     )
+        return report
+
+    def validate_automation_integrity(self) -> ValidationReport:
+        report = ValidationReport()
+        pipeline_path = self.repository.root / "03_processes" / "longform" / "YOUTUBE_PIPELINE.json"
+        report.checked += 1
+        try:
+            pipeline = json.loads(pipeline_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            report.issues.append(ValidationIssue("E_AUTOMATION_PIPELINE", pipeline_path, f"Pipeline JSON을 읽을 수 없습니다: {exc}"))
+            return report
+
+        stages = pipeline.get("stages")
+        if not isinstance(stages, list) or not stages:
+            report.issues.append(ValidationIssue("E_AUTOMATION_STAGES", pipeline_path, "Pipeline stages는 비어 있지 않은 목록이어야 합니다."))
+            return report
+        stage_ids = [stage.get("id") for stage in stages if isinstance(stage, dict)]
+        if len(stage_ids) != len(stages) or any(not isinstance(stage_id, str) for stage_id in stage_ids) or len(stage_ids) != len(set(stage_ids)):
+            report.issues.append(ValidationIssue("E_AUTOMATION_STAGE_ID", pipeline_path, "Automation Stage id는 문자열이며 중복될 수 없습니다."))
+            return report
+        stage_id_set = set(stage_ids)
+        graph: dict[str, list[str]] = {}
+        required = {"id", "order", "phase", "label", "source", "owner", "provider", "dependsOn", "inputKeys", "outputs", "qualityChecks", "humanGate"}
+        for stage in stages:
+            missing = required - set(stage)
+            if missing:
+                report.issues.append(ValidationIssue("E_AUTOMATION_STAGE_REQUIRED", pipeline_path, f"{stage.get('id')} 필수 값 누락: {sorted(missing)}"))
+            dependencies = stage.get("dependsOn")
+            if not isinstance(dependencies, list) or any(item not in stage_id_set for item in dependencies):
+                report.issues.append(ValidationIssue("E_AUTOMATION_DEPENDENCY", pipeline_path, f"{stage.get('id')}의 dependsOn이 올바르지 않습니다."))
+                dependencies = []
+            graph[str(stage.get("id"))] = [str(item) for item in dependencies]
+
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(stage_id: str) -> bool:
+            if stage_id in visiting:
+                return False
+            if stage_id in visited:
+                return True
+            visiting.add(stage_id)
+            valid = all(visit(dependency) for dependency in graph.get(stage_id, []))
+            visiting.remove(stage_id)
+            visited.add(stage_id)
+            return valid
+
+        if not all(visit(stage_id) for stage_id in stage_ids):
+            report.issues.append(ValidationIssue("E_AUTOMATION_CYCLE", pipeline_path, "Automation dependency에 순환이 있습니다."))
+
+        allowed_statuses = {"locked", "ready", "queued", "running", "needs_input", "needs_decision", "blocked", "failed", "completed"}
+        state_paths = sorted((self.repository.root / "05_contents").glob("*/**/automation/state.json"))
+        for state_path in state_paths:
+            report.checked += 1
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                report.issues.append(ValidationIssue("E_AUTOMATION_STATE", state_path, f"Automation state를 읽을 수 없습니다: {exc}"))
+                continue
+            content_id = state.get("contentId")
+            if not isinstance(content_id, str) or state_path.parts[-4] != content_id:
+                report.issues.append(ValidationIssue("E_AUTOMATION_CONTENT", state_path, "state contentId와 Content 폴더가 일치하지 않습니다."))
+            if state.get("pipelineId") != pipeline.get("id") or state.get("currentStageId") not in stage_id_set:
+                report.issues.append(ValidationIssue("E_AUTOMATION_STATE_POINTER", state_path, "state의 pipeline 또는 currentStage가 올바르지 않습니다."))
+            stage_states = state.get("stages")
+            if not isinstance(stage_states, dict) or any(stage_id not in stage_id_set for stage_id in stage_states):
+                report.issues.append(ValidationIssue("E_AUTOMATION_STATE_STAGES", state_path, "state에 알 수 없는 Stage가 있습니다."))
+                continue
+            for stage_id, stage_state in stage_states.items():
+                if not isinstance(stage_state, dict) or stage_state.get("status") not in allowed_statuses:
+                    report.issues.append(ValidationIssue("E_AUTOMATION_STATE_STATUS", state_path, f"{stage_id} 상태가 올바르지 않습니다."))
+            if not isinstance(state.get("questions"), list) or not isinstance(state.get("jobs"), list):
+                report.issues.append(ValidationIssue("E_AUTOMATION_STATE_LIST", state_path, "questions와 jobs는 목록이어야 합니다."))
         return report
 
     @staticmethod

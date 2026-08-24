@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "1.0",
+  "contentId": "BA-0268",
+  "pipelineId": "youtube-production-v1",
+  "currentStageId": "subtitle_cleanup",
+  "status": "ready",
+  "updatedAt": "2026-08-24T15:00:00+09:00",
+  "updatedBy": "ricky",
+  "stages": {
+    "input_intake": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "outputPath": "05_contents/BA-0268/04_shoot/shoot_v1.md",
+      "assetUrl": null,
+      "error": null,
+      "updatedAt": "2026-08-23T10:30:00+09:00"
+    },
+    "subtitle_cleanup": {
+      "status": "ready",
+      "attempt": 0,
+      "jobId": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "capture_cards": {
+      "status": "ready",
+      "attempt": 0,
+      "jobId": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "media_processing": {
+      "status": "ready",
+      "attempt": 0,
+      "jobId": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "error": null,
+      "updatedAt": null
+    }
+  },
+  "questions": [],
+  "jobs": []
+}

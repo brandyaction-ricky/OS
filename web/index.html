@@ -22,8 +22,14 @@
           <button class="nav-item" data-view="tasks">
             <span class="nav-icon">✓</span><span>내가 할 일</span><em id="task-count">0</em>
           </button>
+          <button class="nav-item" data-view="youtube">
+            <span class="nav-icon">▶</span><span>유튜브 제작</span>
+          </button>
           <button class="nav-item" data-view="contents">
             <span class="nav-icon">▤</span><span>콘텐츠 Run</span>
+          </button>
+          <button class="nav-item" data-view="meetings">
+            <span class="nav-icon">▥</span><span>회의 노트</span><em id="meeting-count">0</em>
           </button>
           <button class="nav-item" data-view="approvals">
             <span class="nav-icon">◇</span><span>결재함</span><em id="approval-count">0</em>
@@ -86,8 +92,9 @@
         <input type="hidden" id="submit-content-id" />
         <input type="hidden" id="submit-step" />
         <input type="hidden" id="submit-mode" />
+        <label class="form-field" id="submit-artifact-field"><span>산출물 종류</span><select id="submit-artifact-key"></select></label>
         <label class="form-field"><span>결과 요약 <b>필수</b></span><textarea id="submit-summary" rows="5" maxlength="10000" required placeholder="무엇을 완료했고, 다음 담당자가 무엇을 확인해야 하는지 적어주세요."></textarea></label>
-        <label class="form-field"><span>결과물 링크</span><input id="submit-asset-url" type="url" maxlength="2000" placeholder="Google Drive, NAS, Frame.io 등의 공유 링크" /></label>
+        <label class="form-field"><span>결과물 자산 ID</span><input id="submit-asset-url" type="text" maxlength="2000" placeholder="asset://longform/BA-0268/edit.mp4" /><small>공개 OS에는 서명 URL 대신 자산 식별자만 저장합니다.</small></label>
         <label class="form-field"><span>Checksum 또는 Asset ID</span><input id="submit-checksum" type="text" maxlength="300" placeholder="선택 입력" /></label>
         <label class="form-field"><span>결과 Markdown</span><input id="submit-markdown" type="file" accept=".md,text/markdown,text/plain" /><small>선택 사항 · 1.5MB 이하 · content_id와 step이 일치해야 합니다.</small></label>
         <label class="form-field"><span>OS 작업 코드 <b>필수</b></span><input id="submit-secret" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>

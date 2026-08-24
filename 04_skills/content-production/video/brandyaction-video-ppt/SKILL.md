@@ -5,26 +5,27 @@ category_id: content-production
 category_label: 콘텐츠 제작
 folder_id: video
 folder_label: 영상 제작
-version: "2.0"
+version: "3.0"
 process: longform
 step: edit
 status: active
-wiki_sources: [longform-edit, os-knowledge-model]
+wiki_sources: [longform-edit, longform-publish, os-knowledge-model]
 inputs: [content_id]
 outputs: [context_bundle]
 allowed_tools: [claude_code, codex, chatgpt]
 completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_recorded]
+automation_recipe: youtube-production-v1
 ---
 
 # BrandyAction Video Context Loader
 
 ## PURPOSE
 
-롱폼 편집에 필요한 최신 Wiki, 승인 원고, 촬영 자산과 현재 Run 데이터만 회사 OS에서 불러온다.
+롱폼 편집·게시 공정에 필요한 최신 Wiki, 승인 원고, 촬영 자산, Automation Run 상태와 현재 Content Run 데이터만 회사 OS에서 불러온다.
 
 ## READ CONTEXT
 
-`CONTENT.md`, Longform Process, `longform-edit` 최신 Process Wiki, 승인 원고·낭독본, 촬영 자산 포인터와 Company/Brand Wiki를 읽는다.
+`CONTENT.md`, Longform Process, `youtube-production-v1` 공정 정의, `longform-edit`·`longform-publish` 최신 Process Wiki, 승인 원고·낭독본, 촬영 자산 포인터, Automation Run 상태와 Company/Brand Wiki를 읽는다.
 
 ## PROCEDURE
 
@@ -32,15 +33,17 @@ completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_reco
 2. 현재 공정과 step이 `longform/edit`인지 확인한다.
 3. `wiki_sources`의 `is_latest: true` 버전만 불러온다.
 4. 승인된 원고와 촬영 자산의 최신 포인터를 해석한다.
-5. 출처와 버전을 포함한 Context Bundle을 반환한다.
+5. 현재 Automation Stage와 연결할 Recipe ID를 확인한다.
+6. 출처와 버전을 포함한 Context Bundle을 반환한다.
 
 ## OUTPUT CONTRACT
 
-편집을 직접 수행하지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다. 자산은 asset ID, path와 checksum 정보만 포함한다.
+편집·렌더·업로드를 직접 수행하지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다. 자산은 asset ID, path와 checksum 정보만 포함하고, 실행은 `youtube-production-v1` Automation Recipe에 넘긴다.
 
 ## QUALITY CRITERIA
 
 - 최신 편집 Wiki와 승인된 원고만 포함한다.
+- 현재 Stage에 필요한 Context만 최소 범위로 포함한다.
 - 대용량 자산은 복제하지 않고 참조 정보만 포함한다.
 - 개인 Raw는 불러오지 않는다.
 - 모든 Context의 출처와 버전을 확인할 수 있다.
@@ -51,4 +54,4 @@ completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_reco
 
 ## HANDOFF
 
-Context Bundle을 편집 담당자의 AI와 실제 편집 환경에 전달한다.
+Context Bundle을 OS Automation Recipe, 편집 담당자의 AI와 실제 편집 환경에 전달한다.

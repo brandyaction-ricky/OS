@@ -33,6 +33,22 @@ class WorkflowTests(unittest.TestCase):
                 "*.egg-info",
             ),
         )
+        # 운영 Repository에는 실제 제출본이 있을 수 있다. Workflow 테스트는
+        # 항상 edit 단계의 제출 전 상태에서 시작하는 독립 Fixture를 사용한다.
+        fixture_edit = self.repo_path / "05_contents" / "BA-0268" / "05_edit" / "edit_v1.md"
+        fixture_edit.unlink(missing_ok=True)
+        fixture_content_path = self.repo_path / "05_contents" / "BA-0268" / "CONTENT.md"
+        fixture_content = read_document(fixture_content_path)
+        fixture_content.metadata.update({
+            "status": "in_progress",
+            "current_step": "edit",
+            "owner": "jay",
+            "next_owner": "ricky",
+            "edit_status": "ready",
+            "latest_edit": None,
+            "next_action": "편집 1차본과 XML 등록",
+        })
+        write_document(fixture_content_path, fixture_content.metadata, fixture_content.body)
         self._git("init", "-b", "main")
         self._git("add", ".")
         self._git(
@@ -62,6 +78,39 @@ class WorkflowTests(unittest.TestCase):
     def test_repository_is_valid(self) -> None:
         report = self.service.validate()
         self.assertTrue(report.valid, [issue.message for issue in report.issues])
+
+    def test_automation_result_is_valid_without_artifact_latest_flag(self) -> None:
+        result_path = self.repo_path / "05_contents" / "BA-0268" / "05_edit" / "automation" / "results" / "subtitle_cleanup_v1.md"
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(
+            """---
+schema_version: "1.0"
+id: BA-0268-subtitle_cleanup-run-1
+entity_type: automation_result
+content_id: BA-0268
+pipeline_id: youtube-production-v1
+stage_id: subtitle_cleanup
+status: completed
+owner: jay
+provider: openai
+version: 1
+created_at: 2026-08-24T06:00:00+00:00
+updated_at: 2026-08-24T06:00:00+00:00
+updated_by: jay
+---
+
+# 자막 검수·정리
+
+완료
+""",
+            encoding="utf-8",
+        )
+        report = self.service.validate()
+        self.assertTrue(report.valid, [issue.message for issue in report.issues])
+        approved_source = result_path.read_text(encoding="utf-8").replace("status: completed", "status: approved")
+        result_path.write_text(approved_source, encoding="utf-8")
+        approved_report = self.service.validate()
+        self.assertTrue(approved_report.valid, [issue.message for issue in approved_report.issues])
 
     def test_setup_and_doctor(self) -> None:
         setup = self.service.setup("ricky", "ricky@example.com")
@@ -115,7 +164,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((result.workspace / "input" / "latest_shoot" / "shoot_v1.md").is_file())
 
         skill = self.service.skill("BA-0268", "brandyaction-video-ppt")
-        self.assertEqual(skill["version"], "2.0")
+        self.assertEqual(skill["version"], "3.0")
 
         output = result.workspace / "output" / "edit_v1.md"
         document = read_document(output)

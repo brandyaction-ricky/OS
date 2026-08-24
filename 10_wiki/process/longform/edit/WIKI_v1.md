@@ -11,7 +11,7 @@ owner: jay
 title: 롱폼 영상 편집 기준
 status: active
 version: 1
-is_latest: true
+is_latest: false
 source_ids: [legacy-skill-brandyaction-video-ppt-v1]
 promoted_by: ricky
 promoted_at: 2026-08-24T10:30:00+09:00

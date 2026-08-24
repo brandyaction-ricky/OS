@@ -27,6 +27,9 @@
     "people_wiki": "10_wiki/people/{person}/{wiki_id}",
     "process_wiki": "10_wiki/process/{process_id}/{step_id}/{wiki_id}",
     "company_wiki": "10_wiki/company/{wiki_id}",
+    "meeting_inbox": "06_meetings/inbox/{meeting_id}.md",
+    "meeting_organized": "06_meetings/organized/{year}/{meeting_id}.md",
+    "meeting_decisions": "06_meetings/decisions/{year}/{meeting_id}.md",
     "personal_raw_location": "local_obsidian_only",
     "skill_mode": "os_context_loader"
   }

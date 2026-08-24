@@ -51,3 +51,19 @@ Raw는 기억하고 싶은 인사이트를 빠르게 기록하는 개인 영역�
 ## ADR-013 · Skill은 실행 규격이 아니라 OS Context Loader다
 
 업무 방법과 품질 기준을 Skill과 Wiki에 동시에 저장하면 어느 쪽이 최신 정본인지 모호해진다. 실무 지식과 판단 기준은 Process Wiki에 두고, Skill은 현재 Content Run에 필요한 최신 Wiki와 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 결과물 생성과 판단은 각 직원의 AI와 사람이 담당한다.
+
+## ADR-014 · 회사 회의록은 06_meetings에서 Markdown으로 관리한다
+
+개인 Raw와 회사 회의 기록을 같은 공간에 두면 공유 범위와 정본 여부가 불명확해진다. 회의 중 메모와 녹음 전사 결과는 회사 공용 업무 기록이므로 `06_meetings`에 저장한다. 문서는 `inbox → organized → decisions`로 이동하며 검토·승인 단계는 두지 않는다. 녹음 원본은 Git에 넣지 않고 짧은 구간으로 전사한 뒤 전사문과 정리된 Markdown만 남긴다. 반복해서 사용할 의사결정이나 실무 기준만 작성자가 Company Wiki로 별도 승격한다.
+
+## ADR-015 · Skill과 Automation Recipe를 분리한다
+
+Skill은 OS에서 최신 Wiki·Content Run·자산 포인터를 불러오는 Context Loader다. API 호출, 장시간 렌더, 외부 업로드와 상태 전이를 Skill에 넣으면 정본 지식과 실행 로직이 다시 섞인다. 실제 실행은 `07_automations`의 Recipe가 담당하고, 공정 정의·프롬프트 버전·어댑터·사람 확인 지점·실패 처리 규칙을 기록한다.
+
+## ADR-016 · 대용량 영상 처리는 Vercel 밖에서 실행한다
+
+Vercel Function은 공정 관제, 짧은 AI 요청, Git 상태 기록과 Worker 호출만 담당한다. Headless Chrome, FFmpeg, Premiere, 대용량 YouTube 업로드는 별도 Render Worker 또는 편집자 Mac Bridge에서 수행하고 callback으로 OS 상태를 갱신한다. MP4·WAV·PNG 묶음은 Git에 넣지 않고 Object Storage·Drive·NAS의 참조만 저장한다.
+
+## ADR-017 · PDF 후반작업과 YouTube 게시 완료를 구분한다
+
+브랜디액션 제작공정 PDF는 컷편집 MP4와 SRT를 받아 Premiere XML과 업로드 문안을 만드는 후반작업 공정이다. 최종 MP4 렌더·QA·제목·썸네일·실제 업로드·URL 기록은 문서에 없다. OS는 원문 8단계와 확장 게시 단계를 시각적으로 구분하고, XML 생성만으로 `YouTube 게시 완료`를 표시하지 않는다.

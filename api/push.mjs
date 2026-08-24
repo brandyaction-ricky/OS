@@ -44,8 +44,35 @@ function parseFrontmatter(markdown) {
 function scalar(value) {
   if (value === null || value === undefined || value === "") return "null";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
-  const text = String(value);
-  return /^[A-Za-z0-9_./:+-]+$/.test(text) ? text : JSON.stringify(text);
+  return JSON.stringify(String(value));
+}
+
+export function validateAssetReference(value, step) {
+  const text = String(value || "").trim();
+  if (!text) return;
+  if (/^asset:\/\/[a-z0-9][a-z0-9._/-]{2,500}$/i.test(text)) {
+    if (text.split("/").some((segment) => segment === "." || segment === "..")) throw new Error("asset:// 경로에는 . 또는 .. 구간을 사용할 수 없습니다.");
+    return;
+  }
+  let url;
+  try { url = new URL(text); } catch { throw new Error("자산 참조 형식이 올바르지 않습니다."); }
+  const youtubeHost = ["youtube.com", "www.youtube.com", "youtu.be"].includes(url.hostname);
+  if (url.protocol === "https:" && step === "publish" && youtubeHost) return;
+  if (url.protocol === "https:" && process.env.ALLOW_PUBLIC_ASSET_URLS === "true") return;
+  throw new Error("공개 Repository에는 외부 서명 URL을 저장할 수 없습니다. asset:// 형태의 자산 ID를 사용해주세요.");
+}
+
+export function validatePublicCommitText(value) {
+  const text = String(value || "");
+  if (/https?:\/\/\S+[?&](?:x-amz-[^=]*|sig(?:nature)?|token|access_token|api[_-]?key|expires)=/i.test(text)) throw new Error("만료형·서명형 URL은 공개 Repository에 저장할 수 없습니다.");
+  if (/(?:github_pat_|gh[pousr]_|sk-[A-Za-z0-9_-]{20,}|Bearer\s+[A-Za-z0-9._~-]{20,})/i.test(text)) throw new Error("결과 본문에서 자격 증명으로 보이는 값을 제거해주세요.");
+}
+
+function markdownBody(markdown) {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const end = lines[0] === "---" ? lines.indexOf("---", 1) : -1;
+  if (end < 0) throw new Error("업로드한 Markdown Frontmatter가 올바르지 않습니다.");
+  return lines.slice(end + 1).join("\n").trim();
 }
 
 export function updateFrontmatter(markdown, updates) {
@@ -65,33 +92,34 @@ export function updateFrontmatter(markdown, updates) {
   return next.join("\n");
 }
 
-function artifactMarkdown({ contentId, process, step, version, actor, summary, assetUrl, checksum, sourceMarkdown, mode }) {
+export function artifactMarkdown({ contentId, process, step, artifactKey = step, version, actor, summary, assetUrl, checksum, sourceMarkdown, mode }) {
+  const parentId = version > 1 ? `${contentId}-${artifactKey}-v${version - 1}` : null;
+  let artifactTitle = `${artifactKey} 작업 결과`;
+  let body = `# 작업 결과
+
+## 결과 요약
+
+${summary}
+
+## 외부 자산
+
+- asset_url: ${assetUrl || "-"}
+- checksum: ${checksum || "-"}`;
   if (sourceMarkdown) {
     if (sourceMarkdown.length > MAX_TEXT_LENGTH) throw new Error("Markdown 파일은 1.5MB 이하여야 합니다.");
     const parsed = parseFrontmatter(sourceMarkdown);
     if (parsed.fields.content_id !== contentId) throw new Error("업로드한 Markdown의 content_id가 일치하지 않습니다.");
     if (parsed.fields.step !== step) throw new Error("업로드한 Markdown의 step이 현재 단계와 일치하지 않습니다.");
-    return updateFrontmatter(sourceMarkdown, {
-      id: `${contentId}-${step}-v${version}`,
-      entity_type: "artifact",
-      content_id: contentId,
-      process,
-      step,
-      owner: actor,
-      version,
-      is_latest: true,
-      created_at: parsed.fields.created_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      updated_by: actor,
-      status: mode === "review" ? "waiting_approval" : "in_progress",
-      approval_status: mode === "review" ? "pending" : "not_required",
-    });
+    artifactTitle = parsed.fields.title || artifactTitle;
+    body = markdownBody(sourceMarkdown) || body;
   }
   return `---
 schema_version: "1.0"
-id: ${contentId}-${step}-v${version}
+id: ${contentId}-${artifactKey}-v${version}
 entity_type: artifact
 content_id: ${contentId}
+artifact_key: ${scalar(artifactKey)}
+title: ${scalar(artifactTitle)}
 process: ${process}
 step: ${step}
 status: ${mode === "review" ? "waiting_approval" : "in_progress"}
@@ -102,32 +130,34 @@ created_at: ${new Date().toISOString()}
 updated_at: ${new Date().toISOString()}
 updated_by: ${actor}
 approval_status: ${mode === "review" ? "pending" : "not_required"}
+${parentId ? `parent_id: ${scalar(parentId)}\n` : ""}
 ---
 
-# 작업 결과
-
-## 결과 요약
-
-${summary}
-
-## 외부 자산
-
-- asset_url: ${assetUrl || "-"}
-- checksum: ${checksum || "-"}
+${body}
 `;
 }
 
-function parseProcessStep(markdown, stepId) {
+export function parseProcessStep(markdown, stepId) {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const start = lines.findIndex((line) => line === `  - id: ${stepId}`);
   if (start < 0) throw new Error("공정에서 현재 단계를 찾을 수 없습니다.");
   const endOffset = lines.slice(start + 1).findIndex((line) => /^  - id: /.test(line));
   const block = lines.slice(start, endOffset < 0 ? undefined : start + 1 + endOffset);
   const field = (name) => block.find((line) => line.startsWith(`    ${name}:`))?.split(":").slice(1).join(":").trim().replace(/^(["'])(.*)\1$/, "$2") || null;
+  const outputs = [];
+  for (let index = 0; index < block.length; index += 1) {
+    const key = block[index].match(/^      - key:\s*([A-Za-z0-9_-]+)\s*$/)?.[1];
+    if (!key) continue;
+    const nextKeyOffset = block.slice(index + 1).findIndex((line) => /^      - key:/.test(line));
+    const outputBlock = block.slice(index + 1, nextKeyOffset < 0 ? undefined : index + 1 + nextKeyOffset);
+    const pointer = outputBlock.find((line) => /^        pointer:/.test(line))?.split(":").slice(1).join(":").trim() || `latest_${key}`;
+    outputs.push({ key, pointer });
+  }
   return {
     folder: field("folder"),
     reviewAction: field("review_action"),
     workAction: field("work_action"),
+    outputs,
   };
 }
 
@@ -168,17 +198,20 @@ export async function commitSubmission(payload) {
   const processSource = await repositoryFile(repository, processPath, headSha);
   const step = parseProcessStep(processSource, payload.step);
   if (!step.folder) throw new Error("현재 단계 폴더를 찾을 수 없습니다.");
+  const artifactKey = payload.artifactKey || step.outputs[0]?.key || payload.step;
+  const output = step.outputs.find((item) => item.key === artifactKey);
+  if (!output) throw new Error("현재 단계에 등록되지 않은 산출물 종류입니다.");
 
   const headCommit = await github(`/repos/${repository}/git/commits/${headSha}`);
   const tree = await github(`/repos/${repository}/git/trees/${headCommit.tree.sha}?recursive=1`);
-  const prefix = `05_contents/${payload.contentId}/${step.folder}/${payload.step}_v`;
+  const prefix = `05_contents/${payload.contentId}/${step.folder}/${artifactKey}_v`;
   const versions = tree.tree
     .map((item) => item.path.match(new RegExp(`^${prefix}(\\d+)\\.md$`))?.[1])
     .filter(Boolean)
     .map(Number);
   const version = Math.max(0, ...versions) + 1;
   const artifactPath = `${prefix}${version}.md`;
-  const artifact = artifactMarkdown({ ...payload, process: content.fields.type, version });
+  const artifact = artifactMarkdown({ ...payload, artifactKey, process: content.fields.type, version });
   const now = new Date().toISOString();
   const contentVersion = Number(content.fields.version || 0) + 1;
   const updatedContent = updateFrontmatter(contentSource, {
@@ -187,7 +220,7 @@ export async function commitSubmission(payload) {
     next_owner: payload.mode === "review" ? "ricky" : payload.actor,
     version: contentVersion,
     [`${payload.step}_status`]: payload.mode === "review" ? "waiting_approval" : "in_progress",
-    [`latest_${payload.step}`]: `${step.folder}/${payload.step}_v${version}.md`,
+    [output.pointer]: `${step.folder}/${artifactKey}_v${version}.md`,
     next_action: payload.mode === "review" ? (step.reviewAction || "대표 검수") : (step.workAction || "작업 계속"),
     updated_at: now,
     updated_by: payload.actor,
@@ -196,7 +229,7 @@ export async function commitSubmission(payload) {
     locked_at: null,
   });
 
-  const previousRelativePath = content.fields[`latest_${payload.step}`];
+  const previousRelativePath = content.fields[output.pointer];
   const previousPath = previousRelativePath && previousRelativePath !== "null"
     ? `05_contents/${payload.contentId}/${previousRelativePath}`
     : null;
@@ -249,11 +282,16 @@ export default async function handler(request, response) {
     const payload = await requestBody(request);
     if (!/^BA-\d{4}$/.test(payload.contentId || "")) throw new Error("유효하지 않은 Content ID입니다.");
     if (!/^[a-z][a-z0-9_-]{1,40}$/.test(payload.step || "")) throw new Error("유효하지 않은 Step입니다.");
+    if (payload.artifactKey && !/^[a-z][a-z0-9_-]{1,40}$/.test(payload.artifactKey)) throw new Error("유효하지 않은 산출물 종류입니다.");
     if (!/^[a-z][a-z0-9_-]{1,40}$/.test(payload.actor || "")) throw new Error("유효하지 않은 작업자입니다.");
     if (!['submit', 'review'].includes(payload.mode)) throw new Error("유효하지 않은 제출 방식입니다.");
     if (!String(payload.summary || "").trim()) throw new Error("결과 요약을 입력해주세요.");
     if (String(payload.summary).length > 10_000) throw new Error("결과 요약은 10,000자 이하여야 합니다.");
     if (String(payload.assetUrl || "").length > 2_000) throw new Error("자산 링크가 너무 깁니다.");
+    validateAssetReference(payload.assetUrl, payload.step);
+    validatePublicCommitText(payload.summary);
+    validatePublicCommitText(payload.checksum);
+    validatePublicCommitText(payload.sourceMarkdown);
     const result = await commitSubmission(payload);
     return json({ ok: true, message: "Repository에 반영했습니다.", ...result }, 201, response);
   } catch (error) {

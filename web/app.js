@@ -4,6 +4,7 @@ const userSelect = document.querySelector("#user-select");
 const taskCount = document.querySelector("#task-count");
 const approvalCount = document.querySelector("#approval-count");
 const peopleCount = document.querySelector("#people-count");
+const meetingCount = document.querySelector("#meeting-count");
 const syncTime = document.querySelector("#sync-time");
 const sidebar = document.querySelector("#sidebar");
 const drawer = document.querySelector("#drawer");
@@ -17,7 +18,9 @@ const submitFeedback = document.querySelector("#submit-feedback");
 const viewTitles = {
   dashboard: "전체 업무 공정",
   tasks: "내가 할 일",
+  youtube: "유튜브 제작",
   contents: "콘텐츠 Run",
+  meetings: "회의 노트",
   approvals: "결재함",
   people: "직원 워크스페이스",
   wiki: "Company Wiki",
@@ -37,6 +40,16 @@ const statusLabels = {
   archived: "보관",
   locked: "잠김",
   active: "활성",
+  inbox: "Inbox",
+  organized: "정리 완료",
+  decision: "의사결정",
+  queued: "실행 대기",
+  running: "실행 중",
+  needs_input: "입력 필요",
+  needs_decision: "확인 필요",
+  blocked: "막힘",
+  failed: "실패",
+  not_started: "시작 전",
 };
 
 let index = null;
@@ -44,6 +57,25 @@ let currentView = location.hash.replace("#", "") || "dashboard";
 let currentUser = localStorage.getItem("ba-os-user") || "ricky";
 let activeSkillFilter = "all";
 let activeWikiFilter = "all";
+let activeMeetingFilter = "all";
+let activeMeetingPath = "";
+let activeMeetingId = "";
+let activeMeetingVersion = 0;
+let meetingNextOffset = null;
+let meetingSourceType = "manual";
+let meetingStream = null;
+let meetingRecorder = null;
+let meetingRecordingActive = false;
+let meetingRecordingStartedAt = 0;
+let meetingTimer = null;
+let meetingSegmentTimer = null;
+let meetingSegments = [];
+let automationConnectors = {};
+let activeYoutubeContentId = localStorage.getItem("ba-os-youtube-content") || "";
+let activeYoutubeStageId = localStorage.getItem("ba-os-youtube-stage") || "";
+let youtubeLastOutput = null;
+let youtubeRequestSerial = 0;
+let youtubePollTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? "-")
@@ -52,6 +84,34 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function youtubeDraftKey(contentId = activeYoutubeContentId, stageId = activeYoutubeStageId) {
+  return `ba-os-youtube-draft:${contentId}:${stageId}`;
+}
+
+function readYoutubeDraft() {
+  try { return JSON.parse(sessionStorage.getItem(youtubeDraftKey()) || "{}"); } catch { return {}; }
+}
+
+function saveYoutubeDraft() {
+  if (currentView !== "youtube" || !activeYoutubeContentId || !activeYoutubeStageId) return;
+  sessionStorage.setItem(youtubeDraftKey(), JSON.stringify({
+    inputText: document.querySelector("#youtube-input")?.value || "",
+    summary: document.querySelector("#youtube-summary")?.value || "",
+    assetUrl: document.querySelector("#youtube-asset-url")?.value || "",
+    privacyStatus: document.querySelector("#youtube-privacy-status")?.value || "private",
+    publishAt: document.querySelector("#youtube-publish-at")?.value || "",
+  }));
 }
 
 function statusLabel(status) {
@@ -80,6 +140,75 @@ function formatDate(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function toDateTimeLocal(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
+function meetingIdNow() {
+  const now = new Date();
+  const parts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0"),
+  ];
+  return `MTG-${parts.slice(0, 3).join("")}-${parts.slice(3).join("")}`;
+}
+
+function meetingTemplate() {
+  return `## 한 줄 요약
+
+
+## 핵심 논의
+
+- 논의 내용을 기록하세요.
+
+## 결정사항
+
+- [ ] 결정사항을 기록하세요.
+
+## 액션 아이템
+
+- [ ] 담당자 · 할 일 · 기한
+
+## 보류·추가 확인
+
+- 추가 확인이 필요한 내용을 기록하세요.
+
+## 원문 메모·전사
+
+`;
+}
+
+function meetingFolderLabel(folder) {
+  return ({ inbox: "회의 Inbox", organized: "정리된 회의록", decisions: "의사결정 기록" })[folder] || folder;
+}
+
+function meetingSection(body, heading) {
+  const lines = String(body || "").replace(/\r\n/g, "\n").split("\n");
+  const start = lines.findIndex((line) => line.trim() === `## ${heading}`);
+  if (start < 0) return "";
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => line.startsWith("## "));
+  return (end < 0 ? rest : rest.slice(0, end)).join("\n").trim();
+}
+
+function meetingSecret() {
+  return document.querySelector("#meeting-secret")?.value || sessionStorage.getItem("ba-os-push-secret") || "";
+}
+
+function meetingFeedback(message, type = "") {
+  const target = document.querySelector("#meeting-feedback");
+  if (!target) return;
+  target.textContent = message;
+  target.className = `meeting-feedback${type ? ` is-${type}` : ""}`;
 }
 
 function emptyState(title = "현재 항목이 없습니다", description) {
@@ -155,14 +284,14 @@ function renderDashboard() {
   const process = dominantProcess();
   app.innerHTML = `
     <section class="hero">
-      <div class="hero-copy"><p class="hero-kicker">SHARED CONTEXT OPERATING SYSTEM</p><h2>각자의 맥락을 회사의 실행력으로</h2><p>개인 Obsidian에서 정리한 Wiki를 회사 공정과 연결하고, 각자의 AI가 필요한 최신 맥락을 불러와 일하게 합니다.</p></div>
+      <div class="hero-copy"><p class="hero-kicker">SHARED CONTEXT OPERATING SYSTEM</p><h2>각자의 맥락을 회사의 실행력으로</h2><p>개인 Obsidian에서 정리한 Wiki를 회사 공정과 연결하고, 각자의 AI가 필요한 최신 맥락을 불러와 일하게 합니다.</p><button class="hero-primary" data-go="youtube">유튜브 제작 관제 열기 →</button></div>
       <div class="hero-side"><strong>${summary.activeCount}</strong><span>현재 진행 중인 Content Run</span></div>
     </section>
     <section class="stat-grid">
       <article class="stat-card"><header><span>진행 중</span><i>→</i></header><strong>${summary.activeCount}</strong><small>완료·보관 제외</small></article>
-      <article class="stat-card"><header><span>직원 Workspace</span><i>◫</i></header><strong>${summary.peopleCount}</strong><small>업무·Wiki·Skill 연결</small></article>
+      <article class="stat-card"><header><span>제작 자동화 Run</span><i>▶</i></header><strong>${summary.automationRunCount || 0}</strong><small>유튜브 공정 연결</small></article>
+      <article class="stat-card"><header><span>확인 필요한 예외</span><i>◇</i></header><strong>${summary.automationAttentionCount || 0}</strong><small>사람이 볼 항목만</small></article>
       <article class="stat-card"><header><span>공유 Wiki</span><i>▣</i></header><strong>${summary.wikiCount}</strong><small>회사 OS 최신 정본</small></article>
-      <article class="stat-card"><header><span>Access Skill</span><i>✦</i></header><strong>${summary.skillCount}</strong><small>맥락 불러오기 규칙</small></article>
     </section>
     <section class="section">${sectionHead("OS가 일하는 방식", "개인의 맥락 관리와 회사 공정 실행을 분리하고 최신 Wiki로 연결합니다.")}${osContextFlow()}</section>
     <section class="section">${sectionHead("Longform 전체 공정", "기획부터 성과 회수까지의 표준 공정")}${processFlow(process, lead)}</section>
@@ -173,23 +302,706 @@ function tasksForUser() {
   return index.contents.filter((content) => content.owner === currentUser && !["completed", "archived"].includes(content.status));
 }
 
+function automationTasksForUser() {
+  return index.contents.flatMap((content) => (content.youtubeAutomation?.stages || [])
+    .filter((stage) => stage.owner === currentUser && ["ready", "needs_input", "needs_decision", "failed", "blocked"].includes(stage.status))
+    .map((stage) => ({ content, stage })));
+}
+
 function renderTasks() {
   const tasks = tasksForUser();
-  app.innerHTML = `${sectionHead(`${currentUser}의 할 일`, "CONTENT.md의 현재 담당자와 다음 행동을 기준으로 표시합니다.")}
+  const automationTasks = automationTasksForUser();
+  app.innerHTML = `${sectionHead(`${currentUser}의 할 일`, "Content Run과 Automation Stage에서 지금 행동 가능한 업무만 표시합니다.")}
+    ${automationTasks.length ? `<div class="automation-task-list">${automationTasks.map(({ content, stage }) => `
+      <button class="automation-task" data-youtube-task="${escapeHtml(content.id)}" data-youtube-stage="${escapeHtml(stage.id)}">
+        <span class="automation-task-status" data-status="${escapeHtml(stage.status)}">${escapeHtml(statusLabel(stage.status))}</span>
+        <div><small>${escapeHtml(content.id)} · 유튜브 제작</small><strong>${escapeHtml(stage.label)}</strong><p>${escapeHtml(stage.description)}</p></div>
+        <i>작업 열기 →</i>
+      </button>`).join("")}</div>` : ""}
     ${tasks.length ? `<div class="task-list">${tasks.map((content) => `
       <article class="task-card" data-content-id="${escapeHtml(content.id)}">
         <span class="task-number">${escapeHtml(content.id.replace("BA-", ""))}</span>
         <div><h3>${escapeHtml(content.nextAction)}</h3><p>${escapeHtml(content.title)} · ${escapeHtml(content.currentStep)}</p></div>
         <time>${escapeHtml(formatDate(content.updatedAt))}</time>
-      </article>`).join("")}</div>` : emptyState("배정된 업무가 없습니다", `${currentUser} 담당으로 지정된 진행 업무가 없습니다.`)}`;
+      </article>`).join("")}</div>` : ""}
+    ${!tasks.length && !automationTasks.length ? emptyState("배정된 업무가 없습니다", `${currentUser} 담당으로 지정된 진행 업무가 없습니다.`) : ""}`;
 }
 
 function renderContents() {
   app.innerHTML = `${sectionHead("전체 Content Run", "콘텐츠의 현재 상태, 담당자, 다음 행동을 확인합니다.")}${contentTable(index.contents)}`;
 }
 
+function youtubeRuns() {
+  return index.contents.filter((content) => content.youtubeAutomation);
+}
+
+function selectedYoutubeContent() {
+  const runs = youtubeRuns();
+  if (!runs.length) return null;
+  const selected = runs.find((content) => content.id === activeYoutubeContentId) || runs[0];
+  activeYoutubeContentId = selected.id;
+  localStorage.setItem("ba-os-youtube-content", selected.id);
+  return selected;
+}
+
+function connectorKeyForStage(stage) {
+  return ({
+    openai: "openai",
+    human_ai: "openai",
+    gemini_image: "image",
+    render_worker: "render",
+    premiere_bridge: "premiere",
+    youtube: "youtube",
+    youtube_data: "metrics",
+  })[stage.provider] || "human";
+}
+
+function connectorForStage(stage) {
+  const key = connectorKeyForStage(stage);
+  if (key === "human") return { ready: true, label: "사람 작업", mode: "OS 확인" };
+  return automationConnectors[key] || { ready: false, label: stage.provider, mode: "연결 확인 중" };
+}
+
+function youtubeStageActions(stage, connector) {
+  if (stage.id === "metrics" && stage.status === "completed") return connector.ready
+    ? `<button class="youtube-action-button" data-youtube-action="run">↻ 최신 성과 다시 수집</button>`
+    : `<span class="youtube-stage-complete">✓ 최신 수집 완료 · Worker 미연결</span>`;
+  if (stage.status === "completed") return `<span class="youtube-stage-complete">✓ 이 단계 완료</span>`;
+  if (stage.status === "locked") return `<button class="youtube-action-button" disabled>선행 단계 완료 후 열림</button>`;
+  if (["queued", "running"].includes(stage.status)) return `<button class="youtube-action-button" disabled>${stage.status === "queued" ? "Worker 실행 대기 중" : "Worker 실행 중"}</button>`;
+  if (stage.status === "needs_decision") return `
+    <button class="youtube-action-button is-decision" data-youtube-action="approve">${stage.provider === "youtube" ? "게시 설정 승인 · 업로드 실행" : "확정값 기록 · 다음 단계 열기"}</button>
+    <button class="youtube-action-button is-secondary" data-youtube-action="revise">수정 후 다시 실행</button>`;
+  if (["failed", "blocked", "needs_input"].includes(stage.status)) return `
+    <button class="youtube-action-button is-retry" data-youtube-action="retry">다시 실행 준비</button>
+    <button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
+  if (stage.provider === "human") return `<button class="youtube-action-button" data-youtube-action="complete">확인 결과 등록 · 완료</button>`;
+  if (stage.provider === "human_ai") return `
+    ${connector.ready ? '<button class="youtube-action-button" data-youtube-action="run">AI 후보 생성</button>' : ""}
+    <button class="youtube-action-button is-secondary" data-youtube-action="complete">대표 확정 결과 등록</button>`;
+  if (stage.provider === "openai") return connector.ready
+    ? `<button class="youtube-action-button" data-youtube-action="run">✦ OS에서 AI 실행</button>`
+    : `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
+  if (stage.provider === "youtube") return connector.ready
+    ? `<button class="youtube-action-button" data-youtube-action="run">게시 설정 검토 시작</button>`
+    : `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 게시 결과 등록</button>`;
+  if (connector.ready) return `<button class="youtube-action-button" data-youtube-action="run">${escapeHtml(connector.mode)} 실행</button>`;
+  return `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 산출물 연결 · 완료</button>`;
+}
+
+function renderYoutube() {
+  const content = selectedYoutubeContent();
+  if (!content) {
+    app.innerHTML = `${emptyState("유튜브 제작 Run이 없습니다", "Longform Content Run을 만들면 실제 제작 파이프라인이 연결됩니다.")}<button class="primary-action empty-state-action" data-go="contents">콘텐츠 Run으로 이동</button>`;
+    return;
+  }
+  const automation = content.youtubeAutomation;
+  const stages = automation.stages || [];
+  const selectedStage = stages.find((stage) => stage.id === activeYoutubeStageId)
+    || stages.find((stage) => stage.id === automation.currentStageId)
+    || stages.find((stage) => ["ready", "needs_decision", "failed"].includes(stage.status))
+    || stages[0];
+  activeYoutubeStageId = selectedStage.id;
+  localStorage.setItem("ba-os-youtube-stage", selectedStage.id);
+  const draft = readYoutubeDraft();
+  const lastOutput = youtubeLastOutput?.contentId === content.id && youtubeLastOutput?.stageId === selectedStage.id ? youtubeLastOutput.text : "";
+  const connector = connectorForStage(selectedStage);
+  const phases = index.youtubePipeline?.phases || [];
+  const readyCount = stages.filter((stage) => stage.status === "ready").length;
+  const activeCount = stages.filter((stage) => ["queued", "running"].includes(stage.status)).length;
+  const decisionCount = stages.filter((stage) => ["needs_decision", "needs_input", "failed", "blocked"].includes(stage.status)).length;
+  const questions = automation.questions || [];
+  const jobs = (automation.jobs || []).slice(-5).reverse();
+  const outputLink = selectedStage.outputPath ? `https://github.com/brandyaction-ricky/OS/blob/main/${selectedStage.outputPath}` : "";
+  const assetLink = safeExternalUrl(selectedStage.assetUrl);
+  const sourceLabel = selectedStage.source === "pdf" ? "실제 PDF 공정" : "OS 확장 공정";
+  const sourceDescription = selectedStage.source === "pdf"
+    ? "업로드한 브랜디액션 제작공정 기준"
+    : "최종 YouTube 게시 완료를 위해 보완한 단계";
+  const stageRail = phases.map((phase) => {
+    const phaseStages = stages.filter((stage) => stage.phase === phase.id);
+    return `<section class="youtube-phase"><header><span>${String(phase.order).padStart(2, "0")}</span><strong>${escapeHtml(phase.label)}</strong></header>
+      ${phaseStages.map((stage) => `<button class="youtube-stage-nav ${stage.id === selectedStage.id ? "is-active" : ""}" data-youtube-stage="${escapeHtml(stage.id)}">
+        <i data-status="${escapeHtml(stage.status)}">${stage.status === "completed" ? "✓" : stage.order}</i>
+        <span><strong>${escapeHtml(stage.shortLabel || stage.label)}</strong><small>${escapeHtml(stage.owner)} · ${escapeHtml(statusLabel(stage.status))}</small></span>
+        ${stage.humanGate ? '<em title="사람 확인 단계">◇</em>' : ""}
+      </button>`).join("")}</section>`;
+  }).join("");
+  const connectors = ["openai", "image", "render", "premiere", "youtube", "metrics"].map((key) => {
+    const item = automationConnectors[key] || { ready: false, label: key, mode: "연결 확인 중" };
+    return `<article class="integration-mini ${item.ready ? "is-ready" : ""}"><i></i><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.ready ? `${item.mode} 설정됨` : item.fallback || "연결 필요")}</small></span></article>`;
+  }).join("");
+  const stageInput = ["openai", "human_ai"].includes(selectedStage.provider) ? `
+    <label class="youtube-field"><span>AI 입력 원문 <small>선택 · 비우면 이전 단계 최신 결과와 Wiki 사용</small></span><textarea id="youtube-input" rows="8" maxlength="160000" placeholder="SRT·원고·이전 결과를 붙여넣거나 아래 파일을 선택하세요.">${escapeHtml(draft.inputText || "")}</textarea></label>
+    <label class="youtube-file-field">↑ SRT·TXT·MD 가져오기<input id="youtube-input-file" type="file" accept=".srt,.txt,.md,text/plain,text/markdown" /></label>` : "";
+  const selectedPrivacy = draft.privacyStatus || selectedStage.publishSettings?.privacyStatus || "private";
+  const selectedPublishAt = draft.publishAt || (selectedStage.publishSettings?.publishAt ? toDateTimeLocal(selectedStage.publishSettings.publishAt) : "");
+  const publishSettings = selectedStage.id === "youtube_publish" ? `
+    <div class="youtube-input-grid youtube-publish-settings">
+      <label class="youtube-field"><span>공개 상태</span><select id="youtube-privacy-status"><option value="private" ${selectedPrivacy === "private" ? "selected" : ""}>비공개 업로드</option><option value="unlisted" ${selectedPrivacy === "unlisted" ? "selected" : ""}>일부 공개</option><option value="public" ${selectedPrivacy === "public" ? "selected" : ""}>공개</option></select></label>
+      <label class="youtube-field"><span>예약 시각 <small>선택</small></span><input id="youtube-publish-at" type="datetime-local" value="${escapeHtml(selectedPublishAt)}" /></label>
+    </div>` : "";
+  const publishApproval = selectedStage.id === "youtube_publish" && selectedStage.status === "needs_decision" ? `
+    <label class="youtube-field is-secret"><span>YouTube 게시 승인 코드</span><input id="youtube-publish-approval-secret" type="password" autocomplete="off" placeholder="게시 권한자 전용 코드" /><small>공용 OS 작업 코드와 분리된 게시 전용 승인입니다.</small></label>` : "";
+  const activity = jobs.length ? jobs.map((job) => `<li><i data-status="${escapeHtml(job.status)}"></i><span><strong>${escapeHtml(stages.find((stage) => stage.id === job.stageId)?.label || job.stageId)}</strong><small>${escapeHtml(job.provider)} · ${escapeHtml(formatDate(job.updatedAt || job.createdAt))}</small></span><em>${escapeHtml(statusLabel(job.status))}</em></li>`).join("") : `<li class="is-empty">아직 실행 로그가 없습니다.</li>`;
+
+  app.innerHTML = `
+    <section class="youtube-hero">
+      <div class="youtube-hero-copy"><p>YOUTUBE PRODUCTION CONTROL</p><h2>유튜브 제작 관제탑</h2><span>MP4·SRT 접수부터 Premiere XML, 최종 렌더, YouTube 게시와 성과 회수까지 한 화면에서 관리합니다.</span></div>
+      <label class="youtube-run-select"><span>Content Run</span><select id="youtube-content-select">${youtubeRuns().map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label>
+      <button class="youtube-refresh" id="youtube-refresh" type="button">↻ 최신 상태</button>
+      <div class="youtube-progress"><strong>${automation.progress}%</strong><span><i style="width:${automation.progress}%"></i></span><small>${automation.completedCount}/${automation.totalCount} 단계 완료</small></div>
+    </section>
+    <section class="youtube-summary-strip">
+      <article><span>지금 실행 가능</span><strong>${readyCount}</strong><small>병렬 작업 포함</small></article>
+      <article><span>자동화 실행 중</span><strong>${activeCount}</strong><small>API·Worker Queue</small></article>
+      <article class="${decisionCount ? "is-alert" : ""}"><span>확인·예외</span><strong>${decisionCount}</strong><small>사람이 볼 항목만</small></article>
+      <article><span>현재 담당</span><strong>${escapeHtml(selectedStage.owner)}</strong><small>${escapeHtml(selectedStage.shortLabel)}</small></article>
+    </section>
+    <section class="youtube-source-note"><strong>공정 범위</strong><span>PDF 원문은 Premiere XML·업로드 문안까지입니다.</span><i>최종 렌더·게시·성과는 OS 확장 단계로 구분했습니다.</i></section>
+    <div class="youtube-workspace">
+      <aside class="youtube-stage-rail"><header><strong>전체 제작 공정</strong><span>◇ 사람 확인</span></header>${stageRail}</aside>
+      <main class="youtube-stage-workbench">
+        <header class="youtube-stage-head">
+          <div><span class="youtube-source-badge ${selectedStage.source === "pdf" ? "is-pdf" : ""}">${escapeHtml(sourceLabel)}</span><p>${escapeHtml(sourceDescription)}</p><h2>${escapeHtml(selectedStage.label)}</h2><strong>${escapeHtml(selectedStage.description)}</strong></div>
+          <div class="youtube-stage-state"><span data-status="${escapeHtml(selectedStage.status)}">${escapeHtml(statusLabel(selectedStage.status))}</span><small>${escapeHtml(selectedStage.automationLevel)}</small></div>
+        </header>
+        <section class="youtube-stage-contract">
+          <article><span>INPUT</span><div>${selectedStage.inputKeys.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article>
+          <b>→</b>
+          <article><span>OUTPUT</span><div>${selectedStage.outputs.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article>
+        </section>
+        <section class="youtube-execution-box">
+          <header><div><span>EXECUTION ADAPTER</span><strong>${escapeHtml(connector.mode)}</strong><p>${connector.ready ? "운영 환경에 연결 설정이 있습니다. 실행 결과와 Health는 각 작업에서 확인합니다." : `${connector.label} 연결 전입니다. 수동 산출물 참조로도 공정을 이어갈 수 있습니다.`}</p></div><i class="connector-light ${connector.ready ? "is-ready" : ""}">${connector.ready ? "설정됨" : "연결 필요"}</i></header>
+          ${stageInput}
+          ${publishSettings}
+          ${publishApproval}
+          <div class="youtube-input-grid">
+            <label class="youtube-field"><span>작업 메모·확정값</span><textarea id="youtube-summary" rows="4" maxlength="20000" placeholder="선택한 제목·결정값·예외·다음 담당자 메모를 적으세요.">${escapeHtml(draft.summary || "")}</textarea></label>
+            <label class="youtube-field"><span>산출물 자산 ID <small>비공개 자산은 참조만 저장</small></span><input id="youtube-asset-url" type="text" maxlength="2000" placeholder="asset://longform/BA-0268/final.mp4" value="${escapeHtml(draft.assetUrl || selectedStage.assetUrl || "")}" /><small>공개 Repository에는 서명 URL을 넣지 않습니다. YouTube 게시 결과만 공개 URL을 허용합니다.</small></label>
+          </div>
+          ${selectedStage.error ? `<div class="youtube-stage-error"><strong>최근 오류</strong><span>${escapeHtml(selectedStage.error)}</span><small>${escapeHtml(formatDate(selectedStage.stageUpdatedAt))}</small></div>` : ""}
+          <label class="youtube-quality-confirm"><input id="youtube-quality-confirm" type="checkbox" /><span>위 완료 기준과 연결한 산출물을 직접 확인했습니다.</span></label>
+          <label class="youtube-field is-secret"><span>OS 작업 코드</span><input id="youtube-secret" type="password" autocomplete="current-password" placeholder="팀 작업 코드" value="${escapeHtml(sessionStorage.getItem("ba-os-push-secret") || "")}" /></label>
+          <div class="youtube-action-row">${youtubeStageActions(selectedStage, connector)}</div>
+          <div class="youtube-feedback" id="youtube-feedback" role="status"></div>
+          ${lastOutput ? `<details class="youtube-output-preview" open><summary>이번 실행 결과 미리보기</summary><pre>${escapeHtml(lastOutput)}</pre></details>` : ""}
+          ${outputLink ? `<div class="youtube-output-links"><a href="${escapeHtml(outputLink)}" target="_blank" rel="noreferrer">최신 Markdown 결과 보기 ↗</a>${assetLink ? `<a href="${escapeHtml(assetLink)}" target="_blank" rel="noreferrer">공개 산출물 열기 ↗</a>` : ""}</div>` : ""}
+        </section>
+        <section class="youtube-quality"><header><span>COMPLETION CRITERIA</span><h3>완료 전에 확인할 기준</h3></header><ul>${selectedStage.qualityChecks.map((check) => `<li><i>○</i>${escapeHtml(check)}</li>`).join("")}</ul><p>Worker의 실제 검사 결과가 들어오면 항목별 통과·실패로 표시됩니다.</p></section>
+      </main>
+      <aside class="youtube-context-panel">
+        <section><header><span>CONTEXT</span><strong>이 단계가 참고하는 것</strong></header><div class="youtube-context-chain"><article><i>1</i><span>Company Wiki</span><strong>최신 정본</strong></article><article><i>2</i><span>Access Skill</span><strong>맥락 호출</strong></article><article><i>3</i><span>Automation Recipe</span><strong>실행·기록</strong></article></div></section>
+        <section><header><span>INTEGRATIONS</span><strong>API 연결 현황</strong></header><div class="integration-mini-list">${connectors}</div></section>
+        <section><header><span>ATTENTION</span><strong>확인 필요한 예외</strong></header>${questions.length ? `<ul class="youtube-question-list">${questions.map((question) => `<li><strong>${escapeHtml(question.question || question.stageId)}</strong><span>${escapeHtml(question.status || "대기")}</span></li>`).join("")}</ul>` : `<p class="youtube-none">현재 등록된 질문이 없습니다.</p>`}</section>
+        <section><header><span>ACTIVITY</span><strong>최근 자동화 실행</strong></header><ul class="youtube-job-list">${activity}</ul></section>
+      </aside>
+    </div>`;
+  document.querySelector(`.youtube-stage-nav[data-youtube-stage="${selectedStage.id}"]`)?.setAttribute("aria-current", "step");
+  clearTimeout(youtubePollTimer);
+  if (stages.some((stage) => ["queued", "running"].includes(stage.status))) {
+    youtubePollTimer = setTimeout(() => refreshYoutubeState(true), 8_000);
+  }
+}
+
+function updateYoutubeState(content, state) {
+  const automation = content.youtubeAutomation;
+  automation.status = state.status;
+  automation.currentStageId = state.currentStageId;
+  automation.updatedAt = state.updatedAt;
+  automation.updatedBy = state.updatedBy;
+  automation.questions = state.questions || [];
+  automation.jobs = state.jobs || [];
+  automation.stages.forEach((stage) => Object.assign(stage, state.stages?.[stage.id] || {}));
+  automation.completedCount = automation.stages.filter((stage) => stage.status === "completed").length;
+  automation.attentionCount = automation.stages.filter((stage) => ["needs_input", "needs_decision", "blocked", "failed"].includes(stage.status)).length;
+  automation.progress = Math.round((automation.completedCount / automation.totalCount) * 100);
+}
+
+async function refreshYoutubeState(silent = false) {
+  const content = selectedYoutubeContent();
+  if (!content) return;
+  const feedback = document.querySelector("#youtube-feedback");
+  if (!silent && feedback) { feedback.textContent = "GitHub의 최신 실행 상태를 확인하고 있습니다…"; feedback.className = "youtube-feedback is-loading"; }
+  try {
+    const response = await fetch(`/api/automation?contentId=${encodeURIComponent(content.id)}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "최신 상태를 읽지 못했습니다.");
+    if (result.state) updateYoutubeState(content, result.state);
+    if (currentView === "youtube") renderYoutube();
+  } catch (error) {
+    if (!silent && feedback) { feedback.textContent = error.message; feedback.className = "youtube-feedback is-error"; }
+    if (silent && currentView === "youtube") youtubePollTimer = setTimeout(() => refreshYoutubeState(true), 15_000);
+  }
+}
+
+async function runYoutubeAction(action) {
+  const content = selectedYoutubeContent();
+  const stage = content?.youtubeAutomation?.stages.find((item) => item.id === activeYoutubeStageId);
+  const feedback = document.querySelector("#youtube-feedback");
+  const buttons = [...document.querySelectorAll("[data-youtube-action]")];
+  if (!content || !stage || !feedback) return;
+  const secret = document.querySelector("#youtube-secret")?.value || "";
+  const inputText = document.querySelector("#youtube-input")?.value || "";
+  const summary = document.querySelector("#youtube-summary")?.value.trim() || "";
+  const assetUrl = document.querySelector("#youtube-asset-url")?.value.trim() || "";
+  const publishAtInput = document.querySelector("#youtube-publish-at")?.value || "";
+  const publishSettings = stage.id === "youtube_publish" ? {
+    privacyStatus: document.querySelector("#youtube-privacy-status")?.value || "private",
+    publishAt: publishAtInput ? new Date(publishAtInput).toISOString() : null,
+  } : null;
+  if (!secret) {
+    feedback.textContent = "OS 작업 코드를 입력해주세요.";
+    feedback.className = "youtube-feedback is-error";
+    return;
+  }
+  buttons.forEach((button) => { button.disabled = true; });
+  saveYoutubeDraft();
+  const requestSerial = ++youtubeRequestSerial;
+  feedback.textContent = action === "run" ? "최신 Wiki와 입력을 불러와 실행하고 있습니다…" : "상태와 산출물을 반영하고 있습니다…";
+  feedback.className = "youtube-feedback is-loading";
+  try {
+    const response = await fetch("/api/automation", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify({
+        action,
+        contentId: content.id,
+        stageId: stage.id,
+        actor: currentUser,
+        inputText,
+        summary,
+        assetUrl,
+        publishSettings,
+        publishApprovalSecret: document.querySelector("#youtube-publish-approval-secret")?.value || "",
+        qualityConfirmed: document.querySelector("#youtube-quality-confirm")?.checked === true,
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "Automation 작업에 실패했습니다.");
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    youtubeLastOutput = result.output ? { contentId: content.id, stageId: stage.id, text: result.output } : null;
+    if (result.state) updateYoutubeState(content, result.state);
+    activeYoutubeStageId = stage.id;
+    if (["run", "complete", "approve"].includes(action)) sessionStorage.removeItem(youtubeDraftKey(content.id, stage.id));
+    if (requestSerial !== youtubeRequestSerial || currentView !== "youtube") return;
+    renderYoutube();
+    const nextFeedback = document.querySelector("#youtube-feedback");
+    if (nextFeedback) {
+      nextFeedback.textContent = result.jobId ? "Worker에 작업을 전달했습니다. 완료되면 OS 상태가 갱신됩니다." : "공정 상태와 결과 Markdown을 반영했습니다.";
+      nextFeedback.className = "youtube-feedback is-success";
+    }
+  } catch (error) {
+    if (requestSerial !== youtubeRequestSerial || currentView !== "youtube") return;
+    feedback.textContent = error.message;
+    feedback.className = "youtube-feedback is-error";
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+async function importYoutubeTextFile(file) {
+  if (!file) return;
+  if (file.size > 500_000) throw new Error("텍스트 파일은 500KB 이하여야 합니다.");
+  const source = await file.text();
+  if (source.length > 160_000) throw new Error("텍스트는 160,000자를 초과할 수 없습니다. 필요한 구간만 가져와주세요.");
+  const target = document.querySelector("#youtube-input");
+  if (target) { target.value = source; saveYoutubeDraft(); }
+}
+
+function renderMeetings() {
+  activeMeetingId ||= meetingIdNow();
+  const meetings = index.meetingItems || [];
+  const folders = [
+    { id: "inbox", label: "회의 Inbox", description: "작성 중인 메모와 전사 초안" },
+    { id: "organized", label: "정리된 회의록", description: "AI 정리와 직접 편집이 끝난 문서" },
+    { id: "decisions", label: "의사결정 기록", description: "실행에 반영할 확정 결정" },
+  ];
+  const visible = activeMeetingFilter === "all" ? meetings : meetings.filter((meeting) => meeting.folder === activeMeetingFilter);
+  const meetingList = visible.length ? visible.map((meeting) => `
+    <button class="meeting-list-item" data-meeting-open="${escapeHtml(meeting.path)}">
+      <span>${meeting.sourceType === "recording" || meeting.sourceType === "upload" ? "◉" : "▤"}</span>
+      <div><strong>${escapeHtml(meeting.title)}</strong><small>${escapeHtml(formatDate(meeting.meetingDate))} · ${escapeHtml(meeting.owner)}</small></div>
+      <i>${escapeHtml(meetingFolderLabel(meeting.folder))}</i>
+    </button>`).join("") : `<div class="meeting-list-empty"><span>아직 문서가 없습니다.</span><small>오른쪽에서 새 회의록을 작성하세요.</small></div>`;
+  const processOptions = index.processes.map((process) => `<option value="${escapeHtml(process.id)}">${escapeHtml(process.id)}</option>`).join("");
+  const contentOptions = index.contents.map((content) => `<option value="${escapeHtml(content.id)}">${escapeHtml(content.id)} · ${escapeHtml(content.title)}</option>`).join("");
+
+  app.innerHTML = `
+    <section class="meeting-head"><div><p>MEETING KNOWLEDGE</p><h2>회의 노트</h2><span>노션처럼 기록하고, 녹음을 전사·요약한 뒤 비공개 Markdown 폴더로 이동합니다.</span></div><div class="meeting-head-actions"><button class="secondary-action" id="meeting-load-private">↻ 비공개 회의록</button><button class="primary-action" id="meeting-new">＋ 새 회의록</button></div></section>
+    <div class="meeting-layout">
+      <aside class="meeting-library">
+        <header><strong>회사 회의 기록</strong><span>${meetings.length}개 문서</span></header>
+        <button class="meeting-folder ${activeMeetingFilter === "all" ? "is-active" : ""}" data-meeting-filter="all"><span>▥ 전체 회의록</span><em>${meetings.length}</em></button>
+        ${folders.map((folder) => `<button class="meeting-folder ${activeMeetingFilter === folder.id ? "is-active" : ""}" data-meeting-filter="${folder.id}"><span>${escapeHtml(folder.label)}<small>${escapeHtml(folder.description)}</small></span><em>${meetings.filter((meeting) => meeting.folder === folder.id).length}</em></button>`).join("")}
+        <div class="meeting-list">${meetingList}</div>
+        ${meetingNextOffset !== null ? '<button class="meeting-load-more" id="meeting-load-more">다음 50개 불러오기</button>' : ""}
+      </aside>
+
+      <section class="meeting-editor-shell">
+        <div class="meeting-document-path"><span id="meeting-path">06_meetings / inbox / ${escapeHtml(activeMeetingId)}.md</span><i>Git + Markdown</i></div>
+        <input class="meeting-title-input" id="meeting-title" maxlength="160" placeholder="회의 제목" value="" />
+        <div class="meeting-properties">
+          <label><span>일시</span><input id="meeting-date" type="datetime-local" value="${toDateTimeLocal()}" /></label>
+          <label><span>참석자</span><input id="meeting-participants" type="text" value="${escapeHtml(currentUser)}" placeholder="ricky, jay, jeongho" /></label>
+          <label><span>장소</span><input id="meeting-location" type="text" value="office" placeholder="회의실 또는 온라인" /></label>
+          <label><span>연결 공정</span><select id="meeting-process"><option value="">회사 공통</option>${processOptions}</select></label>
+          <label><span>연결 Content</span><select id="meeting-content"><option value="">연결 없음</option>${contentOptions}</select></label>
+          <label><span>저장 위치</span><select id="meeting-destination"><option value="inbox">회의 Inbox</option><option value="organized">정리된 회의록</option><option value="decisions">의사결정 기록</option></select></label>
+        </div>
+
+        <div class="meeting-toolbar" aria-label="Markdown 서식">
+          <button data-meeting-block="heading">H2</button><button data-meeting-block="bullet">• 목록</button><button data-meeting-block="check">☐ 할 일</button><button data-meeting-block="quote">❝ 인용</button><span>Markdown으로 저장됩니다</span>
+        </div>
+        <textarea class="meeting-editor" id="meeting-editor" spellcheck="true" aria-label="회의록 본문">${escapeHtml(meetingTemplate())}</textarea>
+
+        <section class="meeting-recorder">
+          <header><div><span>AI MEETING ASSISTANT</span><strong>녹음 → 전사 → 회의록 정리</strong><p>녹음 구간은 OpenAI 전사 API로 전송되며 원본 오디오는 GitHub에 저장하지 않습니다. Markdown 저장은 비공개 회의 저장소가 연결된 경우에만 허용됩니다.</p></div><time id="meeting-record-time">00:00</time></header>
+          <div class="meeting-record-actions"><button class="record-action" id="meeting-record">● 녹음 시작</button><button class="stop-action" id="meeting-stop" disabled>■ 녹음 종료</button><label class="upload-action">↑ 녹음 파일 가져오기<input id="meeting-audio-upload" type="file" accept="audio/*,.webm,.mp3,.m4a,.wav" multiple /></label><button class="ai-action" id="meeting-summarize">✦ AI 회의록 정리</button></div>
+          <div class="meeting-segments" id="meeting-segments"><span>녹음하거나 2.5MB 이하의 음성 파일을 가져오면 전사문이 여기에 쌓입니다.</span></div>
+          <label class="meeting-transcript-field"><span>전사 원문 · 직접 붙여넣기도 가능</span><textarea id="meeting-transcript" rows="7" placeholder="녹음 전사 결과 또는 기존 회의 내용을 붙여넣으세요."></textarea></label>
+        </section>
+
+        <footer class="meeting-savebar">
+          <label><span>OS 작업 코드</span><input id="meeting-secret" type="password" autocomplete="current-password" value="${escapeHtml(sessionStorage.getItem("ba-os-push-secret") || "")}" placeholder="Repository 저장·AI 처리에 필요" /></label>
+          <div><p class="meeting-feedback" id="meeting-feedback">작성 중에는 Inbox, 정리 후에는 완료 또는 의사결정 폴더로 저장하세요.</p><button class="primary-action" id="meeting-save">Markdown 저장·이동</button></div>
+        </footer>
+      </section>
+    </div>`;
+}
+
+function setMeetingPath(path = "") {
+  const target = document.querySelector("#meeting-path");
+  if (!target) return;
+  const destination = document.querySelector("#meeting-destination")?.value || "inbox";
+  const year = new Date(document.querySelector("#meeting-date")?.value || Date.now()).getFullYear();
+  target.textContent = path || `06_meetings / ${destination}${destination === "inbox" ? "" : ` / ${year}`} / ${activeMeetingId}.md`;
+}
+
+function resetMeetingEditor() {
+  activeMeetingPath = "";
+  activeMeetingId = meetingIdNow();
+  activeMeetingVersion = 0;
+  meetingSourceType = "manual";
+  meetingSegments = [];
+  document.querySelector("#meeting-title").value = "";
+  document.querySelector("#meeting-date").value = toDateTimeLocal();
+  document.querySelector("#meeting-participants").value = currentUser;
+  document.querySelector("#meeting-location").value = "office";
+  document.querySelector("#meeting-process").value = "";
+  document.querySelector("#meeting-content").value = "";
+  document.querySelector("#meeting-destination").value = "inbox";
+  document.querySelector("#meeting-editor").value = meetingTemplate();
+  document.querySelector("#meeting-transcript").value = "";
+  renderMeetingSegments();
+  setMeetingPath();
+  meetingFeedback("새 회의록을 시작했습니다. 제목과 내용을 입력하세요.");
+  document.querySelector("#meeting-title").focus();
+}
+
+function openMeetingNote(path) {
+  const meeting = (index.meetingItems || []).find((item) => item.path === path);
+  if (!meeting) return;
+  if (!("body" in meeting)) {
+    readPrivateMeeting(path);
+    return;
+  }
+  activeMeetingPath = meeting.path;
+  activeMeetingId = meeting.id;
+  activeMeetingVersion = Number(meeting.version || 1);
+  meetingSourceType = meeting.sourceType || "manual";
+  meetingSegments = [];
+  document.querySelector("#meeting-title").value = meeting.title || "";
+  document.querySelector("#meeting-date").value = toDateTimeLocal(meeting.meetingDate || meeting.updatedAt);
+  document.querySelector("#meeting-participants").value = (meeting.participants || []).join(", ");
+  document.querySelector("#meeting-location").value = meeting.location || "";
+  document.querySelector("#meeting-process").value = meeting.process || "";
+  document.querySelector("#meeting-content").value = meeting.contentId || "";
+  document.querySelector("#meeting-destination").value = meeting.folder || "inbox";
+  document.querySelector("#meeting-editor").value = meeting.body || meetingTemplate();
+  document.querySelector("#meeting-transcript").value = meetingSection(meeting.body, "원문 메모·전사");
+  renderMeetingSegments();
+  setMeetingPath(meeting.path);
+  meetingFeedback(`${meeting.path} 문서를 열었습니다.`);
+}
+
+async function readPrivateMeeting(path) {
+  const secret = meetingSecret();
+  if (!secret) return meetingFeedback("회의록 본문을 열려면 OS 작업 코드를 입력해주세요.", "error");
+  meetingFeedback("암호화된 비공개 저장소에서 회의록 본문을 불러오고 있습니다.");
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ action: "read", path }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "회의록 본문을 불러오지 못했습니다.");
+    const indexValue = (index.meetingItems || []).findIndex((item) => item.path === path);
+    if (indexValue >= 0) index.meetingItems[indexValue] = result.meeting;
+    openMeetingNote(path);
+  } catch (error) {
+    meetingFeedback(error.message, "error");
+  }
+}
+
+function insertMeetingBlock(type) {
+  const editor = document.querySelector("#meeting-editor");
+  if (!editor) return;
+  const snippets = { heading: "\n## 새 섹션\n\n", bullet: "\n- 항목\n", check: "\n- [ ] 담당자 · 할 일 · 기한\n", quote: "\n> 중요한 발언\n" };
+  const snippet = snippets[type] || "";
+  const start = editor.selectionStart;
+  editor.setRangeText(snippet, start, editor.selectionEnd, "end");
+  editor.focus();
+}
+
+function recordingTime() {
+  const elapsed = Math.max(0, Math.floor((Date.now() - meetingRecordingStartedAt) / 1000));
+  return `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+}
+
+function setRecordingControls() {
+  const start = document.querySelector("#meeting-record");
+  const stop = document.querySelector("#meeting-stop");
+  if (!start || !stop) return;
+  start.disabled = meetingRecordingActive;
+  stop.disabled = !meetingRecordingActive;
+  start.textContent = meetingRecordingActive ? "● 녹음 중" : "● 녹음 시작";
+  start.classList.toggle("is-recording", meetingRecordingActive);
+}
+
+function renderMeetingSegments() {
+  const target = document.querySelector("#meeting-segments");
+  if (!target) return;
+  if (!meetingSegments.length) {
+    target.innerHTML = "<span>녹음하거나 2.5MB 이하의 음성 파일을 가져오면 전사문이 여기에 쌓입니다.</span>";
+    return;
+  }
+  target.innerHTML = meetingSegments.map((segment, indexValue) => `<article><i>${String(indexValue + 1).padStart(2, "0")}</i><div><strong>${escapeHtml(segment.name)}</strong><span>${escapeHtml(segment.status)}</span></div>${segment.url ? `<audio controls preload="metadata" src="${escapeHtml(segment.url)}"></audio>` : ""}</article>`).join("");
+}
+
+async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let indexValue = 0; indexValue < bytes.length; indexValue += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(indexValue, indexValue + 0x8000));
+  }
+  return btoa(binary);
+}
+
+async function transcribeMeetingAudio(blob, name) {
+  if (blob.size > 2_500_000) throw new Error(`${name}: 2.5MB를 초과합니다. OS 녹음 버튼을 사용하면 자동 분할됩니다.`);
+  const secret = meetingSecret();
+  if (!secret) throw new Error("AI 전사에 사용할 OS 작업 코드를 입력해주세요.");
+  const segment = { name, status: "전사 중…", url: URL.createObjectURL(blob), text: "" };
+  meetingSegments.push(segment);
+  renderMeetingSegments();
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ action: "transcribe", audioBase64: await blobToBase64(blob), mimeType: blob.type || "audio/webm", fileName: name }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "전사에 실패했습니다.");
+    segment.text = result.transcript || "";
+    segment.status = "전사 완료";
+    const transcript = document.querySelector("#meeting-transcript");
+    transcript.value = [transcript.value.trim(), segment.text.trim()].filter(Boolean).join("\n\n");
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    meetingFeedback(`${name} 전사가 완료됐습니다.`, "success");
+  } catch (error) {
+    segment.status = `실패 · ${error.message}`;
+    meetingFeedback(error.message, "error");
+  }
+  renderMeetingSegments();
+}
+
+function startMeetingSegment() {
+  if (!meetingStream || !meetingRecordingActive) return;
+  const chunks = [];
+  const options = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? { mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 32_000 }
+    : { audioBitsPerSecond: 32_000 };
+  const recorder = new MediaRecorder(meetingStream, options);
+  meetingRecorder = recorder;
+  recorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
+  recorder.addEventListener("stop", async () => {
+    clearTimeout(meetingSegmentTimer);
+    const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+    const segmentName = `${activeMeetingId}-${String(meetingSegments.length + 1).padStart(2, "0")}.webm`;
+    if (meetingRecordingActive) startMeetingSegment();
+    if (blob.size) await transcribeMeetingAudio(blob, segmentName);
+    if (!meetingRecordingActive && meetingStream) {
+      meetingStream.getTracks().forEach((track) => track.stop());
+      meetingStream = null;
+    }
+  }, { once: true });
+  recorder.start();
+  meetingSegmentTimer = setTimeout(() => {
+    if (meetingRecorder?.state === "recording") meetingRecorder.stop();
+  }, 120_000);
+}
+
+async function startMeetingRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    meetingFeedback("이 브라우저에서는 마이크 녹음을 지원하지 않습니다. 녹음 파일 가져오기를 사용해주세요.", "error");
+    return;
+  }
+  try {
+    meetingStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    meetingRecordingActive = true;
+    meetingRecordingStartedAt = Date.now();
+    meetingSourceType = "recording";
+    document.querySelector("#meeting-record-time").textContent = "00:00";
+    meetingTimer = setInterval(() => { const time = document.querySelector("#meeting-record-time"); if (time) time.textContent = recordingTime(); }, 1000);
+    setRecordingControls();
+    startMeetingSegment();
+    meetingFeedback("녹음 중입니다. 약 2분마다 전사 구간이 자동으로 생성됩니다.");
+  } catch (error) {
+    meetingFeedback(`마이크를 시작할 수 없습니다: ${error.message}`, "error");
+  }
+}
+
+function stopMeetingRecording() {
+  meetingRecordingActive = false;
+  clearInterval(meetingTimer);
+  clearTimeout(meetingSegmentTimer);
+  setRecordingControls();
+  if (meetingStream) {
+    meetingStream.getTracks().forEach((track) => track.stop());
+    meetingStream = null;
+  }
+  if (meetingRecorder?.state === "recording") meetingRecorder.stop();
+  meetingFeedback("녹음을 종료했습니다. 마지막 구간 전사가 끝나면 AI 회의록 정리를 실행하세요.");
+}
+
+async function importMeetingAudio(files) {
+  meetingSourceType = "upload";
+  for (const file of files) await transcribeMeetingAudio(file, file.name);
+}
+
+async function summarizeMeeting() {
+  const transcript = document.querySelector("#meeting-transcript").value.trim();
+  const notes = document.querySelector("#meeting-editor").value.trim();
+  const secret = meetingSecret();
+  if (!transcript && !notes) return meetingFeedback("정리할 전사문이나 메모를 입력해주세요.", "error");
+  if (!secret) return meetingFeedback("AI 정리에 사용할 OS 작업 코드를 입력해주세요.", "error");
+  const button = document.querySelector("#meeting-summarize");
+  button.disabled = true;
+  button.textContent = "✦ 회의록 정리 중…";
+  meetingFeedback("전사문에서 논의·결정·액션 아이템을 분리하고 있습니다.");
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ action: "summarize", title: document.querySelector("#meeting-title").value.trim(), attendees: document.querySelector("#meeting-participants").value.trim(), notes, transcript }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "AI 회의록 정리에 실패했습니다.");
+    document.querySelector("#meeting-editor").value = result.markdown || notes;
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    meetingFeedback("AI가 회의록 초안을 만들었습니다. 내용을 확인하고 직접 수정한 뒤 저장하세요.", "success");
+  } catch (error) {
+    meetingFeedback(error.message, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = "✦ AI 회의록 정리";
+  }
+}
+
+function bodyWithTranscript(body, transcript) {
+  if (!transcript) return body;
+  const marker = "## 원문 메모·전사";
+  if (!body.includes(marker)) return `${body.trim()}\n\n${marker}\n\n${transcript.trim()}\n`;
+  if (meetingSection(body, "원문 메모·전사")) return body;
+  return body.replace(marker, `${marker}\n\n${transcript.trim()}`);
+}
+
+async function saveMeeting() {
+  const title = document.querySelector("#meeting-title").value.trim();
+  const secret = meetingSecret();
+  if (!title) return meetingFeedback("회의 제목을 입력해주세요.", "error");
+  if (!secret) return meetingFeedback("Repository 저장에 사용할 OS 작업 코드를 입력해주세요.", "error");
+  const destination = document.querySelector("#meeting-destination").value;
+  const transcript = document.querySelector("#meeting-transcript").value.trim();
+  const button = document.querySelector("#meeting-save");
+  button.disabled = true;
+  button.textContent = "저장 중…";
+  meetingFeedback(activeMeetingPath ? "Markdown을 저장하고 선택한 폴더로 이동하고 있습니다." : "새 Markdown을 Repository에 저장하고 있습니다.");
+  const payload = {
+    action: "save",
+    id: activeMeetingId,
+    sourcePath: activeMeetingPath,
+    version: activeMeetingVersion,
+    title,
+    meetingDate: document.querySelector("#meeting-date").value,
+    owner: currentUser,
+    participants: document.querySelector("#meeting-participants").value.split(",").map((item) => item.trim()).filter(Boolean),
+    location: document.querySelector("#meeting-location").value.trim() || "-",
+    process: document.querySelector("#meeting-process").value || null,
+    contentId: document.querySelector("#meeting-content").value || null,
+    destination,
+    sourceType: meetingSourceType,
+    transcriptStatus: transcript ? "completed" : "not_required",
+    summaryStatus: destination === "inbox" ? "draft" : "completed",
+    body: bodyWithTranscript(document.querySelector("#meeting-editor").value, transcript),
+  };
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "회의록 저장에 실패했습니다.");
+    activeMeetingPath = result.path;
+    activeMeetingVersion = result.version;
+    setMeetingPath(result.path);
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    meetingFeedback(`저장 완료 · ${result.path}`, "success");
+    button.textContent = "저장 완료";
+    await loadPrivateMeetings({ silent: true, reopenPath: result.path });
+  } catch (error) {
+    meetingFeedback(error.message, "error");
+    button.textContent = "Markdown 저장·이동";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadPrivateMeetings({ silent = false, reopenPath = "", append = false } = {}) {
+  const secret = meetingSecret();
+  if (!secret) return meetingFeedback("비공개 회의록을 불러오려면 OS 작업 코드를 입력해주세요.", "error");
+  if (!silent) meetingFeedback("비공개 회의 저장소를 확인하고 있습니다.");
+  try {
+    const response = await fetch("/api/meetings", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ action: "list", offset: append ? meetingNextOffset || 0 : 0, limit: 50 }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "비공개 회의록을 불러오지 못했습니다.");
+    const incoming = result.meetings || [];
+    index.meetingItems = append ? [...index.meetingItems, ...incoming] : incoming;
+    meetingNextOffset = result.nextOffset ?? null;
+    sessionStorage.setItem("ba-os-push-secret", secret);
+    meetingCount.textContent = index.meetingItems.length;
+    renderMeetings();
+    if (reopenPath) openMeetingNote(reopenPath);
+    else meetingFeedback(`${index.meetingItems.length}개의 비공개 회의록을 불러왔습니다.`, "success");
+  } catch (error) {
+    meetingFeedback(error.message, "error");
+  }
+}
+
 function renderApprovals() {
-  app.innerHTML = `${sectionHead("결재함", "검수 또는 승인 상태인 Content Run만 표시합니다.")}${index.approvals.length ? contentTable(index.approvals) : emptyState("대기 중인 결재가 없습니다", "승인 요청이 Push되면 자동으로 표시됩니다.")}`;
+  const automationDecisions = index.contents.flatMap((content) => (content.youtubeAutomation?.stages || [])
+    .filter((stage) => stage.status === "needs_decision")
+    .map((stage) => ({ content, stage })));
+  app.innerHTML = `${sectionHead("결재함", "전체 결과가 아니라 실제 판단이 필요한 Content Run과 Automation 예외만 표시합니다.")}
+    ${automationDecisions.length ? `<div class="decision-inbox">${automationDecisions.map(({ content, stage }) => `<button data-youtube-task="${escapeHtml(content.id)}" data-youtube-stage="${escapeHtml(stage.id)}"><span>YOUTUBE DECISION</span><strong>${escapeHtml(stage.label)}</strong><p>${escapeHtml(content.id)} · ${escapeHtml(content.title)}</p><i>${escapeHtml(stage.owner)} 확인 →</i></button>`).join("")}</div>` : ""}
+    ${index.approvals.length ? contentTable(index.approvals) : ""}
+    ${!automationDecisions.length && !index.approvals.length ? emptyState("대기 중인 결재가 없습니다", "사람 확인이 필요한 공정만 이곳에 표시됩니다.") : ""}`;
 }
 
 function renderPeople() {
@@ -288,12 +1100,14 @@ function renderSkills() {
 
 function render() {
   if (!viewTitles[currentView]) currentView = "dashboard";
+  if (currentView !== "youtube") { clearTimeout(youtubePollTimer); youtubePollTimer = null; }
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
-  ({ dashboard: renderDashboard, tasks: renderTasks, contents: renderContents, approvals: renderApprovals, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
-  taskCount.textContent = tasksForUser().length;
-  approvalCount.textContent = index.approvals.length;
+  ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, contents: renderContents, meetings: renderMeetings, approvals: renderApprovals, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
+  taskCount.textContent = tasksForUser().length + automationTasksForUser().length;
+  approvalCount.textContent = index.approvals.length + index.contents.reduce((sum, content) => sum + (content.youtubeAutomation?.stages || []).filter((stage) => stage.status === "needs_decision").length, 0);
   peopleCount.textContent = index.people.length;
+  meetingCount.textContent = (index.meetingItems || []).length;
   sidebar.classList.remove("is-open");
 }
 
@@ -311,6 +1125,7 @@ function openDrawer(contentId) {
       <div><span>업데이트</span><strong>${escapeHtml(formatDate(content.updatedAt))}</strong></div>
     </div>
     <div class="work-actions">
+      ${content.youtubeAutomation ? `<button class="primary-action" data-youtube-task="${escapeHtml(content.id)}" data-youtube-stage="${escapeHtml(content.youtubeAutomation.currentStageId)}">▶ 제작 관제 열기</button>` : ""}
       <a class="primary-action" href="${escapeHtml(content.workPackageUrl || "#")}" download="${escapeHtml(content.id)}_WORK_PACKAGE.md" ${content.workPackageUrl ? "" : 'aria-disabled="true"'}>↓ 작업 시작</a>
       <button class="secondary-action" data-submit-mode="submit" data-content-id="${escapeHtml(content.id)}">↑ 작업 제출</button>
       <button class="review-action" data-submit-mode="review" data-content-id="${escapeHtml(content.id)}">◇ 승인 요청</button>
@@ -328,12 +1143,17 @@ function openDrawer(contentId) {
 function openSubmitModal(contentId, mode) {
   const content = index.contents.find((item) => item.id === contentId);
   if (!content) return;
+  const step = content.steps.find((item) => item.id === content.currentStep);
+  const outputs = step?.outputs?.length ? step.outputs : [{ key: content.currentStep }];
   document.querySelector("#submit-content-id").value = content.id;
   document.querySelector("#submit-step").value = content.currentStep;
   document.querySelector("#submit-mode").value = mode;
   document.querySelector("#submit-title").textContent = mode === "review" ? "승인 요청" : "작업 제출";
   document.querySelector("#submit-description").textContent = `${content.id} · ${content.currentStep} · ${currentUser}`;
   document.querySelector("#submit-secret").value = sessionStorage.getItem("ba-os-push-secret") || "";
+  const artifactSelect = document.querySelector("#submit-artifact-key");
+  artifactSelect.innerHTML = outputs.map((output) => `<option value="${escapeHtml(output.key)}">${escapeHtml(output.key)}</option>`).join("");
+  document.querySelector("#submit-artifact-field").hidden = outputs.length === 1;
   submitFeedback.textContent = "";
   submitFeedback.className = "submit-feedback";
   submitBackdrop.hidden = false;
@@ -361,6 +1181,7 @@ async function submitWork(event) {
   const payload = {
     contentId: document.querySelector("#submit-content-id").value,
     step: document.querySelector("#submit-step").value,
+    artifactKey: document.querySelector("#submit-artifact-key").value,
     mode: document.querySelector("#submit-mode").value,
     actor: currentUser,
     summary: document.querySelector("#submit-summary").value.trim(),
@@ -400,6 +1221,9 @@ function closeDrawer() {
 
 function bindEvents() {
   document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => {
+    if (meetingRecordingActive && button.dataset.view !== "meetings") stopMeetingRecording();
+    if (currentView === "youtube") saveYoutubeDraft();
+    if (button.dataset.view !== "youtube") youtubeRequestSerial += 1;
     currentView = button.dataset.view;
     location.hash = currentView;
   }));
@@ -410,6 +1234,28 @@ function bindEvents() {
     render();
   });
   app.addEventListener("click", (event) => {
+    const youtubeTask = event.target.closest("[data-youtube-task]");
+    if (youtubeTask) {
+      activeYoutubeContentId = youtubeTask.dataset.youtubeTask;
+      activeYoutubeStageId = youtubeTask.dataset.youtubeStage || "";
+      currentView = "youtube";
+      if (location.hash !== "#youtube") location.hash = "youtube";
+      else renderYoutube();
+      return;
+    }
+    const youtubeStage = event.target.closest(".youtube-stage-nav[data-youtube-stage]");
+    if (youtubeStage) {
+      saveYoutubeDraft();
+      activeYoutubeStageId = youtubeStage.dataset.youtubeStage;
+      youtubeLastOutput = null;
+      renderYoutube();
+      return;
+    }
+    const youtubeAction = event.target.closest("[data-youtube-action]");
+    if (youtubeAction) {
+      runYoutubeAction(youtubeAction.dataset.youtubeAction);
+      return;
+    }
     const contentTarget = event.target.closest("[data-content-id]");
     if (contentTarget) openDrawer(contentTarget.dataset.contentId);
     const viewTarget = event.target.closest("[data-go]");
@@ -424,8 +1270,58 @@ function bindEvents() {
       activeWikiFilter = wikiFilter.dataset.wikiFilter;
       renderWiki();
     }
+    const meetingFilter = event.target.closest("[data-meeting-filter]");
+    if (meetingFilter) {
+      activeMeetingFilter = meetingFilter.dataset.meetingFilter;
+      renderMeetings();
+    }
+    const meetingOpen = event.target.closest("[data-meeting-open]");
+    if (meetingOpen) openMeetingNote(meetingOpen.dataset.meetingOpen);
+    const meetingBlock = event.target.closest("[data-meeting-block]");
+    if (meetingBlock) insertMeetingBlock(meetingBlock.dataset.meetingBlock);
+    if (event.target.closest("#meeting-new")) resetMeetingEditor();
+    if (event.target.closest("#meeting-load-private")) loadPrivateMeetings();
+    if (event.target.closest("#meeting-load-more")) loadPrivateMeetings({ append: true });
+    if (event.target.closest("#meeting-record")) startMeetingRecording();
+    if (event.target.closest("#meeting-stop")) stopMeetingRecording();
+    if (event.target.closest("#meeting-summarize")) summarizeMeeting();
+    if (event.target.closest("#meeting-save")) saveMeeting();
+    if (event.target.closest("#youtube-refresh")) refreshYoutubeState(false);
+  });
+  app.addEventListener("input", (event) => {
+    if (event.target.matches("#youtube-input, #youtube-summary, #youtube-asset-url, #youtube-publish-at")) saveYoutubeDraft();
+  });
+  app.addEventListener("change", (event) => {
+    if (event.target.matches("#youtube-content-select")) {
+      saveYoutubeDraft();
+      activeYoutubeContentId = event.target.value;
+      activeYoutubeStageId = "";
+      youtubeLastOutput = null;
+      renderYoutube();
+    }
+    if (event.target.matches("#youtube-privacy-status")) saveYoutubeDraft();
+    if (event.target.matches("#youtube-input-file")) {
+      importYoutubeTextFile(event.target.files[0]).catch((error) => {
+        const feedback = document.querySelector("#youtube-feedback");
+        if (feedback) { feedback.textContent = error.message; feedback.className = "youtube-feedback is-error"; }
+      });
+      event.target.value = "";
+    }
+    if (event.target.matches("#meeting-destination, #meeting-date")) setMeetingPath();
+    if (event.target.matches("#meeting-audio-upload")) {
+      importMeetingAudio([...event.target.files]).catch((error) => meetingFeedback(error.message, "error"));
+      event.target.value = "";
+    }
   });
   drawerContent.addEventListener("click", (event) => {
+    const youtubeTarget = event.target.closest("[data-youtube-task]");
+    if (youtubeTarget) {
+      activeYoutubeContentId = youtubeTarget.dataset.youtubeTask;
+      activeYoutubeStageId = youtubeTarget.dataset.youtubeStage || "";
+      closeDrawer();
+      location.hash = "youtube";
+      return;
+    }
     const submitTarget = event.target.closest("[data-submit-mode]");
     if (submitTarget) openSubmitModal(submitTarget.dataset.contentId, submitTarget.dataset.submitMode);
   });
@@ -436,16 +1332,26 @@ function bindEvents() {
   submitForm.addEventListener("submit", submitWork);
   window.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
   window.addEventListener("hashchange", () => {
+    if (meetingRecordingActive && location.hash !== "#meetings") stopMeetingRecording();
+    if (currentView === "youtube") saveYoutubeDraft();
     currentView = location.hash.replace("#", "") || "dashboard";
+    if (currentView !== "youtube") youtubeRequestSerial += 1;
     render();
   });
 }
 
 async function boot() {
   try {
-    const response = await fetch("/data/os-index.json", { cache: "no-store" });
+    const [response, automationResponse] = await Promise.all([
+      fetch("/data/os-index.json", { cache: "no-store" }),
+      fetch("/api/automation", { cache: "no-store" }).catch(() => null),
+    ]);
     if (!response.ok) throw new Error(`OS index ${response.status}`);
     index = await response.json();
+    if (automationResponse?.ok) {
+      const automationStatus = await automationResponse.json().catch(() => ({}));
+      automationConnectors = automationStatus.connectors || {};
+    }
     const owners = index.owners.includes(currentUser) ? index.owners : [currentUser, ...index.owners];
     userSelect.innerHTML = owners.map((owner) => `<option value="${escapeHtml(owner)}" ${owner === currentUser ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("");
     syncTime.textContent = `Index ${formatDate(index.generatedAt)}`;

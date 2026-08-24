@@ -9,6 +9,7 @@ BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경
 - **OS Repository**: 회사 맥락, 상태, 결재, 버전의 정본
 - **Company Wiki**: 회사 공정과 AI가 참고하는 최신 공유 정본
 - **OS Access Skill**: 현재 업무에 필요한 Wiki와 데이터를 불러오는 Context Loader
+- **Automation Recipe**: 불러온 Context로 API·Worker·사람 확인을 실행하는 공정 레이어
 - **Personal Obsidian**: 개인 Raw, 개인 Wiki와 AI 작업 맥락
 - **Local Workspace**: Claude Code, Codex, ChatGPT, Obsidian, Premiere 등 실제 실행 환경
 - **BA CLI**: Pull → Work → Validate → Push 동기화 계층
@@ -91,6 +92,7 @@ Push는 다음 순서로 실패 우선 검증한다.
 기획 → 축 → 설계/원고 → 촬영 → 편집 → 썸네일 → 최종 승인 → 게시 → 성과 회수
 
 공정의 기계 판독 규격과 사람이 읽는 설명은 [`03_processes/longform/PROCESS.md`](03_processes/longform/PROCESS.md) 한 파일에서 관리한다.
+후반작업부터 성과 회수까지의 실행 상세는 이 상위 공정을 14개 실행 단계로 펼친 `YOUTUBE_PIPELINE.json`과 Automation Recipe가 담당한다.
 
 ## Web UI
 
@@ -99,6 +101,8 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 - 전체 업무 공정
 - 내가 할 일
 - 콘텐츠 Run
+- 회의 노트
+- 유튜브 제작
 - 결재함
 - 직원 워크스페이스
 - Company Wiki
@@ -106,9 +110,13 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 
 웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출 → 승인 요청`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. CLI 방식도 고급 사용자와 자동화를 위해 계속 지원한다.
 
+회의 노트 화면에서는 노션형 Markdown 편집, 브라우저 마이크 녹음, 구간별 전사, AI 회의록 정리와 `06_meetings/inbox → organized → decisions` 이동을 수행한다. 녹음 원본은 Git에 저장하지 않는다. 전사와 요약에는 Vercel의 `OPENAI_API_KEY`, Markdown 저장에는 기존 GitHub 연결과 OS 작업 코드를 사용한다.
+
 각 직원의 Raw와 개인 전용 Wiki는 개인 Obsidian에 둔다. 회사 OS의 직원 Workspace에는 담당 공정, 현재 업무, 공유 Wiki와 Access Skill 연결만 저장한다. 회사에 공유하기로 선택한 Wiki는 `company`, `process`, `people` 영역의 최신 정본으로 관리한다.
 
 Access Skill Markdown의 정본은 GitHub Repository다. Skill은 업무 결과물을 직접 만들지 않고 최신 Company Wiki, Content Run과 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 실행과 판단은 각자의 AI와 사람이 담당한다.
+
+유튜브 제작 화면은 실제 PDF 후반작업 8단계를 구조화하고, 최종 렌더·제목/썸네일·YouTube 업로드·성과 회수까지 확장한다. OpenAI 텍스트 작업, 이미지 생성 API, Render Worker, Premiere Bridge, YouTube API를 교체 가능한 Adapter로 연결하고 사람은 예외와 외부 공개 직전 결정만 확인한다.
 
 Skill Library는 `04_skills/{category_id}/{folder_id}/{skill_id}` 구조로 관리한다. Process는 폴더 경로가 아니라 고유한 `skill_id`를 참조하므로 카테고리를 옮겨도 기존 공정 연결이 유지된다. 카테고리 목록과 표시 순서는 `04_skills/CATEGORIES.json`에서 관리한다.
 
@@ -134,6 +142,9 @@ python3 -m unittest discover -s tests -v
 ## 현재 MVP 경계
 
 - Markdown과 Git이 정본이며 DB는 아직 인덱스로 사용하지 않는다.
-- 대용량 미디어는 저장하지 않고 산출물 Markdown에 `asset_id`, `path`, `checksum`을 기록한다.
-- 브라우저 작업자 선택은 아직 실제 계정 로그인이 아니다. 개인별 강제 권한은 전용 인증 도입 후 적용한다.
+- 대용량 미디어와 서명 URL은 저장하지 않고 산출물 Markdown에 불투명 `asset_id`, `asset://` 참조, `checksum`만 기록한다.
+- 회사 회의록은 공개 OS Repository에 저장하지 않는다. 별도 비공개 `MEETING_REPOSITORY`와 저장소 전용 `MEETING_GITHUB_TOKEN`이 연결되기 전에는 목록·저장이 차단된다.
+- Headless Chrome·FFmpeg·Premiere·YouTube 대용량 업로드는 별도 Worker/Bridge 연결 전에는 시뮬레이션이 아니라 `연결 필요` 상태로 표시한다.
+- 회의 녹음은 전사 처리 후 브라우저 세션에만 남고 Repository에는 회의록 Markdown만 저장한다.
+- 브라우저 작업자 선택은 아직 실제 계정 로그인이 아니다. YouTube 게시에는 별도 `YOUTUBE_PUBLISH_APPROVAL_SECRET`과 서버 고정 승인자를 요구하지만, 전체 개인별 강제 권한은 전용 인증 도입 후 적용한다.
 - 자동 ID는 현재 저장소에서 가장 큰 `BA-NNNN` 다음 번호를 사용한다. 여러 복제본에서 동시에 생성하는 중앙 ID 할당은 후속 단계다.

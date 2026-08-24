@@ -85,6 +85,7 @@ function parseProcessSteps(frontmatterLines) {
   const steps = [];
   let current = null;
   let inSteps = false;
+  let inOutputs = false;
   for (const line of frontmatterLines) {
     if (line === "steps:") {
       inSteps = true;
@@ -93,13 +94,26 @@ function parseProcessSteps(frontmatterLines) {
     if (!inSteps) continue;
     const start = line.match(/^  - id:\s*(.+)$/);
     if (start) {
-      current = { id: parseScalar(start[1]) };
+      current = { id: parseScalar(start[1]), outputs: [] };
       steps.push(current);
+      inOutputs = false;
       continue;
     }
     if (!current) continue;
+    if (line === "    outputs:") { inOutputs = true; continue; }
+    if (line === "    completion:") { inOutputs = false; continue; }
+    if (inOutputs) {
+      const output = line.match(/^      - key:\s*(.+)$/);
+      if (output) { current.outputs.push({ key: parseScalar(output[1]) }); continue; }
+      const outputField = line.match(/^        ([A-Za-z0-9_]+):\s*(.*)$/);
+      if (outputField && current.outputs.length) {
+        current.outputs.at(-1)[outputField[1]] = parseScalar(outputField[2]);
+        continue;
+      }
+    }
     const field = line.match(/^    ([A-Za-z0-9_]+):\s*(.*)$/);
-    if (field && !["outputs", "completion"].includes(field[1])) {
+    if (field) {
+      inOutputs = false;
       current[field[1]] = parseScalar(field[2]);
     }
   }
@@ -142,6 +156,44 @@ async function readIfExists(filePath) {
   }
 }
 
+async function readJsonIfExists(filePath) {
+  const source = await readIfExists(filePath);
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    throw new Error(`JSON을 읽을 수 없습니다: ${path.relative(repositoryRoot, filePath)} · ${error.message}`);
+  }
+}
+
+function normalizePipelineStageStates(pipeline, source = {}) {
+  const states = Object.fromEntries(pipeline.stages.map((stage) => [stage.id, {
+    status: "locked",
+    attempt: 0,
+    jobId: null,
+    idempotencyKey: null,
+    outputPath: null,
+    assetUrl: null,
+    publishSettings: null,
+    error: null,
+    updatedAt: null,
+    ...(source[stage.id] || {}),
+  }]));
+  if (pipeline.stages.every((stage) => states[stage.id].status === "locked")) states[pipeline.stages[0].id].status = "ready";
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const stage of pipeline.stages) {
+      if (states[stage.id].status !== "locked") continue;
+      if ((stage.dependsOn || []).every((dependency) => states[dependency]?.status === "completed")) {
+        states[stage.id].status = "ready";
+        changed = true;
+      }
+    }
+  }
+  return states;
+}
+
 function quoteBlock(title, source) {
   if (!source) return "";
   return `\n\n---\n\n# ${title}\n\n${source.trim()}\n`;
@@ -163,6 +215,11 @@ async function writeWorkPackage(content, process, source, metadata, skillPathByI
   await addFile("브랜드 Context", `02_brands/${content.brandId}/context/BRAND.md`);
   await addFile("콘텐츠 현재 상태", `05_contents/${content.id}/CONTENT.md`);
   await addFile("공정 정의", `03_processes/${content.type}/PROCESS.md`);
+  if (content.type === "longform" && ["edit", "thumbnail", "approval", "publish", "metrics"].includes(content.currentStep)) {
+    await addFile("YouTube 제작·업로드 공정", "03_processes/longform/YOUTUBE_PIPELINE.json");
+    await addFile("Automation Recipe", "07_automations/youtube-production/RECIPE.md");
+    await addFile("Automation Run 상태", metadata.automation_state ? `05_contents/${content.id}/${metadata.automation_state}` : null);
+  }
   if (step.skillId) await addFile("현재 단계 Skill", skillPathById.get(step.skillId));
   const activeSkill = skills.find((skill) => skill.id === step.skillId);
   for (const wikiId of activeSkill?.wikiSources ?? []) {
@@ -206,6 +263,8 @@ async function buildIndex() {
   const contentRoot = path.join(repositoryRoot, "05_contents");
   const peopleRoot = path.join(repositoryRoot, "08_people");
   const wikiRoot = path.join(repositoryRoot, "10_wiki");
+  const youtubePipeline = await readJsonIfExists(path.join(processRoot, "longform", "YOUTUBE_PIPELINE.json"));
+  if (!youtubePipeline?.stages?.length) throw new Error("YouTube 제작 파이프라인 정의를 찾지 못했습니다.");
   const categorySource = await readFile(path.join(skillRoot, "CATEGORIES.json"), "utf8");
   const categoryRegistry = JSON.parse(categorySource).categories ?? [];
 
@@ -228,6 +287,7 @@ async function buildIndex() {
         owner: step.default_owner,
         skillId: step.skill_id,
         inputPointers: step.input_pointers ?? [],
+        outputs: step.outputs ?? [],
         workAction: step.work_action,
         reviewAction: step.review_action,
         nextStep: step.next_step,
@@ -320,6 +380,9 @@ async function buildIndex() {
   }
   wikiItems.sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
 
+  // 회의록은 비공개 전용 API에서 인증 후 불러온다. 공개 정적 index에는 경로·본문·메타데이터를 넣지 않는다.
+  const meetingItems = [];
+
   const contents = [];
   for (const contentId of await directories(contentRoot)) {
     if (!/^BA-\d{4}$/.test(contentId)) continue;
@@ -338,13 +401,52 @@ async function buildIndex() {
       nextOwner: metadata.next_owner ?? null,
       nextAction: metadata.next_action ?? "-",
       updatedAt: metadata.updated_at ?? null,
+      automationStatePath: metadata.automation_state ?? null,
+      automationRecipe: metadata.automation_recipe ?? null,
       steps: (process?.steps ?? []).map((step) => ({
         id: step.id,
         label: step.label,
         owner: step.owner,
+        outputs: step.outputs ?? [],
         status: metadata[`${step.id}_status`] ?? "-",
       })),
     };
+    const statePath = content.automationStatePath
+      ? path.join(contentRoot, contentId, content.automationStatePath)
+      : path.join(contentRoot, contentId, "05_edit", "automation", "state.json");
+    const automationEligible = content.type === "longform" && content.automationRecipe === youtubePipeline.id && ["edit", "thumbnail", "approval", "publish", "metrics"].includes(content.currentStep);
+    const automationState = automationEligible ? await readJsonIfExists(statePath) : null;
+    if (automationEligible) {
+      const stageStates = normalizePipelineStageStates(youtubePipeline, automationState?.stages);
+      const stages = youtubePipeline.stages.map((stage) => ({
+        ...stage,
+        status: stageStates[stage.id].status,
+        attempt: stageStates[stage.id].attempt,
+        jobId: stageStates[stage.id].jobId,
+        idempotencyKey: stageStates[stage.id].idempotencyKey,
+        outputPath: stageStates[stage.id].outputPath,
+        assetUrl: stageStates[stage.id].assetUrl,
+        publishSettings: stageStates[stage.id].publishSettings,
+        error: stageStates[stage.id].error,
+        stageUpdatedAt: stageStates[stage.id].updatedAt,
+      }));
+      const completedCount = stages.filter((stage) => stage.status === "completed").length;
+      const attentionCount = stages.filter((stage) => ["needs_input", "needs_decision", "blocked", "failed"].includes(stage.status)).length;
+      content.youtubeAutomation = {
+        pipelineId: automationState?.pipelineId ?? youtubePipeline.id,
+        status: automationState?.status ?? "ready",
+        currentStageId: automationState?.currentStageId ?? stages.find((stage) => stage.status === "ready")?.id ?? stages[0]?.id,
+        progress: stages.length ? Math.round((completedCount / stages.length) * 100) : 0,
+        completedCount,
+        attentionCount,
+        totalCount: stages.length,
+        updatedAt: automationState?.updatedAt ?? null,
+        updatedBy: automationState?.updatedBy ?? null,
+        questions: automationState?.questions ?? [],
+        jobs: automationState?.jobs ?? [],
+        stages,
+      };
+    }
     content.workPackageUrl = await writeWorkPackage(content, process, source, metadata, skillPathById, skills, wikiItems);
     contents.push(content);
   }
@@ -386,6 +488,8 @@ async function buildIndex() {
     ...contents.map((content) => content.owner),
     ...people.map((person) => person.id),
     ...wikiItems.map((item) => item.owner),
+    ...meetingItems.map((item) => item.owner),
+    ...meetingItems.flatMap((item) => item.participants),
     ...processes.flatMap((process) => process.steps.map((step) => step.owner)),
   ].filter((owner) => owner && owner !== "-"))].sort();
 
@@ -399,6 +503,9 @@ async function buildIndex() {
       skillCount: skills.length,
       peopleCount: people.length,
       wikiCount: wikiItems.length,
+      meetingCount: meetingItems.length,
+      automationRunCount: contents.filter((item) => item.youtubeAutomation).length,
+      automationAttentionCount: contents.reduce((sum, item) => sum + (item.youtubeAutomation?.attentionCount ?? 0), 0),
     },
     owners,
     processes,
@@ -407,6 +514,16 @@ async function buildIndex() {
     skills,
     skillCategories,
     wikiItems,
+    meetingItems,
+    youtubePipeline: {
+      id: youtubePipeline.id,
+      name: youtubePipeline.name,
+      version: youtubePipeline.version,
+      description: youtubePipeline.description,
+      sourceNote: youtubePipeline.sourceNote,
+      phases: youtubePipeline.phases,
+      stages: youtubePipeline.stages,
+    },
     people,
   };
 }
@@ -426,5 +543,5 @@ if (!checkOnly) {
 }
 
 console.log(
-  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} access skills, ${index.people.length} people, ${index.wikiItems.length} wiki`,
+  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} access skills, ${index.people.length} people, ${index.wikiItems.length} wiki, ${index.meetingItems.length} meetings`,
 );

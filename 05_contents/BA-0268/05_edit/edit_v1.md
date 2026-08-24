@@ -3,6 +3,8 @@ schema_version: "1.0"
 id: BA-0268-edit-v1
 entity_type: artifact
 content_id: BA-0268
+artifact_key: edit
+title: 편집 1차본
 process: longform
 step: edit
 status: in_progress

@@ -86,6 +86,27 @@
         "title", "status", "version", "is_latest", "source_ids", "promoted_by", "promoted_at",
         "created_at", "updated_at", "updated_by"
       ]
+    },
+    "meeting": {
+      "required": [
+        "schema_version", "id", "entity_type", "title", "meeting_date", "owner",
+        "participants", "status", "location", "source_type", "transcript_status",
+        "summary_status", "version", "created_at", "updated_at", "updated_by"
+      ]
+    },
+    "automation_result": {
+      "required": [
+        "schema_version", "id", "entity_type", "content_id", "pipeline_id",
+        "stage_id", "status", "owner", "provider", "version", "created_at",
+        "updated_at", "updated_by"
+      ]
+    },
+    "automation_recipe": {
+      "required": [
+        "schema_version", "id", "entity_type", "process", "entry_step",
+        "status", "version", "pipeline_path", "wiki_sources", "access_skill",
+        "updated_at", "updated_by"
+      ]
     }
   }
 }
