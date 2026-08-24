@@ -67,6 +67,7 @@ button { color: inherit; }
   border: 1px solid var(--line); border-radius: 10px; background: white; color: #666c77;
   font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap;
 }
+.session-status[hidden] { display: none; }
 .session-status:hover { border-color: #cfd2eb; background: #fafaff; color: var(--accent); }
 .session-status i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #b9bdc6; box-shadow: 0 0 0 4px rgba(135,140,151,.1); }
 .session-status.is-ready { border-color: #cfeade; color: #16785a; background: #f7fcfa; }
