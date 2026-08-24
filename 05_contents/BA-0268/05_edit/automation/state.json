@@ -2,9 +2,9 @@
   "schemaVersion": "1.0",
   "contentId": "BA-0268",
   "pipelineId": "youtube-production-v2",
-  "currentStageId": "pc_main_edit",
+  "currentStageId": "master_upload",
   "status": "ready",
-  "updatedAt": "2026-08-24T15:57:36+09:00",
+  "updatedAt": "2026-08-24T10:15:22.575Z",
   "updatedBy": "ricky",
   "stages": {
     "source_package": {
@@ -20,7 +20,91 @@
       "updatedAt": "2026-08-23T10:30:00+09:00"
     },
     "pc_main_edit": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "master_upload": {
       "status": "ready",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "master_validation": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "shortform_plan": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "shortform_render": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "publish_package": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "youtube_publish": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "metrics": {
+      "status": "locked",
       "attempt": 0,
       "jobId": null,
       "idempotencyKey": null,
