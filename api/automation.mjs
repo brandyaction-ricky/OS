@@ -11,8 +11,15 @@ const ACTOR_PATTERN = /^[a-z][a-z0-9_-]{1,40}$/;
 
 export const AUTOMATION_STAGES = [
   { id: "source_package", provider: "human", humanGate: false, dependsOn: [] },
-  { id: "pc_main_edit", provider: "human", humanGate: false, dependsOn: ["source_package"] },
-  { id: "master_upload", provider: "asset_upload", humanGate: false, dependsOn: ["pc_main_edit"] },
+  { id: "subtitle_review", provider: "human", humanGate: false, dependsOn: ["source_package"] },
+  { id: "summary_deck", provider: "human", humanGate: false, dependsOn: ["subtitle_review"] },
+  { id: "photo_prompts", provider: "human", humanGate: false, dependsOn: ["summary_deck"] },
+  { id: "render_insert", provider: "human", humanGate: false, dependsOn: ["summary_deck", "photo_prompts"] },
+  { id: "capture_cards", provider: "human", humanGate: false, dependsOn: ["render_insert"] },
+  { id: "media_processing", provider: "human", humanGate: false, dependsOn: ["capture_cards"] },
+  { id: "xml_assembly", provider: "human", humanGate: false, dependsOn: ["render_insert", "capture_cards", "media_processing"] },
+  { id: "youtube_assets", provider: "openai", humanGate: true, dependsOn: ["subtitle_review", "xml_assembly"] },
+  { id: "master_upload", provider: "asset_upload", humanGate: false, dependsOn: ["youtube_assets"] },
   { id: "master_validation", provider: "render_worker", humanGate: false, dependsOn: ["master_upload"] },
   { id: "thumbnail_idea", provider: "openai", humanGate: true, dependsOn: ["master_validation"] },
   { id: "thumbnail_generate", provider: "thumbnail_worker", humanGate: false, dependsOn: ["thumbnail_idea"] },
@@ -20,8 +27,7 @@ export const AUTOMATION_STAGES = [
   { id: "thumbnail_approve", provider: "human", humanGate: false, dependsOn: ["thumbnail_evaluate"] },
   { id: "shortform_plan", provider: "openai", humanGate: true, dependsOn: ["master_validation"] },
   { id: "shortform_render", provider: "render_worker", humanGate: false, dependsOn: ["shortform_plan"] },
-  { id: "publish_package", provider: "openai", humanGate: true, dependsOn: ["master_validation", "shortform_render"] },
-  { id: "youtube_publish", provider: "youtube", humanGate: true, dependsOn: ["publish_package", "thumbnail_approve"] },
+  { id: "youtube_publish", provider: "youtube", humanGate: true, dependsOn: ["youtube_assets", "shortform_render", "thumbnail_approve"] },
   { id: "metrics", provider: "youtube_data", humanGate: false, dependsOn: ["youtube_publish"] },
   { id: "thumbnail_learn", provider: "openai", humanGate: false, dependsOn: ["metrics", "thumbnail_idea", "thumbnail_evaluate", "thumbnail_approve"] },
 ];
@@ -36,7 +42,14 @@ const ASSET_REQUIRED_STAGES = new Set([
 
 const STAGE_LABELS = {
   source_package: "작업 패키지 준비",
-  pc_main_edit: "개인 PC 메인 편집",
+  subtitle_review: "자막 검수·정리",
+  summary_deck: "요약 덱 저술",
+  photo_prompts: "사진 프롬프트",
+  render_insert: "렌더 + 사진 삽입",
+  capture_cards: "캡처카드",
+  media_processing: "미디어 처리",
+  xml_assembly: "XML 조립",
+  youtube_assets: "유튜브 자산",
   master_upload: "완료본 업로드",
   master_validation: "완료본 자동 검증",
   thumbnail_idea: "썸네일 아이디어 Brief",
@@ -45,16 +58,15 @@ const STAGE_LABELS = {
   thumbnail_approve: "사람 최종 승인",
   shortform_plan: "숏폼 구간·스타일 설정",
   shortform_render: "숏폼 자동 생성",
-  publish_package: "업로드 문안·설정",
   youtube_publish: "YouTube 업로드·예약",
   metrics: "성과·CTR 자동 회수",
   thumbnail_learn: "썸네일 학습 반영",
 };
 
 const OPENAI_INSTRUCTIONS = {
+  youtube_assets: `당신은 브랜디액션 YouTube 업로드 에디터입니다. 승인 원고, 정리된 SRT, 최신 Company Wiki에서 확인 가능한 사실만 사용하세요. 결과는 Markdown만 반환하고 반드시 ## 롱폼 제목, ## 숏폼 제목 규칙, ## 설명문, ## 타임라인, ## 고정댓글, ## 해시태그, ## 인용·출처, ## 히든태그 순서를 사용하세요. 확인되지 않은 사실이나 URL을 만들지 말고 애매한 내용은 ## 확인 필요에 질문으로 남기세요.`,
   thumbnail_idea: `당신은 브랜디액션 YouTube 썸네일 전략가입니다. 승인 원고, 영상의 핵심 약속, 사용자가 적은 Brief와 과거 thumbnail_learn 결과를 사용해 서로 다른 썸네일 아이디어 3개를 제안하세요. 각 아이디어마다 한 줄 카피, 시각 구도, 표정·피사체, 대비 방식, 제목과의 역할 분담, 검증할 CTR 가설을 적으세요. 과거 학습을 그대로 일반화하지 말고 이번 영상과 연결되는 근거를 적으세요. 결과는 Markdown만 반환하세요.`,
   shortform_plan: `당신은 브랜디액션 숏폼 편집 디렉터입니다. 완성된 롱폼 SRT와 사용자가 지정한 숏폼 설정만 사용해 단독으로 이해되는 구간을 제안하세요. 각 후보마다 순위, 시작·종료 타임코드, 첫 2초 훅, 핵심 메시지, 예상 길이, 자막 키워드, CTA를 적으세요. 문장 중간 절단과 중복 메시지는 금지합니다. 결과는 Markdown만 반환하세요.`,
-  publish_package: `당신은 브랜디액션 YouTube 업로드 에디터입니다. 완료된 롱폼과 숏폼 manifest에서 확인 가능한 사실만 사용하세요. 결과는 Markdown만 반환하고 반드시 ## 롱폼 제목, ## 숏폼별 제목, ## 설명문, ## 타임라인, ## 고정댓글, ## 해시태그, ## 인용·출처 순서를 사용하세요. 확인되지 않은 사실이나 URL을 만들지 마세요. 최신 CTA는 Company Wiki를 우선합니다.`,
   thumbnail_learn: `당신은 브랜디액션 썸네일 실험 분석가입니다. 썸네일 아이디어 가설, AI 사전 평가, 사람이 선택한 이유, 실제 YouTube 노출·CTR 스냅샷만 비교하세요. 결과는 Markdown만 반환하고 반드시 ## 이번 가설, ## 예상과 실제의 차이, ## 유지할 규칙, ## 버릴 규칙, ## 다음 실험 가설, ## 근거 데이터 순서를 사용하세요. 인과관계를 단정하지 말고 표본이 작거나 측정 기간이 짧으면 한계를 명시하세요.`,
 };
 
@@ -111,6 +123,29 @@ function stageStateTemplate() {
   return { status: "locked", attempt: 0, jobId: null, idempotencyKey: null, outputPath: null, assetUrl: null, publishSettings: null, parameters: null, error: null, updatedAt: null };
 }
 
+const PDF_STAGE_IDS = [
+  "subtitle_review", "summary_deck", "photo_prompts", "render_insert",
+  "capture_cards", "media_processing", "xml_assembly", "youtube_assets",
+];
+
+function migrateLegacyStages(sourceStages = {}) {
+  const migrated = { ...sourceStages };
+  const legacyEdit = sourceStages.pc_main_edit;
+  const hasExpandedStage = PDF_STAGE_IDS.some((stageId) => sourceStages[stageId]);
+  if (legacyEdit && !hasExpandedStage) {
+    if (legacyEdit.status === "completed") {
+      for (const stageId of PDF_STAGE_IDS) migrated[stageId] = { ...legacyEdit, jobId: null, idempotencyKey: null };
+    } else {
+      migrated.subtitle_review = { ...legacyEdit, jobId: null, idempotencyKey: null };
+    }
+  }
+  const legacyPublish = sourceStages.publish_package;
+  if (legacyPublish && legacyPublish.status !== "locked" && !sourceStages.youtube_assets) migrated.youtube_assets = { ...legacyPublish };
+  delete migrated.pc_main_edit;
+  delete migrated.publish_package;
+  return migrated;
+}
+
 export function normalizeAutomationState(source, contentId) {
   const state = source && typeof source === "object" ? structuredClone(source) : {};
   state.schemaVersion = "1.0";
@@ -118,7 +153,7 @@ export function normalizeAutomationState(source, contentId) {
   state.pipelineId = PIPELINE_ID;
   state.currentStageId ||= "source_package";
   state.status ||= "ready";
-  state.stages ||= {};
+  state.stages = migrateLegacyStages(state.stages || {});
   state.questions = Array.isArray(state.questions) ? state.questions : [];
   state.jobs = Array.isArray(state.jobs) ? state.jobs : [];
   for (const stage of AUTOMATION_STAGES) state.stages[stage.id] = { ...stageStateTemplate(), ...(state.stages[stage.id] || {}) };
@@ -339,7 +374,7 @@ async function runOpenAI(stageId, inputText) {
     instructions: `${instructions}\n\n공통 안전 규칙: 결과 마지막에 반드시 ## 확인 필요 섹션을 두세요. 사람에게 물어볼 내용이 없으면 정확히 - 없음이라고 적으세요.`,
     input: inputText,
   };
-  if (process.env.OPENAI_WEB_SEARCH_ENABLED === "true" && stageId === "publish_package") {
+  if (process.env.OPENAI_WEB_SEARCH_ENABLED === "true" && stageId === "youtube_assets") {
     body.tools = [{ type: "web_search" }];
   }
   const response = await fetch("https://api.openai.com/v1/responses", {
@@ -439,7 +474,7 @@ export function contentProgressUpdates(state) {
       next_action: "숏폼·게시 문안 완료 후 업로드 설정 확인",
     });
   }
-  if (stages.thumbnail_approve.status === "completed" && (stages.publish_package.status === "completed" || ["ready", "needs_decision", "queued", "running"].includes(stages.youtube_publish.status))) {
+  if (stages.thumbnail_approve.status === "completed" && (stages.youtube_assets.status === "completed" || ["ready", "needs_decision", "queued", "running"].includes(stages.youtube_publish.status))) {
     Object.assign(base, {
       current_step: "approval", owner: "ricky", next_owner: "ricky",
       edit_status: "completed", thumbnail_status: "approved", approval_status: "waiting_approval",

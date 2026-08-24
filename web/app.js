@@ -85,10 +85,11 @@ let youtubeUploadAssets = {};
 
 const YOUTUBE_DISPLAY_GROUPS = [
   { id: "context", order: 1, label: "작업 준비", description: "최신 Wiki·입력물", stages: ["source_package"] },
-  { id: "original", order: 2, label: "PDF 원본 8공정", description: "개인 AI·Premiere", stages: ["pc_main_edit"] },
+  { id: "original", order: 2, label: "PDF 원본 실행공정", description: "8개 독립 Stage", stages: ["subtitle_review", "summary_deck", "photo_prompts", "render_insert", "capture_cards", "media_processing", "xml_assembly", "youtube_assets"] },
   { id: "handoff", order: 3, label: "완료본 인계", description: "MP4·SRT·자동검증", stages: ["master_upload", "master_validation"] },
   { id: "thumbnail", order: 4, label: "썸네일 폐쇄 루프", description: "아이디어·생성·평가·승인", stages: ["thumbnail_idea", "thumbnail_generate", "thumbnail_evaluate", "thumbnail_approve"] },
-  { id: "distribution", order: 5, label: "배포·성과·학습", description: "숏폼·YouTube·CTR", stages: ["shortform_plan", "shortform_render", "publish_package", "youtube_publish", "metrics", "thumbnail_learn"] },
+  { id: "shorts", order: 5, label: "숏폼 자동화", description: "구간 설계·렌더", stages: ["shortform_plan", "shortform_render"] },
+  { id: "distribution", order: 6, label: "게시·성과·학습", description: "YouTube·CTR·학습", stages: ["youtube_publish", "metrics", "thumbnail_learn"] },
 ];
 
 function escapeHtml(value) {
@@ -456,16 +457,15 @@ function youtubeStageActions(stage, connector) {
   if (stage.status === "locked") return `<button class="youtube-action-button" disabled>선행 단계 완료 후 열림</button>`;
   if (["queued", "running"].includes(stage.status)) return `<button class="youtube-action-button" disabled>${stage.status === "queued" ? "Worker 실행 대기 중" : "Worker 실행 중"}</button>`;
   if (stage.status === "needs_decision") return `
-    <button class="youtube-action-button is-decision" data-youtube-action="approve">${stage.id === "youtube_publish" ? "게시 설정 승인 · 업로드 실행" : stage.id === "shortform_plan" ? "숏폼 후보 확정" : stage.id === "thumbnail_idea" ? "아이디어 Brief 확정" : "게시 문안 확정"}</button>
+    <button class="youtube-action-button is-decision" data-youtube-action="approve">${escapeHtml(stage.ui?.decisionAction || (stage.id === "youtube_publish" ? "게시 설정 승인 · 업로드 실행" : stage.id === "shortform_plan" ? "숏폼 후보 확정" : stage.id === "thumbnail_idea" ? "아이디어 Brief 확정" : "AI 결과 확정"))}</button>
     <button class="youtube-action-button is-secondary" data-youtube-action="revise">수정 후 다시 실행</button>`;
   if (["failed", "blocked", "needs_input"].includes(stage.status)) return `
     <button class="youtube-action-button is-retry" data-youtube-action="retry">다시 실행 준비</button>
     <button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
   if (stage.id === "source_package") return `<button class="youtube-action-button" data-youtube-action="complete">작업 준비 완료</button>`;
-  if (stage.id === "pc_main_edit") return `<button class="youtube-action-button" data-youtube-action="complete">PC 편집 완료 · 마스터 접수로</button>`;
   if (stage.id === "master_upload") return `<button class="youtube-action-button" data-youtube-action="complete">완료본 등록</button>`;
   if (stage.id === "thumbnail_approve") return `<button class="youtube-action-button is-decision" data-youtube-action="complete">최종 썸네일 승인</button>`;
-  if (stage.provider === "human") return `<button class="youtube-action-button" data-youtube-action="complete">완료 기록</button>`;
+  if (stage.provider === "human") return `<button class="youtube-action-button" data-youtube-action="complete">${escapeHtml(stage.ui?.primaryAction || "완료 기록")}</button>`;
   if (stage.provider === "openai") return connector.ready
     ? `<button class="youtube-action-button" data-youtube-action="run">${escapeHtml(stage.ui?.primaryAction || "AI 실행")}</button>`
     : `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
@@ -482,6 +482,11 @@ const YOUTUBE_OPTION_LABELS = {
   brand_default: "브랜드 기본", keyword_emphasis: "키워드 강조", minimal: "미니멀",
   smart_crop: "화자 자동 추적", speaker_center: "화자 중앙 고정", split_layout: "상·하 분할",
   korean_subject: "한국인 피사체", no_face: "인물 없음", source_face: "원본 화자 활용",
+  personal_ai: "개인 AI로 1차 검수", manual_review: "직접 검수",
+  korean_single_subject: "한국인 단일 피사체", single_object: "사물 하나", concept_only: "개념 중심",
+  "1920x1080": "1920×1080", photo_only: "사진 레이어만", none: "사용 안 함",
+  "48000": "48,000 Hz", "44100": "44,100 Hz", bottom_right: "우하단",
+  "30": "30 fps",
 };
 
 function youtubeFieldValue(stage, draft, field) {
@@ -495,6 +500,24 @@ function renderYoutubeParameterField(stage, draft, field) {
   if (field.type === "select") return `<label class="youtube-field"><span>${escapeHtml(field.label)}</span><select data-youtube-param="${escapeHtml(field.key)}">${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(YOUTUBE_OPTION_LABELS[option] || option)}</option>`).join("")}</select></label>`;
   if (field.type === "textarea") return `<label class="youtube-field youtube-field-wide"><span>${escapeHtml(field.label)}</span><textarea data-youtube-param="${escapeHtml(field.key)}" rows="3">${escapeHtml(value || "")}</textarea></label>`;
   return `<label class="youtube-field"><span>${escapeHtml(field.label)}${field.suffix ? ` <small>${escapeHtml(field.suffix)}</small>` : ""}</span><input data-youtube-param="${escapeHtml(field.key)}" type="${field.type === "number" ? "number" : "text"}" value="${escapeHtml(value ?? "")}" ${field.min !== undefined ? `min="${field.min}"` : ""} ${field.max !== undefined ? `max="${field.max}"` : ""} /></label>`;
+}
+
+function renderPdfStageWorkspace(stage, draft) {
+  const process = index.youtubePipeline?.originalProcess;
+  const processStepId = stage.ui?.processStepId || stage.id;
+  const step = process?.steps?.find((item) => item.id === processStepId);
+  if (!step) return "";
+  const executionType = stage.ui?.executionType === "automation" ? "PC 자동화 실행" : stage.provider === "openai" ? "OS AI + 사람 의사결정" : "개인 AI + 사람 의사결정";
+  const flow = (stage.ui?.flow || []).map((item, indexValue) => `<li><i>${String(indexValue + 1).padStart(2, "0")}</i><span>${escapeHtml(item)}</span></li>`).join("");
+  const rules = (stage.ui?.rules || []).map((rule) => `<li><i>✓</i><span>${escapeHtml(rule)}</span></li>`).join("");
+  const fields = stage.ui?.fields || [];
+  return `<section class="pdf-stage-workspace">
+    <header><div><span>PDF ORIGINAL STAGE · ${String(step.order).padStart(2, "0")}/08</span><strong>${escapeHtml(step.label)}</strong><p>${escapeHtml(step.description)}</p></div><em>${escapeHtml(step.tool)}</em></header>
+    <div class="pdf-stage-summary"><article><span>실행 방식</span><strong>${escapeHtml(executionType)}</strong><small>${stage.executionBoundary === "personal_pc" ? "대용량 원본과 개인 AI 토큰은 PC에 유지" : "OS가 최신 Wiki와 입력을 불러와 실행"}</small></article><b>→</b><article><span>이 공정의 산출물</span><strong>${escapeHtml(step.output)}</strong><small>완료 후 다음 Stage가 자동으로 열립니다.</small></article></div>
+    <ol class="pdf-stage-flow">${flow}</ol>
+    ${fields.length ? `<section class="youtube-stage-form pdf-stage-settings"><header><span>STAGE SETTINGS</span><strong>이 공정에 필요한 값만 입력</strong></header><div class="youtube-stage-form-grid">${fields.map((field) => renderYoutubeParameterField(stage, draft, field)).join("")}</div></section>` : ""}
+    ${rules ? `<section class="pdf-stage-rules"><header><span>APPLIED RULES</span><strong>현재 공정에 적용되는 원본 규칙</strong></header><ul>${rules}</ul></section>` : ""}
+  </section>`;
 }
 
 function renderCanonicalPdfProcess(draft) {
@@ -540,6 +563,7 @@ function renderYoutubeStageSpecific(stage, draft, content, connector) {
   const mode = stage.ui?.mode || "default";
   if (mode === "work_package") return `
     <section class="youtube-pc-card"><div><span>최신 맥락 묶음</span><strong>${escapeHtml(content.id)} 작업 패키지</strong><p>승인 원고·촬영 포인터·최신 Wiki·Access Skill을 한 파일로 받습니다.</p></div><a class="youtube-download-button" href="${escapeHtml(content.workPackageUrl || "#")}" download="${escapeHtml(content.id)}_WORK_PACKAGE.md">↓ 작업 패키지 받기</a></section>`;
+  if (mode === "pdf_stage") return renderPdfStageWorkspace(stage, draft);
   if (mode === "canonical_process") return renderCanonicalPdfProcess(draft);
   if (mode === "local_checklist") {
     const checks = stage.ui?.checklist || [];
@@ -620,6 +644,8 @@ function renderYoutube() {
   const stageSpecific = renderYoutubeStageSpecific(selectedStage, draft, content, connector);
   const manualAssetConfig = selectedStage.id === "thumbnail_approve"
     ? { label: "승인할 썸네일 Asset ID", placeholder: "asset://longform/BA-0268/thumbnails/candidate-a.png", value: "" }
+    : selectedStage.source === "pdf" && selectedStage.ui?.assetLabel
+      ? { label: selectedStage.ui.assetLabel, placeholder: selectedStage.ui.assetPlaceholder || "asset://...", value: "" }
     : !connector.ready && selectedStage.id === "thumbnail_generate"
       ? { label: "수동 후보 Manifest Asset ID", placeholder: "asset://longform/BA-0268/thumbnails/manifest.json", value: "" }
       : !connector.ready && selectedStage.id === "shortform_render"
@@ -633,7 +659,7 @@ function renderYoutube() {
 
   app.innerHTML = `
     <section class="youtube-hero">
-      <div class="youtube-hero-copy"><p>ORIGINAL PROCESS · CLOSED LOOP</p><h2>유튜브 전체 제작공정</h2><span>업로드한 PDF 8공정을 그대로 유지하고, 완료본 이후 썸네일·숏폼·게시·성과 학습을 연결합니다.</span></div>
+      <div class="youtube-hero-copy"><p>EXECUTION STAGES · CLOSED LOOP</p><h2>유튜브 전체 실행공정</h2><span>PDF 원본 8공정을 각각 실행 가능한 Stage로 운영하고 썸네일·숏폼·게시·성과 학습까지 연결합니다.</span></div>
       <label class="youtube-run-select"><span>Content Run</span><select id="youtube-content-select">${youtubeRuns().map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label>
       <button class="youtube-refresh" id="youtube-refresh" type="button">↻ 최신 상태</button>
       <div class="youtube-progress"><strong>${automation.progress}%</strong><span><i style="width:${automation.progress}%"></i></span><small>${automation.completedCount}/${automation.totalCount} 단계 완료</small></div>
@@ -644,7 +670,7 @@ function renderYoutube() {
       <article class="${decisionCount ? "is-alert" : ""}"><span>확인·예외</span><strong>${decisionCount}</strong><small>사람이 볼 항목만</small></article>
       <article><span>현재 담당</span><strong>${escapeHtml(selectedStage.owner)}</strong><small>${escapeHtml(selectedStage.shortLabel)}</small></article>
     </section>
-    <section class="youtube-source-note"><strong>공정 원칙</strong><span>상위 구분은 탐색용이며 원본 공정을 대체하지 않습니다.</span><i>PDF 8공정 + 실행 Stage ${stages.length}개 전체 표시</i></section>
+    <section class="youtube-source-note"><strong>공정 원칙</strong><span>PDF 8공정은 체크리스트 묶음이 아니라 각각 상태와 실행 화면을 가진 독립 Stage입니다.</span><i>전체 ${stages.length}개 Stage · 자동 실행 또는 의사결정</i></section>
     ${renderThumbnailLoop(stages, selectedStage)}
     <div class="youtube-workspace">
       <aside class="youtube-stage-rail"><header><strong>전체 실행 공정</strong><span>${stages.length}개 Stage · 축약 없음</span></header>${stageRail}</aside>
@@ -783,10 +809,7 @@ async function runYoutubeAction(action) {
       assetUrl = assets.master;
     }
     if (stage.id === "source_package" && !summary) summary = "최신 작업 패키지와 입력물을 확인했습니다.";
-    if (stage.id === "pc_main_edit") {
-      if (!checklistConfirmed) throw new Error("PDF 원본 8개 공정을 모두 확인해주세요.");
-      if (!summary) summary = "업로드한 PDF 원본 후반작업 8개 공정을 완료했습니다.";
-    }
+    if (stage.source === "pdf" && action === "complete" && !summary) summary = `${stage.label} 공정의 완료 기준을 확인했습니다.`;
     if (stage.id === "master_upload" && !summary) summary = "최종 MP4·SRT 완료본을 등록했습니다.";
     if (stage.id === "thumbnail_idea" && !summary && action === "complete") {
       summary = `핵심 약속: ${parameters.corePromise || "-"}\n타깃: ${parameters.audience || "-"}\n카피 A/B: ${parameters.copyA || "-"} / ${parameters.copyB || "-"}\n시각 가설: ${parameters.visualHypothesis || "-"}`;

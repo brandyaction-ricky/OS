@@ -19,7 +19,91 @@
       "error": null,
       "updatedAt": "2026-08-23T10:30:00+09:00"
     },
-    "pc_main_edit": {
+    "subtitle_review": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "summary_deck": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "photo_prompts": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "render_insert": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "capture_cards": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "media_processing": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "xml_assembly": {
+      "status": "completed",
+      "attempt": 1,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": "05_contents/BA-0268/05_edit/automation/results/pc_main_edit_v1.md",
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": {},
+      "error": null,
+      "updatedAt": "2026-08-24T10:15:22.575Z"
+    },
+    "youtube_assets": {
       "status": "completed",
       "attempt": 1,
       "jobId": null,
@@ -79,7 +163,55 @@
       "error": null,
       "updatedAt": null
     },
-    "publish_package": {
+    "thumbnail_idea": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "thumbnail_generate": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "thumbnail_evaluate": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "thumbnail_approve": {
+      "status": "locked",
+      "attempt": 0,
+      "jobId": null,
+      "idempotencyKey": null,
+      "outputPath": null,
+      "assetUrl": null,
+      "publishSettings": null,
+      "parameters": null,
+      "error": null,
+      "updatedAt": null
+    },
+    "thumbnail_learn": {
       "status": "locked",
       "attempt": 0,
       "jobId": null,

@@ -167,6 +167,20 @@ async function readJsonIfExists(filePath) {
 }
 
 function normalizePipelineStageStates(pipeline, source = {}) {
+  const pdfStageIds = [
+    "subtitle_review", "summary_deck", "photo_prompts", "render_insert",
+    "capture_cards", "media_processing", "xml_assembly", "youtube_assets",
+  ];
+  const migrated = { ...source };
+  const legacyEdit = source.pc_main_edit;
+  if (legacyEdit && !pdfStageIds.some((stageId) => source[stageId])) {
+    if (legacyEdit.status === "completed") {
+      for (const stageId of pdfStageIds) migrated[stageId] = { ...legacyEdit, jobId: null, idempotencyKey: null };
+    } else {
+      migrated.subtitle_review = { ...legacyEdit, jobId: null, idempotencyKey: null };
+    }
+  }
+  if (source.publish_package && source.publish_package.status !== "locked" && !source.youtube_assets) migrated.youtube_assets = { ...source.publish_package };
   const states = Object.fromEntries(pipeline.stages.map((stage) => [stage.id, {
     status: "locked",
     attempt: 0,
@@ -178,7 +192,7 @@ function normalizePipelineStageStates(pipeline, source = {}) {
     parameters: null,
     error: null,
     updatedAt: null,
-    ...(source[stage.id] || {}),
+    ...(migrated[stage.id] || {}),
   }]));
   if (pipeline.stages.every((stage) => states[stage.id].status === "locked")) states[pipeline.stages[0].id].status = "ready";
   let changed = true;

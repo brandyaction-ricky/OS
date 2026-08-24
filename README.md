@@ -92,7 +92,7 @@ Push는 다음 순서로 실패 우선 검증한다.
 기획 → 축 → 설계/원고 → 촬영 → 편집 → 썸네일 → 최종 승인 → 게시 → 성과 회수
 
 공정의 기계 판독 규격과 사람이 읽는 설명은 [`03_processes/longform/PROCESS.md`](03_processes/longform/PROCESS.md) 한 파일에서 관리한다.
-후반작업부터 성과 학습까지의 실행 상세는 `YOUTUBE_PIPELINE.json`과 Automation Recipe가 담당한다. 사용자 화면은 PDF 원본 8공정과 14개 실행 Stage를 모두 표시하며, 상위 구분은 탐색용으로만 사용한다. 썸네일은 `아이디어 → AI 생성 → AI 평가 → 사람 승인 → 업로드 → CTR 측정 → 학습` 폐쇄 루프로 관리한다.
+후반작업부터 성과 학습까지의 실행 상세는 `YOUTUBE_PIPELINE.json`과 Automation Recipe가 담당한다. 사용자 화면은 PDF 원본 8공정을 각각 독립 실행 Stage로 포함한 총 20개 Stage를 표시하며, 상위 구분은 탐색용으로만 사용한다. 썸네일은 `아이디어 → AI 생성 → AI 평가 → 사람 승인 → 업로드 → CTR 측정 → 학습` 폐쇄 루프로 관리한다.
 
 ## Web UI
 
@@ -115,7 +115,7 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 
 Access Skill Markdown의 정본은 GitHub Repository다. Skill은 업무 결과물을 직접 만들지 않고 최신 Company Wiki, Content Run과 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 실행과 판단은 각자의 AI와 사람이 담당한다.
 
-유튜브 제작 화면은 PDF의 자막·덱·사진·렌더·캡처카드·미디어·XML·업로드 자산 8공정을 직원 PC 작업으로 유지한다. OS 서버는 최종 MP4·SRT 인계 이후 완료본 검증, 썸네일 AI 생성·평가, OpenAI 기반 숏폼 구간·게시 문안 생성, FFmpeg Worker 숏폼 렌더, YouTube API 게시, CTR 회수와 학습을 담당한다. 대용량 파일은 Object Storage로 직접 전송하고 Git에는 Asset ID만 기록한다.
+유튜브 제작 화면은 PDF의 자막·덱·사진·렌더·캡처카드·미디어·XML·업로드 자산 8공정을 왼쪽 전체 실행공정의 독립 단계로 표시한다. 단계별 화면에서 개인 PC 자동화 실행값 또는 사람 판단을 기록하고, OS 서버는 유튜브 자산 초안, 최종 MP4·SRT 인계 이후 완료본 검증, 썸네일 AI 생성·평가, 숏폼 구간·게시 문안 생성, FFmpeg Worker 숏폼 렌더, YouTube API 게시, CTR 회수와 학습을 담당한다. 대용량 파일은 Object Storage로 직접 전송하고 Git에는 Asset ID만 기록한다.
 
 Skill Library는 `04_skills/{category_id}/{folder_id}/{skill_id}` 구조로 관리한다. Process는 폴더 경로가 아니라 고유한 `skill_id`를 참조하므로 카테고리를 옮겨도 기존 공정 연결이 유지된다. 카테고리 목록과 표시 순서는 `04_skills/CATEGORIES.json`에서 관리한다.
 

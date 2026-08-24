@@ -14,6 +14,19 @@ import {
   resultMarkdown,
 } from "../api/automation.mjs";
 
+const PDF_STAGE_IDS = [
+  "subtitle_review",
+  "summary_deck",
+  "photo_prompts",
+  "render_insert",
+  "capture_cards",
+  "media_processing",
+  "xml_assembly",
+  "youtube_assets",
+];
+
+const completedPdfStages = () => Object.fromEntries(PDF_STAGE_IDS.map((stageId) => [stageId, { status: "completed" }]));
+
 test("API stage registry matches the process pipeline", async () => {
   const pipeline = JSON.parse(await readFile(new URL("../03_processes/longform/YOUTUBE_PIPELINE.json", import.meta.url), "utf8"));
   assert.equal(pipeline.id, "youtube-production-v2");
@@ -21,29 +34,43 @@ test("API stage registry matches the process pipeline", async () => {
   assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.dependsOn), pipeline.stages.map((stage) => stage.dependsOn));
   assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.provider), pipeline.stages.map((stage) => stage.provider));
   assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.humanGate), pipeline.stages.map((stage) => stage.humanGate));
+  assert.equal(pipeline.stages.length, 20);
+  assert.deepEqual(pipeline.stages.slice(1, 9).map((stage) => stage.id), PDF_STAGE_IDS);
   assert.equal(pipeline.originalProcess.steps.length, 8);
   assert.equal(pipeline.originalProcess.absoluteRules.length, 11);
   assert.deepEqual(pipeline.thumbnailLoop.steps.map((step) => step.label), ["아이디어", "AI 생성", "AI 평가", "사람 승인", "업로드", "CTR 측정", "학습"]);
 });
 
-test("normalizeAutomationState starts the v2 PC handoff graph", () => {
+test("normalizeAutomationState starts the first independent PDF stage", () => {
   const state = normalizeAutomationState({
     stages: {
       source_package: { status: "completed" },
     },
   }, "BA-0268");
   assert.equal(state.pipelineId, "youtube-production-v2");
-  assert.equal(state.stages.pc_main_edit.status, "ready");
+  assert.equal(state.stages.subtitle_review.status, "ready");
+  assert.equal(state.stages.summary_deck.status, "locked");
   assert.equal(state.stages.master_upload.status, "locked");
   assert.equal(state.stages.shortform_plan.status, "locked");
 });
 
 test("completeAutomationStage unlocks dependency graph", () => {
   const state = normalizeAutomationState({ stages: { source_package: { status: "completed" } } }, "BA-0268");
-  completeAutomationStage(state, "pc_main_edit", { actor: "jay", outputPath: "pc-main-edit.md" });
+  completeAutomationStage(state, "subtitle_review", { actor: "jay", outputPath: "subtitle-review.md" });
+  assert.equal(state.stages.summary_deck.status, "ready");
+  completeAutomationStage(state, "summary_deck", { actor: "jay", outputPath: "summary-deck.md" });
+  assert.equal(state.stages.photo_prompts.status, "ready");
+  assert.equal(state.stages.render_insert.status, "locked");
+  completeAutomationStage(state, "photo_prompts", { actor: "jay", outputPath: "photo-prompts.md" });
+  completeAutomationStage(state, "render_insert", { actor: "jay", outputPath: "render-insert.md" });
+  completeAutomationStage(state, "capture_cards", { actor: "jay", outputPath: "capture-cards.md" });
+  completeAutomationStage(state, "media_processing", { actor: "jay", outputPath: "media-processing.md" });
+  completeAutomationStage(state, "xml_assembly", { actor: "jay", outputPath: "xml-assembly.md" });
+  assert.equal(state.stages.youtube_assets.status, "ready");
+  completeAutomationStage(state, "youtube_assets", { actor: "jay", outputPath: "youtube-assets.md" });
   assert.equal(state.stages.master_upload.status, "ready");
   assert.equal(state.stages.master_validation.status, "locked");
-  assert.equal(state.stages.pc_main_edit.outputPath, "pc-main-edit.md");
+  assert.equal(state.stages.subtitle_review.outputPath, "subtitle-review.md");
   completeAutomationStage(state, "master_upload", { actor: "jay", outputPath: "master-upload.md", assetUrl: "asset://longform/BA-0268/master-v1.mp4" });
   assert.equal(state.stages.master_validation.status, "ready");
   assert.equal(state.stages.master_upload.assetUrl, "asset://longform/BA-0268/master-v1.mp4");
@@ -52,15 +79,27 @@ test("completeAutomationStage unlocks dependency graph", () => {
   assert.equal(state.stages.shortform_plan.status, "ready");
 });
 
+test("legacy combined PDF completion migrates without resetting progress", () => {
+  const state = normalizeAutomationState({ stages: {
+    source_package: { status: "completed" },
+    pc_main_edit: { status: "completed", outputPath: "legacy-pc-edit.md", completedBy: "jay" },
+  } }, "BA-0268");
+  for (const stageId of PDF_STAGE_IDS) {
+    assert.equal(state.stages[stageId].status, "completed");
+    assert.equal(state.stages[stageId].outputPath, "legacy-pc-edit.md");
+  }
+  assert.equal(state.stages.master_upload.status, "ready");
+  assert.equal(state.stages.pc_main_edit, undefined);
+});
+
 test("thumbnail loop blocks publish until human approval and closes after learning", () => {
   const state = normalizeAutomationState({ stages: {
     source_package: { status: "completed" },
-    pc_main_edit: { status: "completed" },
+    ...completedPdfStages(),
     master_upload: { status: "completed", assetUrl: "asset://longform/BA-0268/master.mp4" },
     master_validation: { status: "completed" },
     shortform_plan: { status: "completed" },
     shortform_render: { status: "completed" },
-    publish_package: { status: "completed" },
   } }, "BA-0268");
   assert.equal(state.stages.thumbnail_idea.status, "ready");
   assert.equal(state.stages.youtube_publish.status, "locked");
@@ -132,7 +171,7 @@ test("content progress follows automation milestones", () => {
   state.stages.master_upload.status = "completed";
   assert.equal(contentProgressUpdates(state).current_step, "thumbnail");
   state.stages.thumbnail_approve.status = "completed";
-  state.stages.publish_package.status = "completed";
+  state.stages.youtube_assets.status = "completed";
   assert.equal(contentProgressUpdates(state).current_step, "approval");
   state.stages.youtube_publish.status = "queued";
   assert.equal(contentProgressUpdates(state).current_step, "publish");

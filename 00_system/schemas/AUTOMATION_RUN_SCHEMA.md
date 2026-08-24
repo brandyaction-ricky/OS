@@ -16,12 +16,12 @@ updated_by: ricky
   "schemaVersion": "1.0",
   "contentId": "BA-0000",
   "pipelineId": "youtube-production-v2",
-  "currentStageId": "pc_main_edit",
+  "currentStageId": "subtitle_review",
   "status": "ready",
   "updatedAt": "ISO-8601",
   "updatedBy": "person_id",
   "stages": {
-    "pc_main_edit": {
+    "subtitle_review": {
       "status": "ready",
       "attempt": 0,
       "jobId": null,
