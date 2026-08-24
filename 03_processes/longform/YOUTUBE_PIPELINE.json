@@ -1,19 +1,70 @@
 {
-  "schemaVersion": "2.0",
+  "schemaVersion": "2.1",
   "id": "youtube-production-v2",
-  "name": "유튜브 PC 제작·서버 배포 파이프라인",
-  "version": "2.0",
+  "name": "유튜브 원본 제작공정·서버 배포 파이프라인",
+  "version": "2.1",
   "processId": "longform",
   "entryStep": "edit",
-  "exitStep": "metrics",
-  "description": "고비용 메인 편집은 직원 PC에서 수행하고, OS는 완료본 인계·검증·숏폼 생성·YouTube 게시·성과 회수만 담당한다.",
-  "sourceNote": "PDF의 자막·덱·사진·XML·Premiere 제작 규칙은 PC 편집 체크리스트로 보존했다. 서버 자동화 범위는 완료본 이후로 제한한다.",
+  "exitStep": "thumbnail_learn",
+  "description": "업로드한 PDF의 8개 후반작업 공정을 정본으로 유지하고, OS는 완료본 인계 이후 썸네일 폐쇄 루프·숏폼·YouTube 게시·성과 학습을 연결한다.",
+  "sourceNote": "PDF의 8개 공정과 11개 절대 규칙은 축약하지 않는다. 상위 구분은 탐색용일 뿐이며 모든 세부 공정을 화면에 표시한다.",
   "phases": [
     { "id": "pc", "label": "개인 PC 제작", "order": 1 },
     { "id": "handoff", "label": "완료본 인계", "order": 2 },
-    { "id": "shorts", "label": "숏폼 자동화", "order": 3 },
-    { "id": "publish", "label": "게시·성과", "order": 4 }
+    { "id": "thumbnail", "label": "썸네일 폐쇄 루프", "order": 3 },
+    { "id": "shorts", "label": "숏폼 자동화", "order": 4 },
+    { "id": "publish", "label": "게시·성과·학습", "order": 5 }
   ],
+  "originalProcess": {
+    "sourceId": "brandyaction-production-process-pdf-20260821",
+    "title": "브랜디액션 영상 제작 공정",
+    "subtitle": "컷편집 MP4와 SRT를 받아 Premiere용 최종 XML과 YouTube 자산까지 만드는 후반작업 정본",
+    "inputs": ["컷편집된 영상 MP4", "추출한 자막 SRT"],
+    "outputs": ["최종 XML", "유튜브 자산 5종", "사진 프롬프트"],
+    "steps": [
+      { "id": "subtitle_review", "order": 1, "label": "자막 검수·정리", "tool": "SRT", "description": "오탈자·띄어쓰기·인명·용어를 맥락과 검색으로 자기검수하고 문장 단위로 정돈한다. 빈 컷·타이밍 공백·앞뒤 여백을 제거한다.", "output": "정리된 SRT" },
+      { "id": "summary_deck", "order": 2, "label": "요약 덱 저술", "tool": "PPT ≠ 자막", "description": "자막을 옮기지 않고 문단의 핵심을 요약·대조·도식으로 압축한다. 6챕터, 상단 게이지바, 대사 타이밍에 맞춰 저술한다.", "output": "슬라이드 배열 + 타이밍 큐" },
+      { "id": "photo_prompts", "order": 3, "label": "사진 프롬프트", "tool": "제작 전 확인", "description": "오프닝·지루한 지점·예시 지점에 사진 슬롯을 잡는다. 단색 레드 배경·피사체 하나를 기본으로 하고 인물이면 한국인을 명시한다.", "output": "프롬프트 목록 (prompts.md)" },
+      { "id": "render_insert", "order": 4, "label": "렌더 + 사진 삽입", "tool": "headless Chrome", "description": "HTML 슬라이드를 1920×1080 PNG로 렌더한다. 사진은 풀화면과 상단 게이지만 사용하고 움직이는 그림 효과는 사진 레이어에만 적용한다.", "output": "슬라이드 PNG + 사진·게이지 레이어" },
+      { "id": "capture_cards", "order": 5, "label": "캡처카드", "tool": "엔딩", "description": "‘고정댓글에서 진단 확인’ 카드 3버전과 0.5초 깜빡임, 끝 모자이크 1장을 항상 만든다.", "output": "s301 / s302 / s303" },
+      { "id": "media_processing", "order": 6, "label": "미디어 처리", "tool": "ffmpeg", "description": "원본 음성은 무거운 보정을 하지 않고 음악은 인트로·아웃트로에 페이드한다. 화자는 원본 영상을 우하단에 축소 배치한다.", "output": "음악 WAV + 화자 배치" },
+      { "id": "xml_assembly", "order": 7, "label": "XML 조립", "tool": "30fps · 단일 파일", "description": "V1 덱·엔딩, V2 화자, V3 캡처, A1 음성, A2 음악을 하나의 Premiere 편집 시퀀스로 조립한다.", "output": "최종 XML (Premiere 임포트)" },
+      { "id": "youtube_assets", "order": 8, "label": "유튜브 자산", "tool": "복붙용", "description": "스크립트를 기준으로 해시태그·고정댓글·타임라인·설명문·인용·출처·히든태그를 생성한다.", "output": "업로드자산.txt" }
+    ],
+    "absoluteRules": [
+      "PPT는 자막이 아니라 핵심 요약이다.",
+      "인물은 사진으로, 개념은 글로 설명한다.",
+      "움직이는 그림 효과는 사진에만 적용하고 게이지바와 레이어를 분리한다.",
+      "용어·인명·사실은 맥락과 검색으로 자기검수한다.",
+      "오디오에는 samplerate를 선언한다.",
+      "원본 음성은 무겁게 보정하지 않는다.",
+      "음악은 인트로·아웃트로 타임라인에 항상 둔다.",
+      "원형 화자는 Premiere 타원 마스크로 처리한다.",
+      "인물 사진 프롬프트에는 한국인을 명시한다.",
+      "사진이 오기 전에는 완료 처리하지 않는다.",
+      "애매하면 넘겨짚지 말고 반드시 질문한다."
+    ]
+  },
+  "thumbnailLoop": {
+    "id": "thumbnail-closed-loop-v1",
+    "label": "썸네일 성과 폐쇄 루프",
+    "referenceUrl": "https://thumbnailpeak.com/critique?id=097a7b2328d282fe933bd45c51d5f267617872e5cc3d2245bf274a336fb0acb0",
+    "steps": [
+      { "id": "idea", "order": 1, "label": "아이디어", "stageId": "thumbnail_idea", "output": "가설·카피·구도 Brief" },
+      { "id": "generate", "order": 2, "label": "AI 생성", "stageId": "thumbnail_generate", "output": "후보 이미지 Manifest" },
+      { "id": "evaluate", "order": 3, "label": "AI 평가", "stageId": "thumbnail_evaluate", "output": "점수표·개선 우선순위" },
+      { "id": "approve", "order": 4, "label": "사람 승인", "stageId": "thumbnail_approve", "output": "선택된 최종 썸네일" },
+      { "id": "upload", "order": 5, "label": "업로드", "stageId": "youtube_publish", "output": "YouTube 적용 영수증" },
+      { "id": "measure", "order": 6, "label": "CTR 측정", "stageId": "metrics", "output": "1h·6h·24h·7d CTR" },
+      { "id": "learn", "order": 7, "label": "학습", "stageId": "thumbnail_learn", "output": "다음 아이디어용 학습 기록" }
+    ],
+    "scorecard": {
+      "visual": ["가독성", "시각적 위계", "주제 명확성", "대비", "호기심", "차별성", "신뢰·완성도"],
+      "contentFit": ["주제 일치", "약속 일관성", "제목 보완성"],
+      "scale": "각 항목 1~4점, 총점 100점 환산",
+      "decisionRule": "AI 총점만으로 승인하지 않는다. 최우선 개선점과 제목·영상 약속의 일치 여부를 사람이 확인한다."
+    }
+  },
   "stages": [
     {
       "id": "source_package", "order": 1, "phase": "pc", "label": "작업 패키지 준비", "shortLabel": "작업 패키지",
@@ -24,34 +75,90 @@
       "ui": { "mode": "work_package", "eyebrow": "PC WORKSPACE", "helper": "OS는 맥락과 입력물만 전달합니다. AI 계정과 편집 도구는 각자 PC에서 사용합니다.", "primaryAction": "작업 준비 완료" }
     },
     {
-      "id": "pc_main_edit", "order": 2, "phase": "pc", "label": "개인 PC 메인 편집", "shortLabel": "PC 메인 편집",
+      "id": "pc_main_edit", "order": 2, "phase": "pc", "label": "PDF 원본 후반작업 8공정", "shortLabel": "원본 8공정",
       "source": "pdf", "owner": "jay", "provider": "human", "executionBoundary": "personal_pc", "automationLevel": "개인 AI·Premiere",
-      "description": "자막·요약 덱·사진·CTA·오디오·XML·Premiere 편집을 개인 PC에서 완료합니다.",
-      "dependsOn": ["source_package"], "inputKeys": ["pc_work_package"], "outputs": ["final_master_candidate", "final_srt", "thumbnail_candidate"],
-      "qualityChecks": ["자막 검수·빈 큐 제거", "6개 챕터와 타이밍 큐", "사진 슬롯·브랜드 기준", "CTA 카드 3종", "원본 음성·음악 유지", "오프라인 미디어 0개", "최종 MP4 재생 확인"], "humanGate": false,
+      "description": "업로드한 브랜디액션 제작공정 PDF의 8개 세부 공정을 순서대로 완료합니다.",
+      "dependsOn": ["source_package"], "inputKeys": ["pc_work_package"], "outputs": ["final_master_candidate", "final_srt"],
+      "qualityChecks": ["PDF 8개 공정 완료", "PDF 11개 절대 규칙 확인", "오프라인 미디어 0개", "최종 MP4·SRT 재생 검수"], "humanGate": false,
       "ui": {
-        "mode": "local_checklist", "eyebrow": "LOCAL PRODUCTION", "helper": "토큰 사용과 Premiere 작업은 OS 서버가 대신하지 않습니다. 완료 여부와 결과 위치만 기록합니다.", "primaryAction": "PC 편집 완료",
-        "checklist": ["자막 검수·정리", "6개 챕터 요약 덱", "사진 프롬프트·소스 확정", "1920×1080 덱 렌더", "CTA 카드·엔딩 모자이크", "원본 음성·BGM 처리", "Premiere 타임라인 조립", "최종 MP4·SRT 재생 검수"]
+        "mode": "canonical_process", "eyebrow": "ORIGINAL PDF PROCESS", "helper": "8개 공정을 축약하지 않고 원문 설명·도구·산출물과 함께 표시합니다.", "primaryAction": "원본 8공정 완료",
+        "checklist": ["자막 검수·정리", "요약 덱 저술", "사진 프롬프트", "렌더 + 사진 삽입", "캡처카드", "미디어 처리", "XML 조립", "유튜브 자산"]
       }
     },
     {
       "id": "master_upload", "order": 3, "phase": "handoff", "label": "완료본 업로드", "shortLabel": "완료본 인계",
       "source": "os_extension", "owner": "jay", "provider": "asset_upload", "executionBoundary": "handoff", "automationLevel": "브라우저 직접 업로드",
-      "description": "최종 MP4·SRT·썸네일을 자산 저장소에 직접 올리고 OS에는 안전한 Asset ID만 남깁니다.",
-      "dependsOn": ["pc_main_edit"], "inputKeys": ["final_master_candidate", "final_srt", "thumbnail_candidate"], "outputs": ["final_master", "clean_srt", "thumbnail"],
-      "qualityChecks": ["최종 MP4 선택", "SRT 선택", "썸네일 또는 대체 이미지 연결", "공개 Repository에 원본 URL 미노출"], "humanGate": false,
+      "description": "최종 MP4와 SRT를 자산 저장소에 직접 올리고 OS에는 안전한 Asset ID만 남깁니다.",
+      "dependsOn": ["pc_main_edit"], "inputKeys": ["final_master_candidate", "final_srt"], "outputs": ["final_master", "clean_srt"],
+      "qualityChecks": ["최종 MP4 선택", "SRT 선택", "공개 Repository에 원본 URL 미노출"], "humanGate": false,
       "ui": { "mode": "master_upload", "eyebrow": "MASTER HANDOFF", "helper": "대용량 파일은 GitHub나 Vercel을 거치지 않고 저장소로 바로 전송됩니다.", "primaryAction": "완료본 등록" }
     },
     {
       "id": "master_validation", "order": 4, "phase": "handoff", "label": "완료본 자동 검증", "shortLabel": "완료본 검증",
       "source": "os_extension", "owner": "jay", "provider": "render_worker", "executionBoundary": "server", "automationLevel": "FFprobe 자동",
-      "description": "서버가 해상도·프레임·재생시간·오디오·자막 파일을 검사해 숏폼 작업 가능 여부를 판정합니다.",
+      "description": "서버가 해상도·프레임·재생시간·오디오·자막 파일을 검사해 배포 가능 여부를 판정합니다.",
       "dependsOn": ["master_upload"], "inputKeys": ["final_master", "clean_srt"], "outputs": ["master_validation_report"],
       "qualityChecks": ["영상 디코딩 성공", "1920×1080 이상", "오디오 트랙 존재", "SRT 시간 범위 일치"], "humanGate": false,
       "ui": { "mode": "worker_validation", "eyebrow": "AUTOMATED QA", "helper": "문제가 있는 항목만 편집자에게 되돌려 보냅니다.", "primaryAction": "완료본 검사 실행" }
     },
     {
-      "id": "shortform_plan", "order": 5, "phase": "shorts", "label": "숏폼 구간·스타일 설정", "shortLabel": "숏폼 설계",
+      "id": "thumbnail_idea", "order": 5, "phase": "thumbnail", "label": "썸네일 아이디어 Brief", "shortLabel": "아이디어",
+      "source": "os_extension", "owner": "jay", "provider": "openai", "executionBoundary": "server", "automationLevel": "과거 학습 + AI 초안 + 사람 확정",
+      "description": "영상의 한 가지 약속을 정하고 제목을 반복하지 않는 카피·구도 가설을 기록합니다.",
+      "dependsOn": ["master_validation"], "inputKeys": ["approved_script", "master_validation_report", "thumbnail_learning_history"], "outputs": ["thumbnail_brief"],
+      "qualityChecks": ["핵심 약속 1개", "타깃 시청자 명시", "제목과 중복되지 않는 카피", "A/B 가설 구분"], "humanGate": true,
+      "ui": {
+        "mode": "thumbnail_idea", "eyebrow": "THUMBNAIL HYPOTHESIS", "helper": "과거 CTR 학습을 참고해 AI가 서로 다른 가설을 제안하고 사람이 이번 Brief를 확정합니다.", "primaryAction": "아이디어 후보 생성",
+        "fields": [
+          { "key": "corePromise", "label": "영상의 핵심 약속", "type": "text", "default": "" },
+          { "key": "audience", "label": "타깃 시청자", "type": "text", "default": "" },
+          { "key": "copyA", "label": "카피 A", "type": "text", "default": "" },
+          { "key": "copyB", "label": "카피 B", "type": "text", "default": "" },
+          { "key": "visualHypothesis", "label": "구도·표정·대비 가설", "type": "textarea", "default": "" },
+          { "key": "avoid", "label": "피해야 할 표현", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    {
+      "id": "thumbnail_generate", "order": 6, "phase": "thumbnail", "label": "썸네일 AI 생성", "shortLabel": "AI 생성",
+      "source": "os_extension", "owner": "jay", "provider": "thumbnail_worker", "executionBoundary": "server", "automationLevel": "Image API Worker",
+      "description": "확정 Brief로 16:9 후보를 생성하고 후보별 Asset ID·프롬프트·seed를 Manifest에 기록합니다.",
+      "dependsOn": ["thumbnail_idea"], "inputKeys": ["thumbnail_brief", "brand_wiki"], "outputs": ["thumbnail_candidates", "thumbnail_manifest"],
+      "qualityChecks": ["1280×720 또는 그 이상", "후보 3개 이상", "작은 피드 크기에서 읽힘", "브랜드 금지 요소 없음"], "humanGate": false,
+      "ui": {
+        "mode": "thumbnail_generate", "eyebrow": "AI GENERATION", "helper": "후보는 최소 3개를 만들고 같은 가설의 작은 변형이 아니라 서로 다른 시각 전략으로 생성합니다.", "primaryAction": "AI 후보 생성",
+        "fields": [
+          { "key": "candidateCount", "label": "후보 수", "type": "number", "default": 3, "min": 3, "max": 8, "suffix": "개" },
+          { "key": "aspectRatio", "label": "화면 비율", "type": "select", "default": "16:9", "options": ["16:9"] },
+          { "key": "facePolicy", "label": "인물 표현", "type": "select", "default": "korean_subject", "options": ["korean_subject", "no_face", "source_face"] },
+          { "key": "additionalDirection", "label": "추가 생성 지시", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    {
+      "id": "thumbnail_evaluate", "order": 7, "phase": "thumbnail", "label": "썸네일 AI 평가", "shortLabel": "AI 평가",
+      "source": "os_extension", "owner": "jay", "provider": "thumbnail_worker", "executionBoundary": "server", "automationLevel": "Vision 평가 Worker",
+      "description": "후보를 피드 크기로 평가하고 시각 품질·콘텐츠 적합성·최우선 개선점을 비교합니다.",
+      "dependsOn": ["thumbnail_generate"], "inputKeys": ["thumbnail_candidates", "approved_script", "thumbnail_brief"], "outputs": ["thumbnail_scorecard", "thumbnail_ranking"],
+      "qualityChecks": ["가독성", "시각적 위계", "주제 명확성", "대비", "호기심", "차별성", "신뢰·완성도", "주제 일치", "약속 일관성", "제목 보완성"], "humanGate": false,
+      "ui": { "mode": "thumbnail_evaluate", "eyebrow": "AI CRITIQUE", "helper": "총점보다 항목별 근거와 가장 먼저 고칠 한 가지를 보여줍니다.", "primaryAction": "AI 평가 실행" }
+    },
+    {
+      "id": "thumbnail_approve", "order": 8, "phase": "thumbnail", "label": "사람 최종 승인", "shortLabel": "사람 승인",
+      "source": "os_extension", "owner": "ricky", "provider": "human", "executionBoundary": "os", "automationLevel": "사람 선택",
+      "description": "AI 점수와 개선 근거를 참고하되 최종 후보는 사람이 선택하고 선택 이유를 남깁니다.",
+      "dependsOn": ["thumbnail_evaluate"], "inputKeys": ["thumbnail_scorecard", "thumbnail_candidates"], "outputs": ["approved_thumbnail"],
+      "qualityChecks": ["최종 후보 Asset ID", "AI 개선점 확인", "제목과 역할 분담 확인", "선택 이유 기록"], "humanGate": false,
+      "ui": {
+        "mode": "thumbnail_approve", "eyebrow": "HUMAN DECISION", "helper": "점수 1위가 자동 선택되지 않습니다. 사람이 영상의 약속과 브랜드 적합성을 확인합니다.", "primaryAction": "최종 썸네일 승인",
+        "fields": [
+          { "key": "selectedCandidate", "label": "선택 후보 ID", "type": "text", "default": "" },
+          { "key": "decisionReason", "label": "선택 이유", "type": "textarea", "default": "" }
+        ]
+      }
+    },
+    {
+      "id": "shortform_plan", "order": 9, "phase": "shorts", "label": "숏폼 구간·스타일 설정", "shortLabel": "숏폼 설계",
       "source": "os_extension", "owner": "jay", "provider": "openai", "executionBoundary": "server", "automationLevel": "AI 후보 + 사람 확정",
       "description": "완료본과 SRT에서 독립적으로 이해되는 구간을 찾고 숏폼 개수·길이·자막·CTA를 확정합니다.",
       "dependsOn": ["master_validation"], "inputKeys": ["final_master", "clean_srt", "brand_wiki"], "outputs": ["shortform_clip_plan"],
@@ -69,7 +176,7 @@
       }
     },
     {
-      "id": "shortform_render", "order": 6, "phase": "shorts", "label": "숏폼 자동 생성", "shortLabel": "숏폼 렌더",
+      "id": "shortform_render", "order": 10, "phase": "shorts", "label": "숏폼 자동 생성", "shortLabel": "숏폼 렌더",
       "source": "os_extension", "owner": "jay", "provider": "render_worker", "executionBoundary": "server", "automationLevel": "FFmpeg Worker 자동",
       "description": "확정한 구간을 9:16으로 리프레임하고 자막·브랜드 CTA를 합성해 숏폼 파일을 생성합니다.",
       "dependsOn": ["shortform_plan"], "inputKeys": ["final_master", "clean_srt", "shortform_clip_plan"], "outputs": ["shortform_videos", "shortform_manifest"],
@@ -84,7 +191,7 @@
       }
     },
     {
-      "id": "publish_package", "order": 7, "phase": "publish", "label": "업로드 문안·설정", "shortLabel": "게시 준비",
+      "id": "publish_package", "order": 11, "phase": "publish", "label": "업로드 문안·설정", "shortLabel": "게시 준비",
       "source": "pdf", "owner": "jay", "provider": "openai", "executionBoundary": "server", "automationLevel": "AI 초안 + 최종 확인",
       "description": "롱폼과 숏폼의 제목·설명문·챕터·고정댓글·해시태그를 생성하고 게시 설정을 묶습니다.",
       "dependsOn": ["master_validation", "shortform_render"], "inputKeys": ["clean_srt", "shortform_manifest", "brand_wiki"], "outputs": ["youtube_publish_package"],
@@ -100,13 +207,13 @@
       }
     },
     {
-      "id": "youtube_publish", "order": 8, "phase": "publish", "label": "롱폼·숏폼 업로드", "shortLabel": "YouTube 업로드",
+      "id": "youtube_publish", "order": 12, "phase": "publish", "label": "롱폼·숏폼·썸네일 업로드", "shortLabel": "YouTube 업로드",
       "source": "os_extension", "owner": "jay", "provider": "youtube", "executionBoundary": "server", "automationLevel": "YouTube API",
-      "description": "완료본과 선택한 숏폼을 YouTube에 업로드하고 공개 상태·예약 시각·URL을 기록합니다.",
-      "dependsOn": ["publish_package"], "inputKeys": ["final_master", "thumbnail", "shortform_videos", "youtube_publish_package"], "outputs": ["youtube_urls", "publish_receipt"],
-      "qualityChecks": ["롱폼 업로드 처리 완료", "선택한 숏폼 전부 업로드", "썸네일·자막 적용", "공개·예약 상태 일치"], "humanGate": true,
+      "description": "완료본·숏폼·사람이 승인한 썸네일을 YouTube에 업로드하고 공개 상태·예약 시각·URL을 기록합니다.",
+      "dependsOn": ["publish_package", "thumbnail_approve"], "inputKeys": ["final_master", "approved_thumbnail", "shortform_videos", "youtube_publish_package"], "outputs": ["youtube_urls", "thumbnail_upload_receipt", "publish_receipt"],
+      "qualityChecks": ["롱폼 업로드 처리 완료", "선택한 숏폼 전부 업로드", "승인 썸네일·자막 적용", "공개·예약 상태 일치"], "humanGate": true,
       "ui": {
-        "mode": "youtube_publish", "eyebrow": "YOUTUBE DELIVERY", "helper": "업로드 대상과 공개 설정을 마지막으로 확인한 뒤 실행합니다.", "primaryAction": "업로드 설정 검토",
+        "mode": "youtube_publish", "eyebrow": "YOUTUBE DELIVERY", "helper": "업로드 대상과 공개 설정, 승인 썸네일을 마지막으로 확인한 뒤 실행합니다.", "primaryAction": "업로드 설정 검토",
         "fields": [
           { "key": "uploadLongform", "label": "롱폼 업로드", "type": "checkbox", "default": true },
           { "key": "uploadShorts", "label": "숏폼 업로드", "type": "checkbox", "default": true }
@@ -114,12 +221,20 @@
       }
     },
     {
-      "id": "metrics", "order": 9, "phase": "publish", "label": "성과 자동 회수", "shortLabel": "성과 회수",
+      "id": "metrics", "order": 13, "phase": "publish", "label": "성과·CTR 자동 회수", "shortLabel": "CTR 측정",
       "source": "os_extension", "owner": "eric", "provider": "youtube_data", "executionBoundary": "server", "automationLevel": "YouTube Data API",
-      "description": "롱폼과 숏폼의 조회·노출·CTR·시청지속·전환 데이터를 같은 Content Run에 누적합니다.",
-      "dependsOn": ["youtube_publish"], "inputKeys": ["youtube_urls", "utm_config"], "outputs": ["metrics_snapshot", "learning_note"],
-      "qualityChecks": ["롱폼·숏폼 분리 집계", "1h·6h·24h·7d 스냅샷", "UTM 전환 연결", "다음 제작 인사이트 기록"], "humanGate": false,
-      "ui": { "mode": "metrics", "eyebrow": "PERFORMANCE LOOP", "helper": "성과는 자동 수집하고 다음 콘텐츠 Wiki에 재사용할 인사이트만 남깁니다.", "primaryAction": "최신 성과 수집" }
+      "description": "롱폼과 숏폼의 조회·노출·CTR·시청지속·전환을 1h·6h·24h·7d 스냅샷으로 누적합니다.",
+      "dependsOn": ["youtube_publish"], "inputKeys": ["youtube_urls", "thumbnail_upload_receipt", "utm_config"], "outputs": ["metrics_snapshot", "thumbnail_ctr_snapshot"],
+      "qualityChecks": ["롱폼·숏폼 분리 집계", "1h·6h·24h·7d 스냅샷", "썸네일 노출·CTR 연결", "UTM 전환 연결"], "humanGate": false,
+      "ui": { "mode": "metrics", "eyebrow": "CTR MEASUREMENT", "helper": "초기 반응과 7일 성과를 분리해 수집하고 썸네일 변경 시점을 함께 기록합니다.", "primaryAction": "최신 성과 수집" }
+    },
+    {
+      "id": "thumbnail_learn", "order": 14, "phase": "publish", "label": "썸네일 학습 반영", "shortLabel": "학습",
+      "source": "os_extension", "owner": "eric", "provider": "openai", "executionBoundary": "server", "automationLevel": "AI 분석 + 다음 Brief 입력",
+      "description": "아이디어 가설·AI 평가·사람 선택·실제 CTR을 비교해 재사용할 규칙과 다음 실험 가설을 기록합니다.",
+      "dependsOn": ["metrics", "thumbnail_idea", "thumbnail_evaluate", "thumbnail_approve"], "inputKeys": ["thumbnail_brief", "thumbnail_scorecard", "approved_thumbnail", "thumbnail_ctr_snapshot"], "outputs": ["thumbnail_learning_note", "next_thumbnail_hypothesis"],
+      "qualityChecks": ["가설과 실제 CTR 비교", "AI 예상과 실제 성과 차이 기록", "재사용 규칙 1개 이상", "다음 실험 가설 1개 이상"], "humanGate": false,
+      "ui": { "mode": "thumbnail_learn", "eyebrow": "CLOSE THE LOOP", "helper": "이번 결과를 다음 콘텐츠의 아이디어 Brief가 자동으로 읽는 학습 기록으로 남깁니다.", "primaryAction": "학습 기록 생성" }
     }
   ]
 }

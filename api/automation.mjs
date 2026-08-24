@@ -14,11 +14,16 @@ export const AUTOMATION_STAGES = [
   { id: "pc_main_edit", provider: "human", humanGate: false, dependsOn: ["source_package"] },
   { id: "master_upload", provider: "asset_upload", humanGate: false, dependsOn: ["pc_main_edit"] },
   { id: "master_validation", provider: "render_worker", humanGate: false, dependsOn: ["master_upload"] },
+  { id: "thumbnail_idea", provider: "openai", humanGate: true, dependsOn: ["master_validation"] },
+  { id: "thumbnail_generate", provider: "thumbnail_worker", humanGate: false, dependsOn: ["thumbnail_idea"] },
+  { id: "thumbnail_evaluate", provider: "thumbnail_worker", humanGate: false, dependsOn: ["thumbnail_generate"] },
+  { id: "thumbnail_approve", provider: "human", humanGate: false, dependsOn: ["thumbnail_evaluate"] },
   { id: "shortform_plan", provider: "openai", humanGate: true, dependsOn: ["master_validation"] },
   { id: "shortform_render", provider: "render_worker", humanGate: false, dependsOn: ["shortform_plan"] },
   { id: "publish_package", provider: "openai", humanGate: true, dependsOn: ["master_validation", "shortform_render"] },
-  { id: "youtube_publish", provider: "youtube", humanGate: true, dependsOn: ["publish_package"] },
+  { id: "youtube_publish", provider: "youtube", humanGate: true, dependsOn: ["publish_package", "thumbnail_approve"] },
   { id: "metrics", provider: "youtube_data", humanGate: false, dependsOn: ["youtube_publish"] },
+  { id: "thumbnail_learn", provider: "openai", humanGate: false, dependsOn: ["metrics", "thumbnail_idea", "thumbnail_evaluate", "thumbnail_approve"] },
 ];
 
 const STAGE_BY_ID = new Map(AUTOMATION_STAGES.map((stage) => [stage.id, stage]));
@@ -26,7 +31,7 @@ const RECIPE_PATH = "07_automations/youtube-production/RECIPE.md";
 const COMMON_CONTEXT_PATHS = ["01_company/context/COMPANY.md"];
 const CONTENT_INPUT_POINTERS = ["latest_script", "latest_reading_script", "latest_shoot"];
 const ASSET_REQUIRED_STAGES = new Set([
-  "master_upload", "shortform_render", "youtube_publish",
+  "master_upload", "thumbnail_generate", "thumbnail_approve", "shortform_render", "youtube_publish",
 ]);
 
 const STAGE_LABELS = {
@@ -34,16 +39,23 @@ const STAGE_LABELS = {
   pc_main_edit: "개인 PC 메인 편집",
   master_upload: "완료본 업로드",
   master_validation: "완료본 자동 검증",
+  thumbnail_idea: "썸네일 아이디어 Brief",
+  thumbnail_generate: "썸네일 AI 생성",
+  thumbnail_evaluate: "썸네일 AI 평가",
+  thumbnail_approve: "사람 최종 승인",
   shortform_plan: "숏폼 구간·스타일 설정",
   shortform_render: "숏폼 자동 생성",
   publish_package: "업로드 문안·설정",
   youtube_publish: "YouTube 업로드·예약",
-  metrics: "게시 후 성과 회수",
+  metrics: "성과·CTR 자동 회수",
+  thumbnail_learn: "썸네일 학습 반영",
 };
 
 const OPENAI_INSTRUCTIONS = {
+  thumbnail_idea: `당신은 브랜디액션 YouTube 썸네일 전략가입니다. 승인 원고, 영상의 핵심 약속, 사용자가 적은 Brief와 과거 thumbnail_learn 결과를 사용해 서로 다른 썸네일 아이디어 3개를 제안하세요. 각 아이디어마다 한 줄 카피, 시각 구도, 표정·피사체, 대비 방식, 제목과의 역할 분담, 검증할 CTR 가설을 적으세요. 과거 학습을 그대로 일반화하지 말고 이번 영상과 연결되는 근거를 적으세요. 결과는 Markdown만 반환하세요.`,
   shortform_plan: `당신은 브랜디액션 숏폼 편집 디렉터입니다. 완성된 롱폼 SRT와 사용자가 지정한 숏폼 설정만 사용해 단독으로 이해되는 구간을 제안하세요. 각 후보마다 순위, 시작·종료 타임코드, 첫 2초 훅, 핵심 메시지, 예상 길이, 자막 키워드, CTA를 적으세요. 문장 중간 절단과 중복 메시지는 금지합니다. 결과는 Markdown만 반환하세요.`,
   publish_package: `당신은 브랜디액션 YouTube 업로드 에디터입니다. 완료된 롱폼과 숏폼 manifest에서 확인 가능한 사실만 사용하세요. 결과는 Markdown만 반환하고 반드시 ## 롱폼 제목, ## 숏폼별 제목, ## 설명문, ## 타임라인, ## 고정댓글, ## 해시태그, ## 인용·출처 순서를 사용하세요. 확인되지 않은 사실이나 URL을 만들지 마세요. 최신 CTA는 Company Wiki를 우선합니다.`,
+  thumbnail_learn: `당신은 브랜디액션 썸네일 실험 분석가입니다. 썸네일 아이디어 가설, AI 사전 평가, 사람이 선택한 이유, 실제 YouTube 노출·CTR 스냅샷만 비교하세요. 결과는 Markdown만 반환하고 반드시 ## 이번 가설, ## 예상과 실제의 차이, ## 유지할 규칙, ## 버릴 규칙, ## 다음 실험 가설, ## 근거 데이터 순서를 사용하세요. 인과관계를 단정하지 말고 표본이 작거나 측정 기간이 짧으면 한계를 명시하세요.`,
 };
 
 function json(payload, status = 200, nodeResponse = null) {
@@ -74,7 +86,8 @@ export function connectorStatus(env = process.env) {
     github: { ready: githubReady, label: "OS 정본 저장", mode: "GitHub" },
     session: { ready: Boolean(env.OS_PUSH_SECRET), label: "팀 작업 세션", mode: "HttpOnly Session" },
     asset: { ready: Boolean(githubReady && env.ASSET_UPLOAD_SESSION_URL && env.ASSET_UPLOAD_SERVICE_SECRET), label: "완료본 저장", mode: "Direct Object Upload" },
-    openai: { ready: Boolean(githubReady && env.OPENAI_API_KEY), label: "숏폼·게시 문안", mode: "OpenAI Responses API" },
+    openai: { ready: Boolean(githubReady && env.OPENAI_API_KEY), label: "숏폼·게시·학습", mode: "OpenAI Responses API" },
+    thumbnail: { ready: Boolean(githubReady && env.THUMBNAIL_WORKER_WEBHOOK_URL && env.THUMBNAIL_WORKER_SECRET && env.THUMBNAIL_CALLBACK_SECRET), label: "썸네일 생성·평가", mode: "Image + Vision Worker" },
     render: { ready: Boolean(githubReady && env.VIDEO_WORKER_WEBHOOK_URL && env.VIDEO_WORKER_SECRET && env.VIDEO_CALLBACK_SECRET), label: "완료본 검증·숏폼", mode: "FFmpeg Worker" },
     youtube: { ready: Boolean(githubReady && env.YOUTUBE_WORKER_WEBHOOK_URL && env.YOUTUBE_WORKER_SECRET && env.YOUTUBE_CALLBACK_SECRET && env.YOUTUBE_PUBLISH_APPROVAL_SECRET), label: "YouTube 업로드", mode: "YouTube Data API" },
     metrics: { ready: Boolean(githubReady && env.METRICS_WORKER_WEBHOOK_URL && env.METRICS_WORKER_SECRET && env.METRICS_CALLBACK_SECRET), label: "성과 회수", mode: "YouTube Data/Analytics API" },
@@ -85,6 +98,7 @@ function connectorForProvider(provider, env = process.env) {
   const connectors = connectorStatus(env);
   return ({
     openai: connectors.openai,
+    thumbnail_worker: connectors.thumbnail,
     asset_upload: connectors.asset,
     render_worker: connectors.render,
     youtube: connectors.youtube,
@@ -205,6 +219,14 @@ function contentInputPaths(snapshot, stage) {
     .map((pointer) => normalizeRepoPath(snapshot.state.contentId, snapshot.contentMetadata[pointer]))
     .filter(Boolean);
   return [...new Set([...dependencyPaths, ...pointerPaths])];
+}
+
+function recentThumbnailLearningPaths(snapshot, limit = 10) {
+  return snapshot.treeEntries
+    .filter((item) => item.type === "blob" && /^05_contents\/BA-\d{4}\/05_edit\/automation\/results\/thumbnail_learn_v\d+\.md$/.test(item.path))
+    .map((item) => item.path)
+    .sort()
+    .slice(-limit);
 }
 
 async function latestWikiPaths(snapshot) {
@@ -407,10 +429,17 @@ export function contentProgressUpdates(state) {
   if (stages.master_upload.status === "completed") {
     Object.assign(base, {
       current_step: "thumbnail", edit_status: "completed", thumbnail_status: "in_progress",
-      next_action: "완료본 검증·숏폼 생성",
+      next_action: "완료본 검증·썸네일 아이디어·숏폼 생성",
     });
   }
-  if (stages.publish_package.status === "completed" || ["ready", "needs_decision", "queued", "running"].includes(stages.youtube_publish.status)) {
+  if (stages.thumbnail_approve.status === "completed") {
+    Object.assign(base, {
+      current_step: "approval", owner: "jay", next_owner: "jay",
+      edit_status: "completed", thumbnail_status: "approved", approval_status: "in_progress",
+      next_action: "숏폼·게시 문안 완료 후 업로드 설정 확인",
+    });
+  }
+  if (stages.thumbnail_approve.status === "completed" && (stages.publish_package.status === "completed" || ["ready", "needs_decision", "queued", "running"].includes(stages.youtube_publish.status))) {
     Object.assign(base, {
       current_step: "approval", owner: "ricky", next_owner: "ricky",
       edit_status: "completed", thumbnail_status: "approved", approval_status: "waiting_approval",
@@ -433,9 +462,16 @@ export function contentProgressUpdates(state) {
   }
   if (stages.metrics.status === "completed") {
     Object.assign(base, {
+      status: "in_progress", current_step: "metrics", owner: "eric", next_owner: "eric",
+      approval_status: "approved", publish_status: "completed", metrics_status: "in_progress",
+      next_action: "썸네일 CTR 학습 기록 생성",
+    });
+  }
+  if (stages.thumbnail_learn.status === "completed") {
+    Object.assign(base, {
       status: "completed", current_step: "metrics", owner: "eric", next_owner: null,
       approval_status: "approved", publish_status: "completed", metrics_status: "completed",
-      next_action: "성과 학습을 Wiki에 반영",
+      next_action: "학습 기록을 다음 썸네일 아이디어에 재사용",
     });
   }
   if (["needs_input", "needs_decision", "blocked", "failed"].includes(state.status) && current) {
@@ -449,6 +485,7 @@ function milestoneDefinitions(baseState, state, stageId) {
   const after = state.stages[stageId]?.status;
   const definitions = [];
   if (stageId === "master_upload" && before !== "completed" && after === "completed") definitions.push({ key: "edit", pointer: "latest_edit", folder: "05_edit", step: "edit", title: "롱폼 최종 마스터", status: "completed", approvalStatus: "not_required", alsoPointer: "latest_master" });
+  if (stageId === "thumbnail_approve" && before !== "completed" && after === "completed") definitions.push({ key: "thumbnail", pointer: "latest_thumbnail", folder: "06_thumbnail", step: "thumbnail", title: "사람이 승인한 최종 썸네일", status: "approved", approvalStatus: "approved" });
   if (stageId === "youtube_publish" && before === "needs_decision" && ["queued", "running", "completed"].includes(after)) definitions.push({ key: "approval", pointer: "latest_approval", folder: "07_approval", step: "approval", title: "YouTube 게시 승인 기록", status: "approved", approvalStatus: "approved" });
   if (stageId === "youtube_publish" && before !== "completed" && after === "completed") definitions.push({ key: "publish", pointer: "latest_publish", folder: "08_publish", step: "publish", title: "YouTube 게시 결과", status: "completed", approvalStatus: "approved" });
   if (stageId === "metrics" && before !== "completed" && after === "completed") definitions.push({ key: "metrics", pointer: "latest_metrics", folder: "09_metrics", step: "metrics", title: "YouTube 성과 스냅샷", status: "completed", approvalStatus: "not_required" });
@@ -640,6 +677,12 @@ function effectiveAsset(snapshot, payload) {
   const target = snapshot.state.stages[payload.stageId];
   if (payload.assetUrl || target.assetUrl) return payload.assetUrl || target.assetUrl;
   if (payload.stageId === "youtube_publish") return snapshot.state.stages.master_upload.assetUrl;
+  const stage = STAGE_BY_ID.get(payload.stageId);
+  for (const dependency of stage?.dependsOn || []) {
+    const dependencyAsset = snapshot.state.stages[dependency]?.assetUrl;
+    if (dependencyAsset) return dependencyAsset;
+  }
+  if (["thumbnail_evaluate", "thumbnail_approve"].includes(payload.stageId)) return snapshot.state.stages.thumbnail_generate.assetUrl;
   return null;
 }
 
@@ -652,6 +695,7 @@ function validateYoutubePublicUrl(value) {
 
 function validateManualCompletion(snapshot, payload) {
   if (payload.qualityConfirmed !== true) throw new Error("완료 기준을 확인했다는 체크가 필요합니다.");
+  if (payload.stageId === "thumbnail_approve" && !payload.assetUrl) throw new Error("사람이 선택한 최종 썸네일 Asset ID가 필요합니다.");
   if (ASSET_REQUIRED_STAGES.has(payload.stageId) && !effectiveAsset(snapshot, payload)) throw new Error("이 단계의 필수 산출물 asset:// ID를 연결해주세요.");
 }
 
@@ -680,7 +724,8 @@ function assertStageActionAllowed(state, stageId, action) {
 async function resolveInput(payload, snapshot) {
   const direct = String(payload.inputText || "").trim();
   const stage = STAGE_BY_ID.get(payload.stageId);
-  const sourcePaths = contentInputPaths(snapshot, stage);
+  const historyPaths = payload.stageId === "thumbnail_idea" ? recentThumbnailLearningPaths(snapshot) : [];
+  const sourcePaths = [...new Set([...contentInputPaths(snapshot, stage), ...historyPaths])];
   const sourceFiles = await Promise.all(sourcePaths.map(async (filePath) => ({
     filePath,
     source: await repositoryFile(snapshot.repository, filePath, snapshot.headSha, true),
@@ -771,6 +816,7 @@ async function saveStageResult(snapshot, payload, { output, status, assetUrl = n
 
 function webhookForProvider(provider) {
   return ({
+    thumbnail_worker: process.env.THUMBNAIL_WORKER_WEBHOOK_URL,
     render_worker: process.env.VIDEO_WORKER_WEBHOOK_URL,
     youtube: process.env.YOUTUBE_WORKER_WEBHOOK_URL,
     youtube_data: process.env.METRICS_WORKER_WEBHOOK_URL,
@@ -779,6 +825,7 @@ function webhookForProvider(provider) {
 
 function workerSecretForProvider(provider) {
   return ({
+    thumbnail_worker: process.env.THUMBNAIL_WORKER_SECRET,
     render_worker: process.env.VIDEO_WORKER_SECRET,
     youtube: process.env.YOUTUBE_WORKER_SECRET,
     youtube_data: process.env.METRICS_WORKER_SECRET,
@@ -787,6 +834,7 @@ function workerSecretForProvider(provider) {
 
 function callbackSecretForProvider(provider) {
   return ({
+    thumbnail_worker: process.env.THUMBNAIL_CALLBACK_SECRET,
     render_worker: process.env.VIDEO_CALLBACK_SECRET,
     youtube: process.env.YOUTUBE_CALLBACK_SECRET,
     youtube_data: process.env.METRICS_CALLBACK_SECRET,
@@ -846,10 +894,14 @@ async function queueExternalStage(snapshot, payload, extraFiles = []) {
         contentId: payload.contentId,
         stageId: payload.stageId,
         actor: payload.actor,
-        assetUrl: payload.assetUrl || null,
+        assetUrl: effectiveAsset(snapshot, payload),
         summary: payload.summary || null,
         parameters: payload.parameters || null,
-        assetRefs: snapshot.state.stages.master_upload.parameters?.assets || null,
+        assetRefs: {
+          ...(snapshot.state.stages.master_upload.parameters?.assets || {}),
+          thumbnailCandidates: snapshot.state.stages.thumbnail_generate.assetUrl || null,
+          approvedThumbnail: snapshot.state.stages.thumbnail_approve.assetUrl || null,
+        },
         publishSettings: payload.publishSettings || null,
         callbackUrl: workerCallbackUrl,
         repository: snapshot.repository,
@@ -981,9 +1033,10 @@ async function handleUserAction(payload) {
     if (!output && !payload.assetUrl) throw new Error("완료 내용 또는 산출물 자산 ID를 입력해주세요.");
     if (payload.stageId === "youtube_publish") validateYoutubePublicUrl(payload.assetUrl);
     const manualStatus = stage.humanGate ? "needs_decision" : "completed";
+    const resolvedAsset = ASSET_REQUIRED_STAGES.has(payload.stageId) ? effectiveAsset(snapshot, payload) : payload.assetUrl || null;
     const assets = payload.stageId === "master_upload" ? payload.parameters?.assets : null;
     const assetHandoff = assets ? `\n\n## 자산 인계\n\n- final_master: ${assets.master}\n- clean_srt: ${assets.subtitle}\n- thumbnail: ${assets.thumbnail || "선택 안 함"}` : "";
-    return saveStageResult(snapshot, payload, { output: `## 수동 작업 결과\n\n${output || "산출물 연결 완료"}${assetHandoff}\n\n## 수동 완료 기록\n\n- 완료 기준 확인: 예\n- 기록자: ${payload.actor}`, status: manualStatus, assetUrl: payload.assetUrl || null });
+    return saveStageResult(snapshot, payload, { output: `## 수동 작업 결과\n\n${output || "산출물 연결 완료"}${assetHandoff}\n\n## 수동 완료 기록\n\n- 완료 기준 확인: 예\n- 기록자: ${payload.actor}`, status: manualStatus, assetUrl: resolvedAsset });
   }
   if (payload.action !== "run") throw new Error("지원하지 않는 Automation 작업입니다.");
   if (payload.stageId === "metrics" && snapshot.state.stages.metrics.status === "completed") {
@@ -1002,7 +1055,7 @@ async function handleUserAction(payload) {
     const questions = extractQuestions(output);
     return saveStageResult(snapshot, { ...payload, questions }, { output, status: stage.humanGate ? "needs_decision" : questions.length ? "needs_input" : "completed", assetUrl: payload.assetUrl || null });
   }
-  if (["render_worker", "youtube", "youtube_data"].includes(stage.provider)) return queueExternalStage(snapshot, payload);
+  if (["thumbnail_worker", "render_worker", "youtube", "youtube_data"].includes(stage.provider)) return queueExternalStage(snapshot, payload);
   throw new Error("이 단계는 사람의 결과 등록이 필요합니다.");
 }
 
