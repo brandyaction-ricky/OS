@@ -169,10 +169,18 @@ class Repository:
         return self.process_step(process_id, str(next_step_id))
 
     def skill_document(self, skill_id: str) -> MarkdownDocument:
-        path = self.root / "04_skills" / skill_id / "SKILL.md"
-        if not path.is_file():
+        if not re.fullmatch(r"[a-z][a-z0-9-]{1,80}", skill_id):
+            raise BAError("E_SKILL_ID", f"올바르지 않은 Skill ID입니다: {skill_id}")
+        candidates: list[MarkdownDocument] = []
+        for path in sorted((self.root / "04_skills").rglob("SKILL.md")):
+            document = read_document(path)
+            if document.metadata.get("skill_id") == skill_id:
+                candidates.append(document)
+        if not candidates:
             raise BAError("E_SKILL_NOT_FOUND", f"Skill이 없습니다: {skill_id}")
-        return read_document(path)
+        if len(candidates) > 1:
+            raise BAError("E_SKILL_DUPLICATE", f"같은 ID의 Skill이 여러 개입니다: {skill_id}")
+        return candidates[0]
 
     def skill_dir(self, skill_id: str) -> Path:
         document = self.skill_document(skill_id)

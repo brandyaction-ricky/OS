@@ -1,5 +1,9 @@
 ---
 skill_id: brandyaction-video-ppt
+category_id: content-production
+category_label: 콘텐츠 제작
+folder_id: video
+folder_label: 영상 제작
 version: "1.0"
 process: longform
 step: edit
@@ -42,4 +46,3 @@ SRT 정리 → Deck 설계 → Image Prompt → Image Input → Render → CTA �
 ## HANDOFF
 
 `status: waiting_approval`, `approval_status: pending`으로 편집본 검수에 넘긴다.
-

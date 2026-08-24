@@ -45,6 +45,10 @@ class ValidationReport:
 class Validator:
     REQUIRED_SKILL_FIELDS = {
         "skill_id",
+        "category_id",
+        "category_label",
+        "folder_id",
+        "folder_label",
         "version",
         "process",
         "step",
@@ -73,11 +77,20 @@ class Validator:
             raise BAError("E_SCHEMA_FILE", f"Validator Schema를 읽을 수 없습니다: {exc}") from exc
         self.status_values = set(self.schema.get("status_values", []))
         self.approval_values = set(self.schema.get("approval_status_values", []))
+        category_path = repository.root / "04_skills" / "CATEGORIES.json"
+        try:
+            registry = json.loads(category_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise BAError("E_SKILL_CATEGORIES", f"Skill 카테고리 정의를 읽을 수 없습니다: {exc}") from exc
+        self.skill_categories = {
+            category["id"]: {folder["id"] for folder in category.get("folders", [])}
+            for category in registry.get("categories", [])
+        }
 
     def validate_repository(self) -> ValidationReport:
         paths: list[Path] = []
         paths.extend(sorted((self.repository.root / "05_contents").glob("*/**/*.md")))
-        paths.extend(sorted((self.repository.root / "04_skills").glob("*/SKILL.md")))
+        paths.extend(sorted((self.repository.root / "04_skills").rglob("SKILL.md")))
         paths.extend(sorted((self.repository.root / "03_processes").glob("*/PROCESS.md")))
         paths.extend(sorted((self.repository.root / "01_company" / "context").glob("*.md")))
         paths.extend(sorted((self.repository.root / "02_brands").glob("*/context/*.md")))
@@ -337,6 +350,20 @@ class Validator:
                     path,
                     f"Skill 폴더명과 skill_id {skill_id!r}가 다릅니다.",
                 )
+            )
+        category_id = metadata.get("category_id")
+        folder_id = metadata.get("folder_id")
+        if category_id not in self.skill_categories or folder_id not in self.skill_categories.get(category_id, set()):
+            report.issues.append(
+                ValidationIssue("E_SKILL_CATEGORY", path, "등록되지 않은 Skill 카테고리 또는 폴더입니다.")
+            )
+        try:
+            relative = path.relative_to(self.repository.root / "04_skills")
+        except ValueError:
+            relative = None
+        if relative and (len(relative.parts) < 4 or relative.parts[0] != category_id or relative.parts[1] != folder_id):
+            report.issues.append(
+                ValidationIssue("E_SKILL_CATEGORY_PATH", path, "Skill Frontmatter의 카테고리와 실제 폴더 경로가 다릅니다.")
             )
         for key in ("inputs", "outputs", "allowed_tools", "completion_checks"):
             if key in metadata and not isinstance(metadata[key], list):

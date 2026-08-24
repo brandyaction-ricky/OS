@@ -1,5 +1,9 @@
 ---
 skill_id: longform-script
+category_id: content-production
+category_label: 콘텐츠 제작
+folder_id: writing
+folder_label: 원고 · 카피
 version: "1.0"
 process: longform
 step: script
@@ -47,4 +51,3 @@ completion_checks: [output_exists, frontmatter_valid, human_review_required]
 ## HANDOFF
 
 두 파일 모두 대표 검수 상태로 Push한다.
-

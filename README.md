@@ -109,6 +109,8 @@ Raw Hub에서는 각 직원이 자기 실무 Raw를 실무 Wiki로, Company Raw 
 
 Skill Markdown, Template, Check의 정본은 GitHub Repository다. Vercel은 이를 읽어 보여주고 `SKILL.md`로 내려받게 한다. 현재 규모에서는 별도 Skill 서버를 운영하지 않으며, 영상·음원·이미지 같은 대용량 자산만 Drive/NAS/Object Storage로 분리한다.
 
+Skill Library는 `04_skills/{category_id}/{folder_id}/{skill_id}` 구조로 관리한다. Process는 폴더 경로가 아니라 고유한 `skill_id`를 참조하므로 카테고리를 옮겨도 기존 공정 연결이 유지된다. 카테고리 목록과 표시 순서는 `04_skills/CATEGORIES.json`에서 관리한다.
+
 ```bash
 npm run build
 python3 -m http.server 8080 --directory web

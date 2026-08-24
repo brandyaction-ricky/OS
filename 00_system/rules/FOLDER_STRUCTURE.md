@@ -18,6 +18,20 @@ brandyaction-os/
 └─ tests/
 ```
 
+## Skill Library
+
+```text
+04_skills/
+├─ CATEGORIES.json
+└─ content-production/
+   ├─ planning/{skill_id}/
+   ├─ writing/{skill_id}/
+   ├─ video/{skill_id}/
+   └─ publishing/{skill_id}/
+```
+
+카테고리와 폴더는 탐색과 책임 영역을 표현하고, `skill_id`는 Process가 참조하는 고유 키로 유지한다. CLI는 경로를 하드코딩하지 않고 `SKILL.md`의 `skill_id`를 재귀 탐색한다.
+
 ## Raw / Wiki
 
 ```text

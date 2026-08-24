@@ -39,3 +39,7 @@ Raw는 검토 대기열이 아니라 작업 중 생긴 근거와 학습을 축�
 ## ADR-010 · Skill 파일 정본은 별도 서버가 아니라 Git Repository다
 
 Skill의 Markdown, Template, Check는 용량이 작고 변경 이력·비교·복구가 중요하다. 초기에는 GitHub Repository를 정본으로 유지하고 Vercel은 최신본을 읽어 보여주고 내려받게 하는 Projection과 Gateway 역할만 한다. MP4, WAV, PNG 같은 대용량 자산은 Skill에 넣지 않고 Drive, NAS 또는 Object Storage에 저장한다. 동시 편집과 세밀한 권한이 Git 운영 한계를 넘을 때만 별도 DB·서비스를 검토한다.
+
+## ADR-011 · Skill ID와 저장 폴더를 분리한다
+
+Skill이 늘어나면 `04_skills/{skill_id}` 평면 구조는 탐색과 책임 구분이 어렵다. 실제 파일은 `04_skills/{category_id}/{folder_id}/{skill_id}`에 보관하고 분류 정본은 `CATEGORIES.json`으로 관리한다. Process는 위치가 바뀌어도 변하지 않는 `skill_id`만 참조하며 CLI와 웹 빌드는 `SKILL.md`를 재귀 탐색한다. 이 방식은 폴더 재분류가 기존 공정을 깨뜨리는 문제를 막는다.

@@ -1,5 +1,9 @@
 ---
 skill_id: longform-axis
+category_id: content-production
+category_label: 콘텐츠 제작
+folder_id: planning
+folder_label: 기획 · 전략
 version: "1.0"
 process: longform
 step: axis
@@ -46,4 +50,3 @@ AI가 최종 축을 승인하지 않는다. 특정 콘텐츠의 결론을 Skill 
 ## HANDOFF
 
 `status: waiting_approval`, `approval_status: pending`으로 대표에게 넘긴다.
-

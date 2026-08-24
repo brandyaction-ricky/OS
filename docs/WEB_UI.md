@@ -20,7 +20,7 @@ Repository Markdown
 - 결재함: `waiting_approval` 또는 `review` 상태
 - Raw Hub: 개인·회사 Raw와 직접 Wiki 승격
 - Wiki: Company Wiki와 실무 Wiki 최신본, Raw 근거와 버전
-- Skill Library: Skill 목적, 적용 단계, 허용 도구, 절차, Output Contract, 품질 기준과 다운로드
+- Skill Library: 카테고리·하위 폴더 탐색, Skill 목적, 적용 단계, 허용 도구, 절차, Output Contract, 품질 기준과 다운로드
 
 ## 정본 규칙
 
@@ -41,7 +41,8 @@ Raw→Wiki에는 별도 검토·승인 절차가 없다. 이전 Wiki는 삭제�
 
 ## Skill 파일 저장 위치
 
-- 정본: GitHub의 `04_skills/{skill_id}/`
+- 정본: GitHub의 `04_skills/{category_id}/{folder_id}/{skill_id}/`
+- 분류 정본: `04_skills/CATEGORIES.json`
 - 화면 제공: Vercel Build가 최신 Skill을 읽어 Library UI와 다운로드 파일 생성
 - 대용량 자산: Drive, NAS, Object Storage 링크만 기록
 - 별도 서버: 동시 편집·세밀한 접근권한·검색량이 Git/Vercel 한계를 넘을 때 검토

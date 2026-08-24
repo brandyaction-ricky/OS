@@ -147,7 +147,7 @@ function quoteBlock(title, source) {
   return `\n\n---\n\n# ${title}\n\n${source.trim()}\n`;
 }
 
-async function writeWorkPackage(content, process, source, metadata) {
+async function writeWorkPackage(content, process, source, metadata, skillPathById) {
   if (checkOnly) return null;
   const step = process?.steps.find((item) => item.id === content.currentStep);
   if (!step) return null;
@@ -163,7 +163,7 @@ async function writeWorkPackage(content, process, source, metadata) {
   await addFile("브랜드 Context", `02_brands/${content.brandId}/context/BRAND.md`);
   await addFile("콘텐츠 현재 상태", `05_contents/${content.id}/CONTENT.md`);
   await addFile("공정 정의", `03_processes/${content.type}/PROCESS.md`);
-  if (step.skillId) await addFile("현재 단계 Skill", `04_skills/${step.skillId}/SKILL.md`);
+  if (step.skillId) await addFile("현재 단계 Skill", skillPathById.get(step.skillId));
   for (const pointer of step.inputPointers ?? []) {
     const relative = metadata[pointer];
     if (relative) await addFile(`입력 · ${pointer}`, `05_contents/${content.id}/${relative}`);
@@ -201,6 +201,8 @@ async function buildIndex() {
   const contentRoot = path.join(repositoryRoot, "05_contents");
   const rawRoot = path.join(repositoryRoot, "09_raw");
   const wikiRoot = path.join(repositoryRoot, "10_wiki");
+  const categorySource = await readFile(path.join(skillRoot, "CATEGORIES.json"), "utf8");
+  const categoryRegistry = JSON.parse(categorySource).categories ?? [];
 
   const processes = [];
   for (const processId of await directories(processRoot)) {
@@ -229,10 +231,16 @@ async function buildIndex() {
   }
 
   const skills = [];
-  for (const skillId of await directories(skillRoot)) {
-    const source = await readFile(path.join(skillRoot, skillId, "SKILL.md"), "utf8");
+  const skillPathById = new Map();
+  const skillFiles = (await markdownFiles(skillRoot)).filter((filePath) => path.basename(filePath) === "SKILL.md");
+  for (const skillPath of skillFiles) {
+    const source = await readFile(skillPath, "utf8");
     const { frontmatter, body } = splitMarkdown(source);
     const metadata = parseTopLevel(frontmatter);
+    const skillId = metadata.skill_id ?? path.basename(path.dirname(skillPath));
+    const relativeSkillPath = path.relative(skillRoot, skillPath).replaceAll(path.sep, "/");
+    if (skillPathById.has(skillId)) throw new Error(`중복 Skill ID입니다: ${skillId}`);
+    skillPathById.set(skillId, `04_skills/${relativeSkillPath}`);
     const process = processes.find((item) => item.id === metadata.process);
     const processStep = process?.steps.find((item) => item.id === metadata.step);
     if (!checkOnly) {
@@ -257,9 +265,27 @@ async function buildIndex() {
       handoff: sectionText(body, "HANDOFF"),
       owner: metadata.owner ?? processStep?.owner ?? "-",
       wikiSources: metadata.wiki_sources ?? [],
+      categoryId: metadata.category_id ?? "unclassified",
+      categoryLabel: metadata.category_label ?? "미분류",
+      folderId: metadata.folder_id ?? "general",
+      folderLabel: metadata.folder_label ?? "일반",
+      repositoryPath: `04_skills/${relativeSkillPath}`,
       downloadUrl: `/library/${skillId}/SKILL.md`,
     });
   }
+
+  const skillCategories = categoryRegistry
+    .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+    .map((category) => ({
+      ...category,
+      count: skills.filter((skill) => skill.categoryId === category.id).length,
+      folders: (category.folders ?? [])
+        .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+        .map((folder) => ({
+          ...folder,
+          count: skills.filter((skill) => skill.categoryId === category.id && skill.folderId === folder.id).length,
+        })),
+    }));
 
   const rawItems = [];
   for (const filePath of await markdownFiles(rawRoot)) {
@@ -337,7 +363,7 @@ async function buildIndex() {
         status: metadata[`${step.id}_status`] ?? "-",
       })),
     };
-    content.workPackageUrl = await writeWorkPackage(content, process, source, metadata);
+    content.workPackageUrl = await writeWorkPackage(content, process, source, metadata, skillPathById);
     contents.push(content);
   }
 
@@ -371,6 +397,7 @@ async function buildIndex() {
     contents,
     approvals,
     skills,
+    skillCategories,
     rawItems,
     wikiItems,
   };

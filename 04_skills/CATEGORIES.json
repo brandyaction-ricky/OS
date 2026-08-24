@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "categories": [
+    {
+      "id": "content-production",
+      "label": "콘텐츠 제작",
+      "icon": "▤",
+      "order": 1,
+      "folders": [
+        { "id": "planning", "label": "기획 · 전략", "order": 1 },
+        { "id": "writing", "label": "원고 · 카피", "order": 2 },
+        { "id": "video", "label": "영상 제작", "order": 3 },
+        { "id": "publishing", "label": "게시 · 배포", "order": 4 }
+      ]
+    },
+    {
+      "id": "marketing-growth",
+      "label": "마케팅 · 성장",
+      "icon": "↗",
+      "order": 2,
+      "folders": [
+        { "id": "campaign", "label": "캠페인", "order": 1 },
+        { "id": "crm", "label": "CRM", "order": 2 },
+        { "id": "funnel", "label": "퍼널", "order": 3 }
+      ]
+    },
+    {
+      "id": "company-operations",
+      "label": "회사 운영",
+      "icon": "◆",
+      "order": 3,
+      "folders": [
+        { "id": "meeting", "label": "회의", "order": 1 },
+        { "id": "decision", "label": "의사결정", "order": 2 },
+        { "id": "people", "label": "조직 · 인사", "order": 3 }
+      ]
+    },
+    {
+      "id": "data-analysis",
+      "label": "데이터 · 분석",
+      "icon": "▦",
+      "order": 4,
+      "folders": [
+        { "id": "kpi", "label": "KPI 분석", "order": 1 },
+        { "id": "report", "label": "리포트", "order": 2 }
+      ]
+    }
+  ]
+}

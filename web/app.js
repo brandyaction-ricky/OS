@@ -48,6 +48,7 @@ const statusLabels = {
 let index = null;
 let currentView = location.hash.replace("#", "") || "dashboard";
 let currentUser = localStorage.getItem("ba-os-user") || "ricky";
+let activeSkillFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "-")
@@ -232,18 +233,53 @@ function renderWiki() {
 }
 
 function renderSkills() {
-  app.innerHTML = `${knowledgeFlow("skills")}
-    <section class="storage-guide"><div><span>SKILL SOURCE OF TRUTH</span><strong>GitHub Cloud Repository</strong><p>Skill Markdown과 템플릿은 Git이 버전·복구를 관리하고, 이 화면은 최신본을 읽어 실행하기 쉽게 보여줍니다.</p></div><small>별도 Skill 서버 불필요 · 대용량 자산만 외부 Storage 사용</small></section>
-    ${sectionHead("Skill Library", "Wiki의 맥락을 읽어 실제 결과물을 만드는 실행 절차와 품질 기준")}
-    <div class="skill-grid">${index.skills.map((skill) => `
-      <article class="skill-card">
-        <header><div><span class="eyebrow">${escapeHtml(skill.process)} · ${escapeHtml(skill.step)}</span><h3>${escapeHtml(skill.id)}</h3></div><span class="tag">v${escapeHtml(skill.version)}</span></header>
+  const matchesFilter = (skill) => {
+    if (activeSkillFilter === "all") return true;
+    const [type, value] = activeSkillFilter.split(":");
+    if (type === "category") return skill.categoryId === value;
+    if (type === "folder") return `${skill.categoryId}/${skill.folderId}` === value;
+    return true;
+  };
+  const visibleSkills = index.skills.filter(matchesFilter);
+  const selectedCategory = index.skillCategories.find((category) => activeSkillFilter === `category:${category.id}` || activeSkillFilter.startsWith(`folder:${category.id}/`));
+  const selectedFolder = selectedCategory?.folders.find((folder) => activeSkillFilter === `folder:${selectedCategory.id}/${folder.id}`);
+  const selectedLabel = selectedFolder?.label || selectedCategory?.label || "전체 Skill";
+  const iconFor = (skill) => ({ planning: "◇", writing: "Aa", video: "▶", publishing: "↗" }[skill.folderId] || "✦");
+  const folderTree = index.skillCategories.map((category) => {
+    const isExpanded = category.count > 0 || activeSkillFilter === `category:${category.id}` || activeSkillFilter.startsWith(`folder:${category.id}/`);
+    return `
+    <div class="skill-tree-group ${isExpanded ? "is-expanded" : ""}">
+      <button class="skill-tree-category ${activeSkillFilter === `category:${category.id}` ? "is-active" : ""}" data-skill-filter="category:${escapeHtml(category.id)}"><span>${escapeHtml(category.icon)} ${escapeHtml(category.label)}</span><em>${category.count}</em></button>
+      ${isExpanded ? `<div class="skill-tree-folders">${category.folders.map((folder) => `<button class="skill-tree-folder ${activeSkillFilter === `folder:${category.id}/${folder.id}` ? "is-active" : ""}" data-skill-filter="folder:${escapeHtml(category.id)}/${escapeHtml(folder.id)}"><span>› ${escapeHtml(folder.label)}</span><em>${folder.count}</em></button>`).join("")}</div>` : ""}
+    </div>`;
+  }).join("");
+  const cards = visibleSkills.length ? `<div class="skill-file-grid">${visibleSkills.map((skill) => `
+    <article class="skill-file-card">
+      <div class="skill-file-icon">${escapeHtml(iconFor(skill))}</div>
+      <div class="skill-file-body">
+        <header><div><span>${escapeHtml(skill.categoryLabel)} / ${escapeHtml(skill.folderLabel)}</span><h3>${escapeHtml(skill.id)}</h3></div><i>v${escapeHtml(skill.version)}</i></header>
         <p>${escapeHtml(skill.purpose || "업무 수행 방법과 결과물 규격을 정의합니다.")}</p>
+        <div class="skill-file-meta"><span>담당 · ${escapeHtml(skill.owner)}</span><span>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</span><span>도구 ${skill.tools.length}개</span></div>
         <div class="chip-row">${skill.tools.map((tool) => `<span class="chip">${escapeHtml(tool)}</span>`).join("") || '<span class="chip">human</span>'}</div>
-        <div class="skill-links"><span>담당 · ${escapeHtml(skill.owner)}</span><span>연결 Wiki · ${skill.wikiSources.length}개</span></div>
-        <details class="skill-detail"><summary>실행 규격 보기</summary><div><strong>읽을 Context</strong><p>${escapeHtml(skill.readContext || "SKILL.md 참고")}</p><strong>작업 절차</strong><p>${escapeHtml(skill.procedure || "SKILL.md 참고")}</p><strong>Output Contract</strong><p>${escapeHtml(skill.outputContract || "SKILL.md 참고")}</p><strong>품질 기준</strong><p>${escapeHtml(skill.qualityCriteria || "SKILL.md 참고")}</p></div></details>
-        <footer class="skill-foot"><span>${escapeHtml(skill.status)}</span><a href="${escapeHtml(skill.downloadUrl)}" download>SKILL.md 받기 ↓</a></footer>
-      </article>`).join("")}</div>`;
+        <details class="skill-detail"><summary>실행 규격 펼치기</summary><div><strong>읽을 Context</strong><p>${escapeHtml(skill.readContext || "SKILL.md 참고")}</p><strong>작업 절차</strong><p>${escapeHtml(skill.procedure || "SKILL.md 참고")}</p><strong>Output Contract</strong><p>${escapeHtml(skill.outputContract || "SKILL.md 참고")}</p><strong>품질 기준</strong><p>${escapeHtml(skill.qualityCriteria || "SKILL.md 참고")}</p></div></details>
+        <footer><span>${escapeHtml(skill.repositoryPath)}</span><a href="${escapeHtml(skill.downloadUrl)}" download>SKILL.md 받기 ↓</a></footer>
+      </div>
+    </article>`).join("")}</div>` : emptyState("이 폴더에는 아직 Skill이 없습니다", "새 Skill이 등록되면 폴더에 자동으로 표시됩니다.");
+  const connectionRows = visibleSkills.map((skill) => `<tr><td><strong>${escapeHtml(skill.id)}</strong></td><td>${escapeHtml(skill.categoryLabel)} · ${escapeHtml(skill.folderLabel)}</td><td>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</td><td>${ownerBadge(skill.owner)}</td><td><span class="status" data-status="${escapeHtml(skill.status)}">${escapeHtml(statusLabel(skill.status))}</span></td></tr>`).join("");
+
+  app.innerHTML = `
+    <section class="skill-library-head"><div><p>SKILL LIBRARY</p><h2>업무 스킬</h2><span>AI와 직원이 업무를 수행할 때 사용하는 절차, 결과물 규격과 품질 기준을 폴더별로 관리합니다.</span></div><div class="skill-source"><small>SOURCE OF TRUTH</small><strong>GitHub Cloud</strong><span>버전 · 복구 · 이력 관리</span></div></section>
+    <div class="skill-library-layout">
+      <aside class="skill-tree-panel">
+        <button class="skill-tree-all ${activeSkillFilter === "all" ? "is-active" : ""}" data-skill-filter="all"><span>✦ 전체 Skill</span><em>${index.skills.length}</em></button>
+        ${folderTree}
+      </aside>
+      <section class="skill-browser">
+        <header class="skill-browser-head"><div><p>선택한 폴더</p><h2>${escapeHtml(selectedLabel)}</h2><span>${visibleSkills.length}개의 Skill</span></div><span class="folder-path">04_skills / ${escapeHtml(selectedCategory?.id || "all")}${selectedFolder ? ` / ${escapeHtml(selectedFolder.id)}` : ""}</span></header>
+        ${cards}
+        ${visibleSkills.length ? `<section class="skill-connection"><header><h2>공정 연결 현황</h2><p>각 Skill이 어떤 공정과 담당자에게 연결되어 있는지 확인합니다.</p></header><div class="panel table-wrap"><table class="table"><thead><tr><th>Skill</th><th>폴더</th><th>연결 공정</th><th>담당자</th><th>상태</th></tr></thead><tbody>${connectionRows}</tbody></table></div></section>` : ""}
+      </section>
+    </div>`;
 }
 
 function render() {
@@ -420,6 +456,11 @@ function bindEvents() {
     if (viewTarget) location.hash = viewTarget.dataset.go;
     const promoteTarget = event.target.closest("[data-promote-id]");
     if (promoteTarget) openPromoteModal(promoteTarget.dataset.promoteId);
+    const skillFilter = event.target.closest("[data-skill-filter]");
+    if (skillFilter) {
+      activeSkillFilter = skillFilter.dataset.skillFilter;
+      renderSkills();
+    }
   });
   drawerContent.addEventListener("click", (event) => {
     const submitTarget = event.target.closest("[data-submit-mode]");

@@ -1,5 +1,9 @@
 ---
 skill_id: publish-copy
+category_id: content-production
+category_label: 콘텐츠 제작
+folder_id: publishing
+folder_label: 게시 · 배포
 version: "1.0"
 process: longform
 step: publish
@@ -45,4 +49,3 @@ completion_checks: [output_exists, frontmatter_valid, human_approval_required]
 ## HANDOFF
 
 `status: waiting_approval`, `approval_status: pending`으로 업로드 승인에 넘긴다.
-
