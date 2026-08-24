@@ -1,53 +1,54 @@
 ---
 skill_id: longform-script
+skill_type: os_context_loader
 category_id: content-production
 category_label: 콘텐츠 제작
 folder_id: writing
 folder_label: 원고 · 카피
-version: "1.0"
+version: "2.0"
 process: longform
 step: script
 status: active
-inputs: [content_context, approved_axis, company_rules]
-outputs: [script_md, reading_script_md]
-allowed_tools: [claude_code, codex]
-completion_checks: [output_exists, frontmatter_valid, human_review_required]
+wiki_sources: [longform-script, os-knowledge-model]
+inputs: [content_id]
+outputs: [context_bundle]
+allowed_tools: [claude_code, codex, chatgpt]
+completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_recorded]
 ---
 
-# Longform Script
+# Longform Script Context Loader
 
 ## PURPOSE
 
-승인된 축을 바꾸지 않고 설계표, 원고, 낭독본을 만든다.
+롱폼 원고 작업에 필요한 최신 Wiki, 승인된 축과 현재 Content Run 데이터만 회사 OS에서 불러온다.
 
 ## READ CONTEXT
 
-`CONTEXT.md`, 승인된 Package와 Axis, Company Context, Brand Context를 읽는다.
+`CONTENT.md`, Longform Process, `longform-script` 최신 Process Wiki, Company/Brand Wiki, 승인된 Package·Axis를 읽는다.
 
 ## PROCEDURE
 
-1. 승인된 축과 바꾸면 안 되는 핵심 문장을 확인한다.
-2. 시청자의 기존 믿음에서 새 결론까지 설득 구조를 만든다.
-3. 실제 근거와 사례만 사용해 원고 초안을 쓴다.
-4. 주장, 톤, 난이도, 분량, CTA를 점검한다.
-5. 촬영자가 읽기 좋은 낭독본으로 분리한다.
+1. 사용자가 지정한 `content_id`의 현재 상태를 확인한다.
+2. 현재 공정과 step이 `longform/script`인지 확인한다.
+3. `wiki_sources`의 `is_latest: true` 버전만 불러온다.
+4. 승인된 Package와 Axis 최신 포인터를 해석한다.
+5. 출처와 버전을 포함한 Context Bundle을 반환한다.
 
 ## OUTPUT CONTRACT
 
-`script_vN.md`, `reading_script_vN.md` 두 파일을 만들며 각 파일은 자신의 직전 버전보다 1 증가한다.
+원고를 직접 만들지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다. 각 항목에 source path, wiki version과 loaded_at을 기록한다.
 
 ## QUALITY CRITERIA
 
-- 승인된 축을 유지한다.
-- 처음 듣는 사람도 이해할 수 있다.
-- 주장마다 실제 설득 재료가 있다.
-- 목표 말투와 분량을 지킨다.
-- 두 산출물의 핵심 내용이 일치한다.
+- 승인된 축과 최신 원고 기준 Wiki를 포함한다.
+- 요청한 Content ID의 입력만 포함한다.
+- 개인 Raw는 불러오지 않는다.
+- 모든 Context의 출처와 버전을 확인할 수 있다.
 
 ## DO NOT
 
-승인된 축 임의 변경, 경험 창작, 출처 없는 수치 생성, 기존 파일 덮어쓰기를 금지한다.
+원고 내용을 임의로 작성하거나 Wiki를 수정하지 않는다. 개인 Obsidian의 Raw에 접근하지 않는다.
 
 ## HANDOFF
 
-두 파일 모두 대표 검수 상태로 Push한다.
+Context Bundle을 사용자의 AI에 전달해 원고와 낭독본 생성을 시작한다.

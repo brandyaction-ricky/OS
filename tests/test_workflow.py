@@ -115,7 +115,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue((result.workspace / "input" / "latest_shoot" / "shoot_v1.md").is_file())
 
         skill = self.service.skill("BA-0268", "brandyaction-video-ppt")
-        self.assertEqual(skill["version"], "1.0")
+        self.assertEqual(skill["version"], "2.0")
 
         output = result.workspace / "output" / "edit_v1.md"
         document = read_document(output)

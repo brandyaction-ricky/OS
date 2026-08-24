@@ -7,10 +7,11 @@ BrandyAction OS의 Git + Markdown 기반 Source of Truth와 로컬 실행 환경
 ## 핵심 구조
 
 - **OS Repository**: 회사 맥락, 상태, 결재, 버전의 정본
-- **Skill**: Context + Procedure + Output Contract + Quality Criteria
-- **Local Workspace**: Claude Code, Codex, Obsidian, Premiere 등 실제 실행 환경
+- **Company Wiki**: 회사 공정과 AI가 참고하는 최신 공유 정본
+- **OS Access Skill**: 현재 업무에 필요한 Wiki와 데이터를 불러오는 Context Loader
+- **Personal Obsidian**: 개인 Raw, 개인 Wiki와 AI 작업 맥락
+- **Local Workspace**: Claude Code, Codex, ChatGPT, Obsidian, Premiere 등 실제 실행 환경
 - **BA CLI**: Pull → Work → Validate → Push 동기화 계층
-- **Raw / Wiki**: 직원·회사 원본 기록을 작성자가 직접 버전형 Wiki로 승격
 
 `CONTENT.md`는 현재 상태와 최신 산출물 포인터를 갖는 가변 인덱스다. 실제 산출물은 `*_vN.md`로 누적하며 본문을 덮어쓰지 않는다. 새 버전 생성 시 이전 버전에 허용되는 유일한 변경은 `is_latest: true`를 `false`로 전환하는 것이다.
 
@@ -99,15 +100,15 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 - 내가 할 일
 - 콘텐츠 Run
 - 결재함
-- Raw Hub
-- Company Wiki / 실무 Wiki
-- Skill Library
+- 직원 워크스페이스
+- Company Wiki
+- OS Access Skills
 
 웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출 → 승인 요청`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. CLI 방식도 고급 사용자와 자동화를 위해 계속 지원한다.
 
-Raw Hub에서는 각 직원이 자기 실무 Raw를 실무 Wiki로, Company Raw 작성자가 Company Wiki로 직접 승격한다. 별도 검토·승인 절차는 없으며 Raw 원본은 그대로 남고 Wiki 새 버전과 Git 이력이 생성된다. 이 규칙은 콘텐츠 제작 공정의 최종 승인과는 별개다.
+각 직원의 Raw와 개인 전용 Wiki는 개인 Obsidian에 둔다. 회사 OS의 직원 Workspace에는 담당 공정, 현재 업무, 공유 Wiki와 Access Skill 연결만 저장한다. 회사에 공유하기로 선택한 Wiki는 `company`, `process`, `people` 영역의 최신 정본으로 관리한다.
 
-Skill Markdown, Template, Check의 정본은 GitHub Repository다. Vercel은 이를 읽어 보여주고 `SKILL.md`로 내려받게 한다. 현재 규모에서는 별도 Skill 서버를 운영하지 않으며, 영상·음원·이미지 같은 대용량 자산만 Drive/NAS/Object Storage로 분리한다.
+Access Skill Markdown의 정본은 GitHub Repository다. Skill은 업무 결과물을 직접 만들지 않고 최신 Company Wiki, Content Run과 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 실행과 판단은 각자의 AI와 사람이 담당한다.
 
 Skill Library는 `04_skills/{category_id}/{folder_id}/{skill_id}` 구조로 관리한다. Process는 폴더 경로가 아니라 고유한 `skill_id`를 참조하므로 카테고리를 옮겨도 기존 공정 연결이 유지된다. 카테고리 목록과 표시 순서는 `04_skills/CATEGORIES.json`에서 관리한다.
 

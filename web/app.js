@@ -3,7 +3,7 @@ const pageTitle = document.querySelector("#page-title");
 const userSelect = document.querySelector("#user-select");
 const taskCount = document.querySelector("#task-count");
 const approvalCount = document.querySelector("#approval-count");
-const rawCount = document.querySelector("#raw-count");
+const peopleCount = document.querySelector("#people-count");
 const syncTime = document.querySelector("#sync-time");
 const sidebar = document.querySelector("#sidebar");
 const drawer = document.querySelector("#drawer");
@@ -13,19 +13,15 @@ const submitModal = document.querySelector("#submit-modal");
 const submitBackdrop = document.querySelector("#submit-backdrop");
 const submitForm = document.querySelector("#submit-form");
 const submitFeedback = document.querySelector("#submit-feedback");
-const promoteModal = document.querySelector("#promote-modal");
-const promoteBackdrop = document.querySelector("#promote-backdrop");
-const promoteForm = document.querySelector("#promote-form");
-const promoteFeedback = document.querySelector("#promote-feedback");
 
 const viewTitles = {
   dashboard: "전체 업무 공정",
   tasks: "내가 할 일",
   contents: "콘텐츠 Run",
   approvals: "결재함",
-  raw: "Raw Hub",
-  wiki: "Wiki",
-  skills: "Skill Library",
+  people: "직원 워크스페이스",
+  wiki: "Company Wiki",
+  skills: "OS Access Skills",
 };
 
 const statusLabels = {
@@ -41,14 +37,13 @@ const statusLabels = {
   archived: "보관",
   locked: "잠김",
   active: "활성",
-  raw: "Raw",
-  promoted: "Wiki 승격됨",
 };
 
 let index = null;
 let currentView = location.hash.replace("#", "") || "dashboard";
 let currentUser = localStorage.getItem("ba-os-user") || "ricky";
 let activeSkillFilter = "all";
+let activeWikiFilter = "all";
 
 function escapeHtml(value) {
   return String(value ?? "-")
@@ -144,21 +139,32 @@ function processFlow(process, content) {
   </div>`;
 }
 
+function osContextFlow() {
+  return `<div class="os-context-flow">
+    <article><i>01</i><span>PERSONAL</span><strong>개인 Obsidian</strong><p>Raw와 개인 Wiki를 자유롭게 관리</p></article><b>→</b>
+    <article><i>02</i><span>SHARED TRUTH</span><strong>Company Wiki</strong><p>공정에서 사용할 최신 정본만 공유</p></article><b>→</b>
+    <article><i>03</i><span>ACCESS</span><strong>OS Access Skill</strong><p>업무에 필요한 Wiki와 데이터 호출</p></article><b>→</b>
+    <article><i>04</i><span>EXECUTION</span><strong>각자의 AI</strong><p>불러온 맥락으로 실제 결과물 생성</p></article><b>→</b>
+    <article><i>05</i><span>VERSIONED OUTPUT</span><strong>Content Run</strong><p>결과와 상태를 회사 OS에 기록</p></article>
+  </div>`;
+}
+
 function renderDashboard() {
   const summary = index.summary;
   const lead = index.contents[0];
   const process = dominantProcess();
   app.innerHTML = `
     <section class="hero">
-      <div class="hero-copy"><p class="hero-kicker">CONTEXT & CONTROL LAYER</p><h2>회사의 일을 하나의 흐름으로</h2><p>최신 맥락, 작업 상태, 승인, 버전을 Git + Markdown 정본으로 관리합니다.</p></div>
+      <div class="hero-copy"><p class="hero-kicker">SHARED CONTEXT OPERATING SYSTEM</p><h2>각자의 맥락을 회사의 실행력으로</h2><p>개인 Obsidian에서 정리한 Wiki를 회사 공정과 연결하고, 각자의 AI가 필요한 최신 맥락을 불러와 일하게 합니다.</p></div>
       <div class="hero-side"><strong>${summary.activeCount}</strong><span>현재 진행 중인 Content Run</span></div>
     </section>
     <section class="stat-grid">
-      <article class="stat-card"><header><span>전체 콘텐츠</span><i>▤</i></header><strong>${summary.contentCount}</strong><small>Repository 기준</small></article>
       <article class="stat-card"><header><span>진행 중</span><i>→</i></header><strong>${summary.activeCount}</strong><small>완료·보관 제외</small></article>
-      <article class="stat-card"><header><span>승인 대기</span><i>◇</i></header><strong>${summary.approvalCount}</strong><small>대표 의사결정 필요</small></article>
-      <article class="stat-card"><header><span>Skill</span><i>✦</i></header><strong>${summary.skillCount}</strong><small>활성 Skill Library</small></article>
+      <article class="stat-card"><header><span>직원 Workspace</span><i>◫</i></header><strong>${summary.peopleCount}</strong><small>업무·Wiki·Skill 연결</small></article>
+      <article class="stat-card"><header><span>공유 Wiki</span><i>▣</i></header><strong>${summary.wikiCount}</strong><small>회사 OS 최신 정본</small></article>
+      <article class="stat-card"><header><span>Access Skill</span><i>✦</i></header><strong>${summary.skillCount}</strong><small>맥락 불러오기 규칙</small></article>
     </section>
+    <section class="section">${sectionHead("OS가 일하는 방식", "개인의 맥락 관리와 회사 공정 실행을 분리하고 최신 Wiki로 연결합니다.")}${osContextFlow()}</section>
     <section class="section">${sectionHead("Longform 전체 공정", "기획부터 성과 회수까지의 표준 공정")}${processFlow(process, lead)}</section>
     <section class="section">${sectionHead("최근 Content Run", "최근 업데이트된 업무부터 표시합니다.", '<button data-go="contents">전체 보기 →</button>')}${contentTable(index.contents.slice(0, 5))}</section>`;
 }
@@ -186,50 +192,48 @@ function renderApprovals() {
   app.innerHTML = `${sectionHead("결재함", "검수 또는 승인 상태인 Content Run만 표시합니다.")}${index.approvals.length ? contentTable(index.approvals) : emptyState("대기 중인 결재가 없습니다", "승인 요청이 Push되면 자동으로 표시됩니다.")}`;
 }
 
-function knowledgeFlow(active) {
-  return `<section class="knowledge-flow" aria-label="지식이 실행 규격이 되는 흐름">
-    <div class="flow-node ${active === "raw" ? "is-active" : ""}"><span>01</span><strong>Raw</strong><small>개인·회사 작업 기록</small></div><i>→</i>
-    <div class="flow-node ${active === "wiki" ? "is-active" : ""}"><span>02</span><strong>Wiki</strong><small>현재 재사용할 정본</small></div><i>→</i>
-    <div class="flow-node ${active === "skills" ? "is-active" : ""}"><span>03</span><strong>Skill</strong><small>실행 절차와 품질 기준</small></div>
-  </section>`;
+function renderPeople() {
+  const cards = index.people.map((person) => `
+    <article class="person-workspace ${person.id === currentUser ? "is-mine" : ""}">
+      <header><div class="person-identity"><i>${escapeHtml(initials(person.id))}</i><div><span>${person.id === currentUser ? "MY WORKSPACE" : "EMPLOYEE WORKSPACE"}</span><h3>${escapeHtml(person.id)}</h3><p>${escapeHtml(person.role)}</p></div></div>${statusBadge(person.status)}</header>
+      <div class="workspace-stats"><div><strong>${person.currentTasks.length}</strong><span>현재 업무</span></div><div><strong>${person.assignedSteps.length}</strong><span>담당 Step</span></div><div><strong>${person.wikiCount}</strong><span>공유 Wiki</span></div><div><strong>${person.skillIds.length}</strong><span>Access Skill</span></div></div>
+      <div class="workspace-section"><strong>담당 업무</strong><div class="workspace-chips">${person.assignedSteps.map((step) => `<span>${escapeHtml(step.process)} · ${escapeHtml(step.label)}</span>`).join("") || "<span>미지정</span>"}</div></div>
+      <div class="workspace-section"><strong>연결 Access Skill</strong><div class="workspace-chips">${person.skillIds.map((skillId) => `<span class="is-skill">${escapeHtml(skillId)}</span>`).join("") || "<span>연결 없음</span>"}</div></div>
+      <footer><span>${escapeHtml(person.path)}</span>${person.currentTasks.length ? `<button data-content-id="${escapeHtml(person.currentTasks[0].id)}">현재 업무 열기 →</button>` : "<small>현재 배정 업무 없음</small>"}</footer>
+    </article>`).join("");
+  app.innerHTML = `
+    <section class="workspace-head"><div><p>PEOPLE & CONTEXT</p><h2>직원별 업무 폴더</h2><span>개인 Obsidian의 Raw는 가져오지 않고, 회사에 공유한 Wiki와 담당 공정·Access Skill만 연결합니다.</span></div><div class="personal-boundary"><strong>개인 영역</strong><span>Raw · 개인 Wiki · 개인 AI</span><i>공유 경계 → Company Wiki</i></div></section>
+    <div class="person-grid">${cards}</div>`;
 }
 
-function rawCards(items) {
-  if (!items.length) return emptyState("Raw가 없습니다", "작업 기록을 추가하면 이곳에 표시됩니다.");
-  return `<div class="knowledge-grid">${items.map((raw) => {
-    const canPromote = raw.owner === currentUser;
-    return `<article class="knowledge-card">
-      <header><div><span class="eyebrow">${escapeHtml(raw.scope === "company" ? "COMPANY RAW" : `${raw.owner} RAW`)}</span><h3>${escapeHtml(raw.title)}</h3></div>${statusBadge(raw.status)}</header>
-      <p>${escapeHtml(raw.excerpt)}</p>
-      <div class="knowledge-meta"><span>분류 · ${escapeHtml(raw.category)}</span><span>v${escapeHtml(raw.version)}</span><span>${escapeHtml(formatDate(raw.updatedAt))}</span></div>
-      <footer>${ownerBadge(raw.owner)}<button class="promote-action" data-promote-id="${escapeHtml(raw.id)}" ${canPromote ? "" : "disabled"}>${canPromote ? "Wiki로 승격 →" : `${escapeHtml(raw.owner)}만 승격 가능`}</button></footer>
-      ${raw.promotedTo ? `<small class="provenance">현재 연결 · ${escapeHtml(raw.promotedTo)}</small>` : ""}
-    </article>`;
-  }).join("")}</div>`;
-}
-
-function renderRaw() {
-  const mine = index.rawItems.filter((item) => item.scope !== "company" && item.owner === currentUser);
-  const company = index.rawItems.filter((item) => item.scope === "company");
-  app.innerHTML = `${knowledgeFlow("raw")}
-    <section class="section">${sectionHead("내 Raw", "실무 중 생긴 메모와 시행착오를 쌓고, 재사용할 가치가 생기면 직접 Wiki로 승격합니다.")}${rawCards(mine)}</section>
-    <section class="section">${sectionHead("Company Raw", "운영, 의사결정 과정, 회의록과 데이터의 근거 자료입니다.")}${rawCards(company)}</section>`;
+function wikiTypeLabel(type) {
+  return ({ company: "회사 공통", process: "공정 Wiki", people: "직원 공유 Wiki" })[type] || type;
 }
 
 function wikiCards(items) {
-  if (!items.length) return emptyState("Wiki가 없습니다", "Raw를 승격하면 최신 Wiki가 이곳에 표시됩니다.");
-  return `<div class="knowledge-grid">${items.map((wiki) => `<article class="knowledge-card wiki-card">
-    <header><div><span class="eyebrow">${escapeHtml(wiki.wikiType === "company" ? "COMPANY WIKI" : "PRACTICE WIKI")}</span><h3>${escapeHtml(wiki.title)}</h3></div><span class="version-pill">v${escapeHtml(wiki.version)}</span></header>
-    <p>${escapeHtml(wiki.excerpt)}</p>
-    <div class="knowledge-meta"><span>분류 · ${escapeHtml(wiki.category)}</span><span>승격자 · ${escapeHtml(wiki.promotedBy)}</span><span>${escapeHtml(formatDate(wiki.promotedAt))}</span></div>
-    <footer>${ownerBadge(wiki.owner)}<span class="source-count">Raw 근거 ${wiki.sourceIds.length}개</span></footer>
+  if (!items.length) return emptyState("이 폴더에는 아직 Wiki가 없습니다", "개인 Obsidian에서 공유할 가치가 있는 Wiki만 회사 OS에 연결합니다.");
+  return `<div class="wiki-file-grid">${items.map((wiki) => `<article class="wiki-file-card">
+    <div class="wiki-file-icon">${wiki.wikiType === "process" ? "▦" : wiki.wikiType === "people" ? "♙" : "◆"}</div>
+    <div><header><span>${escapeHtml(wikiTypeLabel(wiki.wikiType))} · ${escapeHtml(wiki.category)}</span><h3>${escapeHtml(wiki.title)}</h3></header><p>${escapeHtml(wiki.excerpt)}</p>
+    <div class="wiki-file-meta"><span>owner · ${escapeHtml(wiki.owner)}</span>${wiki.process ? `<span>${escapeHtml(wiki.process)} / ${escapeHtml(wiki.step)}</span>` : ""}<span>v${escapeHtml(wiki.version)} · ${escapeHtml(formatDate(wiki.updatedAt))}</span></div>
+    <footer><span>${escapeHtml(wiki.path)}</span><i>최신 정본</i></footer></div>
   </article>`).join("")}</div>`;
 }
 
 function renderWiki() {
-  app.innerHTML = `${knowledgeFlow("wiki")}
-    <section class="section">${sectionHead("Company Wiki", "현재 회사가 따라야 할 확정된 운영 기준과 의사결정입니다.")}${wikiCards(index.wikiItems.filter((item) => item.wikiType === "company"))}</section>
-    <section class="section">${sectionHead("실무 Wiki", "직원이 반복해서 재사용할 수 있는 검증된 실무 지식입니다.")}${wikiCards(index.wikiItems.filter((item) => item.wikiType !== "company"))}</section>`;
+  const types = [
+    { id: "company", label: "회사 공통", icon: "◆", description: "전 직원이 공통으로 참고하는 기준" },
+    { id: "process", label: "공정 Wiki", icon: "▦", description: "각 공정단의 최신 실무 정본" },
+    { id: "people", label: "직원 공유 Wiki", icon: "♙", description: "개인이 회사에 공유한 역할별 지식" },
+  ];
+  const visible = activeWikiFilter === "all" ? index.wikiItems : index.wikiItems.filter((wiki) => wiki.wikiType === activeWikiFilter);
+  const selected = types.find((type) => type.id === activeWikiFilter);
+  app.innerHTML = `
+    <section class="workspace-head"><div><p>COMPANY SOURCE OF TRUTH</p><h2>Company Wiki</h2><span>공정과 AI가 참조하는 최신 정본입니다. 개인 Raw는 이곳에 저장하지 않습니다.</span></div><div class="skill-source"><small>VERSION RULE</small><strong>Latest Wiki Only</strong><span>이전 버전은 Git 이력으로 보존</span></div></section>
+    <div class="wiki-library-layout"><aside class="wiki-tree-panel">
+      <button class="wiki-tree-item ${activeWikiFilter === "all" ? "is-active" : ""}" data-wiki-filter="all"><span>▣ 전체 Wiki</span><em>${index.wikiItems.length}</em></button>
+      ${types.map((type) => `<button class="wiki-tree-item ${activeWikiFilter === type.id ? "is-active" : ""}" data-wiki-filter="${escapeHtml(type.id)}"><span>${type.icon} ${escapeHtml(type.label)}<small>${escapeHtml(type.description)}</small></span><em>${index.wikiItems.filter((wiki) => wiki.wikiType === type.id).length}</em></button>`).join("")}
+    </aside><section class="skill-browser"><header class="skill-browser-head"><div><p>선택한 정본</p><h2>${escapeHtml(selected?.label || "전체 Wiki")}</h2><span>${visible.length}개의 최신 Wiki</span></div><span class="folder-path">10_wiki / ${escapeHtml(selected?.id || "all")}</span></header>${wikiCards(visible)}</section></div>`;
 }
 
 function renderSkills() {
@@ -243,7 +247,7 @@ function renderSkills() {
   const visibleSkills = index.skills.filter(matchesFilter);
   const selectedCategory = index.skillCategories.find((category) => activeSkillFilter === `category:${category.id}` || activeSkillFilter.startsWith(`folder:${category.id}/`));
   const selectedFolder = selectedCategory?.folders.find((folder) => activeSkillFilter === `folder:${selectedCategory.id}/${folder.id}`);
-  const selectedLabel = selectedFolder?.label || selectedCategory?.label || "전체 Skill";
+  const selectedLabel = selectedFolder?.label || selectedCategory?.label || "전체 Access Skill";
   const iconFor = (skill) => ({ planning: "◇", writing: "Aa", video: "▶", publishing: "↗" }[skill.folderId] || "✦");
   const folderTree = index.skillCategories.map((category) => {
     const isExpanded = category.count > 0 || activeSkillFilter === `category:${category.id}` || activeSkillFilter.startsWith(`folder:${category.id}/`);
@@ -258,26 +262,26 @@ function renderSkills() {
       <div class="skill-file-icon">${escapeHtml(iconFor(skill))}</div>
       <div class="skill-file-body">
         <header><div><span>${escapeHtml(skill.categoryLabel)} / ${escapeHtml(skill.folderLabel)}</span><h3>${escapeHtml(skill.id)}</h3></div><i>v${escapeHtml(skill.version)}</i></header>
-        <p>${escapeHtml(skill.purpose || "업무 수행 방법과 결과물 규격을 정의합니다.")}</p>
-        <div class="skill-file-meta"><span>담당 · ${escapeHtml(skill.owner)}</span><span>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</span><span>도구 ${skill.tools.length}개</span></div>
+        <p>${escapeHtml(skill.purpose || "현재 업무에 필요한 최신 Wiki와 데이터를 회사 OS에서 불러옵니다.")}</p>
+        <div class="skill-file-meta"><span>담당 · ${escapeHtml(skill.owner)}</span><span>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</span><span>Wiki ${skill.wikiSources.length}개 연결</span></div>
         <div class="chip-row">${skill.tools.map((tool) => `<span class="chip">${escapeHtml(tool)}</span>`).join("") || '<span class="chip">human</span>'}</div>
-        <details class="skill-detail"><summary>실행 규격 펼치기</summary><div><strong>읽을 Context</strong><p>${escapeHtml(skill.readContext || "SKILL.md 참고")}</p><strong>작업 절차</strong><p>${escapeHtml(skill.procedure || "SKILL.md 참고")}</p><strong>Output Contract</strong><p>${escapeHtml(skill.outputContract || "SKILL.md 참고")}</p><strong>품질 기준</strong><p>${escapeHtml(skill.qualityCriteria || "SKILL.md 참고")}</p></div></details>
+        <details class="skill-detail"><summary>불러오기 규칙 펼치기</summary><div><strong>불러올 Context</strong><p>${escapeHtml(skill.readContext || "SKILL.md 참고")}</p><strong>호출 순서</strong><p>${escapeHtml(skill.procedure || "SKILL.md 참고")}</p><strong>Context 반환 계약</strong><p>${escapeHtml(skill.outputContract || "SKILL.md 참고")}</p><strong>검증 기준</strong><p>${escapeHtml(skill.qualityCriteria || "SKILL.md 참고")}</p></div></details>
         <footer><span>${escapeHtml(skill.repositoryPath)}</span><a href="${escapeHtml(skill.downloadUrl)}" download>SKILL.md 받기 ↓</a></footer>
       </div>
     </article>`).join("")}</div>` : emptyState("이 폴더에는 아직 Skill이 없습니다", "새 Skill이 등록되면 폴더에 자동으로 표시됩니다.");
-  const connectionRows = visibleSkills.map((skill) => `<tr><td><strong>${escapeHtml(skill.id)}</strong></td><td>${escapeHtml(skill.categoryLabel)} · ${escapeHtml(skill.folderLabel)}</td><td>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</td><td>${ownerBadge(skill.owner)}</td><td><span class="status" data-status="${escapeHtml(skill.status)}">${escapeHtml(statusLabel(skill.status))}</span></td></tr>`).join("");
+  const connectionRows = visibleSkills.map((skill) => `<tr><td><strong>${escapeHtml(skill.id)}</strong></td><td>${escapeHtml(skill.process)} / ${escapeHtml(skill.step)}</td><td>${skill.wikiSources.map((wikiId) => `<span class="mini-wiki">${escapeHtml(wikiId)}</span>`).join("")}</td><td>${ownerBadge(skill.owner)}</td><td><span class="status" data-status="${escapeHtml(skill.status)}">${escapeHtml(statusLabel(skill.status))}</span></td></tr>`).join("");
 
   app.innerHTML = `
-    <section class="skill-library-head"><div><p>SKILL LIBRARY</p><h2>업무 스킬</h2><span>AI와 직원이 업무를 수행할 때 사용하는 절차, 결과물 규격과 품질 기준을 폴더별로 관리합니다.</span></div><div class="skill-source"><small>SOURCE OF TRUTH</small><strong>GitHub Cloud</strong><span>버전 · 복구 · 이력 관리</span></div></section>
+    <section class="skill-library-head"><div><p>OS CONTEXT ACCESS</p><h2>OS Access Skills</h2><span>각자의 AI가 현재 공정에 필요한 최신 Company Wiki와 Content Run 데이터를 불러오는 연결 규칙입니다.</span></div><div class="skill-source"><small>SKILL ROLE</small><strong>Context Loader</strong><span>업무 실행·판단은 각자의 AI와 사람</span></div></section>
     <div class="skill-library-layout">
       <aside class="skill-tree-panel">
-        <button class="skill-tree-all ${activeSkillFilter === "all" ? "is-active" : ""}" data-skill-filter="all"><span>✦ 전체 Skill</span><em>${index.skills.length}</em></button>
+        <button class="skill-tree-all ${activeSkillFilter === "all" ? "is-active" : ""}" data-skill-filter="all"><span>✦ 전체 Access Skill</span><em>${index.skills.length}</em></button>
         ${folderTree}
       </aside>
       <section class="skill-browser">
         <header class="skill-browser-head"><div><p>선택한 폴더</p><h2>${escapeHtml(selectedLabel)}</h2><span>${visibleSkills.length}개의 Skill</span></div><span class="folder-path">04_skills / ${escapeHtml(selectedCategory?.id || "all")}${selectedFolder ? ` / ${escapeHtml(selectedFolder.id)}` : ""}</span></header>
         ${cards}
-        ${visibleSkills.length ? `<section class="skill-connection"><header><h2>공정 연결 현황</h2><p>각 Skill이 어떤 공정과 담당자에게 연결되어 있는지 확인합니다.</p></header><div class="panel table-wrap"><table class="table"><thead><tr><th>Skill</th><th>폴더</th><th>연결 공정</th><th>담당자</th><th>상태</th></tr></thead><tbody>${connectionRows}</tbody></table></div></section>` : ""}
+        ${visibleSkills.length ? `<section class="skill-connection"><header><h2>Wiki 호출 연결 현황</h2><p>각 Access Skill이 어떤 공정에서 어떤 최신 Wiki를 불러오는지 확인합니다.</p></header><div class="panel table-wrap"><table class="table"><thead><tr><th>Access Skill</th><th>사용 공정</th><th>불러오는 Wiki</th><th>담당자</th><th>상태</th></tr></thead><tbody>${connectionRows}</tbody></table></div></section>` : ""}
       </section>
     </div>`;
 }
@@ -286,10 +290,10 @@ function render() {
   if (!viewTitles[currentView]) currentView = "dashboard";
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
-  ({ dashboard: renderDashboard, tasks: renderTasks, contents: renderContents, approvals: renderApprovals, raw: renderRaw, wiki: renderWiki, skills: renderSkills })[currentView]();
+  ({ dashboard: renderDashboard, tasks: renderTasks, contents: renderContents, approvals: renderApprovals, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
   taskCount.textContent = tasksForUser().length;
   approvalCount.textContent = index.approvals.length;
-  rawCount.textContent = index.rawItems.filter((item) => item.owner === currentUser && item.status === "raw").length;
+  peopleCount.textContent = index.people.length;
   sidebar.classList.remove("is-open");
 }
 
@@ -342,50 +346,6 @@ function closeSubmitModal() {
   submitModal.classList.remove("is-open");
   submitModal.setAttribute("aria-hidden", "true");
   submitBackdrop.hidden = true;
-}
-
-function openPromoteModal(rawId) {
-  const raw = index.rawItems.find((item) => item.id === rawId);
-  if (!raw || raw.owner !== currentUser) return;
-  document.querySelector("#promote-raw-id").value = raw.id;
-  document.querySelector("#promote-raw-path").value = raw.path;
-  document.querySelector("#promote-description").textContent = `${raw.title} · ${raw.owner} → ${raw.scope === "company" ? "Company Wiki" : "실무 Wiki"}`;
-  document.querySelector("#promote-secret").value = sessionStorage.getItem("ba-os-push-secret") || "";
-  promoteFeedback.textContent = "";
-  promoteFeedback.className = "submit-feedback";
-  promoteBackdrop.hidden = false;
-  promoteModal.classList.add("is-open");
-  promoteModal.setAttribute("aria-hidden", "false");
-  document.querySelector("#promote-summary").focus();
-}
-
-function closePromoteModal() {
-  promoteModal.classList.remove("is-open");
-  promoteModal.setAttribute("aria-hidden", "true");
-  promoteBackdrop.hidden = true;
-}
-
-async function promoteRaw(event) {
-  event.preventDefault();
-  const button = document.querySelector("#promote-button");
-  const secret = document.querySelector("#promote-secret").value;
-  button.disabled = true;
-  button.textContent = "Wiki 새 버전을 만드는 중…";
-  promoteFeedback.textContent = "";
-  try {
-    const response = await fetch("/api/promote", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${secret}` }, body: JSON.stringify({ rawId: document.querySelector("#promote-raw-id").value, rawPath: document.querySelector("#promote-raw-path").value, actor: currentUser, summary: document.querySelector("#promote-summary").value.trim() }) });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(result.error || "Wiki 승격에 실패했습니다.");
-    sessionStorage.setItem("ba-os-push-secret", secret);
-    promoteFeedback.textContent = `Wiki v${result.version} 생성 완료. 자동 배포 후 화면에 반영됩니다.`;
-    promoteFeedback.className = "submit-feedback is-success";
-    button.textContent = "승격 완료";
-  } catch (error) {
-    promoteFeedback.textContent = error.message;
-    promoteFeedback.className = "submit-feedback is-error";
-    button.disabled = false;
-    button.textContent = "검토 없이 Wiki로 승격";
-  }
 }
 
 async function submitWork(event) {
@@ -454,12 +414,15 @@ function bindEvents() {
     if (contentTarget) openDrawer(contentTarget.dataset.contentId);
     const viewTarget = event.target.closest("[data-go]");
     if (viewTarget) location.hash = viewTarget.dataset.go;
-    const promoteTarget = event.target.closest("[data-promote-id]");
-    if (promoteTarget) openPromoteModal(promoteTarget.dataset.promoteId);
     const skillFilter = event.target.closest("[data-skill-filter]");
     if (skillFilter) {
       activeSkillFilter = skillFilter.dataset.skillFilter;
       renderSkills();
+    }
+    const wikiFilter = event.target.closest("[data-wiki-filter]");
+    if (wikiFilter) {
+      activeWikiFilter = wikiFilter.dataset.wikiFilter;
+      renderWiki();
     }
   });
   drawerContent.addEventListener("click", (event) => {
@@ -471,9 +434,6 @@ function bindEvents() {
   document.querySelector("#submit-close").addEventListener("click", closeSubmitModal);
   submitBackdrop.addEventListener("click", closeSubmitModal);
   submitForm.addEventListener("submit", submitWork);
-  document.querySelector("#promote-close").addEventListener("click", closePromoteModal);
-  promoteBackdrop.addEventListener("click", closePromoteModal);
-  promoteForm.addEventListener("submit", promoteRaw);
   window.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
   window.addEventListener("hashchange", () => {
     currentView = location.hash.replace("#", "") || "dashboard";

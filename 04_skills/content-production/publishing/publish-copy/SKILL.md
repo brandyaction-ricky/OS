@@ -1,51 +1,54 @@
 ---
 skill_id: publish-copy
+skill_type: os_context_loader
 category_id: content-production
 category_label: 콘텐츠 제작
 folder_id: publishing
 folder_label: 게시 · 배포
-version: "1.0"
+version: "2.0"
 process: longform
 step: publish
 status: active
-inputs: [final_script, final_master_context, cta]
-outputs: [publish_md]
-allowed_tools: [claude_code, codex]
-completion_checks: [output_exists, frontmatter_valid, human_approval_required]
+wiki_sources: [longform-publish, os-knowledge-model]
+inputs: [content_id]
+outputs: [context_bundle]
+allowed_tools: [claude_code, codex, chatgpt]
+completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_recorded]
 ---
 
-# Publish Copy
+# Publish Context Loader
 
 ## PURPOSE
 
-최종 콘텐츠 맥락으로 게시 자산을 작성한다.
+게시 문안 생성에 필요한 최신 Wiki, 최종 승인본, 썸네일과 CTA 데이터를 회사 OS에서 불러온다.
 
 ## READ CONTEXT
 
-`CONTEXT.md`, 최종 승인 원고, 편집본, 썸네일, CTA, Company/Brand Context를 읽는다.
+`CONTENT.md`, Longform Process, `longform-publish` 최신 Process Wiki, 최종 승인 원고·편집본·썸네일·CTA와 Company/Brand Wiki를 읽는다.
 
 ## PROCEDURE
 
-1. 최종 승인된 핵심 약속과 CTA를 확인한다.
-2. 제목, 설명, 타임라인, 고정 댓글을 작성한다.
-3. 해시태그, 커뮤니티 글, 출처, UTM 제안을 작성한다.
-4. 영상과 게시문구의 사실 및 표현 일치를 점검한다.
+1. 사용자가 지정한 `content_id`의 현재 상태를 확인한다.
+2. 현재 공정과 step이 `longform/publish`인지 확인한다.
+3. `wiki_sources`의 `is_latest: true` 버전만 불러온다.
+4. 최종 승인 결과물과 CTA의 최신 포인터를 해석한다.
+5. 출처와 버전을 포함한 Context Bundle을 반환한다.
 
 ## OUTPUT CONTRACT
 
-`publish_vN.md`에 YouTube title, description, timeline, pinned comment, hashtags, community post, source section, UTM suggestion과 실제 게시 URL을 기록한다.
+게시 문안을 직접 확정하거나 게시하지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다.
 
 ## QUALITY CRITERIA
 
-- 최종 승인된 영상 내용과 일치한다.
-- CTA와 UTM을 추적할 수 있다.
-- 출처와 링크가 누락되지 않았다.
-- 사람이 승인한 후에만 게시 완료 상태로 바뀐다.
+- 최종 승인된 결과물과 최신 게시 Wiki를 포함한다.
+- CTA, 출처와 추적 가능한 UTM Context를 포함한다.
+- 개인 Raw는 불러오지 않는다.
+- 모든 Context의 출처와 버전을 확인할 수 있다.
 
 ## DO NOT
 
-사람 승인 전 실제 게시하지 않는다.
+실제 게시하거나 Wiki를 수정하지 않는다. 개인 Obsidian의 Raw에 접근하지 않는다.
 
 ## HANDOFF
 
-`status: waiting_approval`, `approval_status: pending`으로 업로드 승인에 넘긴다.
+Context Bundle을 게시 담당자의 AI에 전달해 게시 문안 생성을 시작한다.

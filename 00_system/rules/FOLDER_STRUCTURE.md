@@ -10,9 +10,8 @@ brandyaction-os/
 ├─ 05_contents/      # 실제 Content Run
 ├─ 06_meetings/
 ├─ 07_kpi/
-├─ 08_people/
-├─ 09_raw/           # 직원·회사 원본 기록 (승격 후에도 보존)
-├─ 10_wiki/          # Raw에서 직접 승격된 버전형 정본
+├─ 08_people/        # 직원별 공유 Workspace와 담당 업무 연결
+├─ 10_wiki/          # 회사·공정·직원 공유 Wiki 최신 정본
 ├─ bin/              # 설치 전 CLI 실행기
 ├─ src/              # BA CLI 구현
 └─ tests/
@@ -32,19 +31,19 @@ brandyaction-os/
 
 카테고리와 폴더는 탐색과 책임 영역을 표현하고, `skill_id`는 Process가 참조하는 고유 키로 유지한다. CLI는 경로를 하드코딩하지 않고 `SKILL.md`의 `skill_id`를 재귀 탐색한다.
 
-## Raw / Wiki
+## People / Wiki
 
 ```text
-09_raw/
-├─ people/{person}/
-└─ company/
+08_people/
+└─ {person}/WORKSPACE.md
 
 10_wiki/
-├─ practice/{wiki_id}/WIKI_vN.md
-└─ company/{wiki_id}/WIKI_vN.md
+├─ company/{wiki_id}/WIKI_vN.md
+├─ process/{process_id}/{step_id}/WIKI_vN.md
+└─ people/{person}/{wiki_id}/WIKI_vN.md
 ```
 
-직원은 자기 Raw를 실무 Wiki로, Company Raw 작성자는 Company Wiki로 별도 승인 없이 직접 승격한다. Raw는 근거로 남고 Wiki는 새 버전으로 누적된다.
+개인 Raw와 개인 전용 Wiki는 각자의 Obsidian에 둔다. 회사 OS에는 공유된 최신 Wiki, 직원별 담당 업무와 공정 연결만 저장한다.
 
 ## Content Run
 

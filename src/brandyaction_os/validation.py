@@ -45,6 +45,7 @@ class ValidationReport:
 class Validator:
     REQUIRED_SKILL_FIELDS = {
         "skill_id",
+        "skill_type",
         "category_id",
         "category_label",
         "folder_id",
@@ -94,10 +95,10 @@ class Validator:
         paths.extend(sorted((self.repository.root / "03_processes").glob("*/PROCESS.md")))
         paths.extend(sorted((self.repository.root / "01_company" / "context").glob("*.md")))
         paths.extend(sorted((self.repository.root / "02_brands").glob("*/context/*.md")))
-        paths.extend(sorted((self.repository.root / "09_raw" / "company").glob("**/*.md")))
-        paths.extend(sorted((self.repository.root / "09_raw" / "people").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "08_people").glob("*/WORKSPACE.md")))
         paths.extend(sorted((self.repository.root / "10_wiki" / "company").glob("**/*.md")))
-        paths.extend(sorted((self.repository.root / "10_wiki" / "practice").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "10_wiki" / "process").glob("**/*.md")))
+        paths.extend(sorted((self.repository.root / "10_wiki" / "people").glob("**/*.md")))
         report = self.validate_paths(paths)
         for content_id in self.repository.content_ids():
             report.extend(self.validate_content_integrity(content_id))
@@ -204,14 +205,12 @@ class Validator:
                         "Context status는 active 또는 archived여야 합니다.",
                     )
                 )
-        elif entity_type == "raw":
-            if metadata.get("scope") not in {"company", "person"}:
-                report.issues.append(ValidationIssue("E_RAW_SCOPE", path, "Raw scope은 company 또는 person이어야 합니다."))
-            if metadata.get("status") not in {"raw", "promoted", "archived"}:
-                report.issues.append(ValidationIssue("E_RAW_STATUS", path, "Raw status는 raw, promoted 또는 archived여야 합니다."))
+        elif entity_type == "person_workspace":
+            if metadata.get("status") not in {"active", "archived"}:
+                report.issues.append(ValidationIssue("E_WORKSPACE_STATUS", path, "직원 Workspace status는 active 또는 archived여야 합니다."))
         elif entity_type == "wiki":
-            if metadata.get("wiki_type") not in {"company", "practice"}:
-                report.issues.append(ValidationIssue("E_WIKI_TYPE", path, "wiki_type은 company 또는 practice여야 합니다."))
+            if metadata.get("wiki_type") not in {"company", "process", "people"}:
+                report.issues.append(ValidationIssue("E_WIKI_TYPE", path, "wiki_type은 company, process 또는 people이어야 합니다."))
             if metadata.get("status") not in {"active", "archived"}:
                 report.issues.append(ValidationIssue("E_WIKI_STATUS", path, "Wiki status는 active 또는 archived여야 합니다."))
 
@@ -342,6 +341,10 @@ class Validator:
             report.issues.append(
                 ValidationIssue("E_SKILL_STATUS", path, "Skill status가 올바르지 않습니다.")
             )
+        if metadata.get("skill_type") != "os_context_loader":
+            report.issues.append(
+                ValidationIssue("E_SKILL_TYPE", path, "Skill type은 os_context_loader여야 합니다.")
+            )
         skill_id = metadata.get("skill_id")
         if isinstance(skill_id, str) and path.parent.name != skill_id:
             report.issues.append(
@@ -365,7 +368,7 @@ class Validator:
             report.issues.append(
                 ValidationIssue("E_SKILL_CATEGORY_PATH", path, "Skill Frontmatter의 카테고리와 실제 폴더 경로가 다릅니다.")
             )
-        for key in ("inputs", "outputs", "allowed_tools", "completion_checks"):
+        for key in ("inputs", "outputs", "allowed_tools", "completion_checks", "wiki_sources"):
             if key in metadata and not isinstance(metadata[key], list):
                 report.issues.append(
                     ValidationIssue("E_SKILL_LIST", path, f"{key}는 목록이어야 합니다.")

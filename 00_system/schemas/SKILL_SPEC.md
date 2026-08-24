@@ -1,6 +1,6 @@
 # Skill Specification v1.0
 
-Skill은 결과물을 보관하는 곳이 아니라 특정 업무를 실행하기 위한 **Context + Procedure + Output Contract + Quality Criteria**다.
+Skill은 결과물을 만들거나 정본을 보관하는 곳이 아니다. 각자의 AI가 현재 공정에 필요한 **최신 Wiki + Content Run 데이터 + 입력 포인터**를 회사 OS에서 불러오기 위한 Context Loader다.
 
 ## 폴더
 
@@ -17,6 +17,7 @@ Skill은 결과물을 보관하는 곳이 아니라 특정 업무를 실행하�
 ```yaml
 ---
 skill_id: longform-script
+skill_type: os_context_loader
 category_id: content-production
 category_label: 콘텐츠 제작
 folder_id: writing
@@ -25,10 +26,11 @@ version: "1.0"
 process: longform
 step: script
 status: active
-inputs: [content_context, approved_axis, company_rules]
-outputs: [script_md, reading_script_md]
-allowed_tools: [claude_code, codex]
-completion_checks: [output_exists, frontmatter_valid, human_review_required]
+inputs: [content_id]
+wiki_sources: [longform-script, os-knowledge-model]
+outputs: [context_bundle]
+allowed_tools: [claude_code, codex, chatgpt]
+completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_recorded]
 ---
 ```
 
@@ -36,16 +38,16 @@ completion_checks: [output_exists, frontmatter_valid, human_review_required]
 
 ## 본문 필수 섹션
 
-1. PURPOSE
-2. READ CONTEXT
-3. PROCEDURE
-4. OUTPUT CONTRACT
-5. QUALITY CRITERIA
+1. PURPOSE — 어떤 공정의 맥락을 불러오는가
+2. READ CONTEXT — 어떤 Wiki와 데이터를 읽는가
+3. PROCEDURE — 최신본과 입력 포인터를 찾는 순서
+4. OUTPUT CONTRACT — Context Bundle 반환 규격
+5. QUALITY CRITERIA — 최신성·범위·출처 검증
 6. DO NOT
 7. HANDOFF
 
 ## 금지
 
-- 특정 콘텐츠의 값을 Skill 안에 하드코딩하지 않는다.
-- 승인되지 않은 사람의 판단을 AI가 임의로 확정하지 않는다.
-- Output 파일을 덮어쓰지 않는다.
+- 개인 Obsidian의 Raw를 읽지 않는다.
+- Skill이 업무 결과물을 직접 만들거나 사람의 판단을 확정하지 않는다.
+- Wiki 본문을 Skill에 중복 저장하지 않는다.

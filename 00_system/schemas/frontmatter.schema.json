@@ -73,10 +73,11 @@
         "updated_by"
       ]
     },
-    "raw": {
+    "person_workspace": {
       "required": [
-        "schema_version", "id", "entity_type", "scope", "category", "owner", "title",
-        "status", "version", "wiki_target", "created_at", "updated_at", "updated_by"
+        "schema_version", "id", "entity_type", "owner", "title", "role", "status",
+        "version", "assigned_processes", "assigned_steps", "wiki_root",
+        "created_at", "updated_at", "updated_by"
       ]
     },
     "wiki": {

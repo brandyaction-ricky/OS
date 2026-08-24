@@ -9,7 +9,7 @@ owner: ricky
 title: Raw와 Wiki 운영 구조
 status: active
 version: 1
-is_latest: true
+is_latest: false
 source_ids: [raw-company-os-knowledge-model-v1]
 promoted_by: ricky
 promoted_at: 2026-08-23T14:45:00+09:00

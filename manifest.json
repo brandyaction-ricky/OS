@@ -23,10 +23,11 @@
     "brand": "02_brands/{brand_id}/context"
   },
   "knowledge_paths": {
-    "people_raw": "09_raw/people/{person}",
-    "company_raw": "09_raw/company",
-    "practice_wiki": "10_wiki/practice/{wiki_id}",
+    "people_workspace": "08_people/{person}/WORKSPACE.md",
+    "people_wiki": "10_wiki/people/{person}/{wiki_id}",
+    "process_wiki": "10_wiki/process/{process_id}/{step_id}/{wiki_id}",
     "company_wiki": "10_wiki/company/{wiki_id}",
-    "promotion_mode": "owner_direct_no_approval"
+    "personal_raw_location": "local_obsidian_only",
+    "skill_mode": "os_context_loader"
   }
 }

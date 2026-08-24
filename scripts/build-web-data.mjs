@@ -147,7 +147,7 @@ function quoteBlock(title, source) {
   return `\n\n---\n\n# ${title}\n\n${source.trim()}\n`;
 }
 
-async function writeWorkPackage(content, process, source, metadata, skillPathById) {
+async function writeWorkPackage(content, process, source, metadata, skillPathById, skills, wikiItems) {
   if (checkOnly) return null;
   const step = process?.steps.find((item) => item.id === content.currentStep);
   if (!step) return null;
@@ -164,6 +164,11 @@ async function writeWorkPackage(content, process, source, metadata, skillPathByI
   await addFile("콘텐츠 현재 상태", `05_contents/${content.id}/CONTENT.md`);
   await addFile("공정 정의", `03_processes/${content.type}/PROCESS.md`);
   if (step.skillId) await addFile("현재 단계 Skill", skillPathById.get(step.skillId));
+  const activeSkill = skills.find((skill) => skill.id === step.skillId);
+  for (const wikiId of activeSkill?.wikiSources ?? []) {
+    const wiki = wikiItems.find((item) => item.wikiId === wikiId);
+    if (wiki) await addFile(`최신 Wiki · ${wiki.title}`, wiki.path);
+  }
   for (const pointer of step.inputPointers ?? []) {
     const relative = metadata[pointer];
     if (relative) await addFile(`입력 · ${pointer}`, `05_contents/${content.id}/${relative}`);
@@ -199,7 +204,7 @@ async function buildIndex() {
   const processRoot = path.join(repositoryRoot, "03_processes");
   const skillRoot = path.join(repositoryRoot, "04_skills");
   const contentRoot = path.join(repositoryRoot, "05_contents");
-  const rawRoot = path.join(repositoryRoot, "09_raw");
+  const peopleRoot = path.join(repositoryRoot, "08_people");
   const wikiRoot = path.join(repositoryRoot, "10_wiki");
   const categorySource = await readFile(path.join(skillRoot, "CATEGORIES.json"), "utf8");
   const categoryRegistry = JSON.parse(categorySource).categories ?? [];
@@ -250,6 +255,7 @@ async function buildIndex() {
     }
     skills.push({
       id: metadata.skill_id ?? skillId,
+      skillType: metadata.skill_type ?? "os_context_loader",
       version: metadata.version ?? "-",
       status: metadata.status ?? "-",
       process: metadata.process ?? "-",
@@ -287,32 +293,6 @@ async function buildIndex() {
         })),
     }));
 
-  const rawItems = [];
-  for (const filePath of await markdownFiles(rawRoot)) {
-    if (filePath.includes(`${path.sep}templates${path.sep}`)) continue;
-    const source = await readFile(filePath, "utf8");
-    const { frontmatter, body } = splitMarkdown(source);
-    const metadata = parseTopLevel(frontmatter);
-    if (metadata.entity_type !== "raw") continue;
-    rawItems.push({
-      id: metadata.id,
-      title: metadata.title ?? "제목 없음",
-      scope: metadata.scope ?? "person",
-      category: metadata.category ?? "-",
-      owner: metadata.owner ?? "-",
-      status: metadata.status ?? "raw",
-      version: metadata.version ?? 1,
-      wikiTarget: metadata.wiki_target ?? null,
-      promotedTo: metadata.promoted_to ?? null,
-      promotedBy: metadata.promoted_by ?? null,
-      promotedAt: metadata.promoted_at ?? null,
-      updatedAt: metadata.updated_at ?? null,
-      excerpt: excerpt(body),
-      path: path.relative(repositoryRoot, filePath).replaceAll(path.sep, "/"),
-    });
-  }
-  rawItems.sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")));
-
   const wikiItems = [];
   for (const filePath of await markdownFiles(wikiRoot)) {
     const source = await readFile(filePath, "utf8");
@@ -323,7 +303,9 @@ async function buildIndex() {
       id: metadata.id,
       wikiId: metadata.wiki_id,
       title: metadata.title ?? "제목 없음",
-      wikiType: metadata.wiki_type ?? "practice",
+      wikiType: metadata.wiki_type ?? "company",
+      process: metadata.process ?? null,
+      step: metadata.step ?? null,
       category: metadata.category ?? "-",
       owner: metadata.owner ?? "-",
       status: metadata.status ?? "active",
@@ -363,7 +345,7 @@ async function buildIndex() {
         status: metadata[`${step.id}_status`] ?? "-",
       })),
     };
-    content.workPackageUrl = await writeWorkPackage(content, process, source, metadata, skillPathById);
+    content.workPackageUrl = await writeWorkPackage(content, process, source, metadata, skillPathById, skills, wikiItems);
     contents.push(content);
   }
 
@@ -373,9 +355,36 @@ async function buildIndex() {
     return ["waiting_approval", "review"].includes(content.status) ||
       ["waiting_approval", "review"].includes(current?.status);
   });
+  const people = [];
+  for (const personId of await directories(peopleRoot)) {
+    const workspacePath = path.join(peopleRoot, personId, "WORKSPACE.md");
+    const workspaceSource = await readIfExists(workspacePath);
+    if (!workspaceSource) continue;
+    const { frontmatter, body } = splitMarkdown(workspaceSource);
+    const metadata = parseTopLevel(frontmatter);
+    const assignedSteps = metadata.assigned_steps ?? [];
+    const assignedProcessSteps = processes.flatMap((process) => process.steps
+      .filter((step) => step.owner === personId || assignedSteps.includes(step.id))
+      .map((step) => ({ process: process.id, id: step.id, label: step.label, skillId: step.skillId })));
+    const skillIds = [...new Set(assignedProcessSteps.map((step) => step.skillId).filter(Boolean))];
+    people.push({
+      id: personId,
+      title: metadata.title ?? `${personId} Workspace`,
+      role: metadata.role ?? "-",
+      status: metadata.status ?? "active",
+      assignedProcesses: metadata.assigned_processes ?? [],
+      assignedSteps: assignedProcessSteps,
+      skillIds,
+      wikiCount: wikiItems.filter((wiki) => wiki.owner === personId).length,
+      currentTasks: contents.filter((content) => content.owner === personId && !["completed", "archived"].includes(content.status)).map((content) => ({ id: content.id, title: content.title, nextAction: content.nextAction })),
+      description: excerpt(body),
+      path: path.relative(repositoryRoot, workspacePath).replaceAll(path.sep, "/"),
+    });
+  }
+  people.sort((a, b) => a.id.localeCompare(b.id));
   const owners = [...new Set([
     ...contents.map((content) => content.owner),
-    ...rawItems.map((item) => item.owner),
+    ...people.map((person) => person.id),
     ...wikiItems.map((item) => item.owner),
     ...processes.flatMap((process) => process.steps.map((step) => step.owner)),
   ].filter((owner) => owner && owner !== "-"))].sort();
@@ -388,8 +397,7 @@ async function buildIndex() {
       activeCount: contents.filter((item) => !["completed", "archived"].includes(item.status)).length,
       approvalCount: approvals.length,
       skillCount: skills.length,
-      rawCount: rawItems.length,
-      unpromotedRawCount: rawItems.filter((item) => item.status === "raw").length,
+      peopleCount: people.length,
       wikiCount: wikiItems.length,
     },
     owners,
@@ -398,8 +406,8 @@ async function buildIndex() {
     approvals,
     skills,
     skillCategories,
-    rawItems,
     wikiItems,
+    people,
   };
 }
 
@@ -418,5 +426,5 @@ if (!checkOnly) {
 }
 
 console.log(
-  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} skills, ${index.rawItems.length} raw, ${index.wikiItems.length} wiki`,
+  `OS index ready: ${index.contents.length} contents, ${index.processes.length} processes, ${index.skills.length} access skills, ${index.people.length} people, ${index.wikiItems.length} wiki`,
 );

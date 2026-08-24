@@ -28,14 +28,14 @@
           <button class="nav-item" data-view="approvals">
             <span class="nav-icon">◇</span><span>결재함</span><em id="approval-count">0</em>
           </button>
-          <button class="nav-item" data-view="raw">
-            <span class="nav-icon">◫</span><span>Raw Hub</span><em id="raw-count">0</em>
+          <button class="nav-item" data-view="people">
+            <span class="nav-icon">◫</span><span>직원 워크스페이스</span><em id="people-count">0</em>
           </button>
           <button class="nav-item" data-view="wiki">
             <span class="nav-icon">▣</span><span>Wiki</span>
           </button>
           <button class="nav-item" data-view="skills">
-            <span class="nav-icon">✦</span><span>Skill Library</span>
+            <span class="nav-icon">✦</span><span>OS Access Skills</span>
           </button>
         </nav>
 
@@ -93,23 +93,6 @@
         <label class="form-field"><span>OS 작업 코드 <b>필수</b></span><input id="submit-secret" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>
         <div class="submit-feedback" id="submit-feedback" role="status"></div>
         <button class="primary-action submit-button" id="submit-button" type="submit">Repository에 반영</button>
-      </form>
-    </section>
-
-    <div class="modal-backdrop" id="promote-backdrop" hidden></div>
-    <section class="submit-modal" id="promote-modal" role="dialog" aria-modal="true" aria-labelledby="promote-title" aria-hidden="true">
-      <button class="drawer-close" id="promote-close" aria-label="닫기">×</button>
-      <p class="drawer-kicker">RAW → WIKI</p>
-      <h2 id="promote-title">Wiki로 직접 승격</h2>
-      <p class="submit-description" id="promote-description"></p>
-      <form id="promote-form">
-        <input type="hidden" id="promote-raw-id" />
-        <input type="hidden" id="promote-raw-path" />
-        <div class="promotion-notice"><strong>승인 없이 즉시 반영됩니다.</strong><span>Raw 원본은 보존되고 Wiki에 새 버전이 만들어집니다.</span></div>
-        <label class="form-field"><span>승격 메모</span><textarea id="promote-summary" rows="4" maxlength="3000" placeholder="왜 재사용할 가치가 있는지, 어떤 기준으로 써야 하는지 적어주세요. (선택)"></textarea></label>
-        <label class="form-field"><span>OS 작업 코드 <b>필수</b></span><input id="promote-secret" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>
-        <div class="submit-feedback" id="promote-feedback" role="status"></div>
-        <button class="primary-action submit-button" id="promote-button" type="submit">검토 없이 Wiki로 승격</button>
       </form>
     </section>
 

@@ -32,9 +32,9 @@ Vercel Build가 Process, Content, Skill Markdown을 읽어 정적 JSON 인덱스
 
 Pilot 확인 결과 팀원이 Terminal에서 BA CLI를 직접 사용하는 방식은 운영 마찰이 크다. Content 상세 화면에 `작업 시작`, `작업 제출`, `승인 요청`을 제공한다. Web Pull은 현재 단계에 필요한 Markdown을 하나의 `WORK_PACKAGE.md`로 내려받는다. Web Push는 Vercel Server Function이 입력을 검증한 뒤 GitHub Git Data API로 artifact, `CONTENT.md`, 이전 최신본의 `is_latest`를 하나의 Commit으로 갱신한다. 대용량 자산은 Push하지 않고 외부 asset URL, asset ID, checksum만 기록한다. GitHub 토큰과 작업 코드는 Vercel 환경변수에만 둔다.
 
-## ADR-009 · Raw에서 Wiki로의 승격은 작성자가 직접 한다
+## ADR-009 · Raw에서 Wiki로의 승격은 작성자가 직접 한다 — 폐기
 
-Raw는 검토 대기열이 아니라 작업 중 생긴 근거와 학습을 축적하는 영역이다. 별도 검토·승인 단계를 두면 실무 지식의 기록과 갱신이 느려지므로 작성자가 OS의 `Wiki로 승격` 버튼으로 즉시 승격한다. 승격은 Raw를 이동하거나 삭제하지 않고 Wiki의 새 `WIKI_vN.md`를 만든다. 원본 Raw ID, 승격자, 승격 시각을 기록하고 이전 Wiki의 `is_latest`만 `false`로 바꿔 추적성과 복구 가능성을 유지한다. 이 결정은 Longform Content Run의 최종 승인 절차를 제거하지 않는다.
+초기에는 회사 OS에도 Raw를 저장하는 것으로 결정했으나 개인 메모와 회사 정본의 경계가 흐려지는 문제가 확인됐다. ADR-012가 이 결정을 대체한다.
 
 ## ADR-010 · Skill 파일 정본은 별도 서버가 아니라 Git Repository다
 
@@ -43,3 +43,11 @@ Skill의 Markdown, Template, Check는 용량이 작고 변경 이력·비교·�
 ## ADR-011 · Skill ID와 저장 폴더를 분리한다
 
 Skill이 늘어나면 `04_skills/{skill_id}` 평면 구조는 탐색과 책임 구분이 어렵다. 실제 파일은 `04_skills/{category_id}/{folder_id}/{skill_id}`에 보관하고 분류 정본은 `CATEGORIES.json`으로 관리한다. Process는 위치가 바뀌어도 변하지 않는 `skill_id`만 참조하며 CLI와 웹 빌드는 `SKILL.md`를 재귀 탐색한다. 이 방식은 폴더 재분류가 기존 공정을 깨뜨리는 문제를 막는다.
+
+## ADR-012 · 개인 Raw는 Obsidian에, 회사 OS에는 공유 Wiki만 둔다
+
+Raw는 기억하고 싶은 인사이트를 빠르게 기록하는 개인 영역이다. 이를 회사 Repository에 저장하면 정리되지 않은 개인 맥락과 공정의 정본이 섞인다. 각 직원은 개인 Obsidian에서 Raw와 개인 Wiki를 관리하고, 회사 공정에서 재사용할 내용만 Company Wiki로 공유한다. 회사 OS의 `08_people`에는 개인 원문이 아니라 담당 업무와 공유 연결만 저장한다.
+
+## ADR-013 · Skill은 실행 규격이 아니라 OS Context Loader다
+
+업무 방법과 품질 기준을 Skill과 Wiki에 동시에 저장하면 어느 쪽이 최신 정본인지 모호해진다. 실무 지식과 판단 기준은 Process Wiki에 두고, Skill은 현재 Content Run에 필요한 최신 Wiki와 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 결과물 생성과 판단은 각 직원의 AI와 사람이 담당한다.
