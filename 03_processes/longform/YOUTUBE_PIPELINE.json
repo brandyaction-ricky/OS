@@ -152,7 +152,6 @@
       "ui": {
         "mode": "thumbnail_approve", "eyebrow": "HUMAN DECISION", "helper": "점수 1위가 자동 선택되지 않습니다. 사람이 영상의 약속과 브랜드 적합성을 확인합니다.", "primaryAction": "최종 썸네일 승인",
         "fields": [
-          { "key": "selectedCandidate", "label": "선택 후보 ID", "type": "text", "default": "" },
           { "key": "decisionReason", "label": "선택 이유", "type": "textarea", "default": "" }
         ]
       }

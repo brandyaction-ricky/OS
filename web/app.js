@@ -1339,6 +1339,7 @@ function render() {
   }
   if (!viewTitles[currentView]) currentView = "dashboard";
   if (currentView !== "youtube") { clearTimeout(youtubePollTimer); youtubePollTimer = null; }
+  if (sessionStatusButton) sessionStatusButton.hidden = currentView === "youtube";
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
   ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, contents: renderContents, meetings: renderMeetings, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
