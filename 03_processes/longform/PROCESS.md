@@ -3,10 +3,10 @@ schema_version: "1.0"
 id: longform-process-v1
 entity_type: process
 process_id: longform
-version: "1.1"
+version: "1.2"
 status: active
 first_step: package
-automation_pipeline_id: youtube-production-v1
+automation_pipeline_id: youtube-production-v2
 automation_pipeline_path: 03_processes/longform/YOUTUBE_PIPELINE.json
 steps:
   - id: package
@@ -104,8 +104,8 @@ steps:
       accepted_statuses: [approved, completed]
       accepted_approval_statuses: [approved]
       result_status: approved
-    work_action: 자막 검수부터 Premiere XML까지 제작 공정 실행
-    review_action: 예외·사진·최종 렌더 확인
+    work_action: 개인 PC에서 메인 편집 후 최종 마스터 등록
+    review_action: 완료본 자동 검증과 숏폼 생성
     next_step: thumbnail
   - id: thumbnail
     order: 6
@@ -185,7 +185,7 @@ steps:
     next_step: null
 ---
 
-# Longform Process v1.1
+# Longform Process v1.2
 
 | # | Step | Type | Completion |
 |---:|---|---|---|
@@ -201,4 +201,4 @@ steps:
 
 Frontmatter가 CLI와 웹 UI가 읽는 정본이다. 본문의 표는 운영자가 빠르게 확인하기 위한 설명이다.
 
-`edit → thumbnail → approval → publish → metrics` 구간의 실제 14단계 반자동화 규격은 `YOUTUBE_PIPELINE.json`이 상세화한다. PDF에 정의된 후반작업 8개 공정과 OS가 보완한 입력 검증·최종 렌더·게시·성과 회수를 화면에서 구분한다.
+`edit → thumbnail → approval → publish → metrics` 구간의 실행 규격은 `YOUTUBE_PIPELINE.json`이 상세화한다. PDF의 후반작업은 개인 PC 체크리스트로 보존하고, 서버는 완료본 검증·숏폼 생성·게시·성과 회수만 담당한다.

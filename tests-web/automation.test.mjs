@@ -16,38 +16,49 @@ import {
 
 test("API stage registry matches the process pipeline", async () => {
   const pipeline = JSON.parse(await readFile(new URL("../03_processes/longform/YOUTUBE_PIPELINE.json", import.meta.url), "utf8"));
+  assert.equal(pipeline.id, "youtube-production-v2");
   assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.id), pipeline.stages.map((stage) => stage.id));
   assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.dependsOn), pipeline.stages.map((stage) => stage.dependsOn));
+  assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.provider), pipeline.stages.map((stage) => stage.provider));
+  assert.deepEqual(AUTOMATION_STAGES.map((stage) => stage.humanGate), pipeline.stages.map((stage) => stage.humanGate));
 });
 
-test("normalizeAutomationState unlocks independent parallel stages", () => {
+test("normalizeAutomationState starts the v2 PC handoff graph", () => {
   const state = normalizeAutomationState({
     stages: {
-      input_intake: { status: "completed" },
+      source_package: { status: "completed" },
     },
   }, "BA-0268");
-  assert.equal(state.stages.subtitle_cleanup.status, "ready");
-  assert.equal(state.stages.capture_cards.status, "ready");
-  assert.equal(state.stages.media_processing.status, "ready");
-  assert.equal(state.stages.deck_authoring.status, "locked");
+  assert.equal(state.pipelineId, "youtube-production-v2");
+  assert.equal(state.stages.pc_main_edit.status, "ready");
+  assert.equal(state.stages.master_upload.status, "locked");
+  assert.equal(state.stages.shortform_plan.status, "locked");
 });
 
 test("completeAutomationStage unlocks dependency graph", () => {
-  const state = normalizeAutomationState({ stages: { input_intake: { status: "completed" } } }, "BA-0268");
-  completeAutomationStage(state, "subtitle_cleanup", { actor: "jay", outputPath: "result.md" });
-  assert.equal(state.stages.deck_authoring.status, "ready");
-  assert.equal(state.stages.youtube_assets.status, "ready");
-  assert.equal(state.stages.subtitle_cleanup.outputPath, "result.md");
+  const state = normalizeAutomationState({ stages: { source_package: { status: "completed" } } }, "BA-0268");
+  completeAutomationStage(state, "pc_main_edit", { actor: "jay", outputPath: "pc-main-edit.md" });
+  assert.equal(state.stages.master_upload.status, "ready");
+  assert.equal(state.stages.master_validation.status, "locked");
+  assert.equal(state.stages.pc_main_edit.outputPath, "pc-main-edit.md");
+  completeAutomationStage(state, "master_upload", { actor: "jay", outputPath: "master-upload.md", assetUrl: "asset://longform/BA-0268/master-v1.mp4" });
+  assert.equal(state.stages.master_validation.status, "ready");
+  assert.equal(state.stages.master_upload.assetUrl, "asset://longform/BA-0268/master-v1.mp4");
 });
 
 test("connectorStatus returns booleans without secrets", () => {
   const status = connectorStatus({
     GITHUB_TOKEN: "github-secret",
+    OS_PUSH_SECRET: "session-secret",
+    ASSET_UPLOAD_SESSION_URL: "https://assets.example/session",
+    ASSET_UPLOAD_SERVICE_SECRET: "asset-secret",
     OPENAI_API_KEY: "openai-secret",
     VIDEO_WORKER_WEBHOOK_URL: "https://worker.example",
     VIDEO_WORKER_SECRET: "worker-secret",
     VIDEO_CALLBACK_SECRET: "callback-secret",
   });
+  assert.equal(status.session.ready, true);
+  assert.equal(status.asset.ready, true);
   assert.equal(status.openai.ready, true);
   assert.equal(status.render.ready, true);
   assert.equal(status.youtube.ready, false);
@@ -57,7 +68,7 @@ test("connectorStatus returns booleans without secrets", () => {
 test("resultMarkdown creates a valid automation result manifest", () => {
   const markdown = resultMarkdown({
     contentId: "BA-0268",
-    stageId: "subtitle_cleanup",
+    stageId: "shortform_plan",
     actor: "jay",
     provider: "openai",
     version: 1,
@@ -67,7 +78,7 @@ test("resultMarkdown creates a valid automation result manifest", () => {
     createdAt: "2026-08-24T06:00:00.000Z",
   });
   assert.match(markdown, /entity_type: automation_result/);
-  assert.match(markdown, /id: BA-0268-subtitle_cleanup-run-1/);
+  assert.match(markdown, /id: BA-0268-shortform_plan-run-1/);
   assert.match(markdown, /## 정리된 SRT/);
 });
 
@@ -82,10 +93,10 @@ test("extractQuestions separates unresolved AI decisions", () => {
 });
 
 test("content progress follows automation milestones", () => {
-  const state = normalizeAutomationState({ stages: { input_intake: { status: "completed" } } }, "BA-0268");
-  state.stages.final_render_qa.status = "completed";
+  const state = normalizeAutomationState({ stages: { source_package: { status: "completed" } } }, "BA-0268");
+  state.stages.master_upload.status = "completed";
   assert.equal(contentProgressUpdates(state).current_step, "thumbnail");
-  state.stages.thumbnail_title.status = "completed";
+  state.stages.publish_package.status = "completed";
   assert.equal(contentProgressUpdates(state).current_step, "approval");
   state.stages.youtube_publish.status = "queued";
   assert.equal(contentProgressUpdates(state).current_step, "publish");
@@ -96,13 +107,24 @@ test("content progress follows automation milestones", () => {
 });
 
 test("milestones create canonical process artifacts", () => {
-  const before = normalizeAutomationState({ stages: { input_intake: { status: "completed" }, final_render_qa: { status: "needs_decision" } } }, "BA-0268");
+  const before = normalizeAutomationState({ stages: { source_package: { status: "completed" }, master_upload: { status: "ready" } } }, "BA-0268");
   const after = structuredClone(before);
-  after.stages.final_render_qa.status = "completed";
-  assert.equal(milestoneDefinition(before, after, "final_render_qa").pointer, "latest_edit");
+  after.stages.master_upload.status = "completed";
+  const master = milestoneDefinition(before, after, "master_upload");
+  assert.equal(master.pointer, "latest_edit");
+  assert.equal(master.alsoPointer, "latest_master");
+
   const publishBefore = structuredClone(after);
   publishBefore.stages.youtube_publish.status = "needs_decision";
-  const publishAfter = structuredClone(publishBefore);
-  publishAfter.stages.youtube_publish.status = "queued";
-  assert.equal(milestoneDefinition(publishBefore, publishAfter, "youtube_publish").pointer, "latest_approval");
+  const approved = structuredClone(publishBefore);
+  approved.stages.youtube_publish.status = "queued";
+  assert.equal(milestoneDefinition(publishBefore, approved, "youtube_publish").pointer, "latest_approval");
+
+  const published = structuredClone(approved);
+  published.stages.youtube_publish.status = "completed";
+  assert.equal(milestoneDefinition(approved, published, "youtube_publish").pointer, "latest_publish");
+
+  const measured = structuredClone(published);
+  measured.stages.metrics.status = "completed";
+  assert.equal(milestoneDefinition(published, measured, "metrics").pointer, "latest_metrics");
 });

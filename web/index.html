@@ -31,9 +31,6 @@
           <button class="nav-item" data-view="meetings">
             <span class="nav-icon">▥</span><span>회의 노트</span><em id="meeting-count">0</em>
           </button>
-          <button class="nav-item" data-view="approvals">
-            <span class="nav-icon">◇</span><span>결재함</span><em id="approval-count">0</em>
-          </button>
           <button class="nav-item" data-view="people">
             <span class="nav-icon">◫</span><span>직원 워크스페이스</span><em id="people-count">0</em>
           </button>
@@ -59,6 +56,7 @@
             <h1 id="page-title">전체 업무 공정</h1>
           </div>
           <div class="top-actions">
+            <button class="session-status" id="session-status" type="button"><i></i><span>작업 권한 연결</span></button>
             <label class="user-select">
               <span>작업자</span>
               <select id="user-select" aria-label="현재 작업자"></select>
@@ -100,6 +98,19 @@
         <label class="form-field"><span>OS 작업 코드 <b>필수</b></span><input id="submit-secret" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>
         <div class="submit-feedback" id="submit-feedback" role="status"></div>
         <button class="primary-action submit-button" id="submit-button" type="submit">Repository에 반영</button>
+      </form>
+    </section>
+
+    <div class="modal-backdrop" id="session-backdrop" hidden></div>
+    <section class="session-modal" id="session-modal" role="dialog" aria-modal="true" aria-labelledby="session-title" aria-hidden="true">
+      <button class="drawer-close" id="session-close" aria-label="닫기">×</button>
+      <p class="drawer-kicker">TEAM WORK SESSION</p>
+      <h2 id="session-title">작업 권한 연결</h2>
+      <p class="submit-description">팀 작업 코드는 한 번만 확인하며 브라우저에 저장하지 않습니다. 연결은 8시간 동안 유지됩니다.</p>
+      <form id="session-form">
+        <label class="form-field"><span>팀 작업 코드</span><input id="session-code" type="password" autocomplete="current-password" required placeholder="관리자에게 받은 작업 코드" /></label>
+        <div class="submit-feedback" id="session-feedback" role="status"></div>
+        <button class="primary-action submit-button" type="submit">이 브라우저에서 연결</button>
       </form>
     </section>
 

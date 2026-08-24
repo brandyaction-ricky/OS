@@ -80,16 +80,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(report.valid, [issue.message for issue in report.issues])
 
     def test_automation_result_is_valid_without_artifact_latest_flag(self) -> None:
-        result_path = self.repo_path / "05_contents" / "BA-0268" / "05_edit" / "automation" / "results" / "subtitle_cleanup_v1.md"
+        result_path = self.repo_path / "05_contents" / "BA-0268" / "05_edit" / "automation" / "results" / "shortform_plan_v1.md"
         result_path.parent.mkdir(parents=True, exist_ok=True)
         result_path.write_text(
             """---
 schema_version: "1.0"
-id: BA-0268-subtitle_cleanup-run-1
+id: BA-0268-shortform_plan-run-1
 entity_type: automation_result
 content_id: BA-0268
-pipeline_id: youtube-production-v1
-stage_id: subtitle_cleanup
+pipeline_id: youtube-production-v2
+stage_id: shortform_plan
 status: completed
 owner: jay
 provider: openai

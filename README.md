@@ -92,7 +92,7 @@ Push는 다음 순서로 실패 우선 검증한다.
 기획 → 축 → 설계/원고 → 촬영 → 편집 → 썸네일 → 최종 승인 → 게시 → 성과 회수
 
 공정의 기계 판독 규격과 사람이 읽는 설명은 [`03_processes/longform/PROCESS.md`](03_processes/longform/PROCESS.md) 한 파일에서 관리한다.
-후반작업부터 성과 회수까지의 실행 상세는 이 상위 공정을 14개 실행 단계로 펼친 `YOUTUBE_PIPELINE.json`과 Automation Recipe가 담당한다.
+후반작업부터 성과 회수까지의 실행 상세는 `YOUTUBE_PIPELINE.json`과 Automation Recipe가 담당한다. 사용자 화면은 `PC 제작 → 최종 마스터 → 숏폼 생성 → 업로드·게시 → 성과`의 5단계로 단순화하고, 내부 자동화는 9개 실행 Stage로 관리한다.
 
 ## Web UI
 
@@ -103,12 +103,11 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 - 콘텐츠 Run
 - 회의 노트
 - 유튜브 제작
-- 결재함
 - 직원 워크스페이스
 - Company Wiki
 - OS Access Skills
 
-웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출 → 승인 요청`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. CLI 방식도 고급 사용자와 자동화를 위해 계속 지원한다.
+웹 UI의 Content 상세 화면에서 `작업 시작 → 작업 제출`을 수행할 수 있다. 작업 시작은 현재 Context와 Skill을 `WORK_PACKAGE.md`로 내려받고, 제출은 결과 요약·외부 자산 링크·선택 Markdown을 검증해 Git Commit으로 반영한다. 판단이 필요한 YouTube 설정은 별도 결재함이 아니라 해당 제작 Stage 안에서 바로 확인한다.
 
 회의 노트 화면에서는 노션형 Markdown 편집, 브라우저 마이크 녹음, 구간별 전사, AI 회의록 정리와 `06_meetings/inbox → organized → decisions` 이동을 수행한다. 녹음 원본은 Git에 저장하지 않는다. 전사와 요약에는 Vercel의 `OPENAI_API_KEY`, Markdown 저장에는 기존 GitHub 연결과 OS 작업 코드를 사용한다.
 
@@ -116,7 +115,7 @@ Vercel 배포 시 Node 빌드 스크립트가 Repository의 Process, Content, Sk
 
 Access Skill Markdown의 정본은 GitHub Repository다. Skill은 업무 결과물을 직접 만들지 않고 최신 Company Wiki, Content Run과 입력 포인터를 찾아 Context Bundle로 반환한다. 실제 실행과 판단은 각자의 AI와 사람이 담당한다.
 
-유튜브 제작 화면은 실제 PDF 후반작업 8단계를 구조화하고, 최종 렌더·제목/썸네일·YouTube 업로드·성과 회수까지 확장한다. OpenAI 텍스트 작업, 이미지 생성 API, Render Worker, Premiere Bridge, YouTube API를 교체 가능한 Adapter로 연결하고 사람은 예외와 외부 공개 직전 결정만 확인한다.
+유튜브 제작 화면은 고비용 자막·덱·이미지·Premiere 메인 편집을 직원 PC 작업으로 묶는다. OS 서버는 최종 MP4·SRT·썸네일 인계 이후 완료본 검증, OpenAI 기반 숏폼 구간·게시 문안 생성, FFmpeg Worker 숏폼 렌더, YouTube API 게시와 성과 회수만 담당한다. 대용량 파일은 Object Storage로 직접 전송하고 Git에는 Asset ID만 기록한다.
 
 Skill Library는 `04_skills/{category_id}/{folder_id}/{skill_id}` 구조로 관리한다. Process는 폴더 경로가 아니라 고유한 `skill_id`를 참조하므로 카테고리를 옮겨도 기존 공정 연결이 유지된다. 카테고리 목록과 표시 순서는 `04_skills/CATEGORIES.json`에서 관리한다.
 

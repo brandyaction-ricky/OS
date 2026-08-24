@@ -14,7 +14,7 @@ inputs: [content_id]
 outputs: [context_bundle]
 allowed_tools: [claude_code, codex, chatgpt]
 completion_checks: [latest_wiki_resolved, content_scope_matched, provenance_recorded]
-automation_recipe: youtube-production-v1
+automation_recipe: youtube-production-v2
 ---
 
 # BrandyAction Video Context Loader
@@ -25,7 +25,7 @@ automation_recipe: youtube-production-v1
 
 ## READ CONTEXT
 
-`CONTENT.md`, Longform Process, `youtube-production-v1` 공정 정의, `longform-edit`·`longform-publish` 최신 Process Wiki, 승인 원고·낭독본, 촬영 자산 포인터, Automation Run 상태와 Company/Brand Wiki를 읽는다.
+`CONTENT.md`, Longform Process, `youtube-production-v2` 공정 정의, `longform-edit`·`longform-publish` 최신 Process Wiki, 승인 원고·낭독본, 촬영 자산 포인터, Automation Run 상태와 Company/Brand Wiki를 읽는다.
 
 ## PROCEDURE
 
@@ -38,7 +38,7 @@ automation_recipe: youtube-production-v1
 
 ## OUTPUT CONTRACT
 
-편집·렌더·업로드를 직접 수행하지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다. 자산은 asset ID, path와 checksum 정보만 포함하고, 실행은 `youtube-production-v1` Automation Recipe에 넘긴다.
+편집·렌더·업로드를 직접 수행하지 않고 `CONTEXT_BUNDLE.md` 또는 동등한 AI Context를 반환한다. 개인 PC 제작에 필요한 최신 맥락과 체크리스트를 우선 반환하고, 완료본 이후 실행은 `youtube-production-v2` Automation Recipe에 넘긴다.
 
 ## QUALITY CRITERIA
 

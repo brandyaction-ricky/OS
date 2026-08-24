@@ -18,8 +18,7 @@ Repository Markdown
 - 내가 할 일: 선택한 작업자가 현재 담당자인 Run
 - 콘텐츠 Run: 상태, 현재 단계, 담당자, 다음 행동
 - 회의 노트: 노션형 편집, 녹음 전사, AI 정리, Markdown 저장·폴더 이동
-- 유튜브 제작: PDF 후반작업과 OS 확장 게시 공정의 상태·예외·API 연결 관제
-- 결재함: `waiting_approval` 또는 `review` 상태
+- 유튜브 제작: `PC 제작 → 최종 마스터 → 숏폼 생성 → 업로드·게시 → 성과`에 맞춘 공정별 작업 화면
 - 직원 워크스페이스: 담당 업무, 공정 Step, 공유 Wiki와 Access Skill 연결
 - Company Wiki: 회사 공통·공정·직원 공유 Wiki 최신본
 - OS Access Skills: 카테고리·폴더 탐색, 호출 Wiki, Context 반환 규칙과 다운로드
@@ -37,8 +36,15 @@ Repository Markdown
 
 - `작업 시작`: 회사/브랜드 Context, Process, 현재 Access Skill, Skill이 지정한 최신 Wiki와 입력 Markdown을 `WORK_PACKAGE.md`로 내려받는다.
 - `작업 제출`: 결과 요약·외부 자산 링크·선택 Markdown을 검증해 새 artifact 버전과 `CONTENT.md`를 하나의 Commit으로 반영한다.
-- `승인 요청`: 작업 결과를 기록하고 Content Run을 `waiting_approval`로 전환한다.
-개인 Raw와 개인 전용 Wiki는 개인 Obsidian에 둔다. 회사 OS에는 공유된 최신 Wiki만 연결하며 이전 버전은 Git 이력으로 보존한다. 콘텐츠 제작 공정의 승인 요청은 별도로 유지한다.
+개인 Raw와 개인 전용 Wiki는 개인 Obsidian에 둔다. 회사 OS에는 공유된 최신 Wiki만 연결하며 이전 버전은 Git 이력으로 보존한다. 별도 결재함은 두지 않고, 사람 확인이 필요한 값은 해당 제작 Stage 안에서 바로 확정한다.
+
+## 유튜브 제작 실행 경계
+
+- 개인 PC: 작업 패키지 수신, 개인 AI, 자막·덱·이미지, Premiere 메인 편집, 최종 MP4·SRT 검수
+- 브라우저: 최종 MP4·SRT·썸네일을 Object Storage에 직접 업로드
+- OS API: 공정 상태, Markdown 결과, Asset ID, Worker Queue와 callback 관리
+- 실행 Worker: FFprobe 완료본 검사, FFmpeg 숏폼 렌더, YouTube 업로드·성과 회수
+- 인증: 공정마다 OS 작업 코드 입력란을 표시하지 않고, 상단에서 한 번 연결한 HttpOnly 8시간 팀 세션을 사용
 
 ## Access Skill 파일 저장 위치
 
@@ -53,7 +59,7 @@ MP4, WAV, PNG 같은 대용량 원본은 업로드하지 않는다. NAS, Google 
 ## Vercel 환경변수
 
 - `GITHUB_TOKEN`: `brandyaction-ricky/OS` Contents 읽기/쓰기 권한의 fine-grained token
-- `OS_PUSH_SECRET`: 팀원이 제출할 때 사용하는 충분히 긴 작업 코드
+- `OS_PUSH_SECRET`: 팀 작업 세션을 발급할 때 한 번만 확인하는 충분히 긴 작업 코드
 - `GITHUB_REPOSITORY`: 선택, 기본값 `brandyaction-ricky/OS`
 - `GITHUB_BRANCH`: 선택, 기본값 `main`
 - `OPENAI_API_KEY`: 회의 녹음 전사와 AI 회의록 정리에 사용
@@ -64,14 +70,12 @@ MP4, WAV, PNG 같은 대용량 원본은 업로드하지 않는다. NAS, Google 
 - `MEETING_GITHUB_BRANCH`: 선택, 비공개 회의 저장소 branch. 기본값 `GITHUB_BRANCH` 또는 `main`
 - `OPENAI_AUTOMATION_MODEL`: 선택, 기본값 `gpt-5.6`
 - `OPENAI_WEB_SEARCH_ENABLED`: 선택, `true`일 때 자막 용어와 업로드 출처 확인에 Web Search 사용
-- `IMAGE_WORKER_WEBHOOK_URL`: Gemini Image 어댑터 주소
-- `VIDEO_WORKER_WEBHOOK_URL`: Headless Chrome·FFmpeg·XML Worker 주소
-- `PREMIERE_BRIDGE_WEBHOOK_URL`: 편집자 Mac의 Premiere Bridge 주소
+- `ASSET_UPLOAD_SESSION_URL`: Object Storage의 제한된 직접 업로드 세션 발급 주소
+- `ASSET_UPLOAD_SERVICE_SECRET`: 위 업로드 세션 서비스 호출 전용 인증값
+- `VIDEO_WORKER_WEBHOOK_URL`: FFprobe·FFmpeg 완료본 검증·숏폼 Worker 주소
 - `YOUTUBE_WORKER_WEBHOOK_URL`: YouTube Data API 업로드 Worker 주소
 - `METRICS_WORKER_WEBHOOK_URL`: YouTube 성과 수집 Worker 주소
-- `IMAGE_WORKER_SECRET` / `IMAGE_CALLBACK_SECRET`: 이미지 Worker 호출·callback 전용 인증값
 - `VIDEO_WORKER_SECRET` / `VIDEO_CALLBACK_SECRET`: 렌더 Worker 호출·callback 전용 인증값
-- `PREMIERE_BRIDGE_SECRET` / `PREMIERE_CALLBACK_SECRET`: Premiere Bridge 전용 인증값
 - `YOUTUBE_WORKER_SECRET` / `YOUTUBE_CALLBACK_SECRET`: YouTube 게시 Worker 전용 인증값
 - `METRICS_WORKER_SECRET` / `METRICS_CALLBACK_SECRET`: 성과 수집 Worker 전용 인증값
 - `YOUTUBE_PUBLISH_APPROVAL_SECRET`: 공용 OS 작업 코드와 분리된 게시 권한자 전용 승인 코드

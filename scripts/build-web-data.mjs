@@ -175,6 +175,7 @@ function normalizePipelineStageStates(pipeline, source = {}) {
     outputPath: null,
     assetUrl: null,
     publishSettings: null,
+    parameters: null,
     error: null,
     updatedAt: null,
     ...(source[stage.id] || {}),
@@ -427,6 +428,7 @@ async function buildIndex() {
         outputPath: stageStates[stage.id].outputPath,
         assetUrl: stageStates[stage.id].assetUrl,
         publishSettings: stageStates[stage.id].publishSettings,
+        parameters: stageStates[stage.id].parameters,
         error: stageStates[stage.id].error,
         stageUpdatedAt: stageStates[stage.id].updatedAt,
       }));

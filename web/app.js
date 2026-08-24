@@ -2,7 +2,6 @@ const app = document.querySelector("#app");
 const pageTitle = document.querySelector("#page-title");
 const userSelect = document.querySelector("#user-select");
 const taskCount = document.querySelector("#task-count");
-const approvalCount = document.querySelector("#approval-count");
 const peopleCount = document.querySelector("#people-count");
 const meetingCount = document.querySelector("#meeting-count");
 const syncTime = document.querySelector("#sync-time");
@@ -14,6 +13,11 @@ const submitModal = document.querySelector("#submit-modal");
 const submitBackdrop = document.querySelector("#submit-backdrop");
 const submitForm = document.querySelector("#submit-form");
 const submitFeedback = document.querySelector("#submit-feedback");
+const sessionStatusButton = document.querySelector("#session-status");
+const sessionModal = document.querySelector("#session-modal");
+const sessionBackdrop = document.querySelector("#session-backdrop");
+const sessionForm = document.querySelector("#session-form");
+const sessionFeedback = document.querySelector("#session-feedback");
 
 const viewTitles = {
   dashboard: "전체 업무 공정",
@@ -21,7 +25,6 @@ const viewTitles = {
   youtube: "유튜브 제작",
   contents: "콘텐츠 Run",
   meetings: "회의 노트",
-  approvals: "결재함",
   people: "직원 워크스페이스",
   wiki: "Company Wiki",
   skills: "OS Access Skills",
@@ -76,6 +79,17 @@ let activeYoutubeStageId = localStorage.getItem("ba-os-youtube-stage") || "";
 let youtubeLastOutput = null;
 let youtubeRequestSerial = 0;
 let youtubePollTimer = null;
+let workSession = { authenticated: false, actor: null, expiresAt: null };
+let pendingYoutubeAction = null;
+let youtubeUploadAssets = {};
+
+const YOUTUBE_DISPLAY_GROUPS = [
+  { id: "pc", order: 1, label: "PC 제작", description: "개인 AI·Premiere", stages: ["source_package", "pc_main_edit"] },
+  { id: "master", order: 2, label: "최종 마스터", description: "완료본 접수·검증", stages: ["master_upload", "master_validation"] },
+  { id: "shorts", order: 3, label: "숏폼 생성", description: "구간 설계·렌더", stages: ["shortform_plan", "shortform_render"] },
+  { id: "publish", order: 4, label: "업로드·게시", description: "문안·YouTube", stages: ["publish_package", "youtube_publish"] },
+  { id: "learn", order: 5, label: "성과", description: "데이터·학습", stages: ["metrics"] },
+];
 
 function escapeHtml(value) {
   return String(value ?? "-")
@@ -105,12 +119,20 @@ function readYoutubeDraft() {
 
 function saveYoutubeDraft() {
   if (currentView !== "youtube" || !activeYoutubeContentId || !activeYoutubeStageId) return;
+  const parameters = {};
+  document.querySelectorAll("[data-youtube-param]").forEach((field) => {
+    parameters[field.dataset.youtubeParam] = field.type === "checkbox" ? field.checked : field.value;
+  });
+  const checklist = [...document.querySelectorAll("[data-youtube-check]")].map((field) => field.checked);
   sessionStorage.setItem(youtubeDraftKey(), JSON.stringify({
     inputText: document.querySelector("#youtube-input")?.value || "",
     summary: document.querySelector("#youtube-summary")?.value || "",
     assetUrl: document.querySelector("#youtube-asset-url")?.value || "",
     privacyStatus: document.querySelector("#youtube-privacy-status")?.value || "private",
     publishAt: document.querySelector("#youtube-publish-at")?.value || "",
+    parameters,
+    checklist,
+    assetRefs: { ...youtubeUploadAssets },
   }));
 }
 
@@ -347,13 +369,76 @@ function selectedYoutubeContent() {
 function connectorKeyForStage(stage) {
   return ({
     openai: "openai",
-    human_ai: "openai",
-    gemini_image: "image",
+    asset_upload: "asset",
     render_worker: "render",
-    premiere_bridge: "premiere",
     youtube: "youtube",
     youtube_data: "metrics",
   })[stage.provider] || "human";
+}
+
+function updateSessionStatus() {
+  if (!sessionStatusButton) return;
+  sessionStatusButton.classList.toggle("is-ready", workSession.authenticated);
+  sessionStatusButton.querySelector("span").textContent = workSession.authenticated ? `${workSession.actor || "팀"} · 작업 연결됨` : "작업 권한 연결";
+}
+
+function openSessionModal() {
+  sessionBackdrop.hidden = false;
+  sessionModal.classList.add("is-open");
+  sessionModal.setAttribute("aria-hidden", "false");
+  sessionFeedback.textContent = "";
+  sessionFeedback.className = "submit-feedback";
+  setTimeout(() => document.querySelector("#session-code")?.focus(), 30);
+}
+
+function closeSessionModal() {
+  sessionModal.classList.remove("is-open");
+  sessionModal.setAttribute("aria-hidden", "true");
+  setTimeout(() => { sessionBackdrop.hidden = true; }, 180);
+}
+
+async function refreshWorkSession() {
+  try {
+    const response = await fetch("/api/session", { cache: "no-store", credentials: "same-origin" });
+    const result = await response.json().catch(() => ({}));
+    workSession = response.ok && result.authenticated ? result : { authenticated: false, actor: null, expiresAt: null };
+  } catch {
+    workSession = { authenticated: false, actor: null, expiresAt: null };
+  }
+  updateSessionStatus();
+  return workSession.authenticated;
+}
+
+async function connectWorkSession(event) {
+  event.preventDefault();
+  const code = document.querySelector("#session-code")?.value || "";
+  const button = sessionForm.querySelector("button[type=submit]");
+  if (!code) return;
+  button.disabled = true;
+  sessionFeedback.textContent = "작업 권한을 확인하고 있습니다…";
+  sessionFeedback.className = "submit-feedback is-loading";
+  try {
+    const response = await fetch("/api/session", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, actor: currentUser }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "작업 권한을 연결하지 못했습니다.");
+    workSession = result;
+    document.querySelector("#session-code").value = "";
+    updateSessionStatus();
+    closeSessionModal();
+    const action = pendingYoutubeAction;
+    pendingYoutubeAction = null;
+    if (action) runYoutubeAction(action);
+  } catch (error) {
+    sessionFeedback.textContent = error.message;
+    sessionFeedback.className = "submit-feedback is-error";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function connectorForStage(stage) {
@@ -370,23 +455,76 @@ function youtubeStageActions(stage, connector) {
   if (stage.status === "locked") return `<button class="youtube-action-button" disabled>선행 단계 완료 후 열림</button>`;
   if (["queued", "running"].includes(stage.status)) return `<button class="youtube-action-button" disabled>${stage.status === "queued" ? "Worker 실행 대기 중" : "Worker 실행 중"}</button>`;
   if (stage.status === "needs_decision") return `
-    <button class="youtube-action-button is-decision" data-youtube-action="approve">${stage.provider === "youtube" ? "게시 설정 승인 · 업로드 실행" : "확정값 기록 · 다음 단계 열기"}</button>
+    <button class="youtube-action-button is-decision" data-youtube-action="approve">${stage.id === "youtube_publish" ? "게시 설정 승인 · 업로드 실행" : stage.id === "shortform_plan" ? "숏폼 후보 확정" : "게시 문안 확정"}</button>
     <button class="youtube-action-button is-secondary" data-youtube-action="revise">수정 후 다시 실행</button>`;
   if (["failed", "blocked", "needs_input"].includes(stage.status)) return `
     <button class="youtube-action-button is-retry" data-youtube-action="retry">다시 실행 준비</button>
     <button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
-  if (stage.provider === "human") return `<button class="youtube-action-button" data-youtube-action="complete">확인 결과 등록 · 완료</button>`;
-  if (stage.provider === "human_ai") return `
-    ${connector.ready ? '<button class="youtube-action-button" data-youtube-action="run">AI 후보 생성</button>' : ""}
-    <button class="youtube-action-button is-secondary" data-youtube-action="complete">대표 확정 결과 등록</button>`;
+  if (stage.id === "source_package") return `<button class="youtube-action-button" data-youtube-action="complete">작업 준비 완료</button>`;
+  if (stage.id === "pc_main_edit") return `<button class="youtube-action-button" data-youtube-action="complete">PC 편집 완료 · 마스터 접수로</button>`;
+  if (stage.id === "master_upload") return `<button class="youtube-action-button" data-youtube-action="complete">완료본 등록</button>`;
+  if (stage.provider === "human") return `<button class="youtube-action-button" data-youtube-action="complete">완료 기록</button>`;
   if (stage.provider === "openai") return connector.ready
-    ? `<button class="youtube-action-button" data-youtube-action="run">✦ OS에서 AI 실행</button>`
+    ? `<button class="youtube-action-button" data-youtube-action="run">${escapeHtml(stage.ui?.primaryAction || "AI 실행")}</button>`
     : `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 결과로 완료</button>`;
   if (stage.provider === "youtube") return connector.ready
     ? `<button class="youtube-action-button" data-youtube-action="run">게시 설정 검토 시작</button>`
     : `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 게시 결과 등록</button>`;
-  if (connector.ready) return `<button class="youtube-action-button" data-youtube-action="run">${escapeHtml(connector.mode)} 실행</button>`;
+  if (connector.ready) return `<button class="youtube-action-button" data-youtube-action="run">${escapeHtml(stage.ui?.primaryAction || `${connector.mode} 실행`)}</button>`;
   return `<button class="youtube-action-button is-secondary" data-youtube-action="complete">수동 산출물 연결 · 완료</button>`;
+}
+
+const YOUTUBE_OPTION_LABELS = {
+  "20-30": "20~30초", "30-45": "30~45초", "45-60": "45~60초",
+  youtube_shorts: "YouTube Shorts", instagram_reels: "Instagram Reels", both: "Shorts + Reels",
+  brand_default: "브랜드 기본", keyword_emphasis: "키워드 강조", minimal: "미니멀",
+  smart_crop: "화자 자동 추적", speaker_center: "화자 중앙 고정", split_layout: "상·하 분할",
+};
+
+function youtubeFieldValue(stage, draft, field) {
+  const stored = draft.parameters?.[field.key] ?? stage.parameters?.[field.key];
+  return stored === undefined || stored === null ? field.default : stored;
+}
+
+function renderYoutubeParameterField(stage, draft, field) {
+  const value = youtubeFieldValue(stage, draft, field);
+  if (field.type === "checkbox") return `<label class="youtube-toggle-field"><input type="checkbox" data-youtube-param="${escapeHtml(field.key)}" ${value === true || value === "true" ? "checked" : ""} /><span><strong>${escapeHtml(field.label)}</strong><small>${value === true || value === "true" ? "사용" : "선택"}</small></span></label>`;
+  if (field.type === "select") return `<label class="youtube-field"><span>${escapeHtml(field.label)}</span><select data-youtube-param="${escapeHtml(field.key)}">${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(YOUTUBE_OPTION_LABELS[option] || option)}</option>`).join("")}</select></label>`;
+  if (field.type === "textarea") return `<label class="youtube-field youtube-field-wide"><span>${escapeHtml(field.label)}</span><textarea data-youtube-param="${escapeHtml(field.key)}" rows="3">${escapeHtml(value || "")}</textarea></label>`;
+  return `<label class="youtube-field"><span>${escapeHtml(field.label)}${field.suffix ? ` <small>${escapeHtml(field.suffix)}</small>` : ""}</span><input data-youtube-param="${escapeHtml(field.key)}" type="${field.type === "number" ? "number" : "text"}" value="${escapeHtml(value ?? "")}" ${field.min !== undefined ? `min="${field.min}"` : ""} ${field.max !== undefined ? `max="${field.max}"` : ""} /></label>`;
+}
+
+function renderYoutubeStageSpecific(stage, draft, content, connector) {
+  const mode = stage.ui?.mode || "default";
+  if (mode === "work_package") return `
+    <section class="youtube-pc-card"><div><span>최신 맥락 묶음</span><strong>${escapeHtml(content.id)} 작업 패키지</strong><p>승인 원고·촬영 포인터·최신 Wiki·Access Skill을 한 파일로 받습니다.</p></div><a class="youtube-download-button" href="${escapeHtml(content.workPackageUrl || "#")}" download="${escapeHtml(content.id)}_WORK_PACKAGE.md">↓ 작업 패키지 받기</a></section>`;
+  if (mode === "local_checklist") {
+    const checks = stage.ui?.checklist || [];
+    return `<section class="youtube-local-panel"><header><div><span>개인 PC에서 완료</span><strong>메인 편집 체크리스트</strong></div><em>서버 토큰 사용 없음</em></header><div class="youtube-local-checklist">${checks.map((item, indexValue) => `<label><input type="checkbox" data-youtube-check="${indexValue}" ${draft.checklist?.[indexValue] ? "checked" : ""} /><i>${String(indexValue + 1).padStart(2, "0")}</i><span>${escapeHtml(item)}</span></label>`).join("")}</div><details class="youtube-technical-details"><summary>PDF 기술 작업 상세</summary><p>자막 → 요약 덱 → 사진 → 1920×1080 렌더 → CTA → 오디오 → XML → Premiere 최종 MP4 순서입니다. 실제 파일과 개인 AI 토큰은 PC 밖으로 보내지 않습니다.</p></details></section>`;
+  }
+  if (mode === "master_upload") {
+    const previousAssets = { ...(stage.parameters?.assets || {}), ...(draft.assetRefs || {}) };
+    const fileCards = [
+      { kind: "master", label: "최종 MP4", accept: "video/mp4,.mp4", required: true },
+      { kind: "subtitle", label: "최종 SRT", accept: ".srt,text/plain", required: true },
+      { kind: "thumbnail", label: "썸네일", accept: "image/png,image/jpeg,.png,.jpg,.jpeg", required: false },
+    ];
+    return `<section class="youtube-upload-panel"><header><div><span>DIRECT ASSET UPLOAD</span><strong>완료 파일 세 개만 인계</strong><p>선택한 파일은 자산 저장소로 직접 전송됩니다.</p></div><i class="connector-light ${connector.ready ? "is-ready" : ""}">${connector.ready ? "업로드 연결됨" : "저장소 연결 필요"}</i></header><div class="youtube-upload-grid">${fileCards.map((item) => `<article class="youtube-upload-card"><span>${item.required ? "필수" : "선택"}</span><strong>${escapeHtml(item.label)}</strong><label>파일 선택<input type="file" data-youtube-upload="${item.kind}" accept="${item.accept}" /></label><small data-youtube-file-name="${item.kind}">선택된 파일 없음</small><input data-youtube-asset-ref="${item.kind}" type="text" placeholder="asset://... 직접 입력" value="${escapeHtml(previousAssets[item.kind] || "")}" /></article>`).join("")}</div><div class="youtube-upload-progress" id="youtube-upload-progress" hidden><span><i></i></span><small>업로드 준비 중</small></div><p class="youtube-upload-note">저장소가 연결되기 전에는 업로드된 자산의 <code>asset://</code> ID를 직접 입력할 수 있습니다.</p></section>`;
+  }
+  if (mode === "worker_validation") return `<section class="youtube-validation-preview"><article><span>VIDEO</span><strong>해상도·FPS·길이</strong><small>FFprobe 검사</small></article><article><span>AUDIO</span><strong>트랙·음량</strong><small>재생 오류 검사</small></article><article><span>SUBTITLE</span><strong>타임코드 범위</strong><small>SRT 일치 검사</small></article></section>`;
+  if (mode === "metrics") return `<section class="youtube-metrics-preview"><article><span>롱폼 조회</span><strong>—</strong><small>YouTube Analytics 연결 후 표시</small></article><article><span>숏폼 조회</span><strong>—</strong><small>클립별 비교</small></article><article><span>CTR</span><strong>—</strong><small>1h·6h·24h·7d</small></article><article><span>전환</span><strong>—</strong><small>UTM 연결</small></article></section>`;
+  const fields = stage.ui?.fields || [];
+  if (!fields.length) return "";
+  return `<section class="youtube-stage-form"><header><span>${escapeHtml(stage.ui?.eyebrow || "STAGE SETTINGS")}</span><strong>${escapeHtml(stage.ui?.helper || "이 공정에 필요한 설정만 입력합니다.")}</strong></header><div class="youtube-stage-form-grid">${fields.map((field) => renderYoutubeParameterField(stage, draft, field)).join("")}</div></section>`;
+}
+
+function youtubeDisplayGroupForStage(stageId) {
+  return YOUTUBE_DISPLAY_GROUPS.find((group) => group.stages.includes(stageId)) || YOUTUBE_DISPLAY_GROUPS[0];
+}
+
+function youtubeStageForGroup(group, stages) {
+  const groupStages = group.stages.map((id) => stages.find((stage) => stage.id === id)).filter(Boolean);
+  return groupStages.find((stage) => ["ready", "needs_input", "needs_decision", "failed", "blocked", "queued", "running"].includes(stage.status)) || groupStages.at(-1);
 }
 
 function renderYoutube() {
@@ -406,7 +544,6 @@ function renderYoutube() {
   const draft = readYoutubeDraft();
   const lastOutput = youtubeLastOutput?.contentId === content.id && youtubeLastOutput?.stageId === selectedStage.id ? youtubeLastOutput.text : "";
   const connector = connectorForStage(selectedStage);
-  const phases = index.youtubePipeline?.phases || [];
   const readyCount = stages.filter((stage) => stage.status === "ready").length;
   const activeCount = stages.filter((stage) => ["queued", "running"].includes(stage.status)).length;
   const decisionCount = stages.filter((stage) => ["needs_decision", "needs_input", "failed", "blocked"].includes(stage.status)).length;
@@ -414,26 +551,25 @@ function renderYoutube() {
   const jobs = (automation.jobs || []).slice(-5).reverse();
   const outputLink = selectedStage.outputPath ? `https://github.com/brandyaction-ricky/OS/blob/main/${selectedStage.outputPath}` : "";
   const assetLink = safeExternalUrl(selectedStage.assetUrl);
-  const sourceLabel = selectedStage.source === "pdf" ? "실제 PDF 공정" : "OS 확장 공정";
+  const sourceLabel = selectedStage.source === "pdf" ? "실제 PDF 공정" : selectedStage.executionBoundary === "personal_pc" ? "개인 PC 공정" : "서버 공정";
   const sourceDescription = selectedStage.source === "pdf"
-    ? "업로드한 브랜디액션 제작공정 기준"
-    : "최종 YouTube 게시 완료를 위해 보완한 단계";
-  const stageRail = phases.map((phase) => {
-    const phaseStages = stages.filter((stage) => stage.phase === phase.id);
-    return `<section class="youtube-phase"><header><span>${String(phase.order).padStart(2, "0")}</span><strong>${escapeHtml(phase.label)}</strong></header>
-      ${phaseStages.map((stage) => `<button class="youtube-stage-nav ${stage.id === selectedStage.id ? "is-active" : ""}" data-youtube-stage="${escapeHtml(stage.id)}">
-        <i data-status="${escapeHtml(stage.status)}">${stage.status === "completed" ? "✓" : stage.order}</i>
-        <span><strong>${escapeHtml(stage.shortLabel || stage.label)}</strong><small>${escapeHtml(stage.owner)} · ${escapeHtml(statusLabel(stage.status))}</small></span>
-        ${stage.humanGate ? '<em title="사람 확인 단계">◇</em>' : ""}
-      </button>`).join("")}</section>`;
+    ? "업로드한 브랜디액션 제작공정 체크리스트"
+    : selectedStage.executionBoundary === "personal_pc" ? "개인 PC에서 실행하고 OS에는 완료 상태만 기록" : "완료본 이후 회사 서버 실행";
+  const activeGroup = youtubeDisplayGroupForStage(selectedStage.id);
+  const stageRail = YOUTUBE_DISPLAY_GROUPS.map((group) => {
+    const groupStages = group.stages.map((id) => stages.find((stage) => stage.id === id)).filter(Boolean);
+    if (!groupStages.length) return "";
+    const target = youtubeStageForGroup(group, stages);
+    const isActive = group.id === activeGroup.id;
+    const completed = groupStages.every((stage) => stage.status === "completed");
+    const attention = groupStages.some((stage) => ["needs_input", "needs_decision", "failed", "blocked"].includes(stage.status));
+    const groupStatus = completed ? "completed" : attention ? "needs_decision" : target.status;
+    return `<section class="youtube-phase ${isActive ? "is-active" : ""}"><button class="youtube-stage-nav ${isActive ? "is-active" : ""}" data-youtube-stage="${escapeHtml(target.id)}"><i data-status="${escapeHtml(groupStatus)}">${completed ? "✓" : group.order}</i><span><strong>${escapeHtml(group.label)}</strong><small>${escapeHtml(group.description)}</small></span><em>${escapeHtml(statusLabel(groupStatus))}</em></button>${isActive && groupStages.length > 1 ? `<div class="youtube-substage-tabs">${groupStages.map((stage) => `<button class="${stage.id === selectedStage.id ? "is-active" : ""}" data-youtube-stage="${escapeHtml(stage.id)}"><i data-status="${escapeHtml(stage.status)}"></i>${escapeHtml(stage.shortLabel)}</button>`).join("")}</div>` : ""}</section>`;
   }).join("");
-  const connectors = ["openai", "image", "render", "premiere", "youtube", "metrics"].map((key) => {
+  const connectors = ["asset", "openai", "render", "youtube", "metrics"].map((key) => {
     const item = automationConnectors[key] || { ready: false, label: key, mode: "연결 확인 중" };
     return `<article class="integration-mini ${item.ready ? "is-ready" : ""}"><i></i><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.ready ? `${item.mode} 설정됨` : item.fallback || "연결 필요")}</small></span></article>`;
   }).join("");
-  const stageInput = ["openai", "human_ai"].includes(selectedStage.provider) ? `
-    <label class="youtube-field"><span>AI 입력 원문 <small>선택 · 비우면 이전 단계 최신 결과와 Wiki 사용</small></span><textarea id="youtube-input" rows="8" maxlength="160000" placeholder="SRT·원고·이전 결과를 붙여넣거나 아래 파일을 선택하세요.">${escapeHtml(draft.inputText || "")}</textarea></label>
-    <label class="youtube-file-field">↑ SRT·TXT·MD 가져오기<input id="youtube-input-file" type="file" accept=".srt,.txt,.md,text/plain,text/markdown" /></label>` : "";
   const selectedPrivacy = draft.privacyStatus || selectedStage.publishSettings?.privacyStatus || "private";
   const selectedPublishAt = draft.publishAt || (selectedStage.publishSettings?.publishAt ? toDateTimeLocal(selectedStage.publishSettings.publishAt) : "");
   const publishSettings = selectedStage.id === "youtube_publish" ? `
@@ -443,61 +579,51 @@ function renderYoutube() {
     </div>` : "";
   const publishApproval = selectedStage.id === "youtube_publish" && selectedStage.status === "needs_decision" ? `
     <label class="youtube-field is-secret"><span>YouTube 게시 승인 코드</span><input id="youtube-publish-approval-secret" type="password" autocomplete="off" placeholder="게시 권한자 전용 코드" /><small>공용 OS 작업 코드와 분리된 게시 전용 승인입니다.</small></label>` : "";
+  const stageSpecific = renderYoutubeStageSpecific(selectedStage, draft, content, connector);
+  const manualAssetField = !connector.ready && ["shortform_render", "youtube_publish"].includes(selectedStage.id) ? `<label class="youtube-field"><span>${selectedStage.id === "youtube_publish" ? "게시된 YouTube URL" : "수동 숏폼 Asset ID"}</span><input id="youtube-asset-url" type="text" maxlength="2000" placeholder="${selectedStage.id === "youtube_publish" ? "https://youtube.com/watch?v=..." : "asset://longform/BA-0268/shorts/manifest.json"}" value="${escapeHtml(draft.assetUrl || selectedStage.assetUrl || "")}" /></label>` : "";
+  const qualityConfirmation = selectedStage.ui?.mode === "local_checklist" ? "" : `<label class="youtube-quality-confirm"><input id="youtube-quality-confirm" type="checkbox" /><span>완료 기준과 연결된 결과를 직접 확인했습니다.</span></label>`;
   const activity = jobs.length ? jobs.map((job) => `<li><i data-status="${escapeHtml(job.status)}"></i><span><strong>${escapeHtml(stages.find((stage) => stage.id === job.stageId)?.label || job.stageId)}</strong><small>${escapeHtml(job.provider)} · ${escapeHtml(formatDate(job.updatedAt || job.createdAt))}</small></span><em>${escapeHtml(statusLabel(job.status))}</em></li>`).join("") : `<li class="is-empty">아직 실행 로그가 없습니다.</li>`;
 
   app.innerHTML = `
     <section class="youtube-hero">
-      <div class="youtube-hero-copy"><p>YOUTUBE PRODUCTION CONTROL</p><h2>유튜브 제작 관제탑</h2><span>MP4·SRT 접수부터 Premiere XML, 최종 렌더, YouTube 게시와 성과 회수까지 한 화면에서 관리합니다.</span></div>
+      <div class="youtube-hero-copy"><p>PC PRODUCTION · SERVER DISTRIBUTION</p><h2>유튜브 제작 워크스페이스</h2><span>메인 편집은 각자 PC에서, OS는 완료본 접수·숏폼 생성·업로드·성과 회수에 집중합니다.</span></div>
       <label class="youtube-run-select"><span>Content Run</span><select id="youtube-content-select">${youtubeRuns().map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label>
       <button class="youtube-refresh" id="youtube-refresh" type="button">↻ 최신 상태</button>
       <div class="youtube-progress"><strong>${automation.progress}%</strong><span><i style="width:${automation.progress}%"></i></span><small>${automation.completedCount}/${automation.totalCount} 단계 완료</small></div>
     </section>
     <section class="youtube-summary-strip">
-      <article><span>지금 실행 가능</span><strong>${readyCount}</strong><small>병렬 작업 포함</small></article>
+      <article><span>지금 할 작업</span><strong>${readyCount}</strong><small>현재 열려 있는 공정</small></article>
       <article><span>자동화 실행 중</span><strong>${activeCount}</strong><small>API·Worker Queue</small></article>
       <article class="${decisionCount ? "is-alert" : ""}"><span>확인·예외</span><strong>${decisionCount}</strong><small>사람이 볼 항목만</small></article>
       <article><span>현재 담당</span><strong>${escapeHtml(selectedStage.owner)}</strong><small>${escapeHtml(selectedStage.shortLabel)}</small></article>
     </section>
-    <section class="youtube-source-note"><strong>공정 범위</strong><span>PDF 원문은 Premiere XML·업로드 문안까지입니다.</span><i>최종 렌더·게시·성과는 OS 확장 단계로 구분했습니다.</i></section>
+    <section class="youtube-source-note"><strong>실행 경계</strong><span>자막·덱·이미지·Premiere는 개인 PC에서 수행합니다.</span><i>서버는 완료본 검증·숏폼·YouTube만 담당</i></section>
     <div class="youtube-workspace">
-      <aside class="youtube-stage-rail"><header><strong>전체 제작 공정</strong><span>◇ 사람 확인</span></header>${stageRail}</aside>
+      <aside class="youtube-stage-rail"><header><strong>5단계 결과 흐름</strong><span>필요한 화면만 표시</span></header>${stageRail}</aside>
       <main class="youtube-stage-workbench">
         <header class="youtube-stage-head">
           <div><span class="youtube-source-badge ${selectedStage.source === "pdf" ? "is-pdf" : ""}">${escapeHtml(sourceLabel)}</span><p>${escapeHtml(sourceDescription)}</p><h2>${escapeHtml(selectedStage.label)}</h2><strong>${escapeHtml(selectedStage.description)}</strong></div>
           <div class="youtube-stage-state"><span data-status="${escapeHtml(selectedStage.status)}">${escapeHtml(statusLabel(selectedStage.status))}</span><small>${escapeHtml(selectedStage.automationLevel)}</small></div>
         </header>
-        <section class="youtube-stage-contract">
-          <article><span>INPUT</span><div>${selectedStage.inputKeys.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article>
-          <b>→</b>
-          <article><span>OUTPUT</span><div>${selectedStage.outputs.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article>
-        </section>
         <section class="youtube-execution-box">
-          <header><div><span>EXECUTION ADAPTER</span><strong>${escapeHtml(connector.mode)}</strong><p>${connector.ready ? "운영 환경에 연결 설정이 있습니다. 실행 결과와 Health는 각 작업에서 확인합니다." : `${connector.label} 연결 전입니다. 수동 산출물 참조로도 공정을 이어갈 수 있습니다.`}</p></div><i class="connector-light ${connector.ready ? "is-ready" : ""}">${connector.ready ? "설정됨" : "연결 필요"}</i></header>
-          ${stageInput}
+          <header><div><span>${escapeHtml(selectedStage.ui?.eyebrow || "CURRENT TASK")}</span><strong>${escapeHtml(selectedStage.ui?.helper || selectedStage.description)}</strong><p>${selectedStage.executionBoundary === "personal_pc" ? "이 단계는 회사 서버 비용을 사용하지 않습니다." : connector.ready ? `${connector.mode} 연결이 준비됐습니다.` : `${connector.label} 연결 전이며 수동 결과 등록을 사용할 수 있습니다.`}</p></div><i class="connector-light ${connector.ready ? "is-ready" : ""}">${selectedStage.executionBoundary === "personal_pc" ? "PC 작업" : connector.ready ? "설정됨" : "연결 필요"}</i></header>
+          ${stageSpecific}
           ${publishSettings}
           ${publishApproval}
-          <div class="youtube-input-grid">
-            <label class="youtube-field"><span>작업 메모·확정값</span><textarea id="youtube-summary" rows="4" maxlength="20000" placeholder="선택한 제목·결정값·예외·다음 담당자 메모를 적으세요.">${escapeHtml(draft.summary || "")}</textarea></label>
-            <label class="youtube-field"><span>산출물 자산 ID <small>비공개 자산은 참조만 저장</small></span><input id="youtube-asset-url" type="text" maxlength="2000" placeholder="asset://longform/BA-0268/final.mp4" value="${escapeHtml(draft.assetUrl || selectedStage.assetUrl || "")}" /><small>공개 Repository에는 서명 URL을 넣지 않습니다. YouTube 게시 결과만 공개 URL을 허용합니다.</small></label>
-          </div>
+          ${manualAssetField}
+          ${selectedStage.ui?.mode !== "metrics" ? `<label class="youtube-field youtube-field-wide youtube-stage-note"><span>작업 메모 <small>선택</small></span><textarea id="youtube-summary" rows="3" maxlength="20000" placeholder="결정값·예외·다음 담당자에게 남길 내용만 적으세요.">${escapeHtml(draft.summary || "")}</textarea></label>` : ""}
           ${selectedStage.error ? `<div class="youtube-stage-error"><strong>최근 오류</strong><span>${escapeHtml(selectedStage.error)}</span><small>${escapeHtml(formatDate(selectedStage.stageUpdatedAt))}</small></div>` : ""}
-          <label class="youtube-quality-confirm"><input id="youtube-quality-confirm" type="checkbox" /><span>위 완료 기준과 연결한 산출물을 직접 확인했습니다.</span></label>
-          <label class="youtube-field is-secret"><span>OS 작업 코드</span><input id="youtube-secret" type="password" autocomplete="current-password" placeholder="팀 작업 코드" value="${escapeHtml(sessionStorage.getItem("ba-os-push-secret") || "")}" /></label>
+          ${qualityConfirmation}
           <div class="youtube-action-row">${youtubeStageActions(selectedStage, connector)}</div>
           <div class="youtube-feedback" id="youtube-feedback" role="status"></div>
           ${lastOutput ? `<details class="youtube-output-preview" open><summary>이번 실행 결과 미리보기</summary><pre>${escapeHtml(lastOutput)}</pre></details>` : ""}
           ${outputLink ? `<div class="youtube-output-links"><a href="${escapeHtml(outputLink)}" target="_blank" rel="noreferrer">최신 Markdown 결과 보기 ↗</a>${assetLink ? `<a href="${escapeHtml(assetLink)}" target="_blank" rel="noreferrer">공개 산출물 열기 ↗</a>` : ""}</div>` : ""}
         </section>
-        <section class="youtube-quality"><header><span>COMPLETION CRITERIA</span><h3>완료 전에 확인할 기준</h3></header><ul>${selectedStage.qualityChecks.map((check) => `<li><i>○</i>${escapeHtml(check)}</li>`).join("")}</ul><p>Worker의 실제 검사 결과가 들어오면 항목별 통과·실패로 표시됩니다.</p></section>
+        <section class="youtube-quality"><header><span>COMPLETION CRITERIA</span><h3>이 공정의 완료 기준</h3></header><ul>${selectedStage.qualityChecks.map((check) => `<li><i>○</i>${escapeHtml(check)}</li>`).join("")}</ul></section>
+        <details class="youtube-process-details"><summary>공정 세부정보 · Context · 연결 상태 · 실행 이력</summary><div class="youtube-details-grid"><section><header><span>INPUT → OUTPUT</span><strong>산출물 계약</strong></header><div class="youtube-stage-contract"><article><span>INPUT</span><div>${selectedStage.inputKeys.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article><b>→</b><article><span>OUTPUT</span><div>${selectedStage.outputs.map((item) => `<i>${escapeHtml(item)}</i>`).join("")}</div></article></div></section><section><header><span>INTEGRATIONS</span><strong>서버 연결 현황</strong></header><div class="integration-mini-list">${connectors}</div></section><section><header><span>ATTENTION</span><strong>확인 필요한 예외</strong></header>${questions.length ? `<ul class="youtube-question-list">${questions.map((question) => `<li><strong>${escapeHtml(question.question || question.stageId)}</strong><span>${escapeHtml(question.status || "대기")}</span></li>`).join("")}</ul>` : `<p class="youtube-none">현재 등록된 질문이 없습니다.</p>`}</section><section><header><span>ACTIVITY</span><strong>최근 자동화 실행</strong></header><ul class="youtube-job-list">${activity}</ul></section></div></details>
       </main>
-      <aside class="youtube-context-panel">
-        <section><header><span>CONTEXT</span><strong>이 단계가 참고하는 것</strong></header><div class="youtube-context-chain"><article><i>1</i><span>Company Wiki</span><strong>최신 정본</strong></article><article><i>2</i><span>Access Skill</span><strong>맥락 호출</strong></article><article><i>3</i><span>Automation Recipe</span><strong>실행·기록</strong></article></div></section>
-        <section><header><span>INTEGRATIONS</span><strong>API 연결 현황</strong></header><div class="integration-mini-list">${connectors}</div></section>
-        <section><header><span>ATTENTION</span><strong>확인 필요한 예외</strong></header>${questions.length ? `<ul class="youtube-question-list">${questions.map((question) => `<li><strong>${escapeHtml(question.question || question.stageId)}</strong><span>${escapeHtml(question.status || "대기")}</span></li>`).join("")}</ul>` : `<p class="youtube-none">현재 등록된 질문이 없습니다.</p>`}</section>
-        <section><header><span>ACTIVITY</span><strong>최근 자동화 실행</strong></header><ul class="youtube-job-list">${activity}</ul></section>
-      </aside>
     </div>`;
-  document.querySelector(`.youtube-stage-nav[data-youtube-stage="${selectedStage.id}"]`)?.setAttribute("aria-current", "step");
+  document.querySelector(`[data-youtube-stage="${selectedStage.id}"]`)?.setAttribute("aria-current", "step");
   clearTimeout(youtubePollTimer);
   if (stages.some((stage) => ["queued", "running"].includes(stage.status))) {
     youtubePollTimer = setTimeout(() => refreshYoutubeState(true), 8_000);
@@ -535,35 +661,89 @@ async function refreshYoutubeState(silent = false) {
   }
 }
 
+async function uploadYoutubeMasterAssets(content) {
+  const refs = { ...youtubeUploadAssets };
+  document.querySelectorAll("[data-youtube-asset-ref]").forEach((field) => {
+    const value = field.value.trim();
+    if (value) refs[field.dataset.youtubeAssetRef] = value;
+  });
+  const files = [...document.querySelectorAll("[data-youtube-upload]")].map((input) => ({ kind: input.dataset.youtubeUpload, file: input.files?.[0] })).filter((item) => item.file);
+  if (files.length && !automationConnectors.asset?.ready) throw new Error("완료본 저장소 연결 전입니다. 자산 서비스 연결 후 파일을 올리거나 기존 asset:// ID를 입력해주세요.");
+  const progress = document.querySelector("#youtube-upload-progress");
+  if (progress && files.length) progress.hidden = false;
+  for (let indexValue = 0; indexValue < files.length; indexValue += 1) {
+    const { kind, file } = files[indexValue];
+    if (progress) {
+      progress.querySelector("i").style.width = `${Math.round((indexValue / files.length) * 100)}%`;
+      progress.querySelector("small").textContent = `${file.name} 업로드 준비 중`;
+    }
+    const sessionResponse = await fetch("/api/assets", {
+      method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contentId: content.id, kind, fileName: file.name, size: file.size, contentType: file.type || "application/octet-stream" }),
+    });
+    const session = await sessionResponse.json().catch(() => ({}));
+    if (!sessionResponse.ok) throw new Error(session.error || `${file.name} 업로드를 준비하지 못했습니다.`);
+    const uploadResponse = await fetch(session.uploadUrl, { method: "PUT", headers: session.headers || {}, body: file });
+    if (!uploadResponse.ok) throw new Error(`${file.name} 업로드가 중단됐습니다. 다시 시도해주세요.`);
+    refs[kind] = session.assetId;
+    const assetField = document.querySelector(`[data-youtube-asset-ref="${kind}"]`);
+    if (assetField) assetField.value = session.assetId;
+  }
+  if (progress && files.length) {
+    progress.querySelector("i").style.width = "100%";
+    progress.querySelector("small").textContent = "완료본 업로드 완료";
+  }
+  if (!refs.master || !refs.subtitle) throw new Error("최종 MP4와 SRT 파일 또는 asset:// ID가 모두 필요합니다.");
+  youtubeUploadAssets = refs;
+  return refs;
+}
+
 async function runYoutubeAction(action) {
   const content = selectedYoutubeContent();
   const stage = content?.youtubeAutomation?.stages.find((item) => item.id === activeYoutubeStageId);
   const feedback = document.querySelector("#youtube-feedback");
   const buttons = [...document.querySelectorAll("[data-youtube-action]")];
   if (!content || !stage || !feedback) return;
-  const secret = document.querySelector("#youtube-secret")?.value || "";
+  if (!workSession.authenticated) {
+    pendingYoutubeAction = action;
+    openSessionModal();
+    return;
+  }
   const inputText = document.querySelector("#youtube-input")?.value || "";
-  const summary = document.querySelector("#youtube-summary")?.value.trim() || "";
-  const assetUrl = document.querySelector("#youtube-asset-url")?.value.trim() || "";
+  let summary = document.querySelector("#youtube-summary")?.value.trim() || "";
+  let assetUrl = document.querySelector("#youtube-asset-url")?.value.trim() || "";
+  const parameters = {};
+  document.querySelectorAll("[data-youtube-param]").forEach((field) => {
+    parameters[field.dataset.youtubeParam] = field.type === "checkbox" ? field.checked : field.value;
+  });
+  const checklist = [...document.querySelectorAll("[data-youtube-check]")];
+  const checklistConfirmed = checklist.length > 0 && checklist.every((field) => field.checked);
   const publishAtInput = document.querySelector("#youtube-publish-at")?.value || "";
   const publishSettings = stage.id === "youtube_publish" ? {
     privacyStatus: document.querySelector("#youtube-privacy-status")?.value || "private",
     publishAt: publishAtInput ? new Date(publishAtInput).toISOString() : null,
   } : null;
-  if (!secret) {
-    feedback.textContent = "OS 작업 코드를 입력해주세요.";
-    feedback.className = "youtube-feedback is-error";
-    return;
-  }
   buttons.forEach((button) => { button.disabled = true; });
   saveYoutubeDraft();
   const requestSerial = ++youtubeRequestSerial;
   feedback.textContent = action === "run" ? "최신 Wiki와 입력을 불러와 실행하고 있습니다…" : "상태와 산출물을 반영하고 있습니다…";
   feedback.className = "youtube-feedback is-loading";
   try {
+    if (stage.id === "master_upload" && action === "complete") {
+      const assets = await uploadYoutubeMasterAssets(content);
+      parameters.assets = assets;
+      assetUrl = assets.master;
+    }
+    if (stage.id === "source_package" && !summary) summary = "최신 작업 패키지와 입력물을 확인했습니다.";
+    if (stage.id === "pc_main_edit") {
+      if (!checklistConfirmed) throw new Error("PC 메인 편집 체크리스트를 모두 확인해주세요.");
+      if (!summary) summary = "개인 PC 메인 편집 체크리스트를 완료했습니다.";
+    }
+    if (stage.id === "master_upload" && !summary) summary = "최종 MP4·SRT 완료본을 등록했습니다.";
     const response = await fetch("/api/automation", {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${secret}` },
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({
         action,
         contentId: content.id,
@@ -572,17 +752,25 @@ async function runYoutubeAction(action) {
         inputText,
         summary,
         assetUrl,
+        parameters,
         publishSettings,
         publishApprovalSecret: document.querySelector("#youtube-publish-approval-secret")?.value || "",
-        qualityConfirmed: document.querySelector("#youtube-quality-confirm")?.checked === true,
+        qualityConfirmed: checklistConfirmed || document.querySelector("#youtube-quality-confirm")?.checked === true,
       }),
     });
     const result = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      workSession = { authenticated: false, actor: null, expiresAt: null };
+      updateSessionStatus();
+      pendingYoutubeAction = action;
+      openSessionModal();
+      throw new Error("작업 세션이 만료됐습니다. 다시 연결해주세요.");
+    }
     if (!response.ok) throw new Error(result.error || "Automation 작업에 실패했습니다.");
-    sessionStorage.setItem("ba-os-push-secret", secret);
     youtubeLastOutput = result.output ? { contentId: content.id, stageId: stage.id, text: result.output } : null;
     if (result.state) updateYoutubeState(content, result.state);
     activeYoutubeStageId = stage.id;
+    if (stage.id === "master_upload" && action === "complete") youtubeUploadAssets = {};
     if (["run", "complete", "approve"].includes(action)) sessionStorage.removeItem(youtubeDraftKey(content.id, stage.id));
     if (requestSerial !== youtubeRequestSerial || currentView !== "youtube") return;
     renderYoutube();
@@ -994,16 +1182,6 @@ async function loadPrivateMeetings({ silent = false, reopenPath = "", append = f
   }
 }
 
-function renderApprovals() {
-  const automationDecisions = index.contents.flatMap((content) => (content.youtubeAutomation?.stages || [])
-    .filter((stage) => stage.status === "needs_decision")
-    .map((stage) => ({ content, stage })));
-  app.innerHTML = `${sectionHead("결재함", "전체 결과가 아니라 실제 판단이 필요한 Content Run과 Automation 예외만 표시합니다.")}
-    ${automationDecisions.length ? `<div class="decision-inbox">${automationDecisions.map(({ content, stage }) => `<button data-youtube-task="${escapeHtml(content.id)}" data-youtube-stage="${escapeHtml(stage.id)}"><span>YOUTUBE DECISION</span><strong>${escapeHtml(stage.label)}</strong><p>${escapeHtml(content.id)} · ${escapeHtml(content.title)}</p><i>${escapeHtml(stage.owner)} 확인 →</i></button>`).join("")}</div>` : ""}
-    ${index.approvals.length ? contentTable(index.approvals) : ""}
-    ${!automationDecisions.length && !index.approvals.length ? emptyState("대기 중인 결재가 없습니다", "사람 확인이 필요한 공정만 이곳에 표시됩니다.") : ""}`;
-}
-
 function renderPeople() {
   const cards = index.people.map((person) => `
     <article class="person-workspace ${person.id === currentUser ? "is-mine" : ""}">
@@ -1099,13 +1277,16 @@ function renderSkills() {
 }
 
 function render() {
+  if (currentView === "approvals") {
+    currentView = "youtube";
+    if (location.hash !== "#youtube") history.replaceState(null, "", "#youtube");
+  }
   if (!viewTitles[currentView]) currentView = "dashboard";
   if (currentView !== "youtube") { clearTimeout(youtubePollTimer); youtubePollTimer = null; }
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
-  ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, contents: renderContents, meetings: renderMeetings, approvals: renderApprovals, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
+  ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, contents: renderContents, meetings: renderMeetings, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
   taskCount.textContent = tasksForUser().length + automationTasksForUser().length;
-  approvalCount.textContent = index.approvals.length + index.contents.reduce((sum, content) => sum + (content.youtubeAutomation?.stages || []).filter((stage) => stage.status === "needs_decision").length, 0);
   peopleCount.textContent = index.people.length;
   meetingCount.textContent = (index.meetingItems || []).length;
   sidebar.classList.remove("is-open");
@@ -1128,9 +1309,8 @@ function openDrawer(contentId) {
       ${content.youtubeAutomation ? `<button class="primary-action" data-youtube-task="${escapeHtml(content.id)}" data-youtube-stage="${escapeHtml(content.youtubeAutomation.currentStageId)}">▶ 제작 관제 열기</button>` : ""}
       <a class="primary-action" href="${escapeHtml(content.workPackageUrl || "#")}" download="${escapeHtml(content.id)}_WORK_PACKAGE.md" ${content.workPackageUrl ? "" : 'aria-disabled="true"'}>↓ 작업 시작</a>
       <button class="secondary-action" data-submit-mode="submit" data-content-id="${escapeHtml(content.id)}">↑ 작업 제출</button>
-      <button class="review-action" data-submit-mode="review" data-content-id="${escapeHtml(content.id)}">◇ 승인 요청</button>
     </div>
-    <p class="work-help">작업 시작은 최신 Context와 Skill을 내려받고, 제출·승인 요청은 결과 정보를 Repository에 기록합니다.</p>
+    <p class="work-help">작업 시작은 최신 Context와 Skill을 내려받고, 작업 제출은 결과 정보를 Repository에 기록합니다.</p>
     <div class="timeline"><h3>공정 진행 상태</h3>${content.steps.map((step) => {
       const state = ["approved", "completed"].includes(step.status) ? "is-done" : step.id === content.currentStep ? "is-current" : "";
       return `<div class="timeline-item ${state}"><i class="timeline-dot"></i><strong>${escapeHtml(step.label)}</strong><span>${escapeHtml(step.owner)} · ${escapeHtml(statusLabel(step.status))}</span></div>`;
@@ -1148,7 +1328,7 @@ function openSubmitModal(contentId, mode) {
   document.querySelector("#submit-content-id").value = content.id;
   document.querySelector("#submit-step").value = content.currentStep;
   document.querySelector("#submit-mode").value = mode;
-  document.querySelector("#submit-title").textContent = mode === "review" ? "승인 요청" : "작업 제출";
+  document.querySelector("#submit-title").textContent = "작업 제출";
   document.querySelector("#submit-description").textContent = `${content.id} · ${content.currentStep} · ${currentUser}`;
   document.querySelector("#submit-secret").value = sessionStorage.getItem("ba-os-push-secret") || "";
   const artifactSelect = document.querySelector("#submit-artifact-key");
@@ -1231,6 +1411,11 @@ function bindEvents() {
   userSelect.addEventListener("change", () => {
     currentUser = userSelect.value;
     localStorage.setItem("ba-os-user", currentUser);
+    if (workSession.authenticated && workSession.actor !== currentUser) {
+      fetch("/api/session", { method: "DELETE", credentials: "same-origin" }).catch(() => {});
+      workSession = { authenticated: false, actor: null, expiresAt: null };
+      updateSessionStatus();
+    }
     render();
   });
   app.addEventListener("click", (event) => {
@@ -1243,7 +1428,7 @@ function bindEvents() {
       else renderYoutube();
       return;
     }
-    const youtubeStage = event.target.closest(".youtube-stage-nav[data-youtube-stage]");
+    const youtubeStage = event.target.closest(".youtube-workspace [data-youtube-stage]");
     if (youtubeStage) {
       saveYoutubeDraft();
       activeYoutubeStageId = youtubeStage.dataset.youtubeStage;
@@ -1289,7 +1474,7 @@ function bindEvents() {
     if (event.target.closest("#youtube-refresh")) refreshYoutubeState(false);
   });
   app.addEventListener("input", (event) => {
-    if (event.target.matches("#youtube-input, #youtube-summary, #youtube-asset-url, #youtube-publish-at")) saveYoutubeDraft();
+    if (event.target.matches("#youtube-input, #youtube-summary, #youtube-asset-url, #youtube-publish-at, [data-youtube-param], [data-youtube-asset-ref], [data-youtube-check]")) saveYoutubeDraft();
   });
   app.addEventListener("change", (event) => {
     if (event.target.matches("#youtube-content-select")) {
@@ -1297,9 +1482,16 @@ function bindEvents() {
       activeYoutubeContentId = event.target.value;
       activeYoutubeStageId = "";
       youtubeLastOutput = null;
+      youtubeUploadAssets = {};
       renderYoutube();
     }
     if (event.target.matches("#youtube-privacy-status")) saveYoutubeDraft();
+    if (event.target.matches("[data-youtube-upload]")) {
+      const kind = event.target.dataset.youtubeUpload;
+      const label = document.querySelector(`[data-youtube-file-name="${kind}"]`);
+      if (label) label.textContent = event.target.files?.[0] ? `${event.target.files[0].name} · ${(event.target.files[0].size / 1024 / 1024).toFixed(1)}MB` : "선택된 파일 없음";
+      delete youtubeUploadAssets[kind];
+    }
     if (event.target.matches("#youtube-input-file")) {
       importYoutubeTextFile(event.target.files[0]).catch((error) => {
         const feedback = document.querySelector("#youtube-feedback");
@@ -1330,7 +1522,15 @@ function bindEvents() {
   document.querySelector("#submit-close").addEventListener("click", closeSubmitModal);
   submitBackdrop.addEventListener("click", closeSubmitModal);
   submitForm.addEventListener("submit", submitWork);
-  window.addEventListener("keydown", (event) => { if (event.key === "Escape") closeDrawer(); });
+  sessionStatusButton.addEventListener("click", openSessionModal);
+  sessionForm.addEventListener("submit", connectWorkSession);
+  document.querySelector("#session-close").addEventListener("click", closeSessionModal);
+  sessionBackdrop.addEventListener("click", closeSessionModal);
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    closeDrawer();
+    closeSessionModal();
+  });
   window.addEventListener("hashchange", () => {
     if (meetingRecordingActive && location.hash !== "#meetings") stopMeetingRecording();
     if (currentView === "youtube") saveYoutubeDraft();
@@ -1342,9 +1542,10 @@ function bindEvents() {
 
 async function boot() {
   try {
-    const [response, automationResponse] = await Promise.all([
+    const [response, automationResponse, sessionResponse] = await Promise.all([
       fetch("/data/os-index.json", { cache: "no-store" }),
       fetch("/api/automation", { cache: "no-store" }).catch(() => null),
+      fetch("/api/session", { cache: "no-store", credentials: "same-origin" }).catch(() => null),
     ]);
     if (!response.ok) throw new Error(`OS index ${response.status}`);
     index = await response.json();
@@ -1352,9 +1553,18 @@ async function boot() {
       const automationStatus = await automationResponse.json().catch(() => ({}));
       automationConnectors = automationStatus.connectors || {};
     }
+    if (sessionResponse?.ok) {
+      const sessionStatus = await sessionResponse.json().catch(() => ({}));
+      workSession = sessionStatus.authenticated ? sessionStatus : workSession;
+    }
     const owners = index.owners.includes(currentUser) ? index.owners : [currentUser, ...index.owners];
     userSelect.innerHTML = owners.map((owner) => `<option value="${escapeHtml(owner)}" ${owner === currentUser ? "selected" : ""}>${escapeHtml(owner)}</option>`).join("");
     syncTime.textContent = `Index ${formatDate(index.generatedAt)}`;
+    if (workSession.authenticated && workSession.actor !== currentUser) {
+      fetch("/api/session", { method: "DELETE", credentials: "same-origin" }).catch(() => {});
+      workSession = { authenticated: false, actor: null, expiresAt: null };
+    }
+    updateSessionStatus();
     bindEvents();
     render();
   } catch (error) {

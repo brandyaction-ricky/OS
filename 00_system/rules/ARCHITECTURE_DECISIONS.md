@@ -30,7 +30,7 @@ Vercel Build가 Process, Content, Skill Markdown을 읽어 정적 JSON 인덱스
 
 ## ADR-008 · Web Pull/Push Gateway를 추가한다
 
-Pilot 확인 결과 팀원이 Terminal에서 BA CLI를 직접 사용하는 방식은 운영 마찰이 크다. Content 상세 화면에 `작업 시작`, `작업 제출`, `승인 요청`을 제공한다. Web Pull은 현재 단계에 필요한 Markdown을 하나의 `WORK_PACKAGE.md`로 내려받는다. Web Push는 Vercel Server Function이 입력을 검증한 뒤 GitHub Git Data API로 artifact, `CONTENT.md`, 이전 최신본의 `is_latest`를 하나의 Commit으로 갱신한다. 대용량 자산은 Push하지 않고 외부 asset URL, asset ID, checksum만 기록한다. GitHub 토큰과 작업 코드는 Vercel 환경변수에만 둔다.
+Pilot 확인 결과 팀원이 Terminal에서 BA CLI를 직접 사용하는 방식은 운영 마찰이 크다. Content 상세 화면에 `작업 시작`, `작업 제출`을 제공한다. Web Pull은 현재 단계에 필요한 Markdown을 하나의 `WORK_PACKAGE.md`로 내려받는다. Web Push는 Vercel Server Function이 입력을 검증한 뒤 GitHub Git Data API로 artifact, `CONTENT.md`, 이전 최신본의 `is_latest`를 하나의 Commit으로 갱신한다. 대용량 자산은 Push하지 않고 Asset ID와 checksum만 기록한다. 별도 결재함 대신 사람 확인이 필요한 결정은 해당 공정 화면 안에 둔다. GitHub 토큰과 작업 코드는 Vercel 환경변수에만 두고, YouTube 화면에서는 코드를 반복 입력하지 않도록 HttpOnly 팀 세션을 사용한다.
 
 ## ADR-009 · Raw에서 Wiki로의 승격은 작성자가 직접 한다 — 폐기
 
@@ -59,6 +59,10 @@ Raw는 기억하고 싶은 인사이트를 빠르게 기록하는 개인 영역�
 ## ADR-015 · Skill과 Automation Recipe를 분리한다
 
 Skill은 OS에서 최신 Wiki·Content Run·자산 포인터를 불러오는 Context Loader다. API 호출, 장시간 렌더, 외부 업로드와 상태 전이를 Skill에 넣으면 정본 지식과 실행 로직이 다시 섞인다. 실제 실행은 `07_automations`의 Recipe가 담당하고, 공정 정의·프롬프트 버전·어댑터·사람 확인 지점·실패 처리 규칙을 기록한다.
+
+## ADR-018 · 개인 PC 제작과 서버 배포 자동화 분리
+
+자막·덱·이미지·Premiere 메인 편집처럼 개인 AI 토큰과 고사양 편집 도구를 많이 쓰는 공정은 직원 PC에서 수행한다. 회사 OS는 최신 Wiki와 작업 패키지를 제공하고 완료 상태만 기록한다. 실행 서버는 최종 마스터가 인계된 뒤 완료본 검증, 숏폼 생성, YouTube 업로드, 성과 회수만 담당한다. 대용량 파일은 브라우저에서 Object Storage로 직접 업로드하며 GitHub와 Vercel 함수에는 Asset ID와 manifest만 남긴다.
 
 ## ADR-016 · 대용량 영상 처리는 Vercel 밖에서 실행한다
 
