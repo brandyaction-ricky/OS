@@ -19,6 +19,7 @@ Repository Markdown
 - 콘텐츠 Run: 상태, 현재 단계, 담당자, 다음 행동
 - 회의 노트: 노션형 편집, 녹음 전사, AI 정리, Markdown 저장·폴더 이동
 - 유튜브 제작: PDF 원본 8공정을 독립 단계로 포함한 20개 실행 Stage와 썸네일 7단계 폐쇄 루프를 표시하는 공정별 작업 화면
+- 멀티채널 확장: Content DNA·Atom에서 Shorts·Reels·카드뉴스·Threads를 병렬 생성하고 미리보기·예약·성과 학습을 관리하는 15단계 화면
 - 직원 워크스페이스: 담당 업무, 공정 Step, 공유 Wiki와 Access Skill 연결
 - Company Wiki: 회사 공통·공정·직원 공유 Wiki 최신본
 - OS Access Skills: 카테고리·폴더 탐색, 호출 Wiki, Context 반환 규칙과 다운로드
