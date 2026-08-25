@@ -53,6 +53,9 @@ const statusLabels = {
   needs_decision: "확인 필요",
   blocked: "막힘",
   failed: "실패",
+  needs_setup: "연결 필요",
+  waiting_dependency: "선행 공정 대기",
+  waiting_source: "완료본 대기",
   not_started: "시작 전",
 };
 
@@ -78,11 +81,17 @@ let automationConnectors = {};
 let activeYoutubeContentId = localStorage.getItem("ba-os-youtube-content") || "";
 let activeYoutubeStageId = localStorage.getItem("ba-os-youtube-stage") || "";
 let activeRepurposingContentId = localStorage.getItem("ba-os-repurposing-content") || "";
+let activeRepurposingStageId = localStorage.getItem("ba-os-repurposing-stage") || "";
+let repurposingRuntime = null;
+let repurposingConnectors = {};
+let repurposingLastOutput = null;
+let repurposingPollTimer = null;
 let youtubeLastOutput = null;
 let youtubeRequestSerial = 0;
 let youtubePollTimer = null;
 let workSession = { authenticated: false, actor: null, expiresAt: null };
 let pendingYoutubeAction = null;
+let pendingRepurposingAction = null;
 let youtubeUploadAssets = {};
 
 const YOUTUBE_DISPLAY_GROUPS = [
@@ -437,6 +446,9 @@ async function connectWorkSession(event) {
     const action = pendingYoutubeAction;
     pendingYoutubeAction = null;
     if (action) runYoutubeAction(action);
+    const repurposingAction = pendingRepurposingAction;
+    pendingRepurposingAction = null;
+    if (repurposingAction) runRepurposingAction(repurposingAction);
   } catch (error) {
     sessionFeedback.textContent = error.message;
     sessionFeedback.className = "submit-feedback is-error";
@@ -1357,30 +1369,132 @@ function renderSkills() {
     </div>`;
 }
 
+function selectedRepurposingContent() {
+  const runs = index.contents.filter((content) => content.repurposingAutomation);
+  return runs.find((item) => item.id === activeRepurposingContentId) || runs[0] || null;
+}
+
+function repurposingStageActions(stage) {
+  if (!stage) return "";
+  const status = stage.status;
+  const display = stage.displayStatus || status;
+  if (status === "completed") return `<button class="repurpose-action" disabled>완료됨</button>`;
+  if (["queued", "running"].includes(status)) return `<button class="repurpose-action" disabled>${status === "queued" ? "Worker 실행 대기" : "Worker 실행 중"}</button>`;
+  if (display === "waiting_dependency" || status === "locked") return `<button class="repurpose-action" disabled>선행 공정 완료 후 실행</button>`;
+  if (status === "needs_decision") return `<button class="repurpose-action" data-repurpose-action="approve">이 결과로 확정</button>`;
+  if (["failed", "blocked", "needs_input"].includes(status)) return `<button class="repurpose-action" data-repurpose-action="retry">다시 실행 준비</button><button class="repurpose-action is-secondary" data-repurpose-action="manual_complete">수동 결과로 완료</button>`;
+  if (stage.provider === "human") return `<button class="repurpose-action" data-repurpose-action="approve">미리보기 확인 완료</button>`;
+  if (display === "needs_setup") return `<button class="repurpose-action" disabled>${escapeHtml(stage.connector?.label || "API")} 연결 필요</button><button class="repurpose-action is-secondary" data-repurpose-action="manual_complete">수동 결과 등록</button>`;
+  return `<button class="repurpose-action" data-repurpose-action="run">${stage.provider === "openai" ? "AI 자동 실행" : "Worker 실행"}</button>`;
+}
+
 function renderRepurposing() {
   const runs = index.contents.filter((content) => content.repurposingAutomation);
   if (!runs.length) {
-    app.innerHTML = emptyState("확장 가능한 롱폼이 없습니다", "유튜브 완료본이 준비되면 멀티채널 확장 Run이 자동으로 생성됩니다.");
+    app.innerHTML = emptyState("확장 가능한 롱폼이 없습니다", "완료본이나 SRT·대본을 등록하면 멀티채널 확장을 시작할 수 있습니다.");
     return;
   }
-  const content = runs.find((item) => item.id === activeRepurposingContentId) || runs[0];
+  const content = selectedRepurposingContent() || runs[0];
   activeRepurposingContentId = content.id;
   localStorage.setItem("ba-os-repurposing-content", content.id);
-  const automation = content.repurposingAutomation;
   const pipeline = index.repurposingPipeline;
-  const phases = pipeline.phases.map((phase) => ({ ...phase, stages: automation.stages.filter((stage) => stage.phase === phase.id) }));
-  const schedule = pipeline.defaults.schedule.map((item) => `<article><i>D${item.day === 0 ? "0" : `+${item.day}`}</i><div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.channel.replaceAll("_", " · "))}</span></div><em>예약 예정</em></article>`).join("");
-  const phaseRail = phases.map((phase) => `<section><header><i>${String(phase.order).padStart(2, "0")}</i><div><strong>${escapeHtml(phase.label)}</strong><span>${phase.stages.length}개 Stage</span></div></header>${phase.stages.map((stage) => `<div class="repurpose-stage"><span data-status="${escapeHtml(stage.status)}"></span><strong>${escapeHtml(stage.label)}</strong><em>${escapeHtml(statusLabel(stage.status))}</em></div>`).join("")}</section>`).join("");
-  const channelCards = [
-    { key: "shorts", icon: "▶", title: "Shorts + Reels", count: "영상 3개 · 발행 6건", flow: "구간 기획 → 9:16 렌더 → 미리보기 → 동시 발행", metric: "완주율 · 반복재생 · 구독" },
-    { key: "carousel", icon: "▦", title: "Instagram 카드뉴스", count: "카드뉴스 1개 · 9장", flow: "서사 기획 → 디자인 렌더 → 미리보기 → 발행", metric: "저장 · 공유 · 프로필 방문" },
-    { key: "threads", icon: "＠", title: "Threads", count: "단문 2개 · 연속형 1개", flow: "관점 생성 → 문구 확정 → 예약 발행", metric: "조회 · 답글 · 재게시" }
-  ].map((item) => `<article class="repurpose-channel"><header><i>${item.icon}</i><div><strong>${item.title}</strong><span>${item.count}</span></div><em>${automation.triggerReady ? "생성 대기" : "원본 대기"}</em></header><p>${item.flow}</p><footer><span>KPI</span><strong>${item.metric}</strong></footer></article>`).join("");
+  const live = repurposingRuntime?.state?.contentId === content.id ? repurposingRuntime : null;
+  const state = live?.state || content.repurposingAutomation;
+  const liveStageById = new Map((live?.stages || []).map((stage) => [stage.id, stage]));
+  const stages = pipeline.stages.map((definition) => {
+    const saved = liveStageById.get(definition.id) || state.stages?.find?.((item) => item.id === definition.id) || {};
+    const status = saved.status || "locked";
+    return { ...definition, ...saved, status, displayStatus: saved.displayStatus || (status === "locked" ? "waiting_dependency" : status), connector: saved.connector || repurposingConnectors[saved.connectorKey] || null };
+  });
+  if (!activeRepurposingStageId || !stages.some((stage) => stage.id === activeRepurposingStageId)) activeRepurposingStageId = state.currentStageId || "content_dna";
+  localStorage.setItem("ba-os-repurposing-stage", activeRepurposingStageId);
+  const selectedStage = stages.find((stage) => stage.id === activeRepurposingStageId) || stages[0];
+  const sourceReady = Boolean(state.sourceReady || live?.triggerReady || content.repurposingAutomation.triggerReady);
+  const completedCount = stages.filter((stage) => stage.status === "completed").length;
+  const setupCount = Object.entries(repurposingConnectors).filter(([key, connector]) => !["github", "session"].includes(key) && !connector.ready).length;
+  const phases = pipeline.phases.map((phase) => ({ ...phase, stages: stages.filter((stage) => stage.phase === phase.id) }));
+  const schedule = pipeline.defaults.schedule.map((item) => `<article><i>D${item.day === 0 ? "0" : `+${item.day}`}</i><div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.channel.replaceAll("_", " · "))}</span></div><em>${stages.some((stage) => stage.status === "completed" && stage.id.includes("publish")) ? "공정 진행 중" : "예약 예정"}</em></article>`).join("");
+  const phaseRail = phases.map((phase) => `<section><header><i>${String(phase.order).padStart(2, "0")}</i><div><strong>${escapeHtml(phase.label)}</strong><span>${phase.stages.length}개 Stage</span></div></header>${phase.stages.map((stage) => `<button class="repurpose-stage ${stage.id === selectedStage.id ? "is-active" : ""}" data-repurpose-stage="${escapeHtml(stage.id)}"><span data-status="${escapeHtml(stage.displayStatus)}"></span><strong>${escapeHtml(stage.label)}</strong><em>${escapeHtml(statusLabel(stage.displayStatus))}</em></button>`).join("")}</section>`).join("");
+  const connectorCards = ["github", "openai", "render", "design", "publish", "metrics"].map((key) => {
+    const connector = repurposingConnectors[key] || { ready: false, label: key, mode: "연결 확인 중" };
+    return `<article class="${connector.ready ? "is-ready" : "is-missing"}"><i>${connector.ready ? "✓" : "!"}</i><div><strong>${escapeHtml(connector.label)}</strong><span>${escapeHtml(connector.mode)}</span></div><em>${connector.ready ? "연결됨" : "설정 필요"}</em></article>`;
+  }).join("");
+  const outputUrl = selectedStage.outputPath ? `https://github.com/brandyaction-ricky/OS/blob/main/${selectedStage.outputPath}` : "";
+  const sourcePanel = sourceReady ? `<section class="repurpose-source-ready"><div><span>완료본 접수 완료</span><strong>${escapeHtml(state.sourceAssetUrl || (live?.triggerReady ? "YouTube 제작공정 자동 연결" : "SRT·대본 맥락 등록"))}</strong></div><button class="repurpose-action is-secondary" id="repurposing-refresh">최신 상태</button></section>` : `<section class="repurpose-intake"><header><span>START HERE</span><h2>완료본 또는 원본 맥락 등록</h2><p>YouTube 제작공정이 끝나기 전이라도 공개 영상 URL·asset:// ID·SRT·대본으로 바로 시작할 수 있습니다.</p></header><label><span>완료본 URL 또는 Asset ID</span><input id="repurpose-source-url" placeholder="https://youtube.com/... 또는 asset://..." /></label><label><span>SRT·대본·핵심 맥락</span><textarea id="repurpose-source-context" rows="6" maxlength="160000" placeholder="SRT나 최종 대본을 붙여넣으면 Content DNA 생성에 사용합니다."></textarea></label><button class="repurpose-action" data-repurpose-action="activate">이 완료본으로 확장 시작</button></section>`;
   app.innerHTML = `
-    <section class="repurpose-hero"><div><p>ONE SOURCE · MULTI-CHANNEL</p><h2>롱폼 하나를 채널별 성과 자산으로</h2><span>순차 복사가 아니라 Content DNA와 Atom 정본에서 Shorts·Reels·카드뉴스·Threads를 병렬 생성합니다.</span></div><label><span>Content Run</span><select id="repurposing-content-select">${runs.map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label><aside><strong>7개 콘텐츠</strong><span>총 10건 발행</span><em>${escapeHtml(automation.triggerLabel)}</em></aside></section>
-    <section class="repurpose-trigger ${automation.triggerReady ? "is-ready" : ""}"><div><span>자동 시작 조건</span><strong>완료본 자동 검증 + 유튜브 자산 확정</strong><p>조건이 충족되면 Content DNA 생성 Stage가 자동으로 열립니다.</p></div><i>→</i><div><span>현재 상태</span><strong>${escapeHtml(automation.triggerLabel)}</strong><p>외부 채널에는 사람 미리보기 전 게시하지 않습니다.</p></div></section>
-    <section class="repurpose-core"><header><div><span>SHARED CANONICAL CONTEXT</span><h2>Content DNA · Atom</h2></div><em>GitHub Markdown 정본</em></header><div><article><span>01</span><strong>Content DNA</strong><p>핵심 약속 · 주장 · 근거 · 훅 · CTA · 위험 표현</p></article><b>→</b><article><span>02</span><strong>콘텐츠 Atom</strong><p>원본 타임코드 · 근거 ID · 채널 적합도 · 시각화 가능성</p></article><b>→</b><article><span>03</span><strong>채널별 관점 배정</strong><p>같은 문장을 복사하지 않고 채널 목적에 맞게 재구성</p></article></div></section>
-    <div class="repurpose-layout"><aside class="repurpose-rail"><header><strong>전체 확장 공정</strong><span>${automation.totalCount}개 독립 Stage</span></header>${phaseRail}</aside><main><section class="repurpose-channels">${channelCards}</section><section class="repurpose-approval"><header><div><span>HUMAN PREVIEW GATE</span><h2>현재 공정에서 확인 후 예약</h2></div><em>별도 결재함 없음</em></header><div><article><i>1</i><strong>AI 생성</strong><span>채널별 초안·렌더</span></article><b>→</b><article><i>2</i><strong>미리보기</strong><span>개별 제외·수정 가능</span></article><b>→</b><article><i>3</i><strong>사람 확정</strong><span>개별 또는 전체 승인</span></article><b>→</b><article><i>4</i><strong>예약 Queue</strong><span>실패 시 채널별 재시도</span></article></div></section><section class="repurpose-calendar"><header><div><span>DEFAULT DISTRIBUTION CALENDAR</span><h2>8일 분산 발행</h2></div><em>Asia/Seoul · 시간은 성과 학습</em></header><div>${schedule}</div></section></main></div>`;
+    <section class="repurpose-hero"><div><p>LIVE AUTOMATION · MULTI-CHANNEL</p><h2>롱폼 하나를 채널별 성과 자산으로</h2><span>완료본 접수부터 AI 기획·렌더·미리보기·동시 발행·성과 학습까지 실제 실행 상태를 관리합니다.</span></div><label><span>Content Run</span><select id="repurposing-content-select">${runs.map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label><aside><strong>${completedCount}/${stages.length}</strong><span>완료 Stage</span><em>${sourceReady ? (setupCount ? `${setupCount}개 연결 필요` : "자동화 실행 가능") : "완료본 접수 필요"}</em></aside></section>
+    <section class="repurpose-trigger ${sourceReady ? "is-ready" : ""}"><div><span>시작 방식</span><strong>YouTube 공정 자동 연결 또는 완료본 직접 접수</strong><p>불필요한 전체 잠금 대신 실제 선행조건과 연결 상태를 분리해 표시합니다.</p></div><i>→</i><div><span>현재 상태</span><strong>${escapeHtml(sourceReady ? statusLabel(state.status) : "완료본 대기")}</strong><p>외부 채널에는 각 채널 미리보기 확정 전 게시하지 않습니다.</p></div></section>
+    ${sourcePanel}
+    <section class="repurpose-connectors"><header><div><span>EXECUTION CONNECTIONS</span><h2>자동화 연결 현황</h2></div><em>연결 전에도 수동 결과로 진행 가능</em></header><div>${connectorCards}</div></section>
+    <div class="repurpose-layout"><aside class="repurpose-rail"><header><strong>전체 확장 공정</strong><span>${stages.length}개 독립 Stage</span></header>${phaseRail}</aside><main class="repurpose-stage-main">
+      <section class="repurpose-stage-workspace"><header><div><span>${escapeHtml(selectedStage.phase.toUpperCase())} · ${String(selectedStage.order).padStart(2, "0")}/15</span><h2>${escapeHtml(selectedStage.label)}</h2><p>${escapeHtml(selectedStage.description)}</p></div><em data-status="${escapeHtml(selectedStage.displayStatus)}">${escapeHtml(statusLabel(selectedStage.displayStatus))}</em></header><div class="repurpose-stage-contract"><article><span>실행 주체</span><strong>${escapeHtml(selectedStage.connector?.mode || selectedStage.provider)}</strong><small>${escapeHtml(selectedStage.connector?.ready === false ? `${selectedStage.connector.label} 설정 필요` : "현재 단계에서 실행 가능")}</small></article><b>→</b><article><span>산출물</span><strong>${selectedStage.outputs.map(escapeHtml).join(" · ")}</strong><small>완료되면 다음 의존 Stage가 자동으로 열립니다.</small></article></div>
+        <label class="repurpose-field"><span>추가 지시·수동 결과</span><textarea id="repurpose-summary" rows="5" maxlength="40000" placeholder="AI에 추가로 줄 지시, 사람이 수정한 최종 결과, 예외 내용을 기록하세요."></textarea></label>
+        <label class="repurpose-field"><span>산출물 Asset ID 또는 공개 URL</span><input id="repurpose-asset-url" placeholder="asset://... 또는 https://..." value="${escapeHtml(selectedStage.assetUrl || "")}" /></label>
+        <label class="repurpose-quality"><input id="repurpose-quality" type="checkbox" /><span>이 공정의 결과와 다음 단계 인계 조건을 확인했습니다.</span></label>
+        <div class="repurpose-action-row">${sourceReady ? repurposingStageActions(selectedStage) : `<button class="repurpose-action" disabled>완료본 등록 후 실행</button>`}</div>
+        <div class="repurpose-feedback" id="repurpose-feedback" role="status"></div>
+        ${selectedStage.error ? `<div class="repurpose-error"><strong>최근 오류</strong><span>${escapeHtml(selectedStage.error)}</span></div>` : ""}
+        ${repurposingLastOutput ? `<details class="repurpose-output" open><summary>이번 실행 결과</summary><pre>${escapeHtml(repurposingLastOutput)}</pre></details>` : ""}
+        ${outputUrl ? `<a class="repurpose-output-link" href="${escapeHtml(outputUrl)}" target="_blank" rel="noreferrer">저장된 Markdown 보기 ↗</a>` : ""}
+      </section>
+      <section class="repurpose-approval"><header><div><span>HUMAN PREVIEW GATE</span><h2>현재 공정 안에서 확인 후 발행</h2></div><em>별도 결재함 없음</em></header><div><article><i>1</i><strong>AI 생성</strong><span>채널별 초안·렌더</span></article><b>→</b><article><i>2</i><strong>미리보기</strong><span>개별 제외·수정 가능</span></article><b>→</b><article><i>3</i><strong>사람 확정</strong><span>개별 또는 전체 확정</span></article><b>→</b><article><i>4</i><strong>예약 Queue</strong><span>실패 시 채널별 재시도</span></article></div></section>
+      <section class="repurpose-calendar"><header><div><span>DEFAULT DISTRIBUTION CALENDAR</span><h2>8일 분산 발행</h2></div><em>Asia/Seoul · 시간은 성과 학습</em></header><div>${schedule}</div></section>
+    </main></div>`;
+  clearTimeout(repurposingPollTimer);
+  if (stages.some((stage) => ["queued", "running"].includes(stage.status))) repurposingPollTimer = setTimeout(() => refreshRepurposingState(true), 8_000);
+}
+
+async function refreshRepurposingState(silent = false) {
+  const content = selectedRepurposingContent();
+  if (!content) return;
+  const feedback = document.querySelector("#repurpose-feedback");
+  if (!silent && feedback) { feedback.textContent = "GitHub의 최신 실행 상태를 확인하고 있습니다…"; feedback.className = "repurpose-feedback is-loading"; }
+  try {
+    const response = await fetch(`/api/repurposing?contentId=${encodeURIComponent(content.id)}`, { cache: "no-store" });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || "멀티채널 상태를 읽지 못했습니다.");
+    repurposingRuntime = result;
+    repurposingConnectors = result.connectors || repurposingConnectors;
+    if (!activeRepurposingStageId) activeRepurposingStageId = result.state?.currentStageId || "content_dna";
+    if (currentView === "repurposing") renderRepurposing();
+  } catch (error) {
+    if (!silent && feedback) { feedback.textContent = error.message; feedback.className = "repurpose-feedback is-error"; }
+    if (silent && currentView === "repurposing") repurposingPollTimer = setTimeout(() => refreshRepurposingState(true), 15_000);
+  }
+}
+
+async function runRepurposingAction(action) {
+  const content = selectedRepurposingContent();
+  const stage = repurposingRuntime?.stages?.find((item) => item.id === activeRepurposingStageId) || index.repurposingPipeline.stages.find((item) => item.id === activeRepurposingStageId);
+  const feedback = document.querySelector("#repurpose-feedback");
+  if (!content) return;
+  if (!workSession.authenticated) { pendingRepurposingAction = action; openSessionModal(); return; }
+  const sourceAssetUrl = document.querySelector("#repurpose-source-url")?.value.trim() || "";
+  const sourceContext = document.querySelector("#repurpose-source-context")?.value.trim() || "";
+  const summary = document.querySelector("#repurpose-summary")?.value.trim() || "";
+  const assetUrl = document.querySelector("#repurpose-asset-url")?.value.trim() || "";
+  const qualityConfirmed = document.querySelector("#repurpose-quality")?.checked === true;
+  document.querySelectorAll("[data-repurpose-action]").forEach((button) => { button.disabled = true; });
+  if (feedback) { feedback.textContent = action === "run" ? "최신 정본을 불러와 자동 실행하고 있습니다…" : "실행 상태를 저장하고 있습니다…"; feedback.className = "repurpose-feedback is-loading"; }
+  try {
+    const response = await fetch("/api/repurposing", {
+      method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, contentId: content.id, stageId: action === "activate" ? null : stage?.id, actor: currentUser, inputText: action === "activate" ? sourceContext : summary, sourceAssetUrl, summary, assetUrl, qualityConfirmed }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      workSession = { authenticated: false, actor: null, expiresAt: null };
+      updateSessionStatus(); pendingRepurposingAction = action; openSessionModal();
+      throw new Error("작업 세션이 만료됐습니다. 다시 연결해주세요.");
+    }
+    if (!response.ok) throw new Error(result.error || "멀티채널 작업에 실패했습니다.");
+    repurposingLastOutput = result.output || null;
+    await refreshRepurposingState(true);
+  } catch (error) {
+    const currentFeedback = document.querySelector("#repurpose-feedback");
+    if (currentFeedback) { currentFeedback.textContent = error.message; currentFeedback.className = "repurpose-feedback is-error"; }
+    document.querySelectorAll("[data-repurpose-action]").forEach((button) => { button.disabled = false; });
+  }
 }
 
 function render() {
@@ -1390,10 +1504,12 @@ function render() {
   }
   if (!viewTitles[currentView]) currentView = "dashboard";
   if (currentView !== "youtube") { clearTimeout(youtubePollTimer); youtubePollTimer = null; }
+  if (currentView !== "repurposing") { clearTimeout(repurposingPollTimer); repurposingPollTimer = null; }
   if (sessionStatusButton) sessionStatusButton.hidden = currentView === "youtube";
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
   ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, repurposing: renderRepurposing, contents: renderContents, meetings: renderMeetings, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
+  if (currentView === "repurposing" && repurposingRuntime?.state?.contentId !== activeRepurposingContentId) refreshRepurposingState(true);
   taskCount.textContent = tasksForUser().length + automationTasksForUser().length;
   peopleCount.textContent = index.people.length;
   meetingCount.textContent = (index.meetingItems || []).length;
@@ -1549,6 +1665,18 @@ function bindEvents() {
       runYoutubeAction(youtubeAction.dataset.youtubeAction);
       return;
     }
+    const repurposingStage = event.target.closest("[data-repurpose-stage]");
+    if (repurposingStage) {
+      activeRepurposingStageId = repurposingStage.dataset.repurposeStage;
+      repurposingLastOutput = null;
+      renderRepurposing();
+      return;
+    }
+    const repurposingAction = event.target.closest("[data-repurpose-action]");
+    if (repurposingAction) {
+      runRepurposingAction(repurposingAction.dataset.repurposeAction);
+      return;
+    }
     const contentTarget = event.target.closest("[data-content-id]");
     if (contentTarget) openDrawer(contentTarget.dataset.contentId);
     const viewTarget = event.target.closest("[data-go]");
@@ -1580,6 +1708,7 @@ function bindEvents() {
     if (event.target.closest("#meeting-summarize")) summarizeMeeting();
     if (event.target.closest("#meeting-save")) saveMeeting();
     if (event.target.closest("#youtube-refresh")) refreshYoutubeState(false);
+    if (event.target.closest("#repurposing-refresh")) refreshRepurposingState(false);
   });
   app.addEventListener("input", (event) => {
     if (event.target.matches("#youtube-input, #youtube-summary, #youtube-asset-url, #youtube-publish-at, [data-youtube-param], [data-youtube-asset-ref], [data-youtube-check]")) saveYoutubeDraft();
@@ -1587,7 +1716,11 @@ function bindEvents() {
   app.addEventListener("change", (event) => {
     if (event.target.matches("#repurposing-content-select")) {
       activeRepurposingContentId = event.target.value;
+      activeRepurposingStageId = "";
+      repurposingRuntime = null;
+      repurposingLastOutput = null;
       renderRepurposing();
+      refreshRepurposingState(true);
     }
     if (event.target.matches("#youtube-content-select")) {
       saveYoutubeDraft();
@@ -1654,9 +1787,10 @@ function bindEvents() {
 
 async function boot() {
   try {
-    const [response, automationResponse, sessionResponse] = await Promise.all([
+    const [response, automationResponse, repurposingResponse, sessionResponse] = await Promise.all([
       fetch("/data/os-index.json", { cache: "no-store" }),
       fetch("/api/automation", { cache: "no-store" }).catch(() => null),
+      fetch("/api/repurposing", { cache: "no-store" }).catch(() => null),
       fetch("/api/session", { cache: "no-store", credentials: "same-origin" }).catch(() => null),
     ]);
     if (!response.ok) throw new Error(`OS index ${response.status}`);
@@ -1664,6 +1798,10 @@ async function boot() {
     if (automationResponse?.ok) {
       const automationStatus = await automationResponse.json().catch(() => ({}));
       automationConnectors = automationStatus.connectors || {};
+    }
+    if (repurposingResponse?.ok) {
+      const repurposingStatus = await repurposingResponse.json().catch(() => ({}));
+      repurposingConnectors = repurposingStatus.connectors || {};
     }
     if (sessionResponse?.ok) {
       const sessionStatus = await sessionResponse.json().catch(() => ({}));
