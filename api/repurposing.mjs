@@ -119,6 +119,11 @@ export function normalizeRepurposingState(source, contentId, { triggerReady = fa
 }
 
 export function unlockRepurposingStages(state) {
+  if (!state.sourceReady) {
+    state.currentStageId = "content_dna";
+    state.status = "waiting_source";
+    return state;
+  }
   if (state.sourceReady && state.stages.content_dna.status === "locked") state.stages.content_dna.status = "ready";
   for (const stage of REPURPOSING_STAGES) {
     if (state.stages[stage.id].status !== "locked") continue;
@@ -135,7 +140,7 @@ export function displayRepurposingStages(state, env = process.env) {
     const saved = state.stages[stage.id];
     const connector = connectorFor(stage, env);
     let displayStatus = saved.status;
-    if (saved.status === "locked") displayStatus = "waiting_dependency";
+    if (saved.status === "locked") displayStatus = stage.id === "content_dna" && !state.sourceReady ? "waiting_source" : "waiting_dependency";
     if (saved.status === "ready" && !connector.ready) displayStatus = "needs_setup";
     return { ...stage, ...saved, label: STAGE_LABELS[stage.id], connectorKey: connectorKey(stage.provider), connector, displayStatus };
   });

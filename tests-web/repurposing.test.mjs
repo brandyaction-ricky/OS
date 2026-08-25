@@ -31,6 +31,13 @@ test("youtube completion can activate the expansion run", () => {
   assert.equal(state.stages.content_dna.status, "ready");
 });
 
+test("content DNA waits for a source before checking its connector", () => {
+  const state = normalizeRepurposingState(null, "BA-0268");
+  const stages = displayRepurposingStages(state, { GITHUB_TOKEN: "github" });
+  assert.equal(state.status, "waiting_source");
+  assert.equal(stages.find((stage) => stage.id === "content_dna").displayStatus, "waiting_source");
+});
+
 test("UI differentiates dependency wait from missing connector setup", () => {
   const state = normalizeRepurposingState({ sourceReady: true }, "BA-0268");
   const stages = displayRepurposingStages(state, { GITHUB_TOKEN: "github" });
