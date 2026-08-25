@@ -41,6 +41,16 @@ test("API stage registry matches the process pipeline", async () => {
   assert.deepEqual(pipeline.thumbnailLoop.steps.map((step) => step.label), ["아이디어", "AI 생성", "AI 평가", "사람 승인", "업로드", "CTR 측정", "학습"]);
 });
 
+test("multichannel repurposing pipeline keeps three independent branches", async () => {
+  const pipeline = JSON.parse(await readFile(new URL("../03_processes/longform/REPURPOSING_PIPELINE.json", import.meta.url), "utf8"));
+  assert.equal(pipeline.stages.length, 15);
+  assert.equal(pipeline.defaults.shortsCount, 3);
+  assert.deepEqual(pipeline.defaults.shortDestinations, ["youtube_shorts", "instagram_reels"]);
+  assert.equal(pipeline.defaults.carouselCount, 1);
+  assert.deepEqual(pipeline.defaults.threadsMix, { single: 2, thread: 1 });
+  assert.deepEqual(pipeline.stages.find((stage) => stage.id === "multichannel_metrics").dependsOn, ["shorts_publish", "carousel_publish", "threads_publish"]);
+});
+
 test("normalizeAutomationState starts the first independent PDF stage", () => {
   const state = normalizeAutomationState({
     stages: {

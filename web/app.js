@@ -23,6 +23,7 @@ const viewTitles = {
   dashboard: "전체 업무 공정",
   tasks: "내가 할 일",
   youtube: "유튜브 제작",
+  repurposing: "멀티채널 콘텐츠 확장",
   contents: "콘텐츠 Run",
   meetings: "회의 노트",
   people: "직원 워크스페이스",
@@ -76,6 +77,7 @@ let meetingSegments = [];
 let automationConnectors = {};
 let activeYoutubeContentId = localStorage.getItem("ba-os-youtube-content") || "";
 let activeYoutubeStageId = localStorage.getItem("ba-os-youtube-stage") || "";
+let activeRepurposingContentId = localStorage.getItem("ba-os-repurposing-content") || "";
 let youtubeLastOutput = null;
 let youtubeRequestSerial = 0;
 let youtubePollTimer = null;
@@ -1355,6 +1357,32 @@ function renderSkills() {
     </div>`;
 }
 
+function renderRepurposing() {
+  const runs = index.contents.filter((content) => content.repurposingAutomation);
+  if (!runs.length) {
+    app.innerHTML = emptyState("확장 가능한 롱폼이 없습니다", "유튜브 완료본이 준비되면 멀티채널 확장 Run이 자동으로 생성됩니다.");
+    return;
+  }
+  const content = runs.find((item) => item.id === activeRepurposingContentId) || runs[0];
+  activeRepurposingContentId = content.id;
+  localStorage.setItem("ba-os-repurposing-content", content.id);
+  const automation = content.repurposingAutomation;
+  const pipeline = index.repurposingPipeline;
+  const phases = pipeline.phases.map((phase) => ({ ...phase, stages: automation.stages.filter((stage) => stage.phase === phase.id) }));
+  const schedule = pipeline.defaults.schedule.map((item) => `<article><i>D${item.day === 0 ? "0" : `+${item.day}`}</i><div><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.channel.replaceAll("_", " · "))}</span></div><em>예약 예정</em></article>`).join("");
+  const phaseRail = phases.map((phase) => `<section><header><i>${String(phase.order).padStart(2, "0")}</i><div><strong>${escapeHtml(phase.label)}</strong><span>${phase.stages.length}개 Stage</span></div></header>${phase.stages.map((stage) => `<div class="repurpose-stage"><span data-status="${escapeHtml(stage.status)}"></span><strong>${escapeHtml(stage.label)}</strong><em>${escapeHtml(statusLabel(stage.status))}</em></div>`).join("")}</section>`).join("");
+  const channelCards = [
+    { key: "shorts", icon: "▶", title: "Shorts + Reels", count: "영상 3개 · 발행 6건", flow: "구간 기획 → 9:16 렌더 → 미리보기 → 동시 발행", metric: "완주율 · 반복재생 · 구독" },
+    { key: "carousel", icon: "▦", title: "Instagram 카드뉴스", count: "카드뉴스 1개 · 9장", flow: "서사 기획 → 디자인 렌더 → 미리보기 → 발행", metric: "저장 · 공유 · 프로필 방문" },
+    { key: "threads", icon: "＠", title: "Threads", count: "단문 2개 · 연속형 1개", flow: "관점 생성 → 문구 확정 → 예약 발행", metric: "조회 · 답글 · 재게시" }
+  ].map((item) => `<article class="repurpose-channel"><header><i>${item.icon}</i><div><strong>${item.title}</strong><span>${item.count}</span></div><em>${automation.triggerReady ? "생성 대기" : "원본 대기"}</em></header><p>${item.flow}</p><footer><span>KPI</span><strong>${item.metric}</strong></footer></article>`).join("");
+  app.innerHTML = `
+    <section class="repurpose-hero"><div><p>ONE SOURCE · MULTI-CHANNEL</p><h2>롱폼 하나를 채널별 성과 자산으로</h2><span>순차 복사가 아니라 Content DNA와 Atom 정본에서 Shorts·Reels·카드뉴스·Threads를 병렬 생성합니다.</span></div><label><span>Content Run</span><select id="repurposing-content-select">${runs.map((run) => `<option value="${escapeHtml(run.id)}" ${run.id === content.id ? "selected" : ""}>${escapeHtml(run.id)} · ${escapeHtml(run.title)}</option>`).join("")}</select></label><aside><strong>7개 콘텐츠</strong><span>총 10건 발행</span><em>${escapeHtml(automation.triggerLabel)}</em></aside></section>
+    <section class="repurpose-trigger ${automation.triggerReady ? "is-ready" : ""}"><div><span>자동 시작 조건</span><strong>완료본 자동 검증 + 유튜브 자산 확정</strong><p>조건이 충족되면 Content DNA 생성 Stage가 자동으로 열립니다.</p></div><i>→</i><div><span>현재 상태</span><strong>${escapeHtml(automation.triggerLabel)}</strong><p>외부 채널에는 사람 미리보기 전 게시하지 않습니다.</p></div></section>
+    <section class="repurpose-core"><header><div><span>SHARED CANONICAL CONTEXT</span><h2>Content DNA · Atom</h2></div><em>GitHub Markdown 정본</em></header><div><article><span>01</span><strong>Content DNA</strong><p>핵심 약속 · 주장 · 근거 · 훅 · CTA · 위험 표현</p></article><b>→</b><article><span>02</span><strong>콘텐츠 Atom</strong><p>원본 타임코드 · 근거 ID · 채널 적합도 · 시각화 가능성</p></article><b>→</b><article><span>03</span><strong>채널별 관점 배정</strong><p>같은 문장을 복사하지 않고 채널 목적에 맞게 재구성</p></article></div></section>
+    <div class="repurpose-layout"><aside class="repurpose-rail"><header><strong>전체 확장 공정</strong><span>${automation.totalCount}개 독립 Stage</span></header>${phaseRail}</aside><main><section class="repurpose-channels">${channelCards}</section><section class="repurpose-approval"><header><div><span>HUMAN PREVIEW GATE</span><h2>현재 공정에서 확인 후 예약</h2></div><em>별도 결재함 없음</em></header><div><article><i>1</i><strong>AI 생성</strong><span>채널별 초안·렌더</span></article><b>→</b><article><i>2</i><strong>미리보기</strong><span>개별 제외·수정 가능</span></article><b>→</b><article><i>3</i><strong>사람 확정</strong><span>개별 또는 전체 승인</span></article><b>→</b><article><i>4</i><strong>예약 Queue</strong><span>실패 시 채널별 재시도</span></article></div></section><section class="repurpose-calendar"><header><div><span>DEFAULT DISTRIBUTION CALENDAR</span><h2>8일 분산 발행</h2></div><em>Asia/Seoul · 시간은 성과 학습</em></header><div>${schedule}</div></section></main></div>`;
+}
+
 function render() {
   if (currentView === "approvals") {
     currentView = "youtube";
@@ -1365,7 +1393,7 @@ function render() {
   if (sessionStatusButton) sessionStatusButton.hidden = currentView === "youtube";
   pageTitle.textContent = viewTitles[currentView];
   document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("is-active", button.dataset.view === currentView));
-  ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, contents: renderContents, meetings: renderMeetings, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
+  ({ dashboard: renderDashboard, tasks: renderTasks, youtube: renderYoutube, repurposing: renderRepurposing, contents: renderContents, meetings: renderMeetings, people: renderPeople, wiki: renderWiki, skills: renderSkills })[currentView]();
   taskCount.textContent = tasksForUser().length + automationTasksForUser().length;
   peopleCount.textContent = index.people.length;
   meetingCount.textContent = (index.meetingItems || []).length;
@@ -1557,6 +1585,10 @@ function bindEvents() {
     if (event.target.matches("#youtube-input, #youtube-summary, #youtube-asset-url, #youtube-publish-at, [data-youtube-param], [data-youtube-asset-ref], [data-youtube-check]")) saveYoutubeDraft();
   });
   app.addEventListener("change", (event) => {
+    if (event.target.matches("#repurposing-content-select")) {
+      activeRepurposingContentId = event.target.value;
+      renderRepurposing();
+    }
     if (event.target.matches("#youtube-content-select")) {
       saveYoutubeDraft();
       activeYoutubeContentId = event.target.value;

@@ -280,6 +280,8 @@ async function buildIndex() {
   const wikiRoot = path.join(repositoryRoot, "10_wiki");
   const youtubePipeline = await readJsonIfExists(path.join(processRoot, "longform", "YOUTUBE_PIPELINE.json"));
   if (!youtubePipeline?.stages?.length) throw new Error("YouTube 제작 파이프라인 정의를 찾지 못했습니다.");
+  const repurposingPipeline = await readJsonIfExists(path.join(processRoot, "longform", "REPURPOSING_PIPELINE.json"));
+  if (!repurposingPipeline?.stages?.length) throw new Error("멀티채널 확장 파이프라인 정의를 찾지 못했습니다.");
   const categorySource = await readFile(path.join(skillRoot, "CATEGORIES.json"), "utf8");
   const categoryRegistry = JSON.parse(categorySource).categories ?? [];
 
@@ -462,6 +464,23 @@ async function buildIndex() {
         jobs: automationState?.jobs ?? [],
         stages,
       };
+      const triggerIds = repurposingPipeline.trigger?.youtubeStages ?? [];
+      const triggerReady = triggerIds.every((stageId) => stages.find((stage) => stage.id === stageId)?.status === "completed");
+      const repurposingStages = repurposingPipeline.stages.map((stage) => ({
+        ...stage,
+        status: stage.id === "content_dna" && triggerReady ? "ready" : "locked",
+      }));
+      content.repurposingAutomation = {
+        pipelineId: repurposingPipeline.id,
+        status: triggerReady ? "ready" : "locked",
+        triggerReady,
+        triggerLabel: triggerReady ? "확장 Run 생성 가능" : "완료본 검증 대기",
+        currentStageId: "content_dna",
+        completedCount: 0,
+        totalCount: repurposingStages.length,
+        progress: 0,
+        stages: repurposingStages,
+      };
     }
     content.workPackageUrl = await writeWorkPackage(content, process, source, metadata, skillPathById, skills, wikiItems);
     contents.push(content);
@@ -541,6 +560,15 @@ async function buildIndex() {
       originalProcess: youtubePipeline.originalProcess,
       thumbnailLoop: youtubePipeline.thumbnailLoop,
       stages: youtubePipeline.stages,
+    },
+    repurposingPipeline: {
+      id: repurposingPipeline.id,
+      name: repurposingPipeline.name,
+      version: repurposingPipeline.version,
+      trigger: repurposingPipeline.trigger,
+      defaults: repurposingPipeline.defaults,
+      phases: repurposingPipeline.phases,
+      stages: repurposingPipeline.stages,
     },
     people,
   };
