@@ -56,6 +56,8 @@ export function Dashboard() {
       dueSoon,
       goals: operations.filter((record) => record.record_type === "goal" && record.status === "active").length,
       decisions: operations.filter((record) => record.record_type === "decision" && ["open", "review"].includes(record.status)).length,
+      aiReview: operations.filter((record) => record.record_type === "ai_job" && record.status === "review").length,
+      activeProjects: operations.filter((record) => record.record_type === "project" && ["planned", "active", "blocked"].includes(record.status)).length,
     };
   }, [operations]);
 
@@ -89,12 +91,12 @@ export function Dashboard() {
         <div className="metric-card">
           <div className="metric-top"><span>진행 목표</span><span className="metric-icon"><FileClock size={16} /></span></div>
           <div className="metric-value">{operatingStats.goals}</div>
-          <div className="metric-caption">측정 중인 목표·KPI</div>
+          <div className="metric-caption">진행 목표 · 프로젝트 {operatingStats.activeProjects}</div>
         </div>
         <div className="metric-card">
           <div className="metric-top"><span>결정 대기</span><span className="metric-icon"><Sparkles size={16} /></span></div>
-          <div className="metric-value">{operatingStats.decisions + stats.review}</div>
-          <div className="metric-caption">의사결정·지식 검토</div>
+          <div className="metric-value">{operatingStats.decisions + stats.review + operatingStats.aiReview}</div>
+          <div className="metric-caption">의사결정·지식·AI 검수</div>
         </div>
       </section>
 
@@ -140,8 +142,8 @@ export function Dashboard() {
           <div className="readiness-steps">
             <div className="done"><span>01</span><div><strong>지식 기반</strong><small>문서·버전·검토·검색 API</small></div></div>
             <div className="done"><span>02</span><div><strong>실행 관리</strong><small>업무·목표·회의·AI 작업</small></div></div>
-            <div className="active"><span>03</span><div><strong>콘텐츠·성과</strong><small>제작·발행·매출·퍼널·CRM</small></div></div>
-            <div><span>04</span><div><strong>외부 자동화</strong><small>API 키·채널 승인 후 연결</small></div></div>
+            <div className="done"><span>03</span><div><strong>콘텐츠·성과</strong><small>자동화·캘린더·매출·퍼널·CRM</small></div></div>
+            <div className="active"><span>04</span><div><strong>외부 자동화</strong><small>API 키·채널 승인 후 연결</small></div></div>
           </div>
         </article>
         <article className="panel team-panel">

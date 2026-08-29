@@ -8,7 +8,7 @@ interface RequestOptions extends RequestInit {
 async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
-  if (options.body) headers.set("content-type", "application/json");
+  if (options.body && !(options.body instanceof FormData)) headers.set("content-type", "application/json");
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
 
   const response = await fetch(path, { ...options, headers, cache: "no-store" });
@@ -122,4 +122,47 @@ export async function archiveRecord(token: string | null, id: string) {
   return apiRequest<{ archived: boolean }>(`/api/v1/records?id=${encodeURIComponent(id)}`, {
     method: "DELETE", token,
   });
+}
+
+export async function uploadMeetingRecording(token: string | null, file: Blob) {
+  const body = new FormData();
+  body.set("file", file, `meeting-${Date.now()}.webm`);
+  return apiRequest<{ path: string; size: number }>("/api/v1/meeting-recordings", {
+    method: "POST", token, body,
+  });
+}
+
+export async function getMeetingRecordingUrl(token: string | null, path: string) {
+  return apiRequest<{ url: string }>(`/api/v1/meeting-recordings?path=${encodeURIComponent(path)}`, { token });
+}
+
+export async function summarizeMeeting(token: string | null, transcript: string) {
+  return apiRequest<{ summary: string; mode: "ai" | "local" }>("/api/v1/meeting-summary", {
+    method: "POST", token, body: JSON.stringify({ transcript }),
+  });
+}
+
+export async function getHealth() {
+  return apiRequest<{
+    ok: boolean;
+    service: string;
+    database: "ready" | "missing" | "error";
+    auth: "ready" | "missing";
+    embeddings: "ready" | "keyword_only";
+    telegram: "ready" | "missing";
+    checkedAt: string;
+  }>("/api/v1/health");
+}
+
+export interface OsMember {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "member" | "lead" | "admin";
+  team: string;
+  is_active: boolean;
+}
+
+export async function listMembers(token: string | null) {
+  return apiRequest<{ members: OsMember[] }>("/api/v1/members", { token });
 }

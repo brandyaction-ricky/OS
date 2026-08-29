@@ -152,6 +152,43 @@ paths:
         - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 보관 완료 }
+  /api/v1/meeting-recordings:
+    post:
+      summary: 인증된 구성원의 비공개 회의 녹음 업로드
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 4MB 이하 audio/webm, audio/ogg, audio/mpeg }
+      responses:
+        "201": { description: 비공개 Storage 경로 }
+        "413": { $ref: "#/components/responses/ApiError" }
+    get:
+      summary: 회의 녹음의 1시간 유효 서명 URL 발급
+      parameters:
+        - { in: query, name: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 서명 재생 URL }
+        "404": { $ref: "#/components/responses/ApiError" }
+  /api/v1/meeting-summary:
+    post:
+      summary: 회의 원문 기반 요약 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transcript]
+              properties:
+                transcript: { type: string, minLength: 20, maxLength: 200000 }
+      responses:
+        "200": { description: AI 또는 로컬 보조 요약과 mode }
+        "400": { $ref: "#/components/responses/ApiError" }
   /api/v1/members:
     get:
       summary: 실제 로그인 구성원 목록
