@@ -8,6 +8,26 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/content/generate:
+    post:
+      summary: 회사 절차 정본 기반 콘텐츠 생성·자가검수
+      description: 외부 발행은 수행하지 않으며 결과는 검토 상태 또는 AI 연결 대기로 저장됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, sourceId]
+              properties:
+                action: { type: string, enum: [derivatives, title_package, shorts_proposal, youtube_kit] }
+                sourceId: { type: string, format: uuid }
+                platforms: { type: array, items: { type: string, enum: [shorts, threads, column, instagram, essay] } }
+                count: { type: integer, minimum: 1, maximum: 12, default: 5 }
+      responses:
+        "201": { description: 정본 실행 및 자가검수 후 검토 기록 생성 }
+        "202": { description: Claude 키 연결 대기 작업 생성 }
+        "409": { description: 실행 절차 정본 없음 }
   /api/v1/health:
     get:
       security: []

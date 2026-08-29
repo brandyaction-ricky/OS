@@ -104,6 +104,15 @@ Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식
 
 ## 8. 배포 환경변수
 
+### 콘텐츠 스튜디오
+
+- 콘텐츠 메뉴는 `주제 → 원고 → 제목·썸네일 → 숏폼 → 발행 → 유튜브 관리 → 성과`의 7페이지 흐름이다.
+- 생성 API는 실행 시점에 회사 절차 정본을 읽고 Claude 초안과 자가검수 2패스를 거친다.
+- 파생 콘텐츠는 `검토 → 발행 준비 → 최종 승인·예약 → 발행` 순서를 건너뛸 수 없다.
+- 쇼츠는 구간 제안과 ffmpeg 제작 작업을 분리한다. 사람에게 채택된 구간만 외부 워커 대기열에 들어간다.
+- Vercel은 생성·상태·작업 기록을 담당하며, 대용량 영상의 전사·ffmpeg 렌더는 별도 워커가 담당한다.
+- Claude 키가 없으면 결과를 가짜로 만들지 않고 `ai_job` 연결 대기로 저장한다.
+
 Vercel 프로젝트 Production/Preview에 다음 값을 설정한다.
 
 ```dotenv
@@ -115,6 +124,9 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_ANSWER_MODEL=gpt-5.6-luna
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 OPENAI_VISION_MODEL=gpt-5.6-luna
+ANTHROPIC_API_KEY=...
+CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001
+CLAUDE_SONNET_MODEL=claude-sonnet-4-5-20250929
 CRON_SECRET=충분히_긴_무작위_값
 NEXT_PUBLIC_DEMO_MODE=false
 ```

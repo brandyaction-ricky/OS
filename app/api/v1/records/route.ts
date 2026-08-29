@@ -8,6 +8,11 @@ import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation"
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const CONTENT_PUBLISH_TRANSITIONS: Record<string, string[]> = {
+  draft: ["review", "blocked"], review: ["ready", "blocked"], blocked: ["review"],
+  ready: ["scheduled", "review"], scheduled: ["published", "ready"], published: [],
+};
+
 const COLUMN_MAP = {
   recordType: "record_type", assigneeId: "assignee_id", parentId: "parent_id",
   dueDate: "due_date", startsAt: "starts_at", endsAt: "ends_at",
@@ -87,6 +92,10 @@ export async function PATCH(request: Request) {
     const actor = await authenticateRequest(request);
     const input = recordUpdateSchema.parse(await parseJson(request));
     const { data: current } = await actor.supabase.from("os_records").select("record_type,status").eq("id", input.id).maybeSingle();
+    if (current?.record_type === "content_publish" && input.status && input.status !== current.status) {
+      const allowed = CONTENT_PUBLISH_TRANSITIONS[current.status] ?? [];
+      if (!allowed.includes(input.status)) throw new ApiError(409, "CONTENT_APPROVAL_REQUIRED", "검토 완료와 최종 승인을 순서대로 거쳐야 합니다.");
+    }
     if (current?.record_type === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차 잔여를 변경할 수 있습니다.");
     if (current?.record_type === "leave_request" && (input.status === "approved" || input.status === "rejected")) {
       if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 휴가를 승인하거나 반려할 수 있습니다.");

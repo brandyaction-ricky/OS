@@ -16,6 +16,8 @@ import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "
 import { FinanceWorkspace } from "@/components/finance-workspace";
 import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
 import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
+import { ContentPackageWorkspace, ContentShortsWorkspace, YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
+import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 
@@ -37,6 +39,10 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/finance") return <FinanceWorkspace />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
+  if (href === "/content/packages") return <ContentPackageWorkspace />;
+  if (href === "/content/shorts") return <ContentShortsWorkspace />;
+  if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
+  if (href === "/content/youtube") return <YoutubeKitWorkspace />;
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
   if (href === "/performance/overview") return <GrowthDashboard />;
@@ -46,6 +52,10 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
   if (href === "/performance/customers") return <CommerceAdminLinks title="고객·주문 관리자" />;
   if (href === "/settings/monitoring") return <MonitoringWorkspace />;
+  if (href === "/settings/connections") return <SettingsWorkspace page="connections" />;
+  if (href === "/settings/access") return <SettingsWorkspace page="access" />;
+  if (href === "/settings/company") return <SettingsWorkspace page="company" />;
+  if (href === "/settings/channels") return <SettingsWorkspace page="channels" />;
   const config = WORKSPACE_CONFIGS[href];
   if (config) return <OperationsWorkspace config={config} />;
   return <PlaceholderPage title={page?.label ?? "기능 준비"} stage={stage?.label ?? "OS"} />;

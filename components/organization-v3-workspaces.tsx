@@ -252,6 +252,7 @@ export function AiOperationsWorkspace() {
           {error}
         </div>
       ) : null}
+      <div className="section-intro"><div><span className="eyebrow">LAYER 1</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
       <section className="ai-system-grid">
         {systems.map(([title, status, description]) => (
           <article className="panel" key={title}>
@@ -265,6 +266,7 @@ export function AiOperationsWorkspace() {
           </article>
         ))}
       </section>
+      <div className="section-intro"><div><span className="eyebrow">LAYER 2</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div>
       <section className="panel">
         <div className="panel-header">
           <div>

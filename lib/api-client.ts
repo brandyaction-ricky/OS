@@ -178,6 +178,7 @@ export async function getHealth() {
     auth: "ready" | "missing";
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
+    contentAi: "ready" | "missing";
     advertising: "ready" | "partial" | "missing";
     checkedAt: string;
   }>("/api/v1/health");
@@ -240,6 +241,17 @@ export async function connectTelegramWebhook(token: string | null) {
 export async function decideTelegramUser(token: string | null, externalUserId: string, action: "approve" | "reject") {
   return apiRequest<{ user: { external_user_id: string; status: "approved" | "rejected" } }>("/api/v1/telegram/setup", {
     method: "PATCH", token, body: JSON.stringify({ externalUserId, action }),
+  });
+}
+
+export async function generateContent(token: string | null, input: {
+  action: "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
+  sourceId: string;
+  platforms?: Array<"shorts" | "threads" | "column" | "instagram" | "essay">;
+  count?: number;
+}) {
+  return apiRequest<{ configured: boolean; queued: boolean; records?: OsRecord[]; job?: OsRecord }>("/api/v1/content/generate", {
+    method: "POST", token, body: JSON.stringify(input),
   });
 }
 
