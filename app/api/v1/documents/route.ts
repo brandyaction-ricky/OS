@@ -13,21 +13,37 @@ export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const url = new URL(request.url);
-    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 100);
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const statuses = url.searchParams.get("statuses")?.split(",").filter(Boolean) as DocumentStatus[] | undefined;
     const owner = url.searchParams.get("owner");
     const folder = url.searchParams.get("folder");
     const query = url.searchParams.get("q")?.replace(/[%_,()]/g, " ").trim();
+    const includeContent = url.searchParams.get("view") !== "summary";
+
+    const rpc = await actor.supabase.rpc("os_list_documents_v3", {
+      p_limit: limit,
+      p_offset: offset,
+      p_statuses: statuses?.length ? statuses : null,
+      p_owner: owner || null,
+      p_folder_prefix: folder || null,
+      p_query: query || null,
+      p_include_content: includeContent,
+    });
+    if (!rpc.error) {
+      const rows = (rpc.data ?? []) as Array<Record<string, unknown>>;
+      const total = Number(rows[0]?.total_count ?? 0);
+      return NextResponse.json({ documents: rows.map((row) => { const document = { ...row }; delete document.total_count; return document; }), total });
+    }
 
     let builder = actor.supabase
       .from("os_documents")
-      .select("*", { count: "exact" })
+      .select(includeContent ? "*" : "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at", { count: "exact" })
       .order("updated_at", { ascending: false })
       .range(offset, offset + limit - 1);
     if (statuses?.length) builder = builder.in("status", statuses);
     if (owner) builder = builder.eq("owner_id", owner);
-    if (folder) builder = builder.eq("folder", folder);
+    if (folder) builder = builder.or(`folder.eq.${folder},folder.like.${folder}/%`);
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%`);
     const { data, count, error } = await builder;
     if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);

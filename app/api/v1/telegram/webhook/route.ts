@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 interface TelegramPhoto { file_id: string; file_size?: number }
 interface TelegramMessage {
-  message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string };
+  message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string };
   text?: string; caption?: string; photo?: TelegramPhoto[]; reply_to_message?: { from?: { is_bot?: boolean } };
 }
 interface TelegramUpdate { update_id: number; message?: TelegramMessage }
@@ -107,8 +107,18 @@ export async function POST(request: Request) {
     const message = (await request.json() as TelegramUpdate).message;
     if (!message?.from || !shouldRespond(message)) return NextResponse.json({ ok: true, ignored: true });
     const text = (message.text ?? message.caption ?? "").replace(/@[A-Za-z0-9_]+/g, "").trim(); const kind = captureKind(text); const supabase = createServiceSupabase();
+    const externalUserId = String(message.from.id);
     const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
-    if (!allowed.has(String(message.from.id))) {
+    const { data: registered } = await supabase.from("os_telegram_users").select("status").eq("external_user_id", externalUserId).maybeSingle();
+    if (!allowed.has(externalUserId) && registered?.status !== "approved") {
+      await supabase.from("os_telegram_users").upsert({
+        external_user_id: externalUserId,
+        external_chat_id: String(message.chat.id),
+        display_name: [message.from.first_name, message.from.last_name].filter(Boolean).join(" "),
+        username: message.from.username ?? "",
+        status: registered?.status === "rejected" ? "rejected" : "pending",
+        requested_at: new Date().toISOString(),
+      }, { onConflict: "external_user_id" });
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: (text || "[사진 또는 빈 메시지]").slice(0, 4000), answer: "TELEGRAM_ACCESS_PENDING", source_document_ids: [] });
       await sendTelegram(message.chat.id, "등록 요청을 확인했습니다. 관리자가 승인하면 브랜디 OS를 사용할 수 있습니다.", message.message_id);
       return NextResponse.json({ ok: true, blocked: true, registrationPending: true });

@@ -2,6 +2,7 @@
 
 import {
   Archive,
+  Bold,
   BookCheck,
   ChevronDown,
   ChevronRight,
@@ -14,21 +15,26 @@ import {
   Folder,
   FolderOpen,
   Hash,
+  Link2,
+  List,
   MoreHorizontal,
   Pencil,
+  Quote,
   RotateCcw,
   Save,
   Search,
   Send,
   ShieldAlert,
+  Table2,
   Tag,
+  Trash2,
   Upload,
   UserRound,
   X,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { changeDocumentStatus, createDocument, listDocuments, listDocumentVersions, restoreDocumentVersion, updateDocument } from "@/lib/api-client";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, restoreDocumentVersion, updateDocument } from "@/lib/api-client";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
@@ -41,7 +47,37 @@ const OWNER_FILTERS = [
   { id: "canonical", label: "브랜디액션 wiki" },
   { id: "mine", label: "내 문서" },
   { id: "review", label: "검토 중" },
+  { id: "archived", label: "휴지통" },
 ];
+
+interface FolderTreeNode { name: string; path: string; count: number; children: FolderTreeNode[] }
+
+function documentFolder(document: KnowledgeDocument) {
+  if (document.folder) return document.folder;
+  const sourcePath = document.source_ref?.replace(/\\/g, "/");
+  if (sourcePath?.includes("/")) return sourcePath.slice(0, sourcePath.lastIndexOf("/"));
+  return "분류 없음";
+}
+
+function buildFolderTree(documents: KnowledgeDocument[]) {
+  const roots: FolderTreeNode[] = [];
+  for (const document of documents.filter((item) => item.status !== "archived")) {
+    const parts = documentFolder(document).split("/").filter(Boolean);
+    let level = roots; let path = "";
+    for (const part of parts) {
+      path = path ? `${path}/${part}` : part;
+      let node = level.find((item) => item.name === part);
+      if (!node) { node = { name: part, path, count: 0, children: [] }; level.push(node); }
+      node.count += 1; level = node.children;
+    }
+  }
+  const sort = (nodes: FolderTreeNode[]) => nodes.sort((a, b) => a.name.localeCompare(b.name, "ko")).forEach((node) => sort(node.children));
+  sort(roots); return roots;
+}
+
+function wikiLinks(content: string) {
+  return [...new Set([...content.matchAll(/\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g)].map((match) => match[1].trim()).filter(Boolean))];
+}
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
@@ -144,6 +180,10 @@ function WorkspaceContent() {
   const [canonicalGate, setCanonicalGate] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
+  const [visibleCount, setVisibleCount] = useState(100);
+  const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -152,15 +192,15 @@ function WorkspaceContent() {
       let offset = 0;
       let total = 0;
       do {
-        const result = await listDocuments(accessToken, `limit=100&offset=${offset}`);
+        const result = await listDocuments(accessToken, `view=summary&limit=200&offset=${offset}`);
         all.push(...result.documents);
         total = result.total;
         offset += result.documents.length;
         if (!result.documents.length) break;
-      } while (offset < total && offset < 1000);
+      } while (offset < total);
       setDocuments(all);
       setSelectedId((current) => current ?? all[0]?.id ?? null);
-      setError(total > 1000 ? "문서가 1,000개를 넘어 최신 1,000개까지만 표시합니다." : "");
+      setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다.");
     }
@@ -172,6 +212,12 @@ function WorkspaceContent() {
   }, [documents, selectedId]);
 
   const selected = documents.find((document) => document.id === selectedId) ?? null;
+  useEffect(() => {
+    if (!selected || selected.content_md || demo) return;
+    getDocument(accessToken, selected.id)
+      .then(({ document }) => setDocuments((current) => current.map((item) => item.id === document.id ? document : item)))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "문서 본문을 불러오지 못했습니다."));
+  }, [accessToken, demo, selected]);
   useEffect(() => {
     if (selected) setDraft(toDraft(selected));
   }, [selected]);
@@ -185,14 +231,23 @@ function WorkspaceContent() {
       .finally(() => setVersionsLoading(false));
   }, [accessToken, demo, mode, selected]);
 
-  const folders = useMemo(() => {
-    const counts = new Map<string, number>();
-    documents.forEach((document) => {
-      const folder = document.folder || "분류 없음";
-      counts.set(folder, (counts.get(folder) ?? 0) + 1);
+  useEffect(() => {
+    if (!selected || demo) { setBacklinks([]); return; }
+    const params = new URLSearchParams({ view: "summary", limit: "50", q: `[[${selected.title}` });
+    listDocuments(accessToken, params.toString())
+      .then((result) => setBacklinks(result.documents.filter((item) => item.id !== selected.id)))
+      .catch(() => setBacklinks([]));
+  }, [accessToken, demo, selected]);
+
+  const folderTree = useMemo(() => buildFolderTree(documents), [documents]);
+  const folderRows = useMemo(() => {
+    const rows: Array<FolderTreeNode & { depth: number }> = [];
+    const visit = (nodes: FolderTreeNode[], depth: number) => nodes.forEach((node) => {
+      rows.push({ ...node, depth });
+      if (expandedFolders.has(node.path)) visit(node.children, depth + 1);
     });
-    return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0], "ko"));
-  }, [documents]);
+    visit(folderTree, 0); return rows;
+  }, [expandedFolders, folderTree]);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("ko-KR");
@@ -200,11 +255,37 @@ function WorkspaceContent() {
       if (ownerFilter === "canonical" && document.status !== "canonical") return false;
       if (ownerFilter === "mine" && document.owner_id !== profile?.id) return false;
       if (ownerFilter === "review" && !["review", "reviewed"].includes(document.status)) return false;
-      if (folderFilter !== "all" && (document.folder || "분류 없음") !== folderFilter) return false;
+      if (ownerFilter === "archived" && document.status !== "archived") return false;
+      if (ownerFilter !== "archived" && document.status === "archived") return false;
+      const path = documentFolder(document);
+      if (folderFilter !== "all" && path !== folderFilter && !path.startsWith(`${folderFilter}/`)) return false;
       if (normalized && !`${document.title} ${document.content_md} ${document.tags.join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) return false;
       return true;
     });
   }, [documents, folderFilter, ownerFilter, profile?.id, query]);
+
+  useEffect(() => { setVisibleCount(100); }, [folderFilter, ownerFilter, query]);
+
+  const moveDocument = async (documentId: string, folder: string) => {
+    const item = documents.find((document) => document.id === documentId);
+    if (!item || item.folder === folder) return;
+    setBusy(true); setError("");
+    try {
+      const { document } = await updateDocument(accessToken, { id: item.id, expectedVersion: item.current_version, folder, reason: `폴더 이동: ${folder}` });
+      setDocuments((current) => current.map((row) => row.id === document.id ? document : row));
+      setToast(`“${document.title}” 문서를 ${folder}(으)로 이동했습니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더로 이동하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const applyMarkdown = (before: string, after = before, placeholder = "텍스트") => {
+    if (!draft || !editorRef.current) return;
+    const textarea = editorRef.current; const start = textarea.selectionStart; const end = textarea.selectionEnd;
+    const selectedText = draft.content.slice(start, end) || placeholder;
+    const content = `${draft.content.slice(0, start)}${before}${selectedText}${after}${draft.content.slice(end)}`;
+    setDraft({ ...draft, content });
+    requestAnimationFrame(() => { textarea.focus(); textarea.setSelectionRange(start + before.length, start + before.length + selectedText.length); });
+  };
 
   const save = async () => {
     if (!selected || !draft) return;
@@ -391,24 +472,31 @@ function WorkspaceContent() {
         <aside className="folder-pane">
           <div className="pane-title"><strong>폴더</strong><button><MoreHorizontal size={16} /></button></div>
           <button className={`folder-row${folderFilter === "all" ? " active" : ""}`} onClick={() => setFolderFilter("all")}><FolderOpen size={16} /><span>모든 문서</span><small>{documents.length}</small></button>
-          {folders.map(([folder, count]) => (
-            <button className={`folder-row${folderFilter === folder ? " active" : ""}`} key={folder} onClick={() => setFolderFilter(folder)}><ChevronRight size={13} /><Folder size={15} /><span>{folder}</span><small>{count}</small></button>
+          {folderRows.map((folder) => (
+            <button
+              className={`folder-row folder-tree-row${folderFilter === folder.path ? " active" : ""}`}
+              style={{ paddingLeft: 10 + folder.depth * 16 }} key={folder.path}
+              onClick={() => { setFolderFilter(folder.path); if (folder.children.length) setExpandedFolders((current) => { const next = new Set(current); if (next.has(folder.path)) next.delete(folder.path); else next.add(folder.path); return next; }); }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); moveDocument(event.dataTransfer.getData("text/document-id"), folder.path); }}
+            >{folder.children.length ? expandedFolders.has(folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : <span className="tree-spacer" />}<Folder size={15} /><span>{folder.name}</span><small>{folder.count}</small></button>
           ))}
           <div className="folder-divider" />
-          <button className="folder-row"><Archive size={15} /><span>보관함</span></button>
+          <button className={`folder-row${ownerFilter === "archived" ? " active" : ""}`} onClick={() => { setOwnerFilter("archived"); setFolderFilter("all"); }}><Trash2 size={15} /><span>휴지통</span><small>{documents.filter((item) => item.status === "archived").length}</small></button>
         </aside>
 
         <aside className="document-pane">
           <div className="document-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="현재 문서에서 찾기" /></div>
           <div className="document-list-head"><span>{filtered.length}개 문서</span><button>최근 수정순 <ChevronDown size={12} /></button></div>
           <div className="document-list">
-            {filtered.map((document) => (
-              <button key={document.id} className={document.id === selectedId ? "active" : ""} onClick={() => { setSelectedId(document.id); setMode("read"); }}>
+            {filtered.slice(0, visibleCount).map((document) => (
+              <button draggable key={document.id} className={document.id === selectedId ? "active" : ""} onDragStart={(event) => event.dataTransfer.setData("text/document-id", document.id)} onClick={() => { setSelectedId(document.id); setMode("read"); }}>
                 <span className={`mini-status status-${document.status}`} />
                 <span className="doc-list-copy"><strong>{document.title}</strong><small>{document.folder || "분류 없음"}</small><span>{document.tags.slice(0, 2).map((tag) => <em key={tag}>#{tag}</em>)}</span></span>
                 <time>{formatDate(document.updated_at)}</time>
               </button>
             ))}
+            {filtered.length > visibleCount ? <button className="document-more" onClick={() => setVisibleCount((count) => count + 100)}>다음 100개 보기 · {filtered.length - visibleCount}개 남음</button> : null}
             {!filtered.length ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
           </div>
         </aside>
@@ -440,7 +528,8 @@ function WorkspaceContent() {
                     <label><span><BookCheck size={13} /> 브랜드</span><input value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
                     <label><span><Tag size={13} /> 태그</span><input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
-                  <textarea value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} aria-label="문서 본문" spellCheck="false" />
+                  <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
+                  <textarea ref={editorRef} value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} aria-label="문서 본문" spellCheck="false" />
                 </div>
               ) : mode === "info" ? (
                 <div className="document-info">
@@ -449,6 +538,7 @@ function WorkspaceContent() {
                   <h3>정본 승격 단계</h3><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
                   <h3>변경 이력</h3>
                   <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => restoreVersion(version)}><RotateCcw size={13} /> 되돌리기</button> : <em>현재</em>}</div>)}</div>
+                  <h3>문서 연결</h3><div className="knowledge-links"><div><strong>나가는 링크</strong>{wikiLinks(selected.content_md).map((link) => <span key={link}><Link2 size={12} /> {link}</span>)}{!wikiLinks(selected.content_md).length ? <small>본문에 [[문서명]]을 입력하면 연결됩니다.</small> : null}</div><div><strong>백링크</strong>{backlinks.map((item) => <button key={item.id} onClick={() => { setSelectedId(item.id); setMode("read"); }}><Link2 size={12} /> {item.title}</button>)}{!backlinks.length ? <small>이 문서를 가리키는 문서가 없습니다.</small> : null}</div></div>
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => moveStatus("archived")}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => moveStatus("draft")}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (

@@ -12,6 +12,10 @@ const memberUpdateSchema = z.object({
   displayName: z.string().trim().min(1).max(120),
   role: z.enum(["member", "lead", "admin"]),
   team: z.string().trim().max(120),
+  affiliation: z.string().trim().max(120),
+  roles: z.array(z.string().trim().min(1).max(80)).max(12),
+  onboarding: z.record(z.string(), z.boolean()),
+  financeAccess: z.boolean(),
   isActive: z.boolean(),
 });
 
@@ -20,7 +24,7 @@ export async function GET(request: Request) {
     await authenticateRequest(request);
     const service = createServiceSupabase();
     const { data, error } = await service.from("os_profiles")
-      .select("id,email,display_name,role,team,is_active,created_at,updated_at")
+      .select("id,email,display_name,role,team,affiliation,roles,onboarding,finance_access,is_active,created_at,updated_at")
       .order("display_name", { ascending: true });
     if (error) throw new ApiError(400, "MEMBER_LIST_FAILED", "구성원 목록을 불러오지 못했습니다.", error.message);
     return NextResponse.json({ members: data ?? [] });
@@ -40,9 +44,13 @@ export async function PATCH(request: Request) {
       display_name: input.displayName,
       role: input.role,
       team: input.team,
+      affiliation: input.affiliation,
+      roles: input.roles,
+      onboarding: input.onboarding,
+      finance_access: input.financeAccess,
       is_active: input.isActive,
       updated_at: new Date().toISOString(),
-    }).eq("id", input.id).select("id,email,display_name,role,team,is_active,created_at,updated_at").single();
+    }).eq("id", input.id).select("id,email,display_name,role,team,affiliation,roles,onboarding,finance_access,is_active,created_at,updated_at").single();
     if (error || !data) throw new ApiError(400, "MEMBER_UPDATE_FAILED", "구성원 정보를 수정하지 못했습니다.", error?.message);
     return NextResponse.json({ member: data });
   } catch (error) {

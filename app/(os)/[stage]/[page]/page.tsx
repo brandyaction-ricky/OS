@@ -12,6 +12,8 @@ import { GrowthDashboard } from "@/components/growth-dashboard";
 import { ReportsWorkspace } from "@/components/reports-workspace";
 import { MonitoringWorkspace } from "@/components/monitoring-workspace";
 import { TasksWorkspace } from "@/components/tasks-workspace";
+import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "@/components/organization-v3-workspaces";
+import { FinanceWorkspace } from "@/components/finance-workspace";
 import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
@@ -28,6 +30,10 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/projects") return <ProjectHubWorkspace />;
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
+  if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;
+  if (href === "/organization/leave") return <LeaveWorkspace />;
+  if (href === "/organization/agents") return <AiOperationsWorkspace />;
+  if (href === "/organization/finance") return <FinanceWorkspace />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
@@ -36,7 +42,6 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/performance/revenue") return <RevenueWorkspace />;
   if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
   if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
-  if (href === "/performance/crm") return <CommerceAdminLinks title="CRM 관리자" />;
   if (href === "/performance/customers") return <CommerceAdminLinks title="고객·주문 관리자" />;
   if (href === "/settings/monitoring") return <MonitoringWorkspace />;
   const config = WORKSPACE_CONFIGS[href];
