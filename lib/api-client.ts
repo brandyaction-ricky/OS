@@ -199,6 +199,7 @@ export interface TelegramConnectionStatus {
   configured: boolean;
   bot?: { username: string | null; name: string | null };
   webhook: null | { url: string; pendingUpdates: number; lastErrorAt: number | null; lastError: string | null };
+  pendingUsers?: { external_user_id: string; external_chat_id: string | null; created_at: string }[];
 }
 
 export async function getTelegramStatus(token: string | null) {
