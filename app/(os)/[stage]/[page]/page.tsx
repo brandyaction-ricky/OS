@@ -50,7 +50,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
   if (href === "/performance/ads") return <AdPerformanceWorkspace />;
   if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
-  if (href === "/performance/customers") return <CommerceAdminLinks title="고객·주문 관리자" />;
+  if (href === "/performance/customers") return <CommerceAdminLinks title="자사몰 어드민" />;
   if (href === "/settings/monitoring") return <MonitoringWorkspace />;
   if (href === "/settings/connections") return <SettingsWorkspace page="connections" />;
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;
