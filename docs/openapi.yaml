@@ -243,6 +243,48 @@ paths:
         - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 폐기 완료 }
+  /api/v1/indexing:
+    get:
+      summary: 관리자용 임베딩 큐 상태 조회
+      responses:
+        "200": { description: pending/running/failed/done 건수와 설정 상태 }
+        "403": { $ref: "#/components/responses/ApiError" }
+    post:
+      summary: 관리자가 제한된 인덱싱 배치를 실행하거나 실패 작업을 대기로 전환
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [process, retry_failed] }
+                limit: { type: integer, minimum: 1, maximum: 500, default: 25 }
+      responses:
+        "200": { description: 배치 처리 또는 재시도 결과 }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
+  /api/v1/indexing/cron:
+    get:
+      security: []
+      summary: Vercel 예약 임베딩 배치
+      description: Authorization Bearer CRON_SECRET가 일치할 때만 실행
+      responses:
+        "200": { description: 배치 처리 결과 또는 미설정 건너뜀 }
+        "401": { $ref: "#/components/responses/ApiError" }
+  /api/v1/telegram/setup:
+    get:
+      summary: 관리자가 봇과 웹훅 상태 확인
+      responses:
+        "200": { description: 비밀값을 제외한 Bot API 연결 상태 }
+        "403": { $ref: "#/components/responses/ApiError" }
+    post:
+      summary: 관리자가 보안 웹훅 연결·갱신
+      responses:
+        "200": { description: 등록된 공개 웹훅 URL }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
 components:
   securitySchemes:
     bearerAuth:
