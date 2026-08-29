@@ -178,6 +178,37 @@ export async function getHealth() {
   }>("/api/v1/health");
 }
 
+export interface EmbeddingQueueStatus {
+  pending: number;
+  running: number;
+  failed: number;
+  done: number;
+}
+
+export async function getIndexingStatus(token: string | null) {
+  return apiRequest<{ queue: EmbeddingQueueStatus; configured: boolean; cronConfigured: boolean }>("/api/v1/indexing", { token });
+}
+
+export async function runIndexing(token: string | null, action: "process" | "retry_failed", limit = 25) {
+  return apiRequest<{ result?: { attempted: number; completed: number; failed: number; remaining: number }; retried?: number; queue?: EmbeddingQueueStatus }>("/api/v1/indexing", {
+    method: "POST", token, body: JSON.stringify({ action, limit }),
+  });
+}
+
+export interface TelegramConnectionStatus {
+  configured: boolean;
+  bot?: { username: string | null; name: string | null };
+  webhook: null | { url: string; pendingUpdates: number; lastErrorAt: number | null; lastError: string | null };
+}
+
+export async function getTelegramStatus(token: string | null) {
+  return apiRequest<TelegramConnectionStatus>("/api/v1/telegram/setup", { token });
+}
+
+export async function connectTelegramWebhook(token: string | null) {
+  return apiRequest<{ connected: boolean; url: string }>("/api/v1/telegram/setup", { method: "POST", token });
+}
+
 export interface OsMember {
   id: string;
   email: string;

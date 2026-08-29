@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -18,4 +18,9 @@ test("vault paths are normalized and canonical roots are mapped", async () => {
 test("import is dry-run unless apply is explicit", () => {
   assert.equal(parseArgs(["--root", "/vault"]).apply, false);
   assert.equal(parseArgs(["--root", "/vault", "--apply"]).apply, true);
+});
+
+test("applied vault documents keep their Obsidian provenance tag", async () => {
+  const source = await readFile(new URL("../tools/import-knowledge.mjs", import.meta.url), "utf8");
+  assert.match(source, /tags: \["obsidian"\]/);
 });

@@ -22,7 +22,7 @@
 | 콘텐츠 | 구현 | 롱폼→권장 파생물 10개 생성, 묶음 검수, 플랫폼별 일정, 드래그 캘린더 |
 | 매출·퍼널·KPI | 구현 | 브랜드 순매출 원장, 유튜브→스토어 퍼널, 주간 KPI와 외부 관리자 링크 |
 | 월간 보고서 | 구현 | 목표·업무·회의·결정·콘텐츠·매출 자동 집계, Markdown 복사·다운로드 |
-| 운영 모니터링 | 구현 | DB·인증·검색·Telegram·연결 상태와 보안 경계 확인 |
+| 운영 모니터링 | 구현 | DB·인증·검색·Telegram·임베딩 큐·연결 상태와 보안 경계 확인, 관리자 재시도 |
 | 구성원 | 구현 | 실제 Auth 계정의 역할·팀·사용 상태 관리 |
 | 감사 로그 | 구현 | 운영 기록의 생성·수정·보관 이력 자동 적재·조회 |
 
@@ -87,6 +87,8 @@ Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식
 4. 임베딩 설정이나 RPC에 문제가 있으면 안전하게 문서 키워드 검색으로 저하한다.
 5. 모든 결과에 `documentId`, `version`, `chunkId` 인용 정보를 반환한다.
 
+새 문서와 볼트 적재 문서는 `os_embedding_jobs` 큐에 쌓인다. `/api/v1/indexing`은 관리자만 큐 현황을 보거나 제한된 배치를 실행·재시도할 수 있다. Vercel 예약 작업은 매일 03:00 KST에 최대 100건을 4분 실행 예산 안에서 처리하며, 동일 문서 작업은 `pending → running` 상태 선점에 성공한 실행자만 처리한다. 15분 넘게 멈춘 실행은 자동 복구되고 이전 버전 작업은 실패 이력으로 닫힌다. 새 청크 저장에 실패하면 기존 검색 청크를 복원하므로 이미 검색되던 지식은 계속 유지된다.
+
 ## 7. 배포 환경변수
 
 Vercel 프로젝트 Production/Preview에 다음 값을 설정한다.
@@ -100,6 +102,7 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_ANSWER_MODEL=gpt-5.6-luna
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 OPENAI_VISION_MODEL=gpt-5.6-luna
+CRON_SECRET=충분히_긴_무작위_값
 NEXT_PUBLIC_DEMO_MODE=false
 ```
 
@@ -108,6 +111,7 @@ Telegram을 연결할 때만 아래 값을 추가한다.
 ```dotenv
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_SECRET=...
+OS_PUBLIC_URL=https://brandyaction-os.vercel.app
 TELEGRAM_ALLOWED_USER_IDS=123,456
 TELEGRAM_BOT_USERNAME=your_bot
 TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
@@ -120,13 +124,13 @@ TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
 5. OS 설정에서 Agent PAT를 발급하고, 필요할 때 MCP의 `AGENT_PAT`에 주입한다.
-6. Telegram 사용 시 웹훅 URL을 `/api/v1/telegram/webhook`으로 등록한다.
+6. Telegram 사용 시 설정 → 운영 모니터링에서 웹훅 연결·갱신을 실행한다. 서버는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 등록한다.
 7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.
 
 ## 9. 외부 확인이 있어야 남는 연결
 
-- OpenAI API 키 등록 후 의미 검색·답변 생성 및 기존 문서 재색인
-- Telegram Bot Token·허용 사용자 확인 후 웹훅 연결
+- OpenAI API 키와 예약 작업 보안값 등록 후 의미 검색·답변 생성 및 기존 문서 재색인 실행
+- Telegram Bot Token·웹훅 보안값·허용 사용자 등록 후 운영 모니터링에서 연결 실행
 - Drive/Slack/Notion 등 외부 수집기는 계정 연결과 수집 범위 승인 후 개발
 
 외부 연결 전에도 내부 기록·상태·권한·성과 입력은 운영 가능하다.
