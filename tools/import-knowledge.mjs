@@ -82,7 +82,7 @@ async function applyRows(rows, ownerEmail) {
         if (error) throw new Error(`${row.sourceRef} 수정 실패: ${error.message}`);
         updated += 1;
       } else {
-        const { error } = await supabase.from("os_documents").insert({ title: row.title, content_md: row.content, folder: row.folder, status: row.status, source: row.source, source_ref: row.sourceRef, owner_id: ownerId, created_by: ownerId, brand: "", team: "", tags: [] });
+        const { error } = await supabase.from("os_documents").insert({ title: row.title, content_md: row.content, folder: row.folder, status: row.status, source: row.source, source_ref: row.sourceRef, owner_id: ownerId, created_by: ownerId, brand: "", team: "", tags: ["obsidian"] });
         if (error) throw new Error(`${row.sourceRef} 추가 실패: ${error.message}`);
         inserted += 1;
       }
