@@ -4,7 +4,6 @@ import {
   BookOpen,
   Bot,
   Building2,
-  CalendarDays,
   CalendarRange,
   CircleDollarSign,
   ContactRound,
@@ -32,6 +31,7 @@ import {
   UploadCloud,
   Users,
   Workflow,
+  Youtube,
 } from "lucide-react";
 
 export interface NavPage {
@@ -68,17 +68,15 @@ export const NAV_STAGES: NavStage[] = [
     id: "content",
     label: "콘텐츠",
     icon: Film,
-    href: "/content/automation",
+    href: "/content/topics",
     pages: [
-      { label: "멀티채널 자동화", href: "/content/automation", icon: Workflow, group: "자동화", ready: true },
-      { label: "콘텐츠 묶음 검수", href: "/content/review", icon: ListChecks, group: "자동화", ready: true },
-      { label: "주제·기획", href: "/content/topics", icon: Sparkles, group: "제작", ready: true },
-      { label: "원고·스크립트", href: "/content/scripts", icon: NotebookPen, group: "제작", ready: true },
-      { label: "제목·썸네일", href: "/content/packages", icon: PanelTop, group: "제작", ready: true },
-      { label: "숏폼 편집", href: "/content/shorts", icon: Film, group: "자동화", ready: true },
-      { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, group: "자동화", ready: true },
-      { label: "발행 캘린더", href: "/content/calendar", icon: CalendarDays, group: "관리·분석", ready: true },
-      { label: "영상 성과", href: "/content/performance", icon: BarChart3, group: "관리·분석", ready: true },
+      { label: "주제·기획", href: "/content/topics", icon: Sparkles, ready: true },
+      { label: "원고·스크립트", href: "/content/scripts", icon: NotebookPen, ready: true },
+      { label: "제목·썸네일", href: "/content/packages", icon: PanelTop, ready: true },
+      { label: "숏폼 편집", href: "/content/shorts", icon: Film, ready: true },
+      { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, ready: true },
+      { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, ready: true },
+      { label: "영상 성과", href: "/content/performance", icon: BarChart3, ready: true },
     ],
   },
   {
