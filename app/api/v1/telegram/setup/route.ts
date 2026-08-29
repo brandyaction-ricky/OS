@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,14 @@ export async function GET(request: Request) {
     const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET);
     if (!configured) return NextResponse.json({ configured: false, webhook: null });
     const [bot, webhook] = await Promise.all([telegram("getMe"), telegram("getWebhookInfo")]);
+    const { data: pendingRows } = await createServiceSupabase()
+      .from("os_channel_turns")
+      .select("external_user_id,external_chat_id,created_at")
+      .eq("channel", "telegram")
+      .eq("answer", "TELEGRAM_ACCESS_PENDING")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    const pendingUsers = [...new Map((pendingRows ?? []).map((row) => [row.external_user_id, row])).values()];
     return NextResponse.json({
       configured: true,
       bot: { username: bot.username ?? null, name: bot.first_name ?? null },
@@ -46,6 +55,7 @@ export async function GET(request: Request) {
         lastErrorAt: webhook.last_error_date ?? null,
         lastError: webhook.last_error_message ?? null,
       },
+      pendingUsers,
     });
   } catch (error) { return apiErrorResponse(error); }
 }

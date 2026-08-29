@@ -123,9 +123,12 @@ test("embedding backlog has admin control, cron authentication and bounded batch
 });
 
 test("telegram setup is admin-only and never returns bot secrets", async () => {
-  const route = await readFile(new URL("../app/api/v1/telegram/setup/route.ts", import.meta.url), "utf8");
+  const [route, webhook] = await Promise.all([readFile(new URL("../app/api/v1/telegram/setup/route.ts", import.meta.url), "utf8"), readFile(new URL("../app/api/v1/telegram/webhook/route.ts", import.meta.url), "utf8")]);
   assert.match(route, /actor\.role !== "admin"/);
   assert.match(route, /setWebhook/);
   assert.match(route, /secret_token: secret/);
+  assert.match(route, /pendingUsers/);
+  assert.match(webhook, /TELEGRAM_ACCESS_PENDING/);
+  assert.match(webhook, /!allowed\.has/);
   assert.doesNotMatch(route, /token:\s*process\.env\.TELEGRAM_BOT_TOKEN/);
 });

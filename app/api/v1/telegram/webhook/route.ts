@@ -106,9 +106,13 @@ export async function POST(request: Request) {
     if (!expected || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WEBHOOK_SECRET", "웹훅 인증에 실패했습니다.");
     const message = (await request.json() as TelegramUpdate).message;
     if (!message?.from || !shouldRespond(message)) return NextResponse.json({ ok: true, ignored: true });
-    const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
-    if (allowed.size && !allowed.has(String(message.from.id))) { await sendTelegram(message.chat.id, "등록된 구성원만 브랜디 OS를 사용할 수 있습니다.", message.message_id); return NextResponse.json({ ok: true, blocked: true }); }
     const text = (message.text ?? message.caption ?? "").replace(/@[A-Za-z0-9_]+/g, "").trim(); const kind = captureKind(text); const supabase = createServiceSupabase();
+    const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
+    if (!allowed.has(String(message.from.id))) {
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: (text || "[사진 또는 빈 메시지]").slice(0, 4000), answer: "TELEGRAM_ACCESS_PENDING", source_document_ids: [] });
+      await sendTelegram(message.chat.id, "등록 요청을 확인했습니다. 관리자가 승인하면 브랜디 OS를 사용할 수 있습니다.", message.message_id);
+      return NextResponse.json({ ok: true, blocked: true, registrationPending: true });
+    }
     if (kind !== "question" || message.photo?.length) {
       const dataUrl = await imageData(message); const extracted = await vision(dataUrl, kind === "review" ? "상품 후기 사진에서 상품명, 구매자 표현, 장점, 개선점, 수치와 문구를 정확히 추출하세요." : kind === "thumbnail" ? "썸네일 이미지의 문구, 구성, 색상, 선택 근거로 보이는 메모를 정확히 기록하세요." : "사진 속 텍스트를 OCR하고 아이디어와 해야 할 일을 구분하세요.");
       const source = kind === "summary" ? await summarizeUrl(text) : extracted; const id = await saveCapture(supabase, message, text, source);
