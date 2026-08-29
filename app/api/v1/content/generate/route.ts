@@ -125,7 +125,7 @@ export async function POST(request: Request) {
     const procedure = await procedures(actor, input.action);
     if (!procedure) throw new ApiError(409, "CONTENT_PROCEDURE_MISSING", "실행할 콘텐츠 절차 정본을 찾지 못했습니다.");
     const platforms = input.platforms?.length ? input.platforms : ["shorts", "threads", "column", "instagram"];
-    const model = input.action === "youtube_kit" || platforms.includes("column")
+    const model = input.action === "youtube_kit" || (input.action === "derivatives" && platforms.includes("column"))
       ? process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
     const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\nJSON만 반환하세요.`;
