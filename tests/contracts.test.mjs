@@ -102,3 +102,30 @@ test("specialized routes expose reports, growth and monitoring without placehold
     assert.match(router, new RegExp(route.replaceAll("/", "\\/")));
   }
 });
+
+test("embedding backlog has admin control, cron authentication and bounded batches", async () => {
+  const [indexing, adminRoute, cronRoute, config] = await Promise.all([
+    readFile(new URL("../lib/server/indexing.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/indexing/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/indexing/cron/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../vercel.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(indexing, /eq\("status", "pending"\).*select\("id"\)/s);
+  assert.match(indexing, /limit = Math\.min\(Math\.max/);
+  assert.match(indexing, /retryFailedEmbeddingJobs/);
+  assert.match(indexing, /중단된 실행을 자동 복구했습니다/);
+  assert.match(indexing, /새 문서 버전으로 대체된 작업입니다/);
+  assert.match(indexing, /previousChunks/);
+  assert.match(adminRoute, /actor\.role !== "admin"/);
+  assert.match(cronRoute, /CRON_SECRET/);
+  assert.match(cronRoute, /safeSecretMatch/);
+  assert.match(config, /\/api\/v1\/indexing\/cron/);
+});
+
+test("telegram setup is admin-only and never returns bot secrets", async () => {
+  const route = await readFile(new URL("../app/api/v1/telegram/setup/route.ts", import.meta.url), "utf8");
+  assert.match(route, /actor\.role !== "admin"/);
+  assert.match(route, /setWebhook/);
+  assert.match(route, /secret_token: secret/);
+  assert.doesNotMatch(route, /token:\s*process\.env\.TELEGRAM_BOT_TOKEN/);
+});
