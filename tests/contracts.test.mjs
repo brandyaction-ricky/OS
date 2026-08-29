@@ -146,3 +146,8 @@ test("production build safely renews the telegram webhook", async () => {
   assert.match(script, /secret_token: secret/);
   assert.doesNotMatch(script, /console\.log\([^\n]*(token|secret)[^\n]*\)/);
 });
+
+test("telegram operational questions distinguish empty data from search failure", async () => {
+  const webhook = await readFile(new URL("../app/api/v1/telegram/webhook/route.ts", import.meta.url), "utf8");
+  assert.match(webhook, /현재 브랜디 OS에 등록된 \$\{intent\.label\}이 없습니다/);
+});
