@@ -39,22 +39,18 @@ export function Dashboard() {
       .catch((reason) => setError(reason.message));
   }, [accessToken, demo]);
 
-  const stats = useMemo(() => ({
-    total: documents.length,
-    canonical: documents.filter((document) => document.status === "canonical").length,
-    review: documents.filter((document) => document.status === "review").length,
-    drafts: documents.filter((document) => document.status === "draft" || document.status === "team").length,
-  }), [documents]);
-
   const recent = [...documents].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5);
-  const pending = documents.filter((document) => document.status === "review").slice(0, 4);
   const operatingStats = useMemo(() => {
     const tasks = operations.filter((record) => record.record_type === "task" && !["done", "cancelled"].includes(record.status));
-    const dueSoon = tasks.filter((record) => record.due_date && new Date(record.due_date).getTime() <= Date.now() + 7 * 86_400_000).length;
+    const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const published = operations.filter((record) => record.record_type === "content_publish" && record.status === "published" && new Date(record.updated_at) >= weekStart).length;
+    const revenue = operations.filter((record) => record.record_type === "revenue" && String(record.metadata.date ?? record.created_at).startsWith(monthKey)).reduce((sum, record) => sum + Number(record.metadata.net ?? record.amount ?? 0), 0);
+    const videos = operations.filter((record) => ["content_topic", "content_script", "content_package", "content_short", "content_publish"].includes(record.record_type) && !["done", "published", "cancelled"].includes(record.status)).length;
+    const alerts = operations.filter((record) => ["blocked", "warning"].includes(record.status) || record.priority === "urgent").length;
+    const nextTasks = [...tasks].sort((a, b) => (a.due_date || "9999").localeCompare(b.due_date || "9999")).slice(0, 5);
     return {
-      tasks: tasks.length,
-      dueSoon,
-      goals: operations.filter((record) => record.record_type === "goal" && record.status === "active").length,
+      tasks: tasks.length, published, revenue, videos, alerts, nextTasks,
       decisions: operations.filter((record) => record.record_type === "decision" && ["open", "review"].includes(record.status)).length,
       aiReview: operations.filter((record) => record.record_type === "ai_job" && record.status === "review").length,
       activeProjects: operations.filter((record) => record.record_type === "project" && ["planned", "active", "blocked"].includes(record.status)).length,
@@ -67,7 +63,7 @@ export function Dashboard() {
         <div className="page-title-group">
           <span className="eyebrow">COMMAND CENTER</span>
           <h1>{profile?.displayName ?? "리키"}님, 오늘의 운영 현황입니다.</h1>
-          <p>지식의 상태와 지금 결정해야 할 일을 한눈에 확인하세요.</p>
+          <p>이번 주 발행, 통합 순매출, 진행 영상, 경고와 다음 업무를 5초 안에 확인하세요.</p>
         </div>
         <div className="header-actions">
           <Link className="secondary-button" href="/knowledge/search"><Search size={16} /> 지식 찾기</Link>
@@ -79,24 +75,24 @@ export function Dashboard() {
 
       <section className="metric-grid">
         <div className="metric-card">
-          <div className="metric-top"><span>진행 업무</span><span className="metric-icon"><FileText size={16} /></span></div>
-          <div className="metric-value">{operatingStats.tasks}</div>
-          <div className="metric-caption">완료 전 실행 항목</div>
+          <div className="metric-top"><span>이번 주 발행</span><span className="metric-icon"><FileText size={16} /></span></div>
+          <div className="metric-value">{operatingStats.published}</div>
+          <div className="metric-caption">발행 완료 콘텐츠</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>7일 내 기한</span><span className="metric-icon"><BookCheck size={16} /></span></div>
-          <div className="metric-value">{operatingStats.dueSoon}</div>
-          <div className={`metric-caption ${operatingStats.dueSoon ? "warn" : "good"}`}>{operatingStats.dueSoon ? "이번 주 확인 필요" : "급한 기한 없음"}</div>
+          <div className="metric-top"><span>통합 순매출</span><span className="metric-icon"><TrendingUp size={16} /></span></div>
+          <div className="metric-value growth-money">{(operatingStats.revenue / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만원</div>
+          <div className="metric-caption">이번 달 확정 기준</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>진행 목표</span><span className="metric-icon"><FileClock size={16} /></span></div>
-          <div className="metric-value">{operatingStats.goals}</div>
-          <div className="metric-caption">진행 목표 · 프로젝트 {operatingStats.activeProjects}</div>
+          <div className="metric-top"><span>진행 영상</span><span className="metric-icon"><FileClock size={16} /></span></div>
+          <div className="metric-value">{operatingStats.videos}</div>
+          <div className="metric-caption">기획부터 업로드 전까지</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>결정 대기</span><span className="metric-icon"><Sparkles size={16} /></span></div>
-          <div className="metric-value">{operatingStats.decisions + stats.review + operatingStats.aiReview}</div>
-          <div className="metric-caption">의사결정·지식·AI 검수</div>
+          <div className="metric-top"><span>운영 경고</span><span className="metric-icon"><Sparkles size={16} /></span></div>
+          <div className="metric-value">{operatingStats.alerts}</div>
+          <div className={`metric-caption ${operatingStats.alerts ? "warn" : "good"}`}>{operatingStats.alerts ? "막힘·긴급 확인" : "운영 경고 없음"}</div>
         </div>
       </section>
 
@@ -121,16 +117,16 @@ export function Dashboard() {
         </article>
 
         <aside className="panel decision-panel">
-          <div className="panel-header"><div><h2>지금 결정할 일</h2><p>검토가 필요한 지식입니다.</p></div><span className="count-badge">{pending.length}</span></div>
+          <div className="panel-header"><div><h2>다음 업무</h2><p>기한이 가까운 완료 전 업무입니다.</p></div><span className="count-badge">{operatingStats.nextTasks.length}</span></div>
           <div className="decision-list">
-            {pending.length ? pending.map((document) => (
-              <Link href={`/knowledge/review?document=${document.id}`} key={document.id}>
+            {operatingStats.nextTasks.length ? operatingStats.nextTasks.map((task) => (
+              <Link href="/organization/tasks" key={task.id}>
                 <span className="decision-icon"><CircleAlert size={16} /></span>
-                <span><strong>{document.title}</strong><small>{document.team || "전체"} · 검토 요청</small></span>
+                <span><strong>{task.title}</strong><small>{task.team || "전체"} · {task.due_date || "기한 미정"}</small></span>
                 <ArrowRight size={14} />
               </Link>
             )) : (
-              <div className="quiet-state"><BookCheck size={24} /><strong>검토 대기 없음</strong><span>새 요청이 들어오면 여기에 표시됩니다.</span></div>
+              <div className="quiet-state"><BookCheck size={24} /><strong>완료 전 업무 없음</strong><span>새 업무가 생기면 기한순으로 표시됩니다.</span></div>
             )}
           </div>
         </aside>

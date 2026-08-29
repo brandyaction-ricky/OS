@@ -106,6 +106,19 @@ paths:
       responses:
         "200": { description: 변경된 문서 }
         "400": { $ref: "#/components/responses/ApiError" }
+  /api/v1/documents/{id}/versions:
+    get:
+      summary: 접근 가능한 문서의 버전 이력 조회
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 수정자·사유·시각을 포함한 버전 목록 }
+    post:
+      summary: 선택한 과거 버전을 새 버전으로 복원
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 복원된 최신 문서 }
   /api/v1/records:
     get:
       summary: 권한 범위 안의 운영 기록 목록
@@ -187,8 +200,19 @@ paths:
               properties:
                 transcript: { type: string, minLength: 20, maxLength: 200000 }
       responses:
-        "200": { description: AI 또는 로컬 보조 요약과 mode }
+        "200": { description: 요약·결정·미해결·담당/기한 업무와 mode }
         "400": { $ref: "#/components/responses/ApiError" }
+  /api/v1/meeting-transcription:
+    post:
+      summary: 4MB 이하 회의 녹음을 한국어 원문으로 전사
+      responses:
+        "200": { description: 전사 원문 }
+        "413": { $ref: "#/components/responses/ApiError" }
+  /api/v1/meeting-prep:
+    get:
+      summary: 이전 미해결 안건·완료 전 업무·주간 KPI 회의 준비
+      responses:
+        "200": { description: 다음 회의 준비 자료 }
   /api/v1/members:
     get:
       summary: 실제 로그인 구성원 목록

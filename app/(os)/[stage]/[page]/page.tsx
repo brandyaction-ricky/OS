@@ -12,6 +12,7 @@ import { GrowthDashboard } from "@/components/growth-dashboard";
 import { ReportsWorkspace } from "@/components/reports-workspace";
 import { MonitoringWorkspace } from "@/components/monitoring-workspace";
 import { TasksWorkspace } from "@/components/tasks-workspace";
+import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 
@@ -32,6 +33,11 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
   if (href === "/performance/overview") return <GrowthDashboard />;
+  if (href === "/performance/revenue") return <RevenueWorkspace />;
+  if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
+  if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
+  if (href === "/performance/crm") return <CommerceAdminLinks title="CRM 관리자" />;
+  if (href === "/performance/customers") return <CommerceAdminLinks title="고객·주문 관리자" />;
   if (href === "/settings/monitoring") return <MonitoringWorkspace />;
   const config = WORKSPACE_CONFIGS[href];
   if (config) return <OperationsWorkspace config={config} />;

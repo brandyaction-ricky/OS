@@ -1,4 +1,4 @@
-import type { KnowledgeDocument, SearchResult } from "./types";
+import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { OsRecord, RecordType } from "./record-types";
 
 interface RequestOptions extends RequestInit {
@@ -74,6 +74,16 @@ export async function changeDocumentStatus(token: string | null, id: string, sta
   });
 }
 
+export async function listDocumentVersions(token: string | null, id: string) {
+  return apiRequest<{ versions: DocumentVersion[] }>(`/api/v1/documents/${id}/versions`, { token });
+}
+
+export async function restoreDocumentVersion(token: string | null, id: string, version: number, expectedVersion: number) {
+  return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${id}/versions`, {
+    method: "POST", token, body: JSON.stringify({ version, expectedVersion, reason: `v${version}로 되돌리기` }),
+  });
+}
+
 export async function searchKnowledge(
   token: string | null,
   input: {
@@ -132,14 +142,28 @@ export async function uploadMeetingRecording(token: string | null, file: Blob) {
   });
 }
 
+export async function transcribeMeeting(token: string | null, file: Blob) {
+  const body = new FormData();
+  body.set("file", file, `meeting-${Date.now()}.webm`);
+  return apiRequest<{ transcript: string; mode: "ai" }>("/api/v1/meeting-transcription", { method: "POST", token, body });
+}
+
 export async function getMeetingRecordingUrl(token: string | null, path: string) {
   return apiRequest<{ url: string }>(`/api/v1/meeting-recordings?path=${encodeURIComponent(path)}`, { token });
 }
 
-export async function summarizeMeeting(token: string | null, transcript: string) {
-  return apiRequest<{ summary: string; mode: "ai" | "local" }>("/api/v1/meeting-summary", {
-    method: "POST", token, body: JSON.stringify({ transcript }),
+export interface MeetingTodo { title: string; assignee: string; dueDate: string; dueLabel: string }
+export interface MeetingSummaryResult { summary: string; decisions: string[]; pending: string[]; todos: MeetingTodo[]; mode: "ai" | "local" }
+
+export async function summarizeMeeting(token: string | null, transcript: string, meetingDate?: string, business?: string) {
+  return apiRequest<MeetingSummaryResult>("/api/v1/meeting-summary", {
+    method: "POST", token, body: JSON.stringify({ transcript, meetingDate, business }),
   });
+}
+
+export async function prepareMeeting(token: string | null, brand = "", team = "") {
+  const query = new URLSearchParams(); if (brand) query.set("brand", brand); if (team) query.set("team", team);
+  return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[] } | null; pending: string[]; todos: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[] }>(`/api/v1/meeting-prep?${query}`, { token });
 }
 
 export async function getHealth() {

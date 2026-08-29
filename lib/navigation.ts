@@ -113,6 +113,7 @@ export const NAV_STAGES: NavStage[] = [
     href: "/performance/overview",
     pages: [
       { label: "성과 통합 현황", href: "/performance/overview", icon: LayoutDashboard, ready: true },
+      { label: "주간 KPI", href: "/performance/weekly-kpi", icon: Goal, ready: true },
       { label: "매출", href: "/performance/revenue", icon: CircleDollarSign, ready: true },
       { label: "퍼널", href: "/performance/funnels", icon: FileSearch, ready: true },
       { label: "CRM", href: "/performance/crm", icon: HeartHandshake, ready: true },

@@ -20,6 +20,7 @@ import {
   Save,
   Search,
   Send,
+  ShieldAlert,
   Tag,
   Upload,
   UserRound,
@@ -27,13 +28,13 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { changeDocumentStatus, createDocument, listDocuments, updateDocument } from "@/lib/api-client";
+import { changeDocumentStatus, createDocument, listDocuments, listDocumentVersions, restoreDocumentVersion, updateDocument } from "@/lib/api-client";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
-import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
+import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
 import { useSession } from "./session-provider";
 
-const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "review", "reviewed", "canonical"];
+const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "canonical"];
 
 const OWNER_FILTERS = [
   { id: "all", label: "전체" },
@@ -52,7 +53,7 @@ function nextStatus(status: DocumentStatus): DocumentStatus | null {
 }
 
 function statusActionLabel(status: DocumentStatus) {
-  return ({ draft: "팀에 공유", team: "검토 요청", review: "검토 완료", reviewed: "회사 정본으로", canonical: "", archived: "" })[status];
+  return ({ draft: "팀에 공유", team: "", review: "", reviewed: "", canonical: "", archived: "" })[status];
 }
 
 function MarkdownView({ content }: { content: string }) {
@@ -140,6 +141,9 @@ function WorkspaceContent() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
+  const [canonicalGate, setCanonicalGate] = useState(false);
+  const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -171,6 +175,15 @@ function WorkspaceContent() {
   useEffect(() => {
     if (selected) setDraft(toDraft(selected));
   }, [selected]);
+
+  useEffect(() => {
+    if (!selected || mode !== "info" || demo) return;
+    setVersionsLoading(true);
+    listDocumentVersions(accessToken, selected.id)
+      .then((result) => setVersions(result.versions))
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "변경 이력을 불러오지 못했습니다."))
+      .finally(() => setVersionsLoading(false));
+  }, [accessToken, demo, mode, selected]);
 
   const folders = useMemo(() => {
     const counts = new Map<string, number>();
@@ -239,6 +252,29 @@ function WorkspaceContent() {
       setDocuments((current) => current.map((item) => item.id === updated.id ? updated : item));
       setToast(`${statusLabel(target)} 상태로 변경했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "상태를 변경하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const beginEdit = () => {
+    if (!selected) return;
+    if (selected.status === "canonical") setCanonicalGate(true);
+    else setMode("edit");
+  };
+
+  const restoreVersion = async (version: DocumentVersion) => {
+    if (!selected || !window.confirm(`v${version.version_no} 내용으로 되돌릴까요? 현재 내용도 새 버전으로 보존됩니다.`)) return;
+    setBusy(true); setError("");
+    try {
+      let restored: KnowledgeDocument;
+      if (demo) restored = { ...selected, title: version.title, content_md: version.content_md, current_version: selected.current_version + 1, updated_at: new Date().toISOString() };
+      else ({ document: restored } = await restoreDocumentVersion(accessToken, selected.id, version.version_no, selected.current_version));
+      setDocuments((current) => current.map((item) => item.id === restored.id ? restored : item));
+      setDraft(toDraft(restored)); setToast(`v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
+      if (!demo) {
+        const result = await listDocumentVersions(accessToken, selected.id);
+        setVersions(result.versions);
+      }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "버전을 되돌리지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -383,18 +419,20 @@ function WorkspaceContent() {
               <div className="editor-toolbar">
                 <div className="editor-tabs">
                   <button className={mode === "read" ? "active" : ""} onClick={() => setMode("read")}><Eye size={15} /> 읽기</button>
-                  <button className={mode === "edit" ? "active" : ""} onClick={() => setMode("edit")}><Pencil size={15} /> 편집</button>
+                  <button className={mode === "edit" ? "active" : ""} onClick={beginEdit}><Pencil size={15} /> {selected.status === "canonical" ? "정본 편집" : "편집"}</button>
                   <button className={mode === "info" ? "active" : ""} onClick={() => setMode("info")}><Clock3 size={15} /> 정보</button>
                 </div>
                 <div className="editor-actions">
                   {mode === "edit" ? <button className="primary-button compact" onClick={save} disabled={busy}><Save size={14} /> 저장</button> : null}
-                  {nextStatus(selected.status) ? <button className="secondary-button compact" onClick={() => moveStatus(nextStatus(selected.status)!)} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
+                  {nextStatus(selected.status) && statusActionLabel(selected.status) ? <button className="secondary-button compact" onClick={() => moveStatus(nextStatus(selected.status)!)} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
+                  {selected.owner_id === profile?.id && ["draft", "team", "review", "reviewed"].includes(selected.status) ? <button className="primary-button compact" onClick={() => moveStatus("canonical")} disabled={busy}><BookCheck size={14} /> 회사 정본으로</button> : null}
                   <button className="icon-button"><MoreHorizontal size={17} /></button>
                 </div>
               </div>
               <div className="document-meta-line"><span className={`status-pill status-${selected.status}`}>{statusLabel(selected.status)}</span><span>v{selected.current_version}</span><span>마지막 수정 {formatDate(selected.updated_at)}</span></div>
               {mode === "edit" ? (
                 <div className="document-editor">
+                  {selected.status === "canonical" ? <div className="canonical-edit-banner"><ShieldAlert size={18} /><span><strong>회사 정본을 편집하고 있습니다.</strong><small>저장하면 전 직원과 AI 검색에 반영되며, 이전 내용은 버전으로 보존됩니다.</small></span></div> : null}
                   <input className="title-input" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} aria-label="문서 제목" />
                   <div className="meta-input-grid">
                     <label><span><Folder size={13} /> 폴더</span><input value={draft.folder} onChange={(event) => setDraft({ ...draft, folder: event.target.value })} /></label>
@@ -408,7 +446,9 @@ function WorkspaceContent() {
                 <div className="document-info">
                   <h2>문서 정보</h2>
                   <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>현재 버전</dt><dd>v{selected.current_version}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "전체"}</dd></div><div><dt>담당 팀</dt><dd>{selected.team || "전체"}</dd></div><div><dt>원본</dt><dd>{selected.source}</dd></div></dl>
-                  <h3>정본 승격 단계</h3><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
+                  <h3>정본 승격 단계</h3><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
+                  <h3>변경 이력</h3>
+                  <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => restoreVersion(version)}><RotateCcw size={13} /> 되돌리기</button> : <em>현재</em>}</div>)}</div>
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => moveStatus("archived")}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => moveStatus("draft")}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
@@ -437,6 +477,7 @@ function WorkspaceContent() {
           </form>
         </div>
       ) : null}
+      {canonicalGate ? <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></div> : null}
       {importOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setImportOpen(false)}>
           <form className="form-modal import-modal" onSubmit={importMarkdown}>

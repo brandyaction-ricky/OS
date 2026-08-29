@@ -29,6 +29,16 @@ export interface KnowledgeDocument {
   updated_at: string;
 }
 
+export interface DocumentVersion {
+  version_no: number;
+  title: string;
+  content_md: string;
+  author_id: string | null;
+  author_name: string;
+  reason: string;
+  created_at: string;
+}
+
 export interface SearchResult {
   chunkId: number | string | null;
   documentId: string;

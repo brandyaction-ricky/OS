@@ -7,20 +7,20 @@
 | 영역 | 구현 상태 | 실제 동작 |
 | --- | --- | --- |
 | 로그인 | 구현 | 이메일·비밀번호 로그인, Supabase Auth 세션 생성·복구·로그아웃 |
-| 홈 | 구현 | 진행 업무, 7일 내 기한, 목표, 결정 대기 요약 |
-| 문서 작업공간 | 구현 | 전체 목록 페이지네이션, 필터, 신규 작성·편집, Markdown 일괄 적재·중복 방지 |
-| 검토함 | 구현 | `draft → team → review → reviewed → canonical` 상태 전환 |
+| 홈 | 구현 | 주간 발행, 월 순매출(만원), 진행 영상, 운영 경고, 다음 업무 |
+| 문서 작업공간 | 구현 | 정본 의식적 편집 게이트, 전 직원 자기 승격, 버전 이력·복원, 볼트 멱등 적재 |
+| 검토함 | 구현 | `draft → team → canonical` 자기 승격과 선택적 검토 단계 |
 | 지식 검색 | 구현 | 키워드/의미/하이브리드 검색, 문서·버전·청크 인용 |
 | 직원 AI API | 구현 | 사용자 JWT 및 읽기 전용 Agent PAT 인증 |
-| Telegram 창구 | 구현 | 웹훅 검증, 사용자 제한, 정본 검색, 근거 기반 답변 |
+| Telegram 창구 | 구현 | 정본 Q&A, `/요약`, `/인박스`, `#raw`, `/후기`, `/썸네일기록`, 사진 OCR |
 | MCP | 구현 | 검색, 원문 읽기, 사람 JWT 기반 초안 저장 |
 | 목표·의사결정 | 구현 | 월별 목표–KPI 연결, 달성률·병목 자동 집계, 근거·후속 실행 관리 |
 | 프로젝트·AI 작업 | 구현 | 프로젝트별 업무, GPT·Codex·Claude 요청서, 완료 조건, 검수 상태 통합 관제 |
 | 업무 | 구현 | 프로젝트·담당자·기한 연결, 칸반 드래그 상태 이동, 완료율 관리 |
-| 회의 | 구현 | 브라우저 녹음, 비공개 원본 저장, 원문 기반 요약, 결정·후속 업무 자동 생성 |
+| 회의 | 구현 | 회의 준비, 브라우저 녹음·STT, 결정·미해결·담당/기한 업무 추출 및 이월 |
 | Skill | 구현 | 개인/회사 범위, 시작 조건·자료·절차·결과물·품질 기준, 회사 Skill 승격 |
 | 콘텐츠 | 구현 | 롱폼→권장 파생물 10개 생성, 묶음 검수, 플랫폼별 일정, 드래그 캘린더 |
-| 매출·퍼널·CRM | 구현 | 월별 브랜드 매출, 전환 병목, 고객 상태, CRM 실행 큐 통합 현황 |
+| 매출·퍼널·KPI | 구현 | 브랜드 순매출 원장, 유튜브→스토어 퍼널, 주간 KPI와 외부 관리자 링크 |
 | 월간 보고서 | 구현 | 목표·업무·회의·결정·콘텐츠·매출 자동 집계, Markdown 복사·다운로드 |
 | 운영 모니터링 | 구현 | DB·인증·검색·Telegram·연결 상태와 보안 경계 확인 |
 | 구성원 | 구현 | 실제 Auth 계정의 역할·팀·사용 상태 관리 |
@@ -59,6 +59,8 @@ Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식
 - 원본은 공개 URL이 아닌 1시간 유효 서명 URL로만 재생한다.
 - OpenAI 키가 있으면 AI 요약을 사용하고, 없거나 실패하면 원문의 명시 문장을 이용한 로컬 보조 요약으로 저하한다.
 - 결정사항과 후속 업무는 회의의 자식 운영 기록으로 생성되어 감사 이력이 남는다.
+- 이전 회의의 미해결 안건, 완료 전 업무, 주간 KPI 변동을 다음 회의 준비 화면에 자동으로 모은다.
+- 담당자나 기한이 원문에 없으면 추측하지 않고 빈 값으로 보존한다.
 
 ## 5. 상태와 권한
 
@@ -75,6 +77,7 @@ Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식
 - Agent PAT는 서버에서 SHA-256 해시만 저장하며 기본적으로 `canonical` 검색/조회만 허용한다.
 - Agent PAT로 쓰기는 금지한다. MCP `save_knowledge`는 반드시 사람 계정의 `OS_USER_JWT`를 사용한다.
 - 서비스 역할 키는 브라우저 번들에 포함하지 않고 Vercel 서버 환경변수로만 둔다.
+- 모든 활성 직원은 자기 문서를 정본으로 직접 승격할 수 있다. 정본 편집은 UI 경고 확인 뒤에만 열리고 모든 저장은 버전으로 남는다.
 
 ## 6. 검색 처리
 
@@ -95,6 +98,8 @@ SUPABASE_SERVICE_ROLE_KEY=...
 OPENAI_API_KEY=...
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_ANSWER_MODEL=gpt-5.6-luna
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+OPENAI_VISION_MODEL=gpt-5.6-luna
 NEXT_PUBLIC_DEMO_MODE=false
 ```
 
@@ -105,16 +110,18 @@ TELEGRAM_BOT_TOKEN=...
 TELEGRAM_WEBHOOK_SECRET=...
 TELEGRAM_ALLOWED_USER_IDS=123,456
 TELEGRAM_BOT_USERNAME=your_bot
+TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
 ```
 
 ## 8. 적용 순서
 
-1. `202608290001_os_integrations.sql`, `202608290002_operating_core.sql`, `202608290003_meeting_recordings.sql` 순서로 적용한다.
+1. `202608290001_os_integrations.sql`부터 `202608290004_knowledge_self_publish.sql`까지 번호순으로 적용한다.
 2. Vercel 환경변수를 등록한다.
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
 5. OS 설정에서 Agent PAT를 발급하고, 필요할 때 MCP의 `AGENT_PAT`에 주입한다.
 6. Telegram 사용 시 웹훅 URL을 `/api/v1/telegram/webhook`으로 등록한다.
+7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.
 
 ## 9. 외부 확인이 있어야 남는 연결
 

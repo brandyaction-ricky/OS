@@ -90,14 +90,17 @@ export async function PATCH(request: Request) {
       throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.", { currentVersion: current.current_version });
     }
 
-    const patch: Record<string, unknown> = {};
-    if (input.title !== undefined) patch.title = input.title;
-    if (input.content !== undefined) patch.content_md = input.content;
-    if (input.folder !== undefined) patch.folder = input.folder;
-    if (input.brand !== undefined) patch.brand = input.brand;
-    if (input.team !== undefined) patch.team = input.team;
-    if (input.tags !== undefined) patch.tags = input.tags;
-    const { data, error } = await actor.supabase.from("os_documents").update(patch).eq("id", input.id).select("*").single();
+    const { data, error } = await actor.supabase.rpc("os_update_document", {
+      p_document_id: input.id,
+      p_expected_version: input.expectedVersion,
+      p_title: input.title ?? current.title,
+      p_content_md: input.content ?? current.content_md,
+      p_folder: input.folder ?? current.folder,
+      p_brand: input.brand ?? current.brand,
+      p_team: input.team ?? current.team,
+      p_tags: input.tags ?? current.tags,
+      p_reason: input.reason,
+    });
     if (error || !data) throw new ApiError(400, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.", error?.message);
     let indexing: "ready" | "queued" = "queued";
     if (input.content !== undefined) {
