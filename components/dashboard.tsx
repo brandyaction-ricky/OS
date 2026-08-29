@@ -14,8 +14,9 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
-import { listDocuments } from "@/lib/api-client";
+import { listAllRecords, listDocuments } from "@/lib/api-client";
 import type { KnowledgeDocument } from "@/lib/types";
+import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
 function formatRelative(date: string) {
@@ -28,12 +29,13 @@ function formatRelative(date: string) {
 export function Dashboard() {
   const { demo, accessToken, profile } = useSession();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(demo ? DEMO_DOCUMENTS : []);
+  const [operations, setOperations] = useState<OsRecord[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (demo) return;
-    listDocuments(accessToken, "limit=20")
-      .then(({ documents: next }) => setDocuments(next))
+    Promise.all([listDocuments(accessToken, "limit=20"), listAllRecords(accessToken)])
+      .then(([knowledge, operating]) => { setDocuments(knowledge.documents); setOperations(operating.records); })
       .catch((reason) => setError(reason.message));
   }, [accessToken, demo]);
 
@@ -46,6 +48,16 @@ export function Dashboard() {
 
   const recent = [...documents].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5);
   const pending = documents.filter((document) => document.status === "review").slice(0, 4);
+  const operatingStats = useMemo(() => {
+    const tasks = operations.filter((record) => record.record_type === "task" && !["done", "cancelled"].includes(record.status));
+    const dueSoon = tasks.filter((record) => record.due_date && new Date(record.due_date).getTime() <= Date.now() + 7 * 86_400_000).length;
+    return {
+      tasks: tasks.length,
+      dueSoon,
+      goals: operations.filter((record) => record.record_type === "goal" && record.status === "active").length,
+      decisions: operations.filter((record) => record.record_type === "decision" && ["open", "review"].includes(record.status)).length,
+    };
+  }, [operations]);
 
   return (
     <>
@@ -57,7 +69,7 @@ export function Dashboard() {
         </div>
         <div className="header-actions">
           <Link className="secondary-button" href="/knowledge/search"><Search size={16} /> 지식 찾기</Link>
-          <Link className="primary-button" href="/knowledge?new=1"><FileText size={16} /> 새 문서</Link>
+          <Link className="primary-button" href="/organization/tasks"><FileText size={16} /> 업무 관리</Link>
         </div>
       </header>
 
@@ -65,24 +77,24 @@ export function Dashboard() {
 
       <section className="metric-grid">
         <div className="metric-card">
-          <div className="metric-top"><span>전체 지식 문서</span><span className="metric-icon"><FileText size={16} /></span></div>
-          <div className="metric-value">{stats.total}</div>
-          <div className="metric-caption">회사와 구성원의 누적 지식</div>
+          <div className="metric-top"><span>진행 업무</span><span className="metric-icon"><FileText size={16} /></span></div>
+          <div className="metric-value">{operatingStats.tasks}</div>
+          <div className="metric-caption">완료 전 실행 항목</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>회사 정본</span><span className="metric-icon"><BookCheck size={16} /></span></div>
-          <div className="metric-value">{stats.canonical}</div>
-          <div className="metric-caption good">누구나 근거로 활용 가능</div>
+          <div className="metric-top"><span>7일 내 기한</span><span className="metric-icon"><BookCheck size={16} /></span></div>
+          <div className="metric-value">{operatingStats.dueSoon}</div>
+          <div className={`metric-caption ${operatingStats.dueSoon ? "warn" : "good"}`}>{operatingStats.dueSoon ? "이번 주 확인 필요" : "급한 기한 없음"}</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>검토 대기</span><span className="metric-icon"><FileClock size={16} /></span></div>
-          <div className="metric-value">{stats.review}</div>
-          <div className={`metric-caption ${stats.review ? "warn" : "good"}`}>{stats.review ? "확인과 결정이 필요합니다" : "밀린 검토가 없습니다"}</div>
+          <div className="metric-top"><span>진행 목표</span><span className="metric-icon"><FileClock size={16} /></span></div>
+          <div className="metric-value">{operatingStats.goals}</div>
+          <div className="metric-caption">측정 중인 목표·KPI</div>
         </div>
         <div className="metric-card">
-          <div className="metric-top"><span>작성 중</span><span className="metric-icon"><Sparkles size={16} /></span></div>
-          <div className="metric-value">{stats.drafts}</div>
-          <div className="metric-caption">개인·팀 작업 공간</div>
+          <div className="metric-top"><span>결정 대기</span><span className="metric-icon"><Sparkles size={16} /></span></div>
+          <div className="metric-value">{operatingStats.decisions + stats.review}</div>
+          <div className="metric-caption">의사결정·지식 검토</div>
         </div>
       </section>
 
@@ -124,12 +136,12 @@ export function Dashboard() {
 
       <section className="content-grid lower-grid">
         <article className="panel readiness-panel">
-          <div className="panel-header"><div><h2>OS 구축 현황</h2><p>이번 재구축의 작동 범위입니다.</p></div><span className="build-progress">1단계</span></div>
+          <div className="panel-header"><div><h2>OS 구축 현황</h2><p>현재 작동하는 운영 범위입니다.</p></div><span className="build-progress">운영 기반</span></div>
           <div className="readiness-steps">
             <div className="done"><span>01</span><div><strong>지식 기반</strong><small>문서·버전·검토·검색 API</small></div></div>
-            <div className="active"><span>02</span><div><strong>통로 연결</strong><small>OS 화면·텔레그램·직원 AI</small></div></div>
-            <div><span>03</span><div><strong>실행 기능</strong><small>콘텐츠·업무·회의 자동화</small></div></div>
-            <div><span>04</span><div><strong>성과 연결</strong><small>매출·퍼널·CRM 의사결정</small></div></div>
+            <div className="done"><span>02</span><div><strong>실행 관리</strong><small>업무·목표·회의·AI 작업</small></div></div>
+            <div className="active"><span>03</span><div><strong>콘텐츠·성과</strong><small>제작·발행·매출·퍼널·CRM</small></div></div>
+            <div><span>04</span><div><strong>외부 자동화</strong><small>API 키·채널 승인 후 연결</small></div></div>
           </div>
         </article>
         <article className="panel team-panel">

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Brandyaction OS API
-  version: 2.0.0
-  description: 지식 문서와 검색을 위한 사람·에이전트 공용 API
+  version: 2.1.0
+  description: 지식·업무·목표·콘텐츠·성과를 연결하는 브랜디액션 운영 API
 servers:
   - url: https://brandyaction-os.vercel.app
 security:
@@ -105,6 +105,67 @@ paths:
       responses:
         "200": { description: 변경된 문서 }
         "400": { $ref: "#/components/responses/ApiError" }
+  /api/v1/records:
+    get:
+      summary: 권한 범위 안의 운영 기록 목록
+      parameters:
+        - { in: query, name: type, schema: { $ref: "#/components/schemas/RecordType" } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: brand, schema: { type: string } }
+        - { in: query, name: team, schema: { type: string } }
+        - { in: query, name: assignee, schema: { type: string }, description: UUID 또는 me }
+        - { in: query, name: q, schema: { type: string, maxLength: 200 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses:
+        "200": { description: 운영 기록 목록 }
+    post:
+      summary: 업무·목표·회의·콘텐츠·성과 기록 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordCreate" }
+      responses:
+        "201": { description: 생성된 운영 기록 }
+        "400": { $ref: "#/components/responses/ApiError" }
+    patch:
+      summary: 기대 버전을 확인한 뒤 운영 기록 수정
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/RecordCreate"
+                - type: object
+                  required: [id, expectedVersion]
+                  properties:
+                    id: { type: string, format: uuid }
+                    expectedVersion: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: 수정된 운영 기록 }
+        "409": { $ref: "#/components/responses/ApiError" }
+    delete:
+      summary: 운영 기록을 삭제하지 않고 보관
+      parameters:
+        - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 보관 완료 }
+  /api/v1/members:
+    get:
+      summary: 실제 로그인 구성원 목록
+      responses:
+        "200": { description: 역할·팀·사용 상태 목록 }
+    patch:
+      summary: 관리자가 구성원 역할·팀·사용 상태 변경
+      responses:
+        "200": { description: 변경된 구성원 }
+        "403": { $ref: "#/components/responses/ApiError" }
+  /api/v1/audit:
+    get:
+      summary: 운영 기록 변경 이력
+      responses:
+        "200": { description: 관리자 전체 또는 사용자 본인 변경 이력 }
   /api/v1/agent-keys:
     get:
       summary: 관리자용 Agent PAT 목록
@@ -127,6 +188,33 @@ components:
       scheme: bearer
       description: Supabase 사용자 JWT 또는 canonical-only bos_pat 토큰
   schemas:
+    RecordType:
+      type: string
+      enum: [project, task, goal, kpi, decision, meeting, ai_job, content_topic, content_script, content_package, content_short, content_publish, content_metric, skill, knowledge_link, revenue, funnel, crm_action, customer, brand, connection, access_rule, company_setting, channel]
+    RecordCreate:
+      type: object
+      required: [recordType, title]
+      properties:
+        recordType: { $ref: "#/components/schemas/RecordType" }
+        title: { type: string, minLength: 1, maxLength: 240 }
+        description: { type: string, maxLength: 20000 }
+        status: { type: string, minLength: 1, maxLength: 40 }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        brand: { type: string, maxLength: 120 }
+        team: { type: string, maxLength: 120 }
+        assigneeId: { type: [string, "null"], format: uuid }
+        parentId: { type: [string, "null"], format: uuid }
+        dueDate: { type: [string, "null"], format: date }
+        startsAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        metricTarget: { type: [number, "null"] }
+        metricCurrent: { type: [number, "null"] }
+        metricUnit: { type: string, maxLength: 30 }
+        amount: { type: [number, "null"] }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        sourceUrl: { type: [string, "null"], format: uri }
+        tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
     DocumentStatus:
       type: string
       enum: [draft, team, review, reviewed, canonical, archived]

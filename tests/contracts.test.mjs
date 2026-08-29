@@ -19,3 +19,22 @@ test("agent keys remain canonical-only and cannot write through MCP", async () =
   assert.match(mcp, /OS_USER_JWT/);
   assert.match(mcp, /filters": \{"statuses": \["canonical"\]\}/);
 });
+
+test("operating core is additive, RLS protected and event audited", async () => {
+  const sql = await readFile(new URL("../supabase/migrations/202608290002_operating_core.sql", import.meta.url), "utf8");
+  assert.match(sql, /create table if not exists public\.os_records/);
+  assert.match(sql, /create table if not exists public\.os_record_events/);
+  assert.match(sql, /alter table public\.os_records enable row level security/);
+  assert.match(sql, /os_records_after_write_trigger/);
+  assert.match(sql, /record_type text not null check/);
+  assert.doesNotMatch(sql, /drop table/i);
+  assert.doesNotMatch(sql, /truncate\s/i);
+});
+
+test("record API enforces optimistic updates and soft archives", async () => {
+  const route = await readFile(new URL("../app/api/v1/records/route.ts", import.meta.url), "utf8");
+  assert.match(route, /\.eq\("version", input\.expectedVersion\)/);
+  assert.match(route, /RECORD_VERSION_CONFLICT/);
+  assert.match(route, /archived_at: new Date\(\)\.toISOString\(\)/);
+  assert.doesNotMatch(route, /\.delete\(\)/);
+});

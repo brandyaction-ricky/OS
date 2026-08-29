@@ -1,4 +1,5 @@
 import type { KnowledgeDocument, SearchResult } from "./types";
+import type { OsRecord, RecordType } from "./record-types";
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -92,5 +93,33 @@ export async function searchKnowledge(
     method: "POST",
     token,
     body: JSON.stringify(input),
+  });
+}
+
+export async function listRecords(token: string | null, recordType: RecordType, query = "") {
+  const params = new URLSearchParams(query);
+  params.set("type", recordType);
+  return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+}
+
+export async function listAllRecords(token: string | null, query = "limit=200") {
+  return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${query}`, { token });
+}
+
+export async function createRecord(token: string | null, input: Record<string, unknown>) {
+  return apiRequest<{ record: OsRecord }>("/api/v1/records", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
+}
+
+export async function updateRecord(token: string | null, input: Record<string, unknown>) {
+  return apiRequest<{ record: OsRecord }>("/api/v1/records", {
+    method: "PATCH", token, body: JSON.stringify(input),
+  });
+}
+
+export async function archiveRecord(token: string | null, id: string) {
+  return apiRequest<{ archived: boolean }>(`/api/v1/records?id=${encodeURIComponent(id)}`, {
+    method: "DELETE", token,
   });
 }
