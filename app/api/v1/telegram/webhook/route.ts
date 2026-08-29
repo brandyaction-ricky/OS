@@ -100,6 +100,31 @@ async function summarizeUrl(text: string) {
   return (body.output ?? []).flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text ?? "").join("\n").trim() || source.slice(0, 1800);
 }
 
+const OPERATIONAL_INTENTS = [
+  { pattern: /프로젝트|사업\s*진행/, types: ["project"], label: "진행 프로젝트" },
+  { pattern: /업무|할\s*일|태스크/, types: ["task"], label: "업무" },
+  { pattern: /목표|오케이알|okr/i, types: ["goal", "kpi"], label: "목표·KPI" },
+  { pattern: /콘텐츠|영상|유튜브/, types: ["content_topic", "content_script", "content_package", "content_short", "content_publish"], label: "콘텐츠" },
+] as const;
+
+async function operationalAnswer(supabase: ReturnType<typeof createServiceSupabase>, question: string) {
+  const intent = OPERATIONAL_INTENTS.find((candidate) => candidate.pattern.test(question));
+  if (!intent) return "";
+  const { data, error } = await supabase
+    .from("os_records")
+    .select("title,status,stage,brand,team,due_date,progress,updated_at")
+    .in("record_type", [...intent.types])
+    .is("archived_at", null)
+    .order("updated_at", { ascending: false })
+    .limit(8);
+  if (error || !data?.length) return "";
+  const rows = data.map((record, index) => {
+    const detail = [record.status, record.stage, record.brand, record.team, record.due_date ? `기한 ${record.due_date}` : "", Number(record.progress) > 0 ? `진행 ${record.progress}%` : ""].filter(Boolean).join(" · ");
+    return `${index + 1}. ${record.title}${detail ? ` — ${detail}` : ""}`;
+  });
+  return `브랜디 OS의 최신 ${intent.label}입니다.\n\n${rows.join("\n")}`;
+}
+
 export async function POST(request: Request) {
   try {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET ?? ""; const received = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
@@ -131,7 +156,12 @@ export async function POST(request: Request) {
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
     const actor: RequestActor = { type: "agent", id: `telegram:${message.from.id}`, user: null, role: "member", team: "", brand: null, allowedStatuses: ["canonical"], supabase };
-    const { results } = await searchDocuments(actor, { query: text, mode: "hybrid", topK: 8, filters: { statuses: ["canonical"] } }); const answer = await answerFromKnowledge(text, results);
+    const [{ results }, liveOperations] = await Promise.all([
+      searchDocuments(actor, { query: text, mode: "hybrid", topK: 8, filters: { statuses: ["canonical"] } }),
+      operationalAnswer(supabase, text),
+    ]);
+    const knowledgeAnswer = results.length ? await answerFromKnowledge(text, results) : "";
+    const answer = [liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
     await sendTelegram(message.chat.id, answer, message.message_id);
     await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: text, answer, source_document_ids: [...new Set(results.map((result) => result.documentId))] });
     return NextResponse.json({ ok: true });
