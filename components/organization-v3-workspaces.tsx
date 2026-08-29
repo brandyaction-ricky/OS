@@ -262,7 +262,7 @@ export function AiOperationsWorkspace() {
               <strong>{title}</strong>
               <p>{description}</p>
             </div>
-            <em>{status === "ready" ? "작동" : "연결 대기"}</em>
+            <em className={status}>{status === "ready" ? "작동" : "연결 대기"}</em>
           </article>
         ))}
       </section>
