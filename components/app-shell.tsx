@@ -1,0 +1,188 @@
+"use client";
+
+import {
+  Bell,
+  ChevronRight,
+  ChevronsUpDown,
+  Command,
+  LogOut,
+  Menu,
+  Plus,
+  Search,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
+import { CommandPalette } from "./command-palette";
+import { useSession } from "./session-provider";
+
+function Initials({ name }: { name: string }) {
+  return <span>{name.slice(0, 1).toUpperCase()}</span>;
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const stage = useMemo(() => findStage(pathname), [pathname]);
+  const page = useMemo(() => findPage(pathname), [pathname]);
+  const { profile, loading, demo, signOut } = useSession();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => setMobileOpen(false), [pathname]);
+
+  if (loading) {
+    return (
+      <div className="boot-screen">
+        <div className="brand-mark large">BA</div>
+        <p>브랜디 OS를 여는 중입니다</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="os-app">
+      <aside className="stage-rail" aria-label="주요 영역">
+        <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">
+          BA
+        </Link>
+        <nav className="stage-list">
+          {NAV_STAGES.map((item) => {
+            const Icon = item.icon;
+            const active = item.id === stage.id;
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                className={`stage-link${active ? " active" : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                <Icon size={20} strokeWidth={1.8} />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        <button className="rail-avatar" onClick={() => setProfileOpen((value) => !value)}>
+          <Initials name={profile?.displayName ?? "B"} />
+        </button>
+      </aside>
+
+      <aside className={`page-sidebar${mobileOpen ? " mobile-open" : ""}`}>
+        <div className="sidebar-head">
+          <div>
+            <span className="eyebrow">STAGE</span>
+            <h2>{stage.label}</h2>
+          </div>
+          <button className="icon-button mobile-only" onClick={() => setMobileOpen(false)}>
+            <X size={18} />
+          </button>
+        </div>
+        <nav className="page-nav">
+          {stage.pages.map((item, index) => {
+            const Icon = item.icon;
+            const active = item.href === page.href;
+            const previousGroup = index > 0 ? stage.pages[index - 1].group : undefined;
+            return (
+              <div key={item.href}>
+                {item.group && item.group !== previousGroup ? (
+                  <div className="nav-group">{item.group}</div>
+                ) : null}
+                <Link
+                  href={item.href}
+                  className={`page-link${active ? " active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <Icon size={17} />
+                  <span>{item.label}</span>
+                  {!item.ready ? <span className="soon-dot" title="설계 대기" /> : null}
+                </Link>
+              </div>
+            );
+          })}
+        </nav>
+        <div className="sidebar-foot">
+          <button className="add-page-button">
+            <Plus size={15} /> 이 영역에 기능 추가
+          </button>
+          <div className="system-state">
+            <span className={`state-dot ${demo ? "demo" : "ready"}`} />
+            <span>{demo ? "데모 데이터" : "서버 연결됨"}</span>
+          </div>
+        </div>
+      </aside>
+
+      {mobileOpen ? <button className="mobile-scrim" onClick={() => setMobileOpen(false)} /> : null}
+
+      <div className="app-main">
+        <header className="topbar">
+          <button className="icon-button mobile-only" onClick={() => setMobileOpen(true)}>
+            <Menu size={19} />
+          </button>
+          <div className="breadcrumbs">
+            <span>{stage.label}</span>
+            <ChevronRight size={14} />
+            <strong>{page.label}</strong>
+          </div>
+          <div className="topbar-actions">
+            <button className="command-trigger" onClick={() => setPaletteOpen(true)}>
+              <Search size={15} />
+              <span>페이지·지식 검색</span>
+              <kbd><Command size={11} />K</kbd>
+            </button>
+            <button className="icon-button" aria-label="알림">
+              <Bell size={18} />
+              <span className="notification-dot" />
+            </button>
+            <button className="profile-trigger" onClick={() => setProfileOpen((value) => !value)}>
+              <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
+              <span className="profile-copy">
+                <strong>{profile?.displayName ?? "구성원"}</strong>
+                <small>{profile?.team ?? "전체"}</small>
+              </span>
+              <ChevronsUpDown size={14} />
+            </button>
+          </div>
+          {profileOpen ? (
+            <div className="profile-menu">
+              <strong>{profile?.displayName}</strong>
+              <span>{profile?.email}</span>
+              <span className="role-badge">{profile?.role}</span>
+              {!demo ? (
+                <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
+              ) : null}
+            </div>
+          ) : null}
+        </header>
+        <main className="page-content">{children}</main>
+      </div>
+
+      <nav className="mobile-stage-bar" aria-label="모바일 주요 영역">
+        {NAV_STAGES.slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link key={item.id} href={item.href} className={item.id === stage.id ? "active" : ""}>
+              <Icon size={19} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+    </div>
+  );
+}

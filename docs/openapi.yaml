@@ -1,0 +1,197 @@
+openapi: 3.1.0
+info:
+  title: Brandyaction OS API
+  version: 2.0.0
+  description: 지식 문서와 검색을 위한 사람·에이전트 공용 API
+servers:
+  - url: https://brandyaction-os.vercel.app
+security:
+  - bearerAuth: []
+paths:
+  /api/v1/health:
+    get:
+      security: []
+      summary: 서버와 외부 연결 준비 상태 확인
+      responses:
+        "200":
+          description: 상태 스냅샷
+  /api/v1/search:
+    post:
+      summary: 권한 범위 안에서 회사 지식 검색
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: 인용 가능한 검색 결과
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400": { $ref: "#/components/responses/ApiError" }
+        "401": { $ref: "#/components/responses/ApiError" }
+  /api/v1/documents:
+    get:
+      summary: RLS가 허용하는 문서 목록
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { in: query, name: offset, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: statuses, schema: { type: string }, description: 쉼표로 구분한 상태 }
+        - { in: query, name: folder, schema: { type: string } }
+        - { in: query, name: owner, schema: { type: string, format: uuid } }
+        - { in: query, name: q, schema: { type: string } }
+      responses:
+        "200": { description: 문서 목록 }
+    post:
+      summary: 개인 초안 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocumentCreate"
+      responses:
+        "201": { description: 생성된 문서와 색인 상태 }
+        "400": { $ref: "#/components/responses/ApiError" }
+    patch:
+      summary: 기대 버전을 확인한 뒤 문서 수정
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/DocumentCreate"
+                - type: object
+                  required: [id, expectedVersion]
+                  properties:
+                    id: { type: string, format: uuid }
+                    expectedVersion: { type: integer, minimum: 1 }
+      responses:
+        "200": { description: 수정된 문서와 색인 상태 }
+        "409": { $ref: "#/components/responses/ApiError" }
+    delete:
+      summary: 문서를 삭제하지 않고 보관 상태로 전환
+      parameters:
+        - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 보관 완료 }
+  /api/v1/documents/{id}:
+    get:
+      summary: 문서 원문 조회
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 문서 원문 }
+        "404": { $ref: "#/components/responses/ApiError" }
+  /api/v1/documents/{id}/status:
+    post:
+      summary: 서버의 상태 전환 정책에 따라 문서 상태 변경
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/DocumentStatus" }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: 변경된 문서 }
+        "400": { $ref: "#/components/responses/ApiError" }
+  /api/v1/agent-keys:
+    get:
+      summary: 관리자용 Agent PAT 목록
+      responses:
+        "200": { description: 키 메타데이터 목록 }
+    post:
+      summary: 관리자용 읽기 전용 Agent PAT 발급
+      responses:
+        "201": { description: 최초 한 번만 표시하는 원문 토큰 }
+    delete:
+      summary: Agent PAT 폐기
+      parameters:
+        - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 폐기 완료 }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Supabase 사용자 JWT 또는 canonical-only bos_pat 토큰
+  schemas:
+    DocumentStatus:
+      type: string
+      enum: [draft, team, review, reviewed, canonical, archived]
+    DocumentCreate:
+      type: object
+      required: [title, content]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        content: { type: string, minLength: 1, maxLength: 1500000 }
+        folder: { type: string, maxLength: 160 }
+        brand: { type: string, maxLength: 120 }
+        team: { type: string, maxLength: 120 }
+        tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
+        source: { type: string, maxLength: 40 }
+        sourceRef: { type: [string, "null"], maxLength: 500 }
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 1000 }
+        mode: { type: string, enum: [hybrid, keyword, semantic], default: hybrid }
+        topK: { type: integer, minimum: 1, maximum: 30, default: 10 }
+        filters:
+          type: object
+          properties:
+            statuses: { type: array, items: { $ref: "#/components/schemas/DocumentStatus" } }
+            folder: { type: string }
+            brand: { type: string }
+    SearchResponse:
+      type: object
+      required: [query, mode, degraded, results, tookMs]
+      properties:
+        query: { type: string }
+        mode: { type: string }
+        degraded: { type: boolean }
+        tookMs: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            required: [documentId, title, text, score, citation]
+            properties:
+              documentId: { type: string, format: uuid }
+              chunkId: { type: [integer, string, "null"] }
+              title: { type: string }
+              text: { type: string }
+              score: { type: number }
+              citation:
+                type: object
+                properties:
+                  documentId: { type: string, format: uuid }
+                  version: { type: [integer, "null"] }
+                  chunkId: { type: [integer, string, "null"] }
+  responses:
+    ApiError:
+      description: 표준 오류 본문
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code: { type: string }
+                  message: { type: string }
+                  details: {}
