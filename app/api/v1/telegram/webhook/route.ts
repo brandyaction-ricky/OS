@@ -117,7 +117,8 @@ async function operationalAnswer(supabase: ReturnType<typeof createServiceSupaba
     .is("archived_at", null)
     .order("updated_at", { ascending: false })
     .limit(8);
-  if (error || !data?.length) return "";
+  if (error) return "";
+  if (!data?.length) return `현재 브랜디 OS에 등록된 ${intent.label}이 없습니다.`;
   const rows = data.map((record, index) => {
     const detail = [record.status, record.stage, record.brand, record.team, record.due_date ? `기한 ${record.due_date}` : "", Number(record.progress) > 0 ? `진행 ${record.progress}%` : ""].filter(Boolean).join(" · ");
     return `${index + 1}. ${record.title}${detail ? ` — ${detail}` : ""}`;
