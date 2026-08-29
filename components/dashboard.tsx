@@ -2,151 +2,301 @@
 
 import {
   ArrowRight,
-  BookCheck,
+  CalendarDays,
   CircleAlert,
-  FileClock,
   FileText,
+  Film,
   Search,
-  Sparkles,
   TrendingUp,
-  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import { listAllRecords, listDocuments } from "@/lib/api-client";
-import type { KnowledgeDocument } from "@/lib/types";
 import type { OsRecord } from "@/lib/record-types";
+import type { KnowledgeDocument } from "@/lib/types";
 import { useSession } from "./session-provider";
 
-function formatRelative(date: string) {
-  const diff = Date.now() - new Date(date).getTime();
-  const hours = Math.max(1, Math.floor(diff / 3_600_000));
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
+function money(value: number) {
+  return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
+}
+function date(value: string | null) {
+  return value
+    ? new Intl.DateTimeFormat("ko-KR", {
+        month: "short",
+        day: "numeric",
+      }).format(new Date(value))
+    : "기한 미정";
+}
+function metadataNumber(record: OsRecord, key: string) {
+  const value = Number(record.metadata[key] ?? 0);
+  return Number.isFinite(value) ? value : 0;
 }
 
 export function Dashboard() {
-  const { demo, accessToken, profile } = useSession();
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>(demo ? DEMO_DOCUMENTS : []);
-  const [operations, setOperations] = useState<OsRecord[]>([]);
+  const { accessToken, demo, profile } = useSession();
+  const [records, setRecords] = useState<OsRecord[]>([]);
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [error, setError] = useState("");
-
   useEffect(() => {
     if (demo) return;
-    Promise.all([listDocuments(accessToken, "limit=20"), listAllRecords(accessToken)])
-      .then(([knowledge, operating]) => { setDocuments(knowledge.documents); setOperations(operating.records); })
+    Promise.all([
+      listAllRecords(accessToken, "limit=500"),
+      listDocuments(accessToken, "view=summary&limit=20"),
+    ])
+      .then(([operating, knowledge]) => {
+        setRecords(operating.records);
+        setDocuments(knowledge.documents);
+      })
       .catch((reason) => setError(reason.message));
   }, [accessToken, demo]);
-
-  const recent = [...documents].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 5);
-  const operatingStats = useMemo(() => {
-    const tasks = operations.filter((record) => record.record_type === "task" && !["done", "cancelled"].includes(record.status));
-    const weekStart = new Date(); weekStart.setHours(0, 0, 0, 0); weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
-    const monthKey = new Date().toISOString().slice(0, 7);
-    const published = operations.filter((record) => record.record_type === "content_publish" && record.status === "published" && new Date(record.updated_at) >= weekStart).length;
-    const revenue = operations.filter((record) => record.record_type === "revenue" && String(record.metadata.date ?? record.created_at).startsWith(monthKey)).reduce((sum, record) => sum + Number(record.metadata.net ?? record.amount ?? 0), 0);
-    const videos = operations.filter((record) => ["content_topic", "content_script", "content_package", "content_short", "content_publish"].includes(record.record_type) && !["done", "published", "cancelled"].includes(record.status)).length;
-    const alerts = operations.filter((record) => ["blocked", "warning"].includes(record.status) || record.priority === "urgent").length;
-    const nextTasks = [...tasks].sort((a, b) => (a.due_date || "9999").localeCompare(b.due_date || "9999")).slice(0, 5);
-    return {
-      tasks: tasks.length, published, revenue, videos, alerts, nextTasks,
-      decisions: operations.filter((record) => record.record_type === "decision" && ["open", "review"].includes(record.status)).length,
-      aiReview: operations.filter((record) => record.record_type === "ai_job" && record.status === "review").length,
-      activeProjects: operations.filter((record) => record.record_type === "project" && ["planned", "active", "blocked"].includes(record.status)).length,
+  const view = useMemo(() => {
+    const month = new Date().toISOString().slice(0, 7);
+    const revenue = records.filter(
+      (item) =>
+        item.record_type === "revenue" &&
+        String(item.metadata.date ?? item.created_at).startsWith(month),
+    );
+    const brand = (names: string[]) => {
+      const rows = revenue.filter((item) =>
+        names.some((name) =>
+          (item.brand || item.title).toLowerCase().includes(name.toLowerCase()),
+        ),
+      );
+      return {
+        current: rows.reduce(
+          (sum, item) =>
+            sum + metadataNumber(item, "net") + Number(item.amount || 0),
+          0,
+        ),
+        goal: rows.reduce(
+          (sum, item) =>
+            sum + Number(item.metric_target || item.metadata.goal || 0),
+          0,
+        ),
+      };
     };
-  }, [operations]);
-
+    const myin = brand(["마이인", "myin"]),
+      edu = brand(["에듀", "edu"]);
+    const total = {
+      current: myin.current + edu.current,
+      goal: myin.goal + edu.goal,
+    };
+    const meetings = records
+      .filter((item) => item.record_type === "meeting")
+      .sort((a, b) =>
+        (b.starts_at || b.created_at).localeCompare(
+          a.starts_at || a.created_at,
+        ),
+      );
+    const nextMeeting = [...meetings]
+      .filter((item) => item.status === "planned" && item.starts_at)
+      .sort((a, b) => (a.starts_at || "").localeCompare(b.starts_at || ""))[0];
+    const meetingIssues = meetings
+      .slice(0, 4)
+      .flatMap((meeting) =>
+        (Array.isArray(meeting.metadata.pending)
+          ? meeting.metadata.pending
+          : []
+        ).map((title, index) => ({
+          id: `${meeting.id}-${index}`,
+          title: String(title),
+          source: meeting.title,
+          owner: "미지정",
+          due: nextMeeting?.starts_at || null,
+          href: "/organization/meetings",
+        })),
+      );
+    const taskIssues = records
+      .filter(
+        (item) =>
+          item.record_type === "task" &&
+          !["done", "cancelled"].includes(item.status) &&
+          (item.metadata.source === "meeting" || item.status === "blocked"),
+      )
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        source:
+          String(item.metadata.source) === "meeting"
+            ? "회의 후속"
+            : "업무 막힘",
+        owner: String(item.metadata.assigneeName || item.team || "미지정"),
+        due: item.due_date,
+        href: "/organization/tasks",
+      }));
+    const issues = [...taskIssues, ...meetingIssues].slice(0, 8);
+    const videos = records
+      .filter(
+        (item) =>
+          [
+            "content_topic",
+            "content_script",
+            "content_package",
+            "content_short",
+            "content_publish",
+          ].includes(item.record_type) &&
+          !["done", "published", "cancelled"].includes(item.status),
+      )
+      .slice(0, 6);
+    return { myin, edu, total, issues, videos, nextMeeting };
+  }, [records]);
+  const revenueCard = (
+    title: string,
+    value: { current: number; goal: number },
+  ) => (
+    <article className="revenue-card">
+      <span>{title}</span>
+      <strong>{money(value.current)}</strong>
+      <div>
+        <i
+          style={{
+            width: `${Math.min(100, value.goal ? (value.current / value.goal) * 100 : 0)}%`,
+          }}
+        />
+      </div>
+      <small>
+        목표 {value.goal ? money(value.goal) : "미설정"} ·{" "}
+        {value.goal ? Math.round((value.current / value.goal) * 100) : 0}%
+      </small>
+    </article>
+  );
   return (
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">COMMAND CENTER</span>
-          <h1>{profile?.displayName ?? "리키"}님, 오늘의 운영 현황입니다.</h1>
-          <p>이번 주 발행, 통합 순매출, 진행 영상, 경고와 다음 업무를 5초 안에 확인하세요.</p>
+          <span className="eyebrow">WEEKLY COMMAND CENTER</span>
+          <h1>
+            {profile?.displayName || "리키"}님, 이번 주 핵심만 모았습니다.
+          </h1>
+          <p>
+            매출 목표, 회의에서 남은 이슈, 영상 제작과 최근 지식을 한 흐름으로
+            확인합니다.
+          </p>
         </div>
         <div className="header-actions">
-          <Link className="secondary-button" href="/knowledge/search"><Search size={16} /> 지식 찾기</Link>
-          <Link className="primary-button" href="/organization/tasks"><FileText size={16} /> 업무 관리</Link>
+          <Link className="secondary-button" href="/knowledge/search">
+            <Search size={15} />
+            지식 찾기
+          </Link>
+          <Link className="primary-button" href="/organization/meetings">
+            <CalendarDays size={15} />
+            회의 준비
+          </Link>
         </div>
       </header>
-
-      {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-
-      <section className="metric-grid">
-        <div className="metric-card">
-          <div className="metric-top"><span>이번 주 발행</span><span className="metric-icon"><FileText size={16} /></span></div>
-          <div className="metric-value">{operatingStats.published}</div>
-          <div className="metric-caption">발행 완료 콘텐츠</div>
+      {error ? (
+        <div className="inline-alert danger">
+          <CircleAlert size={16} />
+          {error}
         </div>
-        <div className="metric-card">
-          <div className="metric-top"><span>통합 순매출</span><span className="metric-icon"><TrendingUp size={16} /></span></div>
-          <div className="metric-value growth-money">{(operatingStats.revenue / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만원</div>
-          <div className="metric-caption">이번 달 확정 기준</div>
+      ) : null}
+      <section className="revenue-band">
+        <div>
+          <TrendingUp />
+          <span>
+            <small>이번 달 통합 순매출</small>
+            <strong>{money(view.total.current)}</strong>
+          </span>
+          <em>
+            {view.total.goal
+              ? Math.round((view.total.current / view.total.goal) * 100)
+              : 0}
+            %
+          </em>
         </div>
-        <div className="metric-card">
-          <div className="metric-top"><span>진행 영상</span><span className="metric-icon"><FileClock size={16} /></span></div>
-          <div className="metric-value">{operatingStats.videos}</div>
-          <div className="metric-caption">기획부터 업로드 전까지</div>
+        {revenueCard("마이인", view.myin)}
+        {revenueCard("브랜디액션 에듀", view.edu)}
+      </section>
+      <section className="panel weekly-issues">
+        <div className="panel-header">
+          <div>
+            <h2>이번 주 핵심 이슈</h2>
+            <p>회의 미결과 막힌 업무를 다음 회의까지 닫습니다.</p>
+          </div>
+          {view.nextMeeting ? (
+            <span className="count-badge">
+              다음 회의 {date(view.nextMeeting.starts_at)}
+            </span>
+          ) : null}
         </div>
-        <div className="metric-card">
-          <div className="metric-top"><span>운영 경고</span><span className="metric-icon"><Sparkles size={16} /></span></div>
-          <div className="metric-value">{operatingStats.alerts}</div>
-          <div className={`metric-caption ${operatingStats.alerts ? "warn" : "good"}`}>{operatingStats.alerts ? "막힘·긴급 확인" : "운영 경고 없음"}</div>
+        <div className="issue-table">
+          <header>
+            <span>이슈</span>
+            <span>출처</span>
+            <span>담당</span>
+            <span>기한</span>
+          </header>
+          {view.issues.map((issue) => (
+            <Link href={issue.href} key={issue.id}>
+              <strong>{issue.title}</strong>
+              <span>{issue.source}</span>
+              <span>{issue.owner}</span>
+              <time>{date(issue.due)}</time>
+            </Link>
+          ))}
+          {!view.issues.length ? (
+            <div className="quiet-state">
+              <CircleAlert />
+              <strong>열린 주간 이슈가 없습니다.</strong>
+              <span>회의에서 미결 항목을 저장하면 자동으로 표시됩니다.</span>
+            </div>
+          ) : null}
         </div>
       </section>
-
-      <section className="content-grid dashboard-grid">
+      <section className="content-grid dashboard-third">
         <article className="panel">
           <div className="panel-header">
-            <div><h2>최근 업데이트</h2><p>회사 지식에 새로 쌓인 변화입니다.</p></div>
-            <Link className="panel-link" href="/knowledge">전체 보기 <ArrowRight size={13} /></Link>
-          </div>
-          {recent.length ? (
-            <div className="activity-list">
-              {recent.map((document) => (
-                <Link href={`/knowledge?document=${document.id}`} key={document.id}>
-                  <span className={`document-symbol status-${document.status}`}><FileText size={16} /></span>
-                  <span className="activity-main"><strong>{document.title}</strong><small>{document.folder || "분류 없음"} · {document.team || "전체"}</small></span>
-                  <span className={`status-pill status-${document.status}`}>{statusLabel(document.status)}</span>
-                  <time>{formatRelative(document.updated_at)}</time>
-                </Link>
-              ))}
+            <div>
+              <h2>이번 주 영상</h2>
+              <p>기획부터 발행 전까지의 제작 흐름</p>
             </div>
-          ) : <div className="empty-state"><div><span><FileText /></span><h3>첫 지식을 만들어 보세요</h3><p>문서를 저장하면 업데이트 현황이 이곳에 쌓입니다.</p><Link className="primary-button" href="/knowledge?new=1">새 문서 만들기</Link></div></div>}
-        </article>
-
-        <aside className="panel decision-panel">
-          <div className="panel-header"><div><h2>다음 업무</h2><p>기한이 가까운 완료 전 업무입니다.</p></div><span className="count-badge">{operatingStats.nextTasks.length}</span></div>
-          <div className="decision-list">
-            {operatingStats.nextTasks.length ? operatingStats.nextTasks.map((task) => (
-              <Link href="/organization/tasks" key={task.id}>
-                <span className="decision-icon"><CircleAlert size={16} /></span>
-                <span><strong>{task.title}</strong><small>{task.team || "전체"} · {task.due_date || "기한 미정"}</small></span>
-                <ArrowRight size={14} />
+            <Link className="panel-link" href="/content/automation">
+              전체 보기 <ArrowRight size={13} />
+            </Link>
+          </div>
+          <div className="weekly-video-list">
+            {view.videos.map((item) => (
+              <Link href="/content/automation" key={item.id}>
+                <Film size={16} />
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>
+                    {item.brand || "공통"} · {item.status}
+                  </small>
+                </span>
+                <em>{item.due_date || "일정 미정"}</em>
               </Link>
-            )) : (
-              <div className="quiet-state"><BookCheck size={24} /><strong>완료 전 업무 없음</strong><span>새 업무가 생기면 기한순으로 표시됩니다.</span></div>
-            )}
-          </div>
-        </aside>
-      </section>
-
-      <section className="content-grid lower-grid">
-        <article className="panel readiness-panel">
-          <div className="panel-header"><div><h2>OS 구축 현황</h2><p>현재 작동하는 운영 범위입니다.</p></div><span className="build-progress">운영 기반</span></div>
-          <div className="readiness-steps">
-            <div className="done"><span>01</span><div><strong>지식 기반</strong><small>문서·버전·검토·검색 API</small></div></div>
-            <div className="done"><span>02</span><div><strong>실행 관리</strong><small>업무·목표·회의·AI 작업</small></div></div>
-            <div className="done"><span>03</span><div><strong>콘텐츠·성과</strong><small>자동화·캘린더·매출·퍼널·CRM</small></div></div>
-            <div className="active"><span>04</span><div><strong>외부 자동화</strong><small>API 키·채널 승인 후 연결</small></div></div>
+            ))}
+            {!view.videos.length ? (
+              <div className="quiet-state">
+                <Film />
+                <strong>진행 영상 없음</strong>
+                <span>콘텐츠 기획을 등록하면 단계별로 표시됩니다.</span>
+              </div>
+            ) : null}
           </div>
         </article>
-        <article className="panel team-panel">
-          <div className="panel-header"><div><h2>지식 활용 원칙</h2><p>한 두뇌, 여러 통로</p></div><Users size={17} /></div>
-          <div className="principle-copy">
-            <TrendingUp size={24} />
-            <p>직원과 AI가 같은 회사 정본을 검색하고, 새 결정은 다시 검토 가능한 지식으로 남깁니다.</p>
+        <article className="panel">
+          <div className="panel-header">
+            <div>
+              <h2>최근 지식</h2>
+              <p>새로 저장되거나 수정된 문서</p>
+            </div>
+            <Link className="panel-link" href="/knowledge">
+              전체 보기 <ArrowRight size={13} />
+            </Link>
+          </div>
+          <div className="recent-knowledge">
+            {documents.slice(0, 6).map((item) => (
+              <Link href={`/knowledge?document=${item.id}`} key={item.id}>
+                <FileText size={15} />
+                <span>
+                  <strong>{item.title}</strong>
+                  <small>{item.folder || "분류 없음"}</small>
+                </span>
+                <time>{date(item.updated_at)}</time>
+              </Link>
+            ))}
           </div>
         </article>
       </section>
@@ -155,5 +305,12 @@ export function Dashboard() {
 }
 
 export function statusLabel(status: KnowledgeDocument["status"]) {
-  return ({ draft: "개인 초안", team: "팀 공유", review: "검토 요청", reviewed: "검토 완료", canonical: "회사 정본", archived: "보관" })[status];
+  return {
+    draft: "개인 초안",
+    team: "팀 공유",
+    review: "검토 요청",
+    reviewed: "검토 완료",
+    canonical: "회사 정본",
+    archived: "보관",
+  }[status];
 }

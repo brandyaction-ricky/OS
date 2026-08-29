@@ -57,7 +57,8 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
   assert.match(workspace, /source: "markdown"/);
   assert.match(workspace, /sourceRef: item\.fileName/);
   assert.match(workspace, /item\.duplicate/);
-  assert.match(workspace, /limit=100&offset=/);
+  assert.match(workspace, /view=summary&limit=200&offset=/);
+  assert.match(workspace, /getDocument\(accessToken, selected\.id\)/);
   assert.match(client, /sourceRef\?: string \| null/);
   assert.match(route, /DOCUMENT_SOURCE_EXISTS/);
   assert.match(route, /\.eq\("source_ref", input\.sourceRef\)/);
@@ -79,8 +80,8 @@ test("meeting summaries degrade locally and create linked actions", async () => 
   const workspace = await readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8");
   assert.match(route, /localSummary/);
   assert.match(route, /OPENAI_API_KEY/);
-  assert.match(workspace, /recordType: "decision", parentId: meeting\.id/);
-  assert.match(workspace, /recordType: "task", parentId: meeting\.id/);
+  assert.match(workspace, /recordType: "decision"[\s\S]*parentId: meeting\.id/);
+  assert.match(workspace, /recordType: "task"[\s\S]*parentId: meeting\.id/);
 });
 
 test("project, task, skill and content workspaces use linked operating records", async () => {

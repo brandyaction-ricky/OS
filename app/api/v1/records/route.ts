@@ -65,6 +65,7 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     const payload = {
       ...toDatabase(input),
       owner_id: actor.id,
@@ -85,6 +86,15 @@ export async function PATCH(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordUpdateSchema.parse(await parseJson(request));
+    const { data: current } = await actor.supabase.from("os_records").select("record_type,status").eq("id", input.id).maybeSingle();
+    if (current?.record_type === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차 잔여를 변경할 수 있습니다.");
+    if (current?.record_type === "leave_request" && (input.status === "approved" || input.status === "rejected")) {
+      if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 휴가를 승인하거나 반려할 수 있습니다.");
+      const { data, error } = await actor.supabase.rpc("os_decide_leave_request", { p_request_id: input.id, p_expected_version: input.expectedVersion, p_status: input.status });
+      if (error) throw new ApiError(400, "LEAVE_DECISION_FAILED", "휴가 승인 상태를 변경하지 못했습니다.", error.message);
+      if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "이미 처리되었거나 다른 사람이 먼저 수정했습니다.");
+      return NextResponse.json({ record: data });
+    }
     const payload = toDatabase(input);
     payload.updated_by = actor.id;
     const { data, error } = await actor.supabase

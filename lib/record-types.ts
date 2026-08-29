@@ -4,6 +4,7 @@ export const RECORD_TYPES = [
   "content_publish", "content_metric", "skill", "knowledge_link",
   "revenue", "funnel", "crm_action", "customer", "brand",
   "connection", "access_rule", "company_setting", "channel",
+  "leave_balance", "leave_request", "expense", "contract", "subscription", "company_document",
 ] as const;
 
 export type RecordType = (typeof RECORD_TYPES)[number];

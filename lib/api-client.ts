@@ -27,6 +27,10 @@ export async function listDocuments(token: string | null, query = "") {
   });
 }
 
+export async function getDocument(token: string | null, id: string) {
+  return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${encodeURIComponent(id)}`, { token });
+}
+
 export async function createDocument(
   token: string | null,
   input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null },
@@ -199,7 +203,7 @@ export interface TelegramConnectionStatus {
   configured: boolean;
   bot?: { username: string | null; name: string | null };
   webhook: null | { url: string; pendingUpdates: number; lastErrorAt: number | null; lastError: string | null };
-  pendingUsers?: { external_user_id: string; external_chat_id: string | null; created_at: string }[];
+  pendingUsers?: { external_user_id: string; external_chat_id: string | null; display_name: string; username: string; status: "pending"; requested_at: string }[];
 }
 
 export async function getTelegramStatus(token: string | null) {
@@ -210,6 +214,21 @@ export async function connectTelegramWebhook(token: string | null) {
   return apiRequest<{ connected: boolean; url: string }>("/api/v1/telegram/setup", { method: "POST", token });
 }
 
+export async function decideTelegramUser(token: string | null, externalUserId: string, action: "approve" | "reject") {
+  return apiRequest<{ user: { external_user_id: string; status: "approved" | "rejected" } }>("/api/v1/telegram/setup", {
+    method: "PATCH", token, body: JSON.stringify({ externalUserId, action }),
+  });
+}
+
+export async function uploadCompanyFile(token: string | null, file: File) {
+  const body = new FormData(); body.set("file", file, file.name);
+  return apiRequest<{ path: string; name: string; size: number }>("/api/v1/company-files", { method: "POST", token, body });
+}
+
+export async function getCompanyFileUrl(token: string | null, path: string) {
+  return apiRequest<{ url: string }>(`/api/v1/company-files?path=${encodeURIComponent(path)}`, { token });
+}
+
 export interface OsMember {
   id: string;
   email: string;
@@ -217,6 +236,10 @@ export interface OsMember {
   role: "member" | "lead" | "admin";
   team: string;
   is_active: boolean;
+  affiliation: string;
+  roles: string[];
+  onboarding: Record<string, boolean>;
+  finance_access: boolean;
 }
 
 export async function listMembers(token: string | null) {
