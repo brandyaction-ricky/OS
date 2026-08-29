@@ -29,7 +29,7 @@ export async function listDocuments(token: string | null, query = "") {
 
 export async function createDocument(
   token: string | null,
-  input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string },
+  input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null },
 ) {
   return apiRequest<{ document: KnowledgeDocument; indexing: string }>("/api/v1/documents", {
     method: "POST",

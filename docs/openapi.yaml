@@ -56,6 +56,7 @@ paths:
       responses:
         "201": { description: 생성된 문서와 색인 상태 }
         "400": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError", description: 같은 source/sourceRef 원본이 이미 존재함 }
     patch:
       summary: 기대 버전을 확인한 뒤 문서 수정
       requestBody:

@@ -38,3 +38,27 @@ test("record API enforces optimistic updates and soft archives", async () => {
   assert.match(route, /archived_at: new Date\(\)\.toISOString\(\)/);
   assert.doesNotMatch(route, /\.delete\(\)/);
 });
+
+test("monthly goals connect KPIs without a new database contract", async () => {
+  const workspace = await readFile(new URL("../components/goals-workspace.tsx", import.meta.url), "utf8");
+  const router = await readFile(new URL("../app/(os)/[stage]/[page]/page.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /listRecords\(accessToken, "goal"/);
+  assert.match(workspace, /listRecords\(accessToken, "kpi"/);
+  assert.match(workspace, /periodMonth/);
+  assert.match(workspace, /parentId/);
+  assert.match(router, /href === "\/home\/goals"/);
+});
+
+test("wiki imports Markdown as deduplicated drafts and paginates documents", async () => {
+  const workspace = await readFile(new URL("../components/knowledge-workspace.tsx", import.meta.url), "utf8");
+  const client = await readFile(new URL("../lib/api-client.ts", import.meta.url), "utf8");
+  const route = await readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8");
+  assert.match(workspace, /accept="\.md,text\/markdown"/);
+  assert.match(workspace, /source: "markdown"/);
+  assert.match(workspace, /sourceRef: item\.fileName/);
+  assert.match(workspace, /item\.duplicate/);
+  assert.match(workspace, /limit=100&offset=/);
+  assert.match(client, /sourceRef\?: string \| null/);
+  assert.match(route, /DOCUMENT_SOURCE_EXISTS/);
+  assert.match(route, /\.eq\("source_ref", input\.sourceRef\)/);
+});

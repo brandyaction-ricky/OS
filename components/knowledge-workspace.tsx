@@ -21,6 +21,7 @@ import {
   Search,
   Send,
   Tag,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -89,6 +90,28 @@ interface DraftState {
   tags: string;
 }
 
+interface MarkdownImportItem {
+  id: string;
+  fileName: string;
+  title: string;
+  content: string;
+  bytes: number;
+  duplicate: boolean;
+}
+
+const MAX_IMPORT_FILES = 50;
+const MAX_MARKDOWN_BYTES = 1_500_000;
+
+function markdownTitle(fileName: string, content: string) {
+  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || fileName.replace(/\.md$/i, "").replace(/[-_]+/g, " ").trim();
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function toDraft(document: KnowledgeDocument): DraftState {
   return {
     title: document.title,
@@ -111,6 +134,9 @@ function WorkspaceContent() {
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [newOpen, setNewOpen] = useState(searchParams.get("new") === "1");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importItems, setImportItems] = useState<MarkdownImportItem[]>([]);
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -118,9 +144,19 @@ function WorkspaceContent() {
   const reload = useCallback(async () => {
     if (demo) return;
     try {
-      const result = await listDocuments(accessToken, "limit=100");
-      setDocuments(result.documents);
-      setSelectedId((current) => current ?? result.documents[0]?.id ?? null);
+      const all: KnowledgeDocument[] = [];
+      let offset = 0;
+      let total = 0;
+      do {
+        const result = await listDocuments(accessToken, `limit=100&offset=${offset}`);
+        all.push(...result.documents);
+        total = result.total;
+        offset += result.documents.length;
+        if (!result.documents.length) break;
+      } while (offset < total && offset < 1000);
+      setDocuments(all);
+      setSelectedId((current) => current ?? all[0]?.id ?? null);
+      setError(total > 1000 ? "문서가 1,000개를 넘어 최신 1,000개까지만 표시합니다." : "");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다.");
     }
@@ -231,11 +267,83 @@ function WorkspaceContent() {
     finally { setBusy(false); }
   };
 
+  const selectMarkdownFiles = async (files: FileList | null) => {
+    if (!files) return;
+    setError("");
+    const selectedFiles = [...files].slice(0, MAX_IMPORT_FILES);
+    const invalid = selectedFiles.filter((file) => !file.name.toLowerCase().endsWith(".md") || file.size > MAX_MARKDOWN_BYTES);
+    const existingSources = new Set(documents.map((document) => document.source_ref?.toLocaleLowerCase("ko-KR")).filter(Boolean));
+    const existingTitles = new Set(documents.map((document) => document.title.toLocaleLowerCase("ko-KR")));
+    const batchSources = new Set<string>();
+    const batchTitles = new Set<string>();
+    const items: MarkdownImportItem[] = [];
+
+    for (const file of selectedFiles) {
+      if (!file.name.toLowerCase().endsWith(".md") || file.size > MAX_MARKDOWN_BYTES) continue;
+      const content = await file.text();
+      if (!content.trim()) continue;
+      const title = markdownTitle(file.name, content);
+      const sourceKey = file.name.toLocaleLowerCase("ko-KR");
+      const titleKey = title.toLocaleLowerCase("ko-KR");
+      const duplicate = existingSources.has(sourceKey) || existingTitles.has(titleKey) || batchSources.has(sourceKey) || batchTitles.has(titleKey);
+      items.push({ id: `${file.name}-${file.lastModified}-${file.size}`, fileName: file.name, title, content, bytes: file.size, duplicate });
+      batchSources.add(sourceKey);
+      batchTitles.add(titleKey);
+    }
+    setImportItems(items);
+    setImportProgress({ done: 0, total: items.filter((item) => !item.duplicate).length });
+    if (files.length > MAX_IMPORT_FILES || invalid.length || items.length < selectedFiles.length - invalid.length) {
+      setError(`Markdown은 한 번에 ${MAX_IMPORT_FILES}개, 파일당 ${formatBytes(MAX_MARKDOWN_BYTES)} 이하의 내용 있는 파일만 가져올 수 있습니다.`);
+    }
+  };
+
+  const importMarkdown = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const ready = importItems.filter((item) => !item.duplicate);
+    if (!ready.length) return;
+    const data = new FormData(event.currentTarget);
+    const folder = String(data.get("folder") ?? "").trim();
+    const team = String(data.get("team") ?? "").trim();
+    const brand = String(data.get("brand") ?? "").trim();
+    const tags = String(data.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean);
+    const created: KnowledgeDocument[] = [];
+    const failed: string[] = [];
+    setBusy(true); setError(""); setImportProgress({ done: 0, total: ready.length });
+
+    for (const item of ready) {
+      try {
+        let document: KnowledgeDocument;
+        if (demo) {
+          const now = new Date().toISOString();
+          document = { id: `demo-import-${Date.now()}-${created.length}`, title: item.title, content_md: item.content, folder, brand, team, tags, status: "draft", source: "markdown", source_ref: item.fileName, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now };
+        } else {
+          ({ document } = await createDocument(accessToken, { title: item.title, content: item.content, folder, brand, team, tags, source: "markdown", sourceRef: item.fileName }));
+        }
+        created.push(document);
+      } catch {
+        failed.push(item.fileName);
+      }
+      setImportProgress((current) => ({ ...current, done: current.done + 1 }));
+    }
+
+    if (demo) setDocuments((current) => [...created, ...current]);
+    else await reload();
+    setBusy(false);
+    if (created[0]) setSelectedId(created[0].id);
+    if (failed.length) {
+      setImportItems((current) => current.filter((item) => failed.includes(item.fileName)));
+      setError(`${created.length}개를 가져왔고 ${failed.length}개는 실패했습니다. 실패 파일만 다시 시도할 수 있습니다.`);
+    } else {
+      setImportOpen(false); setImportItems([]); setImportProgress({ done: 0, total: 0 });
+      setToast(`${created.length}개 Markdown 문서를 개인 초안으로 가져왔습니다.`);
+    }
+  };
+
   return (
     <>
       <header className="page-header workspace-page-header">
         <div className="page-title-group"><span className="eyebrow">KNOWLEDGE WORKSPACE</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className="secondary-button"><Folder size={16} /> 폴더 만들기</button><button className="primary-button" onClick={() => setNewOpen(true)}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="header-actions"><button className="secondary-button" onClick={() => setImportOpen(true)}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => setNewOpen(true)}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
 
       <div className="owner-chips">
@@ -326,6 +434,26 @@ function WorkspaceContent() {
               <label className="wide"><span>본문</span><textarea name="content" required placeholder="# 핵심 내용\n\n문서의 맥락과 실행 기준을 적어주세요." /></label>
             </div>
             <footer><span>처음에는 개인 초안으로 안전하게 저장됩니다.</span><div><button type="button" className="ghost-button" onClick={() => setNewOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? "저장 중…" : "초안 저장"}</button></div></footer>
+          </form>
+        </div>
+      ) : null}
+      {importOpen ? (
+        <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setImportOpen(false)}>
+          <form className="form-modal import-modal" onSubmit={importMarkdown}>
+            <header><div><span className="eyebrow">MARKDOWN IMPORT</span><h2>회사 지식 가져오기</h2></div><button type="button" disabled={busy} onClick={() => setImportOpen(false)}><X size={18} /></button></header>
+            <div className="import-body">
+              {error ? <div className="inline-alert danger import-alert">{error}</div> : null}
+              <label className="import-dropzone"><Upload size={24} /><strong>Markdown 파일 선택</strong><span>여러 개의 .md 파일 · 파일당 최대 {formatBytes(MAX_MARKDOWN_BYTES)}</span><input type="file" accept=".md,text/markdown" multiple disabled={busy} onChange={(event) => selectMarkdownFiles(event.target.files)} /></label>
+              {importItems.length ? <div className="import-summary"><strong>{importItems.length}개 선택</strong><span>{importItems.filter((item) => item.duplicate).length}개 중복 제외 · {formatBytes(importItems.reduce((sum, item) => sum + item.bytes, 0))}</span></div> : null}
+              {importItems.length ? <div className="import-file-list">{importItems.map((item) => <div className={item.duplicate ? "duplicate" : ""} key={item.id}><File size={15} /><span><strong>{item.title}</strong><small>{item.fileName} · {formatBytes(item.bytes)}</small></span><em>{item.duplicate ? "중복 제외" : "초안"}</em></div>)}</div> : null}
+              <div className="form-fields import-meta">
+                <label><span>저장 폴더</span><input name="folder" placeholder="회사 지식/가져오기" /></label>
+                <label><span>담당 팀</span><input name="team" defaultValue={profile?.team ?? ""} /></label>
+                <label><span>브랜드</span><input name="brand" placeholder="브랜디액션" /></label>
+                <label><span>공통 태그</span><input name="tags" placeholder="가져오기, 운영" /></label>
+              </div>
+            </div>
+            <footer><span>{busy ? `${importProgress.done} / ${importProgress.total} 처리 중` : "중복 문서는 건너뛰며 모두 개인 초안으로 저장됩니다."}</span><div><button type="button" className="ghost-button" disabled={busy} onClick={() => setImportOpen(false)}>취소</button><button className="primary-button" disabled={busy || !importItems.some((item) => !item.duplicate)}>{busy ? "가져오는 중…" : `${importItems.filter((item) => !item.duplicate).length}개 가져오기`}</button></div></footer>
           </form>
         </div>
       ) : null}

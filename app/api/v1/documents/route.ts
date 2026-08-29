@@ -39,6 +39,16 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = documentCreateSchema.parse(await parseJson(request));
+    if (input.sourceRef) {
+      const { data: existing, error: duplicateCheckError } = await actor.supabase
+        .from("os_documents")
+        .select("id,title")
+        .eq("source", input.source)
+        .eq("source_ref", input.sourceRef)
+        .maybeSingle();
+      if (duplicateCheckError) throw new ApiError(400, "DOCUMENT_DUPLICATE_CHECK_FAILED", "중복 문서를 확인하지 못했습니다.", duplicateCheckError.message);
+      if (existing) throw new ApiError(409, "DOCUMENT_SOURCE_EXISTS", "같은 원본 파일에서 가져온 문서가 이미 있습니다.", existing);
+    }
     const { data, error } = await actor.supabase
       .from("os_documents")
       .insert({
