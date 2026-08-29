@@ -8,7 +8,8 @@
     "app/api/v1/telegram/webhook/route.ts": { "maxDuration": 30 },
     "app/api/v1/telegram/setup/route.ts": { "maxDuration": 30 },
     "app/api/v1/indexing/route.ts": { "maxDuration": 300 },
-    "app/api/v1/indexing/cron/route.ts": { "maxDuration": 300 }
+    "app/api/v1/indexing/cron/route.ts": { "maxDuration": 300 },
+    "app/api/v1/ad-performance/route.ts": { "maxDuration": 120 }
   },
   "crons": [{ "path": "/api/v1/indexing/cron", "schedule": "0 18 * * *" }]
 }

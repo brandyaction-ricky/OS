@@ -21,6 +21,7 @@
 | Skill | 구현 | 개인/회사 범위, 시작 조건·자료·절차·결과물·품질 기준, 회사 Skill 승격 |
 | 콘텐츠 | 구현 | 롱폼→권장 파생물 10개 생성, 묶음 검수, 플랫폼별 일정, 드래그 캘린더 |
 | 매출·퍼널·KPI | 구현 | 브랜드 순매출 원장, 유튜브→스토어 퍼널, 주간 KPI와 외부 관리자 링크 |
+| 광고 성과 | 구현 | Meta·Google 직접 API 일별 집계, 브랜드 전환, 광고비·전환 매출·ROAS·CPA, 매출·재무 광고비 교차 확인 |
 | 월간 보고서 | 구현 | 목표·업무·회의·결정·콘텐츠·매출 자동 집계, Markdown 복사·다운로드 |
 | 운영 모니터링 | 구현 | DB·인증·검색·Telegram·임베딩 큐·연결 상태와 보안 경계 확인, 관리자 재시도 |
 | 구성원 | 구현 | 실제 Auth 계정, 9명 조직 명부, 소속·복수 역할·온보딩·민감정보 권한 관리 |
@@ -38,6 +39,7 @@ flowchart TD
     API --> AUTH["Supabase Auth · RLS"]
     API --> DB["Postgres · pgvector"]
     API --> OA["OpenAI Embeddings · Responses"]
+    API --> ADS["Meta · Google Ads 읽기 API"]
 ```
 
 Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식 테이블과 검색 RPC를 그대로 사용한다. `os_records`는 실행 계층, `os_record_events`는 변경 이력이며 두 테이블 모두 RLS가 활성화된다.
@@ -89,9 +91,18 @@ Supabase의 기존 ERP 테이블은 변경하지 않는다. 기존 `os_*` 지식
 4. 임베딩 설정이나 RPC에 문제가 있으면 안전하게 문서 키워드 검색으로 저하한다.
 5. 모든 결과에 `documentId`, `version`, `chunkId` 인용 정보를 반환한다.
 
-새 문서와 볼트 적재 문서는 `os_embedding_jobs` 큐에 쌓인다. `/api/v1/indexing`은 관리자만 큐 현황을 보거나 제한된 배치를 실행·재시도할 수 있다. Vercel 예약 작업은 매일 03:00 KST에 최대 100건을 4분 실행 예산 안에서 처리하며, 동일 문서 작업은 `pending → running` 상태 선점에 성공한 실행자만 처리한다. 15분 넘게 멈춘 실행은 자동 복구되고 이전 버전 작업은 실패 이력으로 닫힌다. 새 청크 저장에 실패하면 기존 검색 청크를 복원하므로 이미 검색되던 지식은 계속 유지된다.
+새 문서와 볼트 적재 문서는 `os_embedding_jobs` 큐에 쌓인다. `/api/v1/indexing`은 관리자만 큐 현황을 보거나 제한된 배치를 실행·재시도할 수 있다. Vercel 예약 작업은 매일 03:00 KST에 최대 100건을 처리하고, 같은 실행에서 최근 7일 Meta·Google 광고 지표도 다시 수집해 지연 전환을 보정한다. 동일 문서 작업은 `pending → running` 상태 선점에 성공한 실행자만 처리한다. 15분 넘게 멈춘 실행은 자동 복구되고 이전 버전 작업은 실패 이력으로 닫힌다. 새 청크 저장에 실패하면 기존 검색 청크를 복원하므로 이미 검색되던 지식은 계속 유지된다.
 
-## 7. 배포 환경변수
+## 7. 광고 성과 수집
+
+- `/performance/ads`는 광고 운영 화면이 아니라 집계 화면이다. 소재·타깃·입찰 변경은 Meta/Google에서만 한다.
+- Meta Marketing API `v26.0`의 account insights와 Google Ads API `v25`의 `searchStream`을 읽기 전용으로 호출한다. 버전은 환경변수로 올릴 수 있다.
+- 일별 `광고비·귀속 매출·전환·노출·클릭`을 `(provider, brand, date)` 기준으로 멱등 upsert한다.
+- 관리자 수동 동기화와 매일 03:00 KST 자동 동기화를 제공하며, 비관리자는 집계 결과만 읽는다.
+- API 토큰·OAuth 비밀값은 Vercel 서버 환경변수에만 있고 DB·브라우저 응답·로그에는 저장하지 않는다.
+- OS 매출 원장과 비교하며, 경영지원 권한이 있는 사용자에게만 재무 광고비 교차값을 보여준다.
+
+## 8. 배포 환경변수
 
 Vercel 프로젝트 Production/Preview에 다음 값을 설정한다.
 
@@ -119,9 +130,26 @@ TELEGRAM_BOT_USERNAME=your_bot
 TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
 ```
 
-## 8. 적용 순서
+광고 계정 연결 시 다음 서버 전용 값을 추가한다.
 
-1. `202608290001_os_integrations.sql`부터 `202608290005_operating_v3.sql`까지 번호순으로 적용한다.
+```dotenv
+META_ADS_API_VERSION=v26.0
+META_ADS_ACCESS_TOKEN=...
+META_ADS_MYIN_ACCOUNT_ID=...
+META_ADS_BRANDYEDU_ACCOUNT_ID=...
+GOOGLE_ADS_API_VERSION=v25
+GOOGLE_ADS_DEVELOPER_TOKEN=...
+GOOGLE_ADS_CLIENT_ID=...
+GOOGLE_ADS_CLIENT_SECRET=...
+GOOGLE_ADS_REFRESH_TOKEN=...
+GOOGLE_ADS_LOGIN_CUSTOMER_ID=...
+GOOGLE_ADS_MYIN_CUSTOMER_ID=...
+GOOGLE_ADS_BRANDYEDU_CUSTOMER_ID=...
+```
+
+## 9. 적용 순서
+
+1. `202608290001_os_integrations.sql`부터 `202608290006_ad_performance.sql`까지 번호순으로 적용한다.
 2. Vercel 환경변수를 등록한다.
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
@@ -129,10 +157,11 @@ TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
 6. Telegram 환경변수가 준비된 운영 배포는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 자동 등록한다. 미등록 사용자는 요청 상태로 저장되며 `설정 → 운영 모니터링 → Telegram 웹훅`에서 승인·거절한다. `TELEGRAM_ALLOWED_USER_IDS`는 기존 사용자용 선택적 비상 허용 목록이다.
 7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.
 
-## 9. 외부 확인이 있어야 남는 연결
+## 10. 외부 확인이 있어야 남는 연결
 
 - OpenAI API 키와 예약 작업 보안값 등록 후 의미 검색·답변 생성 및 기존 문서 재색인 실행
 - Telegram Bot Token·웹훅 보안값·허용 사용자 등록 후 운영 모니터링에서 연결 실행
+- Meta/Google 광고 계정의 읽기 권한 토큰·고객 ID 등록 후 관리자 첫 동기화 실행
 - Drive/Slack/Notion 등 외부 수집기는 계정 연결과 수집 범위 승인 후 개발
 
 외부 연결 전에도 내부 기록·상태·권한·성과 입력은 운영 가능하다.
