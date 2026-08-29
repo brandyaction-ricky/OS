@@ -182,27 +182,38 @@ function WorkspaceContent() {
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
   const [visibleCount, setVisibleCount] = useState(100);
+  const [sortAscending, setSortAscending] = useState(false);
+  const [listLoading, setListLoading] = useState(!demo);
   const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
   const reload = useCallback(async () => {
     if (demo) return;
+    setListLoading(true);
     try {
       const all: KnowledgeDocument[] = [];
-      let offset = 0;
-      let total = 0;
-      do {
-        const result = await listDocuments(accessToken, `view=summary&limit=200&offset=${offset}`);
-        all.push(...result.documents);
-        total = result.total;
-        offset += result.documents.length;
-        if (!result.documents.length) break;
-      } while (offset < total);
+      const first = await listDocuments(accessToken, "view=summary&limit=200&offset=0");
+      all.push(...first.documents);
+      setDocuments([...all]);
+      setSelectedId((current) => current ?? all[0]?.id ?? null);
+      setListLoading(false);
+      const offsets = Array.from(
+        { length: Math.max(0, Math.ceil(first.total / 200) - 1) },
+        (_, index) => (index + 1) * 200,
+      );
+      const remaining = await Promise.all(
+        offsets.map((offset) =>
+          listDocuments(accessToken, `view=summary&limit=200&offset=${offset}`),
+        ),
+      );
+      remaining.forEach((result) => all.push(...result.documents));
       setDocuments(all);
       setSelectedId((current) => current ?? all[0]?.id ?? null);
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다.");
+    } finally {
+      setListLoading(false);
     }
   }, [accessToken, demo]);
 
@@ -263,6 +274,14 @@ function WorkspaceContent() {
       return true;
     });
   }, [documents, folderFilter, ownerFilter, profile?.id, query]);
+  const orderedFiltered = useMemo(
+    () => [...filtered].sort((a, b) =>
+      sortAscending
+        ? a.updated_at.localeCompare(b.updated_at)
+        : b.updated_at.localeCompare(a.updated_at),
+    ),
+    [filtered, sortAscending],
+  );
 
   useEffect(() => { setVisibleCount(100); }, [folderFilter, ownerFilter, query]);
 
@@ -470,7 +489,7 @@ function WorkspaceContent() {
 
       <section className="knowledge-workspace">
         <aside className="folder-pane">
-          <div className="pane-title"><strong>폴더</strong><button><MoreHorizontal size={16} /></button></div>
+          <div className="pane-title"><strong>폴더</strong></div>
           <button className={`folder-row${folderFilter === "all" ? " active" : ""}`} onClick={() => setFolderFilter("all")}><FolderOpen size={16} /><span>모든 문서</span><small>{documents.length}</small></button>
           {folderRows.map((folder) => (
             <button
@@ -487,17 +506,17 @@ function WorkspaceContent() {
 
         <aside className="document-pane">
           <div className="document-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="현재 문서에서 찾기" /></div>
-          <div className="document-list-head"><span>{filtered.length}개 문서</span><button>최근 수정순 <ChevronDown size={12} /></button></div>
+          <div className="document-list-head"><span>{listLoading && !documents.length ? "문서 불러오는 중" : `${filtered.length}개 문서`}</span><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 수정순" : "최근 수정순"} <ChevronDown size={12} /></button></div>
           <div className="document-list">
-            {filtered.slice(0, visibleCount).map((document) => (
+            {orderedFiltered.slice(0, visibleCount).map((document) => (
               <button draggable key={document.id} className={document.id === selectedId ? "active" : ""} onDragStart={(event) => event.dataTransfer.setData("text/document-id", document.id)} onClick={() => { setSelectedId(document.id); setMode("read"); }}>
                 <span className={`mini-status status-${document.status}`} />
                 <span className="doc-list-copy"><strong>{document.title}</strong><small>{document.folder || "분류 없음"}</small><span>{document.tags.slice(0, 2).map((tag) => <em key={tag}>#{tag}</em>)}</span></span>
                 <time>{formatDate(document.updated_at)}</time>
               </button>
             ))}
-            {filtered.length > visibleCount ? <button className="document-more" onClick={() => setVisibleCount((count) => count + 100)}>다음 100개 보기 · {filtered.length - visibleCount}개 남음</button> : null}
-            {!filtered.length ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
+            {orderedFiltered.length > visibleCount ? <button className="document-more" onClick={() => setVisibleCount((count) => count + 100)}>다음 100개 보기 · {orderedFiltered.length - visibleCount}개 남음</button> : null}
+            {!orderedFiltered.length && !listLoading ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
           </div>
         </aside>
 
@@ -514,7 +533,7 @@ function WorkspaceContent() {
                   {mode === "edit" ? <button className="primary-button compact" onClick={save} disabled={busy}><Save size={14} /> 저장</button> : null}
                   {nextStatus(selected.status) && statusActionLabel(selected.status) ? <button className="secondary-button compact" onClick={() => moveStatus(nextStatus(selected.status)!)} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
                   {selected.owner_id === profile?.id && ["draft", "team", "review", "reviewed"].includes(selected.status) ? <button className="primary-button compact" onClick={() => moveStatus("canonical")} disabled={busy}><BookCheck size={14} /> 회사 정본으로</button> : null}
-                  <button className="icon-button"><MoreHorizontal size={17} /></button>
+                  <button className="icon-button" title="문서 정보" aria-label="문서 정보" onClick={() => setMode("info")}><MoreHorizontal size={17} /></button>
                 </div>
               </div>
               <div className="document-meta-line"><span className={`status-pill status-${selected.status}`}>{statusLabel(selected.status)}</span><span>v{selected.current_version}</span><span>마지막 수정 {formatDate(selected.updated_at)}</span></div>
