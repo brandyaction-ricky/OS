@@ -132,3 +132,16 @@ test("telegram setup is admin-only and never returns bot secrets", async () => {
   assert.match(webhook, /!allowed\.has/);
   assert.doesNotMatch(route, /token:\s*process\.env\.TELEGRAM_BOT_TOKEN/);
 });
+
+test("production build safely renews the telegram webhook", async () => {
+  const [pkg, script] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../tools/register-telegram-webhook.mjs", import.meta.url), "utf8"),
+  ]);
+  assert.match(pkg, /next build && node tools\/register-telegram-webhook\.mjs/);
+  assert.match(script, /TELEGRAM_BOT_TOKEN/);
+  assert.match(script, /TELEGRAM_WEBHOOK_SECRET/);
+  assert.match(script, /OS_PUBLIC_URL/);
+  assert.match(script, /secret_token: secret/);
+  assert.doesNotMatch(script, /console\.log\([^\n]*(token|secret)[^\n]*\)/);
+});
