@@ -124,7 +124,7 @@ TELEGRAM_CAPTURE_OWNER_EMAIL=wjdgh1346@gmail.com
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
 5. OS 설정에서 Agent PAT를 발급하고, 필요할 때 MCP의 `AGENT_PAT`에 주입한다.
-6. Telegram 사용 시 설정 → 운영 모니터링에서 웹훅 연결·갱신을 실행한다. 서버는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 등록한다.
+6. Telegram 환경변수가 준비된 운영 배포는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 자동 등록한다. 설정 → 운영 모니터링의 웹훅 연결·갱신은 수동 복구용으로 유지한다.
 7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.
 
 ## 9. 외부 확인이 있어야 남는 연결
