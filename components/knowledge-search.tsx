@@ -10,7 +10,6 @@ import {
   FileSearch,
   Filter,
   Search,
-  SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
 import Link from "next/link";
@@ -90,7 +89,6 @@ function SearchContent() {
           {(["hybrid", "keyword", "semantic"] as const).map((item) => <button key={item} className={mode === item ? "active" : ""} onClick={() => setMode(item)}>{item === "hybrid" ? "균형 검색" : item === "keyword" ? "정확한 단어" : "의미 검색"}</button>)}
         </div>
         <div className="status-filters"><Filter size={13} />{(["canonical", "reviewed", "team", "draft"] as DocumentStatus[]).map((status) => <button key={status} className={statuses.includes(status) ? "active" : ""} onClick={() => toggleStatus(status)}><span />{statusLabel(status)}</button>)}</div>
-        <button className="advanced-filter"><SlidersHorizontal size={14} /> 상세 조건</button>
       </div>
 
       {degraded ? <div className="inline-alert"><CircleAlert size={15} /> 의미 검색 설정이 없어 키워드 검색으로 안전하게 전환했습니다.</div> : null}

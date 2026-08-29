@@ -7,7 +7,6 @@ import {
   Command,
   LogOut,
   Menu,
-  Plus,
   Search,
   X,
 } from "lucide-react";
@@ -30,6 +29,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -115,9 +115,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="sidebar-foot">
-          <button className="add-page-button">
-            <Plus size={15} /> 이 영역에 기능 추가
-          </button>
           <div className="system-state">
             <span className={`state-dot ${demo ? "demo" : "ready"}`} />
             <span>{demo ? "데모 데이터" : "서버 연결됨"}</span>
@@ -143,11 +140,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>페이지·지식 검색</span>
               <kbd><Command size={11} />K</kbd>
             </button>
-            <button className="icon-button" aria-label="알림">
+            <button
+              className="icon-button"
+              aria-label="알림"
+              aria-expanded={notificationsOpen}
+              onClick={() => {
+                setNotificationsOpen((value) => !value);
+                setProfileOpen(false);
+              }}
+            >
               <Bell size={18} />
-              <span className="notification-dot" />
             </button>
-            <button className="profile-trigger" onClick={() => setProfileOpen((value) => !value)}>
+            <button className="profile-trigger" onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }}>
               <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
               <span className="profile-copy">
                 <strong>{profile?.displayName ?? "구성원"}</strong>
@@ -164,6 +168,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {!demo ? (
                 <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
               ) : null}
+            </div>
+          ) : null}
+          {notificationsOpen ? (
+            <div className="notification-menu" role="status">
+              <strong>알림</strong>
+              <span>새로운 알림이 없습니다.</span>
+              <small>검토 요청과 승인 대기 항목이 생기면 여기에 표시됩니다.</small>
             </div>
           ) : null}
         </header>
