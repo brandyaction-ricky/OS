@@ -14,6 +14,7 @@ export async function GET() {
   const auth = hasPublicSupabaseConfig() ? "ready" : "missing";
   const embeddings = process.env.OPENAI_API_KEY ? "ready" : "keyword_only";
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "ready" : "missing";
+  const contentAi = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY ? "ready" : "missing";
   const adConnections = adConnectionStatus();
   const advertising = adConnections.meta.configured && adConnections.google.configured
     ? "ready"
@@ -25,6 +26,7 @@ export async function GET() {
     auth,
     embeddings,
     telegram,
+    contentAi,
     advertising,
     checkedAt: new Date().toISOString(),
   }, { headers: { "cache-control": "no-store" } });
