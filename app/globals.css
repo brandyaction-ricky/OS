@@ -357,6 +357,9 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; bor
 .input-with-icon { height: 45px; padding: 0 13px; display: flex; align-items: center; gap: 9px; border: 1px solid #303744; border-radius: 9px; background: #0f1218; color: #677181; }
 .input-with-icon:focus-within { border-color: #607cff; box-shadow: 0 0 0 3px rgba(93,124,255,.11); }
 .input-with-icon input { width: 100%; border: 0; outline: 0; background: transparent; color: white; }
+.password-field { display: block; margin-top: 14px; }
+.password-toggle { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #7b8594; cursor: pointer; }
+.password-toggle:hover { color: #d8deea; background: rgba(255,255,255,.05); }
 .login-card .primary-button { margin-top: 14px; }
 .security-note { margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 5px; color: #626c7a; }
 .form-error { margin-top: 10px; padding: 9px 11px; border: 1px solid rgba(241,112,112,.24); border-radius: 8px; background: rgba(241,112,112,.08); color: #f49999; font-size: 11px; }
