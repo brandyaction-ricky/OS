@@ -94,7 +94,7 @@ test("project, task, skill and content workspaces use linked operating records",
   assert.match(tasks, /parentId/);
   assert.match(skills, /scope: "company"/);
   assert.match(content, /count: 3, days: \[1, 1, 1\]/);
-  assert.match(content, /recordType: "content_publish", parentId: source\.id/);
+  assert.match(content, /action: "derivatives", sourceId: source\.id/);
 });
 
 test("specialized routes expose reports, growth and monitoring without placeholders", async () => {
