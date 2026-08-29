@@ -120,6 +120,7 @@ export const NAV_STAGES: NavStage[] = [
       { label: "주간 KPI", href: "/performance/weekly-kpi", icon: Goal, ready: true },
       { label: "매출", href: "/performance/revenue", icon: CircleDollarSign, ready: true },
       { label: "퍼널", href: "/performance/funnels", icon: FileSearch, ready: true },
+      { label: "광고 성과", href: "/performance/ads", icon: Megaphone, ready: true },
       { label: "자사몰 어드민", href: "/performance/customers", icon: ContactRound, ready: true },
     ],
   },

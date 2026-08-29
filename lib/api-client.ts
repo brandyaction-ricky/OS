@@ -178,8 +178,31 @@ export async function getHealth() {
     auth: "ready" | "missing";
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
+    advertising: "ready" | "partial" | "missing";
     checkedAt: string;
   }>("/api/v1/health");
+}
+
+export interface AdPerformanceResponse {
+  period: string;
+  brand: "all" | "myin" | "brandyedu";
+  range: { from: string; to: string };
+  connections: Record<"meta" | "google", { configured: boolean; brands: Record<"myin" | "brandyedu", boolean> }>;
+  rows: Array<{ provider: "meta" | "google"; brand_key: "myin" | "brandyedu"; metric_date: string; spend: number; attributed_revenue: number; conversions: number; impressions: number; clicks: number; currency: string; source_account: string }>;
+  channels: Array<{ provider: "meta" | "google"; spend: number; attributedRevenue: number; conversions: number; impressions: number; clicks: number; roas: number; cpa: number; ctr: number }>;
+  summary: { spend: number; attributedRevenue: number; conversions: number; impressions: number; clicks: number; roas: number; cpa: number; ctr: number; operatingRevenue: number; financeAdExpense: number | null };
+  lastRuns: Array<{ provider: "meta" | "google"; brand_key: "myin" | "brandyedu"; status: string; rows_written: number; error_message: string; started_at: string; finished_at: string | null }>;
+}
+
+export async function getAdPerformance(token: string | null, input: { period: string; brand: "all" | "myin" | "brandyedu" }) {
+  const query = new URLSearchParams(input);
+  return apiRequest<AdPerformanceResponse>(`/api/v1/ad-performance?${query}`, { token });
+}
+
+export async function syncAdPerformance(token: string | null, input: { provider: "meta" | "google" | "all"; brands?: Array<"myin" | "brandyedu">; from: string; to: string }) {
+  return apiRequest<{ ok: true; result: { results: Array<{ provider: string; brand: string; status: string; rows: number; error?: string }> } }>("/api/v1/ad-performance", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
 }
 
 export interface EmbeddingQueueStatus {

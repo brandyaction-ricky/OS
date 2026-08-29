@@ -15,6 +15,7 @@ import { TasksWorkspace } from "@/components/tasks-workspace";
 import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "@/components/organization-v3-workspaces";
 import { FinanceWorkspace } from "@/components/finance-workspace";
 import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
+import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 
@@ -41,6 +42,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/performance/overview") return <GrowthDashboard />;
   if (href === "/performance/revenue") return <RevenueWorkspace />;
   if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
+  if (href === "/performance/ads") return <AdPerformanceWorkspace />;
   if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
   if (href === "/performance/customers") return <CommerceAdminLinks title="고객·주문 관리자" />;
   if (href === "/settings/monitoring") return <MonitoringWorkspace />;
