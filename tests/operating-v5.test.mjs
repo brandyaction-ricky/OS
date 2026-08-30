@@ -128,7 +128,7 @@ test("knowledge focus mode is persistent and project hub is removed from navigat
   assert.match(knowledge, /집중 모드/);
   assert.match(shell, /knowledge-focus/);
   assert.doesNotMatch(navigation, /프로젝트 관제/);
-  assert.match(router, /redirect\("\/organization\/tasks"\)/);
+  assert.match(router, /redirect\("\/organization\/meetings"\)/);
   assert.doesNotMatch(config, /organization\/projects|AI PROJECT HUB|프로젝트 관제/);
 });
 

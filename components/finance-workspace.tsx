@@ -6,6 +6,8 @@ import {
   Download,
   FileCheck2,
   FileText,
+  FolderClosed,
+  LockKeyhole,
   Plus,
   Receipt,
   Search,
@@ -24,6 +26,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
 type FinanceTab = "spend" | "vat" | "contract" | "subscription" | "documents";
+type DocumentFolder = "사업자" | "프로젝트" | "기타";
 interface ExpenseRow {
   date: string;
   merchant: string;
@@ -32,6 +35,16 @@ interface ExpenseRow {
   card: string;
   fingerprint: string;
 }
+
+const DOCUMENT_FOLDERS: Array<{
+  id: DocumentFolder;
+  description: string;
+  sensitive: boolean;
+}> = [
+  { id: "사업자", description: "민감정보 접근 권한 4명", sensitive: true },
+  { id: "프로젝트", description: "프로젝트별 계약·증빙", sensitive: false },
+  { id: "기타", description: "공통 운영 서류", sensitive: false },
+];
 
 const RULES: Array<[RegExp, string]> = [
   [/META|FACEBOOK|인스타/i, "광고"],
@@ -159,6 +172,9 @@ export function FinanceWorkspace() {
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [preview, setPreview] = useState<ExpenseRow[]>([]);
   const [query, setQuery] = useState("");
+  const [documentFolder, setDocumentFolder] = useState<"all" | DocumentFolder>(
+    "all",
+  );
   const [modal, setModal] = useState<
     "contract" | "subscription" | "document" | null
   >(null);
@@ -305,7 +321,7 @@ export function FinanceWorkspace() {
           tags: [value("category")],
           metadata: {
             category: value("category"),
-            sensitive: true,
+            sensitive: value("category") === "사업자",
             filePath: uploaded.path,
             fileName: uploaded.name,
             fileSize: uploaded.size,
@@ -333,6 +349,11 @@ export function FinanceWorkspace() {
       );
     }
   };
+  const visibleDocuments = documents.filter(
+    (document) =>
+      documentFolder === "all" ||
+      String(recordMeta(document, "category") || "기타") === documentFolder,
+  );
   const quarter = `${new Date().getFullYear()}-Q${Math.floor(new Date().getMonth() / 3) + 1}`;
   const quarterExpenses = expenses.filter((item) => {
     const date = String(recordMeta(item, "date") || dateKey(item.starts_at));
@@ -448,11 +469,11 @@ export function FinanceWorkspace() {
           <section className="panel csv-import-panel">
             <div>
               <Upload size={20} />
-              <span>
+              <span className="csv-import-copy">
                 <strong>카드 CSV 가져오기</strong>
                 <small>
-                  국민·신한 파일에서 날짜·가맹점·금액만 읽고 카드번호는 저장하지
-                  않습니다.
+                  국민·신한 파일에서 날짜·가맹점·금액만 읽습니다.
+                  <br />카드번호는 저장하지 않습니다.
                 </small>
               </span>
             </div>
@@ -640,8 +661,40 @@ export function FinanceWorkspace() {
               서류 추가
             </button>
           </div>
+          <div className="document-folder-toolbar">
+            <button
+              className={documentFolder === "all" ? "active" : ""}
+              onClick={() => setDocumentFolder("all")}
+            >
+              전체 서류 <b>{documents.length}</b>
+            </button>
+          </div>
+          <div className="document-folders">
+            {DOCUMENT_FOLDERS.map((folder) => {
+              const count = documents.filter(
+                (document) =>
+                  String(recordMeta(document, "category") || "기타") === folder.id,
+              ).length;
+              return (
+                <button
+                  key={folder.id}
+                  className={documentFolder === folder.id ? "active" : ""}
+                  onClick={() => setDocumentFolder(folder.id)}
+                >
+                  <span className="document-folder-icon">
+                    {folder.sensitive ? <LockKeyhole size={17} /> : <FolderClosed size={17} />}
+                  </span>
+                  <span>
+                    <strong>{folder.id}</strong>
+                    <small>{folder.description}</small>
+                  </span>
+                  <em>{count}</em>
+                </button>
+              );
+            })}
+          </div>
           <div className="document-vault">
-            {documents.map((item) => (
+            {visibleDocuments.map((item) => (
               <button key={item.id} onClick={() => openFile(item)}>
                 <FileText size={18} />
                 <span>
@@ -654,10 +707,14 @@ export function FinanceWorkspace() {
                 <em>{item.due_date ? `만료 ${item.due_date}` : "만료 없음"}</em>
               </button>
             ))}
-            {!documents.length ? (
+            {!visibleDocuments.length ? (
               <div className="quiet-state">
                 <FileText />
-                <strong>등록된 서류 없음</strong>
+                <strong>
+                  {documentFolder === "all"
+                    ? "등록된 서류 없음"
+                    : `${documentFolder} 폴더에 등록된 서류 없음`}
+                </strong>
               </div>
             ) : null}
           </div>
@@ -775,7 +832,10 @@ export function FinanceWorkspace() {
               <>
                 <label>
                   <span>분류</span>
-                  <select name="category">
+                  <select
+                    name="category"
+                    defaultValue={documentFolder === "all" ? "기타" : documentFolder}
+                  >
                     <option>사업자</option>
                     <option>프로젝트</option>
                     <option>기타</option>

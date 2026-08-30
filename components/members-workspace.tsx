@@ -8,6 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { COMPANY_ROSTER, memberMatchesRoster } from "@/lib/company-roster";
 import { useSession } from "./session-provider";
 
 interface Member {
@@ -25,17 +26,6 @@ interface Member {
   updated_at: string;
 }
 
-const TEAM_ROSTER = [
-  { name: "안저", affiliation: "브랜디액션" },
-  { name: "리키", affiliation: "브랜디액션" },
-  { name: "제이", affiliation: "브랜디액션" },
-  { name: "에릭", affiliation: "브랜디액션" },
-  { name: "유쓰", affiliation: "브랜디액션" },
-  { name: "로건", affiliation: "브랜디액션" },
-  { name: "시아", affiliation: "브랜디액션" },
-  { name: "윤익", affiliation: "RS 협업" },
-  { name: "란다", affiliation: "RS 협업" },
-];
 const ONBOARDING = [
   ["account", "OS 계정"],
   ["role", "역할·권한"],
@@ -187,10 +177,11 @@ export function MembersWorkspace() {
         </div>
       </section>
       <section className="roster-grid">
-        {TEAM_ROSTER.map((person) => {
+        {COMPANY_ROSTER.map((person) => {
           const account = members.find((member) =>
-            member.display_name.includes(person.name),
+            memberMatchesRoster(member, person.name),
           );
+          const representativeRoles = account?.roles?.slice(0, 2) ?? [];
           return (
             <article className="panel roster-card" key={person.name}>
               <span className="avatar">
@@ -199,6 +190,20 @@ export function MembersWorkspace() {
               <div>
                 <strong>{person.name}</strong>
                 <small>{person.affiliation}</small>
+                <span className="roster-roles">
+                  {representativeRoles.length ? (
+                    <>
+                      {representativeRoles.map((role) => (
+                        <b key={role}>{role}</b>
+                      ))}
+                      {(account?.roles?.length ?? 0) > 2 ? (
+                        <b>+{(account?.roles?.length ?? 0) - 2}</b>
+                      ) : null}
+                    </>
+                  ) : (
+                    <b className="empty">역할 미설정</b>
+                  )}
+                </span>
               </div>
               <em className={account?.is_active ? "ready" : "waiting"}>
                 {account?.is_active ? "계정 연결" : "초대 대기"}

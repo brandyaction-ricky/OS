@@ -31,7 +31,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/settings/audit") return <AuditWorkspace />;
   if (href === "/home/goals") return <GoalsWorkspace />;
   if (href === "/home/reports") return <ReportsWorkspace />;
-  if (href === "/organization/projects") redirect("/organization/tasks");
+  if (href === "/organization/projects") redirect("/organization/meetings");
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
   if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;

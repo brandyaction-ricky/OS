@@ -95,7 +95,7 @@ export const NAV_STAGES: NavStage[] = [
     id: "organization",
     label: "조직운영",
     icon: Users,
-    href: "/organization/tasks",
+    href: "/organization/meetings",
     pages: [
       { label: "구성원", href: "/organization/members", icon: Users, ready: true },
       { label: "업무", href: "/organization/tasks", icon: ListChecks, ready: true },
