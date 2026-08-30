@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { indexDocument } from "@/lib/server/indexing";
+import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus } from "@/lib/types";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const actor = await authenticateRequest(request);
+    await authenticateRequest(request);
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
@@ -21,22 +22,9 @@ export async function GET(request: Request) {
     const query = url.searchParams.get("q")?.replace(/[%_,()]/g, " ").trim();
     const includeContent = url.searchParams.get("view") !== "summary";
 
-    const rpc = await actor.supabase.rpc("os_list_documents_v3", {
-      p_limit: limit,
-      p_offset: offset,
-      p_statuses: statuses?.length ? statuses : null,
-      p_owner: owner || null,
-      p_folder_prefix: folder || null,
-      p_query: query || null,
-      p_include_content: includeContent,
-    });
-    if (!rpc.error) {
-      const rows = (rpc.data ?? []) as Array<Record<string, unknown>>;
-      const total = Number(rows[0]?.total_count ?? 0);
-      return NextResponse.json({ documents: rows.map((row) => { const document = { ...row }; delete document.total_count; return document; }), total });
-    }
-
-    let builder = actor.supabase
+    // Scope is a workspace filter, not an access boundary. Authentication is
+    // checked above; the server client avoids hiding another member's notes.
+    let builder = createServiceSupabase()
       .from("os_documents")
       .select(includeContent ? "*" : "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at", { count: "exact" })
       .order("updated_at", { ascending: false })

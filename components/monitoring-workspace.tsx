@@ -40,10 +40,14 @@ export function MonitoringWorkspace() {
   const [cronConfigured, setCronConfigured] = useState(false);
   const [telegramStatus, setTelegramStatus] =
     useState<TelegramConnectionStatus | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) {
+      setLoaded(true);
+      return;
+    }
     setLoading(true);
     try {
       const [
@@ -75,12 +79,19 @@ export function MonitoringWorkspace() {
       );
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   }, [accessToken, demo]);
   useEffect(() => {
     load();
   }, [load]);
   const run = async (action: "process" | "retry_failed") => {
+    const confirmed = window.confirm(
+      action === "process"
+        ? "지식 문서 최대 25건의 검색 준비 작업을 지금 처리할까요?"
+        : "실패한 검색 준비 작업을 다시 실행할까요?",
+    );
+    if (!confirmed) return;
     setLoading(true);
     try {
       await runIndexing(accessToken, action, action === "process" ? 25 : 100);
@@ -95,6 +106,8 @@ export function MonitoringWorkspace() {
     }
   };
   const connectTelegram = async () => {
+    if (!window.confirm("텔레그램 웹훅을 운영 주소에 연결하거나 갱신할까요?"))
+      return;
     setLoading(true);
     try {
       await connectTelegramWebhook(accessToken);
@@ -157,6 +170,16 @@ export function MonitoringWorkspace() {
           <CircleAlert size={16} /> {error}
         </div>
       ) : null}
+      {!loaded ? (
+        <section className="panel settings-loading-state" aria-live="polite" aria-busy="true">
+          <RefreshCw className="spin" size={23} />
+          <div>
+            <strong>운영 상태를 확인하는 중입니다.</strong>
+            <p>실제 서버·검색·메시지 연결 상태를 모두 확인한 뒤 표시합니다.</p>
+          </div>
+        </section>
+      ) : (
+        <>
       <section className="monitor-summary panel">
         <span className={health?.ok ? "healthy" : "partial"}>
           <Activity size={20} />
@@ -175,14 +198,14 @@ export function MonitoringWorkspace() {
           </p>
         </div>
         <small>
-          지식 문서 {documents.toLocaleString("ko-KR")}개 · 외부 연결{" "}
+          지식 문서 {documents.toLocaleString("ko-KR")}개 · 비즈니스 연결 기록{" "}
           {connections.length}개
         </small>
       </section>
       <section className="service-grid">
         {status(
           health?.database === "ready",
-          "Supabase Database",
+          "운영 데이터 저장소",
           health?.database === "ready"
             ? "운영 기록·지식 테이블 응답 정상"
             : "서비스 키 또는 DB 응답 확인 필요",
@@ -190,7 +213,7 @@ export function MonitoringWorkspace() {
         )}
         {status(
           health?.auth === "ready",
-          "Supabase Auth",
+          "로그인 인증",
           health?.auth === "ready"
             ? "이메일·비밀번호 세션 사용 가능"
             : "공개 인증 설정 누락",
@@ -206,7 +229,7 @@ export function MonitoringWorkspace() {
         )}
         {status(
           Boolean(telegramStatus?.webhook?.url),
-          "Telegram",
+          "텔레그램",
           telegramStatus?.webhook?.url
             ? `@${telegramStatus.bot?.username ?? "bot"} 웹훅 연결됨`
             : telegramStatus?.configured
@@ -219,7 +242,7 @@ export function MonitoringWorkspace() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h2>임베딩 작업 큐</h2>
+              <h2>지식 검색 준비 작업</h2>
               <p>
                 {indexingConfigured
                   ? cronConfigured
@@ -268,11 +291,11 @@ export function MonitoringWorkspace() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h2>Telegram 웹훅</h2>
+              <h2>텔레그램 웹훅</h2>
               <p>
                 {telegramStatus?.webhook?.lastError ||
                   (telegramStatus?.configured
-                    ? "Bot API 연결 상태를 서버에서 확인합니다."
+                    ? "텔레그램 서버 연결 상태를 확인합니다."
                     : "환경변수 등록 후 보안 웹훅을 연결합니다.")}
               </p>
             </div>
@@ -364,13 +387,13 @@ export function MonitoringWorkspace() {
               <CheckCircle2 size={14} /> 활성 구성원·관리자 역할 확인
             </li>
             <li>
-              <CheckCircle2 size={14} /> RLS 기반 운영 기록 접근
+              <CheckCircle2 size={14} /> 권한 규칙으로 기록 접근 제한
             </li>
             <li>
-              <CheckCircle2 size={14} /> Telegram 미등록 사용자 기본 차단
+              <CheckCircle2 size={14} /> 텔레그램 미등록 사용자 기본 차단
             </li>
             <li>
-              <CheckCircle2 size={14} /> Agent PAT 정본 읽기 전용
+              <CheckCircle2 size={14} /> 직원 AI는 회사 정본 읽기만 허용
             </li>
             <li>
               <CheckCircle2 size={14} /> 수정 이력 자동 감사 로그
@@ -383,8 +406,8 @@ export function MonitoringWorkspace() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h2>외부 연결 준비</h2>
-              <p>자격 증명은 OS에 원문 저장하지 않음</p>
+              <h2>비즈니스 연결 기록</h2>
+              <p>시스템 헬스와 별도로 담당자·설정 위치를 기록하며 자격 증명 원문은 저장하지 않음</p>
             </div>
             <Bot size={17} />
           </div>
@@ -392,7 +415,7 @@ export function MonitoringWorkspace() {
             {connections.map((connection) => (
               <div key={connection.id}>
                 <span
-                  className={`state-dot ${connection.status === "healthy" ? "" : "demo"}`}
+                  className={`state-dot ${connection.status === "healthy" ? "ready" : connection.status === "warning" ? "warning" : "waiting"}`}
                 />
                 <span>
                   <strong>{connection.title}</strong>
@@ -401,19 +424,27 @@ export function MonitoringWorkspace() {
                       "설정 위치와 담당자를 기록하세요."}
                   </small>
                 </span>
-                <em>{connection.status}</em>
+                <em>
+                  {connection.status === "healthy"
+                    ? "정상"
+                    : connection.status === "warning"
+                      ? "확인 필요"
+                      : "연결 대기"}
+                </em>
               </div>
             ))}
             {!connections.length ? (
               <div className="quiet-state">
                 <Bot size={21} />
-                <strong>등록된 연결 없음</strong>
-                <span>설정 → 연결에서 시스템을 등록하세요.</span>
+                <strong>등록된 비즈니스 연결 기록 없음</strong>
+                <span>위 서버 상태와는 별개이며, 담당·설정 위치가 필요할 때 기록합니다.</span>
               </div>
             ) : null}
           </div>
         </article>
       </section>
+        </>
+      )}
     </>
   );
 }

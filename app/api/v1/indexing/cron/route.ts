@@ -3,6 +3,7 @@ import { ApiError, apiErrorResponse } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { processEmbeddingQueue } from "@/lib/server/indexing";
 import { syncAdPerformance, trailingDateRange } from "@/lib/server/ad-performance";
+import { cleanupExpiredContentMedia } from "@/lib/server/content-media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
       : { skipped: "embeddings_not_configured" };
     const range = trailingDateRange(7);
     const advertising = await syncAdPerformance({ ...range });
-    return NextResponse.json({ ok: true, embeddings, advertising });
+    const contentMedia = await cleanupExpiredContentMedia();
+    return NextResponse.json({ ok: true, embeddings, advertising, contentMedia });
   } catch (error) { return apiErrorResponse(error); }
 }

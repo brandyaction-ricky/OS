@@ -11,7 +11,8 @@ test("canonical editing is deliberate, versioned and self-publishable", async ()
   assert.match(sql, /v_from in \('draft', 'team', 'review', 'reviewed'\).*p_to = 'canonical'/s);
   assert.match(workspace, /정본 편집/);
   assert.match(workspace, /전 직원과 AI/);
-  assert.match(route, /os_get_document_versions/);
+  assert.match(route, /os_document_versions/);
+  assert.match(route, /os_restore_document_version/);
 });
 
 test("meeting workflow includes prep, transcription and structured actions", async () => {

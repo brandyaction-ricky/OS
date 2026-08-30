@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,11 +15,15 @@ const restoreSchema = z.object({
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const actor = await authenticateRequest(request);
+    await authenticateRequest(request);
     const { id } = await params;
-    const { data, error } = await actor.supabase.rpc("os_get_document_versions", { p_document_id: id });
+    const service = createServiceSupabase();
+    const { data, error } = await service.from("os_document_versions").select("version_no,title,content_md,author_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false });
     if (error) throw new ApiError(400, "DOCUMENT_VERSIONS_FAILED", "변경 이력을 불러오지 못했습니다.", error.message);
-    return NextResponse.json({ versions: data ?? [] });
+    const authorIds = [...new Set((data ?? []).map((version) => version.author_id).filter(Boolean))];
+    const { data: authors } = authorIds.length ? await service.from("os_profiles").select("id,display_name,email").in("id", authorIds) : { data: [] };
+    const names = new Map((authors ?? []).map((author) => [author.id, author.display_name || author.email || "초기 가져오기"]));
+    return NextResponse.json({ versions: (data ?? []).map((version) => ({ ...version, author_name: version.author_id ? names.get(version.author_id) ?? "구성원" : "초기 가져오기" })) });
   } catch (error) { return apiErrorResponse(error); }
 }
 

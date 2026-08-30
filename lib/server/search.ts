@@ -4,6 +4,7 @@ import { searchSchema } from "@/lib/validation";
 import type { DocumentStatus, SearchResult } from "@/lib/types";
 import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 type SearchInput = z.infer<typeof searchSchema>;
 
@@ -131,7 +132,13 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     score: Number(row.score ?? 0),
     citation: { documentId: row.document_id as string, version: null, chunkId: row.chunk_id as number },
   }));
-  if (!results.length) results = await fallbackDocuments(actor, input, statuses);
-  else results = await addVersions(actor.supabase, results);
+  const sharedActor = actor.type === "user" ? { ...actor, supabase: createServiceSupabase() } : actor;
+  const sharedKeyword = await fallbackDocuments(sharedActor, input, statuses);
+  if (!results.length) results = sharedKeyword;
+  else {
+    const seen = new Set(results.map((result) => result.documentId));
+    results = [...results, ...sharedKeyword.filter((result) => !seen.has(result.documentId))].slice(0, input.topK);
+    results = await addVersions(sharedActor.supabase, results);
+  }
   return { results, degraded };
 }

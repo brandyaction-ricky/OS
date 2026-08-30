@@ -14,6 +14,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
+import { roleLabel } from "@/lib/company-settings";
 import { CommandPalette } from "./command-palette";
 import { PerformanceFilterBar } from "./performance-filter-context";
 import { useSession } from "./session-provider";
@@ -176,7 +177,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="profile-menu">
               <strong>{profile?.displayName}</strong>
               <span>{profile?.email}</span>
-              <span className="role-badge">{profile?.role}</span>
+              <span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
               {!demo ? (
                 <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
               ) : null}
@@ -197,7 +198,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       <nav className="mobile-stage-bar" aria-label="모바일 주요 영역">
-        {NAV_STAGES.slice(0, 5).map((item) => {
+        {NAV_STAGES.map((item) => {
           const Icon = item.icon;
           return (
             <Link key={item.id} href={item.href} className={item.id === stage.id ? "active" : ""}>

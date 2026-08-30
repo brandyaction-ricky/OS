@@ -16,9 +16,14 @@ import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "
 import { FinanceWorkspace } from "@/components/finance-workspace";
 import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
 import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
-import { ContentPackageWorkspace, ContentShortsWorkspace, YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
-import { ContentPerformanceWorkspace, ContentScriptsWorkspace, ContentTopicsWorkspace } from "@/components/content-pipeline-workspaces";
+import { YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
+import { ContentScriptsWorkspace } from "@/components/content-pipeline-workspaces";
+import { ContentRadarWorkspace as ContentTopicsWorkspace } from "@/components/content-radar-workspace";
+import { ContentPackagingWorkspace as ContentPackageWorkspace } from "@/components/content-packaging-workspace";
+import { ContentShortformWorkspace as ContentShortsWorkspace } from "@/components/content-shortform-workspace";
+import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/components/content-performance-dashboard";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
+import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 
@@ -49,6 +54,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
+  if (href === "/knowledge/graph") return <KnowledgeGraphWorkspace />;
   if (href === "/performance/overview") return <GrowthDashboard />;
   if (href === "/performance/revenue") return <RevenueWorkspace />;
   if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;

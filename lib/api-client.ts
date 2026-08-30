@@ -1,4 +1,5 @@
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
+import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
 
 interface RequestOptions extends RequestInit {
@@ -29,6 +30,10 @@ export async function listDocuments(token: string | null, query = "") {
 
 export async function getDocument(token: string | null, id: string) {
   return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${encodeURIComponent(id)}`, { token });
+}
+
+export async function getKnowledgeGraph(token: string | null) {
+  return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
 }
 
 export async function createDocument(
@@ -275,6 +280,28 @@ export async function importContentSnapshot(token: string | null, snapshot: unkn
   });
 }
 
+export async function createContentMediaUpload(token: string | null, input: { sourceId: string; fileName: string; fileSize: number; mimeType: string }) {
+  return apiRequest<{ path: string; token: string; fileName: string; fileSize: number; mimeType: string; retentionHours: number }>("/api/v1/content/media", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
+}
+
+export async function uploadContentMedia(path: string, signedToken: string, file: File) {
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const client = getBrowserSupabase();
+  if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
+  const { error } = await client.storage.from("os-content-media").uploadToSignedUrl(path, signedToken, file, {
+    contentType: file.type || "video/mp4",
+    cacheControl: "3600",
+  });
+  if (error) throw new Error(error.message || "영상 원본을 저장하지 못했습니다.");
+  return { path };
+}
+
+export async function getContentMediaUrl(token: string | null, path: string) {
+  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/content/media?path=${encodeURIComponent(path)}`, { token });
+}
+
 export interface YoutubeMarketItem {
   id: string;
   title: string;
@@ -290,6 +317,23 @@ export interface YoutubeMarketItem {
 export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults) });
   return apiRequest<{ query: string; configured: boolean; items: YoutubeMarketItem[] }>(`/api/v1/youtube/search?${params}`, { token });
+}
+
+export interface YoutubeChannelIdentity {
+  id: string;
+  title: string;
+  description: string;
+  handle: string;
+  thumbnail: string;
+  subscribers: number;
+  videos: number;
+  views: number;
+  url: string;
+}
+
+export async function resolveYoutubeChannel(token: string | null, query: string) {
+  const params = new URLSearchParams({ q: query });
+  return apiRequest<{ channel: YoutubeChannelIdentity }>(`/api/v1/youtube/channel?${params}`, { token });
 }
 
 export interface YoutubeOAuthStatus {
