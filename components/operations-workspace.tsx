@@ -102,8 +102,8 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
 
     <section className="panel records-panel">
       <div className="records-toolbar">
-        <div className="search-field"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`${config.singular} 검색`} /></div>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">모든 상태</option>{config.statuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select>
+        <div className="search-field"><Search size={16} /><input aria-label={`${config.singular} 검색`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`${config.singular} 검색`} /></div>
+        <select aria-label={`${config.singular} 상태 필터`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">모든 상태</option>{config.statuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select>
         <span className="records-count">{filtered.length}개</span>
       </div>
       {loading ? <div className="loading-state">운영 기록을 불러오는 중입니다.</div> : filtered.length ? <div className="record-list">

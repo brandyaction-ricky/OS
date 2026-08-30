@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { createRecord, importPerformanceCsv, listRecords, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createRecord, importPerformanceCsv, listRecords, updateRecord } from "@/lib/api-client";
 import { parseRevenueCsv } from "@/lib/performance-csv";
 import { buildPerformanceSignal } from "@/lib/performance-signals";
 import type { OsRecord } from "@/lib/record-types";
@@ -265,10 +265,52 @@ export function CommerceAdminLinks({ title }: { title: string }) {
   const { brand } = usePerformanceFilters();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<OsRecord | null>(null);
+  const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(async () => { if (!demo) try { setRecords((await listRecords(accessToken, "connection", "limit=200")).records.filter((item) => item.tags.includes("commerce-admin"))); } catch (reason) { setError(reason instanceof Error ? reason.message : "관리 링크를 불러오지 못했습니다."); } }, [accessToken, demo]);
   useEffect(() => { load(); }, [load]);
   const selected = records.filter((item) => matchesPerformanceBrand(item.brand, brand));
-  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await createRecord(accessToken, { recordType: "connection", title: String(form.get("title")), description: String(form.get("description")), status: "healthy", brand: String(form.get("brand")), sourceUrl: String(form.get("url")), tags: ["commerce-admin"] }); setOpen(false); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "관리 링크를 저장하지 못했습니다."); } };
-  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">자사몰 어드민 연결</span><h1>{title}</h1><p>고객 개인정보를 OS에 복제하지 않고, 브랜드별 관리자 화면과 핵심 운영 메모만 연결합니다.</p></div><button className="primary-button" onClick={() => setOpen(true)}><Plus size={16} /> 관리 링크 추가</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<section className="growth-links panel">{selected.map((item) => <a href={item.source_url ?? "#"} target="_blank" rel="noreferrer" key={item.id}><Link2 size={16} /><span><strong>{item.title}</strong><small>{item.brand || "전체"} · {item.description || "외부 관리자"}</small></span><ArrowUpRight size={14} /></a>)}{!selected.length ? <div className="empty-state full-span"><div><Link2 /><h3>아직 연결된 관리자 링크가 없습니다.</h3><p>“관리 링크 추가”로 마이인·브랜디액션 에듀 관리자 URL을 연결하세요.</p></div></div> : null}</section>{open ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={submit}><div className="drawer-head"><h2>자사몰 어드민 연결</h2><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18} /></button></div><label><span>이름</span><input name="title" required placeholder="마이인 주문 관리자" /></label><label><span>브랜드</span><select name="brand" defaultValue={brand === "all" ? "마이인" : performanceBrandLabel(brand)}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>관리자 URL</span><input name="url" type="url" required /></label><label><span>설명</span><textarea name="description" rows={4} /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>취소</button><button className="primary-button">저장</button></div></form></div> : null}</>;
+  const openNew = () => { setEditing(null); setError(""); setOpen(true); };
+  const openEdit = (record: OsRecord) => { setEditing(record); setError(""); setOpen(true); };
+  const closeDrawer = () => { if (!busyId) { setOpen(false); setEditing(null); } };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const input = {
+      title: String(form.get("title")),
+      description: String(form.get("description")),
+      status: "healthy",
+      brand: String(form.get("brand")),
+      sourceUrl: String(form.get("url")),
+      tags: ["commerce-admin"],
+    };
+    setBusyId(editing?.id ?? "new");
+    setError("");
+    try {
+      if (editing) await updateRecord(accessToken, { id: editing.id, expectedVersion: editing.version, ...input });
+      else await createRecord(accessToken, { recordType: "connection", ...input });
+      setOpen(false);
+      setEditing(null);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "관리 링크를 저장하지 못했습니다.");
+    } finally {
+      setBusyId("");
+    }
+  };
+  const remove = async (record: OsRecord) => {
+    if (!window.confirm(`“${record.title}” 관리 링크를 삭제할까요?`)) return;
+    setBusyId(record.id);
+    setError("");
+    try {
+      await archiveRecord(accessToken, record.id);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "관리 링크를 삭제하지 못했습니다.");
+    } finally {
+      setBusyId("");
+    }
+  };
+  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">자사몰 어드민 연결</span><h1>{title}</h1><p>고객 개인정보를 OS에 복제하지 않고, 브랜드별 관리자 화면과 핵심 운영 메모만 연결합니다.</p></div><button className="primary-button" onClick={openNew}><Plus size={16} /> 관리 링크 추가</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<section className="commerce-admin-links panel">{selected.map((item) => <article key={item.id}><a href={item.source_url ?? "#"} target="_blank" rel="noreferrer"><Link2 size={16} /><span><strong>{item.title}</strong><small>{item.brand || "전체"} · {item.description || "외부 관리자"}</small></span><ArrowUpRight size={14} /></a><div className="commerce-admin-actions"><button type="button" className="icon-button" aria-label={`${item.title} 수정`} title="수정" disabled={Boolean(busyId)} onClick={() => openEdit(item)}><Pencil size={14} /></button><button type="button" className="icon-button danger-button" aria-label={`${item.title} 삭제`} title="삭제" disabled={Boolean(busyId)} onClick={() => remove(item)}><Trash2 size={14} /></button></div></article>)}{!selected.length ? <div className="empty-state full-span"><div><Link2 /><h3>아직 연결된 관리자 링크가 없습니다.</h3><p>“관리 링크 추가”로 마이인·브랜디액션 에듀 관리자 URL을 연결하세요.</p></div></div> : null}</section>{open ? <div className="drawer-backdrop" onMouseDown={closeDrawer}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><h2>{editing ? "자사몰 어드민 수정" : "자사몰 어드민 연결"}</h2><button type="button" className="icon-button" disabled={Boolean(busyId)} onClick={closeDrawer}><X size={18} /></button></div><label><span>이름</span><input name="title" required placeholder="마이인 주문 관리자" defaultValue={editing?.title ?? ""} /></label><label><span>브랜드</span><select name="brand" defaultValue={editing?.brand || (brand === "all" ? "마이인" : performanceBrandLabel(brand))}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>관리자 URL</span><input name="url" type="url" required defaultValue={editing?.source_url ?? ""} /></label><label><span>설명</span><textarea name="description" rows={4} defaultValue={editing?.description ?? ""} /></label><div className="drawer-actions"><button type="button" className="secondary-button" disabled={Boolean(busyId)} onClick={closeDrawer}>취소</button><button className="primary-button" disabled={Boolean(busyId)}>{busyId ? "저장 중…" : editing ? "변경 저장" : "저장"}</button></div></form></div> : null}</>;
 }

@@ -298,7 +298,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
         <>
           {page === "connections" ? (
             <>
-              <section className="metric-grid compact-metrics connection-summary">
+              <section className="metric-grid compact-metrics settings-connection-metrics">
                 <div className="metric-card"><div className="metric-top"><span>전체 연결</span><Link2 size={16} /></div><div className="metric-value">{connectionRows.length}</div></div>
                 <div className="metric-card"><div className="metric-top"><span>연결됨</span><CheckCircle2 size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "ready").length}</div></div>
                 <div className="metric-card"><div className="metric-top"><span>일부 연결</span><CircleAlert size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "warning").length}</div></div>

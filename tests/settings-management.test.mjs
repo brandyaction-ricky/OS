@@ -36,6 +36,46 @@ test("connection status uses automatic health values and distinct dot colors", a
   assert.match(settings, /state-dot \$\{row\.status\}/);
   assert.match(css, /\.state-dot\.waiting/);
   assert.match(css, /\.state-dot\.warning/);
+  assert.match(settings, /settings-connection-metrics/);
+  assert.doesNotMatch(settings, /compact-metrics connection-summary/);
+});
+
+test("commerce admin links can be edited and safely deleted", async () => {
+  const [workspace, css] = await Promise.all([
+    read("components/performance-workspaces.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(workspace, /archiveRecord/);
+  assert.match(workspace, /expectedVersion: editing\.version/);
+  assert.match(workspace, /관리 링크를 삭제할까요/);
+  assert.match(workspace, /자사몰 어드민 수정/);
+  assert.match(workspace, /aria-label=\{`\$\{item\.title\} 수정`\}/);
+  assert.match(workspace, /aria-label=\{`\$\{item\.title\} 삭제`\}/);
+  assert.match(css, /\.commerce-admin-links/);
+});
+
+test("production QA fixes label key controls and keep the weekly board in view", async () => {
+  const [operations, reports, packaging, shorts, search, graph, calendar, css] = await Promise.all([
+    read("components/operations-workspace.tsx"),
+    read("components/reports-workspace.tsx"),
+    read("components/content-packaging-workspace.tsx"),
+    read("components/content-shortform-workspace.tsx"),
+    read("components/knowledge-search.tsx"),
+    read("components/knowledge-graph-workspace.tsx"),
+    read("components/publishing-calendar-workspace.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(operations, /aria-label=\{`\$\{config\.singular\} 검색`\}/);
+  assert.match(operations, /상태 필터/);
+  assert.match(reports, /aria-label="보고서 기준월"/);
+  assert.match(packaging, /aria-label="기준 콘텐츠 선택"/);
+  assert.match(packaging, /aria-label="시장 썸네일 검색어"/);
+  assert.match(shorts, /aria-label="제안할 클립 수"/);
+  assert.match(search, /aria-label="지식 검색어"/);
+  assert.match(graph, /aria-label=\{`\$\{node\.title\} 문서 선택`\}/);
+  assert.match(calendar, /aria-label="이전 달"/);
+  assert.match(calendar, /aria-label="다음 달"/);
+  assert.match(css, /\.week-board \{[^}]*minmax\(128px,1fr\)/);
 });
 
 test("audit events and statuses are rendered in plain Korean", async () => {

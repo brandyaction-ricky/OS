@@ -535,6 +535,7 @@ export function FinanceWorkspace() {
               <label className="table-search">
                 <Search size={14} />
                 <input
+                  aria-label="지출 내역 검색"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="가맹점·카테고리 검색"

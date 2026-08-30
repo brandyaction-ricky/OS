@@ -11,7 +11,7 @@ function metadata<T>(record: OsRecord | null | undefined, key: string, fallback:
 }
 
 function SourcePicker({ sources, value, onChange }: { sources: OsRecord[]; value: string; onChange: (value: string) => void }) {
-  return <select value={value} onChange={(event) => onChange(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>;
+  return <select aria-label="기준 콘텐츠 선택" value={value} onChange={(event) => onChange(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>;
 }
 
 function CandidateList({ title, items, onPick }: { title: string; items: Array<Record<string, unknown>>; onPick?: (index: number) => void }) {

@@ -99,7 +99,7 @@ export function KnowledgeGraphWorkspace() {
     <section className="knowledge-graph-layout">
       <div className="knowledge-graph-main panel">
         <div className="graph-toolbar">
-          <label><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="문서 이름으로 찾기" /></label>
+          <label><Search size={15} /><input aria-label="연결 지도 문서 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="문서 이름으로 찾기" /></label>
           <span>{visible.nodes.length}개 노드 표시 · 선택 문서 주변 연결 우선</span>
         </div>
         {matches.length ? <div className="graph-search-results">{matches.map((node) => <button key={node.id} onClick={() => { setSelectedId(node.id); setQuery(""); }}><strong>{node.title}</strong><small>{node.folder || "분류 없음"}</small></button>)}</div> : null}
@@ -112,7 +112,7 @@ export function KnowledgeGraphWorkspace() {
             if (!node) return null;
             const position = visible.positioned.get(node.id); if (!position) return null;
             const active = node.id === selectedId; const degree = node.incoming + node.outgoing;
-            return <g className={active ? "active" : ""} key={node.id} role="button" tabIndex={0} onClick={() => setSelectedId(node.id)} onKeyDown={(event) => { if (event.key === "Enter") setSelectedId(node.id); }}>
+            return <g className={active ? "active" : ""} key={node.id} role="button" tabIndex={0} aria-label={`${node.title} 문서 선택`} onClick={() => setSelectedId(node.id)} onKeyDown={(event) => { if (event.key === "Enter") setSelectedId(node.id); }}>
               <circle cx={position.x} cy={position.y} r={active ? 12 : Math.min(9, 4 + degree)} fill={nodeColor(node.status)} />
               {(active || degree >= 2) ? <text x={position.x} y={position.y - (active ? 18 : 12)}>{node.title.length > 18 ? `${node.title.slice(0, 18)}…` : node.title}</text> : null}
             </g>;

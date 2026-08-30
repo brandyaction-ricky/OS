@@ -80,7 +80,7 @@ function SearchContent() {
 
       <form className="knowledge-search-form" onSubmit={submit}>
         <Search size={20} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 썸네일을 검토할 때 가장 먼저 보는 기준은?" autoFocus />
+        <input aria-label="지식 검색어" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="예: 썸네일을 검토할 때 가장 먼저 보는 기준은?" autoFocus />
         <button className="primary-button" disabled={loading || !query.trim()}>{loading ? "찾는 중…" : "지식 검색"}</button>
       </form>
 
