@@ -258,6 +258,17 @@ export async function generateContent(token: string | null, input: {
   });
 }
 
+export interface ContentSnapshotImportResult {
+  ok: true;
+  counts: { created: number; updated: number; skipped: number; sources: number; derivatives: number; metrics: number };
+}
+
+export async function importContentSnapshot(token: string | null, snapshot: unknown) {
+  return apiRequest<ContentSnapshotImportResult>("/api/v1/content/import", {
+    method: "POST", token, body: JSON.stringify(snapshot),
+  });
+}
+
 export interface YoutubeMarketItem {
   id: string;
   title: string;
