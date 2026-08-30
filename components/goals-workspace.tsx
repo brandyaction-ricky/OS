@@ -3,6 +3,7 @@
 import { ArrowLeft, ArrowRight, BarChart3, CalendarRange, CircleAlert, Flag, Plus, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRecord, listRecords, updateRecord } from "@/lib/api-client";
+import { attainmentPercent, averageAttainment } from "@/lib/home-dashboard";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -27,11 +28,6 @@ function shiftMonth(value: string, delta: number) {
 function recordMonth(record: OsRecord) {
   const metadataMonth = typeof record.metadata?.periodMonth === "string" ? record.metadata.periodMonth : "";
   return metadataMonth || record.due_date?.slice(0, 7) || record.starts_at?.slice(0, 7) || record.created_at.slice(0, 7);
-}
-
-function attainment(record: OsRecord) {
-  if (record.metric_target && record.metric_target > 0) return Math.max(0, Math.round(((record.metric_current ?? 0) / record.metric_target) * 100));
-  return record.progress;
 }
 
 function monthLabel(value: string) {
@@ -68,9 +64,9 @@ export function GoalsWorkspace() {
   const monthRecords = useMemo(() => records.filter((record) => recordMonth(record) === month), [month, records]);
   const goals = monthRecords.filter((record) => record.record_type === "goal");
   const kpis = monthRecords.filter((record) => record.record_type === "kpi");
-  const average = kpis.length ? Math.round(kpis.reduce((sum, record) => sum + attainment(record), 0) / kpis.length) : 0;
+  const average = averageAttainment(kpis);
   const blocked = monthRecords.filter((record) => record.status === "blocked").length;
-  const completed = kpis.filter((record) => attainment(record) >= 100 || record.status === "done").length;
+  const completed = kpis.filter((record) => (attainmentPercent(record) ?? -1) >= 100).length;
 
   const openNew = (type: "goal" | "kpi", parent?: OsRecord) => {
     setEditing(null);
@@ -135,7 +131,7 @@ export function GoalsWorkspace() {
 
     <section className="metric-grid compact-metrics">
       <div className="metric-card"><div className="metric-top"><span>월 목표</span><span className="metric-icon"><Target size={16} /></span></div><div className="metric-value">{goals.length}</div><div className="metric-caption">{monthLabel(month)} 운영 목표</div></div>
-      <div className="metric-card"><div className="metric-top"><span>KPI 달성률</span><span className="metric-icon"><BarChart3 size={16} /></span></div><div className="metric-value">{average}%</div><div className="metric-caption">KPI {kpis.length}개 평균</div></div>
+      <div className="metric-card"><div className="metric-top"><span>KPI 달성률</span><span className="metric-icon"><BarChart3 size={16} /></span></div><div className="metric-value">{average === null ? "—" : `${average}%`}</div><div className="metric-caption">{average === null ? "측정 전 · 목표값과 현재값을 입력하세요" : `측정 KPI ${kpis.filter((record) => attainmentPercent(record) !== null).length}개 평균`}</div></div>
       <div className="metric-card"><div className="metric-top"><span>달성 KPI</span><span className="metric-icon"><Flag size={16} /></span></div><div className="metric-value">{completed}</div><div className="metric-caption good">목표값 100% 이상</div></div>
       <div className="metric-card"><div className="metric-top"><span>막힌 항목</span><span className="metric-icon"><CircleAlert size={16} /></span></div><div className="metric-value">{blocked}</div><div className={`metric-caption ${blocked ? "warn" : "good"}`}>{blocked ? "원인·행동 결정 필요" : "막힌 항목 없음"}</div></div>
     </section>
@@ -143,18 +139,18 @@ export function GoalsWorkspace() {
     <section className="goals-board">
       {loading ? <div className="panel loading-state">월별 목표를 불러오는 중입니다.</div> : goals.length ? goals.map((goal) => {
         const children = kpis.filter((kpi) => kpi.parent_id === goal.id);
-        const progress = children.length ? Math.round(children.reduce((sum, kpi) => sum + attainment(kpi), 0) / children.length) : attainment(goal);
+        const progress = averageAttainment(children) ?? attainmentPercent(goal);
         return <article className="panel goal-card" key={goal.id}>
           <header><div><span className={`status-pill status-${goal.status}`}>{STATUS_OPTIONS.find((item) => item.value === goal.status)?.label ?? goal.status}</span><h2>{goal.title}</h2><p>{goal.description || "목표의 성공 기준을 입력하세요."}</p></div><button className="icon-button" onClick={() => openEdit(goal)} aria-label="목표 수정"><ArrowRight size={16} /></button></header>
-          <div className="goal-progress"><div><span style={{ width: `${Math.min(progress, 100)}%` }} /></div><strong>{progress}%</strong></div>
+          <div className={`goal-progress ${progress === null ? "unmeasured" : ""}`}><div><span style={{ width: `${Math.min(progress ?? 0, 100)}%` }} /></div><strong>{progress === null ? "기준 미설정" : `${progress}%`}</strong></div>
           <div className="kpi-list">
-            {children.map((kpi) => <button key={kpi.id} onClick={() => openEdit(kpi)}><span><strong>{kpi.title}</strong><small>{kpi.metric_current ?? 0} / {kpi.metric_target ?? 0} {kpi.metric_unit}</small></span><em>{attainment(kpi)}%</em></button>)}
+            {children.map((kpi) => { const value = attainmentPercent(kpi); return <button key={kpi.id} onClick={() => openEdit(kpi)}><span><strong>{kpi.title}</strong><small>{kpi.metric_current ?? "—"} / {kpi.metric_target ?? "미설정"} {kpi.metric_unit}</small></span><em>{value === null ? "측정 전" : `${value}%`}</em></button>; })}
             {!children.length ? <div className="quiet-state"><BarChart3 size={20} /><strong>연결된 KPI 없음</strong><span>목표를 판단할 측정 지표를 추가하세요.</span></div> : null}
           </div>
           <footer><span>{goal.brand || "전체 브랜드"} · {goal.team || profile?.team || "전체 팀"}</span><button className="ghost-button" onClick={() => openNew("kpi", goal)}><Plus size={14} /> 이 목표에 KPI 추가</button></footer>
         </article>;
       }) : <div className="panel empty-state"><div><span><Target /></span><h3>{monthLabel(month)} 목표가 없습니다.</h3><p>월간 목표를 만든 뒤 KPI를 연결하면 달성률이 자동 집계됩니다.</p><button className="primary-button" onClick={() => openNew("goal")}><Plus size={15} /> 목표 추가</button></div></div>}
-      {goals.length && kpis.some((kpi) => !kpi.parent_id) ? <article className="panel goal-card unlinked-kpis"><header><div><span className="status-pill">연결 필요</span><h2>독립 KPI</h2><p>아직 상위 목표가 지정되지 않은 지표입니다.</p></div></header><div className="kpi-list">{kpis.filter((kpi) => !kpi.parent_id).map((kpi) => <button key={kpi.id} onClick={() => openEdit(kpi)}><span><strong>{kpi.title}</strong><small>{kpi.metric_current ?? 0} / {kpi.metric_target ?? 0} {kpi.metric_unit}</small></span><em>{attainment(kpi)}%</em></button>)}</div></article> : null}
+      {goals.length && kpis.some((kpi) => !kpi.parent_id) ? <article className="panel goal-card unlinked-kpis"><header><div><span className="status-pill">연결 필요</span><h2>독립 KPI</h2><p>아직 상위 목표가 지정되지 않은 지표입니다.</p></div></header><div className="kpi-list">{kpis.filter((kpi) => !kpi.parent_id).map((kpi) => { const value = attainmentPercent(kpi); return <button key={kpi.id} onClick={() => openEdit(kpi)}><span><strong>{kpi.title}</strong><small>{kpi.metric_current ?? "—"} / {kpi.metric_target ?? "미설정"} {kpi.metric_unit}</small></span><em>{value === null ? "측정 전" : `${value}%`}</em></button>; })}</div></article> : null}
     </section>
 
     {editorOpen ? <div className="drawer-backdrop" onMouseDown={() => setEditorOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
