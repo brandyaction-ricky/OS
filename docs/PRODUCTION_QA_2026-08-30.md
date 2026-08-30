@@ -178,6 +178,8 @@ YouTube Data API 키로는 공개 영상 검색·조회수 등은 읽을 수 있
 - 콘텐츠 유형별 출력 토큰 상한을 7,000~14,000으로 조정
 - `stop_reason=max_tokens`를 별도 오류로 처리해 잘린 JSON을 일반 형식 오류로 오인하지 않게 개선
 
-수정 후 Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과. 운영 재배포 후 동일 원본으로 후보 생성·저장을 다시 확인한다.
+수정 후 Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과.
 
 첫 구조화 출력 배포의 운영 재호출에서는 Anthropic API가 `400`을 반환했다. 공식 JSON Schema 제한과 대조해 raw schema의 `minimum`·`maximum`이 지원되지 않는 제약임을 확인했다. 수치 범위는 설명과 저장 전 검증으로 유지하고, Claude에 전달하는 스키마에서는 해당 키워드를 제거했다.
+
+최종 운영 재검증에서는 같은 QA 원본으로 Claude 정본 실행이 정상 완료됐다. 제목 후보 8개가 생성됐고 후보 설명·훅·자가검수 점수와 채택 상태가 화면 및 저장 계약에 맞게 표시됐다. 앱 콘솔 오류는 0건이었으며, 운영 헬스에서 DB·인증·Claude·YouTube·YouTube OAuth·Telegram이 모두 `ready`로 확인됐다. Google 계정 승인과 실제 채널 업로드는 사용자 요청에 따라 별도 연결 단계로 남긴다.
