@@ -245,7 +245,7 @@ export async function decideTelegramUser(token: string | null, externalUserId: s
 }
 
 export async function generateContent(token: string | null, input: {
-  action: "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
+  action: "topic_plan" | "script_draft" | "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
   sourceId: string;
   platforms?: Array<"shorts" | "threads" | "column" | "instagram" | "essay">;
   count?: number;

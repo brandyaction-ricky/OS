@@ -8,13 +8,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const schema = z.object({
-  action: z.enum(["derivatives", "title_package", "shorts_proposal", "youtube_kit"]),
+  action: z.enum(["topic_plan", "script_draft", "derivatives", "title_package", "shorts_proposal", "youtube_kit"]),
   sourceId: z.string().uuid(),
   platforms: z.array(z.enum(["shorts", "threads", "column", "instagram", "essay"])).max(5).optional(),
   count: z.number().int().min(1).max(12).default(5),
 });
 
 const PROCEDURE_TERMS = {
+  topic_plan: ["기획", "현재기준", "분석"],
+  script_draft: ["원고", "다듬는", "현재기준"],
   derivatives: ["숏폼", "쓰레드", "SEO칼럼", "카드뉴스", "에세이"],
   title_package: ["패키징", "제목", "썸네일"],
   shorts_proposal: ["숏폼", "쇼츠"],
@@ -98,16 +100,30 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
     const { data, error } = await actor.supabase.from("os_records").insert(rows).select("*");
     if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "쇼츠 제안을 저장하지 못했습니다.", error.message); return data ?? [];
   }
+  if (action === "script_draft") {
+    const script = String(result.script ?? result.body ?? "").slice(0, 80_000);
+    if (!script) throw new ApiError(502, "CONTENT_GENERATION_EMPTY", "생성된 원고가 없습니다.");
+    const { data, error } = await actor.supabase.from("os_records").insert({
+      ...base, record_type: "content_script", title: String(result.title ?? `${source.title} · 원고`).slice(0, 240),
+      description: script, status: "review", priority: "high", stage: "초안", progress: 75,
+      metadata: { scriptStep: 5, outline: result.outline ?? [], handoff: String(result.handoff ?? ""), checks: result.checks ?? [], finalApprovalRequired: true, generatedBy: "claude" },
+      tags: ["원고", "정본실행"],
+    }).select("*").single();
+    if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "원고를 저장하지 못했습니다.", error.message);
+    return [data];
+  }
   const recordType = "content_package";
-  const title = action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : `${source.title} · 제목·썸네일 후보`;
+  const title = action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : action === "topic_plan" ? `${source.title} · 기획 브리핑` : `${source.title} · 제목·썸네일 후보`;
   const { data, error } = await actor.supabase.from("os_records").insert({
     ...base, record_type: recordType, title, description: String(result.summary ?? "정본 기준으로 생성된 패키지입니다."), status: "review", priority: "normal",
-    stage: action === "youtube_kit" ? "발행키트" : "패키징", metadata: { packageKind: action, result, finalApprovalRequired: true }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : ["제목", "썸네일"],
+    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { packageKind: action, result, finalApprovalRequired: true }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
   }).select("*").single();
   if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "콘텐츠 패키지를 저장하지 못했습니다.", error.message); return [data];
 }
 
 function requestedShape(action: z.infer<typeof schema>["action"], count: number, platforms: string[]) {
+  if (action === "topic_plan") return `{"summary":"","audience":"","entryLanguage":"","hierarchy":"유입형|전환형|판매형","candidates":[{"title":"","thumbnailCopy":"","narrative":"","cta":"","evidence":""}],"handoff":""} 후보 3개. 현재기준과 기획 절차의 채택 게이트를 적용.`;
+  if (action === "script_draft") return `{"title":"","outline":[""],"script":"","handoff":"","checks":[""]} 원고 절차의 결재 지점과 사실 확인 항목을 지키는 낭독용 초안.`;
   if (action === "shorts_proposal") return `{"clips":[{"title":"","hook":"","start":0,"end":40,"reason":""}]} 배열은 ${count}개. 렌더링하지 말고 구간만 제안.`;
   if (action === "title_package") return `{"summary":"","formula":"","titles":[{"text":"","hook":"","why":"","picked":false}],"copies":[{"text":"","hook":"","why":"","picked":false}],"designPrompts":[""]} 제목 8개, 카피 8개, 영어 디자인 프롬프트 3개. 이미지는 생성하지 않음.`;
   if (action === "youtube_kit") return `{"summary":"","title":"","description":"","tags":[],"chapters":["00:00 ..."],"pinnedComment":"","kakao":"","cafe":"","post":"","checklist":[]} 복사 가능한 발행 키트.`;
