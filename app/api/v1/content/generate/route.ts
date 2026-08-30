@@ -12,6 +12,7 @@ const schema = z.object({
   sourceId: z.string().uuid(),
   platforms: z.array(z.enum(["shorts", "threads", "column", "instagram", "essay"])).max(5).optional(),
   count: z.number().int().min(1).max(12).default(5),
+  marketEvidence: z.array(z.object({ title: z.string().max(300), channelTitle: z.string().max(200), viewCount: z.number().nonnegative(), url: z.string().url() })).max(20).optional(),
 });
 
 const PROCEDURE_TERMS = {
@@ -82,7 +83,7 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
     const rows = items.slice(0, 20).map((raw, index) => { const item = raw as Record<string, unknown>; return {
       ...base, record_type: "content_publish", title: String(item.title ?? `${source.title} 파생 ${index + 1}`).slice(0, 240),
       description: String(item.body ?? "").slice(0, 20_000), status: "review", priority: "normal", stage: "검토필요",
-      starts_at: scheduleDate(index), metadata: { automationOutput: true, platform: String(item.platform ?? "threads"), format: String(item.format ?? item.platform ?? "파생 콘텐츠"), sourceId: source.id, aiScore: Number(item.score ?? 0), selfReview: item.review ?? null, generatedBy: "claude", finalApprovalRequired: true },
+      starts_at: scheduleDate(index), metadata: { automationOutput: true, platform: String(item.platform ?? "threads"), format: String(item.format ?? item.platform ?? "파생 콘텐츠"), sourceId: source.id, aiScore: Number(item.score ?? 0), selfReview: item.review ?? null, derivHtml: typeof item.deriv_html === "string" ? item.deriv_html.slice(0, 80_000) : null, generatedBy: "claude", finalApprovalRequired: true },
       tags: ["파생콘텐츠", String(item.platform ?? "threads")],
     }; });
     if (!rows.length) throw new ApiError(502, "CONTENT_GENERATION_EMPTY", "생성된 파생 콘텐츠가 없습니다.");
@@ -127,7 +128,7 @@ function requestedShape(action: z.infer<typeof schema>["action"], count: number,
   if (action === "shorts_proposal") return `{"clips":[{"title":"","hook":"","start":0,"end":40,"reason":""}]} 배열은 ${count}개. 렌더링하지 말고 구간만 제안.`;
   if (action === "title_package") return `{"summary":"","formula":"","titles":[{"text":"","hook":"","why":"","picked":false}],"copies":[{"text":"","hook":"","why":"","picked":false}],"designPrompts":[""]} 제목 8개, 카피 8개, 영어 디자인 프롬프트 3개. 이미지는 생성하지 않음.`;
   if (action === "youtube_kit") return `{"summary":"","title":"","description":"","tags":[],"chapters":["00:00 ..."],"pinnedComment":"","kakao":"","cafe":"","post":"","checklist":[]} 복사 가능한 발행 키트.`;
-  return `{"items":[{"platform":"","format":"","title":"","body":"","score":1,"review":{"issues":[],"fixed":true}}]} 플랫폼 ${platforms.join(", ")}별 완결 산출물.`;
+  return `{"items":[{"platform":"shorts|threads|column|instagram|essay","format":"","title":"","body":"","deriv_html":"SEO 칼럼일 때만 완성 HTML","score":1,"review":{"issues":[],"fixed":true}}]} 요청한 플랫폼 ${platforms.join(", ")}별 완결 산출물. 기본 수량은 shorts 3개, threads 3개, column 1개, instagram 1개, essay 1개이며 요청하지 않은 플랫폼은 제외. SEO 칼럼은 body와 함께 목차·JSON-LD·hero·중간영상·유튜브 임베드를 포함한 deriv_html을 반드시 반환.`;
 }
 
 export async function POST(request: Request) {
@@ -144,7 +145,8 @@ export async function POST(request: Request) {
     const model = input.action === "youtube_kit" || (input.action === "derivatives" && platforms.includes("column"))
       ? process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
-    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\nJSON만 반환하세요.`;
+    const marketEvidence = input.marketEvidence?.length ? `\n\n[YouTube 시장 근거]\n${input.marketEvidence.map((item, index) => `${index + 1}. ${item.title} · ${item.channelTitle} · 조회 ${item.viewCount} · ${item.url}`).join("\n")}` : "";
+    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\nJSON만 반환하세요.`;
     const draft = extractJson(await claude(context, model));
     const reviewed = extractJson(await claude(`아래 초안을 같은 절차 기준으로 1~5점 채점하고 문제를 직접 고쳐 최종 JSON만 반환하세요. 각 항목에는 score와 review를 남기세요.\n\n[절차]\n${procedure.slice(0, 25_000)}\n\n[초안]\n${JSON.stringify(draft).slice(0, 45_000)}`, model));
     const records = await insertGenerated(actor, source, input.action, reviewed);
