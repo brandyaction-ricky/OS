@@ -167,3 +167,15 @@ YouTube Data API 키로는 공개 영상 검색·조회수 등은 읽을 수 있
 - 5MB·원본 1,000·파생 3,000·성과 3,000건 제한과 서버 스키마 검증
 
 검증 결과: 합성 SQLite의 원본·파생·성과 변환 통과, Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과. Google OAuth 계정 연결과 실제 외부 업로드는 사용자 요청에 따라 별도 단계로 유지한다.
+
+### Claude 운영 실호출 후속 수정
+
+운영 제목·썸네일 화면에서 기존 QA 원본 1건으로 Claude 정본 실행을 1회 호출했다. 환경변수와 Anthropic 요청은 정상 동작했지만, 자유 형식 JSON 응답이 파서 계약과 맞지 않아 `CONTENT_GENERATION_INVALID`로 종료되는 문제를 재현했다.
+
+- Anthropic Messages API의 `output_config.format.type=json_schema` 구조화 출력 적용
+- 기획·원고·제목 패키지·쇼츠·파생·유튜브 키트별 JSON Schema 분리
+- 두 번 생성하던 초안→검수 호출을 정본 기반 단일 구조화 호출로 합치고, 제출 전 자가검수·수정·점수·검토 결과를 같은 응답에 포함
+- 콘텐츠 유형별 출력 토큰 상한을 7,000~14,000으로 조정
+- `stop_reason=max_tokens`를 별도 오류로 처리해 잘린 JSON을 일반 형식 오류로 오인하지 않게 개선
+
+수정 후 Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과. 운영 재배포 후 동일 원본으로 후보 생성·저장을 다시 확인한다.

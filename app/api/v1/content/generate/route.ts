@@ -37,17 +37,46 @@ function outputText(body: Record<string, unknown>) {
     .map((item) => String((item as { text?: string }).text ?? "")).join("\n").trim();
 }
 
-async function claude(prompt: string, model: string, maxTokens = 4000) {
+type JsonSchema = Record<string, unknown>;
+
+const reviewSchema: JsonSchema = {
+  type: "object", additionalProperties: false,
+  properties: { issues: { type: "array", items: { type: "string" } }, fixed: { type: "boolean" } },
+  required: ["issues", "fixed"],
+};
+
+function outputSchema(action: z.infer<typeof schema>["action"]): JsonSchema {
+  const textList = { type: "array", items: { type: "string" } };
+  const baseReview = { score: { type: "number", minimum: 1, maximum: 5 }, review: reviewSchema };
+  if (action === "topic_plan") return { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, audience: { type: "string" }, entryLanguage: { type: "string" }, hierarchy: { type: "string" }, candidates: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, thumbnailCopy: { type: "string" }, narrative: { type: "string" }, cta: { type: "string" }, evidence: { type: "string" } }, required: ["title", "thumbnailCopy", "narrative", "cta", "evidence"] } }, handoff: { type: "string" }, ...baseReview }, required: ["summary", "audience", "entryLanguage", "hierarchy", "candidates", "handoff", "score", "review"] };
+  if (action === "script_draft") return { type: "object", additionalProperties: false, properties: { title: { type: "string" }, outline: textList, script: { type: "string" }, handoff: { type: "string" }, checks: textList, ...baseReview }, required: ["title", "outline", "script", "handoff", "checks", "score", "review"] };
+  if (action === "shorts_proposal") return { type: "object", additionalProperties: false, properties: { clips: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, hook: { type: "string" }, start: { type: "number", minimum: 0 }, end: { type: "number", minimum: 0 }, reason: { type: "string" } }, required: ["title", "hook", "start", "end", "reason"] } }, ...baseReview }, required: ["clips", "score", "review"] };
+  if (action === "title_package") {
+    const candidate = { type: "object", additionalProperties: false, properties: { text: { type: "string" }, hook: { type: "string" }, why: { type: "string" }, picked: { type: "boolean" } }, required: ["text", "hook", "why", "picked"] };
+    return { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, formula: { type: "string" }, titles: { type: "array", items: candidate }, copies: { type: "array", items: candidate }, designPrompts: textList, ...baseReview }, required: ["summary", "formula", "titles", "copies", "designPrompts", "score", "review"] };
+  }
+  if (action === "youtube_kit") return { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, title: { type: "string" }, description: { type: "string" }, tags: textList, chapters: textList, pinnedComment: { type: "string" }, kakao: { type: "string" }, cafe: { type: "string" }, post: { type: "string" }, checklist: textList, ...baseReview }, required: ["summary", "title", "description", "tags", "chapters", "pinnedComment", "kakao", "cafe", "post", "checklist", "score", "review"] };
+  return { type: "object", additionalProperties: false, properties: { items: { type: "array", items: { type: "object", additionalProperties: false, properties: { platform: { type: "string", enum: ["shorts", "threads", "column", "instagram", "essay"] }, format: { type: "string" }, title: { type: "string" }, body: { type: "string" }, deriv_html: { type: ["string", "null"] }, score: { type: "number", minimum: 1, maximum: 5 }, review: reviewSchema }, required: ["platform", "format", "title", "body", "deriv_html", "score", "review"] } } }, required: ["items"] };
+}
+
+function tokenBudget(action: z.infer<typeof schema>["action"]) {
+  if (action === "derivatives") return 14_000;
+  if (action === "youtube_kit" || action === "script_draft") return 9_000;
+  return 7_000;
+}
+
+async function claude(prompt: string, model: string, jsonSchema: JsonSchema, maxTokens: number) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.25, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.25, output_config: { format: { type: "json_schema", schema: jsonSchema } }, messages: [{ role: "user", content: prompt }] }),
     signal: AbortSignal.timeout(90_000),
   });
   const body = await response.json() as Record<string, unknown>;
   if (!response.ok) throw new ApiError(502, "CLAUDE_GENERATION_FAILED", "콘텐츠 생성 요청에 실패했습니다.");
+  if (body.stop_reason === "max_tokens") throw new ApiError(502, "CLAUDE_OUTPUT_TRUNCATED", "AI 결과가 길이 제한에 걸렸습니다. 원문을 줄이거나 생성 범위를 나눠 주세요.");
   return outputText(body);
 }
 
@@ -146,10 +175,9 @@ export async function POST(request: Request) {
       ? process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
     const marketEvidence = input.marketEvidence?.length ? `\n\n[YouTube 시장 근거]\n${input.marketEvidence.map((item, index) => `${index + 1}. ${item.title} · ${item.channelTitle} · 조회 ${item.viewCount} · ${item.url}`).join("\n")}` : "";
-    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\nJSON만 반환하세요.`;
-    const draft = extractJson(await claude(context, model));
-    const reviewed = extractJson(await claude(`아래 초안을 같은 절차 기준으로 1~5점 채점하고 문제를 직접 고쳐 최종 JSON만 반환하세요. 각 항목에는 score와 review를 남기세요.\n\n[절차]\n${procedure.slice(0, 25_000)}\n\n[초안]\n${JSON.stringify(draft).slice(0, 45_000)}`, model));
-    const records = await insertGenerated(actor, source, input.action, reviewed);
+    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}`;
+    const result = extractJson(await claude(context, model, outputSchema(input.action), tokenBudget(input.action)));
+    const records = await insertGenerated(actor, source, input.action, result);
     return NextResponse.json({ configured: true, queued: false, action: input.action, records }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_CONTENT_GENERATION", "콘텐츠 생성 조건을 확인해 주세요.", error.flatten()));
