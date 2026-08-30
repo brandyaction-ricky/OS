@@ -27,6 +27,8 @@ export function SettingsWorkspace({ page }: { page: Page }) {
     ["OpenAI", "임베딩·OCR·지식 답변", "리키", health?.embeddings === "ready" ? "ready" : "waiting", "Vercel Production Secret"],
     ["Telegram", "질문·폰 캡처·알림", "리키", health?.telegram === "ready" ? "ready" : "waiting", "Vercel Production Secret"],
     ["Claude", "콘텐츠 정본 실행", "리키", health?.contentAi === "ready" ? "ready" : "waiting", "Vercel Production Secret"],
+    ["YouTube Data API", "시장 영상·공개 성과 읽기", "리키", health?.youtube === "ready" ? "ready" : "waiting", "Vercel Production Secret"],
+    ["YouTube 업로드 OAuth", "채널 동의·비공개/일부공개 업로드", "리키", health?.youtubeOAuth === "ready" ? "ready" : "waiting", "유튜브 관리에서 채널 연결"],
     ["Meta·Google Ads", "광고비·ROAS 읽기", "리키", health?.advertising === "ready" ? "ready" : health?.advertising === "partial" ? "warning" : "waiting", "Vercel Production Secret"],
     ["마이인·브랜디에듀", "주문·고객·매출 읽기", "담당자 지정", "waiting", "각 자사몰 관리자"],
     ["국민·신한 법인카드", "경영지원 지출 원장", "안저", "waiting", "카드 관리자·CSV"],

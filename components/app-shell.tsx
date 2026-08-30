@@ -30,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [knowledgeFocus, setKnowledgeFocus] = useState(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -45,6 +46,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => setMobileOpen(false), [pathname]);
 
   useEffect(() => {
+    const handleFocus = (event: Event) => setKnowledgeFocus(Boolean((event as CustomEvent<boolean>).detail));
+    window.addEventListener("brandy-knowledge-focus", handleFocus);
+    return () => window.removeEventListener("brandy-knowledge-focus", handleFocus);
+  }, []);
+
+  useEffect(() => {
     document.title = `${page.label} | 브랜디 OS`;
   }, [page.label]);
 
@@ -58,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="os-app">
+    <div className={`os-app${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
       <aside className="stage-rail" aria-label="주요 영역">
         <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">
           BA
@@ -88,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside className={`page-sidebar${mobileOpen ? " mobile-open" : ""}`}>
         <div className="sidebar-head">
           <div>
-            <span className="eyebrow">STAGE</span>
+            <span className="eyebrow">현재 영역</span>
             <h2>{stage.label}</h2>
           </div>
           <button className="icon-button mobile-only" onClick={() => setMobileOpen(false)}>

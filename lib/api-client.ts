@@ -179,6 +179,8 @@ export async function getHealth() {
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
     contentAi: "ready" | "missing";
+    youtube: "ready" | "missing";
+    youtubeOAuth: "ready" | "missing";
     advertising: "ready" | "partial" | "missing";
     checkedAt: string;
   }>("/api/v1/health");
@@ -249,10 +251,73 @@ export async function generateContent(token: string | null, input: {
   sourceId: string;
   platforms?: Array<"shorts" | "threads" | "column" | "instagram" | "essay">;
   count?: number;
+  marketEvidence?: Array<Pick<YoutubeMarketItem, "title" | "channelTitle" | "viewCount" | "url">>;
 }) {
   return apiRequest<{ configured: boolean; queued: boolean; records?: OsRecord[]; job?: OsRecord }>("/api/v1/content/generate", {
     method: "POST", token, body: JSON.stringify(input),
   });
+}
+
+export interface YoutubeMarketItem {
+  id: string;
+  title: string;
+  channelTitle: string;
+  publishedAt: string | null;
+  thumbnail: string;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  url: string;
+}
+
+export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12) {
+  const params = new URLSearchParams({ q: query, maxResults: String(maxResults) });
+  return apiRequest<{ query: string; configured: boolean; items: YoutubeMarketItem[] }>(`/api/v1/youtube/search?${params}`, { token });
+}
+
+export interface YoutubeOAuthStatus {
+  configured: boolean;
+  canManage: boolean;
+  connected: boolean;
+  channelId: string | null;
+  channelTitle: string | null;
+  connectedAt: string | null;
+}
+
+export async function getYoutubeOAuthStatus(token: string | null) {
+  return apiRequest<YoutubeOAuthStatus>("/api/v1/youtube/oauth", { token });
+}
+
+export async function startYoutubeOAuth(token: string | null) {
+  return apiRequest<{ authorizationUrl: string }>("/api/v1/youtube/oauth", { method: "POST", token });
+}
+
+export async function disconnectYoutubeOAuth(token: string | null) {
+  return apiRequest<{ disconnected: true }>("/api/v1/youtube/oauth", { method: "DELETE", token });
+}
+
+export async function createYoutubeUploadSession(token: string | null, input: { kitId: string; fileName: string; fileSize: number; mimeType: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+  return apiRequest<{ uploadUrl: string; kitId: string; privacyStatus: "private" | "unlisted"; fileName: string }>("/api/v1/youtube/upload/session", { method: "POST", token, body: JSON.stringify(input) });
+}
+
+export function uploadYoutubeFile(uploadUrl: string, file: File, onProgress: (percent: number) => void) {
+  return new Promise<{ id: string }>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", uploadUrl); request.setRequestHeader("content-type", file.type || "video/mp4");
+    request.upload.onprogress = (event) => { if (event.lengthComputable) onProgress(Math.round(event.loaded / event.total * 100)); };
+    request.onerror = () => reject(new Error("YouTube로 영상 파일을 전송하지 못했습니다."));
+    request.onload = () => {
+      let body: { id?: string; error?: { message?: string } } = {};
+      try { body = JSON.parse(request.responseText || "{}"); } catch { /* handled below */ }
+      if (request.status < 200 || request.status >= 300 || !body.id) return reject(new Error(body.error?.message || `YouTube 업로드에 실패했습니다. (${request.status})`));
+      onProgress(100); resolve({ id: body.id });
+    };
+    request.send(file);
+  });
+}
+
+export async function completeYoutubeUpload(token: string | null, input: { kitId: string; videoId: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+  return apiRequest<{ uploaded: true; videoId: string; videoUrl: string; privacyStatus: string }>("/api/v1/youtube/upload/complete", { method: "POST", token, body: JSON.stringify(input) });
 }
 
 export async function uploadCompanyFile(token: string | null, file: File) {

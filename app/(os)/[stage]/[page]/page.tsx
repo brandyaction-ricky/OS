@@ -3,7 +3,7 @@ import { PlaceholderPage } from "@/components/placeholder-page";
 import { MembersWorkspace } from "@/components/members-workspace";
 import { AuditWorkspace } from "@/components/audit-workspace";
 import { GoalsWorkspace } from "@/components/goals-workspace";
-import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
+import { redirect } from "next/navigation";
 import { MeetingWorkspace } from "@/components/meeting-workspace";
 import { ContentAutomationWorkspace } from "@/components/content-automation-workspace";
 import { PublishingCalendarWorkspace } from "@/components/publishing-calendar-workspace";
@@ -31,7 +31,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/settings/audit") return <AuditWorkspace />;
   if (href === "/home/goals") return <GoalsWorkspace />;
   if (href === "/home/reports") return <ReportsWorkspace />;
-  if (href === "/organization/projects") return <ProjectHubWorkspace />;
+  if (href === "/organization/projects") redirect("/organization/tasks");
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
   if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;

@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  Boxes,
   BookOpen,
   Bot,
   Building2,
@@ -96,9 +95,8 @@ export const NAV_STAGES: NavStage[] = [
     id: "organization",
     label: "조직운영",
     icon: Users,
-    href: "/organization/projects",
+    href: "/organization/tasks",
     pages: [
-      { label: "프로젝트 관제", href: "/organization/projects", icon: Boxes, ready: true },
       { label: "구성원", href: "/organization/members", icon: Users, ready: true },
       { label: "업무", href: "/organization/tasks", icon: ListChecks, ready: true },
       { label: "회의", href: "/organization/meetings", icon: MessageSquareText, ready: true },
