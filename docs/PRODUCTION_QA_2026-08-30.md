@@ -304,3 +304,4 @@ Google Cloud 웹 OAuth 클라이언트와 운영 환경을 연결하고 승인 �
 - 운영 지식 번들: `내 문서 + 회사 정본`, `파일 트리`, `brandy-knowledge-tree` 반영 및 `현재 문서에서 찾기` 제거 확인
 - 운영 지식 연결 번들: 자동 지식 연결·깨진 링크 화면 반영 확인
 - 신규 보호 API: 비로그인 `/api/v1/knowledge/graph`, `/api/v1/content/media` 요청 모두 `401`
+- GitHub Actions: Node 20에서 TypeScript 테스트 모듈을 직접 읽지 못하던 기존 환경 차이를 Node 24로 정렬
