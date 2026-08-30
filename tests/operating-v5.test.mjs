@@ -22,6 +22,7 @@ test("content generation reads canonical procedures and waits safely for credent
   assert.match(route, /output_config/);
   assert.match(route, /json_schema/);
   assert.match(route, /CLAUDE_OUTPUT_TRUNCATED/);
+  assert.doesNotMatch(route, /minimum:|maximum:/);
   assert.doesNotMatch(route, /youtube.*upload|threads.*publish|campaigns:mutate/i);
 });
 
