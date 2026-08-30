@@ -9,7 +9,6 @@ import {
   Plane,
   Plus,
   Sparkles,
-  Users,
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +21,10 @@ import {
   updateRecord,
   type OsMember,
 } from "@/lib/api-client";
+import {
+  BRANDYACTION_ROSTER,
+  memberMatchesRoster,
+} from "@/lib/company-roster";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -417,6 +420,17 @@ export function LeaveWorkspace() {
         0,
       ) / balances.length
     : 0;
+  const rosterBalances = BRANDYACTION_ROSTER.map((rosterMember) => {
+    const account = members.find((member) =>
+      memberMatchesRoster(member, rosterMember.name),
+    );
+    const balance = balances.find((item) => {
+      const memberId = String(meta(item, "memberId") || item.assignee_id || "");
+      const memberName = String(meta(item, "memberName") || item.title || "");
+      return memberId === account?.id || memberName.includes(rosterMember.name);
+    });
+    return { ...rosterMember, account, balance };
+  });
   return (
     <>
       <header className="page-header">
@@ -478,17 +492,21 @@ export function LeaveWorkspace() {
             {profile?.role==="admin"?<button className="secondary-button compact" onClick={()=>setBalanceDrawer(true)}><Plus size={14}/>연차 부여</button>:null}
           </div>
           <div className="leave-balances">
-            {balances.map((item) => {
-              const total = Number(item.metric_target || 0),
-                remaining = Number(item.metric_current || 0);
+            {rosterBalances.map(({ name, account, balance }) => {
+              const total = balance ? Number(balance.metric_target || 0) : 0;
+              const remaining = balance
+                ? Number(balance.metric_current || 0)
+                : 0;
               return (
-                <div key={item.id}>
+                <div key={name} className={!balance ? "unregistered" : undefined}>
                   <span>
-                    <strong>
-                      {String(meta(item, "memberName") || item.title)}
-                    </strong>
+                    <strong>{name}</strong>
                     <small>
-                      총 {total}일 · 사용 {Math.max(0, total - remaining)}일
+                      {balance
+                        ? `총 ${total}일 · 사용 ${Math.max(0, total - remaining)}일`
+                        : account
+                          ? "연차 부여 정보 없음"
+                          : "계정 연결 전 · 연차 부여 정보 없음"}
                     </small>
                   </span>
                   <div>
@@ -498,17 +516,10 @@ export function LeaveWorkspace() {
                       }}
                     />
                   </div>
-                  <em>{remaining}일</em>
+                  <em>{balance ? `${remaining}일` : "미등록"}</em>
                 </div>
               );
             })}
-            {!balances.length ? (
-              <div className="quiet-state">
-                <Users />
-                <strong>연차 잔여가 아직 등록되지 않았습니다.</strong>
-                <span>관리자가 구성원별 부여 일수를 등록하면 표시됩니다.</span>
-              </div>
-            ) : null}
           </div>
         </article>
         <article className="panel">

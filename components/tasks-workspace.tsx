@@ -3,7 +3,9 @@
 import {
   CalendarDays,
   CircleAlert,
+  Clock3,
   GripVertical,
+  ListChecks,
   Plus,
   UserRound,
   X,
@@ -26,10 +28,33 @@ const COLUMNS = [
   { id: "done", label: "완료", statuses: ["done"] },
 ];
 
+function daysUntilDue(value: string | null, now = new Date()) {
+  if (!value) return null;
+  const due = value.slice(0, 10).split("-").map(Number);
+  if (due.length !== 3 || due.some((item) => !Number.isFinite(item))) return null;
+  const today = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate(),
+  );
+  return Math.round((Date.UTC(due[0], due[1] - 1, due[2]) - today) / 86_400_000);
+}
+
+function dueSignal(task: OsRecord) {
+  if (task.status === "done") return null;
+  const days = daysUntilDue(task.due_date);
+  if (days === null) return null;
+  if (days < 0) return { tone: "overdue", label: `기한 ${Math.abs(days)}일 초과` };
+  if (days === 0) return { tone: "due-today", label: "오늘 마감" };
+  if (days <= 2) return { tone: "due-soon", label: `D-${days}` };
+  return null;
+}
+
 export function TasksWorkspace() {
   const { accessToken, demo, profile } = useSession();
   const [tasks, setTasks] = useState<OsRecord[]>([]);
   const [projects, setProjects] = useState<OsRecord[]>([]);
+  const [meetings, setMeetings] = useState<OsRecord[]>([]);
   const [members, setMembers] = useState<OsMember[]>([]);
   const [editing, setEditing] = useState<OsRecord | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -40,13 +65,15 @@ export function TasksWorkspace() {
   const load = useCallback(async () => {
     if (demo) return;
     try {
-      const [taskResult, projectResult, memberResult] = await Promise.all([
+      const [taskResult, projectResult, meetingResult, memberResult] = await Promise.all([
         listRecords(accessToken, "task", "limit=200"),
         listRecords(accessToken, "project", "limit=200"),
+        listRecords(accessToken, "meeting", "limit=200"),
         listMembers(accessToken),
       ]);
       setTasks(taskResult.records);
       setProjects(projectResult.records);
+      setMeetings(meetingResult.records);
       setMembers(memberResult.members.filter((member) => member.is_active));
       setError("");
     } catch (reason) {
@@ -150,13 +177,32 @@ export function TasksWorkspace() {
       ),
     [mineOnly, profile?.id, sourceFilter, tasks],
   );
-  const sourceLabel = (task: OsRecord) =>
-    (
-      ({ meeting: "회의", direct: "직접", planning: "기획" }) as Record<
-        string,
-        string
-      >
-    )[String(task.metadata.source || "direct")] || "직접";
+  const taskSummary = useMemo(() => {
+    const open = visibleTasks.filter((task) => task.status !== "done");
+    return {
+      total: visibleTasks.length,
+      active: open.filter((task) =>
+        ["active", "blocked", "review"].includes(task.status),
+      ).length,
+      urgent: open.filter((task) => {
+        const days = daysUntilDue(task.due_date);
+        return days !== null && days <= 2;
+      }).length,
+      week: open.filter((task) => {
+        const days = daysUntilDue(task.due_date);
+        return days !== null && days >= 0 && days <= 7;
+      }).length,
+    };
+  }, [visibleTasks]);
+  const sourceLabel = (task: OsRecord) => {
+    const source = String(task.metadata.source || "direct");
+    if (source !== "meeting")
+      return source === "planning" ? "기획" : "직접";
+    const meetingId = String(task.metadata.meetingId || task.parent_id || "");
+    const meeting = meetings.find((item) => item.id === meetingId);
+    const date = meeting?.starts_at || meeting?.created_at;
+    return date ? `회의 · ${date.slice(0, 10)}` : "회의";
+  };
   return (
     <>
       <header className="page-header">
@@ -174,6 +220,28 @@ export function TasksWorkspace() {
           <CircleAlert size={16} /> {error}
         </div>
       ) : null}
+      <section className="metric-grid compact-metrics task-summary">
+        <div className="metric-card">
+          <div className="metric-top"><span>전체 업무</span><ListChecks size={16} /></div>
+          <div className="metric-value">{taskSummary.total}</div>
+          <div className="metric-caption">현재 필터 기준</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-top"><span>진행 중</span><Clock3 size={16} /></div>
+          <div className="metric-value">{taskSummary.active}</div>
+          <div className="metric-caption">진행·막힘·검수</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-top"><span>기한 임박</span><CircleAlert size={16} /></div>
+          <div className="metric-value">{taskSummary.urgent}</div>
+          <div className="metric-caption warn">초과 또는 2일 이내</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-top"><span>7일 내 기한</span><CalendarDays size={16} /></div>
+          <div className="metric-value">{taskSummary.week}</div>
+          <div className="metric-caption">오늘부터 7일</div>
+        </div>
+      </section>
       <div className="task-filters">
         <button
           className={mineOnly ? "active" : ""}
@@ -215,10 +283,12 @@ export function TasksWorkspace() {
                 <span>{items.length}</span>
               </header>
               <div>
-                {items.map((task) => (
-                  <button
+                {items.map((task) => {
+                  const due = dueSignal(task);
+                  return <button
                     draggable
                     key={task.id}
+                    className={due ? `task-${due.tone}` : undefined}
                     onDragStart={(event) =>
                       event.dataTransfer.setData("text/plain", task.id)
                     }
@@ -228,8 +298,12 @@ export function TasksWorkspace() {
                     <span>
                       <strong>{task.title}</strong>
                       <small>
+                        {due ? (
+                          <b className={`due-badge ${due.tone}`}>{due.label}</b>
+                        ) : null}
                         <b
                           className={`source-badge source-${String(task.metadata.source || "direct")}`}
+                          title={String(task.metadata.meetingId || "") ? "회의에서 생성된 업무" : undefined}
                         >
                           {sourceLabel(task)}
                         </b>
@@ -242,8 +316,8 @@ export function TasksWorkspace() {
                       </em>
                     </span>
                     <i className={`priority-mark priority-${task.priority}`} />
-                  </button>
-                ))}
+                  </button>;
+                })}
                 {!items.length ? (
                   <div className="task-empty">이 단계의 업무가 없습니다.</div>
                 ) : null}
