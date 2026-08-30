@@ -208,6 +208,12 @@ export async function syncAdPerformance(token: string | null, input: { provider:
   });
 }
 
+export async function importPerformanceCsv(token: string | null, input: { kind: "revenue" | "ads"; rows: unknown[] }) {
+  return apiRequest<{ ok: true; imported: number }>("/api/v1/performance/import", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
+}
+
 export interface EmbeddingQueueStatus {
   pending: number;
   running: number;
