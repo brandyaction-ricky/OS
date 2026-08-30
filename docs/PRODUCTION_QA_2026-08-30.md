@@ -179,3 +179,5 @@ YouTube Data API 키로는 공개 영상 검색·조회수 등은 읽을 수 있
 - `stop_reason=max_tokens`를 별도 오류로 처리해 잘린 JSON을 일반 형식 오류로 오인하지 않게 개선
 
 수정 후 Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과. 운영 재배포 후 동일 원본으로 후보 생성·저장을 다시 확인한다.
+
+첫 구조화 출력 배포의 운영 재호출에서는 Anthropic API가 `400`을 반환했다. 공식 JSON Schema 제한과 대조해 raw schema의 `minimum`·`maximum`이 지원되지 않는 제약임을 확인했다. 수치 범위는 설명과 저장 전 검증으로 유지하고, Claude에 전달하는 스키마에서는 해당 키워드를 제거했다.
