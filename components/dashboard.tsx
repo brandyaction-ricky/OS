@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { listAllRecords, listDocuments } from "@/lib/api-client";
+import { listDocuments, listRecords } from "@/lib/api-client";
+import { buildHomeRevenueView, groupHomeVideos, type RevenueBandValue } from "@/lib/home-dashboard";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { useSession } from "./session-provider";
@@ -27,10 +28,26 @@ function date(value: string | null) {
       }).format(new Date(value))
     : "기한 미정";
 }
-function metadataNumber(record: OsRecord, key: string) {
-  const value = Number(record.metadata[key] ?? 0);
-  return Number.isFinite(value) ? value : 0;
+function basisTime(value: string | null) {
+  if (!value) return "매출 데이터 미입력";
+  return `${new Intl.DateTimeFormat("ko-KR", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value))} 기준`;
 }
+function changeLabel(label: string, value: number | null) {
+  if (value === null) return <span className="revenue-change neutral">{label} 비교 전</span>;
+  const increased = value >= 0;
+  return <span className={`revenue-change ${increased ? "up" : "down"}`}>{label} {increased ? "▲" : "▼"}{increased ? "+" : ""}{value}%</span>;
+}
+
+const DASHBOARD_RECORD_TYPES = [
+  "revenue", "goal", "kpi", "meeting", "task", "content_topic", "content_script",
+  "content_package", "content_short", "content_publish",
+] as const;
 
 export function Dashboard() {
   const { accessToken, demo, profile } = useSession();
@@ -40,47 +57,17 @@ export function Dashboard() {
   useEffect(() => {
     if (demo) return;
     Promise.all([
-      listAllRecords(accessToken, "limit=500"),
+      Promise.all(DASHBOARD_RECORD_TYPES.map((type) => listRecords(accessToken, type, "limit=200"))),
       listDocuments(accessToken, "view=summary&limit=20"),
     ])
       .then(([operating, knowledge]) => {
-        setRecords(operating.records);
+        setRecords(operating.flatMap((result) => result.records));
         setDocuments(knowledge.documents);
       })
       .catch((reason) => setError(reason.message));
   }, [accessToken, demo]);
   const view = useMemo(() => {
-    const month = new Date().toISOString().slice(0, 7);
-    const revenue = records.filter(
-      (item) =>
-        item.record_type === "revenue" &&
-        String(item.metadata.date ?? item.created_at).startsWith(month),
-    );
-    const brand = (names: string[]) => {
-      const rows = revenue.filter((item) =>
-        names.some((name) =>
-          (item.brand || item.title).toLowerCase().includes(name.toLowerCase()),
-        ),
-      );
-      return {
-        current: rows.reduce(
-          (sum, item) =>
-            sum + metadataNumber(item, "net") + Number(item.amount || 0),
-          0,
-        ),
-        goal: rows.reduce(
-          (sum, item) =>
-            sum + Number(item.metric_target || item.metadata.goal || 0),
-          0,
-        ),
-      };
-    };
-    const myin = brand(["마이인", "myin"]),
-      edu = brand(["에듀", "edu"]);
-    const total = {
-      current: myin.current + edu.current,
-      goal: myin.goal + edu.goal,
-    };
+    const revenue = buildHomeRevenueView(records);
     const meetings = records
       .filter((item) => item.record_type === "meeting")
       .sort((a, b) =>
@@ -125,39 +112,21 @@ export function Dashboard() {
         href: "/organization/tasks",
       }));
     const issues = [...taskIssues, ...meetingIssues].slice(0, 8);
-    const videos = records
-      .filter(
-        (item) =>
-          [
-            "content_topic",
-            "content_script",
-            "content_package",
-            "content_short",
-            "content_publish",
-          ].includes(item.record_type) &&
-          !["done", "published", "cancelled"].includes(item.status),
-      )
-      .slice(0, 6);
-    return { myin, edu, total, issues, videos, nextMeeting };
+    const videos = groupHomeVideos(records);
+    return { revenue, issues, videos, nextMeeting };
   }, [records]);
   const revenueCard = (
     title: string,
-    value: { current: number; goal: number },
+    value: RevenueBandValue,
+    total = false,
   ) => (
-    <article className="revenue-card">
-      <span>{title}</span>
+    <article className={`revenue-card ${total ? "revenue-total" : ""}`}>
+      <span className="revenue-title">{total ? <TrendingUp size={18} /> : null}{title}</span>
       <strong>{money(value.current)}</strong>
-      <div>
-        <i
-          style={{
-            width: `${Math.min(100, value.goal ? (value.current / value.goal) * 100 : 0)}%`,
-          }}
-        />
+      <div className="revenue-comparisons">
+        {changeLabel("전월", value.monthChange)}<b>·</b>{changeLabel("전주", value.weekChange)}
       </div>
-      <small>
-        목표 {value.goal ? money(value.goal) : "미설정"} ·{" "}
-        {value.goal ? Math.round((value.current / value.goal) * 100) : 0}%
-      </small>
+      {value.goal ? <><div className="revenue-progress"><i style={{ width: `${Math.min(100, (value.current / value.goal) * 100)}%` }} /></div><small>목표 {money(value.goal)} · {Math.round((value.current / value.goal) * 100)}%</small></> : <small className="revenue-goal-empty">목표 미설정 · <Link href="/home/goals">목표 설정하기</Link></small>}
     </article>
   );
   return (
@@ -170,7 +139,7 @@ export function Dashboard() {
           </h1>
           <p>
             매출 목표, 회의에서 남은 이슈, 영상 제작과 최근 지식을 한 흐름으로
-            확인합니다.
+            확인합니다. · {basisTime(view.revenue.lastUpdatedAt)}
           </p>
         </div>
         <div className="header-actions">
@@ -191,21 +160,9 @@ export function Dashboard() {
         </div>
       ) : null}
       <section className="revenue-band">
-        <div>
-          <TrendingUp />
-          <span>
-            <small>이번 달 통합 순매출</small>
-            <strong>{money(view.total.current)}</strong>
-          </span>
-          <em>
-            {view.total.goal
-              ? Math.round((view.total.current / view.total.goal) * 100)
-              : 0}
-            %
-          </em>
-        </div>
-        {revenueCard("마이인", view.myin)}
-        {revenueCard("브랜디액션 에듀", view.edu)}
+        {revenueCard("이번 달 통합 순매출", view.revenue.total, true)}
+        {revenueCard("마이인", view.revenue.myin)}
+        {revenueCard("브랜디액션 에듀", view.revenue.edu)}
       </section>
       <section className="panel weekly-issues">
         <div className="panel-header">
@@ -260,11 +217,10 @@ export function Dashboard() {
                 <Film size={16} />
                 <span>
                   <strong>{item.title}</strong>
-                  <small>
-                    {item.brand || "공통"} · {item.status}
-                  </small>
+                  <small>{item.brand} · {item.status}</small>
                 </span>
-                <em>{item.due_date || "일정 미정"}</em>
+                <span className="video-stage-badge">{item.stage}</span>
+                <em>{item.dueDate || "일정 미정"}</em>
               </Link>
             ))}
             {!view.videos.length ? (
