@@ -19,6 +19,9 @@ test("content generation reads canonical procedures and waits safely for credent
   assert.match(route, /queueForCredentials/);
   assert.match(route, /자가검수|score와 review/);
   assert.match(route, /finalApprovalRequired: true/);
+  assert.match(route, /output_config/);
+  assert.match(route, /json_schema/);
+  assert.match(route, /CLAUDE_OUTPUT_TRUNCATED/);
   assert.doesNotMatch(route, /youtube.*upload|threads.*publish|campaigns:mutate/i);
 });
 
