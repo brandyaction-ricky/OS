@@ -48,3 +48,80 @@ test("content studio ports planning, eight-step scripts and channel judgment", a
   assert.match(generation, /script_draft/);
   assert.match(packageWorkspace, /candidate-pick/);
 });
+
+test("session QA keeps the five canonical derivative channels and editable publishing gates", async () => {
+  const [generation, automation, studio] = await Promise.all([
+    read("app/api/v1/content/generate/route.ts"),
+    read("components/content-automation-workspace.tsx"),
+    read("components/content-studio-workspaces.tsx"),
+  ]);
+  for (const platform of ["shorts", "threads", "column", "instagram", "essay"]) {
+    assert.match(automation, new RegExp(`platform: \\"${platform}\\"`));
+  }
+  assert.match(generation, /deriv_html/);
+  assert.match(automation, /승인완료 일괄 예약/);
+  assert.match(automation, /type="datetime-local"/);
+  assert.match(automation, /archiveRecord/);
+  assert.match(studio, /키트 수정/);
+  assert.match(studio, /수정 저장/);
+});
+
+test("YouTube market evidence stays server-side and feeds title packaging", async () => {
+  const [route, client, studio, generation, health, settings] = await Promise.all([
+    read("app/api/v1/youtube/search/route.ts"),
+    read("lib/api-client.ts"),
+    read("components/content-studio-workspaces.tsx"),
+    read("app/api/v1/content/generate/route.ts"),
+    read("app/api/v1/health/route.ts"),
+    read("components/settings-workspaces.tsx"),
+  ]);
+  assert.match(route, /process\.env\.YOUTUBE_API_KEY/);
+  assert.match(route, /authenticateRequest/);
+  assert.doesNotMatch(route, /YOUTUBE_CLIENT_SECRET/);
+  assert.match(client, /searchYoutubeMarket/);
+  assert.match(studio, /YouTube 시장 검색/);
+  assert.match(generation, /marketEvidence/);
+  assert.match(health, /YOUTUBE_API_KEY/);
+  assert.match(settings, /YouTube Data API/);
+});
+
+test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval gate", async () => {
+  const [migration, oauth, callback, session, complete, client, workspace, health] = await Promise.all([
+    read("supabase/migrations/202608300007_youtube_oauth.sql"),
+    read("app/api/v1/youtube/oauth/route.ts"),
+    read("app/api/v1/youtube/oauth/callback/route.ts"),
+    read("app/api/v1/youtube/upload/session/route.ts"),
+    read("app/api/v1/youtube/upload/complete/route.ts"),
+    read("lib/api-client.ts"),
+    read("components/content-studio-workspaces.tsx"),
+    read("app/api/v1/health/route.ts"),
+  ]);
+  assert.match(migration, /os_youtube_connections/);
+  assert.match(migration, /revoke all.*authenticated/i);
+  assert.match(oauth, /httpOnly: true/);
+  assert.match(oauth, /sameSite: "lax"/);
+  assert.match(callback, /verifyYoutubeOAuthState/);
+  assert.match(session, /actor\.role !== "admin"/);
+  assert.match(session, /finalApproval: z\.literal\(true\)/);
+  assert.match(session, /uploadType: "resumable"/);
+  assert.doesNotMatch(session, /YOUTUBE_CLIENT_SECRET/);
+  assert.match(complete, /YOUTUBE_UPLOAD_OWNERSHIP_FAILED/);
+  assert.match(client, /XMLHttpRequest/);
+  assert.match(workspace, /Google 채널 연결/);
+  assert.match(workspace, /최종 확인.*업로드를 승인/);
+  assert.match(health, /youtubeOAuth/);
+});
+
+test("knowledge focus mode is persistent and project hub is removed from navigation", async () => {
+  const [knowledge, shell, navigation, router] = await Promise.all([
+    read("components/knowledge-workspace.tsx"),
+    read("components/app-shell.tsx"),
+    read("lib/navigation.ts"),
+    read("app/(os)/[stage]/[page]/page.tsx"),
+  ]);
+  assert.match(knowledge, /brandy-knowledge-focus/);
+  assert.match(knowledge, /집중 모드/);
+  assert.match(shell, /knowledge-focus/);
+  assert.doesNotMatch(navigation, /프로젝트 관제/);
+  assert.match(router, /redirect\("\/organization\/tasks"\)/);
+});
