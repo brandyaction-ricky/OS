@@ -293,3 +293,14 @@ Google Cloud 웹 OAuth 클라이언트와 운영 환경을 연결하고 승인 �
 - 지식: `db9d971`
 
 최종 개발 검증은 Node 테스트 73/73, ESLint, TypeScript, Next.js 프로덕션 빌드가 모두 통과했다. OpenAI 임베딩 키가 없는 환경의 검색 상태는 기존대로 `keyword_only`를 유지한다. 실제 `radar.db` 원본 적재, 광고 API 실동기화, 모바일 실기기별 터치 검증은 외부 입력·자격 증명·기기 조건이 없어 이번 배포 범위에서 실행하지 않는다.
+
+최종 운영 반영 결과:
+
+- GitHub `main`: `d51bfdb25ec6e79469d8247042d432249db98108`
+- Vercel Production 상태: `success`
+- 운영 헬스: database·auth·Telegram·Claude·YouTube Data API·YouTube OAuth `ready`
+- 운영 검색: OpenAI 임베딩 키 미등록 상태를 사실대로 `keyword_only` 표시
+- 광고 연동: 자격 증명 미등록 상태를 사실대로 `missing` 표시
+- 운영 지식 번들: `내 문서 + 회사 정본`, `파일 트리`, `brandy-knowledge-tree` 반영 및 `현재 문서에서 찾기` 제거 확인
+- 운영 지식 연결 번들: 자동 지식 연결·깨진 링크 화면 반영 확인
+- 신규 보호 API: 비로그인 `/api/v1/knowledge/graph`, `/api/v1/content/media` 요청 모두 `401`
