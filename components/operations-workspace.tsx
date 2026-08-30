@@ -121,7 +121,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
     </section>
 
     {editorOpen ? <div className="drawer-backdrop" onMouseDown={() => setEditorOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-      <div className="drawer-head"><div><span className="eyebrow">{editing ? "EDIT" : "NEW"}</span><h2>{editing ? config.singular + " 수정" : "새 " + config.singular}</h2></div><button type="button" className="icon-button" onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
+      <div className="drawer-head"><div><span className="eyebrow">{editing ? "수정" : "새 항목"}</span><h2>{editing ? config.singular + " 수정" : "새 " + config.singular}</h2></div><button type="button" className="icon-button" onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
       <label><span>제목</span><input name="title" required maxLength={240} defaultValue={editing?.title} placeholder={`${config.singular} 제목`} /></label>
       <label><span>설명·완료 기준</span><textarea name="description" rows={6} defaultValue={editing?.description} placeholder={config.helper} /></label>
       <div className="form-grid"><label><span>상태</span><select name="status" defaultValue={editing?.status ?? config.defaultStatus}>{config.statuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><label><span>우선순위</span><select name="priority" defaultValue={editing?.priority ?? "normal"}><option value="low">낮음</option><option value="normal">보통</option><option value="high">높음</option><option value="urgent">긴급</option></select></label></div>

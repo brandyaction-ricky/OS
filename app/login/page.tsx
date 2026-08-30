@@ -58,7 +58,7 @@ function LoginForm() {
       <section className="login-panel">
         <form className="login-card" onSubmit={submit}>
           <div className="mobile-brand"><span className="brand-mark">BA</span><strong>브랜디 OS</strong></div>
-          <span className="eyebrow">TEAM SIGN IN</span>
+          <span className="eyebrow">팀 로그인</span>
           <h2>관리자 계정으로 로그인</h2>
           <p>등록된 이메일과 비밀번호로 로그인하면 접속 상태가 안전하게 유지됩니다.</p>
           <label>

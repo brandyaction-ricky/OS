@@ -75,7 +75,7 @@ function SearchContent() {
     <>
       <header className="search-hero">
         <span className="search-orb"><Sparkles size={20} /></span>
-        <div><span className="eyebrow">KNOWLEDGE SEARCH</span><h1>회사가 아는 것을 바로 찾으세요.</h1><p>검토된 정본과 팀 지식에서 근거 문단까지 함께 찾습니다.</p></div>
+        <div><span className="eyebrow">지식 검색</span><h1>회사가 아는 것을 바로 찾으세요.</h1><p>검토된 정본과 팀 지식에서 근거 문단까지 함께 찾습니다.</p></div>
       </header>
 
       <form className="knowledge-search-form" onSubmit={submit}>

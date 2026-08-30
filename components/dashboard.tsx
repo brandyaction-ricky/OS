@@ -164,7 +164,7 @@ export function Dashboard() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">WEEKLY COMMAND CENTER</span>
+          <span className="eyebrow">오늘 현황</span>
           <h1>
             {profile?.displayName || "리키"}님, 이번 주 핵심만 모았습니다.
           </h1>

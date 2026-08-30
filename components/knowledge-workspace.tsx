@@ -597,7 +597,7 @@ function WorkspaceContent() {
       {newOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setNewOpen(false)}>
           <form className="form-modal new-document-modal" onSubmit={create}>
-            <header><div><span className="eyebrow">NEW KNOWLEDGE</span><h2>새 문서 만들기</h2></div><button type="button" onClick={() => setNewOpen(false)}><X size={18} /></button></header>
+            <header><div><span className="eyebrow">새 지식</span><h2>새 문서 만들기</h2></div><button type="button" onClick={() => setNewOpen(false)}><X size={18} /></button></header>
             <div className="form-fields">
               <label className="wide"><span>문서 제목</span><input name="title" required autoFocus placeholder="무엇을 남길지 명확하게 적어주세요" /></label>
               <label><span>폴더</span><input name="folder" placeholder="리키/작업 중" /></label>
@@ -614,7 +614,7 @@ function WorkspaceContent() {
       {importOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setImportOpen(false)}>
           <form className="form-modal import-modal" onSubmit={importMarkdown}>
-            <header><div><span className="eyebrow">MARKDOWN IMPORT</span><h2>회사 지식 가져오기</h2></div><button type="button" disabled={busy} onClick={() => setImportOpen(false)}><X size={18} /></button></header>
+            <header><div><span className="eyebrow">마크다운 가져오기</span><h2>회사 지식 가져오기</h2></div><button type="button" disabled={busy} onClick={() => setImportOpen(false)}><X size={18} /></button></header>
             <div className="import-body">
               {error ? <div className="inline-alert danger import-alert">{error}</div> : null}
               <label className="import-dropzone"><Upload size={24} /><strong>Markdown 파일 선택</strong><span>여러 개의 .md 파일 · 파일당 최대 {formatBytes(MAX_MARKDOWN_BYTES)}</span><input type="file" accept=".md,text/markdown" multiple disabled={busy} onChange={(event) => selectMarkdownFiles(event.target.files)} /></label>

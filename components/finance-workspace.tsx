@@ -367,7 +367,7 @@ export function FinanceWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">BUSINESS SUPPORT</span>
+          <span className="eyebrow">경영지원</span>
           <h1>경영지원</h1>
           <p>
             법인카드 사용처 확인과 부가세 자료 준비에 드는 반복 시간을 줄입니다.
@@ -675,7 +675,7 @@ export function FinanceWorkspace() {
           >
             <div className="drawer-head">
               <div>
-                <span className="eyebrow">BUSINESS SUPPORT</span>
+                <span className="eyebrow">경영지원</span>
                 <h2>
                   {modal === "contract"
                     ? "계약 등록"

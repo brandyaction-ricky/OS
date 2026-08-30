@@ -161,7 +161,7 @@ export function TasksWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">EXECUTION BOARD</span>
+          <span className="eyebrow">업무 보드</span>
           <h1>업무 관리</h1>
           <p>프로젝트·담당자·기한과 발생 출처를 함께 관리합니다.</p>
         </div>
@@ -264,7 +264,7 @@ export function TasksWorkspace() {
           >
             <div className="drawer-head">
               <div>
-                <span className="eyebrow">TASK SPEC</span>
+                <span className="eyebrow">업무 상세</span>
                 <h2>{editing ? "업무 수정" : "새 업무"}</h2>
               </div>
               <button
