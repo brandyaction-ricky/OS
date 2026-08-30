@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
+import { buildPerformanceSignal } from "@/lib/performance-signals";
 import { authenticateRequest } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -25,10 +26,8 @@ export async function GET(request: Request) {
     const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
     const latestKpis = (kpis.data ?? []).slice(0, 12).map((item) => {
       const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);
-      const change = previous ? (current - previous) / Math.abs(previous) * 100 : null;
-      const threshold = String(item.metric_unit).includes("%") ? 20 : 10;
-      const signal = change !== null && Math.abs(change) >= threshold ? `${change > 0 ? "+" : ""}${change.toFixed(1)}% 변동` : "이번 주 수치 확인";
-      return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal };
+      const signal = buildPerformanceSignal({ title: item.title, current, previous, target: Number(item.metric_target ?? 0) || null, unit: item.metric_unit });
+      return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: signal.label };
     });
     return NextResponse.json({ latestMeeting: latest ? { id: latest.id, title: latest.title, date: latest.starts_at, pending } : null, pending, todos: openTodos, kpis: latestKpis });
   } catch (error) { return apiErrorResponse(error); }

@@ -15,6 +15,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { CommandPalette } from "./command-palette";
+import { PerformanceFilterBar } from "./performance-filter-context";
 import { useSession } from "./session-provider";
 
 function Initials({ name }: { name: string }) {
@@ -189,7 +190,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           ) : null}
         </header>
-        <main className="page-content">{children}</main>
+        <main className="page-content">
+          {pathname.startsWith("/performance") ? <PerformanceFilterBar /> : null}
+          {children}
+        </main>
       </div>
 
       <nav className="mobile-stage-bar" aria-label="모바일 주요 영역">

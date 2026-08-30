@@ -60,6 +60,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;
   if (href === "/settings/company") return <SettingsWorkspace page="company" />;
   if (href === "/settings/channels") return <SettingsWorkspace page="channels" />;
+  if (resolved.stage === "performance") redirect("/performance/overview");
   const config = WORKSPACE_CONFIGS[href];
   if (config) return <OperationsWorkspace config={config} />;
   return <PlaceholderPage title={page?.label ?? "기능 준비"} stage={stage?.label ?? "OS"} />;
