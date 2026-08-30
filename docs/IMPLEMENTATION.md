@@ -127,6 +127,11 @@ OPENAI_VISION_MODEL=gpt-5.6-luna
 ANTHROPIC_API_KEY=...
 CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001
 CLAUDE_SONNET_MODEL=claude-sonnet-4-5-20250929
+YOUTUBE_API_KEY=...
+YOUTUBE_CLIENT_ID=...
+YOUTUBE_CLIENT_SECRET=...
+YOUTUBE_TOKEN_ENCRYPTION_KEY=32바이트_이상_무작위_비밀값
+YOUTUBE_OAUTH_REDIRECT_URI=https://brandyaction-os.vercel.app/api/v1/youtube/oauth/callback
 CRON_SECRET=충분히_긴_무작위_값
 NEXT_PUBLIC_DEMO_MODE=false
 ```
@@ -161,13 +166,14 @@ GOOGLE_ADS_BRANDYEDU_CUSTOMER_ID=...
 
 ## 9. 적용 순서
 
-1. `202608290001_os_integrations.sql`부터 `202608290006_ad_performance.sql`까지 번호순으로 적용한다.
+1. `202608290001_os_integrations.sql`부터 `202608300007_youtube_oauth.sql`까지 번호순으로 적용한다.
 2. Vercel 환경변수를 등록한다.
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
 5. OS 설정에서 Agent PAT를 발급하고, 필요할 때 MCP의 `AGENT_PAT`에 주입한다.
 6. Telegram 환경변수가 준비된 운영 배포는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 자동 등록한다. 미등록 사용자는 요청 상태로 저장되며 `설정 → 운영 모니터링 → Telegram 웹훅`에서 승인·거절한다. `TELEGRAM_ALLOWED_USER_IDS`는 기존 사용자용 선택적 비상 허용 목록이다.
 7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.
+8. Google Cloud OAuth 웹 클라이언트의 승인된 리디렉션 URI에 `https://brandyaction-os.vercel.app/api/v1/youtube/oauth/callback`을 정확히 등록한다. 이후 `콘텐츠 → 유튜브 관리`에서 관리자 계정으로 채널 동의를 완료한다.
 
 ## 10. 외부 확인이 있어야 남는 연결
 
