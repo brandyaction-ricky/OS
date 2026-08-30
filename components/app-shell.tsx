@@ -44,6 +44,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => setMobileOpen(false), [pathname]);
 
+  useEffect(() => {
+    document.title = `${page.label} | 브랜디 OS`;
+  }, [page.label]);
+
   if (loading) {
     return (
       <div className="boot-screen">
@@ -129,11 +133,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button className="icon-button mobile-only" onClick={() => setMobileOpen(true)}>
             <Menu size={19} />
           </button>
-          <div className="breadcrumbs">
-            <span>{stage.label}</span>
+          <nav className="breadcrumbs" aria-label="현재 위치">
+            <Link href={stage.href}>{stage.label}</Link>
             <ChevronRight size={14} />
-            <strong>{page.label}</strong>
-          </div>
+            <span aria-current="page">{page.label}</span>
+          </nav>
           <div className="topbar-actions">
             <button className="command-trigger" onClick={() => setPaletteOpen(true)}>
               <Search size={15} />

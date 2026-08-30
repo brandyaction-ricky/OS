@@ -17,6 +17,7 @@ import { FinanceWorkspace } from "@/components/finance-workspace";
 import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
 import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
 import { ContentPackageWorkspace, ContentShortsWorkspace, YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
+import { ContentPerformanceWorkspace, ContentScriptsWorkspace, ContentTopicsWorkspace } from "@/components/content-pipeline-workspaces";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
@@ -37,6 +38,8 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/leave") return <LeaveWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
+  if (href === "/content/topics") return <ContentTopicsWorkspace />;
+  if (href === "/content/scripts") return <ContentScriptsWorkspace />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/packages") return <ContentPackageWorkspace />;
@@ -44,6 +47,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/youtube") return <YoutubeKitWorkspace />;
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
+  if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
   if (href === "/performance/overview") return <GrowthDashboard />;
   if (href === "/performance/revenue") return <RevenueWorkspace />;

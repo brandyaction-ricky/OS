@@ -213,6 +213,7 @@ export function MembersWorkspace() {
             <button
               key={member.id}
               className={selected?.id === member.id ? "active" : ""}
+              aria-current={selected?.id === member.id ? "true" : undefined}
               onClick={() => setSelected(member)}
             >
               <span className="avatar">
@@ -246,7 +247,7 @@ export function MembersWorkspace() {
         >
           <div className="panel-header">
             <div>
-              <h2>구성원 정보</h2>
+              <h2>{selected ? `${selected.display_name || selected.email.split("@")[0]} / ${selected.affiliation || selected.team || "소속 미지정"}` : "구성원 정보"}</h2>
               <p>{selected?.email ?? "목록에서 구성원을 선택하세요."}</p>
             </div>
             {selected ? (

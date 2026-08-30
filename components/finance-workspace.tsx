@@ -456,19 +456,21 @@ export function FinanceWorkspace() {
                 </small>
               </span>
             </div>
-            <label className="secondary-button">
-              국민 CSV
+            <label className="csv-file-picker">
+              <span>국민카드 CSV</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
+                aria-label="국민카드 CSV 파일 선택"
                 onChange={(event) => chooseCsv(event.target.files?.[0], "국민")}
               />
             </label>
-            <label className="secondary-button">
-              신한 CSV
+            <label className="csv-file-picker">
+              <span>신한카드 CSV</span>
               <input
                 type="file"
                 accept=".csv,text/csv"
+                aria-label="신한카드 CSV 파일 선택"
                 onChange={(event) => chooseCsv(event.target.files?.[0], "신한")}
               />
             </label>

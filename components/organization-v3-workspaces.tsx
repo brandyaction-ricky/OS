@@ -234,6 +234,16 @@ export function AiOperationsWorkspace() {
       health?.embeddings === "ready" ? "저장 이벤트 처리" : "OpenAI 키 대기",
     ],
   ];
+  const jobStatusLabel: Record<string, string> = {
+    backlog: "대기",
+    draft: "초안",
+    active: "실행 중",
+    review: "검수 중",
+    ready: "승인 대기",
+    blocked: "막힘",
+    done: "완료",
+    failed: "실패",
+  };
   return (
     <>
       <header className="page-header">
@@ -285,8 +295,12 @@ export function AiOperationsWorkspace() {
                 <strong>{job.title}</strong>
                 <small>{job.description || "요청 내용 없음"}</small>
               </span>
-              <span className={`status-pill status-${job.status}`}>
-                {job.status}
+              <span
+                className={`status-pill status-${job.status}`}
+                role="status"
+                aria-label={`작업 상태: ${jobStatusLabel[job.status] ?? job.status}`}
+              >
+                {jobStatusLabel[job.status] ?? job.status}
               </span>
             </div>
           ))}
