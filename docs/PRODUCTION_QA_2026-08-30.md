@@ -152,3 +152,18 @@ YouTube Data API 키로는 공개 영상 검색·조회수 등은 읽을 수 있
 - Next.js 프로덕션 빌드: 통과
 - 새 API 경로: `/api/v1/youtube/search`
 - 비밀값 저장: 코드·문서·클라이언트 응답에 API 키를 포함하지 않음
+
+### 로컬 콘텐츠 데이터 동기화 후속 개발
+
+5개 세션 문서를 최신 `main`과 다시 대조한 결과, 화면·정본·승인 공정은 반영됐지만 로컬 `radar.db`의 기존 콘텐츠를 OS로 옮기는 정식 경로가 남아 있었다. 아래를 추가했다.
+
+- 관리자 전용 `/api/v1/content/import` 추가
+- `source_content` → 원본 롱폼, `derivative_content` → 검토·발행 대기목록, `kpi_snapshots` → 영상 성과로 매핑
+- 로컬 ID를 `metadata.legacyId`로 보존해 동일 스냅샷 재업로드 시 중복 생성 대신 갱신
+- 원본이 없는 파생 항목은 건너뛰고 결과 건수로 명시
+- 가져온 파생 항목에도 사람 검토·최종 승인·예약 게이트 유지
+- `scripts/export-radar-snapshot.py`로 실제 전달본 SQLite 스키마를 OS JSON 계약으로 변환
+- 발행·업로드 화면에 관리자 전용 `로컬 자료 가져오기` 추가
+- 5MB·원본 1,000·파생 3,000·성과 3,000건 제한과 서버 스키마 검증
+
+검증 결과: 합성 SQLite의 원본·파생·성과 변환 통과, Node 테스트 42/42, ESLint, TypeScript, 프로덕션 빌드 통과. Google OAuth 계정 연결과 실제 외부 업로드는 사용자 요청에 따라 별도 단계로 유지한다.
