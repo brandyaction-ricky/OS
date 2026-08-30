@@ -74,7 +74,7 @@ export function AdPerformanceWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">AD PERFORMANCE</span>
+          <span className="eyebrow">광고 성과</span>
           <h1>광고 성과</h1>
           <p>Meta·Google 광고 데이터를 읽기 전용으로 모아 광고비, 전환 매출, ROAS와 CPA를 비교합니다.</p>
         </div>

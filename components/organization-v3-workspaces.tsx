@@ -90,7 +90,7 @@ export function WeeklyScheduleWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">TEAM WEEK</span>
+          <span className="eyebrow">이번 주 일정</span>
           <h1>이번 주 일정</h1>
           <p>회의·휴가·업무 마감·발행·계약 만료를 한곳에서 확인합니다.</p>
         </div>
@@ -248,7 +248,7 @@ export function AiOperationsWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">ONE BRAIN · MANY CHANNELS</span>
+          <span className="eyebrow">하나의 지식 · 여러 창구</span>
           <h1>AI 작업</h1>
           <p>
             AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고
@@ -262,7 +262,7 @@ export function AiOperationsWorkspace() {
           {error}
         </div>
       ) : null}
-      <div className="section-intro"><div><span className="eyebrow">LAYER 1</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
+      <div className="section-intro"><div><span className="eyebrow">1단계</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
       <section className="ai-system-grid">
         {systems.map(([title, status, description]) => (
           <article className="panel" key={title}>
@@ -276,7 +276,7 @@ export function AiOperationsWorkspace() {
           </article>
         ))}
       </section>
-      <div className="section-intro"><div><span className="eyebrow">LAYER 2</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div>
+      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div>
       <section className="panel">
         <div className="panel-header">
           <div>
@@ -308,7 +308,7 @@ export function AiOperationsWorkspace() {
             <div className="quiet-state">
               <Bot />
               <strong>등록된 AI 작업 없음</strong>
-              <span>프로젝트 관제에서 요청서를 만들면 여기에 모입니다.</span>
+              <span>AI 작업에서 요청서를 등록하면 여기에 모입니다.</span>
             </div>
           ) : null}
         </div>
@@ -421,7 +421,7 @@ export function LeaveWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">LEAVE CONTROL</span>
+          <span className="eyebrow">연차·휴가 관리</span>
           <h1>연차·휴가</h1>
           <p>잔여 연차와 신청·승인·자동 차감을 관리합니다.</p>
         </div>
@@ -559,7 +559,7 @@ export function LeaveWorkspace() {
           </div>
         </article>
       </section>
-      {balanceDrawer?<div className="drawer-backdrop" onMouseDown={()=>!busy&&setBalanceDrawer(false)}><form className="record-drawer" onSubmit={grantBalance} onMouseDown={event=>event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">LEAVE BALANCE</span><h2>연차 부여·재설정</h2></div><button type="button" className="icon-button" onClick={()=>setBalanceDrawer(false)}><X size={18}/></button></div><label><span>구성원</span><select name="memberId" required>{members.map(member=><option value={member.id} key={member.id}>{member.display_name||member.email}</option>)}</select></label><label><span>총 부여 일수</span><input name="days" type="number" min="0" step="0.5" defaultValue="15" required/></label><div className="inline-alert warning">기존 잔여가 있으면 총 부여일과 잔여일을 입력값으로 재설정합니다.</div><div className="drawer-actions"><button type="button" className="secondary-button" onClick={()=>setBalanceDrawer(false)}>취소</button><button className="primary-button" disabled={busy}>저장</button></div></form></div>:null}
+      {balanceDrawer?<div className="drawer-backdrop" onMouseDown={()=>!busy&&setBalanceDrawer(false)}><form className="record-drawer" onSubmit={grantBalance} onMouseDown={event=>event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">연차 잔여</span><h2>연차 부여·재설정</h2></div><button type="button" className="icon-button" onClick={()=>setBalanceDrawer(false)}><X size={18}/></button></div><label><span>구성원</span><select name="memberId" required>{members.map(member=><option value={member.id} key={member.id}>{member.display_name||member.email}</option>)}</select></label><label><span>총 부여 일수</span><input name="days" type="number" min="0" step="0.5" defaultValue="15" required/></label><div className="inline-alert warning">기존 잔여가 있으면 총 부여일과 잔여일을 입력값으로 재설정합니다.</div><div className="drawer-actions"><button type="button" className="secondary-button" onClick={()=>setBalanceDrawer(false)}>취소</button><button className="primary-button" disabled={busy}>저장</button></div></form></div>:null}
       {drawer ? (
         <div
           className="drawer-backdrop"
@@ -572,7 +572,7 @@ export function LeaveWorkspace() {
           >
             <div className="drawer-head">
               <div>
-                <span className="eyebrow">LEAVE REQUEST</span>
+                <span className="eyebrow">휴가 신청</span>
                 <h2>휴가 신청</h2>
               </div>
               <button

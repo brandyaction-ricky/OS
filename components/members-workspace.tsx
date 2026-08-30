@@ -133,7 +133,7 @@ export function MembersWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">PEOPLE & ACCESS</span>
+          <span className="eyebrow">구성원·권한</span>
           <h1>구성원</h1>
           <p>실제 로그인 계정의 역할·팀·사용 상태를 관리합니다.</p>
         </div>

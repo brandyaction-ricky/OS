@@ -117,15 +117,42 @@ test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval
 });
 
 test("knowledge focus mode is persistent and project hub is removed from navigation", async () => {
-  const [knowledge, shell, navigation, router] = await Promise.all([
+  const [knowledge, shell, navigation, router, config] = await Promise.all([
     read("components/knowledge-workspace.tsx"),
     read("components/app-shell.tsx"),
     read("lib/navigation.ts"),
     read("app/(os)/[stage]/[page]/page.tsx"),
+    read("lib/workspace-config.ts"),
   ]);
   assert.match(knowledge, /brandy-knowledge-focus/);
   assert.match(knowledge, /집중 모드/);
   assert.match(shell, /knowledge-focus/);
   assert.doesNotMatch(navigation, /프로젝트 관제/);
   assert.match(router, /redirect\("\/organization\/tasks"\)/);
+  assert.doesNotMatch(config, /organization\/projects|AI PROJECT HUB|프로젝트 관제/);
+});
+
+test("non-content workspaces use everyday Korean labels and real team examples", async () => {
+  const files = await Promise.all([
+    "components/dashboard.tsx",
+    "components/knowledge-search.tsx",
+    "components/tasks-workspace.tsx",
+    "components/meeting-workspace.tsx",
+    "components/growth-dashboard.tsx",
+    "components/performance-workspaces.tsx",
+    "components/settings-workspaces.tsx",
+    "components/members-workspace.tsx",
+    "components/organization-v3-workspaces.tsx",
+    "lib/workspace-config.ts",
+  ].map(read));
+  const source = files.join("\n");
+  for (const oldLabel of [
+    "WEEKLY COMMAND CENTER", "KNOWLEDGE SEARCH", "EXECUTION BOARD",
+    "MEETING TO ACTION", "GROWTH COMMAND", "REVENUE CONTROL",
+    "ACQUISITION FUNNEL", "WEEKLY SCORECARD", "COMMERCE ADMIN",
+    "PEOPLE & ACCESS", "SYSTEM CONNECTIONS", "SYSTEM CONFIGURATION",
+  ]) assert.doesNotMatch(source, new RegExp(oldLabel));
+  assert.doesNotMatch(source, /데이빗|프로젝트 관제에서 요청서를/);
+  assert.match(source, /예: 안저, 리키, 에릭/);
+  assert.match(source, /AI 작업에서 요청서를 등록하면/);
 });

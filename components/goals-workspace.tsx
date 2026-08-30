@@ -120,7 +120,7 @@ export function GoalsWorkspace() {
 
   return <>
     <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">GOAL SYSTEM</span><h1>목표·KPI</h1><p>회사 목표와 측정 지표를 월별로 연결하고 달성률과 병목을 관리합니다.</p></div>
+      <div className="page-title-group"><span className="eyebrow">목표 관리</span><h1>목표·KPI</h1><p>회사 목표와 측정 지표를 월별로 연결하고 달성률과 병목을 관리합니다.</p></div>
       <div className="header-actions"><button className="secondary-button" onClick={() => openNew("kpi")}><BarChart3 size={16} /> KPI 추가</button><button className="primary-button" onClick={() => openNew("goal")}><Plus size={16} /> 목표 추가</button></div>
     </header>
 

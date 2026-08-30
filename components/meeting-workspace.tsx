@@ -373,7 +373,7 @@ export function MeetingWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">MEETING TO ACTION</span>
+          <span className="eyebrow">회의 → 실행</span>
           <h1>회의·결정</h1>
           <p>
             지난 미해결 항목과 KPI를 이어받고, 녹음에서 결정과 후속 업무를
@@ -579,7 +579,7 @@ export function MeetingWorkspace() {
           >
             <div className="drawer-head">
               <div>
-                <span className="eyebrow">MEETING RECORD</span>
+                <span className="eyebrow">회의 기록</span>
                 <h2>{editing ? "회의 기록 수정" : "새 회의 기록"}</h2>
               </div>
               <button
@@ -647,7 +647,7 @@ export function MeetingWorkspace() {
                   editing?.tags.join(", ") ||
                   ""
                 }
-                placeholder="리키, 데이빗, 에릭"
+                placeholder="예: 안저, 리키, 에릭"
               />
             </label>
             <label>
