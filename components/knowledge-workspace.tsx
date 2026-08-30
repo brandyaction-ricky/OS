@@ -18,6 +18,8 @@ import {
   Link2,
   List,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Quote,
   RotateCcw,
@@ -32,6 +34,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, restoreDocumentVersion, updateDocument } from "@/lib/api-client";
@@ -185,7 +188,24 @@ function WorkspaceContent() {
   const [sortAscending, setSortAscending] = useState(false);
   const [listLoading, setListLoading] = useState(!demo);
   const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
+  const [focusMode, setFocusMode] = useState(false);
+  const [showFolders, setShowFolders] = useState(true);
+  const [showList, setShowList] = useState(true);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setFocusMode(window.localStorage.getItem("brandy-knowledge-focus") === "true");
+    setShowFolders(window.localStorage.getItem("brandy-knowledge-folders") !== "false");
+    setShowList(window.localStorage.getItem("brandy-knowledge-list") !== "false");
+    return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("brandy-knowledge-focus", String(focusMode));
+    window.localStorage.setItem("brandy-knowledge-folders", String(showFolders));
+    window.localStorage.setItem("brandy-knowledge-list", String(showList));
+    window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: focusMode }));
+  }, [focusMode, showFolders, showList]);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -478,17 +498,21 @@ function WorkspaceContent() {
   return (
     <>
       <header className="page-header workspace-page-header">
-        <div className="page-title-group"><span className="eyebrow">KNOWLEDGE WORKSPACE</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className="secondary-button" onClick={() => setImportOpen(true)}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => setNewOpen(true)}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
+        <div className="header-actions"><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => setImportOpen(true)}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => setNewOpen(true)}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
+
+      {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link aria-current="page" href="/knowledge">문서 작업공간</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/skills">Skill 관리</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
+
+      <div className="knowledge-view-controls" aria-label="작업공간 표시 설정"><button className={showFolders ? "active" : ""} aria-pressed={showFolders} onClick={() => setShowFolders((value) => !value)}>폴더</button><button className={showList ? "active" : ""} aria-pressed={showList} onClick={() => setShowList((value) => !value)}>문서 목록</button></div>
 
       <div className="owner-chips">
         {OWNER_FILTERS.map((item) => <button key={item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => setOwnerFilter(item.id)}>{item.label}</button>)}
       </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
 
-      <section className="knowledge-workspace">
-        <aside className="folder-pane">
+      <section className={`knowledge-workspace${!showFolders ? " folders-hidden" : ""}${!showList ? " list-hidden" : ""}`}>
+        {showFolders ? <aside className="folder-pane">
           <div className="pane-title"><strong>폴더</strong></div>
           <button className={`folder-row${folderFilter === "all" ? " active" : ""}`} onClick={() => setFolderFilter("all")}><FolderOpen size={16} /><span>모든 문서</span><small>{documents.length}</small></button>
           {folderRows.map((folder) => (
@@ -502,9 +526,9 @@ function WorkspaceContent() {
           ))}
           <div className="folder-divider" />
           <button className={`folder-row${ownerFilter === "archived" ? " active" : ""}`} onClick={() => { setOwnerFilter("archived"); setFolderFilter("all"); }}><Trash2 size={15} /><span>휴지통</span><small>{documents.filter((item) => item.status === "archived").length}</small></button>
-        </aside>
+        </aside> : null}
 
-        <aside className="document-pane">
+        {showList ? <aside className="document-pane">
           <div className="document-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="현재 문서에서 찾기" /></div>
           <div className="document-list-head"><span>{listLoading && !documents.length ? "문서 불러오는 중" : `${filtered.length}개 문서`}</span><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 수정순" : "최근 수정순"} <ChevronDown size={12} /></button></div>
           <div className="document-list">
@@ -518,7 +542,7 @@ function WorkspaceContent() {
             {orderedFiltered.length > visibleCount ? <button className="document-more" onClick={() => setVisibleCount((count) => count + 100)}>다음 100개 보기 · {orderedFiltered.length - visibleCount}개 남음</button> : null}
             {!orderedFiltered.length && !listLoading ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
           </div>
-        </aside>
+        </aside> : null}
 
         <article className="editor-pane">
           {selected && draft ? (
