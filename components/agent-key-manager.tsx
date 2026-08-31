@@ -30,6 +30,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [testOpen, setTestOpen] = useState(false);
+  const [testStatus, setTestStatus] = useState("");
   const [issued, setIssued] = useState<{ token: string; organizationId: string } | null>(null);
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [copied, setCopied] = useState<"organization" | "token" | null>(null);
@@ -75,6 +77,64 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
     finally { setBusy(false); }
   };
 
+  const testConnection = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const pat = String(form.get("pat") || "");
+    const organizationId = result?.organization.id;
+    setBusy(true); setError(""); setTestStatus("");
+    try {
+      if (!organizationId) throw new Error("조직 UUID를 불러온 뒤 다시 시도해 주세요.");
+      if (!/^bos_pat_[A-Za-z0-9_-]{20,}$/.test(pat)) throw new Error("복사한 AI 접근 키를 확인해 주세요.");
+      const endpoint = `/api/mcp?organizationId=${encodeURIComponent(organizationId)}`;
+      const call = async (id: number, name: string, args: Record<string, unknown>) => {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${pat}` },
+          body: JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } }),
+        });
+        const payload = await response.json();
+        if (!response.ok || payload.error || payload.result?.isError) {
+          throw new Error(payload.error?.message || payload.result?.content?.[0]?.text || "MCP 연결 검증에 실패했습니다.");
+        }
+        return JSON.parse(payload.result.content[0].text);
+      };
+      const stamp = new Date().toISOString();
+      const created = await call(1, "create_document", {
+        title: "[E2E] AI 접근 키 연결 검증",
+        content_md: `# MCP 연결 검증\n\n생성 단계 ${stamp}`,
+        folder: "AI 저장/연결 검증",
+        tags: ["mcp-e2e"],
+        reason: "설정 화면 MCP 생성 검증",
+      });
+      const documentId = String(created.documentId);
+      const version = Number(created.document?.current_version || 1);
+      await call(2, "edit_document", {
+        document_id: documentId,
+        expected_version: version,
+        content_md: `# MCP 연결 검증\n\n생성·수정 단계 ${stamp}`,
+        reason: "설정 화면 MCP 수정 검증",
+      });
+      const readBack = await call(3, "get_document", { document_id: documentId });
+      const archived = await call(4, "delete_document", {
+        document_id: documentId,
+        confirm: true,
+        reason: "설정 화면 MCP 휴지통 이동 검증",
+      });
+      if (!String(readBack.document?.content_md || "").includes("생성·수정 단계") || archived.document?.status !== "archived" || archived.permanent !== false) {
+        throw new Error("문서 버전 또는 휴지통 상태가 예상과 다릅니다.");
+      }
+      setTestStatus(`연결 정상 · 문서 ${documentId.slice(0, 8)}… · 버전 ${readBack.document.current_version} · 휴지통 이동 확인`);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "MCP 연결 검증에 실패했습니다.");
+    } finally {
+      formElement.reset();
+      setBusy(false);
+    }
+  };
+
   if (!isAdmin) return (
     <section className="panel agent-key-manager">
       <div className="panel-header"><div><h2>AI 접근 키</h2><p>Claude Code·Codex용 MCP 연결</p></div><ShieldCheck size={18} /></div>
@@ -86,7 +146,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
     <section className="panel agent-key-manager">
       <div className="panel-header">
         <div><h2>AI 접근 키</h2><p>Claude Code·Codex가 OS 지식을 읽고 개인 초안을 관리하는 MCP 권한</p></div>
-        <button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button>
+        <div className="header-actions"><button className="secondary-button" type="button" onClick={() => { setTestStatus(""); setTestOpen(true); }}><ShieldCheck size={14} />연결 검증</button><button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button></div>
       </div>
       {error ? <div className="inline-alert danger">{error}</div> : null}
       {result ? (
@@ -130,6 +190,17 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
             <label>팀 범위<input name="team" maxLength={120} placeholder="비워두면 귀속 계정 기준" /></label>
             <div className="inline-alert"><ShieldCheck size={15} />새 문서는 개인 초안으로만 생성되고, 삭제는 휴지통 이동이며, 모든 쓰기는 감사 로그와 버전으로 남습니다.</div>
             <div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => setCreateOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <KeyRound />}발급</button></div>
+          </form>
+        </div>
+      ) : null}
+      {testOpen ? (
+        <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setTestOpen(false); }}>
+          <form className="side-drawer" onSubmit={testConnection}>
+            <div className="drawer-header"><div><span className="eyebrow">MCP 실제 검증</span><h2>AI 접근 키 연결 검증</h2></div><button className="icon-button" type="button" aria-label="닫기" disabled={busy} onClick={() => setTestOpen(false)}><X /></button></div>
+            <label>AI 접근 키<input name="pat" type="password" autoComplete="off" required placeholder="복사한 bos_pat_… 키 붙여넣기" /></label>
+            <div className="inline-alert"><ShieldCheck size={15} />키는 저장하지 않습니다. 개인 초안 생성 → 수정 → 읽기 → 휴지통 이동을 실행하고 버전·감사 기록을 확인합니다.</div>
+            {testStatus ? <div className="inline-alert success"><Check size={15} />{testStatus}</div> : null}
+            <div className="drawer-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => setTestOpen(false)}>닫기</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <ShieldCheck />}실제 연결 검증</button></div>
           </form>
         </div>
       ) : null}
