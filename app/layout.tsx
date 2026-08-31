@@ -9,13 +9,32 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  colorScheme: "dark",
-  themeColor: "#0b0d12",
+  colorScheme: "light dark",
 };
+
+const displayPreferenceScript = `
+(() => {
+  try {
+    const savedTheme = window.localStorage.getItem("brandy-os-theme");
+    const theme = savedTheme === "light" || savedTheme === "dark"
+      ? savedTheme
+      : window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    const guidance = window.localStorage.getItem("brandy-os-guidance") === "off" ? "off" : "on";
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.guidance = guidance;
+    document.documentElement.style.colorScheme = theme;
+  } catch {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.dataset.guidance = "on";
+  }
+})();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko">
+    <html lang="ko" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: displayPreferenceScript }} />
+      </head>
       <body>{children}</body>
     </html>
   );

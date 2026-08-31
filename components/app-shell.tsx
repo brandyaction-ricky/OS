@@ -4,10 +4,13 @@ import {
   Bell,
   ChevronRight,
   ChevronsUpDown,
+  CircleHelp,
   Command,
   LogOut,
   Menu,
+  Moon,
   Search,
+  Sun,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,6 +21,11 @@ import { roleLabel } from "@/lib/company-settings";
 import { CommandPalette } from "./command-palette";
 import { PerformanceFilterBar } from "./performance-filter-context";
 import { useSession } from "./session-provider";
+
+type DisplayTheme = "dark" | "light";
+
+const THEME_STORAGE_KEY = "brandy-os-theme";
+const GUIDANCE_STORAGE_KEY = "brandy-os-guidance";
 
 function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
@@ -33,6 +41,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [knowledgeFocus, setKnowledgeFocus] = useState(false);
+  const [theme, setTheme] = useState<DisplayTheme>("dark");
+  const [guidanceOn, setGuidanceOn] = useState(true);
+
+  useEffect(() => {
+    const savedTheme = document.documentElement.dataset.theme;
+    const savedGuidance = document.documentElement.dataset.guidance;
+    setTheme(savedTheme === "light" ? "light" : "dark");
+    setGuidanceOn(savedGuidance !== "off");
+  }, []);
+
+  const changeTheme = () => {
+    const nextTheme: DisplayTheme = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = nextTheme;
+    document.documentElement.style.colorScheme = nextTheme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+    setTheme(nextTheme);
+  };
+
+  const changeGuidance = () => {
+    const nextGuidance = !guidanceOn;
+    document.documentElement.dataset.guidance = nextGuidance ? "on" : "off";
+    window.localStorage.setItem(GUIDANCE_STORAGE_KEY, nextGuidance ? "on" : "off");
+    setGuidanceOn(nextGuidance);
+  };
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -153,6 +185,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>페이지·지식 검색</span>
               <kbd><Command size={11} />K</kbd>
             </button>
+            <div className="display-controls" role="group" aria-label="화면 설정">
+              <button
+                type="button"
+                className="display-control"
+                aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`}
+                title={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`}
+                onClick={changeTheme}
+              >
+                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+                <span>{theme === "dark" ? "라이트" : "다크"}</span>
+              </button>
+              <button
+                type="button"
+                className={`display-control guidance-control${guidanceOn ? " active" : ""}`}
+                role="switch"
+                aria-checked={guidanceOn}
+                aria-label={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`}
+                title={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`}
+                onClick={changeGuidance}
+              >
+                <CircleHelp size={15} />
+                <span>설명</span>
+                <em>{guidanceOn ? "ON" : "OFF"}</em>
+              </button>
+            </div>
             <button
               className="icon-button"
               aria-label="알림"
