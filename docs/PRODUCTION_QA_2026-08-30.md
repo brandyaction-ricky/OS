@@ -345,3 +345,33 @@ Google Cloud 웹 OAuth 클라이언트와 운영 환경을 연결하고 승인 �
 - 광고 연동: 자격 증명 미등록으로 `missing`
 
 실제 승인 영상 파일이 제공되지 않아 YouTube 비공개 영상 업로드는 이번 전수 QA에서도 실행하지 않았다. 실제 `radar.db` 원본 적재, 광고 API 실동기화, 모바일 실기기별 터치 검증도 각각 원본·자격 증명·기기 조건이 필요한 외부 잔여 항목으로 유지한다.
+
+### 2026-08-31 Claude Code·Codex MCP 지식 쓰기 권한
+
+전달 문서 `브랜디OS_AI지식쓰기권한_요청_리키님.md`의 계약을 기준으로 AI 에이전트가 OS 지식을 검색·조회·생성·수정·휴지통 이동할 수 있는 범위 제한형 MCP 경로를 추가했다.
+
+- 조직 UUID 기반의 `knowledge.read`, `knowledge.write` 범위형 Agent PAT 적용
+- 신규 API: `GET`, `POST`, `PATCH`, `DELETE /api/v1/knowledge-documents`
+- 새 문서는 PAT 귀속 구성원의 개인 초안으로만 생성
+- 정본 수정은 기존 문서 버전과 작성 에이전트를 함께 기록
+- 삭제는 영구 삭제 없이 보관 상태로만 변경
+- 생성·수정은 분당 20회·일 200회, 삭제는 분당 5회·일 30회로 DB 원자적 제한
+- 에이전트의 모든 쓰기를 전용 감사 로그에 기록하고 기존 설정 > 감사 로그에 통합
+- 에이전트 검색에서 회사 정본과 자기 소유 초안만 노출해 다른 구성원의 비정본 문서 차단
+- Claude Code·Codex용 MCP 서버에 `search_knowledge`, `get_document`, `create_document`, `edit_document`, `delete_document` 도구 제공
+- 설정 > 권한에서 조직 UUID 확인, 소유 구성원·읽기/쓰기 범위 선택, 일회성 PAT 발급·폐기 가능
+- 운영 DB 마이그레이션 `202608310010_agent_knowledge_write.sql` 적용 후 조직·감사 로그·4개 쓰기 함수 존재 확인
+
+검증 결과:
+
+- Node 테스트: 75/75 통과
+- ESLint: 통과
+- TypeScript: 통과
+- Next.js 프로덕션 빌드: 통과
+- 기능 배포 커밋: `4f63e0c7a538b1e0bfa161e9c16b42b6ff71a218`
+- 운영 헬스: `agentMcp: ready`
+- 신규 API 비로그인 접근: `401 AUTH_REQUIRED`
+- 운영 설정 > 권한: 리키 관리자 로그인, 조직 UUID·키 발급 UI·귀속 구성원 목록 렌더링 확인
+- MCP 설정 패널: 실제 CSS 로드, 문서 가로 넘침 0px, 운영 앱 출처 콘솔 오류 0건
+
+보고서 작성 시점에는 발급된 Agent PAT가 0개다. PAT는 한 번만 표시되는 지속 접근 권한이므로 관리자 확인과 즉시 복사가 가능한 상태에서 Claude Code·Codex별로 분리 발급하고, 토큰 원문은 코드·로그·보고서·채팅에 남기지 않는다. 따라서 실제 PAT를 이용한 운영 생성·수정·휴지통 이동 E2E는 키 발급 직후 실행할 최종 외부 단계로 남겨 둔다.
