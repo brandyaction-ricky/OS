@@ -38,6 +38,11 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.doesNotMatch(mcp, /OS_USER_JWT/);
   assert.match(manager, /한 번만 표시되는 PAT/);
   assert.match(manager, /읽기·쓰기/);
+  assert.match(manager, /AI 접근 키 연결 검증/);
+  assert.match(manager, /type="password"/);
+  assert.match(manager, /create_document/);
+  assert.match(manager, /edit_document/);
+  assert.match(manager, /delete_document/);
 });
 
 test("operating core is additive, RLS protected and event audited", async () => {
