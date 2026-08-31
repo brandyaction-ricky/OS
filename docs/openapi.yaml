@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Brandyaction OS API
-  version: 2.2.0
+  version: 2.3.0
   description: 지식·업무·목표·콘텐츠·성과를 연결하는 브랜디액션 운영 API
 servers:
   - url: https://brandyaction-os.vercel.app
@@ -108,6 +108,66 @@ paths:
       responses:
         "200": { description: 문서 원문 }
         "404": { $ref: "#/components/responses/ApiError" }
+  /api/v1/knowledge-documents:
+    get:
+      summary: 직원 AI가 권한 범위의 문서 원문 조회
+      parameters:
+        - { in: query, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: documentId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: 문서 원문과 현재 버전 }
+        "403": { $ref: "#/components/responses/ApiError" }
+    post:
+      summary: knowledge.write PAT로 개인 초안 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, title, contentMd]
+              properties:
+                organizationId: { type: string, format: uuid }
+                title: { type: string, minLength: 1, maxLength: 200 }
+                contentMd: { type: string, minLength: 1, maxLength: 1500000 }
+                folder: { type: string, maxLength: 160, default: AI 저장/검토 대기 }
+                tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
+                status: { type: string, enum: [personal_draft, draft], default: personal_draft }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "201": { description: 생성 문서, documentId와 색인 상태 }
+        "429": { $ref: "#/components/responses/ApiError" }
+    patch:
+      summary: knowledge.write PAT로 버전을 남기고 문서 수정
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, documentId]
+              properties:
+                organizationId: { type: string, format: uuid }
+                documentId: { type: string, format: uuid }
+                expectedVersion: { type: integer, minimum: 1 }
+                title: { type: string, minLength: 1, maxLength: 200 }
+                contentMd: { type: string, minLength: 1, maxLength: 1500000 }
+                folder: { type: string, maxLength: 160 }
+                tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
+                reason: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: 수정 문서와 새 버전 }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "429": { $ref: "#/components/responses/ApiError" }
+    delete:
+      summary: knowledge.write PAT로 영구 삭제 없이 휴지통 이동
+      parameters:
+        - { in: query, name: organizationId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: documentId, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: reason, schema: { type: string, maxLength: 500 } }
+      responses:
+        "200": { description: permanent=false인 휴지통 이동 결과 }
+        "429": { $ref: "#/components/responses/ApiError" }
   /api/v1/documents/{id}/status:
     post:
       summary: 서버의 상태 전환 정책에 따라 문서 상태 변경
@@ -245,7 +305,7 @@ paths:
         "403": { $ref: "#/components/responses/ApiError" }
   /api/v1/audit:
     get:
-      summary: 운영 기록 변경 이력
+      summary: 운영 기록·지식 문서·AI 에이전트 변경 이력
       responses:
         "200": { description: 관리자 전체 또는 사용자 본인 변경 이력 }
   /api/v1/agent-keys:
@@ -254,7 +314,21 @@ paths:
       responses:
         "200": { description: 키 메타데이터 목록 }
     post:
-      summary: 관리자용 읽기 전용 Agent PAT 발급
+      summary: 관리자용 읽기 또는 읽기·쓰기 Agent PAT 발급
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80 }
+                ownerUserId: { type: string, format: uuid }
+                access: { type: string, enum: [read, write], default: read }
+                team: { type: string, maxLength: 120 }
+                brand: { type: [string, "null"], maxLength: 120 }
+                expiresAt: { type: [string, "null"], format: date-time }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:
@@ -336,7 +410,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Supabase 사용자 JWT 또는 canonical-only bos_pat 토큰
+      description: Supabase 사용자 JWT 또는 범위가 지정된 bos_pat 토큰(knowledge.read/knowledge.write)
   schemas:
     RecordType:
       type: string

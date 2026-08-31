@@ -5,6 +5,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { searchSchema } from "@/lib/validation";
 import { authenticateRequest } from "@/lib/server/auth";
 import { searchDocuments } from "@/lib/server/search";
+import { assertOrganization } from "@/lib/server/organization";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,10 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request, { allowAgent: true });
     const input = searchSchema.parse(await parseJson(request, 64_000));
+    if (actor.type === "agent" && !input.organizationId) {
+      throw new ApiError(400, "ORGANIZATION_REQUIRED", "에이전트 검색에는 organizationId가 필요합니다.");
+    }
+    if (input.organizationId) await assertOrganization(actor, input.organizationId);
     if (input.mode === "semantic" && !process.env.OPENAI_API_KEY) {
       throw new ApiError(503, "SEMANTIC_SEARCH_UNAVAILABLE", "의미 검색 환경변수가 아직 연결되지 않았습니다.");
     }

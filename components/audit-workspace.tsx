@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Bot,
   CircleAlert,
   Clock3,
   FileClock,
@@ -17,15 +18,18 @@ import {
 import { useSession } from "./session-provider";
 
 interface AuditEvent {
-  id: number;
-  record_id: string;
+  id: string;
+  subject_id: string;
+  subject_type: string;
+  title: string;
   actor_id: string | null;
+  actor_type: "user" | "agent";
+  actor_name: string;
   event_type: string;
   from_status: string | null;
   to_status: string | null;
   changed_fields: string[];
   created_at: string;
-  os_records: { title: string; record_type: string } | null;
 }
 
 export function AuditWorkspace() {
@@ -83,7 +87,7 @@ export function AuditWorkspace() {
         ) : events.length ? (
           <div className="audit-list">
             {events.map((event) => {
-              const recordType = event.os_records?.record_type;
+              const recordType = event.subject_type;
               const fields = auditFieldLabels(event.changed_fields);
               const transition =
                 event.from_status !== event.to_status
@@ -92,14 +96,15 @@ export function AuditWorkspace() {
               return (
                 <div key={event.id}>
                   <span className="audit-icon">
-                    {event.event_type === "created" ? <Activity size={15} /> : <FileClock size={15} />}
+                    {event.actor_type === "agent" ? <Bot size={15} /> : event.event_type === "created" ? <Activity size={15} /> : <FileClock size={15} />}
                   </span>
                   <span>
-                    <strong>{event.os_records?.title ?? "운영 기록"}</strong>
+                    <strong>{event.title}</strong>
                     <small>
                       {auditRecordLabel(recordType)} · {auditEventLabel(event.event_type)}
                       {fields.length ? ` · 변경: ${fields.join("·")}` : ""}
                       {transition}
+                      {` · 실행: ${event.actor_name}`}
                     </small>
                   </span>
                   <time><Clock3 size={12} />{new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(event.created_at))}</time>

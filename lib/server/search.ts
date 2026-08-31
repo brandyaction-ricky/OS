@@ -69,6 +69,9 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
     .order("updated_at", { ascending: false })
     .limit(Math.min(Math.max(input.topK * 6, 24), 60));
   if (input.filters.folder) builder = builder.eq("folder", input.filters.folder);
+  if (actor.type === "agent" && statuses.some((status) => status !== "canonical")) {
+    builder = builder.or(`status.eq.canonical,owner_id.eq.${actor.ownerId}`);
+  }
   const brand = actor.brand ?? input.filters.brand;
   if (brand) builder = builder.eq("brand", brand);
   const { data } = await builder;
@@ -106,15 +109,21 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     else degraded = true;
   }
 
-  const { data, error } = await actor.supabase.rpc("os_search_knowledge", {
+  // The vector RPC runs through the service client for PATs. Only canonical
+  // rows may enter that query; personal agent-owned drafts are merged through
+  // the explicitly owner-filtered keyword path below.
+  const rpcStatuses = actor.type === "agent"
+    ? statuses.filter((status) => status === "canonical")
+    : statuses;
+  const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
     p_query: input.query,
     p_embedding: embedding,
     p_limit: input.topK,
-    p_statuses: statuses,
+    p_statuses: rpcStatuses,
     p_folder: input.filters.folder || null,
     p_brand: actor.brand ?? input.filters.brand ?? null,
     p_min_score: 0,
-  });
+  }) : { data: [], error: null };
   if (error) {
     const fallback = await fallbackDocuments(actor, input, statuses);
     return { results: fallback, degraded: true };

@@ -12,12 +12,32 @@ test("integration migration is additive and protects the existing OS contract", 
   assert.doesNotMatch(sql, /truncate\s/i);
 });
 
-test("agent keys remain canonical-only and cannot write through MCP", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8");
-  const mcp = await readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8");
-  assert.match(migration, /allowed_statuses[^\n]+array\['canonical'\]/);
-  assert.match(mcp, /OS_USER_JWT/);
-  assert.match(mcp, /filters": \{"statuses": \["canonical"\]\}/);
+test("scoped agent keys expose audited and reversible knowledge writes", async () => {
+  const [baseMigration, writeMigration, mcp, route, manager] = await Promise.all([
+    readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/202608310010_agent_knowledge_write.sql", import.meta.url), "utf8"),
+    readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../components/agent-key-manager.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(baseMigration, /allowed_statuses[^\n]+array\['canonical'\]/);
+  assert.match(writeMigration, /'knowledge\.read', 'knowledge\.write'/);
+  assert.match(writeMigration, /os_agent_audit_logs/);
+  assert.match(writeMigration, /os_assert_agent_write_access/);
+  assert.match(writeMigration, /OS_AGENT_RATE_LIMITED/);
+  assert.match(writeMigration, /set status = 'archived'/);
+  assert.doesNotMatch(writeMigration, /delete from public\.os_documents/i);
+  assert.match(route, /status: "draft"/);
+  assert.match(route, /os_agent_update_document/);
+  assert.match(route, /os_agent_archive_document/);
+  assert.match(mcp, /ORG_UUID/);
+  for (const tool of ["search_knowledge", "get_document", "create_document", "edit_document", "delete_document"]) {
+    assert.match(mcp, new RegExp(`"name": "${tool}"`));
+  }
+  assert.match(mcp, /confirm=true/);
+  assert.doesNotMatch(mcp, /OS_USER_JWT/);
+  assert.match(manager, /한 번만 표시되는 PAT/);
+  assert.match(manager, /읽기·쓰기/);
 });
 
 test("operating core is additive, RLS protected and event audited", async () => {

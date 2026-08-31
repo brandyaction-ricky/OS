@@ -34,6 +34,7 @@ export interface DocumentVersion {
   title: string;
   content_md: string;
   author_id: string | null;
+  agent_key_id?: string | null;
   author_name: string;
   reason: string;
   created_at: string;

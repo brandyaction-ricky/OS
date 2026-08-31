@@ -156,7 +156,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, captured: true, documentId: id });
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
-    const actor: RequestActor = { type: "agent", id: `telegram:${message.from.id}`, user: null, role: "member", team: "", brand: null, allowedStatuses: ["canonical"], supabase };
+    const actor: RequestActor = {
+      type: "agent",
+      id: `telegram:${message.from.id}`,
+      name: message.from.username || message.from.first_name || "Telegram",
+      user: null,
+      role: "member",
+      team: "",
+      brand: null,
+      allowedStatuses: ["canonical"],
+      scopes: ["knowledge.read"],
+      organizationId: null,
+      ownerId: "",
+      supabase,
+    };
     const [{ results }, liveOperations] = await Promise.all([
       searchDocuments(actor, { query: text, mode: "hybrid", topK: 8, filters: { statuses: ["canonical"] } }),
       operationalAnswer(supabase, text),

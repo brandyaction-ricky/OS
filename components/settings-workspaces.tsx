@@ -35,6 +35,7 @@ import {
 import { memberMatchesRoster } from "@/lib/company-roster";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
+import { AgentKeyManager } from "./agent-key-manager";
 
 type Page = "connections" | "access" | "company" | "channels";
 type ConnectionStatus = "ready" | "warning" | "waiting";
@@ -119,7 +120,7 @@ function SettingsLoading({ page }: { page: Page }) {
 }
 
 export function SettingsWorkspace({ page }: { page: Page }) {
-  const { accessToken, demo } = useSession();
+  const { accessToken, demo, profile } = useSession();
   const [health, setHealth] = useState<Awaited<ReturnType<typeof getHealth>> | null>(null);
   const [telegram, setTelegram] = useState<TelegramConnectionStatus | null>(null);
   const [members, setMembers] = useState<OsMember[]>([]);
@@ -209,6 +210,13 @@ export function SettingsWorkspace({ page }: { page: Page }) {
         owner: "리키",
         status: health?.contentAi === "ready" ? "ready" : "waiting",
         location: "Vercel 환경변수",
+      },
+      {
+        system: "Claude·Codex MCP",
+        purpose: "회사 지식 검색·개인 초안 생성·수정·휴지통",
+        owner: "리키",
+        status: health?.agentMcp === "ready" ? "ready" : "waiting",
+        location: "설정 → 권한 → AI 접근 키",
       },
       {
         system: "YouTube Data API",
@@ -355,6 +363,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
                   </div>
                 ))}
               </section>
+              <AgentKeyManager accessToken={accessToken} demo={demo} isAdmin={profile?.role === "admin"} members={members} defaultOwnerId={profile?.id} />
             </>
           ) : null}
 

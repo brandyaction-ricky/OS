@@ -181,6 +181,7 @@ export async function getHealth() {
     service: string;
     database: "ready" | "missing" | "error";
     auth: "ready" | "missing";
+    agentMcp: "ready" | "missing" | "error";
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
     contentAi: "ready" | "missing";
@@ -255,6 +256,51 @@ export async function decideTelegramUser(token: string | null, externalUserId: s
   return apiRequest<{ user: { external_user_id: string; status: "approved" | "rejected" } }>("/api/v1/telegram/setup", {
     method: "PATCH", token, body: JSON.stringify({ externalUserId, action }),
   });
+}
+
+export interface AgentAccessKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  team: string;
+  brand: string | null;
+  scopes: string[];
+  allowed_statuses: string[];
+  owner_user_id: string;
+  active: boolean;
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  owner: { id: string; display_name: string; email: string; is_active: boolean } | null;
+}
+
+export interface AgentAccessResponse {
+  organization: { id: string; slug: string; name: string };
+  keys: AgentAccessKey[];
+}
+
+export async function listAgentKeys(token: string | null) {
+  return apiRequest<AgentAccessResponse>("/api/v1/agent-keys", { token });
+}
+
+export async function createAgentKey(token: string | null, input: {
+  name: string;
+  ownerUserId: string;
+  access: "read" | "write";
+  team?: string;
+  brand?: string | null;
+  expiresAt?: string | null;
+}) {
+  return apiRequest<{
+    key: AgentAccessKey;
+    organization: AgentAccessResponse["organization"];
+    token: string;
+    warning: string;
+  }>("/api/v1/agent-keys", { method: "POST", token, body: JSON.stringify(input) });
+}
+
+export async function revokeAgentKey(token: string | null, id: string) {
+  return apiRequest<{ revoked: boolean }>(`/api/v1/agent-keys?id=${encodeURIComponent(id)}`, { method: "DELETE", token });
 }
 
 export async function generateContent(token: string | null, input: {

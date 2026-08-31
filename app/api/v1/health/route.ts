@@ -8,9 +8,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   let database: "ready" | "missing" | "error" = hasServerSupabaseConfig() ? "error" : "missing";
+  let agentMcp: "ready" | "missing" | "error" = hasServerSupabaseConfig() ? "error" : "missing";
   if (hasServerSupabaseConfig()) {
-    const { error } = await createServiceSupabase().from("os_documents").select("id").limit(1);
+    const service = createServiceSupabase();
+    const { error } = await service.from("os_documents").select("id").limit(1);
     database = error ? "error" : "ready";
+    const { error: agentError } = await service.from("os_organizations").select("id").eq("slug", "brandyaction").limit(1);
+    agentMcp = agentError ? "error" : "ready";
   }
   const auth = hasPublicSupabaseConfig() ? "ready" : "missing";
   const embeddings = process.env.OPENAI_API_KEY ? "ready" : "keyword_only";
@@ -27,6 +31,7 @@ export async function GET() {
     service: "brandyaction-os",
     database,
     auth,
+    agentMcp,
     embeddings,
     telegram,
     contentAi,

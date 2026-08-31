@@ -7,13 +7,19 @@ import type { DocumentStatus, OsRole } from "@/lib/types";
 export interface RequestActor {
   type: "user" | "agent";
   id: string;
+  name: string;
   user: User | null;
   role: OsRole;
   team: string;
   brand: string | null;
   allowedStatuses: DocumentStatus[];
+  scopes: string[];
+  organizationId: string | null;
+  ownerId: string;
   supabase: SupabaseClient;
 }
+
+export type AgentScope = "knowledge.read" | "knowledge.write";
 
 export function hashAgentKey(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -25,28 +31,40 @@ export function safeSecretMatch(received: string, expected: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export async function authenticateRequest(request: Request, options: { allowAgent?: boolean } = {}): Promise<RequestActor> {
+export async function authenticateRequest(
+  request: Request,
+  options: { allowAgent?: boolean; requiredAgentScope?: AgentScope } = {},
+): Promise<RequestActor> {
   const token = getBearerToken(request);
   if (token.startsWith("bos_pat_")) {
     if (!options.allowAgent) throw new ApiError(403, "AGENT_READ_ONLY", "에이전트 키는 이 작업을 수행할 수 없습니다.");
     const service = createServiceSupabase();
     const { data, error } = await service
       .from("os_agent_keys")
-      .select("id,active,team,brand,allowed_statuses,expires_at")
+      .select("id,name,active,team,brand,allowed_statuses,scopes,organization_id,owner_user_id,expires_at")
       .eq("key_hash", hashAgentKey(token))
       .maybeSingle();
     if (error || !data || !data.active || (data.expires_at && new Date(data.expires_at) <= new Date())) {
       throw new ApiError(401, "INVALID_AGENT_KEY", "에이전트 키가 유효하지 않습니다.");
     }
+    const scopes = (data.scopes ?? []).map((scope: string) => scope === "knowledge:search" ? "knowledge.read" : scope);
+    const requiredScope = options.requiredAgentScope ?? "knowledge.read";
+    if (!scopes.includes(requiredScope)) {
+      throw new ApiError(403, "AGENT_SCOPE_REQUIRED", `에이전트 키에 ${requiredScope} 권한이 없습니다.`);
+    }
     await service.from("os_agent_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
     return {
       type: "agent",
       id: data.id,
+      name: data.name,
       user: null,
       role: "member",
       team: data.team ?? "",
       brand: data.brand,
       allowedStatuses: data.allowed_statuses ?? ["canonical"],
+      scopes,
+      organizationId: data.organization_id,
+      ownerId: data.owner_user_id,
       supabase: service,
     };
   }
@@ -63,11 +81,21 @@ export async function authenticateRequest(request: Request, options: { allowAgen
   return {
     type: "user",
     id: userData.user.id,
+    name: userData.user.email ?? "구성원",
     user: userData.user,
     role: profile?.role ?? "member",
     team: profile?.team ?? "",
     brand: null,
     allowedStatuses: ["draft", "team", "review", "reviewed", "canonical"],
+    scopes: ["knowledge.read", "knowledge.write"],
+    organizationId: null,
+    ownerId: userData.user.id,
     supabase,
   };
+}
+
+export function requireAgentScope(actor: RequestActor, scope: AgentScope) {
+  if (actor.type === "agent" && !actor.scopes.includes(scope)) {
+    throw new ApiError(403, "AGENT_SCOPE_REQUIRED", `에이전트 키에 ${scope} 권한이 없습니다.`);
+  }
 }

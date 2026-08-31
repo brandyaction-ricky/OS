@@ -37,6 +37,7 @@ const RECORD_LABELS: Record<string, string> = {
   access_rule: "권한 규칙",
   company_setting: "회사 설정",
   channel: "메시지 창구",
+  knowledge_document: "지식 문서",
   leave_balance: "연차 잔여",
   leave_request: "휴가 신청",
   expense: "지출",
@@ -95,6 +96,8 @@ const FIELD_LABELS: Record<string, string> = {
   source_url: "출처 주소",
   tags: "태그",
   metadata: "세부 정보",
+  content_md: "본문",
+  folder: "폴더",
 };
 
 export function auditEventLabel(value: string) {
