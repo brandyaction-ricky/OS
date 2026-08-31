@@ -2,6 +2,12 @@
 
 Claude Code와 Codex가 같은 Brandy OS 지식 API를 사용하는 표준입출력 MCP 서버입니다.
 
+운영 서버는 동일한 도구를 Streamable HTTP 방식으로도 제공합니다.
+
+- 원격 MCP URL: `https://brandyaction-os.vercel.app/api/mcp?organizationId=<ORG_UUID>`
+- 인증: `Authorization: Bearer <AGENT_PAT>`
+- PAT를 URL, 저장소, 플러그인 파일에 직접 넣지 않습니다.
+
 ## 연결값
 
 OS 관리자 화면의 `설정 → 권한 → AI 접근 키`에서 다음 값을 발급합니다.
@@ -31,3 +37,9 @@ claude mcp add os-knowledge -- python3 /absolute/path/to/os_knowledge_mcp.py
 ```
 
 Codex에서도 같은 Python 명령과 세 환경변수를 stdio MCP 서버 설정에 등록하면 동일한 5개 도구가 노출됩니다.
+
+## Codex 원격 MCP
+
+Codex 앱·CLI·IDE에서는 Streamable HTTP 서버로 등록할 수 있습니다. PAT는 클라이언트의 비밀 환경변수 `BRANDY_OS_PAT`에 저장하고 MCP 설정은 해당 변수만 참조합니다. 쓰기 도구는 Codex 승인 정책에서 별도로 확인하도록 `writes` 모드를 권장합니다.
+
+ChatGPT Work 웹은 로컬 Codex 설정을 읽지 않으므로, 원격 MCP가 포함된 Brandy OS 플러그인을 설치해야 합니다.
