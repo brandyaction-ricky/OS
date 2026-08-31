@@ -87,7 +87,18 @@ function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean)
 }
 
 function wikiLinks(content: string) {
-  return [...new Set([...content.matchAll(/\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g)].map((match) => match[1].trim()).filter(Boolean))];
+  return [...new Set([...content.matchAll(/\[\[([^\]]+)\]\]/g)].map((match) => wikiTarget(match[1])).filter(Boolean))];
+}
+
+function wikiTarget(raw: string) {
+  const target = raw.split("|")[0].split("#")[0].trim().replace(/\\/g, "/");
+  return target.replace(/\.md$/i, "");
+}
+
+function normalizedWikiValue(raw: string) {
+  let value = wikiTarget(raw);
+  try { value = decodeURIComponent(value); } catch { /* 입력 문자열 그대로 비교 */ }
+  return value.normalize("NFC").trim().toLocaleLowerCase("ko-KR").replace(/^\.\//, "").replace(/\s+/g, " ");
 }
 
 interface ReadingContent { body: string; metadata: Array<{ label: string; value: string }> }
@@ -126,12 +137,13 @@ function prepareReadingContent(content: string): ReadingContent {
 }
 
 function WikiInline({ text, onOpenLink }: { text: string; onOpenLink: (title: string) => void }) {
-  const parts = text.split(/(\[\[[^\]]+\]\])/g);
+  const parts = text.split(/(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|`[^`]+`)/g);
   return <>{parts.map((part, index) => {
-    const match = part.match(/^\[\[([^\]|#]+)(?:[#|]([^\]]+))?\]\]$/);
-    if (!match) return <span key={index}>{part}</span>;
-    const title = match[1].trim();
-    return <button className="wiki-link" type="button" key={index} onClick={() => onOpenLink(title)}>{match[2]?.trim() || title}</button>;
+    const match = part.match(/^\[\[([^\]]+)\]\]$/);
+    if (match) { const raw = match[1]; const title = wikiTarget(raw); const alias = raw.includes("|") ? raw.split("|").slice(1).join("|").trim() : ""; return <button className="wiki-link" type="button" key={index} onClick={() => onOpenLink(title)}>{alias || title}</button>; }
+    if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (/^`[^`]+`$/.test(part)) return <code key={index}>{part.slice(1, -1)}</code>;
+    return <span key={index}>{part}</span>;
   })}</>;
 }
 
@@ -165,9 +177,18 @@ function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (t
             </div>
           );
         }
-        if (block.split("\n").every((line) => /^[-*]\s+/.test(line))) {
+        const lines = block.split("\n");
+        if (lines.length >= 2 && /^\s*\|.+\|\s*$/.test(lines[0]) && /^\s*\|?\s*:?-{3,}/.test(lines[1])) {
+          const cells = (line: string) => line.trim().replace(/^\||\|$/g, "").split("|").map((cell) => cell.trim());
+          const headers = cells(lines[0]);
+          return <div className="markdown-table-wrap" key={index}><table><thead><tr>{headers.map((cell, cellIndex) => <th key={cellIndex}><WikiInline text={cell} onOpenLink={onOpenLink} /></th>)}</tr></thead><tbody>{lines.slice(2).map((line, rowIndex) => <tr key={rowIndex}>{cells(line).map((cell, cellIndex) => <td key={cellIndex}><WikiInline text={cell} onOpenLink={onOpenLink} /></td>)}</tr>)}</tbody></table></div>;
+        }
+        if (lines.every((line) => /^[-*]\s+/.test(line))) {
           return <ul key={index}>{block.split("\n").map((line, itemIndex) => <li key={itemIndex}><WikiInline text={line.replace(/^[-*]\s+/, "")} onOpenLink={onOpenLink} /></li>)}</ul>;
         }
+        if (lines.every((line) => /^\d+[.)]\s+/.test(line))) return <ol key={index}>{lines.map((line, itemIndex) => <li key={itemIndex}><WikiInline text={line.replace(/^\d+[.)]\s+/, "")} onOpenLink={onOpenLink} /></li>)}</ol>;
+        if (lines.every((line) => /^>\s?/.test(line))) return <blockquote key={index}><WikiInline text={lines.map((line) => line.replace(/^>\s?/, "")).join("\n")} onOpenLink={onOpenLink} /></blockquote>;
+        if (/^```/.test(block) && /```$/.test(block)) return <pre className="markdown-code" key={index}><code>{lines.slice(1, -1).join("\n")}</code></pre>;
         return <p key={index}><WikiInline text={block} onOpenLink={onOpenLink} /></p>;
       })}
     </div>
@@ -554,8 +575,13 @@ function WorkspaceContent() {
   };
 
   const openWikiLink = (title: string) => {
-    const normalized = title.normalize("NFC").trim().toLocaleLowerCase("ko-KR");
-    const target = documents.find((document) => document.status !== "archived" && document.title.normalize("NFC").trim().toLocaleLowerCase("ko-KR") === normalized);
+    const normalized = normalizedWikiValue(title);
+    const target = documents.find((document) => {
+      if (document.status === "archived") return false;
+      const source = document.source_ref?.replace(/\\/g, "/") ?? "";
+      const candidates = [document.title, source, source.split("/").pop() ?? "", document.folder ? `${document.folder}/${document.title}` : document.title];
+      return candidates.some((candidate) => normalizedWikiValue(candidate) === normalized);
+    });
     if (!target) { setToast(`“${title}” 문서가 없어 깨진 링크로 표시됩니다.`); return; }
     setOwnerFilter("all"); setSelectedId(target.id); setMode("read");
   };

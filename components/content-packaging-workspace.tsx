@@ -62,7 +62,8 @@ export function ContentPackagingWorkspace() {
   const [marketResults, setMarketResults] = useState<YoutubeMarketItem[]>([]);
   const [ownResults, setOwnResults] = useState<YoutubeMarketItem[]>([]);
   const [minViews, setMinViews] = useState(10_000);
-  const [sort, setSort] = useState<"views" | "engagement">("views");
+  const [sort, setSort] = useState<"ratio" | "views" | "engagement" | "subscribers">("ratio");
+  const [format, setFormat] = useState<"all" | "long" | "short">("all");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
@@ -93,14 +94,16 @@ export function ContentPackagingWorkspace() {
   const copies = Array.isArray(result.copies) ? result.copies as Array<Record<string, unknown>> : [];
   const prompts = Array.isArray(result.designPrompts) ? result.designPrompts.map((text) => ({ text })) : [];
   const selectedSource = sources.find((source) => source.id === sourceId) ?? null;
-  const sortedResults = useMemo(() => marketResults.filter((item) => item.viewCount >= minViews).sort((a, b) => {
+  const sortedResults = useMemo(() => marketResults.filter((item) => item.viewCount >= minViews).filter((item) => format === "all" || (format === "long" ? item.durationSeconds >= 240 : item.durationSeconds < 240)).sort((a, b) => {
+    if (sort === "ratio") return (b.viewSubscriberRatio ?? -1) - (a.viewSubscriberRatio ?? -1) || b.viewCount - a.viewCount;
+    if (sort === "subscribers") return (b.subscribers ?? -1) - (a.subscribers ?? -1);
     if (sort === "engagement") {
       const scoreA = a.viewCount ? (a.likeCount + a.commentCount) / a.viewCount : 0;
       const scoreB = b.viewCount ? (b.likeCount + b.commentCount) / b.viewCount : 0;
       return scoreB - scoreA;
     }
     return b.viewCount - a.viewCount;
-  }), [marketResults, minViews, sort]);
+  }), [format, marketResults, minViews, sort]);
 
   const searchMarket = async (ours = false) => {
     const query = ours ? "브랜디액션" : marketQuery.trim() || selectedSource?.title || "";
@@ -178,8 +181,8 @@ export function ContentPackagingWorkspace() {
 
     {tab === "search" ? <>
       <section className="panel own-thumbnail-strip"><div className="panel-header"><div><h2>우리 채널 썸네일</h2><p>자사 채널의 기존 패키징을 먼저 확인합니다.</p></div><button className="ghost-button" disabled={busy} onClick={() => searchMarket(true)}><Search size={14} /> 불러오기</button></div><div>{ownResults.map((item) => <a href={item.url} target="_blank" rel="noreferrer" key={item.id}><span style={{ backgroundImage: `url(${item.thumbnail})` }} /><strong>{item.title}</strong><small>조회 {compactNumber(item.viewCount)}</small></a>)}{!ownResults.length ? <button className="thumbnail-empty" onClick={() => searchMarket(true)}><ImageIcon size={24} /><span>우리 채널 썸네일 불러오기</span></button> : null}</div></section>
-      <section className="panel package-search-console"><div className="panel-header"><div><h2>시장 썸네일 검색</h2><p>조회수와 반응을 확인하고 근거로 쓸 레퍼런스만 저장합니다.</p></div></div><div className="package-search-row"><div className="market-search"><Search size={16} /><input aria-label="시장 썸네일 검색어" value={marketQuery} onChange={(event) => setMarketQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchMarket(); }} placeholder="시장 검색어 · 비워두면 선택 콘텐츠 제목" /><button className="primary-button" disabled={busy} onClick={() => searchMarket()}>{busy ? "검색 중…" : "검색"}</button></div><label>최소 조회<select value={minViews} onChange={(event) => setMinViews(Number(event.target.value))}><option value={0}>전체</option><option value={10000}>1만+</option><option value={50000}>5만+</option><option value={100000}>10만+</option></select></label><label>정렬<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="views">조회수</option><option value="engagement">반응률</option></select></label></div></section>
-      <section className="market-thumbnail-grid">{sortedResults.map((item) => { const saved = references.some((record) => meta(record, "youtubeId", "") === item.id); const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0; return <article className="panel market-thumbnail-card" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={12} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><p>조회 {item.viewCount.toLocaleString("ko-KR")} · 반응 {engagement.toFixed(1)}%</p><button className={saved ? "secondary-button" : "ghost-button"} disabled={busy || saved} onClick={() => saveReference(item, marketQuery.trim())}><Bookmark size={13} /> {saved ? "저장됨" : "레퍼런스 저장"}</button></div></article>; })}{marketResults.length && !sortedResults.length ? <div className="panel compact-empty"><Target size={24} /><strong>조회 조건을 만족하는 영상이 없습니다.</strong><span>최소 조회 조건을 낮춰보세요.</span></div> : null}</section>
+      <section className="panel package-search-console"><div className="panel-header"><div><h2>시장 썸네일 검색</h2><p>조회수와 반응을 확인하고 근거로 쓸 레퍼런스만 저장합니다.</p></div></div><div className="package-search-row"><div className="market-search"><Search size={16} /><input aria-label="시장 썸네일 검색어" value={marketQuery} onChange={(event) => setMarketQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchMarket(); }} placeholder="시장 검색어 · 비워두면 선택 콘텐츠 제목" /><button className="primary-button" disabled={busy} onClick={() => searchMarket()}>{busy ? "검색 중…" : "검색"}</button></div><label>형식<select value={format} onChange={(event) => setFormat(event.target.value as typeof format)}><option value="all">전체</option><option value="long">롱폼 4분+</option><option value="short">숏폼</option></select></label><label>최소 조회<select value={minViews} onChange={(event) => setMinViews(Number(event.target.value))}><option value={0}>전체</option><option value={10000}>1만+</option><option value={50000}>5만+</option><option value={100000}>10만+</option></select></label><label>정렬<select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}><option value="ratio">구독자 대비 조회</option><option value="views">조회수</option><option value="engagement">반응률</option><option value="subscribers">구독자수</option></select></label></div></section>
+      <section className="market-thumbnail-grid">{sortedResults.map((item) => { const saved = references.some((record) => meta(record, "youtubeId", "") === item.id); const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0; return <article className="panel market-thumbnail-card" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={12} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle} · {item.durationSeconds >= 240 ? "롱폼" : "숏폼"} · {item.publishedAt ? new Date(item.publishedAt).toLocaleDateString("ko-KR") : "날짜 미상"}</small><h3>{item.title}</h3><p>조회 {item.viewCount.toLocaleString("ko-KR")} · 구독자 {item.subscribers?.toLocaleString("ko-KR") ?? "비공개"} · {item.viewSubscriberRatio == null ? "배수 측정 전" : `${item.viewSubscriberRatio.toLocaleString("ko-KR")}배`} · 반응 {engagement.toFixed(1)}%</p><button className={saved ? "secondary-button" : "ghost-button"} disabled={busy || saved} onClick={() => saveReference(item, marketQuery.trim())}><Bookmark size={13} /> {saved ? "저장됨" : "레퍼런스 저장"}</button></div></article>; })}{marketResults.length && !sortedResults.length ? <div className="panel compact-empty"><Target size={24} /><strong>조회 조건을 만족하는 영상이 없습니다.</strong><span>형식 또는 최소 조회 조건을 바꿔보세요.</span></div> : null}</section>
     </> : null}
 
     {tab === "title" ? <>

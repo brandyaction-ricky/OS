@@ -357,6 +357,9 @@ export interface YoutubeMarketItem {
   viewCount: number;
   likeCount: number;
   commentCount: number;
+  durationSeconds: number;
+  subscribers: number | null;
+  viewSubscriberRatio: number | null;
   url: string;
 }
 

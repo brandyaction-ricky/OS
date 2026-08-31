@@ -181,9 +181,10 @@ export function MembersWorkspace() {
           const account = members.find((member) =>
             memberMatchesRoster(member, person.name),
           );
-          const representativeRoles = account?.roles?.slice(0, 2) ?? [];
+          const roles = account?.roles?.length ? account.roles : [...person.roles];
+          const representativeRoles = roles.slice(0, 2);
           return (
-            <article className="panel roster-card" key={person.name}>
+            <button type="button" className="panel roster-card" key={person.name} disabled={!account} onClick={() => account && setSelected(account)} aria-label={`${person.name} 구성원 정보 ${account ? "편집" : "확인"}`}>
               <span className="avatar">
                 <UserRound size={15} />
               </span>
@@ -196,8 +197,8 @@ export function MembersWorkspace() {
                       {representativeRoles.map((role) => (
                         <b key={role}>{role}</b>
                       ))}
-                      {(account?.roles?.length ?? 0) > 2 ? (
-                        <b>+{(account?.roles?.length ?? 0) - 2}</b>
+                      {roles.length > 2 ? (
+                        <b>+{roles.length - 2}</b>
                       ) : null}
                     </>
                   ) : (
@@ -208,7 +209,7 @@ export function MembersWorkspace() {
               <em className={account?.is_active ? "ready" : "waiting"}>
                 {account?.is_active ? "계정 연결" : "초대 대기"}
               </em>
-            </article>
+            </button>
           );
         })}
       </section>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
+import { sanitizePublicCopyValue } from "@/lib/content-safety";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -146,7 +147,7 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
   const title = action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : action === "topic_plan" ? `${source.title} · 기획 브리핑` : `${source.title} · 제목·썸네일 후보`;
   const { data, error } = await actor.supabase.from("os_records").insert({
     ...base, record_type: recordType, title, description: String(result.summary ?? "정본 기준으로 생성된 패키지입니다."), status: "review", priority: "normal",
-    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { packageKind: action, result, finalApprovalRequired: true }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
+    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { packageKind: action, result, finalApprovalRequired: true, ...(action === "youtube_kit" ? { rulesVersion: 2, generatedAt: new Date().toISOString() } : {}) }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
   }).select("*").single();
   if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "콘텐츠 패키지를 저장하지 못했습니다.", error.message); return [data];
 }
@@ -176,7 +177,8 @@ export async function POST(request: Request) {
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
     const marketEvidence = input.marketEvidence?.length ? `\n\n[YouTube 시장 근거]\n${input.marketEvidence.map((item, index) => `${index + 1}. ${item.title} · ${item.channelTitle} · 조회 ${item.viewCount} · ${item.url}`).join("\n")}` : "";
     const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n설명/원고:\n${String(source.description ?? "").slice(0, 45_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}`;
-    const result = extractJson(await claude(context, model, outputSchema(input.action), tokenBudget(input.action)));
+    const rawResult = extractJson(await claude(context, model, outputSchema(input.action), tokenBudget(input.action)));
+    const result = (input.action === "youtube_kit" ? sanitizePublicCopyValue(rawResult) : rawResult) as Record<string, unknown>;
     const records = await insertGenerated(actor, source, input.action, result);
     return NextResponse.json({ configured: true, queued: false, action: input.action, records }, { status: 201 });
   } catch (error) {

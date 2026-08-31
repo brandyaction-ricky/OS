@@ -10,6 +10,13 @@ import { useSession } from "./session-provider";
 const money = (value: number) => `${(value / 10_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}만원`;
 const ratio = (value: number) => `${value.toFixed(2)}배`;
 
+function downloadAdCsvSample() {
+  const content = "기준일,채널,브랜드,광고비,전환매출,전환수,노출수,클릭수\n2026-08-01,meta,마이인,100000,320000,8,12000,430\n";
+  const url = URL.createObjectURL(new Blob([`\uFEFF${content}`], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = "ads-sample.csv"; link.click(); URL.revokeObjectURL(url);
+}
+
 export function AdPerformanceWorkspace() {
   const { accessToken, demo, profile } = useSession();
   const { brand, month } = usePerformanceFilters();
@@ -93,6 +100,7 @@ export function AdPerformanceWorkspace() {
       <header className="page-header">
         <div className="page-title-group"><span className="eyebrow">광고 성과</span><h1>광고 성과</h1><p>Meta·Google 광고 데이터를 모아 광고비, 전환 매출, ROAS와 CPA를 비교합니다. 화면 금액은 만원 단위입니다.</p></div>
         <div className="ad-toolbar">
+          {profile?.role === "admin" ? <button type="button" className="ghost-button" onClick={downloadAdCsvSample}>CSV 예제</button> : null}
           {profile?.role === "admin" ? <label className="secondary-button file-button"><FileUp size={15} /> CSV 가져오기<input type="file" accept=".csv,text/csv" onChange={importCsv} /></label> : null}
           <button className="secondary-button" disabled={loading} onClick={load}><RefreshCw size={15} className={loading ? "spin" : ""} /> 새로고침</button>
           {profile?.role === "admin" ? <button className="primary-button" disabled={syncing} onClick={runSync}><RefreshCw size={15} className={syncing ? "spin" : ""} /> API 동기화</button> : null}

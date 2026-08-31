@@ -319,7 +319,7 @@ export function ContentRadarWorkspace() {
       </section>
       <section className="panel channel-dictionary">
         <div className="panel-header"><div><h2>채널 탐색 사전</h2><p>A–L 입구 언어로 시장을 넓히되, 채널 승인에는 반복 근거를 남깁니다.</p></div><span>{ENTRY_CATEGORIES.length}개 분류</span></div>
-        <div>{ENTRY_CATEGORIES.map(([letter, name, description]) => <article key={letter}><b>{letter}</b><span><strong>{name}</strong><small>{description}</small></span></article>)}</div>
+        <div>{ENTRY_CATEGORIES.map(([letter, name, description]) => <button type="button" key={letter} onClick={() => { setSearchQuery(description.split(",")[0].trim()); setTab("discovery"); }}><b>{letter}</b><span><strong>{name}</strong><small>{description}</small></span></button>)}</div>
       </section>
       <section className="panel content-data-table">
         <div className="panel-header"><div><h2>추적 채널</h2><p>채널 URL·운영 주체·대표 형식을 함께 관리합니다.</p></div><button className="ghost-button" onClick={() => setChannelOpen(true)}><Plus size={14} /> 직접 추가</button></div>
@@ -340,7 +340,7 @@ export function ContentRadarWorkspace() {
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
         return <article className="panel outlier-result" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button></div></article>;
       })}</section> : <div className="panel compact-empty discovery-empty"><Radar size={28} /><strong>키워드로 시장 영상을 탐색하세요.</strong><span>검색 결과는 저장하기 전까지 운영 데이터에 들어가지 않습니다.</span></div>}
-      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>같은 키워드의 반복 탐색과 결과 규모를 확인합니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <div className="content-table-row" key={search.id}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></div>)}</section>
+      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}
 
     {tab === "niches" ? <>

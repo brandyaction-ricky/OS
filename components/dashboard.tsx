@@ -39,7 +39,7 @@ function basisTime(value: string | null) {
   }).format(new Date(value))} 기준`;
 }
 function changeLabel(label: string, value: number | null) {
-  if (value === null) return <span className="revenue-change neutral">{label} 비교 전</span>;
+  if (value === null) return <span className="revenue-change neutral">{label} 대비 —</span>;
   const increased = value >= 0;
   return <span className={`revenue-change ${increased ? "up" : "down"}`}>{label} {increased ? "▲" : "▼"}{increased ? "+" : ""}{value}%</span>;
 }
