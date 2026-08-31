@@ -392,3 +392,14 @@ Google Cloud 웹 OAuth 클라이언트와 운영 환경을 연결하고 승인 �
 - 주제 A–L 카드와 탐색 이력 재실행 동작 추가
 
 상세 항목별 완료·외부 조건은 `docs/TELEGRAM_2ND_ROUND_IMPLEMENTATION_2026-08-31.md`에 기록했다. 자동 검증은 Node 테스트 78/78, ESLint, TypeScript, Next.js 프로덕션 빌드를 통과했다. 로컬 서버는 실행 환경의 네트워크 인터페이스 조회 제한으로 기동하지 못했으므로 Vercel 운영 배포 뒤 인증 화면 QA로 대체한다.
+
+배포 후 확인 결과:
+
+- GitHub `main` 기능 커밋: `538fda6b4915e6f4be6fb6d74c8d05890d7ec259`
+- 로컬 검증 트리와 원격 `main` 트리 SHA 일치: `f0dd537ca72c0069fd32ce350823d33bbc9a18cb`
+- Vercel Production 상태: `success`
+- 운영 헬스: database·auth·agentMcp·Telegram·contentAi·YouTube·YouTube OAuth `ready`
+- 운영 검색: OpenAI 임베딩 키 미등록으로 `keyword_only`
+- 광고 연동: 자격 증명 미등록으로 `missing`
+- 홈·조직·성과·설정·지식·콘텐츠 주요 경로 11개: 모두 HTTP 200
+- 관리자 브라우저 세션이 만료되어 데이터 의존 내부 화면의 저장 동작은 실행하지 않았으며, 이번 배포에서는 운영 데이터 추가·수정·삭제가 발생하지 않음
