@@ -470,7 +470,7 @@ export interface OsMember {
   roles: string[];
   onboarding: Record<string, boolean>;
   finance_access: boolean;
-  account_connected: boolean;
+  account_connected?: boolean;
 }
 
 export async function listMembers(token: string | null) {
