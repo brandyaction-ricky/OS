@@ -36,6 +36,16 @@ test("home revenue does not double-count imported net revenue", () => {
   assert.equal(view.total.current, 150_000);
 });
 
+test("home revenue compares the same elapsed days of the previous month", () => {
+  const view = buildHomeRevenueView([
+    record({ record_type: "revenue", brand: "마이인", amount: 100_000, metadata: { date: "2026-09-01", net: 100_000 } }),
+    record({ record_type: "revenue", brand: "마이인", amount: 50_000, metadata: { date: "2026-08-01", net: 50_000 } }),
+    record({ record_type: "revenue", brand: "마이인", amount: 900_000, metadata: { date: "2026-08-31", net: 900_000 } }),
+  ], new Date("2026-09-01T12:00:00.000Z"));
+  assert.equal(view.myin.current, 100_000);
+  assert.equal(view.myin.monthChange, 100);
+});
+
 test("home video grouping returns one row per content lineage", () => {
   const topic = record({ record_type: "content_topic", title: "같은 영상", brand: "마이인" });
   const videos = groupHomeVideos([
@@ -99,6 +109,7 @@ test("home revenue uses performance records, targets and honest comparisons", as
   assert.match(dashboard, /전주/);
   assert.match(dashboard, /목표 설정하기/);
   assert.match(dashboard, /basisTime/);
+  assert.match(dashboard, /statuses=canonical,reviewed,team/);
 });
 
 test("login entry wording remains Korean", async () => {

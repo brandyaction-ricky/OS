@@ -80,6 +80,36 @@ export const MCP_TOOLS = [
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: "list_records",
+    description: "업무·목표·회의·콘텐츠·성과·경영지원 등 OS 운영 기록을 유형별로 조회합니다.",
+    inputSchema: { type: "object", properties: { record_type: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 }, offset: { type: "integer", minimum: 0 } }, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "get_record",
+    description: "OS 운영 기록 하나의 현재 값과 버전을 조회합니다.",
+    inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" } }, required: ["record_id"], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "create_record",
+    description: "OS에 운영 기록을 생성합니다. 권한 정책과 외부 발행은 생성할 수 없습니다.",
+    inputSchema: { type: "object", properties: { record_type: { type: "string" }, title: { type: "string", minLength: 1 }, description: { type: "string" }, status: { type: "string" }, brand: { type: "string" }, team: { type: "string" }, due_date: { type: ["string", "null"], format: "date" }, amount: { type: ["number", "null"] }, tags: { type: "array", items: { type: "string" } }, metadata: { type: "object" }, reason: { type: "string" } }, required: ["record_type", "title"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "edit_record",
+    description: "OS 운영 기록을 버전 충돌 방지와 감사 로그를 적용해 수정합니다. 권한 변경과 외부 발행 승인은 차단됩니다.",
+    inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" }, expected_version: { type: "integer", minimum: 1 }, title: { type: "string" }, description: { type: "string" }, status: { type: "string" }, brand: { type: "string" }, team: { type: "string" }, due_date: { type: ["string", "null"], format: "date" }, amount: { type: ["number", "null"] }, tags: { type: "array", items: { type: "string" } }, metadata: { type: "object" }, reason: { type: "string" } }, required: ["record_id", "expected_version"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "delete_record",
+    description: "OS 운영 기록을 영구 삭제하지 않고 휴지통으로 옮깁니다. confirm=true가 필요합니다.",
+    inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" }, confirm: { type: "boolean" }, reason: { type: "string" } }, required: ["record_id", "confirm"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
 ] as const;
 
 const searchArgs = z.object({
@@ -115,6 +145,21 @@ const deleteArgs = z.object({
   confirm: z.literal(true),
   reason: z.string().trim().max(500).optional().default("원격 MCP 에이전트 휴지통 이동"),
 }).strict();
+
+const listRecordArgs = z.object({
+  record_type: z.string().trim().optional(), limit: z.number().int().min(1).max(200).optional().default(100), offset: z.number().int().min(0).optional().default(0),
+}).strict();
+const getRecordArgs = z.object({ record_id: documentId }).strict();
+const recordFields = {
+  title: z.string().trim().min(1).max(240).optional(), description: z.string().max(20_000).optional(),
+  status: z.string().trim().min(1).max(40).optional(), brand: z.string().trim().max(120).optional(), team: z.string().trim().max(120).optional(),
+  due_date: z.string().date().nullable().optional(), amount: z.number().finite().nullable().optional(),
+  tags: z.array(z.string().trim().min(1).max(60)).max(30).optional(), metadata: z.record(z.unknown()).optional(),
+  reason: z.string().trim().max(500).optional(),
+};
+const createRecordArgs = z.object({ record_type: z.string().trim().min(1), ...recordFields }).strict().refine((input) => Boolean(input.title), { message: "제목이 필요합니다." });
+const editRecordArgs = z.object({ record_id: documentId, expected_version: z.number().int().positive(), ...recordFields }).strict().refine((input) => Object.keys(input).some((key) => !["record_id", "expected_version", "reason"].includes(key)), { message: "수정할 필드가 필요합니다." });
+const deleteRecordArgs = z.object({ record_id: documentId, confirm: z.literal(true), reason: z.string().trim().max(500).optional().default("MCP 운영 기록 휴지통 이동") }).strict();
 
 type ToolRequest = {
   name: string;
@@ -180,6 +225,31 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     const input = deleteArgs.parse(args);
     const query = new URLSearchParams({ organizationId, documentId: input.document_id, reason: input.reason });
     return fetchApi(`/api/v1/knowledge-documents?${query}`, { method: "DELETE" });
+  }
+  if (request.name === "list_records") {
+    const input = listRecordArgs.parse(args);
+    const query = new URLSearchParams({ organizationId, limit: String(input.limit), offset: String(input.offset) });
+    if (input.record_type) query.set("type", input.record_type);
+    return fetchApi(`/api/v1/agent-records?${query}`);
+  }
+  if (request.name === "get_record") {
+    const input = getRecordArgs.parse(args);
+    return fetchApi(`/api/v1/agent-records?${new URLSearchParams({ organizationId, recordId: input.record_id })}`);
+  }
+  if (request.name === "create_record") {
+    const input = createRecordArgs.parse(args);
+    const { record_type, due_date, ...rest } = input;
+    return fetchApi("/api/v1/agent-records", { method: "POST", body: JSON.stringify({ organizationId, recordType: record_type, dueDate: due_date, ...rest }) });
+  }
+  if (request.name === "edit_record") {
+    const input = editRecordArgs.parse(args);
+    const { record_id, expected_version, due_date, ...rest } = input;
+    return fetchApi("/api/v1/agent-records", { method: "PATCH", body: JSON.stringify({ organizationId, id: record_id, expectedVersion: expected_version, dueDate: due_date, ...rest }) });
+  }
+  if (request.name === "delete_record") {
+    const input = deleteRecordArgs.parse(args);
+    const query = new URLSearchParams({ organizationId, recordId: input.record_id, confirm: "true", reason: input.reason });
+    return fetchApi(`/api/v1/agent-records?${query}`, { method: "DELETE" });
   }
   throw new Error("알 수 없는 도구입니다.");
 }

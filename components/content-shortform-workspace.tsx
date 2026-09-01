@@ -11,11 +11,12 @@ import {
   Plus,
   Save,
   Scissors,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { createContentMediaUpload, createRecord, generateContent, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { archiveRecord, createContentMediaUpload, createRecord, generateContent, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -189,7 +190,7 @@ export function ContentShortformWorkspace() {
         expectedVersion: editClip.version,
         title: String(form.get("title") ?? "").trim(),
         description: String(form.get("hook") ?? "").trim(),
-        metadata: { ...editClip.metadata, start, end, editNote: String(form.get("note") ?? "").trim() },
+        metadata: { ...editClip.metadata, start, end, editNote: String(form.get("note") ?? "").trim(), manualUnsaved: false },
       });
       setEditClip(null); await load();
     } catch (reason) {
@@ -212,7 +213,7 @@ export function ContentShortformWorkspace() {
         parentId: selectedSource.id,
         sourceUrl: selectedSource.source_url,
         tags: ["쇼츠", "수동구간"],
-        metadata: { proposalOnly: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style },
+        metadata: { proposalOnly: true, manualUnsaved: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style },
       });
       setEditClip(record); await load();
     } catch (reason) {
@@ -248,6 +249,21 @@ export function ContentShortformWorkspace() {
     } finally { setBusy(false); }
   };
 
+  const closeClipEditor = async () => {
+    const clip = editClip;
+    setEditClip(null);
+    if (clip && meta(clip, "manualUnsaved", false)) {
+      try { await archiveRecord(accessToken, clip.id); await load(); }
+      catch (reason) { setError(reason instanceof Error ? reason.message : "취소한 수동 구간을 정리하지 못했습니다."); }
+    }
+  };
+
+  const removeClip = async (clip: OsRecord) => {
+    if (!window.confirm(`“${clip.title}” 클립을 휴지통으로 이동할까요?`)) return;
+    try { await archiveRecord(accessToken, clip.id); await load(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "클립을 삭제하지 못했습니다."); }
+  };
+
   const previewPosition = style.position === "top" ? "flex-start" : style.position === "bottom" ? "flex-end" : "center";
 
   return <>
@@ -267,10 +283,10 @@ export function ContentShortformWorkspace() {
       <section className="panel clips-toolbar"><div><span><strong>{visible.length}</strong> 전체 클립</span><span><strong>{selected.length}</strong> 채택</span><span><strong>{finished.length}</strong> 제작 대기·완료</span></div><div><button className="secondary-button" disabled={!sourceId || busy} onClick={addManualClip}><Plus size={14} /> 수동 구간</button><button className="primary-button" disabled={!selected.length || busy} onClick={requestRender}><Play size={14} /> 채택 {selected.length}개 제작 요청</button></div></section>
       <section className="clip-production-grid">{visible.map((clip, index) => {
         const start = Number(meta(clip, "start", 0)); const end = Number(meta(clip, "end", 0)); const picked = meta(clip, "selected", true); const preview = meta(clip, "previewUrl", "");
-        return <article className={`panel clip-production-card ${picked ? "selected" : ""}`} key={clip.id}><div className="vertical-clip-preview" style={{ backgroundColor: style.backgroundColor }}>{preview ? <video src={preview} muted /> : <><Film size={34} /><span>CLIP {String(index + 1).padStart(2, "0")}</span></>}<button aria-label="미리보기"><Play size={16} /></button></div><div><header><button className={picked ? "clip-picked" : ""} onClick={() => toggle(clip)}>{picked ? <Check size={13} /> : <Plus size={13} />} {picked ? "채택" : "채택하기"}</button><span className={`status-pill status-${clip.status}`}>{clip.stage || clip.status}</span></header><h3>{clip.title}</h3><p>{clip.description}</p><div className="clip-time"><span>{formatTime(start)}</span><i /><span>{formatTime(end)}</span><em>{Math.max(0, Math.round(end - start))}초</em></div><footer><button className="ghost-button" onClick={() => setEditClip(clip)}><Pencil size={13} /> 구간·문구 수정</button>{preview ? <a className="ghost-button" href={preview} download><Download size={13} /> 다운로드</a> : <button className="ghost-button" disabled><Download size={13} /> 제작 후 다운로드</button>}</footer></div></article>;
+        return <article className={`panel clip-production-card ${picked ? "selected" : ""}`} key={clip.id}><div className="vertical-clip-preview" style={{ backgroundColor: style.backgroundColor }}>{preview ? <video src={preview} muted controls /> : <><Film size={34} /><span>CLIP {String(index + 1).padStart(2, "0")}</span></>}</div><div><header><button className={picked ? "clip-picked" : ""} onClick={() => toggle(clip)}>{picked ? <Check size={13} /> : <Plus size={13} />} {picked ? "채택" : "채택하기"}</button><span className={`status-pill status-${clip.status}`}>{clip.stage || clip.status}</span></header><h3>{clip.title}</h3><p>{clip.description}</p><div className="clip-time"><span>{formatTime(start)}</span><i /><span>{formatTime(end)}</span><em>{Math.max(0, Math.round(end - start))}초</em></div><footer><button className="ghost-button" onClick={() => setEditClip(clip)}><Pencil size={13} /> 구간·문구 수정</button>{preview ? <a className="ghost-button" href={preview} download><Download size={13} /> 다운로드</a> : <button className="ghost-button" disabled><Download size={13} /> 제작 후 다운로드</button>}<button className="ghost-button danger" onClick={() => removeClip(clip)}><Trash2 size={13} /> 삭제</button></footer></div></article>;
       })}{!visible.length ? <div className="panel compact-empty clip-empty"><Scissors size={28} /><strong>제안된 클립이 없습니다.</strong><span>구간 제안을 실행하거나 수동 구간을 추가하세요.</span></div> : null}</section>
     </> : null}
 
-    {editClip ? <div className="drawer-backdrop" onMouseDown={() => !busy && setEditClip(null)}><form className="record-drawer" onSubmit={saveClip} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">클립 편집</span><h2>구간·문구 수정</h2></div><button type="button" className="icon-button" onClick={() => setEditClip(null)}><X size={18} /></button></div><label><span>클립 제목</span><input name="title" required defaultValue={editClip.title} /></label><label><span>첫 문장·훅</span><textarea name="hook" rows={4} defaultValue={editClip.description} /></label><div className="form-grid"><label><span>시작 초</span><input type="number" min="0" step="0.1" name="start" defaultValue={Number(meta(editClip, "start", 0))} /></label><label><span>종료 초</span><input type="number" min="0.1" step="0.1" name="end" defaultValue={Number(meta(editClip, "end", 30))} /></label></div><label><span>편집 메모</span><textarea name="note" rows={4} defaultValue={meta(editClip, "editNote", "")} placeholder="점프 컷, 강조 자막, B-roll 지시" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setEditClip(null)}>취소</button><button className="primary-button" disabled={busy}><Save size={14} /> 수정 저장</button></div></form></div> : null}
+    {editClip ? <div className="drawer-backdrop" onMouseDown={() => !busy && closeClipEditor()}><form className="record-drawer" onSubmit={saveClip} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">클립 편집</span><h2>구간·문구 수정</h2></div><button type="button" className="icon-button" onClick={closeClipEditor}><X size={18} /></button></div><label><span>클립 제목</span><input name="title" required defaultValue={editClip.title} /></label><label><span>첫 문장·훅</span><textarea name="hook" rows={4} defaultValue={editClip.description} /></label><div className="form-grid"><label><span>시작 초</span><input type="number" min="0" step="0.1" name="start" defaultValue={Number(meta(editClip, "start", 0))} /></label><label><span>종료 초</span><input type="number" min="0.1" step="0.1" name="end" defaultValue={Number(meta(editClip, "end", 30))} /></label></div><label><span>편집 메모</span><textarea name="note" rows={4} defaultValue={meta(editClip, "editNote", "")} placeholder="점프 컷, 강조 자막, B-roll 지시" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={closeClipEditor}>취소</button><button className="primary-button" disabled={busy}><Save size={14} /> 수정 저장</button></div></form></div> : null}
   </>;
 }

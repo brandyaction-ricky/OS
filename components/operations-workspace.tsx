@@ -1,8 +1,8 @@
 "use client";
 
-import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, Plus, Search, Target, X } from "lucide-react";
+import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { archiveRecord, createRecord, listRecords, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import type { WorkspaceConfig } from "@/lib/workspace-config";
 import { useSession } from "./session-provider";
@@ -31,6 +31,8 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<OsRecord | null>(null);
   const [saving, setSaving] = useState(false);
+  const [versions, setVersions] = useState<RecordVersionSummary[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = async () => {
     if (demo) return;
@@ -84,6 +86,15 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
     try { await archiveRecord(accessToken, record.id); await load(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "보관하지 못했습니다."); }
   };
+  const openHistory = async (record: OsRecord) => {
+    try { setEditing(record); setVersions((await listRecordVersions(accessToken, record.id)).versions); setHistoryOpen(true); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "변경 이력을 불러오지 못했습니다."); }
+  };
+  const restore = async (version: number) => {
+    if (!editing || !window.confirm(`v${version} 내용으로 되돌릴까요? 현재 내용도 이력에 남습니다.`)) return;
+    try { await restoreRecordVersion(accessToken, editing.id, version, editing.version); setHistoryOpen(false); setEditing(null); await load(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "이전 버전으로 되돌리지 못했습니다."); }
+  };
 
   return <>
     <header className="page-header">
@@ -113,6 +124,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
             <span className={`priority-mark priority-${record.priority}`} />
             <div className="record-main"><div><strong>{record.title}</strong><span className={`status-pill status-${record.status}`}>{status}</span></div><p>{record.description || config.helper}</p><div className="record-meta"><span>{record.brand || "전체 브랜드"}</span><span>{record.team || profile?.team || "전체 팀"}</span><span>{dateLabel(record.due_date)}</span>{record.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div></div>
             <div className="record-measure"><strong>{metricValue(record, config.metricMode)}</strong><small>{priorityLabel[record.priority]}</small></div>
+            <button className="icon-button" onClick={(event) => { event.stopPropagation(); openHistory(record); }} aria-label="변경 이력"><History size={16} /></button>
             <button className="icon-button" onClick={(event) => { event.stopPropagation(); archive(record); }} aria-label="보관"><Archive size={16} /></button>
             <ArrowUpRight size={15} />
           </article>;
@@ -133,5 +145,6 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       <label><span>태그</span><input name="tags" defaultValue={editing?.tags.join(", ")} placeholder="쉼표로 구분" /></label>
       <div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setEditorOpen(false)}>취소</button><button className="primary-button" disabled={saving}>{saving ? "저장 중…" : editing ? "변경 저장" : "등록"}</button></div>
     </form></div> : null}
+    {historyOpen && editing ? <div className="drawer-backdrop" onMouseDown={() => setHistoryOpen(false)}><aside className="record-drawer" onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">버전·감사</span><h2>{editing.title} 변경 이력</h2></div><button className="icon-button" onClick={() => setHistoryOpen(false)}><X size={18} /></button></div><div className="version-list">{versions.map((item) => <article key={item.eventId}><div><strong>v{item.version} · {item.eventType === "restored" ? "복원" : item.eventType === "created" ? "생성" : item.eventType === "archived" ? "휴지통 이동" : "수정"}</strong><small>{new Date(item.createdAt).toLocaleString("ko-KR")}</small><p>{item.note || (item.changedFields.length ? `${item.changedFields.join(", ")} 변경` : "변경 내용 저장")}</p></div>{item.version !== editing.version ? <button className="secondary-button" onClick={() => restore(item.version)}><RotateCcw size={14} /> 이 버전 복원</button> : <span className="count-badge">현재</span>}</article>)}{!versions.length ? <div className="list-empty">저장된 변경 이력이 없습니다.</div> : null}</div></aside></div> : null}
   </>;
 }

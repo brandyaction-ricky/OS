@@ -19,7 +19,7 @@ export interface RequestActor {
   supabase: SupabaseClient;
 }
 
-export type AgentScope = "knowledge.read" | "knowledge.write";
+export type AgentScope = "knowledge.read" | "knowledge.write" | "records.read" | "records.write";
 
 export function hashAgentKey(value: string) {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -87,7 +87,7 @@ export async function authenticateRequest(
     team: profile?.team ?? "",
     brand: null,
     allowedStatuses: ["draft", "team", "review", "reviewed", "canonical"],
-    scopes: ["knowledge.read", "knowledge.write"],
+    scopes: ["knowledge.read", "knowledge.write", "records.read", "records.write"],
     organizationId: null,
     ownerId: userData.user.id,
     supabase,

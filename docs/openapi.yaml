@@ -410,7 +410,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Supabase 사용자 JWT 또는 범위가 지정된 bos_pat 토큰(knowledge.read/knowledge.write)
+      description: Supabase 사용자 JWT 또는 범위가 지정된 bos_pat 토큰(knowledge.read/knowledge.write/records.read/records.write)
   schemas:
     RecordType:
       type: string

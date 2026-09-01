@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       .select("id,document_id,actor_id,from_status,to_status,note,created_at")
       .order("created_at", { ascending: false }).limit(limit * 2);
     let agentQuery = service.from("os_agent_audit_logs")
-      .select("id,agent_key_id,owner_user_id,action,document_id,title_snapshot,changed_fields,reason,created_at")
+      .select("id,agent_key_id,owner_user_id,action,document_id,record_id,title_snapshot,changed_fields,reason,created_at")
       .order("created_at", { ascending: false }).limit(limit * 2);
     if (actor.role !== "admin") {
       recordQuery = recordQuery.eq("actor_id", actor.id);
@@ -37,14 +37,17 @@ export async function GET(request: Request) {
       ...(documentResult.data ?? []).map((event) => event.actor_id),
     ].filter(Boolean))];
     const agentKeyIds = [...new Set((agentResult.data ?? []).map((event) => event.agent_key_id).filter(Boolean))];
-    const [documents, profiles, agentKeys] = await Promise.all([
+    const agentRecordIds = [...new Set((agentResult.data ?? []).map((event) => event.record_id).filter(Boolean))];
+    const [documents, profiles, agentKeys, agentRecords] = await Promise.all([
       documentIds.length ? service.from("os_documents").select("id,title").in("id", documentIds) : Promise.resolve({ data: [] }),
       actorIds.length ? service.from("os_profiles").select("id,display_name,email").in("id", actorIds) : Promise.resolve({ data: [] }),
       agentKeyIds.length ? service.from("os_agent_keys").select("id,name").in("id", agentKeyIds) : Promise.resolve({ data: [] }),
+      agentRecordIds.length ? service.from("os_records").select("id,title,record_type").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
     ]);
     const documentNames = new Map((documents.data ?? []).map((document) => [document.id, document.title]));
     const profileNames = new Map((profiles.data ?? []).map((profile) => [profile.id, profile.display_name || profile.email || "구성원"]));
     const agentNames = new Map((agentKeys.data ?? []).map((key) => [key.id, key.name]));
+    const agentRecordNames = new Map((agentRecords.data ?? []).map((record) => [record.id, record]));
     const records = (recordResult.data ?? []).map((event) => {
       const record = Array.isArray(event.os_records) ? event.os_records[0] : event.os_records;
       return ({
@@ -81,15 +84,15 @@ export async function GET(request: Request) {
       }));
     const agentEvents = (agentResult.data ?? []).map((event) => ({
       id: `agent:${event.id}`,
-      subject_id: event.document_id,
-      subject_type: "knowledge_document",
-      title: event.title_snapshot || documentNames.get(event.document_id) || "지식 문서",
+      subject_id: event.record_id || event.document_id,
+      subject_type: event.record_id ? agentRecordNames.get(event.record_id)?.record_type ?? "record" : "knowledge_document",
+      title: event.title_snapshot || (event.record_id ? agentRecordNames.get(event.record_id)?.title : documentNames.get(event.document_id)) || (event.record_id ? "운영 기록" : "지식 문서"),
       actor_id: event.agent_key_id,
       actor_type: "agent",
       actor_name: agentNames.get(event.agent_key_id) ?? "AI 에이전트",
-      event_type: ({ "knowledge.create": "created", "knowledge.update": "updated", "knowledge.delete": "archived" } as Record<string, string>)[event.action] ?? "updated",
+      event_type: ({ "knowledge.create": "created", "knowledge.update": "updated", "knowledge.delete": "archived", "record.create": "created", "record.update": "updated", "record.delete": "archived", "record.restore": "restored" } as Record<string, string>)[event.action] ?? "updated",
       from_status: null,
-      to_status: event.action === "knowledge.delete" ? "archived" : null,
+      to_status: event.action.endsWith(".delete") ? "archived" : null,
       changed_fields: event.changed_fields ?? [],
       note: event.reason ?? "",
       created_at: event.created_at,

@@ -143,6 +143,26 @@ export async function archiveRecord(token: string | null, id: string) {
   });
 }
 
+export interface RecordVersionSummary {
+  eventId: number;
+  version: number;
+  eventType: string;
+  title: string;
+  changedFields: string[];
+  note: string;
+  createdAt: string;
+}
+
+export async function listRecordVersions(token: string | null, id: string) {
+  return apiRequest<{ versions: RecordVersionSummary[] }>(`/api/v1/records/${encodeURIComponent(id)}/versions`, { token });
+}
+
+export async function restoreRecordVersion(token: string | null, id: string, version: number, expectedVersion: number) {
+  return apiRequest<{ record: OsRecord }>(`/api/v1/records/${encodeURIComponent(id)}/versions`, {
+    method: "POST", token, body: JSON.stringify({ version, expectedVersion, reason: `v${version}로 되돌리기` }),
+  });
+}
+
 export async function uploadMeetingRecording(token: string | null, file: Blob) {
   const body = new FormData();
   body.set("file", file, `meeting-${Date.now()}.webm`);
@@ -450,6 +470,7 @@ export interface OsMember {
   roles: string[];
   onboarding: Record<string, boolean>;
   finance_access: boolean;
+  account_connected: boolean;
 }
 
 export async function listMembers(token: string | null) {

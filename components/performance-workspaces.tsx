@@ -70,6 +70,7 @@ export function RevenueWorkspace() {
   const [customFrom, setCustomFrom] = useState(`${month}-01`);
   const [customTo, setCustomTo] = useState(lastDayOfMonth(month));
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<OsRecord | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -129,7 +130,7 @@ export function RevenueWorkspace() {
     const rowBrand = String(form.get("brand"));
     if (net < 0) { setError("취소·환불 합계는 총매출보다 클 수 없습니다."); return; }
     try {
-      await createRecord(accessToken, {
+      const input = {
         recordType: "revenue",
         title: `${rowBrand} ${String(form.get("date"))} 매출`,
         description: "브랜드 매출 상세",
@@ -141,13 +142,22 @@ export function RevenueWorkspace() {
           date: String(form.get("date")), gross, cancel, refund, net,
           orders: numberValue(form, "orders"), buyers: numberValue(form, "buyers"), source: String(form.get("source")),
         },
-      });
+      };
+      if (editing) await updateRecord(accessToken, { ...input, id: editing.id, expectedVersion: editing.version });
+      else await createRecord(accessToken, input);
       setOpen(false);
-      setNotice("매출 기록을 저장했습니다.");
+      setEditing(null);
+      setNotice(editing ? "매출 기록을 수정했습니다." : "매출 기록을 저장했습니다.");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "매출을 저장하지 못했습니다.");
     }
+  };
+
+  const remove = async (record: OsRecord) => {
+    if (!window.confirm(`“${record.title}” 매출 기록을 휴지통으로 이동할까요?`)) return;
+    try { await archiveRecord(accessToken, record.id); setNotice("매출 기록을 휴지통으로 이동했습니다."); await load(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "매출 기록을 삭제하지 못했습니다."); }
   };
 
   const importCsv = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -174,7 +184,7 @@ export function RevenueWorkspace() {
         <div className="page-actions">
           <button type="button" className="ghost-button" onClick={() => downloadCsvSample("revenue")}>CSV 예제</button>
           <label className="secondary-button file-button"><FileUp size={16} /> CSV 가져오기<input type="file" accept=".csv,text/csv" onChange={importCsv} /></label>
-          <button className="primary-button" onClick={() => setOpen(true)}><Plus size={16} /> 매출 입력</button>
+          <button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}><Plus size={16} /> 매출 입력</button>
         </div>
       </header>
       {error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}
@@ -198,9 +208,9 @@ export function RevenueWorkspace() {
         <article className="panel"><div className="panel-header"><div><h2>일별 매출 추이</h2><p>선택 기간 순매출 · 만원</p></div></div><div className="daily-revenue-chart">{daily.map(([date, amount]) => <div key={date}><time>{date.slice(5)}</time><span><i style={{ width: `${Math.max((amount / maximumDaily) * 100, 2)}%` }} /></span><strong>{money(amount)}</strong></div>)}{!daily.length ? <p className="small-empty">표시할 일별 매출이 없습니다.</p> : null}</div></article>
         <article className="panel"><div className="panel-header"><div><h2>유입원별 매출</h2><p>CSV·수기 입력 출처 기준</p></div></div><div className="source-revenue-list">{sources.map(([source, amount]) => <div key={source}><span>{source}</span><strong>{money(amount)}</strong></div>)}{!sources.length ? <p className="small-empty">표시할 유입원 데이터가 없습니다.</p> : null}</div></article>
       </section>
-      <section className="panel records-panel"><div className="record-list">{selected.map((item) => <article className="record-row" key={item.id}><span className="priority-mark priority-normal" /><div className="record-main"><div><strong>{item.title}</strong><span className="status-pill status-done">확정</span></div><p>{item.brand} · {recordDate(item)} · {String(item.metadata.source ?? "수기")}</p></div><div className="record-measure"><strong>{money(Number(item.metadata.net ?? item.amount ?? 0))}</strong><small>순매출</small></div></article>)}{!selected.length ? <div className="empty-state"><div><CircleDollarSign /><h3>선택 조건의 매출 기록이 없습니다.</h3><p>매출 입력 또는 CSV 가져오기로 일자별 실적을 등록하세요.</p></div></div> : null}</div></section>
+      <section className="panel records-panel"><div className="record-list">{selected.map((item) => <article className="record-row" key={item.id}><span className="priority-mark priority-normal" /><div className="record-main"><div><strong>{item.title}</strong><span className="status-pill status-done">확정</span></div><p>{item.brand} · {recordDate(item)} · {String(item.metadata.source ?? "수기")}</p></div><div className="record-measure"><strong>{money(Number(item.metadata.net ?? item.amount ?? 0))}</strong><small>순매출</small></div><div className="row-actions"><button className="icon-button" aria-label={`${item.title} 수정`} onClick={() => { setEditing(item); setOpen(true); }}><Pencil size={14} /></button><button className="icon-button danger" aria-label={`${item.title} 삭제`} onClick={() => remove(item)}><Trash2 size={14} /></button></div></article>)}{!selected.length ? <div className="empty-state"><div><CircleDollarSign /><h3>선택 조건의 매출 기록이 없습니다.</h3><p>매출 입력 또는 CSV 가져오기로 일자별 실적을 등록하세요.</p></div></div> : null}</div></section>
       <p className="csv-help">매출 CSV 열: 기준일, 브랜드, 총매출, 취소, 환불, 주문수, 구매자수, 출처 (영문 열 이름도 지원)</p>
-      {open ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={submit}><div className="drawer-head"><h2>일자별 매출 입력</h2><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18} /></button></div><div className="form-grid"><label><span>브랜드</span><select name="brand" defaultValue={brand === "all" ? "마이인" : performanceBrandLabel(brand)}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>기준일</span><input name="date" type="date" defaultValue={today()} required /></label></div><div className="form-grid three"><label><span>총매출(원)</span><input name="gross" type="number" min="0" required /></label><label><span>취소(원)</span><input name="cancel" type="number" min="0" defaultValue="0" /></label><label><span>환불(원)</span><input name="refund" type="number" min="0" defaultValue="0" /></label></div><div className="form-grid"><label><span>주문 수</span><input name="orders" type="number" min="0" defaultValue="0" /></label><label><span>구매자 수</span><input name="buyers" type="number" min="0" defaultValue="0" /></label></div><label><span>출처</span><input name="source" defaultValue="수기 입력" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>취소</button><button className="primary-button">저장</button></div></form></div> : null}
+      {open ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={submit} key={editing?.id ?? "new-revenue"}><div className="drawer-head"><h2>{editing ? "매출 기록 수정" : "일자별 매출 입력"}</h2><button type="button" className="icon-button" onClick={() => { setOpen(false); setEditing(null); }}><X size={18} /></button></div><div className="form-grid"><label><span>브랜드</span><select name="brand" defaultValue={editing?.brand || (brand === "all" ? "마이인" : performanceBrandLabel(brand))}><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>기준일</span><input name="date" type="date" defaultValue={editing ? recordDate(editing) : today()} required /></label></div><div className="form-grid three"><label><span>총매출(원)</span><input name="gross" type="number" min="0" defaultValue={Number(editing?.metadata.gross ?? editing?.amount ?? 0)} required /></label><label><span>취소(원)</span><input name="cancel" type="number" min="0" defaultValue={Number(editing?.metadata.cancel ?? 0)} /></label><label><span>환불(원)</span><input name="refund" type="number" min="0" defaultValue={Number(editing?.metadata.refund ?? 0)} /></label></div><div className="form-grid"><label><span>주문 수</span><input name="orders" type="number" min="0" defaultValue={Number(editing?.metadata.orders ?? 0)} /></label><label><span>구매자 수</span><input name="buyers" type="number" min="0" defaultValue={Number(editing?.metadata.buyers ?? 0)} /></label></div><label><span>출처</span><input name="source" defaultValue={String(editing?.metadata.source ?? "수기 입력")} /></label>{Number(editing?.metadata.net ?? editing?.amount ?? 0) > 0 && Number(editing?.metadata.orders ?? 0) === 0 ? <div className="inline-alert warning"><CircleAlert size={15} /> 순매출은 있으나 주문 수가 0입니다. 원천 데이터를 확인해 주세요.</div> : null}<div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => { setOpen(false); setEditing(null); }}>취소</button><button className="primary-button">{editing ? "수정 저장" : "저장"}</button></div></form></div> : null}
     </>
   );
 }
@@ -210,6 +220,7 @@ export function WeeklyKpiWorkspace() {
   const { brand, month } = usePerformanceFilters();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<OsRecord | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     if (!demo) try { setRecords((await listRecords(accessToken, "kpi", "limit=200")).records); } catch (reason) { setError(reason instanceof Error ? reason.message : "KPI를 불러오지 못했습니다."); }
@@ -220,11 +231,14 @@ export function WeeklyKpiWorkspace() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     try {
-      await createRecord(accessToken, { recordType: "kpi", title: String(form.get("title")), status: "done", brand: String(form.get("brand")), metricCurrent: numberValue(form, "current"), metricTarget: numberValue(form, "target"), metricUnit: String(form.get("unit")), startsAt: `${String(form.get("week"))}T00:00:00.000Z`, metadata: { week: String(form.get("week")), previousValue: numberValue(form, "previous"), source: String(form.get("source")) } });
-      setOpen(false); await load();
+      const input = { recordType: "kpi", title: String(form.get("title")), status: "done", brand: String(form.get("brand")), metricCurrent: numberValue(form, "current"), metricTarget: numberValue(form, "target"), metricUnit: String(form.get("unit")), startsAt: `${String(form.get("week"))}T00:00:00.000Z`, metadata: { week: String(form.get("week")), previousValue: numberValue(form, "previous"), source: String(form.get("source")) } };
+      if (editing) await updateRecord(accessToken, { ...input, id: editing.id, expectedVersion: editing.version });
+      else await createRecord(accessToken, input);
+      setOpen(false); setEditing(null); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "KPI를 저장하지 못했습니다."); }
   };
-  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">주간 KPI</span><h1>주간 KPI</h1><p>지난주와 이번 주 수치를 기록해 다음 회의 안건과 성과 경고에 자동으로 올립니다.</p></div><button className="primary-button" onClick={() => setOpen(true)}><Plus size={16} /> KPI 입력</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<section className="panel records-panel"><div className="record-list">{selected.map((item) => { const previous = Number(item.metadata.previousValue ?? 0); const current = Number(item.metric_current ?? 0); const unit = item.metric_unit?.trim() ?? ""; const signal = buildPerformanceSignal({ title: item.title, current, previous, target: item.metric_target, unit }); return <article className="record-row" key={item.id}><span className={`priority-mark ${signal.tone === "danger" ? "priority-high" : "priority-normal"}`} /><div className="record-main"><div><strong>{item.title}</strong><span className={`signal-pill ${signal.tone}`}>{signal.label}</span></div><p>{item.brand || "통합"} · {String(item.metadata.source ?? "수기")} · 목표 {item.metric_target == null ? "미설정" : `${item.metric_target.toLocaleString("ko-KR")}${unit}`}</p></div><div className="record-measure"><strong>{current.toLocaleString("ko-KR")}{unit}</strong><small>지난주 {previous.toLocaleString("ko-KR")}{unit}</small></div></article>; })}{!selected.length ? <div className="empty-state"><div><Target /><h3>아직 입력된 KPI가 없습니다.</h3><p>“KPI 입력”으로 이번 주 지표를 기록하면 다음 회의 안건과 성과 경고에 자동으로 올라갑니다.</p></div></div> : null}</div></section>{open ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={submit}><div className="drawer-head"><h2>주간 KPI 입력</h2><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18} /></button></div><label><span>지표명</span><input name="title" required placeholder="예: 유튜브→스토어 클릭률" /></label><div className="form-grid"><label><span>브랜드</span><select name="brand" defaultValue={performanceBrandLabel(brand)}><option>통합</option><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>주 시작일</span><input name="week" type="date" required /></label></div><div className="form-grid three"><label><span>지난주</span><input name="previous" type="number" step="any" /></label><label><span>이번 주</span><input name="current" type="number" step="any" required /></label><label><span>목표</span><input name="target" type="number" step="any" /></label></div><div className="form-grid"><label><span>단위</span><input name="unit" placeholder="%, 명, 만원" /></label><label><span>출처</span><input name="source" placeholder="YouTube Studio" /></label></div><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>취소</button><button className="primary-button">저장</button></div></form></div> : null}</>;
+  const remove = async (record: OsRecord) => { if (!window.confirm(`“${record.title}” KPI를 휴지통으로 이동할까요?`)) return; try { await archiveRecord(accessToken, record.id); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "KPI를 삭제하지 못했습니다."); } };
+  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">주간 KPI</span><h1>주간 KPI</h1><p>지난주와 이번 주 수치를 기록해 다음 회의 안건과 성과 경고에 자동으로 올립니다.</p></div><button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}><Plus size={16} /> KPI 입력</button></header>{error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}<section className="panel records-panel"><div className="record-list">{selected.map((item) => { const previous = Number(item.metadata.previousValue ?? 0); const current = Number(item.metric_current ?? 0); const unit = item.metric_unit?.trim() ?? ""; const signal = buildPerformanceSignal({ title: item.title, current, previous, target: item.metric_target, unit }); return <article className="record-row" key={item.id}><span className={`priority-mark ${signal.tone === "danger" ? "priority-high" : "priority-normal"}`} /><div className="record-main"><div><strong>{item.title}</strong><span className={`signal-pill ${signal.tone}`}>{signal.label}</span></div><p>{item.brand || "통합"} · {String(item.metadata.source ?? "수기")} · 목표 {item.metric_target == null ? "미설정" : `${item.metric_target.toLocaleString("ko-KR")}${unit}`}</p></div><div className="record-measure"><strong>{current.toLocaleString("ko-KR")}{unit}</strong><small>지난주 {previous.toLocaleString("ko-KR")}{unit}</small></div><div className="row-actions"><button className="icon-button" aria-label={`${item.title} 수정`} onClick={() => { setEditing(item); setOpen(true); }}><Pencil size={14} /></button><button className="icon-button danger" aria-label={`${item.title} 삭제`} onClick={() => remove(item)}><Trash2 size={14} /></button></div></article>; })}{!selected.length ? <div className="empty-state"><div><Target /><h3>아직 입력된 KPI가 없습니다.</h3><p>“KPI 입력”으로 이번 주 지표를 기록하면 다음 회의 안건과 성과 경고에 자동으로 올라갑니다.</p></div></div> : null}</div></section>{open ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={submit} key={editing?.id ?? "new-kpi"}><div className="drawer-head"><h2>{editing ? "주간 KPI 수정" : "주간 KPI 입력"}</h2><button type="button" className="icon-button" onClick={() => { setOpen(false); setEditing(null); }}><X size={18} /></button></div><label><span>지표명</span><input name="title" required placeholder="예: 유튜브→스토어 클릭률" defaultValue={editing?.title ?? ""} /></label><div className="form-grid"><label><span>브랜드</span><select name="brand" defaultValue={editing?.brand || performanceBrandLabel(brand)}><option>통합</option><option>마이인</option><option>브랜디액션 에듀</option></select></label><label><span>주 시작일</span><input name="week" type="date" required defaultValue={String(editing?.metadata.week ?? editing?.starts_at?.slice(0, 10) ?? "")} /></label></div><div className="form-grid three"><label><span>지난주</span><input name="previous" type="number" step="any" defaultValue={Number(editing?.metadata.previousValue ?? 0)} /></label><label><span>이번 주</span><input name="current" type="number" step="any" required defaultValue={editing?.metric_current ?? 0} /></label><label><span>목표</span><input name="target" type="number" step="any" defaultValue={editing?.metric_target ?? 0} /></label></div><div className="form-grid"><label><span>단위</span><input name="unit" placeholder="%, 명, 만원" defaultValue={editing?.metric_unit ?? ""} /></label><label><span>출처</span><input name="source" placeholder="YouTube Studio" defaultValue={String(editing?.metadata.source ?? "")} /></label></div><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => { setOpen(false); setEditing(null); }}>취소</button><button className="primary-button">{editing ? "수정 저장" : "저장"}</button></div></form></div> : null}</>;
 }
 
 interface FunnelStage { id: string; name: string; value: number }

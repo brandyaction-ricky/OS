@@ -8,7 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { COMPANY_ROSTER, memberMatchesRoster } from "@/lib/company-roster";
+import { COMPANY_ROSTER, memberMatchesRoster, rosterDirectoryId } from "@/lib/company-roster";
 import { useSession } from "./session-provider";
 
 interface Member {
@@ -24,6 +24,7 @@ interface Member {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  account_connected: boolean;
 }
 
 const ONBOARDING = [
@@ -115,8 +116,9 @@ export function MembersWorkspace() {
       setSaving(false);
     }
   };
-  const active = members.filter((member) => member.is_active).length;
-  const admins = members.filter(
+  const accounts = members.filter((member) => member.account_connected);
+  const active = accounts.filter((member) => member.is_active).length;
+  const admins = accounts.filter(
     (member) => member.role === "admin" && member.is_active,
   ).length;
   return (
@@ -142,7 +144,7 @@ export function MembersWorkspace() {
               <Users size={16} />
             </span>
           </div>
-          <div className="metric-value">{members.length}</div>
+          <div className="metric-value">{accounts.length}</div>
           <div className="metric-caption">로그인 이력이 있는 구성원</div>
         </div>
         <div className="metric-card">
@@ -172,7 +174,7 @@ export function MembersWorkspace() {
               <CircleAlert size={16} />
             </span>
           </div>
-          <div className="metric-value">{members.length - active}</div>
+          <div className="metric-value">{accounts.length - active}</div>
           <div className="metric-caption">접근 차단 계정</div>
         </div>
       </section>
@@ -180,11 +182,11 @@ export function MembersWorkspace() {
         {COMPANY_ROSTER.map((person) => {
           const account = members.find((member) =>
             memberMatchesRoster(member, person.name),
-          );
+          ) ?? members.find((member) => member.id === rosterDirectoryId(person.name));
           const roles = account?.roles?.length ? account.roles : [...person.roles];
           const representativeRoles = roles.slice(0, 2);
           return (
-            <button type="button" className="panel roster-card" key={person.name} disabled={!account} onClick={() => account && setSelected(account)} aria-label={`${person.name} 구성원 정보 ${account ? "편집" : "확인"}`}>
+            <button type="button" className="panel roster-card" key={person.name} onClick={() => account && setSelected(account)} aria-label={`${person.name} 구성원 정보 편집`}>
               <span className="avatar">
                 <UserRound size={15} />
               </span>
@@ -206,8 +208,8 @@ export function MembersWorkspace() {
                   )}
                 </span>
               </div>
-              <em className={account?.is_active ? "ready" : "waiting"}>
-                {account?.is_active ? "계정 연결" : "초대 대기"}
+              <em className={account?.account_connected && account.is_active ? "ready" : "waiting"}>
+                {account?.account_connected ? (account.is_active ? "계정 연결" : "계정 중지") : "초대 대기"}
               </em>
             </button>
           );
@@ -215,7 +217,7 @@ export function MembersWorkspace() {
       </section>
       <section className="members-layout">
         <div className="panel member-list">
-          {members.map((member) => (
+          {accounts.map((member) => (
             <button
               key={member.id}
               className={selected?.id === member.id ? "active" : ""}
@@ -254,7 +256,7 @@ export function MembersWorkspace() {
           <div className="panel-header">
             <div>
               <h2>{selected ? `${selected.display_name || selected.email.split("@")[0]} / ${selected.affiliation || selected.team || "소속 미지정"}` : "구성원 정보"}</h2>
-              <p>{selected?.email ?? "목록에서 구성원을 선택하세요."}</p>
+              <p>{selected ? (selected.account_connected ? selected.email : "로그인 계정 연결 전 · 디렉터리 정보") : "목록에서 구성원을 선택하세요."}</p>
             </div>
             {selected ? (
               <span className="role-badge">{selected.role}</span>
@@ -302,7 +304,7 @@ export function MembersWorkspace() {
                 <select
                   name="role"
                   defaultValue={selected.role}
-                  disabled={profile?.role !== "admin"}
+                  disabled={profile?.role !== "admin" || !selected.account_connected}
                 >
                   <option value="member">구성원</option>
                   <option value="lead">리드</option>
@@ -327,7 +329,7 @@ export function MembersWorkspace() {
                   type="checkbox"
                   name="financeAccess"
                   defaultChecked={selected.finance_access}
-                  disabled={profile?.role !== "admin"}
+                  disabled={profile?.role !== "admin" || !selected.account_connected}
                 />
                 <span>경영지원 민감정보 접근</span>
               </label>
@@ -336,7 +338,7 @@ export function MembersWorkspace() {
                   type="checkbox"
                   name="isActive"
                   defaultChecked={selected.is_active}
-                  disabled={profile?.role !== "admin"}
+                  disabled={profile?.role !== "admin" || !selected.account_connected}
                 />
                 <span>계정 사용 허용</span>
               </label>
@@ -344,7 +346,7 @@ export function MembersWorkspace() {
                 className="primary-button"
                 disabled={saving || profile?.role !== "admin"}
               >
-                {saving ? "저장 중…" : "구성원 정보 저장"}
+                {saving ? "저장 중…" : selected.account_connected ? "구성원 정보 저장" : "초대 구성원 정보 저장"}
               </button>
               {profile?.role !== "admin" ? (
                 <small>관리자만 권한을 변경할 수 있습니다.</small>

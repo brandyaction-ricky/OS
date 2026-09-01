@@ -591,11 +591,11 @@ export function MeetingWorkspace() {
               </button>
             </div>
             <div className="meeting-phases">
-              <span className="done"><b>1</b> 준비</span>
-              <span className={transcript ? "done" : "active"}><b>2</b> 진행·전사</span>
-              <span className={structured ? "done" : ""}><b>3</b> 결정·실행</span>
+              <button type="button" className="done" onClick={() => document.getElementById("meeting-prepare")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>1</b> 준비</button>
+              <button type="button" className={transcript ? "done" : "active"} onClick={() => document.getElementById("meeting-transcript")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>2</b> 진행·전사</button>
+              <button type="button" className={structured ? "done" : ""} onClick={() => document.getElementById("meeting-actions")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>3</b> 결정·실행</button>
             </div>
-            <label>
+            <label id="meeting-prepare">
               <span>회의명</span>
               <input
                 name="title"
@@ -638,7 +638,7 @@ export function MeetingWorkspace() {
                 />
               </label>
             </div>
-            <label>
+            <label id="meeting-transcript">
               <span>참석자</span>
               <input
                 name="participants"
@@ -721,7 +721,8 @@ export function MeetingWorkspace() {
             >
               <Bot size={15} /> {busy ? "분석 중…" : "결정·미해결·업무 추출"}
             </button>
-            <label>
+            {transcript.trim().length < 20 ? <small className="field-hint">회의 원문을 20자 이상 입력하면 결정·미해결·업무 추출을 사용할 수 있습니다.</small> : null}
+            <label id="meeting-actions">
               <span>
                 회의 요약{" "}
                 {summaryMode

@@ -22,3 +22,7 @@ export function memberMatchesRoster(
   const emailName = member.email?.split("@")[0] ?? "";
   return displayName.includes(rosterName) || emailName.includes(rosterName);
 }
+
+export function rosterDirectoryId(name: string) {
+  return `directory:${encodeURIComponent(name)}`;
+}

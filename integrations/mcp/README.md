@@ -25,6 +25,11 @@ OS 관리자 화면의 `설정 → 권한 → AI 접근 키`에서 다음 값을
 - `create_document`: 항상 개인 초안으로 생성
 - `edit_document`: 버전 보존 수정, 선택적 낙관적 잠금
 - `delete_document`: `confirm=true`일 때만 휴지통 이동
+- `list_records` / `get_record`: 업무·목표·회의·콘텐츠·성과·경영지원 운영 기록 조회
+- `create_record` / `edit_record`: 버전 충돌 방지와 감사 로그를 적용한 운영 기록 생성·수정
+- `delete_record`: `confirm=true`일 때만 운영 기록을 휴지통으로 이동
+
+권한 정책 변경, 외부 예약·발행, 영구 삭제는 MCP에서 차단되며 OS 관리 화면에서 사람이 직접 승인해야 합니다.
 
 읽기 전용으로 한 번 더 잠그려면 `OS_MCP_READ_ONLY=true`를 설정합니다. 서버에서도 PAT 범위, 문서 소유권, 조직 UUID, 쓰기 속도 제한을 별도로 검사합니다.
 
@@ -36,7 +41,7 @@ OS 관리자 화면의 `설정 → 권한 → AI 접근 키`에서 다음 값을
 claude mcp add os-knowledge -- python3 /absolute/path/to/os_knowledge_mcp.py
 ```
 
-Codex에서도 같은 Python 명령과 세 환경변수를 stdio MCP 서버 설정에 등록하면 동일한 5개 도구가 노출됩니다.
+Codex 웹·원격 MCP에는 위 10개 도구가 노출됩니다. 기존 Python stdio 실행기는 지식 5개 도구의 하위 호환 연결로 유지됩니다.
 
 ## Codex 원격 MCP
 

@@ -58,7 +58,7 @@ export function Dashboard() {
     if (demo) return;
     Promise.all([
       Promise.all(DASHBOARD_RECORD_TYPES.map((type) => listRecords(accessToken, type, "limit=200"))),
-      listDocuments(accessToken, "view=summary&limit=20"),
+      listDocuments(accessToken, "view=summary&limit=20&statuses=canonical,reviewed,team"),
     ])
       .then(([operating, knowledge]) => {
         setRecords(operating.flatMap((result) => result.records));

@@ -48,7 +48,9 @@ export async function POST(request: Request) {
     const { data: owner } = await service.from("os_profiles").select("id,is_active").eq("id", ownerUserId).maybeSingle();
     if (!owner?.is_active) throw new ApiError(400, "AGENT_OWNER_INVALID", "활성 구성원만 AI 키의 소유자가 될 수 있습니다.");
     const raw = `bos_pat_${randomBytes(24).toString("base64url")}`;
-    const scopes = input.access === "write" ? ["knowledge.read", "knowledge.write"] : ["knowledge.read"];
+    const scopes = input.access === "write"
+      ? ["knowledge.read", "knowledge.write", "records.read", "records.write"]
+      : ["knowledge.read", "records.read"];
     const allowedStatuses = input.access === "write"
       ? ["draft", "team", "review", "reviewed", "canonical"]
       : ["canonical"];

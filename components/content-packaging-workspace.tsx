@@ -14,7 +14,7 @@ import {
   Star,
   Target,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRecord, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
@@ -67,6 +67,7 @@ export function ContentPackagingWorkspace() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
+  const [quickTopicOpen, setQuickTopicOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -174,8 +175,25 @@ export function ContentPackagingWorkspace() {
     window.setTimeout(() => setCopied(""), 1200);
   };
 
+  const createQuickTopic = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("title") ?? "").trim();
+    if (!title) return;
+    setBusy(true); setError("");
+    try {
+      const { record } = await createRecord(accessToken, {
+        recordType: "content_topic", title, description: String(form.get("problem") ?? "").trim(),
+        status: "backlog", priority: "normal", team: profile?.team || "콘텐츠", brand: String(form.get("brand") ?? "브랜디액션"),
+        tags: ["빠른검증", "임시주제"], metadata: { studioKind: "quick_validation", temporary: true },
+      });
+      setQuickTopicOpen(false); await load(); setSourceId(record.id);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "검증 주제를 만들지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "후보 생성"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{PACKAGE_TABS.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>
 
@@ -198,5 +216,6 @@ export function ContentPackagingWorkspace() {
     </> : null}
 
     <section className="package-footnote"><Check size={14} /><span>제목·카피는 후보를 만들고 채택 상태만 저장합니다. 실제 썸네일 이미지는 이 화면에서 자동 생성하지 않습니다.</span><PackageCheck size={14} /></section>
+    {quickTopicOpen ? <div className="drawer-backdrop" onMouseDown={() => setQuickTopicOpen(false)}><form className="record-drawer" onSubmit={createQuickTopic} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">빠른 검증</span><h2>새 주제로 검증</h2></div><button type="button" className="icon-button" onClick={() => setQuickTopicOpen(false)}>×</button></div><p className="field-hint">일반 주제·임시 검증 태그로 저장되며, 저장 즉시 기준 콘텐츠로 선택됩니다.</p><label><span>검증할 주제</span><input name="title" required /></label><label><span>시청자 문제·가설</span><textarea name="problem" rows={4} /></label><label><span>브랜드</span><input name="brand" defaultValue="브랜디액션" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setQuickTopicOpen(false)}>취소</button><button className="primary-button" disabled={busy}>저장하고 선택</button></div></form></div> : null}
   </>;
 }

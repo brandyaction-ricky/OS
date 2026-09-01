@@ -399,6 +399,14 @@ export function SettingsWorkspace({ page }: { page: Page }) {
                     </div>
                   ))}
                 </article>
+                <article className="panel company-block">
+                  <div className="panel-header">
+                    <div><h2>연차 운영 기준</h2><p>부여·신청·승인·차감은 실제 연차 기록 기준</p></div>
+                    <Link className="panel-link" href="/organization/leave">연차에서 관리 <ArrowRight size={13} /></Link>
+                  </div>
+                  <div className="company-list-row"><CheckCircle2 size={16} /><span><strong>관리자만 연차 부여·승인</strong><small>승인 시 잔여 일수를 원자적으로 차감</small></span><em>강제 적용</em></div>
+                  <div className="company-list-row"><Users size={16} /><span><strong>계정 연결 전 구성원도 명부 표시</strong><small>정책·부여 일수 미입력은 “미등록”으로 구분</small></span><em>명부 기준</em></div>
+                </article>
               </section>
               <section className="panel category-grid">
                 <div className="panel-header"><div><h2>지식 분류 8종</h2><p>지식 문서의 폴더 추천값과 공유하는 회사 기본 분류</p></div></div>
