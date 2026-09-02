@@ -16,6 +16,7 @@ export interface RequestActor {
   scopes: string[];
   organizationId: string | null;
   ownerId: string;
+  mustChangePassword: boolean;
   supabase: SupabaseClient;
 }
 
@@ -33,7 +34,7 @@ export function safeSecretMatch(received: string, expected: string) {
 
 export async function authenticateRequest(
   request: Request,
-  options: { allowAgent?: boolean; requiredAgentScope?: AgentScope } = {},
+  options: { allowAgent?: boolean; requiredAgentScope?: AgentScope; allowPasswordChangeRequired?: boolean } = {},
 ): Promise<RequestActor> {
   const token = getBearerToken(request);
   if (token.startsWith("bos_pat_")) {
@@ -65,6 +66,7 @@ export async function authenticateRequest(
       scopes,
       organizationId: data.organization_id,
       ownerId: data.owner_user_id,
+      mustChangePassword: false,
       supabase: service,
     };
   }
@@ -74,10 +76,13 @@ export async function authenticateRequest(
   if (userError || !userData.user) throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
   const { data: profile } = await supabase
     .from("os_profiles")
-    .select("role,team,is_active")
+    .select("role,team,is_active,must_change_password")
     .eq("id", userData.user.id)
     .maybeSingle();
   if (profile && profile.is_active === false) throw new ApiError(403, "ACCOUNT_DISABLED", "사용이 중지된 계정입니다.");
+  if (profile?.must_change_password && !options.allowPasswordChangeRequired) {
+    throw new ApiError(403, "PASSWORD_CHANGE_REQUIRED", "비밀번호를 먼저 변경해야 합니다.");
+  }
   return {
     type: "user",
     id: userData.user.id,
@@ -90,6 +95,7 @@ export async function authenticateRequest(
     scopes: ["knowledge.read", "knowledge.write", "records.read", "records.write"],
     organizationId: null,
     ownerId: userData.user.id,
+    mustChangePassword: Boolean(profile?.must_change_password),
     supabase,
   };
 }

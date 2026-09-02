@@ -3,8 +3,10 @@
 import {
   CheckCircle2,
   CircleAlert,
+  KeyRound,
   ShieldCheck,
   UserRound,
+  UserRoundPlus,
   Users,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
@@ -15,6 +17,7 @@ interface Member {
   id: string;
   email: string;
   display_name: string;
+  legal_name: string;
   role: "member" | "lead" | "admin";
   team: string;
   affiliation: string;
@@ -25,6 +28,7 @@ interface Member {
   created_at: string;
   updated_at: string;
   account_connected: boolean;
+  must_change_password: boolean;
 }
 
 const ONBOARDING = [
@@ -37,8 +41,9 @@ const ONBOARDING = [
 async function memberRequest<T>(
   token: string | null,
   options: RequestInit = {},
+  path = "/api/v1/members",
 ) {
-  const response = await fetch("/api/v1/members", {
+  const response = await fetch(path, {
     ...options,
     headers: {
       "content-type": "application/json",
@@ -58,7 +63,11 @@ export function MembersWorkspace() {
   const [members, setMembers] = useState<Member[]>([]);
   const [selected, setSelected] = useState<Member | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [legalName, setLegalName] = useState("");
+  const [accountEmail, setAccountEmail] = useState("");
   const load = async () => {
     if (demo) return;
     try {
@@ -79,18 +88,23 @@ export function MembersWorkspace() {
   useEffect(() => {
     load();
   }, [accessToken, demo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setLegalName(selected?.legal_name || "");
+    setAccountEmail(selected?.email || "");
+  }, [selected?.email, selected?.id, selected?.legal_name]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selected) return;
     const form = new FormData(event.currentTarget);
     setSaving(true);
+    setNotice("");
     try {
       await memberRequest(accessToken, {
         method: "PATCH",
         body: JSON.stringify({
           id: selected.id,
           displayName: form.get("displayName"),
-          role: form.get("role"),
+          role: form.get("role") || selected.role,
           team: form.get("team"),
           affiliation: form.get("affiliation"),
           roles: String(form.get("roles") || "")
@@ -108,6 +122,7 @@ export function MembersWorkspace() {
         }),
       });
       await load();
+      setNotice("구성원 정보를 저장했습니다.");
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "저장하지 못했습니다.",
@@ -115,6 +130,32 @@ export function MembersWorkspace() {
     } finally {
       setSaving(false);
     }
+  };
+  const issueAccount = async () => {
+    if (!selected || selected.account_connected) return;
+    setAccountBusy(true); setError(""); setNotice("");
+    try {
+      await memberRequest(accessToken, {
+        method: "POST",
+        body: JSON.stringify({ legalName, nickname: selected.display_name, email: accountEmail }),
+      }, "/api/v1/members/accounts");
+      await load();
+      setNotice(`${selected.display_name} 계정을 발급했습니다. 최초 로그인 후 비밀번호 변경이 필요합니다.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "직원 계정을 발급하지 못했습니다.");
+    } finally { setAccountBusy(false); }
+  };
+  const resetPassword = async () => {
+    if (!selected?.account_connected || selected.id === profile?.id) return;
+    if (!window.confirm(`${selected.display_name || selected.email} 계정을 공통 최초 비밀번호로 초기화할까요? 다음 로그인에서 개인 비밀번호 변경이 강제됩니다.`)) return;
+    setAccountBusy(true); setError(""); setNotice("");
+    try {
+      await memberRequest(accessToken, { method: "POST" }, `/api/v1/members/${selected.id}/password-reset`);
+      await load();
+      setNotice(`${selected.display_name || selected.email} 계정의 비밀번호를 초기화했습니다.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "비밀번호를 초기화하지 못했습니다.");
+    } finally { setAccountBusy(false); }
   };
   const accounts = members.filter((member) => member.account_connected);
   const active = accounts.filter((member) => member.is_active).length;
@@ -136,6 +177,7 @@ export function MembersWorkspace() {
           {error}
         </div>
       ) : null}
+      {notice ? <div className="inline-alert success"><CheckCircle2 size={16} />{notice}</div> : null}
       <section className="metric-grid compact-metrics">
         <div className="metric-card">
           <div className="metric-top">
@@ -264,6 +306,15 @@ export function MembersWorkspace() {
           </div>
           {selected ? (
             <div className="member-fields">
+              {!selected.account_connected ? (
+                <section className="member-account-issue">
+                  <div><UserRoundPlus size={17} /><span><strong>직원 로그인 계정 발급</strong><small>기존 닉네임 `{selected.display_name}`에 로그인 계정을 연결합니다.</small></span></div>
+                  <label><span>직원 실명</span><input value={legalName} onChange={(event) => setLegalName(event.target.value)} placeholder="직원 실명" required /></label>
+                  <label><span>로그인 이메일</span><input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} placeholder="name@brandyaction.com" required /></label>
+                  <button type="button" className="secondary-button" disabled={accountBusy || profile?.role !== "admin" || !legalName.trim() || !accountEmail.trim()} onClick={issueAccount}><UserRoundPlus size={15} /> {accountBusy ? "발급 중…" : "최초 비밀번호로 계정 발급"}</button>
+                  <small>비밀번호 원문은 화면에 표시하지 않습니다. 직원은 최초 로그인 후 개인 비밀번호를 반드시 설정합니다.</small>
+                </section>
+              ) : null}
               <label>
                 <span>표시 이름</span>
                 <input
@@ -333,6 +384,12 @@ export function MembersWorkspace() {
                 />
                 <span>경영지원 민감정보 접근</span>
               </label>
+              {selected.account_connected ? (
+                <section className="member-password-admin">
+                  <span><KeyRound size={16} /><span><strong>비밀번호 관리</strong><small>{selected.must_change_password ? "개인 비밀번호 변경 대기" : "개인 비밀번호 사용 중"}</small></span></span>
+                  {selected.id !== profile?.id ? <button type="button" className="secondary-button" disabled={accountBusy || profile?.role !== "admin"} onClick={resetPassword}>{accountBusy ? "초기화 중…" : "최초 비밀번호로 초기화"}</button> : <small>본인 계정은 상단 프로필의 비밀번호 변경을 이용하세요.</small>}
+                </section>
+              ) : null}
               <label className="toggle-label">
                 <input
                   type="checkbox"

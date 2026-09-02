@@ -8,6 +8,7 @@ import { getBrowserSupabase } from "@/lib/supabase/client";
 function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/home";
+  const passwordChanged = searchParams.get("password") === "changed";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -59,8 +60,9 @@ function LoginForm() {
         <form className="login-card" onSubmit={submit}>
           <div className="mobile-brand"><span className="brand-mark">BA</span><strong>브랜디 OS</strong></div>
           <span className="eyebrow">팀 로그인</span>
-          <h2>관리자 계정으로 로그인</h2>
+          <h2>팀 계정으로 로그인</h2>
           <p>등록된 이메일과 비밀번호로 로그인하면 접속 상태가 안전하게 유지됩니다.</p>
+          {passwordChanged ? <div className="inline-alert success"><CheckCircle2 size={15} /> 비밀번호가 변경되었습니다. 새 비밀번호로 다시 로그인해 주세요.</div> : null}
           <label>
             <span>이메일</span>
             <div className="input-with-icon"><Mail size={17} /><input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@brandyaction.com" /></div>
@@ -79,7 +81,7 @@ function LoginForm() {
           <button className="primary-button full" disabled={loading}>
             {loading ? "로그인 중…" : "로그인"}<ArrowRight size={17} />
           </button>
-          <small className="security-note"><LockKeyhole size={13} /> 사전에 등록된 관리자 계정만 접근할 수 있습니다.</small>
+          <small className="security-note"><LockKeyhole size={13} /> 사전에 등록되고 사용 허용된 구성원만 접근할 수 있습니다.</small>
         </form>
       </section>
     </main>

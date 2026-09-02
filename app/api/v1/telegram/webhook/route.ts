@@ -168,6 +168,7 @@ export async function POST(request: Request) {
       scopes: ["knowledge.read"],
       organizationId: null,
       ownerId: "",
+      mustChangePassword: false,
       supabase,
     };
     const [{ results }, liveOperations] = await Promise.all([

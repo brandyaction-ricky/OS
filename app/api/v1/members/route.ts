@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     const service = createServiceSupabase();
     const [profileResult, directoryResult] = await Promise.all([
       service.from("os_profiles")
-        .select("id,email,display_name,role,team,affiliation,roles,onboarding,finance_access,is_active,created_at,updated_at")
+        .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,must_change_password,created_at,updated_at")
         .order("display_name", { ascending: true }),
       service.from("os_records")
         .select("id,title,team,brand,metadata,created_at,updated_at")
@@ -44,11 +44,11 @@ export async function GET(request: Request) {
         const saved = directoryByName.get(person.name);
         const metadata = (saved?.metadata ?? {}) as Record<string, unknown>;
         return {
-          id: rosterDirectoryId(person.name), email: "", display_name: String(metadata.displayName ?? person.name), role: "member",
+          id: rosterDirectoryId(person.name), email: "", display_name: String(metadata.displayName ?? person.name), legal_name: "", role: "member",
           team: saved?.team ?? "", affiliation: saved?.brand ?? person.affiliation,
           roles: Array.isArray(metadata.roles) ? metadata.roles.map(String) : [...person.roles],
           onboarding: typeof metadata.onboarding === "object" && metadata.onboarding ? metadata.onboarding : {},
-          finance_access: Boolean(metadata.financeAccess), is_active: false, account_connected: false,
+          finance_access: Boolean(metadata.financeAccess), is_active: false, must_change_password: true, account_connected: false,
           created_at: saved?.created_at ?? "", updated_at: saved?.updated_at ?? "",
         };
       });
@@ -97,7 +97,7 @@ export async function PATCH(request: Request) {
       finance_access: input.financeAccess,
       is_active: input.isActive,
       updated_at: new Date().toISOString(),
-    }).eq("id", input.id).select("id,email,display_name,role,team,affiliation,roles,onboarding,finance_access,is_active,created_at,updated_at").single();
+    }).eq("id", input.id).select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,must_change_password,created_at,updated_at").single();
     if (error || !data) throw new ApiError(400, "MEMBER_UPDATE_FAILED", "구성원 정보를 수정하지 못했습니다.", error?.message);
     return NextResponse.json({ member: data });
   } catch (error) {

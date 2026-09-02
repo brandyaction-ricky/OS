@@ -9,6 +9,8 @@ export const SUPABASE_PUBLIC_KEY =
 
 export const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
+export const OS_INITIAL_PASSWORD = process.env.OS_INITIAL_PASSWORD ?? "";
+
 export const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 

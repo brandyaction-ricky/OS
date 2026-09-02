@@ -6,6 +6,9 @@ const EVENT_LABELS: Record<string, string> = {
   restored: "복원",
   approved: "승인",
   rejected: "반려",
+  account_created: "계정 발급",
+  password_changed: "비밀번호 변경",
+  password_reset: "비밀번호 초기화",
 };
 
 const RECORD_LABELS: Record<string, string> = {
@@ -44,6 +47,7 @@ const RECORD_LABELS: Record<string, string> = {
   contract: "계약",
   subscription: "구독",
   company_document: "회사 서류",
+  account_security: "계정 보안",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -97,6 +101,7 @@ const FIELD_LABELS: Record<string, string> = {
   tags: "태그",
   metadata: "세부 정보",
   content_md: "본문",
+  password: "비밀번호",
   folder: "폴더",
 };
 

@@ -20,13 +20,18 @@ export async function GET(request: Request) {
     let agentQuery = service.from("os_agent_audit_logs")
       .select("id,agent_key_id,owner_user_id,action,document_id,record_id,title_snapshot,changed_fields,reason,created_at")
       .order("created_at", { ascending: false }).limit(limit * 2);
+    let securityQuery = service.from("os_security_audit_logs")
+      .select("id,actor_id,target_user_id,action,note,created_at")
+      .order("created_at", { ascending: false }).limit(limit * 2);
     if (actor.role !== "admin") {
       recordQuery = recordQuery.eq("actor_id", actor.id);
       documentQuery = documentQuery.eq("actor_id", actor.id);
       agentQuery = agentQuery.eq("owner_user_id", actor.id);
+      securityQuery = securityQuery.or(`actor_id.eq.${actor.id},target_user_id.eq.${actor.id}`);
     }
-    const [recordResult, documentResult, agentResult] = await Promise.all([recordQuery, documentQuery, agentQuery]);
+    const [recordResult, documentResult, agentResult, securityResult] = await Promise.all([recordQuery, documentQuery, agentQuery, securityQuery]);
     if (recordResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "감사 로그를 불러오지 못했습니다.", recordResult.error.message);
+    if (securityResult.error) throw new ApiError(400, "SECURITY_AUDIT_LIST_FAILED", "계정 보안 기록을 불러오지 못했습니다.", securityResult.error.message);
 
     const documentIds = [...new Set([
       ...(documentResult.data ?? []).map((event) => event.document_id),
@@ -35,6 +40,7 @@ export async function GET(request: Request) {
     const actorIds = [...new Set([
       ...(recordResult.data ?? []).map((event) => event.actor_id),
       ...(documentResult.data ?? []).map((event) => event.actor_id),
+      ...(securityResult.data ?? []).flatMap((event) => [event.actor_id, event.target_user_id]),
     ].filter(Boolean))];
     const agentKeyIds = [...new Set((agentResult.data ?? []).map((event) => event.agent_key_id).filter(Boolean))];
     const agentRecordIds = [...new Set((agentResult.data ?? []).map((event) => event.record_id).filter(Boolean))];
@@ -97,7 +103,22 @@ export async function GET(request: Request) {
       note: event.reason ?? "",
       created_at: event.created_at,
     }));
-    const events = [...records, ...documentEvents, ...agentEvents]
+    const securityEvents = (securityResult.data ?? []).map((event) => ({
+      id: `security:${event.id}`,
+      subject_id: event.target_user_id,
+      subject_type: "account_security",
+      title: `${profileNames.get(event.target_user_id) ?? "구성원"} 계정 보안`,
+      actor_id: event.actor_id,
+      actor_type: "user",
+      actor_name: event.actor_id ? profileNames.get(event.actor_id) ?? "관리자" : "시스템",
+      event_type: ({ "account.created": "account_created", "password.changed": "password_changed", "password.reset": "password_reset" } as Record<string, string>)[event.action] ?? "updated",
+      from_status: null,
+      to_status: null,
+      changed_fields: ["password"],
+      note: event.note ?? "",
+      created_at: event.created_at,
+    }));
+    const events = [...records, ...documentEvents, ...agentEvents, ...securityEvents]
       .sort((left, right) => right.created_at.localeCompare(left.created_at))
       .slice(0, limit);
     return NextResponse.json({ events });

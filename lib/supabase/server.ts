@@ -19,3 +19,12 @@ export function createServiceSupabase() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
+
+export function createCredentialSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_PUBLIC_KEY) {
+    throw new Error("SUPABASE_PUBLIC_CONFIG_MISSING");
+  }
+  return createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}

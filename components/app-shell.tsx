@@ -6,6 +6,7 @@ import {
   ChevronsUpDown,
   CircleHelp,
   Command,
+  KeyRound,
   LogOut,
   Menu,
   Moon,
@@ -20,6 +21,7 @@ import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { roleLabel } from "@/lib/company-settings";
 import { CommandPalette } from "./command-palette";
 import { PerformanceFilterBar } from "./performance-filter-context";
+import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
 
 type DisplayTheme = "dark" | "light";
@@ -41,6 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [knowledgeFocus, setKnowledgeFocus] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
 
@@ -96,6 +99,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <p>브랜디 OS를 여는 중입니다</p>
       </div>
     );
+  }
+
+  if (!demo && profile?.mustChangePassword) {
+    return <PasswordChangeForm forced />;
   }
 
   return (
@@ -236,7 +243,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span>{profile?.email}</span>
               <span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
               {!demo ? (
-                <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
+                <>
+                  <button onClick={() => { setPasswordOpen(true); setProfileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button>
+                  <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
+                </>
               ) : null}
             </div>
           ) : null}
@@ -267,6 +277,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </nav>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>
   );
 }

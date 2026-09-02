@@ -23,6 +23,7 @@ const demoProfile: SessionProfile = {
   displayName: "리키",
   role: "admin",
   team: "경영",
+  mustChangePassword: false,
 };
 
 function clientIsDemo() {
@@ -61,7 +62,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
       const { data } = await client
         .from("os_profiles")
-        .select("id,email,display_name,role,team")
+        .select("id,email,display_name,role,team,must_change_password")
         .eq("id", nextSession.user.id)
         .maybeSingle();
 
@@ -75,6 +76,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           "구성원",
         role: data?.role ?? "member",
         team: data?.team ?? "전체",
+        mustChangePassword: Boolean(data?.must_change_password),
       });
       setLoading(false);
     }

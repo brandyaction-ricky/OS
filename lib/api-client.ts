@@ -201,6 +201,7 @@ export async function getHealth() {
     service: string;
     database: "ready" | "missing" | "error";
     auth: "ready" | "missing";
+    accountPassword: "ready" | "missing";
     agentMcp: "ready" | "missing" | "error";
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
@@ -463,6 +464,7 @@ export interface OsMember {
   id: string;
   email: string;
   display_name: string;
+  legal_name?: string;
   role: "member" | "lead" | "admin";
   team: string;
   is_active: boolean;
@@ -471,6 +473,7 @@ export interface OsMember {
   onboarding: Record<string, boolean>;
   finance_access: boolean;
   account_connected?: boolean;
+  must_change_password?: boolean;
 }
 
 export async function listMembers(token: string | null) {

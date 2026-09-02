@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { hasPublicSupabaseConfig, hasServerSupabaseConfig } from "@/lib/config";
+import { hasPublicSupabaseConfig, hasServerSupabaseConfig, OS_INITIAL_PASSWORD } from "@/lib/config";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { adConnectionStatus } from "@/lib/server/ad-performance";
 import { youtubeOAuthConfigured } from "@/lib/server/youtube-oauth";
@@ -17,6 +17,7 @@ export async function GET() {
     agentMcp = agentError ? "error" : "ready";
   }
   const auth = hasPublicSupabaseConfig() ? "ready" : "missing";
+  const accountPassword = OS_INITIAL_PASSWORD.length >= 10 ? "ready" : "missing";
   const embeddings = process.env.OPENAI_API_KEY ? "ready" : "keyword_only";
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "ready" : "missing";
   const contentAi = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY ? "ready" : "missing";
@@ -31,6 +32,7 @@ export async function GET() {
     service: "brandyaction-os",
     database,
     auth,
+    accountPassword,
     agentMcp,
     embeddings,
     telegram,

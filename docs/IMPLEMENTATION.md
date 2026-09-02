@@ -172,6 +172,7 @@ GOOGLE_ADS_BRANDYEDU_CUSTOMER_ID=...
 2. Vercel 환경변수를 등록한다.
 3. GitHub `main`을 배포하고 `/api/v1/health`에서 `database=ready`, `auth=ready`를 확인한다.
 4. 첫 관리자를 Supabase Auth에 만들고 같은 UUID로 `os_profiles`의 `role=admin`, `is_active=true`를 확인한다.
+   직원 계정 발급과 관리자 초기화에는 서버 전용 `OS_INITIAL_PASSWORD`가 필요하며, 값은 Git·DB·클라이언트 코드에 저장하지 않는다. 신규·초기화 계정은 `must_change_password=true`로 생성되어 개인 비밀번호 변경 전 일반 API가 차단된다.
 5. OS 설정에서 Agent PAT를 발급하고, 필요할 때 MCP의 `AGENT_PAT`에 주입한다.
 6. Telegram 환경변수가 준비된 운영 배포는 `/api/v1/telegram/webhook`과 비밀 토큰을 Bot API에 자동 등록한다. 미등록 사용자는 요청 상태로 저장되며 `설정 → 운영 모니터링 → Telegram 웹훅`에서 승인·거절한다. `TELEGRAM_ALLOWED_USER_IDS`는 기존 사용자용 선택적 비상 허용 목록이다.
 7. 볼트는 `npm run import:knowledge -- --root <경로> --dry-run` 확인 후 `--apply`한다. `02_Wiki`·`00_Skills`만 정본이며 재실행해도 기존 상태를 덮어쓰지 않는다.

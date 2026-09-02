@@ -220,6 +220,14 @@ export function MonitoringWorkspace() {
           <KeyRound size={18} />,
         )}
         {status(
+          health?.accountPassword === "ready",
+          "직원 비밀번호 관리",
+          health?.accountPassword === "ready"
+            ? "최초 비밀번호·강제 변경 준비 완료"
+            : "서버 최초 비밀번호 설정 필요",
+          <ShieldCheck size={18} />,
+        )}
+        {status(
           health?.embeddings === "ready",
           "지식 검색",
           health?.embeddings === "ready"

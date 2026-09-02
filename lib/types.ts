@@ -63,6 +63,7 @@ export interface SessionProfile {
   displayName: string;
   role: OsRole;
   team: string;
+  mustChangePassword: boolean;
 }
 
 export interface ApiErrorBody {
