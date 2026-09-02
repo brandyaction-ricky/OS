@@ -45,6 +45,7 @@ test("light theme and guidance-off rules cover global workspaces", async () => {
   assert.match(css, /\.knowledge-graph-main,/);
   assert.match(css, /\.mode-switch button\.active/);
   assert.match(css, /\.status-filters > button\.active/);
+  assert.match(css, /html\[data-theme="light"\] \.mode-switch button\.active,\s*html\[data-theme="light"\] \.status-filters > button\.active \{\s*border-color: var\(--light-border\);\s*background: var\(--light-selected\);\s*color: #2949b4;/);
   assert.match(css, /\.example-queries button:hover/);
   assert.match(css, /\.calendar-platforms button\.active/);
   assert.match(css, /html\[data-guidance="off"\]/);

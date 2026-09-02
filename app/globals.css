@@ -966,6 +966,12 @@ html[data-theme="light"] :where(
 
 html[data-theme="light"] .mode-switch button { color: var(--muted); }
 html[data-theme="light"] .status-filters > button { color: var(--muted); }
+html[data-theme="light"] .mode-switch button.active,
+html[data-theme="light"] .status-filters > button.active {
+  border-color: var(--light-border);
+  background: var(--light-selected);
+  color: #2949b4;
+}
 html[data-theme="light"] .status-filters > button > span { background: #8c96a5; }
 html[data-theme="light"] .status-filters > button.active > span { background: var(--accent); }
 html[data-theme="light"] .example-queries button {
