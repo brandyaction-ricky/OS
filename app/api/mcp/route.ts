@@ -47,8 +47,8 @@ export async function POST(request: Request) {
     return jsonRpc(body.id, {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
-      serverInfo: { name: "brandy-os", version: "3.2.0" },
-      instructions: "브랜디 OS의 지식과 운영 기록을 검색·관리합니다. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.",
+      serverInfo: { name: "brandy-os", version: "3.3.0" },
+      instructions: "브랜디 OS의 지식과 운영 기록을 검색·관리합니다. 프로젝트 작업 전 get_project_context로 현재 상태를 읽고, 작업 후 create_development_log로 검증·브랜치·다음 단계를 기록하세요. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.",
     });
   }
   if (body.method === "notifications/initialized") return new NextResponse(null, { status: 202 });

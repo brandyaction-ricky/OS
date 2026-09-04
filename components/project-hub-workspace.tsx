@@ -1,13 +1,13 @@
 "use client";
 
-import { ArrowRight, Bot, CheckCircle2, CircleAlert, Clock3, Code2, FolderGit2, Plus, Target, X } from "lucide-react";
+import { ArrowRight, Bot, CheckCircle2, CircleAlert, Clock3, Code2, FolderGit2, GitCommitHorizontal, Plus, Rocket, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRecord, listRecords, updateRecord } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
 const JOB_FLOW = ["backlog", "active", "review", "done"];
-const STATUS_LABEL: Record<string, string> = { planned: "계획", active: "진행 중", blocked: "막힘", review: "검수", done: "완료", backlog: "요청 대기" };
+const STATUS_LABEL: Record<string, string> = { planned: "계획", active: "진행 중", working: "작업 중", tested: "검증 완료", dev_deployed: "DEV 배포", completed: "완료", blocked: "막힘", review: "검수", done: "완료", backlog: "요청 대기" };
 
 function meta(record: OsRecord, key: string) {
   const value = record.metadata?.[key];
@@ -27,12 +27,14 @@ export function ProjectHubWorkspace() {
     if (demo) return;
     setLoading(true);
     try {
-      const [projects, tasks, jobs] = await Promise.all([
+      const [projects, tasks, jobs, developmentLogs, deployments] = await Promise.all([
         listRecords(accessToken, "project", "limit=200"),
         listRecords(accessToken, "task", "limit=200"),
         listRecords(accessToken, "ai_job", "limit=200"),
+        listRecords(accessToken, "development_log", "limit=200"),
+        listRecords(accessToken, "deployment", "limit=200"),
       ]);
-      const next = [...projects.records, ...tasks.records, ...jobs.records];
+      const next = [...projects.records, ...tasks.records, ...jobs.records, ...developmentLogs.records, ...deployments.records];
       setRecords(next);
       setSelectedId((current) => current || projects.records[0]?.id || "");
       setError("");
@@ -45,15 +47,20 @@ export function ProjectHubWorkspace() {
   const projects = records.filter((record) => record.record_type === "project");
   const tasks = records.filter((record) => record.record_type === "task");
   const jobs = records.filter((record) => record.record_type === "ai_job");
+  const developmentLogs = records.filter((record) => record.record_type === "development_log");
+  const deployments = records.filter((record) => record.record_type === "deployment");
   const selected = projects.find((record) => record.id === selectedId) ?? projects[0] ?? null;
   const projectTasks = tasks.filter((record) => record.parent_id === selected?.id);
   const projectJobs = jobs.filter((record) => record.parent_id === selected?.id);
+  const projectDevelopmentLogs = developmentLogs.filter((record) => record.parent_id === selected?.id);
+  const projectDeployments = deployments.filter((record) => record.parent_id === selected?.id);
+  const projectHistory = [...projectDevelopmentLogs, ...projectDeployments].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   const stats = useMemo(() => ({
     active: projects.filter((record) => ["planned", "active", "blocked"].includes(record.status)).length,
     running: jobs.filter((record) => record.status === "active").length,
     review: jobs.filter((record) => record.status === "review").length,
-    blocked: [...projects, ...tasks, ...jobs].filter((record) => record.status === "blocked").length,
-  }), [jobs, projects, tasks]);
+    blocked: [...projects, ...tasks, ...jobs, ...developmentLogs, ...deployments].filter((record) => record.status === "blocked").length,
+  }), [deployments, developmentLogs, jobs, projects, tasks]);
 
   const submitProject = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -98,7 +105,7 @@ export function ProjectHubWorkspace() {
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">AI PROJECT HUB</span><h1>프로젝트 관제</h1><p>각 프로젝트의 목표, 실행 업무, AI 요청과 검수 상태를 한 화면에서 관리합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={!selected} onClick={() => setModal("job")}><Bot size={16} /> AI 요청서</button><button className="primary-button" onClick={() => setModal("project")}><Plus size={16} /> 프로젝트 추가</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">DEVELOPMENT OPERATIONS</span><h1>개발 관리</h1><p>프로젝트 목표, AI 작업, 코드 검증과 배포 이력을 한 화면에서 관리합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={!selected} onClick={() => setModal("job")}><Bot size={16} /> AI 요청서</button><button className="primary-button" onClick={() => setModal("project")}><Plus size={16} /> 프로젝트 추가</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <section className="metric-grid compact-metrics">
       <div className="metric-card"><div className="metric-top"><span>진행 프로젝트</span><span className="metric-icon"><FolderGit2 size={16} /></span></div><div className="metric-value">{stats.active}</div><div className="metric-caption">현재 관리 중</div></div>
@@ -110,11 +117,12 @@ export function ProjectHubWorkspace() {
       <aside className="panel project-index"><div className="panel-header"><div><h2>프로젝트</h2><p>{projects.length}개 운영 중</p></div></div>{loading ? <div className="loading-state">불러오는 중…</div> : projects.map((project) => <button className={selected?.id === project.id ? "active" : ""} key={project.id} onClick={() => setSelectedId(project.id)}><span className={`priority-mark priority-${project.priority}`} /><span><strong>{project.title}</strong><small>{project.brand || "공통"} · {STATUS_LABEL[project.status] ?? project.status}</small></span><ArrowRight size={14} /></button>)}{!loading && !projects.length ? <div className="list-empty"><Target size={20} /><span>첫 프로젝트를 추가하세요.</span></div> : null}</aside>
       <div className="project-detail">
         {selected ? <>
-          <article className="panel project-summary"><header><div><span className={`status-pill status-${selected.status}`}>{STATUS_LABEL[selected.status] ?? selected.status}</span><h2>{selected.title}</h2><p>{selected.description || "프로젝트 목적을 입력하세요."}</p></div><div><span>{meta(selected, "repository") || "저장소 미지정"}</span><small>{meta(selected, "successMetric") || "성공 지표 미지정"}</small></div></header><div className="project-facts"><span><strong>{projectTasks.filter((item) => item.status !== "done").length}</strong> 진행 업무</span><span><strong>{projectJobs.filter((item) => !["done"].includes(item.status)).length}</strong> AI 작업</span><span><strong>{selected.due_date || "미정"}</strong> 목표 기한</span></div></article>
+          <article className="panel project-summary"><header><div><span className={`status-pill status-${selected.status}`}>{STATUS_LABEL[selected.status] ?? selected.status}</span><h2>{selected.title}</h2><p>{selected.description || "프로젝트 목적을 입력하세요."}</p></div><div><span>{meta(selected, "repository") || "저장소 미지정"}</span><small>{meta(selected, "successMetric") || "성공 지표 미지정"}</small></div></header><div className="project-facts"><span><strong>{projectTasks.filter((item) => item.status !== "done").length}</strong> 진행 업무</span><span><strong>{projectDevelopmentLogs.length}</strong> 개발 로그</span><span><strong>{projectDeployments.length}</strong> 배포 기록</span></div></article>
           <div className="project-columns">
             <article className="panel"><div className="panel-header"><div><h2>실행 업무</h2><p>담당자·기한 기반</p></div><span className="count-badge">{projectTasks.length}</span></div><div className="project-item-list">{projectTasks.map((task) => <div key={task.id}><span className={`mini-status status-${task.status}`} /><span><strong>{task.title}</strong><small>{STATUS_LABEL[task.status] ?? task.status} · {task.due_date || "기한 없음"}</small></span><em>{task.progress}%</em></div>)}{!projectTasks.length ? <div className="quiet-state"><Clock3 size={20} /><strong>연결된 업무 없음</strong><span>업무 메뉴에서 프로젝트를 연결할 수 있습니다.</span></div> : null}</div></article>
             <article className="panel"><div className="panel-header"><div><h2>AI 작업 요청</h2><p>요청→실행→검수→완료</p></div><button className="text-button" onClick={() => setModal("job")}><Plus size={13} /> 추가</button></div><div className="ai-job-list">{projectJobs.map((job) => <div key={job.id}><div><span>{meta(job, "aiTool") || "AI"}</span><strong>{job.title}</strong><small>{meta(job, "completionCriteria") || job.description}</small></div><button className={`status-pill status-${job.status}`} onClick={() => advanceJob(job)}>{STATUS_LABEL[job.status] ?? job.status}<ArrowRight size={12} /></button></div>)}{!projectJobs.length ? <div className="quiet-state"><Bot size={20} /><strong>AI 작업 없음</strong><span>완료 조건이 있는 요청서를 만드세요.</span></div> : null}</div></article>
           </div>
+          <article className="panel development-history"><div className="panel-header"><div><h2>개발·배포 이력</h2><p>ChatGPT Work 작업 결과와 환경별 배포 기록</p></div><span className="count-badge">{projectHistory.length}</span></div><div className="development-history-list">{projectHistory.map((record) => <div key={record.id}><span className="history-icon">{record.record_type === "deployment" ? <Rocket size={15} /> : <GitCommitHorizontal size={15} />}</span><div><div><strong>{record.title}</strong><span className={`status-pill status-${record.status}`}>{STATUS_LABEL[record.status] ?? record.status}</span></div><p>{record.description || "설명 없음"}</p><small>{record.stage || "환경 미지정"} · {meta(record, "branch") || meta(record, "commitSha") || new Date(record.updated_at).toLocaleString("ko-KR")}</small></div>{record.source_url ? <a className="text-button" href={record.source_url} target="_blank" rel="noreferrer">결과 보기 <ArrowRight size={12} /></a> : null}</div>)}{!projectHistory.length ? <div className="quiet-state"><GitCommitHorizontal size={20} /><strong>아직 개발 로그가 없습니다.</strong><span>Work에서 작업을 마칠 때 프로젝트에 구조화 로그를 남깁니다.</span></div> : null}</div></article>
         </> : <div className="panel empty-state"><div><span><FolderGit2 /></span><h3>프로젝트를 선택하세요.</h3><p>프로젝트별 업무와 AI 실행 상태가 여기에 표시됩니다.</p></div></div>}
       </div>
     </section>

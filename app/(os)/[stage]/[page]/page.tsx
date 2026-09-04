@@ -24,6 +24,7 @@ import { ContentShortformWorkspace as ContentShortsWorkspace } from "@/component
 import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/components/content-performance-dashboard";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
+import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 
@@ -54,6 +55,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
+  if (href === "/knowledge/development") return <ProjectHubWorkspace />;
   if (href === "/knowledge/graph") return <KnowledgeGraphWorkspace />;
   if (href === "/performance/overview") return <GrowthDashboard />;
   if (href === "/performance/revenue") return <RevenueWorkspace />;

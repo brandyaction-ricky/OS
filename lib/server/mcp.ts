@@ -93,6 +93,65 @@ export const MCP_TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: "get_project_context",
+    description: "프로젝트의 현재 정보와 연결된 업무, AI 작업, 의사결정, 개발 로그, 배포 이력을 한 번에 조회합니다.",
+    inputSchema: {
+      type: "object",
+      properties: { project_id: { type: "string", format: "uuid" } },
+      required: ["project_id"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "create_development_log",
+    description: "프로젝트에 연결된 구조화 개발 로그를 남깁니다. 코드 배포를 실행하지는 않습니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", format: "uuid" },
+        title: { type: "string", minLength: 1 },
+        summary: { type: "string", minLength: 1 },
+        status: { type: "string", enum: ["working", "tested", "dev_deployed", "review", "completed", "blocked"] },
+        environment: { type: "string", enum: ["local", "dev", "production"] },
+        repository: { type: "string" },
+        branch: { type: "string" },
+        commit_sha: { type: "string" },
+        changed_files: { type: "array", items: { type: "string" } },
+        checks: { type: "array", items: { type: "string" } },
+        risks: { type: "array", items: { type: "string" } },
+        next_steps: { type: "array", items: { type: "string" } },
+        result_url: { type: ["string", "null"], format: "uri" },
+        reason: { type: "string" },
+      },
+      required: ["project_id", "title", "summary", "status", "environment"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "record_deployment",
+    description: "이미 수행한 DEV 또는 운영 배포 결과를 프로젝트 이력에 기록합니다. 이 도구 자체는 배포를 실행하지 않습니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project_id: { type: "string", format: "uuid" },
+        title: { type: "string", minLength: 1 },
+        environment: { type: "string", enum: ["dev", "production"] },
+        status: { type: "string", enum: ["deploying", "ready", "failed", "rolled_back"] },
+        commit_sha: { type: "string", minLength: 1 },
+        branch: { type: "string" },
+        deployment_url: { type: ["string", "null"], format: "uri" },
+        checks: { type: "array", items: { type: "string" } },
+        approval_reference: { type: "string", description: "운영 배포일 때 필요한 사람 승인 근거" },
+        reason: { type: "string" },
+      },
+      required: ["project_id", "title", "environment", "status", "commit_sha"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
     name: "create_record",
     description: "OS에 운영 기록을 생성합니다. 권한 정책과 외부 발행은 생성할 수 없습니다.",
     inputSchema: { type: "object", properties: { record_type: { type: "string" }, title: { type: "string", minLength: 1 }, description: { type: "string" }, status: { type: "string" }, brand: { type: "string" }, team: { type: "string" }, due_date: { type: ["string", "null"], format: "date" }, amount: { type: ["number", "null"] }, tags: { type: "array", items: { type: "string" } }, metadata: { type: "object" }, reason: { type: "string" } }, required: ["record_type", "title"], additionalProperties: false },
@@ -150,6 +209,39 @@ const listRecordArgs = z.object({
   record_type: z.string().trim().optional(), limit: z.number().int().min(1).max(200).optional().default(100), offset: z.number().int().min(0).optional().default(0),
 }).strict();
 const getRecordArgs = z.object({ record_id: documentId }).strict();
+const getProjectContextArgs = z.object({ project_id: documentId }).strict();
+const createDevelopmentLogArgs = z.object({
+  project_id: documentId,
+  title: z.string().trim().min(1).max(240),
+  summary: z.string().trim().min(1).max(20_000),
+  status: z.enum(["working", "tested", "dev_deployed", "review", "completed", "blocked"]),
+  environment: z.enum(["local", "dev", "production"]),
+  repository: z.string().trim().max(300).optional().default(""),
+  branch: z.string().trim().max(300).optional().default(""),
+  commit_sha: z.string().trim().max(64).optional().default(""),
+  changed_files: z.array(z.string().trim().min(1).max(500)).max(200).optional().default([]),
+  checks: z.array(z.string().trim().min(1).max(500)).max(100).optional().default([]),
+  risks: z.array(z.string().trim().min(1).max(1_000)).max(50).optional().default([]),
+  next_steps: z.array(z.string().trim().min(1).max(1_000)).max(50).optional().default([]),
+  result_url: z.string().url().max(2_000).nullable().optional().default(null),
+  reason: z.string().trim().max(500).optional().default("ChatGPT Work 개발 로그 생성"),
+}).strict();
+const recordDeploymentArgs = z.object({
+  project_id: documentId,
+  title: z.string().trim().min(1).max(240),
+  environment: z.enum(["dev", "production"]),
+  status: z.enum(["deploying", "ready", "failed", "rolled_back"]),
+  commit_sha: z.string().trim().min(1).max(64),
+  branch: z.string().trim().max(300).optional().default(""),
+  deployment_url: z.string().url().max(2_000).nullable().optional().default(null),
+  checks: z.array(z.string().trim().min(1).max(500)).max(100).optional().default([]),
+  approval_reference: z.string().trim().max(1_000).optional().default(""),
+  reason: z.string().trim().max(500).optional().default("ChatGPT Work 배포 결과 기록"),
+}).strict().superRefine((input, context) => {
+  if (input.environment === "production" && !input.approval_reference) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["approval_reference"], message: "운영 배포 기록에는 사람 승인 근거가 필요합니다." });
+  }
+});
 const recordFields = {
   title: z.string().trim().min(1).max(240).optional(), description: z.string().max(20_000).optional(),
   status: z.string().trim().min(1).max(40).optional(), brand: z.string().trim().max(120).optional(), team: z.string().trim().max(120).optional(),
@@ -235,6 +327,62 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if (request.name === "get_record") {
     const input = getRecordArgs.parse(args);
     return fetchApi(`/api/v1/agent-records?${new URLSearchParams({ organizationId, recordId: input.record_id })}`);
+  }
+  if (request.name === "get_project_context") {
+    const input = getProjectContextArgs.parse(args);
+    const query = new URLSearchParams({ organizationId, projectId: input.project_id });
+    return fetchApi(`/api/v1/project-context?${query}`);
+  }
+  if (request.name === "create_development_log") {
+    const input = createDevelopmentLogArgs.parse(args);
+    return fetchApi("/api/v1/agent-records", {
+      method: "POST",
+      body: JSON.stringify({
+        organizationId,
+        recordType: "development_log",
+        parentId: input.project_id,
+        title: input.title,
+        description: input.summary,
+        status: input.status,
+        stage: input.environment,
+        sourceUrl: input.result_url,
+        tags: ["development-log", input.environment],
+        metadata: {
+          repository: input.repository,
+          branch: input.branch,
+          commitSha: input.commit_sha,
+          changedFiles: input.changed_files,
+          checks: input.checks,
+          risks: input.risks,
+          nextSteps: input.next_steps,
+        },
+        reason: input.reason,
+      }),
+    });
+  }
+  if (request.name === "record_deployment") {
+    const input = recordDeploymentArgs.parse(args);
+    return fetchApi("/api/v1/agent-records", {
+      method: "POST",
+      body: JSON.stringify({
+        organizationId,
+        recordType: "deployment",
+        parentId: input.project_id,
+        title: input.title,
+        description: input.checks.join("\n"),
+        status: input.status,
+        stage: input.environment,
+        sourceUrl: input.deployment_url,
+        tags: ["deployment", input.environment],
+        metadata: {
+          branch: input.branch,
+          commitSha: input.commit_sha,
+          checks: input.checks,
+          approvalReference: input.approval_reference,
+        },
+        reason: input.reason,
+      }),
+    });
   }
   if (request.name === "create_record") {
     const input = createRecordArgs.parse(args);
