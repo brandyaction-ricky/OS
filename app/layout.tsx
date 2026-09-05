@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "../components/linear-shell.css";
 
 export const metadata: Metadata = {
   title: "브랜디 OS",
