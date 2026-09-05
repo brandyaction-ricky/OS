@@ -208,7 +208,7 @@ export function AiOperationsWorkspace() {
   const [error, setError] = useState("");
   useEffect(() => {
     if (demo) return;
-    Promise.all([listRecords(accessToken, "ai_job", "limit=100"), getHealth()])
+    Promise.all([listRecords(accessToken, "ai_job", "limit=100&excludeKind=development_request"), getHealth()])
       .then(([result, status]) => {
         setJobs(result.records);
         setHealth(status);

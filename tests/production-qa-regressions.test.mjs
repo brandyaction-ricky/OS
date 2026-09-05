@@ -5,10 +5,19 @@ import test from "node:test";
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("global shell controls do not present dead actions", async () => {
-  const shell = await read("components/app-shell.tsx");
+  const [shell, notifications] = await Promise.all([
+    read("components/app-shell.tsx"),
+    read("components/development-request-notifications.tsx"),
+  ]);
   assert.doesNotMatch(shell, /이 영역에 기능 추가/);
-  assert.match(shell, /setNotificationsOpen/);
-  assert.match(shell, /새로운 알림이 없습니다/);
+  assert.doesNotMatch(shell, /새로운 알림이 없습니다/);
+  assert.match(shell, /DevelopmentRequestNotifications open=/);
+  assert.match(shell, /knowledge\/development\?new=request&page=/);
+  assert.match(notifications, /fetch\(`\/api\/v1\/development-requests\?/);
+  assert.match(notifications, /Authorization: `Bearer \$\{accessToken\}`/);
+  assert.match(notifications, /query\.set\("scope", "mine"\)/);
+  assert.match(notifications, /요청 현황을 불러오지 못했습니다/);
+  assert.match(notifications, /요청 현황을 불러오는 중입니다/);
 });
 
 test("knowledge workspace renders the first page before loading the remainder", async () => {

@@ -53,6 +53,11 @@ export async function authenticateRequest(
     if (!scopes.includes(requiredScope)) {
       throw new ApiError(403, "AGENT_SCOPE_REQUIRED", `에이전트 키에 ${requiredScope} 권한이 없습니다.`);
     }
+    const { data: owner, error: ownerError } = await service.from("os_profiles")
+      .select("id,is_active,must_change_password")
+      .eq("id", data.owner_user_id).maybeSingle();
+    if (ownerError || !owner?.is_active) throw new ApiError(403, "AGENT_OWNER_INACTIVE", "AI 키 소유자의 활성 계정을 확인할 수 없습니다.");
+    if (owner.must_change_password) throw new ApiError(403, "PASSWORD_CHANGE_REQUIRED", "AI 키 소유자가 먼저 비밀번호를 변경해야 합니다.");
     await service.from("os_agent_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
     return {
       type: "agent",
@@ -74,12 +79,12 @@ export async function authenticateRequest(
   const supabase = createUserSupabase(token);
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user) throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("os_profiles")
     .select("role,team,is_active,must_change_password")
     .eq("id", userData.user.id)
     .maybeSingle();
-  if (profile && profile.is_active === false) throw new ApiError(403, "ACCOUNT_DISABLED", "사용이 중지된 계정입니다.");
+  if (profileError || !profile?.is_active) throw new ApiError(403, "ACCOUNT_DISABLED", "활성 구성원 계정을 확인할 수 없습니다.");
   if (profile?.must_change_password && !options.allowPasswordChangeRequired) {
     throw new ApiError(403, "PASSWORD_CHANGE_REQUIRED", "비밀번호를 먼저 변경해야 합니다.");
   }

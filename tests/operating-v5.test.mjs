@@ -116,7 +116,7 @@ test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval
   assert.match(health, /youtubeOAuth/);
 });
 
-test("knowledge focus mode is persistent and project hub is removed from navigation", async () => {
+test("knowledge focus mode is persistent and development management reuses the project hub", async () => {
   const [knowledge, shell, navigation, router, config] = await Promise.all([
     read("components/knowledge-workspace.tsx"),
     read("components/app-shell.tsx"),
@@ -127,7 +127,9 @@ test("knowledge focus mode is persistent and project hub is removed from navigat
   assert.match(knowledge, /brandy-knowledge-focus/);
   assert.match(knowledge, /집중 모드/);
   assert.match(shell, /knowledge-focus/);
-  assert.doesNotMatch(navigation, /프로젝트 관제/);
+  assert.match(navigation, /개발 관리/);
+  assert.match(navigation, /\/knowledge\/development/);
+  assert.match(router, /ProjectHubWorkspace/);
   assert.match(router, /redirect\("\/organization\/meetings"\)/);
   assert.doesNotMatch(config, /organization\/projects|AI PROJECT HUB|프로젝트 관제/);
 });

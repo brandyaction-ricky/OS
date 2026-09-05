@@ -114,7 +114,8 @@ test("project, task, skill and content workspaces use linked operating records",
   const tasks = await readFile(new URL("../components/tasks-workspace.tsx", import.meta.url), "utf8");
   const skills = await readFile(new URL("../components/skills-workspace.tsx", import.meta.url), "utf8");
   const content = await readFile(new URL("../components/content-automation-workspace.tsx", import.meta.url), "utf8");
-  assert.match(project, /recordType: "ai_job", parentId: selected\.id/);
+  assert.match(project, /parentId: value\("parentId"\)/);
+  assert.match(project, /api\/v1\/development-requests/);
   assert.match(tasks, /assigneeId/);
   assert.match(tasks, /parentId/);
   assert.match(skills, /scope: "company"/);

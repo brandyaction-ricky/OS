@@ -1,11 +1,11 @@
 "use client";
 
 import {
-  Bell,
   ChevronRight,
   ChevronsUpDown,
   CircleHelp,
   Command,
+  MessageSquarePlus,
   KeyRound,
   LogOut,
   Menu,
@@ -16,13 +16,17 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { roleLabel } from "@/lib/company-settings";
 import { CommandPalette } from "./command-palette";
+import { DevelopmentRequestNotifications } from "./development-request-notifications";
 import { PerformanceFilterBar } from "./performance-filter-context";
 import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
+import "./linear-shell.css";
+
+import "./linear-shell.css";
 
 type DisplayTheme = "dark" | "light";
 
@@ -46,6 +50,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const profileTriggerRef = useRef<HTMLButtonElement>(null);
+  const railProfileTriggerRef = useRef<HTMLButtonElement>(null);
+  const profileReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const profileMenuId = useId();
+
+  const openPalette = useCallback(() => {
+    setProfileOpen(false);
+    setNotificationsOpen(false);
+    setPaletteOpen(true);
+  }, []);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+
+  const toggleProfileMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    profileReturnFocusRef.current = event.currentTarget;
+    setProfileOpen((value) => !value);
+    setNotificationsOpen(false);
+  };
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    const menu = profileMenuRef.current;
+    (menu?.querySelector<HTMLButtonElement>("button") ?? menu)?.focus();
+    const containsProfileElement = (target: EventTarget | null) => target instanceof Node && (
+      profileMenuRef.current?.contains(target) ||
+      profileTriggerRef.current?.contains(target) ||
+      railProfileTriggerRef.current?.contains(target)
+    );
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setProfileOpen(false);
+      profileReturnFocusRef.current?.focus();
+    };
+    const onOutsideInteraction = (event: Event) => {
+      if (!containsProfileElement(event.target)) setProfileOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onOutsideInteraction);
+    document.addEventListener("focusin", onOutsideInteraction);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onOutsideInteraction);
+      document.removeEventListener("focusin", onOutsideInteraction);
+    };
+  }, [profileOpen]);
+
+  const changeNotificationsOpen = useCallback((open: boolean) => {
+    setNotificationsOpen(open);
+    if (open) setProfileOpen(false);
+  }, []);
 
   useEffect(() => {
     const savedTheme = document.documentElement.dataset.theme;
@@ -73,14 +128,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setPaletteOpen(true);
+        openPalette();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [openPalette]);
 
-  useEffect(() => setMobileOpen(false), [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+    setProfileOpen(false);
+    setNotificationsOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const handleFocus = (event: Event) => setKnowledgeFocus(Boolean((event as CustomEvent<boolean>).detail));
@@ -106,7 +165,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`os-app${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
+    <div className={`os-app linear-shell${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
       <aside className="stage-rail" aria-label="주요 영역">
         <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">
           BA
@@ -128,7 +187,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <button className="rail-avatar" onClick={() => setProfileOpen((value) => !value)}>
+        <button ref={railProfileTriggerRef} className="rail-avatar" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
           <Initials name={profile?.displayName ?? "B"} />
         </button>
       </aside>
@@ -139,7 +198,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="eyebrow">현재 영역</span>
             <h2>{stage.label}</h2>
           </div>
-          <button className="icon-button mobile-only" onClick={() => setMobileOpen(false)}>
+          <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}>
             <X size={18} />
           </button>
         </div>
@@ -174,11 +233,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {mobileOpen ? <button className="mobile-scrim" onClick={() => setMobileOpen(false)} /> : null}
+      {mobileOpen ? <button className="mobile-scrim" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)} /> : null}
 
       <div className="app-main">
-        <header className="topbar">
-          <button className="icon-button mobile-only" onClick={() => setMobileOpen(true)}>
+        <header className="topbar development-request-topbar">
+          <button className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}>
             <Menu size={19} />
           </button>
           <nav className="breadcrumbs" aria-label="현재 위치">
@@ -187,7 +246,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span aria-current="page">{page.label}</span>
           </nav>
           <div className="topbar-actions">
-            <button className="command-trigger" onClick={() => setPaletteOpen(true)}>
+            <button className="command-trigger" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}>
               <Search size={15} />
               <span>페이지·지식 검색</span>
               <kbd><Command size={11} />K</kbd>
@@ -217,18 +276,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <em>{guidanceOn ? "ON" : "OFF"}</em>
               </button>
             </div>
-            <button
-              className="icon-button"
-              aria-label="알림"
-              aria-expanded={notificationsOpen}
-              onClick={() => {
-                setNotificationsOpen((value) => !value);
-                setProfileOpen(false);
-              }}
-            >
-              <Bell size={18} />
-            </button>
-            <button className="profile-trigger" onClick={() => { setProfileOpen((value) => !value); setNotificationsOpen(false); }}>
+            <Link className="development-request-quick-link" href={`/knowledge/development?new=request&page=${encodeURIComponent(pathname)}`} onClick={() => { setNotificationsOpen(false); setProfileOpen(false); }}>
+              <MessageSquarePlus size={14} aria-hidden="true" />
+              <span>수정 요청</span>
+            </Link>
+            <DevelopmentRequestNotifications open={notificationsOpen} onOpenChange={changeNotificationsOpen} />
+            <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
               <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
               <span className="profile-copy">
                 <strong>{profile?.displayName ?? "구성원"}</strong>
@@ -238,7 +291,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           {profileOpen ? (
-            <div className="profile-menu">
+            <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
               <strong>{profile?.displayName}</strong>
               <span>{profile?.email}</span>
               <span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
@@ -248,13 +301,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
                 </>
               ) : null}
-            </div>
-          ) : null}
-          {notificationsOpen ? (
-            <div className="notification-menu" role="status">
-              <strong>알림</strong>
-              <span>새로운 알림이 없습니다.</span>
-              <small>검토 요청과 승인 대기 항목이 생기면 여기에 표시됩니다.</small>
             </div>
           ) : null}
         </header>
@@ -276,7 +322,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         })}
       </nav>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette open={paletteOpen} onClose={closePalette} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>
   );

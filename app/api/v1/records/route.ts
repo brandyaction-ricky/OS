@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
+import { isDevelopmentRequest } from "@/lib/development-requests";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,11 +50,19 @@ export async function GET(request: Request) {
       .order("updated_at", { ascending: false })
       .range(offset, offset + limit - 1);
     if (recordType) builder = builder.eq("record_type", recordType);
+    if (url.searchParams.get("excludeKind") === "development_request") {
+      builder = builder.or("metadata->>kind.is.null,metadata->>kind.neq.development_request");
+    }
     const status = url.searchParams.get("status");
     const brand = url.searchParams.get("brand");
     const team = url.searchParams.get("team");
     const assignee = url.searchParams.get("assignee");
     const query = safeSearch(url.searchParams.get("q") ?? "");
+    const parentId = url.searchParams.get("parentId");
+    if (parentId) {
+      if (!z.string().uuid().safeParse(parentId).success) throw new ApiError(400, "INVALID_PARENT_ID", "연결된 프로젝트 ID를 확인해 주세요.");
+      builder = builder.eq("parent_id", parentId);
+    }
     if (status) builder = builder.eq("status", status);
     if (brand) builder = builder.eq("brand", brand);
     if (team) builder = builder.eq("team", team);
@@ -70,6 +79,7 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     const payload = {
       ...toDatabase(input),
@@ -91,7 +101,10 @@ export async function PATCH(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordUpdateSchema.parse(await parseJson(request));
-    const { data: current } = await actor.supabase.from("os_records").select("record_type,status").eq("id", input.id).maybeSingle();
+    const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata").eq("id", input.id).maybeSingle();
+    if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
+    if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current?.record_type === "content_publish" && input.status && input.status !== current.status) {
       const allowed = CONTENT_PUBLISH_TRANSITIONS[current.status] ?? [];
       if (!allowed.includes(input.status)) throw new ApiError(409, "CONTENT_APPROVAL_REQUIRED", "검토 완료와 최종 승인을 순서대로 거쳐야 합니다.");
@@ -128,8 +141,9 @@ export async function DELETE(request: Request) {
     const actor = await authenticateRequest(request);
     const id = new URL(request.url).searchParams.get("id");
     if (!id) throw new ApiError(400, "RECORD_ID_REQUIRED", "기록 ID가 필요합니다.");
-    const { data: current } = await actor.supabase.from("os_records").select("version").eq("id", id).is("archived_at", null).maybeSingle();
+    const { data: current } = await actor.supabase.from("os_records").select("version,record_type,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);
     if (error) throw new ApiError(400, "RECORD_ARCHIVE_FAILED", "운영 기록을 보관하지 못했습니다.", error.message);
     return NextResponse.json({ archived: true });
