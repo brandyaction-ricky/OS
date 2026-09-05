@@ -33,3 +33,15 @@ test("Linear design system changes the full application shell", async () => {
   assert.match(css, /--accent: #5e6ad2/);
   assert.match(css, /box-shadow: none/);
 });
+
+test("Linear light theme uses layered neutral surfaces and repairs legacy dark cards", async () => {
+  const css = await read("components/linear-shell.css");
+
+  assert.match(css, /--bg: #e9eaed/);
+  assert.match(css, /--panel: #f4f4f5/);
+  assert.match(css, /\.linear-shell \.revenue-band/);
+  assert.match(css, /\.linear-shell \.channel-dictionary > div:last-child > button/);
+  assert.match(css, /\.linear-shell \.connection-row/);
+  assert.match(css, /\.linear-shell \.audit-filters/);
+  assert.match(css, /\.linear-shell \.knowledge-search-form/);
+});
