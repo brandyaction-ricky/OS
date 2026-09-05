@@ -1,13 +1,16 @@
 # BrandyAction OS 인수인계
 
-기록 시점: 2026-09-05. 직원 수정요청·개발 관리 구현 완료, 운영 반영 전. 최신 원격 코드와 실제 배포 상태를 별도로 확인한다.
+기록 시점: 2026-09-05 UTC. 직원 수정요청·개발 관리 운영 반영 완료. 로그인 브라우저 E2E·시각 검수는 아직 미완료다. 최신 원격 코드와 실제 배포 상태를 별도로 확인한다.
 
 ## 기준 코드
 
 - 저장소: `brandyaction-ricky/OS`
 - 착수 시 확인한 원격 `main`: `5f2beb1`
 - 인계받은 개발 관리 기반: PR #23, `a6c2ae18` (`58fe81c`의 개발 관리 기능과 스타일 복구 포함)
-- 현재 작업 브랜치: `codex/os-request-workflow-20260905`
+- 구현 브랜치: `codex/os-request-workflow-20260905`, 구현 커밋 `2e75164`
+- PR #24 병합 완료: <https://github.com/brandyaction-ricky/OS/pull/24>
+- 운영 기능 반영 커밋: `2ae34fcbe0cce59ae9fded37a02c3b8a11e8f0a0`
+- 이후 인수인계 문서만 갱신한 커밋이 있을 수 있다. 기능 반영 SHA와 문서 커밋을 구분한다.
 - 운영 주소: <https://brandyaction-os.vercel.app>
 - 원격 `main`, 작업 브랜치, 실제 운영 배포 SHA를 각각 확인한다. 위 SHA만으로 현재 운영 상태를 단정하지 않는다.
 
@@ -32,20 +35,24 @@
 ## 검증·운영 반영 상태
 
 - 자동 테스트 112개 통과(API 정책·권한·충돌·링크·Work 인수인계 함수 테스트 포함).
-- ESLint, TypeScript, 로컬 Production build 통과. 마지막 변경분의 전체 빌드와 원격 CI는 PR에서 재확인한다.
+- ESLint, TypeScript, 로컬 Production build 통과. 구현 PR validate #97 및 main validate 통과: <https://github.com/brandyaction-ricky/OS/actions/runs/33974146284>.
 - 36개 메뉴의 코드 연결 확인. 브라우저 클릭 동작·모바일·라이트/다크 시각 검수는 미실시: 원격 브라우저 CDP 탭 조회가 시간 초과됨.
-- 실제 OS Supabase는 연결 가능하며 기존 os_records 제약조건에 development_log/deployment는 없음. 회사 OS 프로젝트도 아직 등록 전이며 기존 MYIN 프로젝트는 보존해야 한다.
-- 운영 DB migration 적용 시도는 자동 승인 검토에서 거부됨. 사유: 제약조건·권한 트리거·인덱스 변경의 구체적 운영 범위 승인 필요. DB 변경·직원 계정 변경·main 병합·Production 배포 없음.
+- 운영 DB 변경은 최초 자동 승인 검토에서 거부됐으나 사용자의 구체적 변경·배포 승인 후 적용 완료. migration 이력 `20260905150938 / development_operations_requests`가 저장소 migration 013에 대응한다.
+- 기존 record_type은 모두 유지하고 development_log/deployment, 요청 권한 트리거, 이력/요청 인덱스만 추가했다. 기존 데이터 건수 보존과 QA 요청 0건을 확인했다. 직원 계정 변경 없음.
 - migration 013은 미병합 초안이므로 이번 요청 보호 트리거를 같은 파일에 통합했다. 실제 마이그레이션 이력과 SQL 제약조건을 모두 대조할 것(기존 수동 적용으로 이력과 차이가 있음).
-- tests/development-request-rls.sql은 migration 적용 후 실행하며, 테스트 요청/이벤트는 ROLLBACK한다. 아직 실제 DB에서 실행하지 않음.
+- tests/development-request-rls.sql 실제 운영 DB 실행 통과: 직원 작성·수정, 임의 해결/유형변경/실행 URL 차단, 관리자 해결, 직원 재요청. QA 요청/이벤트는 ROLLBACK 완료.
+- Vercel이 GitHub에 main 배포 성공을 보고함: <https://vercel.com/brandyaction-os/brandyaction-os/3JhxoTAvdx71CjDf27eCc7VLJyMW>.
+- 운영 HTTP 검증: /api/v1/health 200 및 DB·auth·accountPassword ready, /knowledge/development 200, 신규 요청 GET/POST/PATCH 비로그인 401. 인증 후 사용자 흐름 검증과는 구분한다.
+- Vercel 연결 계정의 brandyaction-os 팀 접근은 403. 런타임 로그·배포 세부 정보는 확인하지 못했다. GitHub 배포 체크와 공개 운영 HTTP를 검증 근거로 사용했다.
+- 회사 OS 프로젝트 등록 완료: `35bd6f94-836d-454e-9f01-45591a811f35`. 기존 MYIN 프로젝트는 변경하지 않았다.
+- 개발 로그 `2467f7f6-1740-4ef7-9551-a31b012c1704`, 배포 기록 `8adca132-0636-4b4f-afc1-82c3918d82b4`를 프로젝트에 연결해 저장했다. 사용자 승인에 따른 관리 DB 경로 기록이며 브라우저 폼 저장 검증은 아니다.
+- 보안 advisor의 기존 SECURITY DEFINER 실행 권한 경고와 유출 비밀번호 보호 미설정은 후속 검토 대상. 이번 트리거는 SECURITY INVOKER이며 직접 실행 권한을 회수했다. 기존 정책을 임의로 넓히거나 제거하지 않는다. [권한 점검 기준](https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable).
 
 ## 다음 실행 순서
 
-1. 이번 작업 브랜치의 PR·Preview·GitHub Actions 결과 확인. PR #23의 기반 변경도 포함되어 있으므로 중복 병합하지 않는다.
-2. 연결이 복구된 브라우저로 Preview의 요청 생성→상세→결과 저장→재요청, 검색/필터/모달·모바일·테마를 검수한다. Preview가 데모 환경이면 운영 저장 검증과 구분한다.
-3. 사용자가 구체적인 운영 변경 범위를 승인하면 migration 013(기존 유형 유지·로그/배포 유형 추가·요청 권한 트리거·인덱스) 적용 후 롤백 DB 테스트를 실행한다.
-4. main 통합·CI·Production Ready와 배포 SHA 확인. 계정/DB 데이터 초기화 없이 진행한다.
-5. 기존 중복 여부 확인 후 브랜디액션 OS 프로젝트를 등록하고 저장소 brandyaction-ricky/OS, 운영 URL을 연결한다. 이번 변경의 개발 로그와 실제 배포 기록을 남긴다.
-6. 직원·관리자 세션으로 저장과 새로고침 유지, 처리 권한, 재요청을 검증한다. 모든 기존 페이지의 버튼 QA는 별도 미완료 범위로 계속한다.
+1. 최신 main 및 운영 배포 SHA와 OS의 최근 개발·배포 기록을 확인한다. PR #23의 기반 변경도 #24에 포함됐으므로 중복 병합하지 않는다. migration 013이나 회사 OS 프로젝트를 다시 생성하지 않는다.
+2. 브라우저 연결이 복구되면 직원·관리자 세션으로 요청 생성→상세→결과 저장→새로고침 유지→재요청, 검색/필터/모달·모바일·테마를 검수한다. Preview 데모 검수와 운영 영속 저장 검증을 구분한다.
+3. 직원 수정요청을 우선순위대로 처리하고 요청별 Work 인수인계로 작업을 시작한다. 전체 기존 페이지 버튼 QA는 여전히 미완료 범위다.
+4. 작업마다 기능 브랜치·검증·PR·배포 결과를 OS에 기록한다. 로그인/키/결제/기존 운영 데이터는 요청 범위 밖에서 변경하지 않는다.
 
 현재 Work MCP를 상시 실행시키는 자동 수정·배포는 구성하지 않았다. 상단 요청 배지/메뉴는 열린 화면에서 60초 및 탭 복귀 시 갱신하며, Work는 복사한 인수인계 또는 기존 OS MCP로 작업을 시작한다.
