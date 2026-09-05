@@ -43,5 +43,5 @@ test("Work can load project context and write a structured development log", asy
   assert.match(mcp, /운영 배포 기록에는 사람 승인 근거가 필요합니다/);
   assert.match(navigation, /개발 관리/);
   assert.match(route, /knowledge\/development/);
-  assert.match(workspace, /개발·배포 이력/);
+  assert.match(workspace, /개발·배포 기록/);
 });

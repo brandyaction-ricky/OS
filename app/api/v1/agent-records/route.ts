@@ -6,6 +6,7 @@ import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation"
 import { authenticateRequest, requireAgentScope, type RequestActor } from "@/lib/server/auth";
 import { assertOrganization } from "@/lib/server/organization";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { isDevelopmentRequest } from "@/lib/development-requests";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -90,6 +91,7 @@ export async function POST(request: Request) {
     const organization = organizationId.parse(raw.organizationId);
     await assertOrganization(actor, organization);
     const input = recordCreateSchema.parse(raw);
+    if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     enforceHumanGates(input.recordType, input.status);
     await rateLimit(actor, "record.create");
     const { data, error } = await createServiceSupabase().from("os_records").insert({
@@ -113,8 +115,10 @@ export async function PATCH(request: Request) {
     await assertOrganization(actor, organization);
     const input = recordUpdateSchema.parse(raw);
     const service = createServiceSupabase();
-    const { data: current } = await service.from("os_records").select("record_type,status").eq("id", input.id).is("archived_at", null).maybeSingle();
+    const { data: current } = await service.from("os_records").select("record_type,status,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 변경해 주세요.");
+    if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     const recordType = (input.recordType ?? current.record_type) as RecordType;
     enforceHumanGates(recordType, input.status);
     await rateLimit(actor, "record.update");
@@ -141,8 +145,9 @@ export async function DELETE(request: Request) {
     void confirm;
     await assertOrganization(actor, organization);
     const service = createServiceSupabase();
-    const { data: current } = await service.from("os_records").select("id,title,record_type,version").eq("id", id).is("archived_at", null).maybeSingle();
+    const { data: current } = await service.from("os_records").select("id,title,record_type,version,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다.");
     enforceHumanGates(current.record_type as RecordType);
     await rateLimit(actor, "record.delete");
     const { data, error } = await service.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.ownerId }).eq("id", id).eq("version", current.version).select("id,title").maybeSingle();

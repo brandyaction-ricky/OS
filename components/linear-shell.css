@@ -1,0 +1,19 @@
+/* Restrained application chrome; workspace-specific layouts retain their sizing. */
+html[data-theme] .os-app .stage-rail { background: var(--panel); }
+html[data-theme] .os-app .brand-mark { background: var(--panel-3); border: 1px solid var(--line); box-shadow: none; border-radius: 8px; color: var(--text); }
+html[data-theme] .os-app .stage-link { border-radius: 6px; }
+html[data-theme] .os-app .stage-link.active { background: var(--panel-3); color: var(--text); }
+html[data-theme] .os-app .stage-link.active::before { background: var(--accent-2); box-shadow: none; border-radius: 0 2px 2px 0; }
+html[data-theme] .os-app .page-sidebar { background: var(--panel); }
+html[data-theme] .os-app .sidebar-head h2 { font-size: 15px; font-weight: 600; }
+html[data-theme] .os-app .sidebar-head .eyebrow { font-weight: 500; letter-spacing: .2px; }
+html[data-theme] .os-app .nav-group { font-weight: 500; color: var(--muted); letter-spacing: .2px; }
+html[data-theme] .os-app .page-link { min-height: 35px; padding-block: 7px; border-radius: 5px; font-size: 12px; }
+html[data-theme] .os-app .page-link.active { background: var(--panel-3); box-shadow: none; color: var(--text); }
+html[data-theme] .os-app .page-link:hover { background: var(--panel-2); color: var(--text); }
+html[data-theme] .os-app .topbar { background: var(--bg); box-shadow: none; }
+html[data-theme] .os-app .command-trigger, html[data-theme] .os-app .display-controls { border-radius: 6px; box-shadow: none; }
+html[data-theme] .os-app .rail-avatar, html[data-theme] .os-app .avatar { background: var(--panel-3); color: var(--text-2); border-color: var(--line); }
+html[data-theme] .os-app .state-dot { box-shadow: none; }
+html[data-theme] .os-app .profile-menu { border-radius: 8px; border-color: var(--line); background: var(--panel); }
+html[data-theme] .os-app .mobile-stage-bar { background: var(--panel); }

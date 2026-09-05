@@ -4,7 +4,6 @@ import { ApiError, apiErrorResponse } from "@/lib/http";
 import type { OsRecord, RecordType } from "@/lib/record-types";
 import { authenticateRequest } from "@/lib/server/auth";
 import { assertOrganization } from "@/lib/server/organization";
-import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,7 +29,9 @@ export async function GET(request: Request) {
     });
     await assertOrganization(actor, input.organizationId);
 
-    const service = createServiceSupabase();
+    // Human sessions retain RLS. Agent authentication separately validates the
+    // active owner, and related record types here exclude finance records.
+    const service = actor.supabase;
     const [{ data: project, error: projectError }, { data: related, error: relatedError }] = await Promise.all([
       service.from("os_records").select("*").eq("id", input.projectId).eq("record_type", "project").is("archived_at", null).maybeSingle(),
       service.from("os_records").select("*").eq("parent_id", input.projectId).in("record_type", [...RELATED_TYPES]).is("archived_at", null).order("updated_at", { ascending: false }),
