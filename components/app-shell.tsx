@@ -24,10 +24,6 @@ import { DevelopmentRequestNotifications } from "./development-request-notificat
 import { PerformanceFilterBar } from "./performance-filter-context";
 import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
-import "./linear-shell.css";
-
-import "./linear-shell.css";
-
 type DisplayTheme = "dark" | "light";
 
 const THEME_STORAGE_KEY = "brandy-os-theme";

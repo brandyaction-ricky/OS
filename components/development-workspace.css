@@ -1,5 +1,5 @@
 /* Development workspace: dense rows, restrained surfaces and a clear reading order. */
-.dev-workspace { max-width: 1540px; margin: 0 auto; color: var(--text); --dev-accent: #818cf8; }
+.dev-workspace { max-width: 1540px; margin: 0 auto; color: var(--text); }
 .dev-workspace button, .dev-workspace select { cursor: pointer; }
 .dev-workspace button:disabled { cursor: not-allowed; opacity: .5; }
 .dev-workspace button:focus-visible, .dev-workspace a:focus-visible, .dev-workspace input:focus-visible, .dev-workspace textarea:focus-visible, .dev-workspace select:focus-visible, .dev-workspace summary:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
@@ -11,8 +11,8 @@
 .dev-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .dev-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 33px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .dev-button:hover { background: var(--panel-3); color: var(--text); }
-.dev-button.primary { color: #fff; background: #5e63cc; border-color: #6e73db; }
-.dev-button.primary:hover { background: #6b70db; }
+.dev-button.primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+.dev-button.primary:hover { background: var(--accent-hover); }
 .dev-button.selected { border-color: var(--accent-2); background: var(--accent-soft); color: var(--text); }
 .dev-wide { width: 100%; }
 .dev-icon-button { padding: 5px; display: inline-flex; border: none; border-radius: 4px; background: transparent; color: var(--muted); }
@@ -115,8 +115,8 @@
 .dev-guide aside h3 { margin: 0 0 20px; font-size: 14px; font-weight: 550; }
 .dev-guide aside strong { display: block; color: var(--text-2); font-size: 12px; }
 .dev-guide hr { border: none; border-top: 1px solid var(--line); margin: 23px 0; }
-.dev-modal-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0,0,0,.58); }
-.dev-modal { width: min(580px, 100%); max-height: calc(100dvh - 48px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: 0 20px 80px rgba(0,0,0,.35); }
+.dev-modal-backdrop { position: fixed; inset: 0; z-index: 120; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--overlay); }
+.dev-modal { width: min(580px, 100%); max-height: calc(100dvh - 48px); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); box-shadow: none; }
 .dev-modal>header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px 25px; border-bottom: 1px solid var(--line-soft); }
 .dev-modal h2 { margin: 7px 0 0; font-size: 21px; font-weight: 600; letter-spacing: -.6px; }
 .dev-modal-fields { padding: 22px 25px 10px; }
@@ -130,3 +130,9 @@
 @media (max-width: 1200px) { .dev-inbox-layout.has-detail { grid-template-columns: minmax(250px,1fr) minmax(300px,360px); } .dev-page-header { align-items: flex-start; flex-direction: column; gap: 15px; } .dev-guide { gap: 25px; } }
 @media (max-width: 960px) { .dev-inbox-layout.has-detail { grid-template-columns: 1fr; } .dev-detail { border-left: none; border-top: 1px solid var(--line); } .dev-guide { grid-template-columns: 1fr; } }
 @media (max-width: 620px) { .dev-page-header h1>span { display: block; margin: 7px 0 0; } .dev-page-header h1 { font-size: 23px; } .dev-project-bar { flex-wrap: wrap; gap: 8px 12px; } .dev-project-bar select { max-width: 190px; } .dev-project-bar>.dev-text-button { margin-left: 0; } .dev-tabs { gap: 20px; } .dev-tabs>button { font-size: 12px; } .dev-toolbar { padding: 12px 0; } .dev-filters { gap: 0; } .dev-filters>button { padding: 5px 7px; font-size: 11px; } .dev-search-tools { width: 100%; } .dev-search-tools form { flex: 1; min-width: 0; } .dev-search-tools input { width: 100%; } .dev-request-row { padding: 13px 12px; gap: 8px; } .dev-row-main strong { font-size: 12px; } .dev-row-main small { font-size: 9px; } .dev-status { font-size: 10px; } .dev-detail-body { padding: 20px 17px; } .dev-modal-backdrop { padding: 12px; align-items: flex-end; } .dev-modal { max-height: calc(100dvh - 24px); border-radius: 10px; } .dev-modal>header, .dev-modal-fields { padding: 18px; } .dev-modal h2 { font-size: 19px; } .dev-form-grid { grid-template-columns: 1fr; gap: 0; } .dev-history>header { align-items: flex-start; flex-direction: column; } .dev-guide { padding: 30px 0; } }
+.dev-project-context { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--panel-2); font-size: 12px; }
+.dev-project-context summary { cursor: pointer; color: var(--text-2); }
+.dev-project-context p { color: var(--muted); }
+.dev-project-context dl { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px 12px; }
+.dev-project-context dt { color: var(--muted); }
+.dev-project-context dd { margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
