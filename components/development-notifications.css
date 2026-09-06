@@ -37,7 +37,7 @@
   border: 2px solid var(--bg);
   border-radius: 9px;
   background: var(--accent);
-  color: #fff;
+  color: var(--text);
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
@@ -114,4 +114,7 @@
   .development-request-topbar .profile-trigger { padding: 2px; }
   .development-request-quick-link { padding: 0 9px; font-size: 11px; }
   .development-request-quick-link > svg { display: none; }
+}
+.development-notifications-badge {
+  color: var(--on-accent);
 }

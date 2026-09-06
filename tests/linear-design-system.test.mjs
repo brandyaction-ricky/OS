@@ -24,24 +24,22 @@ test("Linear design system changes the full application shell", async () => {
     ".linear-shell .panel",
     ".linear-shell .primary-button",
     ".login-card",
-    "html[data-theme=\"light\"] .linear-shell",
     "@media (max-width: 820px)",
   ]) {
     assert.ok(css.includes(selector), `missing ${selector}`);
   }
 
-  assert.match(css, /--accent: #5e6ad2/);
+  assert.match(await read("app/theme-tokens.css"), /--accent: #5e6ad2/);
   assert.match(css, /box-shadow: none/);
 });
 
 test("Linear light theme uses layered neutral surfaces and repairs legacy dark cards", async () => {
   const css = await read("components/linear-shell.css");
 
-  assert.match(css, /--bg: #e9eaed/);
-  assert.match(css, /--panel: #f4f4f5/);
-  assert.match(css, /\.linear-shell \.revenue-band/);
-  assert.match(css, /\.linear-shell \.channel-dictionary > div:last-child > button/);
-  assert.match(css, /\.linear-shell \.connection-row/);
-  assert.match(css, /\.linear-shell \.audit-filters/);
-  assert.match(css, /\.linear-shell \.knowledge-search-form/);
+  const tokens = await read("app/theme-tokens.css");
+  const global = await read("app/globals.css");
+  assert.match(tokens, /--bg: #f7f7f8/);
+  assert.match(tokens, /--panel: #fafafa/);
+  assert.doesNotMatch(css, /data-theme/);
+  for (const selector of [".revenue-band", ".channel-dictionary", ".connection-row", ".audit-filters", ".knowledge-search-form"]) assert.ok(global.includes(selector));
 });

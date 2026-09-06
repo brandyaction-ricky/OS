@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import "./theme-tokens.css";
 import "./globals.css";
 import "../components/linear-shell.css";
 

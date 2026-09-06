@@ -35,6 +35,14 @@ const request = {
   },
 };
 
+test("handoff isolates each project and does not invent an OS production URL", () => {
+  const prompt = buildDevelopmentHandoff({ ...project, title: "별도 서비스", metadata: { frontendRepository: "example/frontend", backendRepository: "example/backend", developmentUrl: "https://dev.example.com", productionBranch: "main", developmentBranch: "develop", deploymentRule: "DEV 검증 후 승인", workflowGuide: "docs/workflow.md" } });
+  assert.ok(prompt.startsWith("별도 서비스 개발"));
+  for (const value of ["example/frontend", "example/backend", "https://dev.example.com", "develop", "DEV 검증 후 승인", "docs/workflow.md"]) assert.ok(prompt.includes(value));
+  assert.ok(prompt.includes("운영 주소: 미지정"));
+  assert.ok(!prompt.includes("운영 주소: https://brandyaction-os"));
+});
+
 test("request handoff identifies the project, source request version and repository", () => {
   const prompt = buildDevelopmentHandoff(project, request);
   for (const expected of [

@@ -38,14 +38,15 @@ test("the global header exposes persistent theme and guidance controls", async (
 test("light theme and guidance-off rules cover global workspaces", async () => {
   const css = await read("app/globals.css");
 
-  assert.match(css, /html\[data-theme="light"\]/);
-  assert.match(css, /--bg: #f5f7fa/);
-  assert.match(css, /\.stage-rail,/);
-  assert.match(css, /\.record-drawer,/);
-  assert.match(css, /\.knowledge-graph-main,/);
+  const palette = await read("app/theme-tokens.css");
+  assert.match(palette, /html\[data-theme="light"\]/);
+  assert.match(palette, /--bg: #f7f7f8/);
+  assert.match(css, /\.stage-rail/);
+  assert.match(css, /\.record-drawer/);
+  assert.match(css, /\.knowledge-graph-main/);
   assert.match(css, /\.mode-switch button\.active/);
   assert.match(css, /\.status-filters > button\.active/);
-  assert.match(css, /html\[data-theme="light"\] \.mode-switch button\.active,\s*html\[data-theme="light"\] \.status-filters > button\.active \{\s*border-color: var\(--light-border\);\s*background: var\(--light-selected\);\s*color: #2949b4;/);
+  assert.doesNotMatch(css, /var\(--light-/);
   assert.match(css, /\.example-queries button:hover/);
   assert.match(css, /\.calendar-platforms button\.active/);
   assert.match(css, /html\[data-guidance="off"\]/);
