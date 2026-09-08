@@ -4,6 +4,7 @@ import { CheckCircle2, CircleAlert, Clipboard, ExternalLink, Film, Link2, Packag
 import { useCallback, useEffect, useState } from "react";
 import { completeYoutubeUpload, createRecord, createYoutubeUploadSession, disconnectYoutubeOAuth, generateContent, getYoutubeOAuthStatus, listRecords, searchYoutubeMarket, startYoutubeOAuth, updateRecord, uploadYoutubeFile, type YoutubeMarketItem, type YoutubeOAuthStatus } from "@/lib/api-client";
 import { sanitizePublicCopyValue } from "@/lib/content-safety";
+import { finalizeYoutubeUpload, type PendingYoutubeCompletion } from "@/lib/youtube-upload-flow";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -58,6 +59,7 @@ export function YoutubeKitWorkspace() {
   const [sources, setSources] = useState<OsRecord[]>([]); const [kits, setKits] = useState<OsRecord[]>([]); const [sourceId, setSourceId] = useState("");
   const [oauth, setOauth] = useState<YoutubeOAuthStatus | null>(null); const [file, setFile] = useState<File | null>(null); const [privacy, setPrivacy] = useState<"private" | "unlisted">("private");
   const [approved, setApproved] = useState(false); const [uploadProgress, setUploadProgress] = useState(0); const [uploadedUrl, setUploadedUrl] = useState("");
+  const [pendingCompletions, setPendingCompletions] = useState<Record<string, PendingYoutubeCompletion | null>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(""); const [editing, setEditing] = useState(false); const [draft, setDraft] = useState<Record<string, string>>({});
   const load = useCallback(async () => {
     if (demo) return;
@@ -76,6 +78,7 @@ export function YoutubeKitWorkspace() {
     if (result) window.history.replaceState({}, "", window.location.pathname);
   }, []);
   const kit = kits.find((item) => item.parent_id === sourceId) ?? null; const result = metadata<Record<string, unknown>>(kit, "result", {});
+  const pendingCompletion = kit ? pendingCompletions[kit.id] ?? null : null;
   const kitIsStale = Boolean(kit && metadata<number>(kit, "rulesVersion", 0) < 2);
   const previousUpload = metadata<Record<string, string>>(kit, "youtubeUpload", {});
   useEffect(() => { const stored = metadata<Record<string, unknown>>(kit, "result", {}); const next: Record<string, string> = {}; for (const [key] of KIT_FIELDS) { const value = stored[key]; next[key] = Array.isArray(value) ? value.join("\n") : String(value ?? ""); } setDraft(next); setEditing(false); setApproved(false); setFile(null); setUploadProgress(0); setUploadedUrl(""); }, [kit]);
@@ -85,12 +88,19 @@ export function YoutubeKitWorkspace() {
   const connect = async () => { setBusy(true); setError(""); try { const { authorizationUrl } = await startYoutubeOAuth(accessToken); window.location.assign(authorizationUrl); } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 연결을 시작하지 못했습니다."); setBusy(false); } };
   const disconnect = async () => { if (!window.confirm(`연결된 ${oauth?.channelTitle ?? "YouTube 채널"}의 업로드 권한을 해제할까요?`)) return; setBusy(true); try { await disconnectYoutubeOAuth(accessToken); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 연결을 해제하지 못했습니다."); } finally { setBusy(false); } };
   const upload = async () => {
-    if (!kit || !file || !approved || !oauth?.connected) return;
+    if (!kit || (!pendingCompletion && (!file || !approved)) || !oauth?.connected || busy) return;
     setBusy(true); setError(""); setUploadedUrl(""); setUploadProgress(0);
     try {
-      const session = await createYoutubeUploadSession(accessToken, { kitId: kit.id, fileName: file.name, fileSize: file.size, mimeType: file.type || "video/mp4", privacyStatus: privacy, finalApproval: true });
-      const uploaded = await uploadYoutubeFile(session.uploadUrl, file, setUploadProgress);
-      const completed = await completeYoutubeUpload(accessToken, { kitId: kit.id, videoId: uploaded.id, privacyStatus: privacy, finalApproval: true });
+      const completed = await finalizeYoutubeUpload({
+        kitId: kit.id, privacyStatus: privacy, pending: pendingCompletion,
+        upload: async () => {
+          if (!file) throw new Error("업로드할 영상을 선택해 주세요.");
+          const session = await createYoutubeUploadSession(accessToken, { kitId: kit.id, fileName: file.name, fileSize: file.size, mimeType: file.type || "video/mp4", privacyStatus: privacy, finalApproval: true });
+          return uploadYoutubeFile(session.uploadUrl, file, setUploadProgress);
+        },
+        complete: (input) => completeYoutubeUpload(accessToken, input),
+        remember: (pending) => setPendingCompletions((current) => ({ ...current, [kit.id]: pending })),
+      });
       setUploadedUrl(completed.videoUrl); setApproved(false); setFile(null); await load();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 업로드를 완료하지 못했습니다."); } finally { setBusy(false); }
   };
@@ -101,6 +111,7 @@ export function YoutubeKitWorkspace() {
     <section className="panel kit-guide"><span><strong>1</strong> 기준 롱폼 선택</span><span><strong>2</strong> 정본으로 키트 만들기</span><span><strong>3</strong> 내용 확인·수정</span><span><strong>4</strong> 최종 승인·업로드</span></section>
     {kitIsStale ? <div className="inline-alert warning"><CircleAlert size={16} /><span><strong>이 키트는 이전 규칙으로 만들어졌습니다.</strong> 최신 정본과 공개 문안 필터를 적용하려면 ‘발행 키트 만들기’를 다시 실행하세요.</span></div> : null}
     <section className="kit-grid">{KIT_FIELDS.map(([key, label]) => { const value = result[key]; return <article className="panel kit-card" key={key}><header><div><PackageCheck size={15} /><strong>{label}</strong></div><button className="ghost-button" disabled={!value && !draft[key]} onClick={() => copy(key, editing ? draft[key] : value)}><Clipboard size={13} /> {copied === key ? "복사됨" : "복사"}</button></header>{editing ? <textarea aria-label={`${label} 수정`} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /> : <pre>{Array.isArray(value) ? value.join("\n") : String(value ?? "생성된 내용이 없습니다.")}</pre>}</article>; })}</section>
-    <section className="panel youtube-upload-panel"><div className="panel-header"><div><h2>최종 영상 업로드</h2><p>영상은 Vercel에 저장되지 않고 브라우저에서 Google로 직접 전송됩니다.</p></div><UploadCloud size={18} /></div><div className="youtube-upload-form"><label><span>영상 파일</span><input type="file" accept="video/*" disabled={busy} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label><label><span>공개 범위</span><select value={privacy} disabled={busy} onChange={(event) => setPrivacy(event.target.value as typeof privacy)}><option value="private">비공개</option><option value="unlisted">일부공개</option></select></label><label className="youtube-final-approval"><input type="checkbox" checked={approved} disabled={busy} onChange={(event) => setApproved(event.target.checked)} /><span>제목·설명·태그와 영상 원본을 최종 확인했으며, 연결 채널 업로드를 승인합니다.</span></label><button className="primary-button" disabled={!kit || !file || !approved || !oauth?.connected || editing || busy} onClick={upload}><UploadCloud size={15} /> {busy && uploadProgress ? `업로드 ${uploadProgress}%` : "승인하고 YouTube 업로드"}</button></div>{uploadProgress > 0 ? <progress aria-label="YouTube 업로드 진행률" max="100" value={uploadProgress}>{uploadProgress}%</progress> : null}{uploadedUrl || previousUpload.videoUrl ? <a className="youtube-upload-result" href={uploadedUrl || previousUpload.videoUrl} target="_blank" rel="noreferrer"><CheckCircle2 size={15} /> 업로드된 영상 확인 <ExternalLink size={13} /></a> : null}</section>
+    {pendingCompletion ? <div className="inline-alert warning"><CircleAlert size={16} /><span>영상 전송은 완료됐습니다. 업로드 결과를 다시 확인하면 기존 영상의 OS 기록만 저장합니다.</span></div> : null}
+    <section className="panel youtube-upload-panel"><div className="panel-header"><div><h2>최종 영상 업로드</h2><p>영상은 Vercel에 저장되지 않고 브라우저에서 Google로 직접 전송됩니다.</p></div><UploadCloud size={18} /></div><div className="youtube-upload-form"><label><span>영상 파일</span><input type="file" accept="video/*" disabled={busy || Boolean(pendingCompletion)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label><label><span>공개 범위</span><select value={privacy} disabled={busy || Boolean(pendingCompletion)} onChange={(event) => setPrivacy(event.target.value as typeof privacy)}><option value="private">비공개</option><option value="unlisted">일부공개</option></select></label><label className="youtube-final-approval"><input type="checkbox" checked={approved} disabled={busy || Boolean(pendingCompletion)} onChange={(event) => setApproved(event.target.checked)} /><span>제목·설명·태그와 영상 원본을 최종 확인했으며, 연결 채널 업로드를 승인합니다.</span></label><button className="primary-button" disabled={!kit || (!pendingCompletion && (!file || !approved)) || !oauth?.connected || editing || busy} onClick={upload}><UploadCloud size={15} /> {pendingCompletion ? (busy ? "업로드 결과 확인 중…" : "업로드 결과 다시 확인") : busy && uploadProgress ? `업로드 ${uploadProgress}%` : "승인하고 YouTube 업로드"}</button></div>{uploadProgress > 0 ? <progress aria-label="YouTube 업로드 진행률" max="100" value={uploadProgress}>{uploadProgress}%</progress> : null}{uploadedUrl || previousUpload.videoUrl ? <a className="youtube-upload-result" href={uploadedUrl || previousUpload.videoUrl} target="_blank" rel="noreferrer"><CheckCircle2 size={15} /> 업로드된 영상 확인 <ExternalLink size={13} /></a> : null}</section>
   </>;
 }

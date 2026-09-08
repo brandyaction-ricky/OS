@@ -1,4 +1,19 @@
 /* Development workspace: dense rows, restrained surfaces and a clear reading order. */
+.dev-project-navigation { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.dev-project-navigation button { border: 1px solid var(--line); background: var(--panel); color: var(--text-2); padding: 9px 18px; font-size: 13px; }
+.dev-project-navigation button[aria-current=page] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.dev-overview { padding: 20px 0; }
+.dev-overview header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.dev-overview h2 { font-size: 18px; }
+.dev-overview p, .dev-overview small { color: var(--muted); font-size: 12px; line-height: 1.7; }
+.dev-overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; margin-top: 18px; }
+.dev-overview-grid article { min-width: 0; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.dev-project-title { padding: 0; border: 0; background: transparent; color: var(--text); font-size: 17px; font-weight: 600; text-align: left; }
+.dev-project-counts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 20px 0; gap: 4px; }
+.dev-project-counts button { display: grid; gap: 8px; padding: 9px 2px; border: 0; border-radius: 5px; background: var(--panel-2); color: var(--text); }
+.dev-project-counts span { color: var(--muted); font-size: 11px; }
+.dev-project-counts strong { font-size: 22px; }
+.dev-workspace .dev-tabs { flex-wrap: wrap; gap: 16px; }
 .dev-workspace { max-width: 1540px; margin: 0 auto; color: var(--text); }
 .dev-workspace button, .dev-workspace select { cursor: pointer; }
 .dev-workspace button:disabled { cursor: not-allowed; opacity: .5; }

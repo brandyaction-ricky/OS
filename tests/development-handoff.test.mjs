@@ -73,6 +73,8 @@ test("project-only handoff links the project and does not invent a request", () 
 test("handoff uses only the three supplied recent records and bounds each summary", () => {
   const history = Array.from({ length: 5 }, (_, index) => ({
     id: `history-${index}`,
+    parent_id: project.id,
+    created_at: `2026-09-0${5-index}`,
     title: `최근기록_${index}`,
     description: `${String(index).repeat(500)}숨김상세_${index}`,
     status: "tested",
@@ -147,4 +149,17 @@ test("repository links reject external hosts, credentials, extra path segments a
     "git@github.com:example-company/internal-os.git",
     "../internal-os", "./internal-os", "example-company/..", "example-company/.",
   ]) assert.equal(repositoryUrl(value), null, value);
+});
+
+
+test("handoff excludes other projects and supports saved development connection aliases", () => {
+  const prompt = buildDevelopmentHandoff({ ...project, metadata: { devUrl: "https://dev.example.com", devBranch: "develop" } }, null, [
+    { parent_id: "other", title: "OTHER_PROJECT_SECRET", description: "Other", created_at: "2026-09-09" },
+    { parent_id: project.id, title: "SAME_PROJECT", description: "Verified", created_at: "2026-09-08", metadata: {} },
+  ]);
+  assert.ok(!prompt.includes("OTHER_PROJECT_SECRET"));
+  assert.ok(prompt.includes("SAME_PROJECT"));
+  assert.ok(prompt.includes("https://dev.example.com"));
+  assert.ok(prompt.includes("개발 브랜치: develop"));
+  assert.ok(prompt.includes("저장한 기록을 다시 조회"));
 });

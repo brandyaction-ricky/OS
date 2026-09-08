@@ -1,8 +1,9 @@
 "use client";
 
 import { BarChart3, Check, CircleAlert, FileText, Gauge, Plus, Search, Sparkles, Target, X } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { createRecord, generateContent, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createDocument, createRecord, generateContent, getDocument, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
+import { buildScriptDocumentInput, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { useSession } from "./session-provider";
@@ -45,32 +46,161 @@ export function ContentTopicsWorkspace() {
 }
 
 export function ContentScriptsWorkspace() {
-  const { accessToken, demo } = useSession();
-  const root = "03_Content/롱폼/스크립트/02_초안";
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const { accessToken, demo, profile } = useSession();
+  const root = SCRIPT_DOCUMENT_ROOT;
+  const [documents, setDocuments] = useState<Omit<KnowledgeDocument, "content_md">[]>([]);
   const [folder, setFolder] = useState("");
   const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
-  const load = useCallback(async () => { if (demo) return; try {
-    const loaded: KnowledgeDocument[] = [];
-    for (let offset = 0; ; offset += 200) {
-      const result = await listDocuments(accessToken, `folder=${encodeURIComponent(root)}&limit=200&offset=${offset}`);
-      loaded.push(...result.documents);
-      if (loaded.length >= result.total || !result.documents.length) break;
-    }
-    setDocuments(loaded);
-    const firstFolder = loaded[0]?.folder ?? "";
-    setFolder((current) => current || firstFolder);
-    setSelectedId((current) => current || loaded[0]?.id || "");
+  const [loading, setLoading] = useState(!demo);
+  const [reader, setReader] = useState<KnowledgeDocument | null>(null);
+  const [readerError, setReaderError] = useState("");
+  const [readerLoading, setReaderLoading] = useState(false);
+  const [readerRevision, setReaderRevision] = useState(0);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [notice, setNotice] = useState("");
+  const listGeneration = useRef(0);
+  const scopeGeneration = useRef(0);
+  const saveInProgress = useRef(false);
+  const editorRef = useRef<HTMLFormElement>(null);
+
+  const load = useCallback(async () => {
+    if (demo || !accessToken) { setLoading(false); return; }
+    const generation = ++listGeneration.current;
+    setLoading(true);
     setError("");
-  } catch (reason) { setError(reason instanceof Error ? reason.message : "원고 문서를 불러오지 못했습니다."); } }, [accessToken, demo]);
-  useEffect(() => { load(); }, [load]);
-  const folders = [...new Set(documents.map((document) => document.folder).filter(Boolean))].sort((a, b) => b.localeCompare(a, "ko"));
-  const folderDocuments = documents.filter((document) => document.folder === folder).sort((a, b) =>
-    (a.source_ref || a.title).localeCompare(b.source_ref || b.title, "ko", { numeric: true }));
-  const selected = documents.find((document) => document.id === selectedId) ?? folderDocuments[0] ?? null;
-  const chooseFolder = (value: string) => { setFolder(value); setSelectedId(documents.find((document) => document.folder === value)?.id ?? ""); };
-  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">원고 문서 작업공간</span><h1>원고·스크립트</h1><p>지식에 동기화된 원고 폴더를 영상별로 모두 불러옵니다. 원본 파일 순서를 유지하고, 본문 수정과 정본 생성은 지식 작업공간의 버전으로 관리합니다.</p></div>{selected ? <a className="primary-button" href={`/knowledge?document=${selected.id}`}><FileText size={15} /> 지식에서 열기</a> : null}</header>{error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}<div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div><section className="script-layout scripts-document-layout"><aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div></div>{folders.map((item) => { const items = documents.filter((document) => document.folder === item); const latest = [...items].sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0]; return <button key={item} className={folder === item ? "active" : ""} onClick={() => chooseFolder(item)}><span><strong>{item.replace(`${root}/`, "")}</strong><small>문서 {items.length}개 · 최근 {latest ? new Date(latest.updated_at).toLocaleDateString("ko-KR") : "—"}</small></span></button>; })}{!folders.length ? <div className="list-empty">동기화된 원고 폴더가 없습니다.</div> : null}</aside><article className="panel script-detail script-document-reader">{selected ? <><header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder}</p></div><span className="count-badge">v{selected.current_version}</span></header><nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} onClick={() => setSelectedId(document.id)}>{document.source_ref || document.title}</button>)}</nav><pre>{selected.content_md || "본문을 불러오지 못했습니다."}</pre></> : <div className="list-empty">읽을 원고 문서를 선택하세요.</div>}</article></section></>;
+    try {
+      const loaded: KnowledgeDocument[] = [];
+      for (let offset = 0; ; offset += 200) {
+        const result = await listDocuments(accessToken, `folder=${encodeURIComponent(root)}&statuses=${SCRIPT_DOCUMENT_STATUSES}&view=summary&limit=200&offset=${offset}`);
+        if (generation !== listGeneration.current) return;
+        loaded.push(...result.documents);
+        if (loaded.length >= result.total || !result.documents.length) break;
+      }
+      const active = loaded.filter((document) => document.status !== "archived");
+      setDocuments(active);
+      setFolder((current) => active.some((document) => document.folder === current) ? current : active[0]?.folder ?? "");
+      setSelectedId((current) => active.some((document) => document.id === current) ? current : active[0]?.id ?? "");
+    } catch (reason) {
+      if (generation === listGeneration.current) setError(reason instanceof Error ? reason.message : "원고 문서를 불러오지 못했습니다.");
+    } finally {
+      if (generation === listGeneration.current) setLoading(false);
+    }
+  }, [accessToken, demo, root]);
+
+  useEffect(() => {
+    scopeGeneration.current += 1;
+    setDocuments([]); setFolder(""); setSelectedId(""); setReader(null);
+    setEditorOpen(false); setSaveError(""); setNotice("");
+    saveInProgress.current = false; setSaving(false);
+    return () => { scopeGeneration.current += 1; };
+  }, [demo, profile?.id]);
+
+  useEffect(() => {
+    void load();
+    return () => { listGeneration.current += 1; };
+  }, [load]);
+
+  const folders = useMemo(() => {
+    const grouped = new Map<string, { name: string; count: number; updatedAt: string }>();
+    for (const document of documents) {
+      const group = grouped.get(document.folder) ?? { name: document.folder, count: 0, updatedAt: "" };
+      group.count += 1;
+      if (document.updated_at > group.updatedAt) group.updatedAt = document.updated_at;
+      grouped.set(document.folder, group);
+    }
+    return [...grouped.values()].sort((a, b) => b.name.localeCompare(a.name, "ko"));
+  }, [documents]);
+  const folderDocuments = useMemo(() => documents.filter((document) => document.folder === folder).sort((a, b) =>
+    (a.source_ref || a.title).localeCompare(b.source_ref || b.title, "ko", { numeric: true })), [documents, folder]);
+  const selected = folderDocuments.find((document) => document.id === selectedId) ?? folderDocuments[0] ?? null;
+  const readerId = selected?.id ?? "";
+  const readerVersion = selected?.current_version;
+
+  useEffect(() => {
+    let active = true;
+    setReader(null); setReaderError("");
+    if (demo || !accessToken || !readerId) { setReaderLoading(false); return; }
+    setReaderLoading(true);
+    void getDocument(accessToken, readerId).then(({ document }) => {
+      if (!active) return;
+      if (document.status === "archived") throw new Error("보관된 원고입니다. 목록을 다시 불러와 주세요.");
+      setReader(document);
+    }).catch((reason) => {
+      if (active) setReaderError(reason instanceof Error ? reason.message : "원고 본문을 불러오지 못했습니다.");
+    }).finally(() => { if (active) setReaderLoading(false); });
+    return () => { active = false; };
+  }, [accessToken, demo, readerId, readerVersion, readerRevision]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    editorRef.current?.querySelector<HTMLInputElement>("input")?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saveInProgress.current) { event.preventDefault(); setEditorOpen(false); }
+      if (event.key !== "Tab") return;
+      const elements = editorRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), textarea:not([disabled])');
+      const first = elements?.[0]; const last = elements?.[elements.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); if (previousFocus?.isConnected) previousFocus.focus(); };
+  }, [editorOpen]);
+
+  const openEditor = () => { setSaveError(""); setNotice(""); setEditorOpen(true); };
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saveInProgress.current) return;
+    if (demo || !accessToken) { setSaveError("로그인한 운영 환경에서 원고를 저장할 수 있습니다."); return; }
+    const form = new FormData(event.currentTarget);
+    const scope = scopeGeneration.current;
+    saveInProgress.current = true; setSaving(true); setSaveError("");
+    try {
+      const input = buildScriptDocumentInput({ title: text(form, "title"), folderName: text(form, "folderName"), content: text(form, "content") });
+      const { document } = await createDocument(accessToken, input);
+      if (scope !== scopeGeneration.current) return;
+      // The successful response is authoritative. Do not turn a later list
+      // refresh failure into an apparent save failure and invite duplicate saves.
+      listGeneration.current += 1;
+      setDocuments((current) => [document, ...current.filter((item) => item.id !== document.id)]);
+      setFolder(document.folder); setSelectedId(document.id); setLoading(false);
+      setEditorOpen(false); setNotice("개인 초안으로 저장했습니다. 지식에서 이어서 편집할 수 있습니다.");
+    } catch (reason) {
+      if (scope === scopeGeneration.current) setSaveError(reason instanceof Error ? reason.message : "원고를 저장하지 못했습니다.");
+    } finally {
+      if (scope === scopeGeneration.current) { saveInProgress.current = false; setSaving(false); }
+    }
+  };
+
+  return <>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">원고 문서 작업공간</span><h1>원고·스크립트</h1><p>영상별 원고를 만들고 모아봅니다. 수정 내역과 공유 상태는 지식 작업공간에서 관리합니다.</p></div><div className="header-actions">{selected ? <a className="secondary-button" href={`/knowledge?document=${encodeURIComponent(selected.id)}`}><FileText size={15} /> 지식에서 편집</a> : null}<button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></header>
+    {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
+    {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
+    {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
+    <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
+    <section className="script-layout scripts-document-layout">
+      <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
+        {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleDateString("ko-KR")}</small></span></button>)}
+        {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
+      </aside>
+      <article className="panel script-detail script-document-reader">{selected ? <>
+        <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder}</p></div><span className="count-badge">v{selected.current_version}</span></header>
+        <nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{document.source_ref || document.title}</button>)}</nav>
+        {readerError ? <div className="inline-alert danger" role="alert">{readerError}<button className="ghost-button" onClick={() => setReaderRevision((current) => current + 1)}>다시 불러오기</button></div> : readerLoading || reader?.id !== selected.id ? <div className="list-empty" role="status">본문을 불러오는 중입니다.</div> : <pre>{reader.content_md || "아직 본문이 없습니다. 지식에서 내용을 작성해 주세요."}</pre>}
+      </> : <div className="empty-state"><div><FileText /><h3>{loading ? "원고를 불러오는 중입니다" : "첫 원고를 작성해 보세요"}</h3><p>제목과 영상 폴더명을 정하면 원고 작업을 시작할 수 있습니다.</p><button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></div>}</article>
+    </section>
+    {editorOpen ? <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saveInProgress.current) setEditorOpen(false); }}><form ref={editorRef} className="record-drawer" role="dialog" aria-modal="true" aria-labelledby="script-create-title" onSubmit={submit}>
+      <div className="drawer-head"><div><span className="eyebrow">개인 초안</span><h2 id="script-create-title">새 원고 작성</h2></div><button type="button" className="icon-button" aria-label="원고 작성 닫기" disabled={saving} onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
+      <label><span>원고 제목</span><input name="title" required maxLength={200} placeholder="예: 도입부 초안" disabled={saving} /></label>
+      <label><span>영상 폴더명</span><input name="folderName" required maxLength={SCRIPT_FOLDER_NAME_LIMIT} placeholder="예: 2026-09 나에게 맞는 일 찾기" disabled={saving} defaultValue={folder.startsWith(`${root}/`) && !folder.slice(root.length + 1).includes("/") ? folder.slice(root.length + 1) : ""} /></label>
+      <label><span>원고 본문</span><textarea name="content" rows={14} maxLength={1_500_000} disabled={saving} placeholder="본문을 입력하세요. 비워두면 핵심 메시지·도입·본문·마무리 순서의 기본 틀을 만듭니다." /></label>
+      {saveError ? <div className="inline-alert danger" role="alert">{saveError}</div> : null}
+      <div className="drawer-actions"><button type="button" className="secondary-button" disabled={saving} onClick={() => setEditorOpen(false)}>취소</button><button className="primary-button" disabled={saving || demo || !accessToken}>{saving ? "저장 중…" : "개인 초안 저장"}</button></div>
+    </form></div> : null}
+  </>;
 }
 
 export function ContentPerformanceWorkspace() {

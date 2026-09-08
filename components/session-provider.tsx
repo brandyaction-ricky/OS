@@ -48,24 +48,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return;
     const client = supabase;
     let active = true;
+    let generation = 0;
+    let currentUserId: string | null = null;
+    let request: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    async function hydrate(nextSession: Session | null) {
-      if (!active) return;
-      setSession(nextSession);
-      if (!nextSession) {
-        setProfile(null);
-        setLoading(false);
-        const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
-        router.replace(`/login${next}`);
-        return;
-      }
-
+    async function hydrate(nextSession: Session, requestGeneration: number, controller: AbortController) {
       const { data } = await client
         .from("os_profiles")
         .select("id,email,display_name,role,team,must_change_password")
         .eq("id", nextSession.user.id)
+        .abortSignal(controller.signal)
         .maybeSingle();
 
+      // A sign-out, account switch, or newer auth event invalidates this response.
+      if (!active || controller.signal.aborted || requestGeneration !== generation) return;
       setProfile({
         id: nextSession.user.id,
         email: data?.email ?? nextSession.user.email ?? "",
@@ -81,15 +78,42 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
 
-    client.auth.getSession().then(({ data }) => hydrate(data.session));
+    // INITIAL_SESSION already supplies the stored session. A second getSession()
+    // causes a duplicate profile read, and re-subscribing on navigation repeats it.
     const { data: listener } = client.auth.onAuthStateChange((_event, nextSession) => {
-      hydrate(nextSession);
+      if (!active) return;
+      const requestGeneration = ++generation;
+      request?.abort();
+      clearTimeout(timer);
+      setSession(nextSession);
+      const nextUserId = nextSession?.user.id ?? null;
+      if (nextUserId !== currentUserId || !nextSession) {
+        setProfile(null);
+        setLoading(Boolean(nextSession));
+      }
+      currentUserId = nextUserId;
+      if (!nextSession) return;
+
+      const controller = new AbortController();
+      request = controller;
+      // Keep database work outside the synchronous auth callback/lock. This also
+      // coalesces auth events arriving together into one profile request.
+      timer = setTimeout(() => { void hydrate(nextSession, requestGeneration, controller); }, 0);
     });
     return () => {
       active = false;
+      generation += 1;
+      clearTimeout(timer);
+      request?.abort();
       listener.subscription.unsubscribe();
     };
-  }, [demo, pathname, router]);
+  }, [demo]);
+
+  useEffect(() => {
+    if (demo || loading || session) return;
+    const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+    router.replace(`/login${next}`);
+  }, [demo, loading, pathname, router, session]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

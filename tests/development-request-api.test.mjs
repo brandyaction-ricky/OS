@@ -19,7 +19,7 @@ function createDatabase(rows) {
   return {
     from(table) {
       assert.equal(table, "os_records");
-      const conditions = [];
+      const conditions = [], ordering = [];
       let action = "read", fields, head = false, range;
       const value = (row, key) => key === "metadata->>kind" ? row.metadata?.kind : row[key];
       const execute = () => {
@@ -31,6 +31,13 @@ function createDatabase(rows) {
           matches.forEach((row) => Object.assign(row, structuredClone(fields), { version: row.version + 1 }));
         }
         const count = matches.length;
+        matches.sort((left, right) => {
+          for (const [key, ascending] of ordering) {
+            const compared = String(value(left, key) ?? "").localeCompare(String(value(right, key) ?? ""));
+            if (compared) return ascending ? compared : -compared;
+          }
+          return 0;
+        });
         if (range) matches = matches.slice(range[0], range[1] + 1);
         return { data: head ? null : structuredClone(matches), count, error: null };
       };
@@ -40,7 +47,7 @@ function createDatabase(rows) {
         neq(key, expected) { conditions.push((row) => value(row, key) !== expected); return builder; },
         is(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
         or(expression) { const query = expression.match(/ilike\.%([^%]*)%/)?.[1] ?? ""; conditions.push((row) => `${row.title} ${row.description}`.includes(query)); return builder; },
-        order() { return builder; },
+        order(key, { ascending = true } = {}) { ordering.push([key, ascending]); return builder; },
         range(from, to) { range = [from, to]; return builder; },
         insert(input) { action = "insert"; fields = input; return builder; },
         update(input) { action = "update"; fields = input; return builder; },
@@ -100,7 +107,7 @@ test("request API creates linked backlog request with server-owned identity and 
   assert.equal(rows.length, 2);
 });
 
-test("request summary returns open rows, full status counts and only development requests", async () => {
+test("personal request summary includes completed results and excludes other reporters", async () => {
   const { routes } = setup([
     record(), record({ id: "done", status: "done" }), record({ id: "other", created_by: "other", status: "active" }),
     record({ id: "ordinary-job", metadata: {} }), record({ id: "archived", archived_at: "2026-09-04" }),
@@ -109,10 +116,26 @@ test("request summary returns open rows, full status counts and only development
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
-  assert.equal(body.requests.length, 1);
-  assert.equal(body.total, 1);
+  assert.equal(body.requests.length, 2);
+  assert.equal(body.total, 2);
+  assert.ok(body.requests.some((item) => item.status === "done"));
   assert.deepEqual(body.counts, { backlog: 1, active: 0, review: 0, done: 1, blocked: 0 });
   assert.equal(body.canManage, false);
+});
+
+test("request summaries page by latest update so old requests with new results remain visible", async () => {
+  const olderCompleted = record({ id: "older-completed", status: "done", created_at: "2026-09-01", updated_at: "2026-09-08" });
+  const newerOpen = record({ id: "newer-open", created_at: "2026-09-07", updated_at: "2026-09-07" });
+  const { routes, actor } = setup([newerOpen, olderCompleted]);
+  const personal = await (await routes.GET(request("GET", null, "?summary=1&scope=mine&limit=1"))).json();
+  assert.equal(personal.requests[0].id, olderCompleted.id);
+  assert.equal(personal.total, 2);
+  const inbox = await (await routes.GET(request("GET", null, "?scope=mine&limit=1"))).json();
+  assert.equal(inbox.requests[0].id, newerOpen.id);
+  actor.role = "admin";
+  const managed = await (await routes.GET(request("GET", null, "?summary=1"))).json();
+  assert.deepEqual(managed.requests.map((item) => item.id), [newerOpen.id]);
+  assert.equal(managed.counts.done, 1);
 });
 
 test("deep-linked request ID and ownership scope are honored independently of the inbox", async () => {

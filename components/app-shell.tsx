@@ -147,7 +147,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     document.title = `${page.label} | 브랜디 OS`;
   }, [page.label]);
 
-  if (loading) {
+  if (loading || (!demo && !profile)) {
     return (
       <div className="boot-screen">
         <div className="brand-mark large">BA</div>

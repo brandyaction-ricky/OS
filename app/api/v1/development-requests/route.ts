@@ -44,9 +44,9 @@ export async function GET(request: Request) {
       if (query) result = result.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
       return result;
     };
-    let rowsQuery = filtered().order("created_at", { ascending: false }).order("id", { ascending: false }).range(input.offset, input.offset + input.limit - 1);
+    let rowsQuery = filtered().order(input.summary === "1" ? "updated_at" : "created_at", { ascending: false }).order("id", { ascending: false }).range(input.offset, input.offset + input.limit - 1);
     if (input.status) rowsQuery = rowsQuery.eq("status", input.status);
-    else if (input.summary === "1") rowsQuery = rowsQuery.neq("status", "done");
+    else if (input.summary === "1" && input.scope !== "mine") rowsQuery = rowsQuery.neq("status", "done");
     const [rows, ...summaries] = await Promise.all([rowsQuery, ...DEVELOPMENT_REQUEST_STATUSES.map((status) => filtered(true).eq("status", status))]);
     if (rows.error || summaries.some((item) => item.error)) throw new ApiError(500, "REQUEST_LIST_FAILED", "수정 요청을 불러오지 못했습니다.");
     const counts = Object.fromEntries(DEVELOPMENT_REQUEST_STATUSES.map((status, index) => [status, summaries[index].count ?? 0]));
