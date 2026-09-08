@@ -69,7 +69,7 @@ function setup(initialQuery = "", { delayProjects = false } = {}) {
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {
     URLSearchParams, console, Event, clearInterval() {},
     window: { location: { origin: "https://os.example" }, setInterval: () => 1, addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), dispatchEvent: events.dispatchEvent.bind(events) },
-    document: { visibilityState: "visible" },
+    document: { visibilityState: "visible", body: { style: {} }, activeElement: null },
     fetch: async (url) => {
       const params = new URL(url, "https://os.example").searchParams;
       queries.push(Object.fromEntries(params));
@@ -189,5 +189,17 @@ test("notification links without a project load the cross-project personal reque
   assert.equal(app.queries.at(-1).scope, "mine");
   assert.equal(app.queries.at(-1).status, "review");
   assert.equal(app.queries.at(-1).projectId, undefined);
+  app.unmount();
+});
+
+test("employees can open a dedicated feature request with a file attachment", async () => {
+  const app = setup("project=os");
+  await app.flush();
+  const button = app.find((node) => node.type === "button" && Array.isArray(node.props.children) && node.props.children.some((value) => typeof value === "string" && value.includes("추가 개발 요청")));
+  button.props.onClick();
+  await app.flush();
+  assert.equal(app.find((node) => node.type === "select" && node.props.name === "category").props.defaultValue, "feature");
+  assert.equal(app.find((node) => node.type === "input" && node.props.name === "attachment").props.type, "file");
+  assert.doesNotMatch(source, /name="steps"|스크린샷·영상 링크|재현 순서/);
   app.unmount();
 });

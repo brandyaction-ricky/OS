@@ -28,9 +28,9 @@ const request = {
   metadata: {
     pageUrl: "https://os.example.com/knowledge/search",
     category: "bug",
-    steps: "1. 검토 상태 선택\n2. 새로고침",
     expectedResult: "새로고침 후에도 선택한 상태 필터 유지",
-    attachmentUrl: "https://os.example.com/files/screenshot.png",
+    attachmentPath: "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.png",
+    attachmentName: "검색-필터.png",
     resolution: "초기 분석: URL의 검색 조건 복원 여부 확인 필요",
   },
 };
@@ -52,14 +52,15 @@ test("request handoff identifies the project, source request version and reposit
   ]) assert.ok(prompt.includes(expected), `missing context: ${expected}`);
 });
 
-test("request handoff preserves problem, steps, expected result and prior resolution", () => {
+test("request handoff preserves problem, expected result, attachment name and prior resolution", () => {
   const prompt = buildDevelopmentHandoff(project, request);
   for (const expected of [
     request.title, request.description, request.priority, request.metadata.pageUrl,
-    request.metadata.steps, request.metadata.expectedResult, request.metadata.attachmentUrl,
+    request.metadata.expectedResult, request.metadata.attachmentName,
     request.metadata.resolution,
   ]) assert.ok(prompt.includes(expected), `missing request detail: ${expected}`);
   assert.ok(prompt.indexOf(request.description) < prompt.indexOf(request.metadata.expectedResult));
+  assert.equal(prompt.includes("재현 순서"), false);
 });
 
 test("project-only handoff links the project and does not invent a request", () => {
