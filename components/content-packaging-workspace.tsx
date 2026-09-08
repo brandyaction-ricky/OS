@@ -92,7 +92,9 @@ export function ContentPackagingWorkspace() {
 
   const titlePackages = packages.filter((record) => meta<string>(record, "packageKind", "") === "title_package");
   const references = packages.filter((record) => meta<string>(record, "packageKind", "") === "market_reference");
-  const latest = titlePackages.find((record) => record.parent_id === sourceId) ?? null;
+  const latest = titlePackages
+    .filter((record) => record.parent_id === sourceId)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0] ?? null;
   const result = meta<Record<string, unknown>>(latest, "result", {});
   const titles = Array.isArray(result.titles) ? result.titles as Array<Record<string, unknown>> : [];
   const copies = Array.isArray(result.copies) ? result.copies as Array<Record<string, unknown>> : [];
@@ -158,8 +160,16 @@ export function ContentPackagingWorkspace() {
       const evidence = sortedResults.map(({ title, channelTitle, viewCount, url }) => ({ title, channelTitle, viewCount, url }));
       const response = await generateContent(accessToken, { action: "title_package", sourceId, marketEvidence: evidence });
       if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
-      else setTab("title");
-      await load();
+      else {
+        if (response.records?.length) {
+          setPackages((current) => [
+            ...response.records!,
+            ...current.filter((record) => !response.records!.some((created) => created.id === record.id)),
+          ]);
+        }
+        setTab("title");
+      }
+      void load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "제목·썸네일 후보를 만들지 못했습니다.");
     } finally { setBusy(false); }

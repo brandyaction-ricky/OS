@@ -24,12 +24,13 @@ import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-type RadarTab = "channels" | "discovery" | "niches";
+type RadarTab = "channels" | "discovery" | "niches" | "planning";
 
 const TABS: Array<{ key: RadarTab; label: string; hint: string }> = [
   { key: "channels", label: "채널", hint: "관찰 채널 수집" },
   { key: "discovery", label: "탐색", hint: "터진 영상 발굴" },
   { key: "niches", label: "틈새", hint: "주제 확정" },
+  { key: "planning", label: "기획", hint: "확정 주제" },
 ];
 
 const ENTRY_CATEGORIES = [
@@ -103,16 +104,23 @@ export function ContentRadarWorkspace() {
     return !["channel", "outlier"].includes(kind) && record.metadata?.automationSource !== true;
   }), [records]);
   const nicheQueue = useMemo(() => records.filter(isNicheQueueRecord), [records]);
+  const nicheTopics = useMemo(() => nicheQueue.filter((topic) => topic.status !== "planned"), [nicheQueue]);
+  const plannedTopics = useMemo(() => nicheQueue.filter((topic) => topic.status === "planned"), [nicheQueue]);
   const plans = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "topic_plan"), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
-  const selected = nicheQueue.find((topic) => topic.id === selectedId) ?? nicheQueue[0] ?? null;
+  const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
+  const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
   const plan = plans.find((record) => record.parent_id === selected?.id) ?? null;
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
 
   useEffect(() => {
-    if (!selectedId && nicheQueue[0]) setSelectedId(nicheQueue[0].id);
-  }, [selectedId, nicheQueue]);
+    if ((tab === "niches" || tab === "planning") && !visibleTopics.some((topic) => topic.id === selectedId)) {
+      setSelectedId(visibleTopics[0]?.id ?? "");
+    } else if (!selectedId && topics[0]) {
+      setSelectedId(topics[0].id);
+    }
+  }, [selectedId, tab, topics, visibleTopics]);
 
   const addChannel = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -206,7 +214,7 @@ export function ContentRadarWorkspace() {
     if (outliers.some((record) => meta(record, "youtubeId", "") === item.id)) return;
     setBusy(true); setError("");
     try {
-      const { record } = await createRecord(accessToken, {
+      await createRecord(accessToken, {
         recordType: "content_topic",
         title: item.title,
         description: `${item.channelTitle}에서 발견한 시장 근거 영상`,
@@ -228,12 +236,9 @@ export function ContentRadarWorkspace() {
           likes: item.likeCount,
           comments: item.commentCount,
           query: searchQuery.trim(),
-          evidence: `조회 ${item.viewCount.toLocaleString("ko-KR")} · 좋아요 ${item.likeCount.toLocaleString("ko-KR")} · 댓글 ${item.commentCount.toLocaleString("ko-KR")}`,
         },
       });
       await load();
-      setSelectedId(record.id);
-      setTab("niches");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "근거 영상을 저장하지 못했습니다.");
     } finally { setBusy(false); }
@@ -286,13 +291,18 @@ export function ContentRadarWorkspace() {
     if (!selected) return;
     setBusy(true); setError("");
     try {
-      await updateRecord(accessToken, {
+      const { record } = await updateRecord(accessToken, {
         id: selected.id,
         expectedVersion: selected.version,
         status,
         stage: status === "planned" ? "기획으로 넘기기" : status === "blocked" ? "보류" : "더 지켜보기",
         metadata: { ...selected.metadata, decidedAt: new Date().toISOString() },
       });
+      setRecords((current) => current.map((item) => item.id === record.id ? record : item));
+      if (status === "planned") {
+        setSelectedId(record.id);
+        setTab("planning");
+      }
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "틈새 판정을 저장하지 못했습니다.");
@@ -360,7 +370,7 @@ export function ContentRadarWorkspace() {
       <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}
 
-    {tab === "niches" ? <>
+    {tab === "niches" || tab === "planning" ? <>
       <section className="niche-summary-grid">
         <div className="panel"><Flag size={17} /><span><strong>{topics.filter((item) => item.status === "planned").length}</strong><small>기획으로 넘기기</small></span></div>
         <div className="panel"><Eye size={17} /><span><strong>{topics.filter((item) => item.status === "review").length}</strong><small>더 지켜보기</small></span></div>
@@ -368,11 +378,11 @@ export function ContentRadarWorkspace() {
         <div className="panel"><FileText size={17} /><span><strong>{plans.length}</strong><small>정본 기획안</small></span></div>
       </section>
       <section className="content-planning-layout">
-        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>틈새 후보</h2><p>결정과 작업 폴더 사이 대기열</p></div></div>{nicheQueue.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "판정 전"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!nicheQueue.length ? <div className="list-empty">틈새 후보를 추가하거나 탐색 결과를 저장하세요.</div> : null}</aside>
+        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "판정 전이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "판정 전"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
           <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "판정 전"}</span><h2>{selected.title}</h2><p>{selected.description}</p></div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 정본으로 후보 만들기</button></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>검색 입구 언어</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
-          <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section>
+          {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
         </> : <div className="compact-empty"><Target size={24} /><strong>판정할 틈새를 선택하세요.</strong></div>}</article>

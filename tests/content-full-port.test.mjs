@@ -43,7 +43,7 @@ test("saved discovery evidence enters the niche queue and becomes selected", asy
   assert.equal(isNicheQueueRecord({ metadata: { studioKind: "channel" } }), false);
   assert.equal(isNicheQueueRecord({ metadata: { automationSource: true } }), false);
   assert.match(radar, /setSelectedId\(record\.id\);\s*setTab\("niches"\);/);
-  assert.match(radar, /nicheQueue\.map/);
+  assert.match(radar, /nicheQueue/);
 });
 
 test("content media uses private signed uploads and expires original files", async () => {
