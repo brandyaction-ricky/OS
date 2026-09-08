@@ -15,6 +15,7 @@ interface TelegramResult {
 async function requireAdmin(request: Request) {
   const actor = await authenticateRequest(request);
   if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 텔레그램 연결을 관리할 수 있습니다.");
+  return actor;
 }
 
 async function telegram(method: string, body: Record<string, unknown> = {}) {
@@ -36,36 +37,46 @@ export async function GET(request: Request) {
   try {
     await requireAdmin(request);
     const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET);
-    if (!configured) return NextResponse.json({ configured: false, webhook: null });
-    const [bot, webhook] = await Promise.all([telegram("getMe"), telegram("getWebhookInfo")]);
-    const { data: pendingUsers } = await createServiceSupabase()
-      .from("os_telegram_users")
-      .select("external_user_id,external_chat_id,display_name,username,status,requested_at")
-      .eq("status", "pending")
-      .order("requested_at", { ascending: false })
-      .limit(100);
+    const supabase = createServiceSupabase();
+    const fields = "external_user_id,external_chat_id,display_name,username,status,requested_at,decided_at";
+    const [pending, approved, turns, botResult, webhookResult] = await Promise.all([
+      supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "pending").order("requested_at", { ascending: false }).limit(100),
+      supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "approved").order("decided_at", { ascending: false }).limit(100),
+      supabase.from("os_channel_turns").select("external_user_id,created_at,answer").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1000),
+      configured ? telegram("getMe").catch(() => null) : Promise.resolve(null),
+      configured ? telegram("getWebhookInfo").catch(() => null) : Promise.resolve(null),
+    ]);
+    if (pending.error || approved.error || turns.error) throw new ApiError(500, "TELEGRAM_STATUS_READ_FAILED", "텔레그램 사용자·수신 이력을 읽지 못했습니다. 다시 확인해 주세요.");
+    const bot = botResult ?? {}; const webhook = webhookResult ?? {};
+    const withLastSeen = (users: NonNullable<typeof pending.data>) => users.map((user) => ({ ...user, last_received_at: turns.data?.find((turn) => turn.external_user_id === user.external_user_id)?.created_at ?? null }));
     return NextResponse.json({
-      configured: true,
+      configured,
+      diagnosticError: configured && (!botResult || !webhookResult) ? "Telegram 연결 상태를 확인하지 못했습니다. 저장된 사용자·수신 이력만 표시합니다." : null,
+      lastReceivedAt: turns.data?.[0]?.created_at ?? null,
+      lastProcessingError: turns.data?.filter((turn) => turn.answer?.startsWith("TELEGRAM_ERROR:")).slice(0, 1).map((turn) => ({ at: turn.created_at, message: turn.answer.slice("TELEGRAM_ERROR:".length) }))[0] ?? null,
+      pendingCount: pending.count ?? 0,
+      approvedCount: approved.count ?? 0,
+      approvedUsers: withLastSeen(approved.data ?? []),
       bot: { username: bot.username ?? null, name: bot.first_name ?? null },
-      webhook: {
+      webhook: webhookResult ? {
         url: webhook.url ?? "",
         pendingUpdates: webhook.pending_update_count ?? 0,
         lastErrorAt: webhook.last_error_date ?? null,
         lastError: webhook.last_error_message ?? null,
-      },
-      pendingUsers,
+        lastSynchronizationErrorAt: webhook.last_synchronization_error_date ?? null,
+      } : null,
+      pendingUsers: withLastSeen(pending.data ?? []),
     });
   } catch (error) { return apiErrorResponse(error); }
 }
 
 export async function PATCH(request: Request) {
   try {
-    await requireAdmin(request);
+    const actor = await requireAdmin(request);
     const body = await request.json() as { externalUserId?: string; action?: "approve" | "reject" };
     if (!body.externalUserId || !["approve", "reject"].includes(body.action ?? "")) {
       throw new ApiError(400, "INVALID_TELEGRAM_DECISION", "승인할 사용자와 처리 방식을 확인해 주세요.");
     }
-    const actor = await authenticateRequest(request);
     const status = body.action === "approve" ? "approved" : "rejected";
     const supabase = createServiceSupabase();
     const { data, error } = await supabase.from("os_telegram_users").update({

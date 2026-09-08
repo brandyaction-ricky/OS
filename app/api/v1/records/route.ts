@@ -49,6 +49,7 @@ export async function GET(request: Request) {
       .select("*", { count: "exact" })
       .is("archived_at", null)
       .order("updated_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     if (recordType) builder = builder.eq("record_type", recordType);
     if (url.searchParams.get("excludeKind") === "development_request") {

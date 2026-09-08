@@ -3,7 +3,7 @@
 import { BarChart3, Check, CircleAlert, FileText, Gauge, Plus, Search, Sparkles, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createDocument, createRecord, generateContent, getDocument, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
-import { buildScriptDocumentInput, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
+import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { ContentLinkedScripts } from "./content-linked-scripts";
@@ -80,7 +80,7 @@ export function ContentScriptsWorkspace() {
         loaded.push(...result.documents);
         if (loaded.length >= result.total || !result.documents.length) break;
       }
-      const active = loaded.filter((document) => document.status !== "archived");
+      const active = loaded.filter(isVisibleScript).sort(compareScriptDocuments);
       setDocuments(active);
       setFolder((current) => active.some((document) => document.folder === current) ? current : active[0]?.folder ?? "");
       setSelectedId((current) => active.some((document) => document.id === current) ? current : active[0]?.id ?? "");
@@ -112,10 +112,9 @@ export function ContentScriptsWorkspace() {
       if (document.updated_at > group.updatedAt) group.updatedAt = document.updated_at;
       grouped.set(document.folder, group);
     }
-    return [...grouped.values()].sort((a, b) => b.name.localeCompare(a.name, "ko"));
+    return [...grouped.values()].map((group) => ({ ...group, progress: scriptProgress(documents.filter((doc) => doc.folder === group.name)) })).sort((a, b) => Number(a.progress.published) - Number(b.progress.published) || b.name.localeCompare(a.name, "ko", { numeric: true }));
   }, [documents]);
-  const folderDocuments = useMemo(() => documents.filter((document) => document.folder === folder).sort((a, b) =>
-    (a.source_ref || a.title).localeCompare(b.source_ref || b.title, "ko", { numeric: true })), [documents, folder]);
+  const folderDocuments = useMemo(() => documents.filter((document) => document.folder === folder).sort(compareScriptDocuments), [documents, folder]);
   const selected = folderDocuments.find((document) => document.id === selectedId) ?? folderDocuments[0] ?? null;
   const readerId = selected?.id ?? "";
   const readerVersion = selected?.current_version;
@@ -185,12 +184,12 @@ export function ContentScriptsWorkspace() {
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
-        {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{["기획", "패키징", "자료", "축", "설계표", "초안", "다듬기", "발행"].map((stage) => `${documents.some((doc) => doc.folder === item.name && `${doc.source_ref || ""} ${doc.title}`.includes(stage)) ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
+        {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>{item.progress.published ? "발행 자료 있음" : "진행 중"} · 문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{SCRIPT_STEPS.map((stage, index) => `${item.progress.completed[index] ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
         {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
       </aside>
       <article className="panel script-detail script-document-reader">{selected ? <>
-        <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder} · 최근 수정 {new Date(selected.updated_at).toLocaleString("ko-KR")}</p>{selected.status === "review" ? <p className="inline-alert warning">원고 검토·승인 대기 중입니다.</p> : null}</div><span className="count-badge">v{selected.current_version}</span></header>
-        <nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{document.source_ref || document.title}</button>)}</nav>
+        <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder} · 최근 수정 {new Date(selected.updated_at).toLocaleString("ko-KR")}</p>{selected.status === "review" ? <p className="inline-alert warning">원고 검토·승인 대기 중입니다. 패키징·축·설계표는 승인 결과를 확인한 뒤 다음 단계로 진행해 주세요.</p> : null}</div><span className="count-badge">v{selected.current_version}</span></header>
+        <nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{scriptFileName(document)}</button>)}</nav>
         {readerError ? <div className="inline-alert danger" role="alert">{readerError}<button className="ghost-button" onClick={() => setReaderRevision((current) => current + 1)}>다시 불러오기</button></div> : readerLoading || reader?.id !== selected.id ? <div className="list-empty" role="status">본문을 불러오는 중입니다.</div> : <pre>{reader.content_md || "아직 본문이 없습니다. 지식에서 내용을 작성해 주세요."}</pre>}
       </> : <div className="empty-state"><div><FileText /><h3>{loading ? "원고를 불러오는 중입니다" : "첫 원고를 작성해 보세요"}</h3><p>제목과 영상 폴더명을 정하면 원고 작업을 시작할 수 있습니다.</p><button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></div>}</article>
     </section>

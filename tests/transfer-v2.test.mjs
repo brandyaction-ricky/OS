@@ -27,5 +27,5 @@ test("growth and phone capture use the transferred business contract", async () 
   for (const field of ["gross", "cancel", "refund", "net", "orders", "buyers", "source"]) assert.match(performance, new RegExp(field));
   assert.match(performance, /영상 조회/); assert.match(performance, /스토어 방문/);
   for (const command of ["후기", "썸네일기록", "#raw", "인박스", "요약"]) assert.match(telegram, new RegExp(command));
-  assert.match(telegram, /wjdgh1346@gmail\.com/);
+  assert.match(telegram, /TELEGRAM_CAPTURE_OWNER_EMAIL/);
 });

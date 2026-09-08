@@ -770,7 +770,18 @@ html[data-guidance="off"] :where(
 .owner-chips button:hover, .task-filters button:hover, .range-filter button:hover, .studio-tabs button:hover { background: var(--surface-hover); color: var(--text); }
 
 /* Document tree: load on expansion; keep a bounded number of mounted rows. */
-.knowledge-workspace { position:relative; }
+.knowledge-workspace { --knowledge-tree-width: 280px; position:relative; }
+.markdown-section { margin: 18px 0; scroll-margin-top: 20px; }
+.markdown-section > summary { cursor: pointer; color: var(--text); font-size: 1.15rem; font-weight: 600; }
+.markdown-section .markdown-section { margin-left: 8px; }
+.document-outline { margin-bottom: 24px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.document-outline nav { display: flex; flex-direction: column; align-items: flex-start; }
+.knowledge-resize-handle { display: none; }
+@media(min-width:901px) {
+  .knowledge-workspace:not(.tree-hidden) { grid-template-columns: var(--knowledge-tree-width, 280px) minmax(0, 1fr); }
+  .knowledge-resize-handle { display: block; position: absolute; z-index: 4; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; touch-action: none; }
+  .knowledge-resize-handle:hover, .knowledge-resize-handle:focus-visible { background: var(--accent); }
+}
 .knowledge-tree-scroll .folder-row { height:44px; min-height:44px; box-sizing:border-box; }
 .tree-peek-handle { position:absolute; z-index:8; top:0; left:0; width:24px; height:100%; border:0; background:transparent; color:var(--muted); display:flex; align-items:flex-start; padding-top:12px; }
 .knowledge-workspace.tree-peek .knowledge-tree-pane { display:flex!important; position:absolute; inset:0 auto 0 0; z-index:10; width:300px; background:var(--panel); box-shadow:var(--shadow); }

@@ -103,7 +103,7 @@ test("home revenue uses performance records, targets and honest comparisons", as
   ]);
   assert.match(metrics, /record\.metadata\.net \?\? record\.amount/);
   assert.match(metrics, /monthChange: .*changePercent\(current, priorMonth\) : null/);
-  assert.match(metrics, /weekChange: changePercent/);
+  assert.match(metrics, /weekChange: weekly\.currentRows \? changePercent\(weekly\.current, weekly\.previous\) : null/);
   assert.match(metrics, /targetByBrand/);
   assert.match(dashboard, /전월/);
   assert.match(dashboard, /전주/);

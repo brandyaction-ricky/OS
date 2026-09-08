@@ -1,5 +1,7 @@
 "use client";
 
+import { insertTag, markdownBlocks, markdownCodeBody, markdownSections, treeWidth, type MarkdownSection } from "@/lib/markdown-sections";
+
 import {
   Archive,
   Bold,
@@ -159,8 +161,8 @@ function statusActionLabel(status: DocumentStatus) {
   return ({ draft: "팀에 공유", team: "", review: "", reviewed: "", canonical: "", archived: "" })[status];
 }
 
-function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
-  const blocks = content.split(/\n{2,}/).filter(Boolean);
+function MarkdownBlocks({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+  const blocks = markdownBlocks(content);
   return (
     <div className="markdown-view">
       {blocks.map((block, index) => {
@@ -186,12 +188,39 @@ function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (t
           return <ul key={index}>{block.split("\n").map((line, itemIndex) => <li key={itemIndex}><WikiInline text={line.replace(/^[-*]\s+/, "")} onOpenLink={onOpenLink} /></li>)}</ul>;
         }
         if (lines.every((line) => /^\d+[.)]\s+/.test(line))) return <ol key={index}>{lines.map((line, itemIndex) => <li key={itemIndex}><WikiInline text={line.replace(/^\d+[.)]\s+/, "")} onOpenLink={onOpenLink} /></li>)}</ol>;
-        if (lines.every((line) => /^>\s?/.test(line))) return <blockquote key={index}><WikiInline text={lines.map((line) => line.replace(/^>\s?/, "")).join("\n")} onOpenLink={onOpenLink} /></blockquote>;
-        if (/^```/.test(block) && /```$/.test(block)) return <pre className="markdown-code" key={index}><code>{lines.slice(1, -1).join("\n")}</code></pre>;
+        if (lines.every((line) => /^>\s?/.test(line))) return <blockquote key={index}><CopyMarkdown text={lines.map((line) => line.replace(/^>\s?/, "")).join("\n")} /><WikiInline text={lines.map((line) => line.replace(/^>\s?/, "")).join("\n")} onOpenLink={onOpenLink} /></blockquote>;
+        if (/^\s*(?:`{3,}|~{3,})/.test(block)) return <div key={index}><CopyMarkdown text={markdownCodeBody(block)} /><pre className="markdown-code"><code>{markdownCodeBody(block)}</code></pre></div>;
         return <p key={index}><WikiInline text={block} onOpenLink={onOpenLink} /></p>;
       })}
     </div>
   );
+}
+
+function CopyMarkdown({ text }: { text: string }) {
+  const [notice, setNotice] = useState("");
+  return <><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(text).then(() => setNotice("복사됨")).catch(() => setNotice("복사 권한을 확인해 주세요.")); }}>복사</button>{notice ? <small role="status">{notice}</small> : null}</>;
+}
+
+function revealHeading(id: string) {
+  const element = document.getElementById(id);
+  for (let node = element; node; node = node.parentElement) if (node instanceof HTMLDetailsElement) node.open = true;
+  element?.scrollIntoView({ block: "start" });
+}
+
+function MarkdownSectionView({ section, onOpenLink }: { section: MarkdownSection; onOpenLink: (title: string) => void }) {
+  return <details className="markdown-section" open id={`wiki-heading-${section.title.normalize("NFC").trim()}`}>
+    <summary><span role="heading" aria-level={section.level}><WikiInline text={section.title} onOpenLink={onOpenLink} /></span></summary>
+    <MarkdownBlocks content={section.body} onOpenLink={onOpenLink} />
+    {section.children.map((child, index) => <MarkdownSectionView key={index} section={child} onOpenLink={onOpenLink} />)}
+  </details>;
+}
+
+function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+  const root = useMemo(() => markdownSections(content), [content]);
+  const headings: MarkdownSection[] = [];
+  const collect = (section: MarkdownSection) => { if (section.title) headings.push(section); section.children.forEach(collect); };
+  collect(root);
+  return <>{headings.length ? <details className="document-outline"><summary>문서 목차 · {headings.length}개</summary><nav aria-label="문서 목차">{headings.map((heading, index) => <button key={index} className="ghost-button" style={{ paddingLeft: heading.level * 10 }} onClick={() => revealHeading(`wiki-heading-${heading.title.normalize("NFC").trim()}`)}>{heading.title}</button>)}</nav></details> : null}<MarkdownBlocks content={root.body} onOpenLink={onOpenLink} />{root.children.map((section, index) => <MarkdownSectionView key={index} section={section} onOpenLink={onOpenLink} />)}</>;
 }
 
 interface DraftState {
@@ -264,6 +293,8 @@ function WorkspaceContent() {
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
   const [hoverTree, setHoverTree] = useState(false);
+  const [paneWidth, setPaneWidth] = useState(280);
+  const [tagQuery, setTagQuery] = useState<string | null>(null);
   const [treeScroll, setTreeScroll] = useState(0);
   const [linkQuery, setLinkQuery] = useState<string | null>(null);
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
@@ -277,6 +308,8 @@ function WorkspaceContent() {
     const savedFocus = window.localStorage.getItem("brandy-knowledge-focus");
     setFocusMode(savedFocus === null ? true : savedFocus === "true");
     setTreeOpen(window.localStorage.getItem("brandy-knowledge-tree") !== "false");
+    const savedWidth = window.localStorage.getItem("brandy-knowledge-width-v1");
+    if (savedWidth) setPaneWidth(treeWidth(Number(savedWidth)));
     setPreferencesReady(true);
     return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
   }, []);
@@ -285,8 +318,9 @@ function WorkspaceContent() {
     if (!preferencesReady) return;
     window.localStorage.setItem("brandy-knowledge-focus", String(focusMode));
     window.localStorage.setItem("brandy-knowledge-tree", String(treeOpen));
+    window.localStorage.setItem("brandy-knowledge-width-v1", String(paneWidth));
     window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: focusMode }));
-  }, [focusMode, preferencesReady, treeOpen]);
+  }, [focusMode, preferencesReady, treeOpen, paneWidth]);
 
   useEffect(() => {
     if (demo) {
@@ -355,7 +389,7 @@ function WorkspaceContent() {
   const selected = documents.find((document) => document.id === selectedId) ?? null;
   useEffect(() => {
     if (!pendingAnchor || selected?.id !== pendingAnchor.id || selected.content_md === undefined) return;
-    const frame = window.requestAnimationFrame(() => { document.getElementById(`wiki-heading-${pendingAnchor.heading.normalize("NFC").trim()}`)?.scrollIntoView({ block: "start" }); setPendingAnchor(null); });
+    const frame = window.requestAnimationFrame(() => { revealHeading(`wiki-heading-${pendingAnchor.heading.normalize("NFC").trim()}`); setPendingAnchor(null); });
     return () => window.cancelAnimationFrame(frame);
   }, [pendingAnchor, selected]);
   useEffect(() => {
@@ -651,11 +685,12 @@ function WorkspaceContent() {
       </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
 
-      <section className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
+      <section style={{ "--knowledge-tree-width": `${paneWidth}px` } as React.CSSProperties} className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
         {!treeOpen ? <button className="tree-peek-handle" aria-label="파일 트리 잠시 보기" onMouseEnter={() => setHoverTree(true)} onFocus={() => setHoverTree(true)} onClick={() => setTreeOpen(true)}><PanelLeftOpen size={16} /></button> : null}
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
+          <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
+          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
             {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}
@@ -707,7 +742,8 @@ function WorkspaceContent() {
                     <label><span><Tag size={13} /> 태그</span><input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
                   <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
-                  <textarea ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
+                  <textarea ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
+                  {tagQuery !== null ? <div aria-label="태그 제안">{[...new Set(documents.flatMap((document) => document.tags))].filter((tag) => tag.toLowerCase().includes(tagQuery.toLowerCase())).slice(0, 8).map((tag) => <button key={tag} type="button" className="ghost-button" onClick={() => { const inserted = insertTag(draft.content, editorRef.current?.selectionStart ?? 0, tag); setDraft({ ...draft, content: inserted.content }); setTagQuery(null); requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(inserted.caret, inserted.caret); }); }}>#{tag}</button>)}</div> : null}
                 </div>
               ) : mode === "info" ? (
                 <div className="document-info">
@@ -720,7 +756,7 @@ function WorkspaceContent() {
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => moveStatus("archived")}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => moveStatus("draft")}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
-                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView content={readingContent.body} onOpenLink={openWikiLink} /></div>
+                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /></div>
               )}
             </>
           ) : (

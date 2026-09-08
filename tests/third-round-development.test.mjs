@@ -20,7 +20,8 @@ test("third-round scripts paginate all synchronized documents and use source fil
   const workspace = await read("components/content-pipeline-workspaces.tsx");
   assert.match(workspace, /for \(let offset = 0; ; offset \+= 200\)/);
   assert.match(workspace, /loaded\.length >= result\.total/);
-  assert.match(workspace, /a\.source_ref \|\| a\.title/);
+  assert.match(workspace, /sort\(compareScriptDocuments\)/);
+  assert.match(workspace, /scriptFileName\(document\)/);
   assert.match(workspace, /개인 초안/);
 });
 

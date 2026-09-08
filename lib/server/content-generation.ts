@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { structureBorrowGuidance } from "@/lib/structure-borrow";
 import { ApiError } from "@/lib/http";
 import { assembleYoutubeKit, contentSourceText, parseTimedTranscript, selectChannelProcedures, validateClipRanges } from "@/lib/content-input";
-import { sanitizePublicCopyValue } from "@/lib/content-safety";
+import { PUBLIC_COPY_GUIDANCE, sanitizePublicCopyValue } from "@/lib/content-safety";
 import { type RequestActor } from "@/lib/server/auth";
 
 
@@ -88,7 +89,7 @@ export async function generationProcedureRevision(actor: RequestActor, action: k
     revisions.push(...(data ?? []).map((doc) => `${doc.id}:${doc.current_version}`));
     if (!data || data.length < 200) break;
   }
-  return `generation-v3:${revisions.join(",")}`;
+  return `generation-v4-public-copy:${revisions.join(",")}`;
 }
 
 async function procedures(actor: RequestActor, action: keyof typeof PROCEDURE_TERMS, platforms: string[]) {
@@ -204,10 +205,11 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
       ? process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
     const marketEvidence = input.marketEvidence?.length ? `\n\n[YouTube 시장 근거]\n${input.marketEvidence.map((item, index) => `${index + 1}. ${item.title} · ${item.channelTitle} · 조회 ${item.viewCount} · ${item.url}`).join("\n")}` : "";
-    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n시청자: ${String(source.metadata?.audience ?? "")}\n확인한 자료: ${String(source.metadata?.evidence ?? "").slice(0, 12000)}\n실제 경험: ${String(source.metadata?.experience ?? "").slice(0, 12000)}\n설명/원고:\n${(sourceText || String(source.description ?? "")).slice(0, 80_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}`;
+    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n시청자: ${String(source.metadata?.audience ?? "")}\n확인한 자료: ${String(source.metadata?.evidence ?? "").slice(0, 12000)}\n실제 경험: ${String(source.metadata?.experience ?? "").slice(0, 12000)}\n설명/원고:\n${(sourceText || String(source.description ?? "")).slice(0, 80_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\n\n[시청자 표현 규칙]\n${PUBLIC_COPY_GUIDANCE}\n\n${input.action === "topic_plan" ? structureBorrowGuidance(source.metadata?.structureBorrow) : ""}`;
     const rawResult = extractJson(await claude(context, model, outputSchema(input.action), tokenBudget(input.action)));
     if (input.action === "shorts_proposal" && !validateClipRanges(rawResult.clips, cues)) throw new ApiError(502, "CONTENT_CLIP_TIMING_INVALID", "제안된 구간이 실제 자막 범위를 벗어났습니다. 결과를 저장하지 않았습니다.");
-    const result = (input.action === "youtube_kit" ? assembleYoutubeKit(sanitizePublicCopyValue(rawResult) as Record<string, unknown>, cues) : rawResult) as Record<string, unknown>;
+    const publicResult = sanitizePublicCopyValue(rawResult) as Record<string, unknown>;
+    const result: Record<string, unknown> = input.action === "youtube_kit" ? assembleYoutubeKit(publicResult, cues) : publicResult;
     if (input.action === "derivatives") {
       const generated = Array.isArray(result.items) ? result.items.map((item: { platform?: string }) => item.platform) : [];
       if (platforms.some((platform) => !generated.includes(platform)) || generated.some((platform) => !platforms.includes(platform as typeof platforms[number]))) throw new ApiError(502, "CONTENT_CHANNEL_OUTPUT_MISSING", "요청한 채널의 산출물이 모두 생성되지 않았습니다. 결과를 저장하지 않았습니다.");
