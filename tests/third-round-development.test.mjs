@@ -52,7 +52,7 @@ test("Claude and Codex record tools keep the three human approval gates", async 
   assert.match(migration, /records\.write/);
 });
 
-test("third-round quick fixes cover performance CRUD, meeting anchors and shorts rollback", async () => {
+test("third-round quick fixes cover performance CRUD, meeting anchors and shorts creation on save", async () => {
   const [performance, meeting, shorts, packaging] = await Promise.all([
     read("components/performance-workspaces.tsx"),
     read("components/meeting-workspace.tsx"),
@@ -63,7 +63,10 @@ test("third-round quick fixes cover performance CRUD, meeting anchors and shorts
   assert.match(performance, /주간 KPI 수정/);
   assert.match(meeting, /meeting-transcript/);
   assert.match(meeting, /회의 원문을 20자 이상/);
-  assert.match(shorts, /manualUnsaved/);
+  assert.doesNotMatch(shorts, /manualUnsaved/);
+  const addManual = shorts.slice(shorts.indexOf("const addManualClip"), shorts.indexOf("const requestRender"));
+  assert.doesNotMatch(addManual, /createRecord|updateRecord|archiveRecord/);
+  assert.match(shorts, /else await createRecord/);
   assert.match(shorts, /removeClip/);
   assert.match(packaging, /새 주제로 검증/);
 });

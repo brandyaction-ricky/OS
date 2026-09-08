@@ -46,6 +46,7 @@ export async function GET(request: Request) {
     ]);
     const videoBody = await videoResponse.json() as { items?: YoutubeVideoItem[] };
     const channelBody = channelResponse ? await channelResponse.json() as { items?: YoutubeChannelItem[] } : { items: [] };
+    if (!videoResponse.ok || (channelResponse && !channelResponse.ok)) throw new ApiError(502, "YOUTUBE_STATS_FAILED", "YouTube 통계를 읽지 못했습니다. 조회수를 0으로 대체하지 않았습니다.");
     const statistics = new Map((videoBody.items ?? []).map((item) => [item.id, item.statistics]));
     const details = new Map((videoBody.items ?? []).map((item) => [item.id, item.contentDetails]));
     const channelStats = new Map((channelBody.items ?? []).map((item) => [item.id, item.statistics]));

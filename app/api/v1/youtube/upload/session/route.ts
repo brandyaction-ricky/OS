@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { readPipeline } from "@/lib/server/content-pipeline";
 import { getYoutubeAccessToken } from "@/lib/server/youtube-oauth";
 
 export const runtime = "nodejs";
@@ -23,9 +24,17 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request);
     if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 최종 승인된 영상을 업로드할 수 있습니다.");
     const input = inputSchema.parse(await parseJson(request, 20_000));
-    const { data: kit, error } = await actor.supabase.from("os_records").select("id,title,record_type,metadata").eq("id", input.kitId).is("archived_at", null).maybeSingle();
+    const { data: kit, error } = await actor.supabase.from("os_records").select("id,title,record_type,metadata,parent_id").eq("id", input.kitId).is("archived_at", null).maybeSingle();
     if (error) throw new ApiError(400, "YOUTUBE_KIT_READ_FAILED", "유튜브 발행 키트를 불러오지 못했습니다.", error.message);
     if (!kit || kit.record_type !== "content_package" || kit.metadata?.packageKind !== "youtube_kit") throw new ApiError(404, "YOUTUBE_KIT_NOT_FOUND", "유튜브 발행 키트를 찾지 못했습니다.");
+    if (kit.parent_id) {
+      const { data: source, error: sourceError } = await actor.supabase.from("os_records").select("metadata").eq("id", kit.parent_id).is("archived_at", null).maybeSingle();
+      if (sourceError) throw new ApiError(500, "PIPELINE_READ_FAILED", "공정 승인 상태를 확인하지 못했습니다.");
+      if (source?.metadata?.pipelineEnabled === true) {
+        const state = await readPipeline(actor, kit.parent_id);
+        if (!state.approved.every(Boolean)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "제작 공정에서 최종 영상과 발행키트를 승인한 뒤 업로드해 주세요.");
+      }
+    }
     const result = (kit.metadata?.result ?? {}) as Record<string, unknown>;
     const title = String(result.title || kit.title).trim().slice(0, 100);
     if (!title) throw new ApiError(400, "YOUTUBE_TITLE_REQUIRED", "업로드 전에 영상 제목을 입력해 주세요.");

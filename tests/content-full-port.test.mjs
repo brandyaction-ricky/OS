@@ -16,7 +16,7 @@ test("content pages use the full screenshot-matched workspaces", async () => {
   for (const label of ["채널 탐색 사전", "터진 영상 발굴", "틈새 후보", "기획으로 넘기기"]) assert.match(radar, new RegExp(label));
   for (const label of ["우리 채널 썸네일", "시장 썸네일 검색", "제목 후보", "디자인 프롬프트", "저장한 시장 레퍼런스"]) assert.match(packaging, new RegExp(label));
   for (const label of ["스타일 템플릿", "세로 영상 미리보기", "수동 구간", "제작 요청"]) assert.match(shorts, new RegExp(label));
-  for (const label of ["기여 매출", "콘텐츠 전환 퍼널", "일별 조회 흐름", "패키징 점검"]) assert.match(performance, new RegExp(label));
+  for (const label of ["기여 매출", "콘텐츠 전환 퍼널", "일별 조회 흐름", "다음 제작 가설"]) assert.match(performance, new RegExp(label));
 });
 
 test("channel collection resolves an exact YouTube identity before saving", async () => {

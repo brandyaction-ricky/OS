@@ -7,6 +7,7 @@ export interface KnowledgeLinkSource {
   folder: string;
   status: DocumentStatus;
   owner_id: string;
+  source_ref?: string | null;
 }
 
 export interface KnowledgeGraphNode {
@@ -46,17 +47,34 @@ export function extractWikiLinks(content: string) {
   )];
 }
 
-function titleKey(title: string) {
-  return title.normalize("NFC").trim().toLocaleLowerCase("ko-KR");
+export function wikiKey(raw: string) {
+  let value = raw.split("|")[0].split("#")[0].trim();
+  try { value = decodeURIComponent(value); } catch { /* Preserve literal percent signs. */ }
+  return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\.md$/i, "")
+    .normalize("NFC").trim().toLocaleLowerCase("ko-KR").replace(/\s+/g, " ");
+}
+
+export function documentLinkKeys(document: Pick<KnowledgeLinkSource, "title" | "folder" | "source_ref">) {
+  const source = wikiKey(document.source_ref ?? "");
+  const file = source.split("/").pop() ?? "";
+  return [...new Set([wikiKey(document.title), source, file, wikiKey(`${document.folder}/${document.title}`)].filter(Boolean))];
+}
+
+export function resolveWikiLink<T extends Pick<KnowledgeLinkSource, "id" | "title" | "folder" | "status" | "source_ref">>(raw: string, documents: T[], sourceFolder = "") {
+  const key = wikiKey(raw);
+  const candidates = documents.filter((document) => document.status !== "archived" && documentLinkKeys(document).includes(key));
+  if (candidates.length === 1) return candidates[0];
+  const nearby = candidates.filter((document) => wikiKey(document.folder) === wikiKey(sourceFolder));
+  if (nearby.length === 1) return nearby[0];
+  const canonical = candidates.filter((document) => document.status === "canonical");
+  return canonical.length === 1 ? canonical[0] : undefined;
 }
 
 export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): KnowledgeGraph {
   const active = documents.filter((document) => document.status !== "archived");
-  const byTitle = new Map<string, KnowledgeLinkSource>();
+  const byTitle = new Map<string, KnowledgeLinkSource[]>();
   for (const document of active) {
-    const key = titleKey(document.title);
-    const current = byTitle.get(key);
-    if (!current || (current.status !== "canonical" && document.status === "canonical")) byTitle.set(key, document);
+    for (const key of documentLinkKeys(document)) byTitle.set(key, [...(byTitle.get(key) ?? []), document]);
   }
 
   const edges: KnowledgeGraphEdge[] = [];
@@ -68,7 +86,7 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
   for (const document of active) {
     for (const title of extractWikiLinks(document.content_md)) {
       if (title === TEMPLATE_LINK) continue;
-      const target = byTitle.get(titleKey(title));
+      const target = resolveWikiLink(title, byTitle.get(wikiKey(title)) ?? [], document.folder);
       if (!target) {
         broken.push({ sourceId: document.id, sourceTitle: document.title, targetTitle: title });
         continue;

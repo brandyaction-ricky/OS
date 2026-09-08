@@ -14,8 +14,8 @@ test("fifth handoff exposes seven content pages and six settings pages", async (
 });
 
 test("content generation reads canonical procedures and waits safely for credentials", async () => {
-  const route = await read("app/api/v1/content/generate/route.ts");
-  assert.match(route, /eq\("status", "canonical"\)/);
+  const route = await read("lib/server/content-generation.ts");
+  assert.match(route, /document\.status === "canonical"/);
   assert.match(route, /queueForCredentials/);
   assert.match(route, /자가검수|score와 review/);
   assert.match(route, /finalApprovalRequired: true/);
@@ -28,7 +28,7 @@ test("content generation reads canonical procedures and waits safely for credent
 
 test("publishing and shorts enforce human gates before external work", async () => {
   const [records, generation, studio, automation] = await Promise.all([
-    read("app/api/v1/records/route.ts"), read("app/api/v1/content/generate/route.ts"), read("components/content-studio-workspaces.tsx"), read("components/content-automation-workspace.tsx"),
+    read("app/api/v1/records/route.ts"), read("lib/server/content-generation.ts"), read("components/content-studio-workspaces.tsx"), read("components/content-automation-workspace.tsx"),
   ]);
   assert.match(records, /CONTENT_PUBLISH_TRANSITIONS/);
   assert.match(records, /CONTENT_APPROVAL_REQUIRED/);
@@ -42,7 +42,7 @@ test("content studio ports planning, eight-step scripts and channel judgment", a
   const [router, pipeline, generation, packageWorkspace] = await Promise.all([
     read("app/(os)/[stage]/[page]/page.tsx"),
     read("components/content-pipeline-workspaces.tsx"),
-    read("app/api/v1/content/generate/route.ts"),
+    read("lib/server/content-generation.ts"),
     read("components/content-studio-workspaces.tsx"),
   ]);
   for (const workspace of ["ContentTopicsWorkspace", "ContentScriptsWorkspace", "ContentPerformanceWorkspace"]) assert.match(router, new RegExp(workspace));
@@ -55,7 +55,7 @@ test("content studio ports planning, eight-step scripts and channel judgment", a
 
 test("session QA keeps the five canonical derivative channels and editable publishing gates", async () => {
   const [generation, automation, studio] = await Promise.all([
-    read("app/api/v1/content/generate/route.ts"),
+    read("lib/server/content-generation.ts"),
     read("components/content-automation-workspace.tsx"),
     read("components/content-studio-workspaces.tsx"),
   ]);
@@ -75,7 +75,7 @@ test("YouTube market evidence stays server-side and feeds title packaging", asyn
     read("app/api/v1/youtube/search/route.ts"),
     read("lib/api-client.ts"),
     read("components/content-studio-workspaces.tsx"),
-    read("app/api/v1/content/generate/route.ts"),
+    read("lib/server/content-generation.ts"),
     read("app/api/v1/health/route.ts"),
     read("components/settings-workspaces.tsx"),
   ]);

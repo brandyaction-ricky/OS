@@ -19,7 +19,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { createRecord, generateContent, listRecords, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { apiRequest, createRecord, generateContent, listRecords, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -67,6 +67,10 @@ export function ContentRadarWorkspace() {
   const [selectedId, setSelectedId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<YoutubeMarketItem[]>([]);
+  const [durationFilter, setDurationFilter] = useState("long");
+  const [daysFilter, setDaysFilter] = useState("all");
+  const [resultSort, setResultSort] = useState("views");
+  const [baselines, setBaselines] = useState<Record<string, { state: string; sampleCount: number; ratio: number | null; robustZ: number | null; outlier: boolean; reason: string }>>({});
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelInput, setChannelInput] = useState("");
   const [verifiedChannel, setVerifiedChannel] = useState<YoutubeChannelIdentity | null>(null);
@@ -188,6 +192,14 @@ export function ContentRadarWorkspace() {
     } finally { setBusy(false); }
   };
 
+  const measureBaseline = async (item: YoutubeMarketItem) => {
+    setBusy(true); setError("");
+    try { const result = await apiRequest<(typeof baselines)[string]>(`/api/v1/youtube/outlier?videoId=${encodeURIComponent(item.id)}`, { token: accessToken }); setBaselines((current) => ({ ...current, [item.id]: result })); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "동일 채널 기준선을 계산하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+  const visibleResults = results.filter((item) => (durationFilter === "all" || item.durationSeconds >= 240) && (daysFilter === "all" || (item.publishedAt && Date.now() - Date.parse(item.publishedAt) <= Number(daysFilter) * 86400000)))
+    .sort((a, b) => resultSort === "recent" ? String(b.publishedAt).localeCompare(String(a.publishedAt)) : resultSort === "ratio" ? (baselines[b.id]?.ratio ?? -1) - (baselines[a.id]?.ratio ?? -1) : b.viewCount - a.viewCount);
   const saveOutlier = async (item: YoutubeMarketItem) => {
     if (outliers.some((record) => meta(record, "youtubeId", "") === item.id)) return;
     setBusy(true); setError("");
@@ -205,7 +217,7 @@ export function ContentRadarWorkspace() {
         metricUnit: "조회",
         tags: ["아웃라이어", searchQuery.trim()].filter(Boolean),
         metadata: {
-          studioKind: "outlier",
+          studioKind: "outlier", baseline: baselines[item.id] ?? null, discoverySource: "keyword",
           youtubeId: item.id,
           channelTitle: item.channelTitle,
           thumbnail: item.thumbnail,
@@ -333,12 +345,12 @@ export function ContentRadarWorkspace() {
       <section className="panel discovery-console">
         <div><span className="eyebrow">YouTube Data API</span><h2>터진 영상 발굴</h2><p>키워드별 조회 상위 영상을 불러오고, 사람이 근거 영상을 골라 틈새 판정에 보냅니다.</p></div>
         <div className="market-search"><Search size={17} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }} placeholder="예: 직장인 강점 찾기, 퇴사 후 불안" /><button className="primary-button" disabled={busy} onClick={runSearch}>{busy ? "탐색 중…" : "영상 탐색"}</button></div>
-        <div className="procedure-chips"><span>조회 상위순</span><span>한국 지역</span><span>사람이 근거 채택</span><span>자동 기획 금지</span></div>
+        <div className="radar-filters"><label>길이<select value={durationFilter} onChange={(event) => setDurationFilter(event.target.value)}><option value="long">롱폼 · 4분 이상</option><option value="all">전체</option></select></label><label>발행 기간<select value={daysFilter} onChange={(event) => setDaysFilter(event.target.value)}><option value="all">전체</option><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option></select></label><label>정렬<select value={resultSort} onChange={(event) => setResultSort(event.target.value)}><option value="views">조회순</option><option value="recent">최신순</option><option value="ratio">채널 중앙값 배율순</option></select></label><small>표시 {visibleResults.length}/{results.length} · 한국 지역 검색</small></div>
       </section>
-      {results.length ? <section className="outlier-result-grid">{results.map((item) => {
+      {results.length ? <section className="outlier-result-grid">{visibleResults.map((item) => {
         const saved = outliers.some((record) => meta(record, "youtubeId", "") === item.id);
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
-        return <article className="panel outlier-result" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button></div></article>;
+        return <article className="panel outlier-result" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div>{baselines[item.id] ? <p className="baseline-result">{baselines[item.id].ratio === null ? `비교 표본 ${baselines[item.id].sampleCount}/20` : `중앙값 ${baselines[item.id].ratio!.toFixed(2)}배 · ${baselines[item.id].outlier ? "이상치 후보" : "일반 범위"}`}<small>{baselines[item.id].reason}</small></p> : null}<button className="secondary-button" disabled={busy} onClick={() => measureBaseline(item)}>같은 채널 20개와 비교</button><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button></div></article>;
       })}</section> : <div className="panel compact-empty discovery-empty"><Radar size={28} /><strong>키워드로 시장 영상을 탐색하세요.</strong><span>검색 결과는 저장하기 전까지 운영 데이터에 들어가지 않습니다.</span></div>}
       <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}

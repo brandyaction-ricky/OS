@@ -15,8 +15,9 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { archiveRecord, createContentMediaUpload, createRecord, generateContent, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -83,6 +84,10 @@ export function ContentShortformWorkspace() {
   const [localFile, setLocalFile] = useState<File | null>(null);
   const [localUrl, setLocalUrl] = useState("");
   const [sourceUrlDraft, setSourceUrlDraft] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [savedMediaUrl, setSavedMediaUrl] = useState("");
+  const previewRef = useRef<HTMLVideoElement>(null);
+  const [editRange, setEditRange] = useState({ start: 0, end: 30 });
   const [editClip, setEditClip] = useState<OsRecord | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -96,8 +101,8 @@ export function ContentShortformWorkspace() {
       ]);
       const usable = sourceResult.records.filter((record) => !["channel", "outlier"].includes(meta<string>(record, "studioKind", "")));
       setSources(usable); setClips(clipResult.records);
-      setSourceId((current) => current || usable[0]?.id || "");
-      setError("");
+      setSourceId((current) => current || new URLSearchParams(window.location.search).get("sourceId") || usable[0]?.id || "");
+
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "숏폼 작업을 불러오지 못했습니다.");
     }
@@ -109,15 +114,32 @@ export function ContentShortformWorkspace() {
   const selectedSource = sources.find((source) => source.id === sourceId) ?? null;
   const visible = clips.filter((clip) => clip.parent_id === sourceId);
   const selected = visible.filter((clip) => meta(clip, "selected", true));
-  const finished = visible.filter((clip) => ["ready", "published"].includes(clip.status));
+  const finished = visible.filter((clip) => meta<string>(clip, "renderState", "") === "completed" && meta(clip, "previewUrl", ""));
 
   useEffect(() => {
     const saved = meta<Partial<ShortsStyle>>(selectedSource, "shortsStyle", {});
     setStyle({ ...DEFAULT_STYLE, ...saved });
     setSourceUrlDraft(selectedSource?.source_url ?? "");
+    setTranscript(meta(selectedSource, "transcriptSrt", ""));
     setLocalFile(null);
     setLocalUrl("");
   }, [selectedSource]);
+
+  useEffect(() => {
+    let active = true; setSavedMediaUrl("");
+    const path = meta<string>(selectedSource, "contentMediaPath", "");
+    if (path) getContentMediaUrl(accessToken, path).then((result) => { if (active) setSavedMediaUrl(result.url); }).catch(() => { if (active) setError("저장 원본을 불러오지 못했습니다. 보관 만료 여부를 확인해 주세요."); });
+    return () => { active = false; };
+  }, [accessToken, selectedSource]);
+  useEffect(() => { if (editClip) setEditRange({ start: Number(meta(editClip, "start", 0)), end: Number(meta(editClip, "end", 30)) }); }, [editClip]);
+  const previewUrl = localUrl || savedMediaUrl || (/^https?:\/\/[^\s]+\.(mp4|webm|mov)(\?.*)?$/i.test(sourceUrlDraft) ? sourceUrlDraft : "");
+  const importCaptions = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 2_000_000) return setError("자막 파일은 2MB 이하로 선택해 주세요.");
+    const text = await file.text();
+    if (!parseTimedTranscript(text).length) return setError("유효한 시간 정보가 있는 SRT/VTT 파일을 선택해 주세요.");
+    setTranscript(text); setError("");
+  };
 
   const chooseFile = (file?: File) => {
     if (localUrl) URL.revokeObjectURL(localUrl);
@@ -144,7 +166,7 @@ export function ContentShortformWorkspace() {
         id: selectedSource.id,
         expectedVersion: selectedSource.version,
         sourceUrl: sourceUrlDraft.trim() || null,
-        metadata: { ...selectedSource.metadata, shortsStyle: style, contentMediaPath: mediaPath, contentMediaName: localFile?.name || meta(selectedSource, "contentMediaName", ""), contentMediaSize: localFile?.size || meta(selectedSource, "contentMediaSize", 0), contentMediaRetentionUntil: retentionUntil, styleUpdatedAt: new Date().toISOString() },
+        metadata: { ...selectedSource.metadata, shortsStyle: style, transcriptSrt: transcript, contentMediaPath: mediaPath, contentMediaName: localFile?.name || meta(selectedSource, "contentMediaName", ""), contentMediaSize: localFile?.size || meta(selectedSource, "contentMediaSize", 0), contentMediaRetentionUntil: retentionUntil, styleUpdatedAt: new Date().toISOString() },
       });
       setLocalFile(null);
       await load();
@@ -155,6 +177,7 @@ export function ContentShortformWorkspace() {
 
   const propose = async () => {
     if (!sourceId) return;
+    if (transcript !== meta(selectedSource, "transcriptSrt", "")) return setError("변경한 자막을 원본·스타일 저장으로 먼저 저장해 주세요.");
     setBusy(true); setError("");
     try {
       const response = await generateContent(accessToken, { action: "shorts_proposal", sourceId, count });
@@ -182,43 +205,21 @@ export function ContentShortformWorkspace() {
     const form = new FormData(event.currentTarget);
     const start = Number(form.get("start"));
     const end = Number(form.get("end"));
-    if (end <= start) return setError("클립 종료 시각은 시작 시각보다 뒤여야 합니다.");
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return setError("클립 종료 시각은 시작 시각보다 뒤여야 합니다.");
     setBusy(true); setError("");
     try {
-      await updateRecord(accessToken, {
-        id: editClip.id,
-        expectedVersion: editClip.version,
-        title: String(form.get("title") ?? "").trim(),
-        description: String(form.get("hook") ?? "").trim(),
-        metadata: { ...editClip.metadata, start, end, editNote: String(form.get("note") ?? "").trim(), manualUnsaved: false },
-      });
+      const changes = { title: String(form.get("title") ?? "").trim(), description: String(form.get("hook") ?? "").trim(), metadata: { ...editClip.metadata, start, end, editNote: String(form.get("note") ?? "").trim(), renderState: "not_started", previewUrl: null } };
+      if (editClip.id) await updateRecord(accessToken, { id: editClip.id, expectedVersion: editClip.version, status: "review", stage: "구간제안", ...changes });
+      else await createRecord(accessToken, { recordType: "content_short", status: "review", priority: "normal", stage: "구간제안", team: profile?.team || "콘텐츠", parentId: sourceId, sourceUrl: selectedSource?.source_url, tags: ["쇼츠", "수동구간"], ...changes });
       setEditClip(null); await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "클립 구간을 저장하지 못했습니다.");
     } finally { setBusy(false); }
   };
 
-  const addManualClip = async () => {
+  const addManualClip = () => {
     if (!selectedSource) return;
-    setBusy(true); setError("");
-    try {
-      const { record } = await createRecord(accessToken, {
-        recordType: "content_short",
-        title: `${selectedSource.title} 수동 클립`,
-        description: "수동으로 추가한 구간",
-        status: "review",
-        priority: "normal",
-        stage: "구간제안",
-        team: profile?.team || "콘텐츠",
-        parentId: selectedSource.id,
-        sourceUrl: selectedSource.source_url,
-        tags: ["쇼츠", "수동구간"],
-        metadata: { proposalOnly: true, manualUnsaved: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style },
-      });
-      setEditClip(record); await load();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "수동 구간을 추가하지 못했습니다.");
-    } finally { setBusy(false); }
+    setEditClip({ ...selectedSource, id: "", version: 0, record_type: "content_short", parent_id: sourceId, title: `${selectedSource.title} 수동 클립`, description: "", metadata: { proposalOnly: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style } });
   };
 
   const requestRender = async () => {
@@ -229,19 +230,19 @@ export function ContentShortformWorkspace() {
     setBusy(true); setError("");
     try {
       for (const clip of selected) {
-        await updateRecord(accessToken, { id: clip.id, expectedVersion: clip.version, status: "ready", stage: "제작대기", progress: 45, metadata: { ...clip.metadata, ...style, renderState: "queued", sourceUrl: selectedSource.source_url, contentMediaPath: mediaPath } });
+        await updateRecord(accessToken, { id: clip.id, expectedVersion: clip.version, status: "blocked", stage: "렌더 서버 연결 대기", progress: 25, metadata: { ...clip.metadata, ...style, renderState: "worker_not_connected", sourceUrl: selectedSource.source_url, contentMediaPath: mediaPath } });
       }
       await createRecord(accessToken, {
         recordType: "ai_job",
         title: `[숏폼 제작] ${selectedSource.title}`,
-        description: `승인한 ${selected.length}개 구간을 영상 워커에서 제작합니다. 원본은 서버 저장 경로 또는 외부 원본 URL로 전달됩니다.`,
-        status: "backlog",
+        description: `선택한 ${selected.length}개 구간의 제작 요청입니다. 렌더 서버 연결이 필요하며 아직 영상은 생성되지 않았습니다.`,
+        status: "blocked",
         priority: "high",
         team: profile?.team || "콘텐츠",
         parentId: selectedSource.id,
         sourceUrl: selectedSource.source_url,
         tags: ["숏폼", "렌더", "승인완료"],
-        metadata: { contentAction: "shorts_render", sourceId: selectedSource.id, clipIds: selected.map((clip) => clip.id), style, sourceUrl: selectedSource.source_url, contentMediaPath: mediaPath, deleteOriginalAfter: meta(selectedSource, "contentMediaRetentionUntil", "") },
+        metadata: { reason: "worker_not_connected", contentAction: "shorts_render", sourceId: selectedSource.id, clipIds: selected.map((clip) => clip.id), style, sourceUrl: selectedSource.source_url, contentMediaPath: mediaPath, deleteOriginalAfter: meta(selectedSource, "contentMediaRetentionUntil", "") },
       });
       await load();
     } catch (reason) {
@@ -249,14 +250,7 @@ export function ContentShortformWorkspace() {
     } finally { setBusy(false); }
   };
 
-  const closeClipEditor = async () => {
-    const clip = editClip;
-    setEditClip(null);
-    if (clip && meta(clip, "manualUnsaved", false)) {
-      try { await archiveRecord(accessToken, clip.id); await load(); }
-      catch (reason) { setError(reason instanceof Error ? reason.message : "취소한 수동 구간을 정리하지 못했습니다."); }
-    }
-  };
+  const closeClipEditor = () => { if (!busy) setEditClip(null); };
 
   const removeClip = async (clip: OsRecord) => {
     if (!window.confirm(`“${clip.title}” 클립을 휴지통으로 이동할까요?`)) return;
@@ -272,21 +266,21 @@ export function ContentShortformWorkspace() {
     <nav className="studio-tabs content-radar-tabs" aria-label="숏폼 작업 단계"><button className={tab === "editor" ? "active" : ""} onClick={() => setTab("editor")}><strong>스타일·원본</strong><small>화면 템플릿</small></button><button className={tab === "clips" ? "active" : ""} onClick={() => setTab("clips")}><strong>클립</strong><small>구간·제작 관리</small></button></nav>
 
     {tab === "editor" ? <section className="shorts-editor-layout">
-      <article className="panel shorts-preview-panel"><div className="panel-header"><div><h2>세로 영상 미리보기</h2><p>9:16 출력 화면 · 원본 파일은 이 브라우저 안에서만 미리봅니다.</p></div><span className="status-pill status-ready">1080 × 1920</span></div><div className="shorts-device" style={{ backgroundColor: style.backgroundColor }}>
-        {localUrl ? <video src={localUrl} muted controls /> : <div className="shorts-placeholder"><Film size={42} /><span>원본 영상을 선택하면 미리보기가 표시됩니다.</span></div>}
+      <article className="panel shorts-preview-panel"><div className="panel-header"><div><h2>세로 영상 미리보기</h2><p>원본 재생과 스타일 배치를 확인합니다. 최종 렌더 결과는 별도로 확인하세요.</p></div><span className="status-pill status-ready">1080 × 1920</span></div><div className="shorts-device" style={{ backgroundColor: style.backgroundColor }}>
+        {previewUrl ? <video src={previewUrl} muted controls /> : <div className="shorts-placeholder"><Film size={42} /><span>원본 영상을 선택하면 미리보기가 표시됩니다.</span></div>}
         <div className="shorts-overlay" style={{ justifyContent: previewPosition, fontFamily: style.font }}><div><i style={{ backgroundColor: style.accentColor }} /><strong style={{ color: style.titleColor, fontSize: `${Math.max(16, style.titleSize * .62)}px` }}>{style.titleText}</strong><span style={{ color: style.subtitleColor, fontSize: `${Math.max(10, style.subtitleSize * .62)}px` }}>{style.subtitleText}</span></div><small>{style.channelName}</small></div>
       </div></article>
-      <aside className="panel shorts-style-panel"><div className="panel-header"><div><h2>스타일 템플릿</h2><p>콘텐츠별로 저장되며 모든 채택 클립에 적용됩니다.</p></div><button className="primary-button" disabled={!selectedSource || busy} onClick={saveTemplate}><Save size={14} /> {busy ? "원본 저장 중…" : "원본·스타일 저장"}</button></div><div className="shorts-source-block"><label className="file-drop"><Upload size={18} /><span><strong>{localFile?.name || meta(selectedSource, "contentMediaName", "원본 영상 선택")}</strong><small>{meta(selectedSource, "contentMediaPath", "") ? "비공개 원본 저장됨 · 제작 후 24시간 보관" : "선택 즉시 미리보기 · 저장 시 비공개 업로드"}</small></span><input type="file" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/x-matroska,.mkv" onChange={(event) => chooseFile(event.target.files?.[0])} /></label><label><span><Link2 size={13} /> 외부 원본 URL (선택)</span><input type="url" value={sourceUrlDraft} onChange={(event) => setSourceUrlDraft(event.target.value)} placeholder="https://… 워커가 읽을 수 있는 경로" /></label></div><div className="shorts-style-form"><label><span>메인 제목</span><input value={style.titleText} onChange={(event) => setStyle((current) => ({ ...current, titleText: event.target.value }))} /></label><label><span>보조 문구</span><input value={style.subtitleText} onChange={(event) => setStyle((current) => ({ ...current, subtitleText: event.target.value }))} /></label><div className="form-grid"><label><span>채널명</span><input value={style.channelName} onChange={(event) => setStyle((current) => ({ ...current, channelName: event.target.value }))} /></label><label><span>글꼴</span><select value={style.font} onChange={(event) => setStyle((current) => ({ ...current, font: event.target.value }))}><option>Pretendard</option><option>Noto Sans KR</option><option>system-ui</option></select></label></div><div className="form-grid"><label><span>제목 크기 {style.titleSize}</span><input type="range" min="22" max="58" value={style.titleSize} onChange={(event) => setStyle((current) => ({ ...current, titleSize: Number(event.target.value) }))} /></label><label><span>보조 크기 {style.subtitleSize}</span><input type="range" min="12" max="32" value={style.subtitleSize} onChange={(event) => setStyle((current) => ({ ...current, subtitleSize: Number(event.target.value) }))} /></label></div><div className="shorts-color-row"><label><span>제목</span><input type="color" value={style.titleColor} onChange={(event) => setStyle((current) => ({ ...current, titleColor: event.target.value }))} /></label><label><span>보조</span><input type="color" value={style.subtitleColor} onChange={(event) => setStyle((current) => ({ ...current, subtitleColor: event.target.value }))} /></label><label><span>강조</span><input type="color" value={style.accentColor} onChange={(event) => setStyle((current) => ({ ...current, accentColor: event.target.value }))} /></label><label><span>배경</span><input type="color" value={style.backgroundColor} onChange={(event) => setStyle((current) => ({ ...current, backgroundColor: event.target.value }))} /></label></div><div className="form-grid"><label><span>문구 위치</span><select value={style.position} onChange={(event) => setStyle((current) => ({ ...current, position: event.target.value as ShortsStyle["position"] }))}><option value="top">상단</option><option value="center">중앙</option><option value="bottom">하단</option></select></label><label><span>세로 화면</span><select value={style.reframe} onChange={(event) => setStyle((current) => ({ ...current, reframe: event.target.value as ShortsStyle["reframe"] }))}><option value="pad">전체 보존 · 흐린 배경</option><option value="top">상단 확대 · 아래 여백</option><option value="crop">중앙 크롭 · 예외</option></select></label></div><div className="shorts-checks"><label><input type="checkbox" checked={style.captions} onChange={(event) => setStyle((current) => ({ ...current, captions: event.target.checked }))} /> 자동 자막</label><label><input type="checkbox" checked={style.tighten} onChange={(event) => setStyle((current) => ({ ...current, tighten: event.target.checked }))} /> 무음 줄이기</label></div></div></aside>
+      <aside className="panel shorts-style-panel"><div className="panel-header"><div><h2>스타일 템플릿</h2><p>콘텐츠별로 저장되며 모든 채택 클립에 적용됩니다.</p></div><button className="primary-button" disabled={!selectedSource || busy} onClick={saveTemplate}><Save size={14} /> {busy ? "원본 저장 중…" : "원본·스타일 저장"}</button></div><div className="shorts-source-block"><label className="file-drop"><Upload size={18} /><span><strong>{localFile?.name || meta(selectedSource, "contentMediaName", "원본 영상 선택")}</strong><small>{meta(selectedSource, "contentMediaPath", "") ? "비공개 원본 저장됨 · 업로드 후 24시간 보관" : "선택 즉시 미리보기 · 저장 시 비공개 업로드"}</small></span><input type="file" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/x-matroska,.mkv" onChange={(event) => chooseFile(event.target.files?.[0])} /></label><label><span><Link2 size={13} /> 외부 원본 URL (선택)</span><input type="url" value={sourceUrlDraft} onChange={(event) => setSourceUrlDraft(event.target.value)} placeholder="https://… 워커가 읽을 수 있는 경로" /></label></div><section className="shorts-transcript"><label><span>시간 자막 (SRT·VTT)</span><input type="file" accept=".srt,.vtt,text/vtt" onChange={(event) => { void importCaptions(event.target.files?.[0]); event.target.value = ""; }} /></label><textarea rows={6} aria-label="시간 자막 원문" value={transcript} onChange={(event) => setTranscript(event.target.value)} placeholder="00:00:00,000 --> 00:00:04,000 자막 내용" /><small>유효한 자막 {parseTimedTranscript(transcript).length}개 · 저장 후 구간 제안에 사용합니다.</small></section><div className="shorts-style-form"><label><span>메인 제목</span><input value={style.titleText} onChange={(event) => setStyle((current) => ({ ...current, titleText: event.target.value }))} /></label><label><span>보조 문구</span><input value={style.subtitleText} onChange={(event) => setStyle((current) => ({ ...current, subtitleText: event.target.value }))} /></label><div className="form-grid"><label><span>채널명</span><input value={style.channelName} onChange={(event) => setStyle((current) => ({ ...current, channelName: event.target.value }))} /></label><label><span>글꼴</span><select value={style.font} onChange={(event) => setStyle((current) => ({ ...current, font: event.target.value }))}><option>Pretendard</option><option>Noto Sans KR</option><option>system-ui</option></select></label></div><div className="form-grid"><label><span>제목 크기 {style.titleSize}</span><input type="range" min="22" max="58" value={style.titleSize} onChange={(event) => setStyle((current) => ({ ...current, titleSize: Number(event.target.value) }))} /></label><label><span>보조 크기 {style.subtitleSize}</span><input type="range" min="12" max="32" value={style.subtitleSize} onChange={(event) => setStyle((current) => ({ ...current, subtitleSize: Number(event.target.value) }))} /></label></div><div className="shorts-color-row"><label><span>제목</span><input type="color" value={style.titleColor} onChange={(event) => setStyle((current) => ({ ...current, titleColor: event.target.value }))} /></label><label><span>보조</span><input type="color" value={style.subtitleColor} onChange={(event) => setStyle((current) => ({ ...current, subtitleColor: event.target.value }))} /></label><label><span>강조</span><input type="color" value={style.accentColor} onChange={(event) => setStyle((current) => ({ ...current, accentColor: event.target.value }))} /></label><label><span>배경</span><input type="color" value={style.backgroundColor} onChange={(event) => setStyle((current) => ({ ...current, backgroundColor: event.target.value }))} /></label></div><div className="form-grid"><label><span>문구 위치</span><select value={style.position} onChange={(event) => setStyle((current) => ({ ...current, position: event.target.value as ShortsStyle["position"] }))}><option value="top">상단</option><option value="center">중앙</option><option value="bottom">하단</option></select></label><label><span>세로 화면</span><select value={style.reframe} onChange={(event) => setStyle((current) => ({ ...current, reframe: event.target.value as ShortsStyle["reframe"] }))}><option value="pad">전체 보존 · 흐린 배경</option><option value="top">상단 확대 · 아래 여백</option><option value="crop">중앙 크롭 · 예외</option></select></label></div><div className="shorts-checks"><label><input type="checkbox" checked={style.captions} onChange={(event) => setStyle((current) => ({ ...current, captions: event.target.checked }))} /> 자동 자막</label><label><input type="checkbox" checked={style.tighten} onChange={(event) => setStyle((current) => ({ ...current, tighten: event.target.checked }))} /> 무음 줄이기</label></div></div></aside>
     </section> : null}
 
     {tab === "clips" ? <>
-      <section className="panel clips-toolbar"><div><span><strong>{visible.length}</strong> 전체 클립</span><span><strong>{selected.length}</strong> 채택</span><span><strong>{finished.length}</strong> 제작 대기·완료</span></div><div><button className="secondary-button" disabled={!sourceId || busy} onClick={addManualClip}><Plus size={14} /> 수동 구간</button><button className="primary-button" disabled={!selected.length || busy} onClick={requestRender}><Play size={14} /> 채택 {selected.length}개 제작 요청</button></div></section>
+      <section className="panel clips-toolbar"><div><span><strong>{visible.length}</strong> 전체 클립</span><span><strong>{selected.length}</strong> 채택</span><span><strong>{finished.length}</strong> 제작 완료</span></div><div><button className="secondary-button" disabled={!sourceId || busy} onClick={addManualClip}><Plus size={14} /> 수동 구간</button><button className="primary-button" disabled={!selected.length || busy} onClick={requestRender}><Play size={14} /> 채택 {selected.length}개 제작 요청</button></div></section>
       <section className="clip-production-grid">{visible.map((clip, index) => {
         const start = Number(meta(clip, "start", 0)); const end = Number(meta(clip, "end", 0)); const picked = meta(clip, "selected", true); const preview = meta(clip, "previewUrl", "");
         return <article className={`panel clip-production-card ${picked ? "selected" : ""}`} key={clip.id}><div className="vertical-clip-preview" style={{ backgroundColor: style.backgroundColor }}>{preview ? <video src={preview} muted controls /> : <><Film size={34} /><span>CLIP {String(index + 1).padStart(2, "0")}</span></>}</div><div><header><button className={picked ? "clip-picked" : ""} onClick={() => toggle(clip)}>{picked ? <Check size={13} /> : <Plus size={13} />} {picked ? "채택" : "채택하기"}</button><span className={`status-pill status-${clip.status}`}>{clip.stage || clip.status}</span></header><h3>{clip.title}</h3><p>{clip.description}</p><div className="clip-time"><span>{formatTime(start)}</span><i /><span>{formatTime(end)}</span><em>{Math.max(0, Math.round(end - start))}초</em></div><footer><button className="ghost-button" onClick={() => setEditClip(clip)}><Pencil size={13} /> 구간·문구 수정</button>{preview ? <a className="ghost-button" href={preview} download><Download size={13} /> 다운로드</a> : <button className="ghost-button" disabled><Download size={13} /> 제작 후 다운로드</button>}<button className="ghost-button danger" onClick={() => removeClip(clip)}><Trash2 size={13} /> 삭제</button></footer></div></article>;
       })}{!visible.length ? <div className="panel compact-empty clip-empty"><Scissors size={28} /><strong>제안된 클립이 없습니다.</strong><span>구간 제안을 실행하거나 수동 구간을 추가하세요.</span></div> : null}</section>
     </> : null}
 
-    {editClip ? <div className="drawer-backdrop" onMouseDown={() => !busy && closeClipEditor()}><form className="record-drawer" onSubmit={saveClip} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">클립 편집</span><h2>구간·문구 수정</h2></div><button type="button" className="icon-button" onClick={closeClipEditor}><X size={18} /></button></div><label><span>클립 제목</span><input name="title" required defaultValue={editClip.title} /></label><label><span>첫 문장·훅</span><textarea name="hook" rows={4} defaultValue={editClip.description} /></label><div className="form-grid"><label><span>시작 초</span><input type="number" min="0" step="0.1" name="start" defaultValue={Number(meta(editClip, "start", 0))} /></label><label><span>종료 초</span><input type="number" min="0.1" step="0.1" name="end" defaultValue={Number(meta(editClip, "end", 30))} /></label></div><label><span>편집 메모</span><textarea name="note" rows={4} defaultValue={meta(editClip, "editNote", "")} placeholder="점프 컷, 강조 자막, B-roll 지시" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={closeClipEditor}>취소</button><button className="primary-button" disabled={busy}><Save size={14} /> 수정 저장</button></div></form></div> : null}
+    {editClip ? <div className="drawer-backdrop" onMouseDown={() => !busy && closeClipEditor()}><form className="record-drawer" onSubmit={saveClip} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">클립 편집</span><h2>{editClip.id ? "구간·문구 수정" : "수동 구간 추가"}</h2></div><button type="button" className="icon-button" onClick={closeClipEditor}><X size={18} /></button></div>{previewUrl ? <video className="clip-trim-preview" ref={previewRef} src={previewUrl} controls onTimeUpdate={() => { const video = previewRef.current; if (video && video.currentTime >= editRange.end) video.pause(); }} /> : null}<button type="button" className="secondary-button" disabled={!previewUrl} onClick={() => { const video = previewRef.current; if (video) { video.currentTime = editRange.start; void video.play(); } }}>선택 구간 재생</button><label><span>클립 제목</span><input name="title" required defaultValue={editClip.title} /></label><label><span>첫 문장·훅</span><textarea name="hook" rows={4} defaultValue={editClip.description} /></label><div className="form-grid"><label><span>시작 초</span><input type="number" min="0" step="0.1" name="start" required value={editRange.start} onChange={(event) => setEditRange((current) => ({ ...current, start: Number(event.target.value) }))} /></label><label><span>종료 초</span><input type="number" min="0.1" step="0.1" name="end" required value={editRange.end} onChange={(event) => setEditRange((current) => ({ ...current, end: Number(event.target.value) }))} /></label></div><label><span>편집 메모</span><textarea name="note" rows={4} defaultValue={meta(editClip, "editNote", "")} placeholder="점프 컷, 강조 자막, B-roll 지시" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={closeClipEditor}>취소</button><button className="primary-button" disabled={busy}><Save size={14} /> 수정 저장</button></div></form></div> : null}
   </>;
 }

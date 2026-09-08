@@ -36,7 +36,8 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
+import { apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
+import { resolveWikiLink } from "@/lib/knowledge-links";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/company-settings";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
@@ -65,17 +66,21 @@ function documentFolder(document: KnowledgeDocument) {
   return "분류 없음";
 }
 
-function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean) {
+function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean, inventory: Array<{path: string; count: number}> = []) {
   const roots: FolderTreeNode[] = [];
-  for (const document of documents) {
-    const parts = documentFolder(document).split("/").filter(Boolean);
+  const entries = inventory.length ? inventory : documents.map(document => ({path: documentFolder(document), count: 1}));
+  for (const entry of entries) {
+    const parts = entry.path.split("/").filter(Boolean);
     let level = roots; let path = "";
     for (const part of parts) {
       path = path ? `${path}/${part}` : part;
       let node = level.find((item) => item.name === part);
       if (!node) { node = { name: part, path, count: 0, children: [], documents: [] }; level.push(node); }
-      node.count += 1; level = node.children;
+      node.count += entry.count; level = node.children;
     }
+  }
+  for (const document of documents) {
+    const parts = documentFolder(document).split("/").filter(Boolean);
     const folder = parts.reduce<FolderTreeNode | undefined>((current, part) => (current?.children ?? roots).find((item) => item.name === part), undefined);
     folder?.documents.push(document);
   }
@@ -93,12 +98,6 @@ function wikiLinks(content: string) {
 function wikiTarget(raw: string) {
   const target = raw.split("|")[0].split("#")[0].trim().replace(/\\/g, "/");
   return target.replace(/\.md$/i, "");
-}
-
-function normalizedWikiValue(raw: string) {
-  let value = wikiTarget(raw);
-  try { value = decodeURIComponent(value); } catch { /* 입력 문자열 그대로 비교 */ }
-  return value.normalize("NFC").trim().toLocaleLowerCase("ko-KR").replace(/^\.\//, "").replace(/\s+/g, " ");
 }
 
 interface ReadingContent { body: string; metadata: Array<{ label: string; value: string }> }
@@ -140,7 +139,7 @@ function WikiInline({ text, onOpenLink }: { text: string; onOpenLink: (title: st
   const parts = text.split(/(\[\[[^\]]+\]\]|\*\*[^*]+\*\*|`[^`]+`)/g);
   return <>{parts.map((part, index) => {
     const match = part.match(/^\[\[([^\]]+)\]\]$/);
-    if (match) { const raw = match[1]; const title = wikiTarget(raw); const alias = raw.includes("|") ? raw.split("|").slice(1).join("|").trim() : ""; return <button className="wiki-link" type="button" key={index} onClick={() => onOpenLink(title)}>{alias || title}</button>; }
+    if (match) { const raw = match[1]; const title = wikiTarget(raw); const alias = raw.includes("|") ? raw.split("|").slice(1).join("|").trim() : ""; return <button className="wiki-link" type="button" key={index} onClick={() => onOpenLink(raw.split("|")[0])}>{alias || title}</button>; }
     if (/^\*\*[^*]+\*\*$/.test(part)) return <strong key={index}>{part.slice(2, -2)}</strong>;
     if (/^`[^`]+`$/.test(part)) return <code key={index}>{part.slice(1, -1)}</code>;
     return <span key={index}>{part}</span>;
@@ -171,7 +170,7 @@ function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (t
           const text = heading[2].split("\n")[0];
           const rest = block.split("\n").slice(1).join("\n");
           return (
-            <div key={index}>
+            <div key={index} id={`wiki-heading-${text.normalize("NFC").trim()}`}>
               {level === 1 ? <h1><WikiInline text={text} onOpenLink={onOpenLink} /></h1> : level === 2 ? <h2><WikiInline text={text} onOpenLink={onOpenLink} /></h2> : <h3><WikiInline text={text} onOpenLink={onOpenLink} /></h3>}
               {rest ? <p><WikiInline text={rest} onOpenLink={onOpenLink} /></p> : null}
             </div>
@@ -263,6 +262,15 @@ function WorkspaceContent() {
   const [focusMode, setFocusMode] = useState(true);
   const [treeOpen, setTreeOpen] = useState(true);
   const [preferencesReady, setPreferencesReady] = useState(false);
+  const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
+  const [hoverTree, setHoverTree] = useState(false);
+  const [treeScroll, setTreeScroll] = useState(0);
+  const [linkQuery, setLinkQuery] = useState<string | null>(null);
+  const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
+  const [pendingAnchor, setPendingAnchor] = useState<{ id: string; heading: string } | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const epoch = useRef(0);
+  const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -288,50 +296,79 @@ function WorkspaceContent() {
     listMembers(accessToken).then((result) => setMembers(result.members.filter((member) => member.is_active))).catch(() => setMembers([]));
   }, [accessToken, demo, profile]);
 
+  const loadFolder = useCallback(async (path: string) => {
+    const key = `${ownerFilter}:${path}`;
+    if (demo || loadedFolders.current.has(key)) return;
+    loadedFolders.current.add(key);
+    const revision = epoch.current;
+    try {
+      const items: KnowledgeDocument[] = [];
+      for (let offset = 0; ; offset += 200) {
+        const params = new URLSearchParams({view: "summary", limit: "200", offset: String(offset), folder: path, exactFolder: "true", scope: ownerFilter});
+        if (ownerFilter.startsWith("member:")) params.set("owner", ownerFilter.slice(7));
+        const result = await listDocuments(accessToken, params.toString());
+        items.push(...result.documents);
+        if (items.length >= result.total || !result.documents.length) break;
+      }
+      if (revision !== epoch.current) return;
+      setDocuments(current => [...current, ...items.filter(item => !current.some(row => row.id === item.id))]);
+    } catch (reason) {
+      loadedFolders.current.delete(key);
+      setError(reason instanceof Error ? reason.message : "폴더를 열지 못했습니다.");
+    }
+  }, [accessToken, demo, ownerFilter]);
+
   const reload = useCallback(async () => {
     if (demo) return;
+    const revision = ++epoch.current;
+    loadedFolders.current.clear();
     setListLoading(true);
     try {
-      const all: KnowledgeDocument[] = [];
-      const first = await listDocuments(accessToken, "view=summary&limit=200&offset=0");
-      all.push(...first.documents);
-      setDocuments([...all]);
-      setSelectedId((current) => current ?? all[0]?.id ?? null);
-      setListLoading(false);
-      const offsets = Array.from(
-        { length: Math.max(0, Math.ceil(first.total / 200) - 1) },
-        (_, index) => (index + 1) * 200,
-      );
-      const remaining = await Promise.all(
-        offsets.map((offset) =>
-          listDocuments(accessToken, `view=summary&limit=200&offset=${offset}`),
-        ),
-      );
-      remaining.forEach((result) => all.push(...result.documents));
-      setDocuments(all);
-      setSelectedId((current) => current ?? all[0]?.id ?? null);
+      const result = await apiRequest<{folders: Array<{path: string; count: number}>}>(`/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`, {token: accessToken});
+      if (revision !== epoch.current) return;
+      setInventory(result.folders);
+      setDocuments(current => current.filter(row => row.id === selectedId));
+      await Promise.all([...expandedFolders].map(loadFolder));
       setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다.");
-    } finally {
-      setListLoading(false);
-    }
-  }, [accessToken, demo]);
-
-  useEffect(() => { reload(); }, [reload]);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다."); }
+    finally { if (revision === epoch.current) setListLoading(false); }
+  // Selection and expansion do not reload the folder inventory.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, demo, ownerFilter, loadFolder]);
+  useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
-    if (!selectedId && documents[0]) setSelectedId(documents[0].id);
-  }, [documents, selectedId]);
-
+    const keydown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") { event.preventDefault(); setQuickOpen(true); setLinkQuery(""); }
+      if (event.key === "Escape") { setQuickOpen(false); setLinkQuery(null); }
+    };
+    window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
+  }, []);
+  useEffect(() => {
+    if (linkQuery === null || demo) { setLinkChoices([]); return; }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      apiRequest<{documents: KnowledgeDocument[]}>(`/api/v1/documents/index?q=${encodeURIComponent(linkQuery)}`, {token: accessToken})
+        .then(result => { if (active) setLinkChoices(result.documents); }).catch(() => { if (active) setLinkChoices([]); });
+    }, 220);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [linkQuery, demo, accessToken]);
   const selected = documents.find((document) => document.id === selectedId) ?? null;
   useEffect(() => {
-    if (!selected || selected.content_md || demo) return;
-    getDocument(accessToken, selected.id)
-      .then(({ document }) => setDocuments((current) => current.map((item) => item.id === document.id ? document : item)))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "문서 본문을 불러오지 못했습니다."));
-  }, [accessToken, demo, selected]);
+    if (!pendingAnchor || selected?.id !== pendingAnchor.id || selected.content_md === undefined) return;
+    const frame = window.requestAnimationFrame(() => { document.getElementById(`wiki-heading-${pendingAnchor.heading.normalize("NFC").trim()}`)?.scrollIntoView({ block: "start" }); setPendingAnchor(null); });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingAnchor, selected]);
   useEffect(() => {
-    if (selected) setDraft(toDraft(selected));
+    if (!selectedId || selected?.content_md !== undefined || demo) return;
+    let active = true;
+    getDocument(accessToken, selectedId)
+      .then(({ document }) => { if (active) setDocuments(current => [...current.filter(item => item.id !== document.id), document]); })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "문서 본문을 불러오지 못했습니다."));
+    return () => { active = false; };
+  }, [accessToken, demo, selected, selectedId]);
+  useEffect(() => {
+    if (selected?.content_md !== undefined) setDraft(toDraft(selected));
+    else setDraft(null);
   }, [selected]);
 
   useEffect(() => {
@@ -365,7 +402,7 @@ function WorkspaceContent() {
     });
   }, [documents, ownerFilter, profile?.id]);
 
-  const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending), [filtered, sortAscending]);
+  const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending, demo ? [] : inventory), [filtered, sortAscending, inventory, demo]);
   const treeRows = useMemo(() => {
     const rows: TreeRow[] = [];
     const visit = (nodes: FolderTreeNode[], depth: number) => nodes.forEach((folder) => {
@@ -380,7 +417,7 @@ function WorkspaceContent() {
   const readingContent = useMemo(() => prepareReadingContent(selected?.content_md ?? ""), [selected?.content_md]);
 
   useEffect(() => {
-    if (searchParams.get("document") || !filtered.length) return;
+    if (searchParams.get("document") || selectedId || !filtered.length) return;
     if (!selectedId || !filtered.some((document) => document.id === selectedId)) setSelectedId(filtered[0].id);
   }, [filtered, searchParams, selectedId]);
 
@@ -574,17 +611,27 @@ function WorkspaceContent() {
     }
   };
 
-  const openWikiLink = (title: string) => {
-    const normalized = normalizedWikiValue(title);
-    const target = documents.find((document) => {
-      if (document.status === "archived") return false;
-      const source = document.source_ref?.replace(/\\/g, "/") ?? "";
-      const candidates = [document.title, source, source.split("/").pop() ?? "", document.folder ? `${document.folder}/${document.title}` : document.title];
-      return candidates.some((candidate) => normalizedWikiValue(candidate) === normalized);
-    });
-    if (!target) { setToast(`“${title}” 문서가 없어 깨진 링크로 표시됩니다.`); return; }
-    setOwnerFilter("all"); setSelectedId(target.id); setMode("read");
+  const openWikiLink = async (title: string) => {
+    try {
+      const target = demo ? resolveWikiLink(title, documents, selected?.folder) :
+        (await apiRequest<{document: KnowledgeDocument | null}>(`/api/v1/documents/index?target=${encodeURIComponent(title)}&folder=${encodeURIComponent(selected?.folder ?? "")}`, {token: accessToken})).document;
+      if (!target) { setToast(`“${title}” 문서가 없거나 같은 이름이 여러 개입니다. 빠른 열기에서 선택해 주세요.`); return; }
+      const heading = title.split("|")[0].split("#").slice(1).join("#");
+      if (heading) setPendingAnchor({ id: target.id, heading });
+      setOwnerFilter("all"); setSelectedId(target.id); setMode("read");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "연결 문서를 열지 못했습니다."); }
   };
+  const chooseLink = (document: KnowledgeDocument) => {
+    if (quickOpen) { setSelectedId(document.id); setMode("read"); setQuickOpen(false); }
+    else if (draft && editorRef.current) {
+      const end = editorRef.current.selectionStart;
+      const start = draft.content.lastIndexOf("[[", end);
+      if (start >= 0) setDraft({...draft, content: draft.content.slice(0, start) + `[[${document.source_ref?.replace(/\\/g, "/").replace(/\.md$/i, "") || document.title}]]` + draft.content.slice(end).replace(/^\]\]/, "")});
+    }
+    setLinkQuery(null);
+  };
+  const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / 44) - 8, treeRows.length - 45));
+  const visibleRows = treeRows.slice(treeStart, treeStart + 45);
 
   return (
     <>
@@ -604,25 +651,28 @@ function WorkspaceContent() {
       </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
 
-      <section className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}`}>
+      <section className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
+        {!treeOpen ? <button className="tree-peek-handle" aria-label="파일 트리 잠시 보기" onMouseEnter={() => setHoverTree(true)} onFocus={() => setHoverTree(true)} onClick={() => setTreeOpen(true)}><PanelLeftOpen size={16} /></button> : null}
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
-        <aside className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{filtered.length}개</small></span><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
-          <div className="knowledge-tree-scroll">
+        <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
+          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
+          <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
-            {treeRows.map((row) => row.type === "folder" ? (
+            {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}
+            {visibleRows.map((row) => row.type === "folder" ? (
               <button
                 className="folder-row folder-tree-row"
                 style={{ paddingLeft: 10 + row.depth * 16 }} key={`folder-${row.folder.path}`}
-                onClick={() => setExpandedFolders((current) => { const next = new Set(current); if (next.has(row.folder.path)) next.delete(row.folder.path); else next.add(row.folder.path); return next; })}
+                onClick={() => { const opening = !expandedFolders.has(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => { event.preventDefault(); moveDocument(event.dataTransfer.getData("text/document-id"), row.folder.path); }}
               >{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
             ) : (
               <button draggable key={row.document.id} className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => event.dataTransfer.setData("text/document-id", row.document.id)} onClick={() => { setSelectedId(row.document.id); setMode("read"); if (window.innerWidth < 900) setTreeOpen(false); }}>
-                <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong><em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em></span><i className={`mini-status status-${row.document.status}`} />
+                <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
               </button>
             ))}
+            <div style={{height: Math.max(0, treeRows.length - treeStart - visibleRows.length) * 44}} />
             {!treeRows.length && !listLoading ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
           </div>
           <div className="folder-divider" />
@@ -657,7 +707,7 @@ function WorkspaceContent() {
                     <label><span><Tag size={13} /> 태그</span><input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
                   <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
-                  <textarea ref={editorRef} value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} aria-label="문서 본문" spellCheck="false" />
+                  <textarea ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
                 </div>
               ) : mode === "info" ? (
                 <div className="document-info">
@@ -679,6 +729,11 @@ function WorkspaceContent() {
         </article>
       </section>
 
+      {(quickOpen || (mode === "edit" && linkQuery !== null)) ? <div className="document-quick-open" role="dialog" aria-label={quickOpen ? "문서 빠른 열기" : "문서 링크 자동완성"}>
+        <button className="icon-button" aria-label="빠른 열기 닫기" onClick={() => { setQuickOpen(false); setLinkQuery(null); }}><X size={16}/></button>
+        <input autoFocus aria-label="문서 찾기" value={linkQuery ?? ""} onChange={event => setLinkQuery(event.target.value)} placeholder="문서 이름 또는 원본 파일명" />
+        {linkChoices.map(item => <button key={item.id} onClick={() => chooseLink(item)}><strong>{item.title}</strong><small>{item.source_ref || item.folder}</small></button>)}
+      </div> : null}
       {newOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setNewOpen(false)}>
           <form className="form-modal new-document-modal" onSubmit={create}>

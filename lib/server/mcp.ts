@@ -169,6 +169,18 @@ export const MCP_TOOLS = [
     inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" }, confirm: { type: "boolean" }, reason: { type: "string" } }, required: ["record_id", "confirm"], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
+  {
+    name: "list_record_versions",
+    description: "소유한 OS 운영 기록의 복원 가능한 버전과 변경 이력을 조회합니다.",
+    inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" } }, required: ["record_id"], additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "restore_record",
+    description: "OS 운영 기록의 이전 스냅샷을 새 버전으로 복원합니다. 현재 버전과 복원 사유가 필수이며 권한·외부 발행 승인에는 사용할 수 없습니다.",
+    inputSchema: { type: "object", properties: { record_id: { type: "string", format: "uuid" }, version: { type: "integer", minimum: 1 }, expected_version: { type: "integer", minimum: 1 }, reason: { type: "string", minLength: 1 } }, required: ["record_id", "version", "expected_version", "reason"], additionalProperties: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
 ] as const;
 
 const searchArgs = z.object({
@@ -262,6 +274,14 @@ type FetchApi = (path: string, init?: RequestInit) => Promise<unknown>;
 
 export async function callMcpTool(request: ToolRequest, organizationId: string, fetchApi: FetchApi) {
   const args = request.arguments ?? {};
+  if (request.name === "list_record_versions") {
+    const input = getRecordArgs.parse(args);
+    return fetchApi(`/api/v1/records/${input.record_id}/versions?${new URLSearchParams({ organizationId })}`);
+  }
+  if (request.name === "restore_record") {
+    const input = z.object({ record_id: documentId, version: z.number().int().positive(), expected_version: z.number().int().positive(), reason: z.string().trim().min(1).max(500) }).strict().parse(args);
+    return fetchApi(`/api/v1/records/${input.record_id}/versions?${new URLSearchParams({ organizationId })}`, { method: "POST", body: JSON.stringify({ version: input.version, expectedVersion: input.expected_version, reason: input.reason }) });
+  }
   if (request.name === "search_knowledge") {
     const input = searchArgs.parse(args);
     const statuses = ["canonical"];
@@ -292,7 +312,7 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
         contentMd: input.content_md,
         folder: input.folder,
         tags: input.tags,
-        status: "personal_draft",
+        status: "draft",
         reason: input.reason,
       }),
     });
