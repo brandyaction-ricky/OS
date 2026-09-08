@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { isNicheQueueRecord } from "../lib/content-radar.ts";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
@@ -33,6 +34,16 @@ test("channel collection resolves an exact YouTube identity before saving", asyn
   assert.match(client, /resolveYoutubeChannel/);
   assert.match(radar, /채널 확인/);
   assert.match(radar, /verifiedChannel/);
+});
+
+test("saved discovery evidence enters the niche queue and becomes selected", async () => {
+  const radar = await read("components/content-radar-workspace.tsx");
+  assert.equal(isNicheQueueRecord({ metadata: { studioKind: "outlier" } }), true);
+  assert.equal(isNicheQueueRecord({ metadata: { studioKind: "niche" } }), true);
+  assert.equal(isNicheQueueRecord({ metadata: { studioKind: "channel" } }), false);
+  assert.equal(isNicheQueueRecord({ metadata: { automationSource: true } }), false);
+  assert.match(radar, /setSelectedId\(record\.id\);\s*setTab\("niches"\);/);
+  assert.match(radar, /nicheQueue\.map/);
 });
 
 test("content media uses private signed uploads and expires original files", async () => {

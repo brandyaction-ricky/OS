@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, createRecord, generateContent, listRecords, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -101,16 +102,17 @@ export function ContentRadarWorkspace() {
     const kind = meta<string>(record, "studioKind", "");
     return !["channel", "outlier"].includes(kind) && record.metadata?.automationSource !== true;
   }), [records]);
+  const nicheQueue = useMemo(() => records.filter(isNicheQueueRecord), [records]);
   const plans = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "topic_plan"), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
-  const selected = topics.find((topic) => topic.id === selectedId) ?? topics[0] ?? null;
+  const selected = nicheQueue.find((topic) => topic.id === selectedId) ?? nicheQueue[0] ?? null;
   const plan = plans.find((record) => record.parent_id === selected?.id) ?? null;
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
 
   useEffect(() => {
-    if (!selectedId && topics[0]) setSelectedId(topics[0].id);
-  }, [selectedId, topics]);
+    if (!selectedId && nicheQueue[0]) setSelectedId(nicheQueue[0].id);
+  }, [selectedId, nicheQueue]);
 
   const addChannel = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -204,7 +206,7 @@ export function ContentRadarWorkspace() {
     if (outliers.some((record) => meta(record, "youtubeId", "") === item.id)) return;
     setBusy(true); setError("");
     try {
-      await createRecord(accessToken, {
+      const { record } = await createRecord(accessToken, {
         recordType: "content_topic",
         title: item.title,
         description: `${item.channelTitle}에서 발견한 시장 근거 영상`,
@@ -226,9 +228,12 @@ export function ContentRadarWorkspace() {
           likes: item.likeCount,
           comments: item.commentCount,
           query: searchQuery.trim(),
+          evidence: `조회 ${item.viewCount.toLocaleString("ko-KR")} · 좋아요 ${item.likeCount.toLocaleString("ko-KR")} · 댓글 ${item.commentCount.toLocaleString("ko-KR")}`,
         },
       });
       await load();
+      setSelectedId(record.id);
+      setTab("niches");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "근거 영상을 저장하지 못했습니다.");
     } finally { setBusy(false); }
@@ -363,7 +368,7 @@ export function ContentRadarWorkspace() {
         <div className="panel"><FileText size={17} /><span><strong>{plans.length}</strong><small>정본 기획안</small></span></div>
       </section>
       <section className="content-planning-layout">
-        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>틈새 후보</h2><p>결정과 작업 폴더 사이 대기열</p></div></div>{topics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "판정 전"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!topics.length ? <div className="list-empty">틈새 후보를 추가하거나 탐색 결과를 저장하세요.</div> : null}</aside>
+        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>틈새 후보</h2><p>결정과 작업 폴더 사이 대기열</p></div></div>{nicheQueue.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "판정 전"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!nicheQueue.length ? <div className="list-empty">틈새 후보를 추가하거나 탐색 결과를 저장하세요.</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
           <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "판정 전"}</span><h2>{selected.title}</h2><p>{selected.description}</p></div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 정본으로 후보 만들기</button></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>검색 입구 언어</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
