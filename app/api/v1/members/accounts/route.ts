@@ -25,11 +25,20 @@ export async function POST(request: Request) {
     if (!roster) throw new ApiError(404, "ROSTER_MEMBER_NOT_FOUND", "구성원에 등록된 닉네임과 정확히 일치하지 않습니다.");
 
     const service = createServiceSupabase();
-    const { data: existingProfile } = await service.from("os_profiles")
+    const { data: existingProfile, error: existingProfileError } = await service.from("os_profiles")
       .select("id,email,display_name")
       .or(`email.eq.${input.email},display_name.eq.${input.nickname}`)
       .limit(1).maybeSingle();
+    if (existingProfileError) throw new ApiError(500, "MEMBER_ACCOUNT_LOOKUP_FAILED", "기존 계정 연결 상태를 확인하지 못했습니다. 다시 시도해 주세요.");
     if (existingProfile) throw new ApiError(409, "MEMBER_ACCOUNT_EXISTS", "이미 연결된 이메일 또는 닉네임 계정이 있습니다.");
+
+    const { data: directory, error: directoryError } = await service.from("os_records")
+      .select("team,brand,metadata")
+      .eq("record_type", "company_setting")
+      .contains("tags", ["member-directory"])
+      .contains("metadata", { rosterName: input.nickname })
+      .is("archived_at", null).maybeSingle();
+    if (directoryError) throw new ApiError(500, "MEMBER_DIRECTORY_LOOKUP_FAILED", "구성원 명부 정보를 확인하지 못했습니다. 다시 시도해 주세요.");
 
     const initialPassword = getInitialPassword();
     const { data: created, error: createError } = await service.auth.admin.createUser({
@@ -41,12 +50,6 @@ export async function POST(request: Request) {
     if (createError || !created.user) throw new ApiError(400, "ACCOUNT_CREATE_FAILED", "직원 로그인 계정을 만들지 못했습니다.", createError?.message);
     createdUserId = created.user.id;
 
-    const { data: directory } = await service.from("os_records")
-      .select("team,brand,metadata")
-      .eq("record_type", "company_setting")
-      .contains("tags", ["member-directory"])
-      .contains("metadata", { rosterName: input.nickname })
-      .is("archived_at", null).maybeSingle();
     const metadata = (directory?.metadata ?? {}) as Record<string, unknown>;
     const { error: profileError } = await service.from("os_profiles").upsert({
       id: createdUserId,

@@ -1,0 +1,20 @@
+export const SCRIPT_DOCUMENT_ROOT = "03_Content/롱폼/스크립트/02_초안";
+export const SCRIPT_FOLDER_NAME_LIMIT = 160 - SCRIPT_DOCUMENT_ROOT.length - 1;
+export const SCRIPT_DOCUMENT_STATUSES = "draft,team,review,reviewed,canonical";
+
+export function buildScriptDocumentInput(input: { title: string; folderName: string; content: string }) {
+  const title = input.title.trim();
+  const folderName = input.folderName.trim();
+  if (!title || title.length > 200) throw new Error("원고 제목은 1~200자로 입력해 주세요.");
+  if (!folderName || folderName.length > SCRIPT_FOLDER_NAME_LIMIT) {
+    throw new Error(`영상 폴더명은 1~${SCRIPT_FOLDER_NAME_LIMIT}자로 입력해 주세요.`);
+  }
+  if (/[\\/\u0000-\u001f]/.test(folderName) || folderName === "." || folderName === "..") {
+    throw new Error("영상 폴더명에는 슬래시나 줄바꿈을 사용할 수 없습니다.");
+  }
+  const content = input.content.trim() || [
+    `# ${title}`, "", "## 시청자와 핵심 메시지", "", "## 도입", "", "## 본문", "", "## 마무리와 다음 행동", "",
+  ].join("\n");
+  if (content.length > 1_500_000) throw new Error("원고 본문이 너무 깁니다. 내용을 나누어 저장해 주세요.");
+  return { title, folder: `${SCRIPT_DOCUMENT_ROOT}/${folderName}`, content, source: "wiki", tags: ["원고"] };
+}
