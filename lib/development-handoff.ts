@@ -40,9 +40,9 @@ export function buildDevelopmentHandoff(project: OsRecord, request?: OsRecord | 
   if (request) lines.push("", "이번 수정요청", `요청 ID: ${request.id} / 버전: ${request.version}`,
     `제목: ${request.title}`, `페이지: ${recordText(request, "pageUrl") || "미기재"}`,
     `종류: ${recordText(request, "category") || "개선"} / 우선순위: ${request.priority}`,
-    `현재 문제: ${request.description}`, `재현 순서: ${recordText(request, "steps") || "미기재"}`,
+    `현재 문제: ${request.description}`,
     `기대 결과: ${recordText(request, "expectedResult") || "미기재"}`,
-    `참고 자료: ${recordText(request, "attachmentUrl") || "없음"}`,
+    `참고 자료: ${recordText(request, "attachmentName") ? `${recordText(request, "attachmentName")} (회사 OS 요청 상세에서 확인)` : recordText(request, "attachmentUrl") || "없음"}`,
     `기존 처리 내용: ${recordText(request, "resolution") || "없음"}`);
   const projectHistory = history.filter(item => item.parent_id === project.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
   if (projectHistory.length) lines.push("", "최근 기록 (현재 사실은 원격 코드·배포 상태로 재확인)", ...projectHistory.slice(0, 3).map(item =>

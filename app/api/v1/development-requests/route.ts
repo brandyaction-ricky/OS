@@ -31,6 +31,12 @@ async function assertProject(actor: RequestActor, id: string | null | undefined)
   if (!data) throw new ApiError(404, "REQUEST_PROJECT_NOT_FOUND", "연결할 프로젝트가 없거나 접근할 수 없습니다.");
 }
 
+function assertAttachmentOwner(actor: RequestActor, path: string | undefined) {
+  if (!path) return;
+  const ownerId = path.split("/")[1];
+  if (ownerId !== actor.id && actor.role !== "admin") throw new ApiError(403, "DEVELOPMENT_ATTACHMENT_FORBIDDEN", "본인이 올린 첨부 자료만 요청에 연결할 수 있습니다.");
+}
+
 export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
@@ -59,6 +65,7 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request);
     const input = developmentRequestCreateSchema.parse(await parseJson(request, 64_000));
     await assertProject(actor, input.parentId);
+    assertAttachmentOwner(actor, input.attachmentPath);
     const { data, error } = await actor.supabase.from("os_records").insert({
       record_type: "ai_job", title: input.title, description: input.description, priority: input.priority,
       status: "backlog", parent_id: input.parentId, team: actor.team, metadata: developmentRequestMetadata(input),
@@ -79,6 +86,7 @@ export async function PATCH(request: Request) {
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
     validateDevelopmentRequestUpdate(current as OsRecord, input, actor);
     await assertProject(actor, input.parentId);
+    assertAttachmentOwner(actor, input.attachmentPath);
     const { data, error } = await actor.supabase.from("os_records").update({ ...developmentRequestUpdateFields(current as OsRecord, input), updated_by: actor.id }).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("*").maybeSingle();
     if (error) throw new ApiError(500, "REQUEST_UPDATE_FAILED", "수정 요청을 변경하지 못했습니다.");
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");

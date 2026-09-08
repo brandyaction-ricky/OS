@@ -16,6 +16,7 @@ export function isSafeDevelopmentLink(value: string, allowPath = false) {
 }
 
 const link = (allowPath = false) => z.string().trim().max(2_000).refine((value) => isSafeDevelopmentLink(value, allowPath), "http(s) 주소를 입력해 주세요.");
+const attachmentPath = z.string().regex(/^requests\/[0-9a-f-]{36}\/[0-9]{4}-[0-9]{2}-[0-9]{2}\/[0-9a-f-]{36}\.(jpg|png|webp|gif|mp4|mov|webm|pdf|txt|csv|doc|docx|ppt|pptx|xls|xlsx|zip)$/);
 const details = {
   title: z.string().trim().min(1).max(240),
   description: z.string().trim().max(20_000),
@@ -23,9 +24,12 @@ const details = {
   priority: z.enum(["low", "normal", "high", "urgent"]),
   pageUrl: link(true),
   category: z.enum(DEVELOPMENT_REQUEST_CATEGORIES),
-  steps: z.string().trim().max(8_000),
   expectedResult: z.string().trim().max(8_000),
   attachmentUrl: link(),
+  attachmentPath: z.union([attachmentPath, z.literal("")]),
+  attachmentName: z.string().trim().max(240),
+  attachmentSize: z.string().regex(/^$|^[1-9][0-9]{0,8}$/),
+  attachmentType: z.string().trim().max(160),
 };
 
 export const developmentRequestCreateSchema = z.object({
@@ -35,9 +39,12 @@ export const developmentRequestCreateSchema = z.object({
   priority: details.priority.default("normal"),
   pageUrl: details.pageUrl.default(""),
   category: details.category.default("bug"),
-  steps: details.steps.default(""),
   expectedResult: details.expectedResult.default(""),
   attachmentUrl: details.attachmentUrl.default(""),
+  attachmentPath: details.attachmentPath.default(""),
+  attachmentName: details.attachmentName.default(""),
+  attachmentSize: details.attachmentSize.default(""),
+  attachmentType: details.attachmentType.default(""),
 }).strict();
 
 export const developmentRequestUpdateSchema = z.object({
@@ -90,12 +97,12 @@ export function validateDevelopmentRequestUpdate(
 }
 
 export function developmentRequestMetadata(input: z.infer<typeof developmentRequestCreateSchema>) {
-  return { kind: "development_request", pageUrl: input.pageUrl, category: input.category, steps: input.steps, expectedResult: input.expectedResult, attachmentUrl: input.attachmentUrl };
+  return { kind: "development_request", pageUrl: input.pageUrl, category: input.category, expectedResult: input.expectedResult, attachmentUrl: input.attachmentUrl, attachmentPath: input.attachmentPath, attachmentName: input.attachmentName, attachmentSize: input.attachmentSize, attachmentType: input.attachmentType };
 }
 
 export function developmentRequestUpdateFields(current: OsRecord, input: DevelopmentRequestUpdate) {
   const metadata: Record<string, unknown> = { ...current.metadata, kind: "development_request" };
-  for (const field of ["pageUrl", "category", "steps", "expectedResult", "attachmentUrl", ...MANAGEMENT_FIELDS] as const) {
+  for (const field of ["pageUrl", "category", "expectedResult", "attachmentUrl", "attachmentPath", "attachmentName", "attachmentSize", "attachmentType", ...MANAGEMENT_FIELDS] as const) {
     if (input[field] !== undefined) metadata[field] = input[field];
   }
   const output: Record<string, unknown> = { metadata };

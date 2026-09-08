@@ -107,6 +107,14 @@ test("request API creates linked backlog request with server-owned identity and 
   assert.equal(rows.length, 2);
 });
 
+test("request API rejects attachment paths uploaded by another member", async () => {
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }]);
+  const otherOwnerPath = "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.png";
+  const response = await routes.POST(request("POST", { title: "첨부 요청", parentId: projectId, attachmentPath: otherOwnerPath, attachmentName: "화면.png", attachmentSize: "1200", attachmentType: "image/png" }));
+  assert.equal(response.status, 403);
+  assert.equal(rows.length, 1);
+});
+
 test("personal request summary includes completed results and excludes other reporters", async () => {
   const { routes } = setup([
     record(), record({ id: "done", status: "done" }), record({ id: "other", created_by: "other", status: "active" }),

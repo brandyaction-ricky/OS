@@ -460,6 +460,42 @@ export async function getCompanyFileUrl(token: string | null, path: string) {
   return apiRequest<{ url: string }>(`/api/v1/company-files?path=${encodeURIComponent(path)}`, { token });
 }
 
+export async function createDevelopmentAttachmentUpload(token: string | null, file: File) {
+  if (file.size > 25 * 1024 * 1024) throw new Error("첨부 자료는 25MB 이하여야 합니다.");
+  const fallbackTypes: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", pdf: "application/pdf",
+    txt: "text/plain", csv: "text/csv", doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip",
+  };
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const mimeType = fallbackTypes[extension] || file.type;
+  return apiRequest<{ path: string; token: string; name: string; size: number; type: string }>("/api/v1/development-attachments", {
+    method: "POST", token, body: JSON.stringify({ fileName: file.name, fileSize: file.size, mimeType }),
+  });
+}
+
+export async function uploadDevelopmentAttachment(path: string, signedToken: string, file: File, contentType: string) {
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const client = getBrowserSupabase();
+  if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
+  const { error } = await client.storage.from("os-development-attachments").uploadToSignedUrl(path, signedToken, file, {
+    contentType,
+    cacheControl: "3600",
+  });
+  if (error) throw new Error(error.message || "첨부 자료를 업로드하지 못했습니다.");
+}
+
+export async function getDevelopmentAttachmentUrl(token: string | null, path: string) {
+  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/development-attachments?path=${encodeURIComponent(path)}`, { token });
+}
+
+export async function deleteDevelopmentAttachment(token: string | null, path: string) {
+  return apiRequest<{ deleted: true }>(`/api/v1/development-attachments?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
+}
+
 export interface OsMember {
   id: string;
   email: string;

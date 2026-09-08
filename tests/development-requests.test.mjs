@@ -8,7 +8,7 @@ const current = { id: "a5e3150a-a8e5-48e5-84ce-d2c5e2041132", created_by: "repor
 const patch = (fields) => developmentRequestUpdateSchema.parse({ id: current.id, expectedVersion: 2, ...fields });
 
 test("report creation accepts real context but rejects forged status, ownership and result fields", () => {
-  const valid = developmentRequestCreateSchema.parse({ title: "저장 버튼 오류", steps: "저장을 눌렀습니다.", pageUrl: "/knowledge", expectedResult: "입력한 문서 저장" });
+  const valid = developmentRequestCreateSchema.parse({ title: "저장 버튼 오류", pageUrl: "/knowledge", expectedResult: "입력한 문서 저장" });
   assert.equal(valid.priority, "normal");
   assert.equal(valid.parentId, null);
   for (const field of ["status", "ownerId", "created_by", "resolution", "metadata"]) {
@@ -43,12 +43,22 @@ test("request links reject executable schemes, credentials and protocol-relative
 });
 
 test("edits preserve existing request context and resolution without accepting arbitrary metadata", () => {
-  const result = developmentRequestUpdateFields(current, patch({ title: "변경", steps: "재현 절차 보완" }));
+  const attachmentPath = "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.png";
+  const result = developmentRequestUpdateFields(current, patch({ title: "변경", attachmentPath, attachmentName: "화면.png", attachmentSize: "1200", attachmentType: "image/png" }));
   assert.equal(result.metadata.pageUrl, "/home");
   assert.equal(result.metadata.resolution, "기존 처리 기록");
   assert.equal(result.metadata.kind, "development_request");
-  assert.equal(result.metadata.steps, "재현 절차 보완");
+  assert.equal(result.metadata.attachmentPath, attachmentPath);
+  assert.equal(result.metadata.attachmentName, "화면.png");
   assert.equal(result.title, "변경");
   assert.equal(developmentRequestUpdateSchema.safeParse({ id: current.id, expectedVersion: 2, metadata: { kind: "task" } }).success, false);
   assert.equal(developmentRequestUpdateSchema.safeParse({ id: current.id, expectedVersion: 2 }).success, false);
+});
+
+test("request attachments accept controlled private paths and reject arbitrary object paths", () => {
+  const validPath = "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.pdf";
+  assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: validPath, attachmentName: "요청서.pdf", attachmentSize: "2048", attachmentType: "application/pdf" }).success, true);
+  for (const path of ["finance/private.pdf", "../private.pdf", "requests/user/file.pdf", "requests/00000000-0000-4000-8000-000000000001/2026-09-08/not-uuid.pdf"]) {
+    assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: path }).success, false);
+  }
 });
