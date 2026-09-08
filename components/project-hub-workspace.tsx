@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, Paperclip, Plus, RefreshCw, Rocket, Search, SlidersHorizontal, UploadCloud, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, Paperclip, Plus, RefreshCw, Rocket, Search, SlidersHorizontal, Trash2, UploadCloud, X } from "lucide-react";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createDevelopmentAttachmentUpload, createRecord, deleteDevelopmentAttachment, getDevelopmentAttachmentUrl, listRecords, uploadDevelopmentAttachment } from "@/lib/api-client";
@@ -278,6 +278,16 @@ function ProjectHubContent() {
     } catch (reason) { setError(reason instanceof Error ? reason.message : "상태를 변경하지 못했습니다."); }
     finally { setSaving(false); }
   };
+  const deleteSelected = async () => {
+    if (!selected || saving || !window.confirm(`“${selected.title}” 요청을 삭제할까요?\n삭제한 요청은 목록에서 사라집니다.`)) return;
+    setSaving(true); setError("");
+    try {
+      if (demo) setDemoRequests(previous => previous.filter(item => item.id !== selected.id));
+      else await requestApi<{ archived: true }>(accessToken, new URLSearchParams({ id: selected.id, expectedVersion: String(selected.version) }).toString(), undefined, "DELETE");
+      setSelected(null); setOffset(0); changed(); setNotice("개발 요청을 삭제했습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "개발 요청을 삭제하지 못했습니다."); }
+    finally { setSaving(false); }
+  };
   const pending = useMemo(() => ["backlog", "active", "review", "blocked"].reduce((sum, key) => sum + (inbox.counts[key] || 0), 0), [inbox.counts]);
 
   return <div className="dev-workspace">
@@ -299,7 +309,7 @@ function ProjectHubContent() {
         {inbox.total > PAGE_SIZE && <div className="dev-pagination"><button disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - PAGE_SIZE))}>이전</button><span>{offset + 1}–{Math.min(offset + PAGE_SIZE, inbox.total)} / {inbox.total}</span><button disabled={offset + PAGE_SIZE >= inbox.total || loading} onClick={() => setOffset(value => value + PAGE_SIZE)}>다음</button></div>}
       </section>
       {selected && <aside className="dev-detail" aria-label="개발 요청 상세"><div className="dev-detail-top"><span>요청 상세 · {selected.id.slice(0, 8)}</span><button className="dev-icon-button" aria-label="요청 상세 닫기" disabled={saving} onClick={() => setSelected(null)}><X size={17} /></button></div><div className="dev-detail-body"><Status value={selected.status} /><h2>{selected.title}</h2><div className="dev-detail-properties"><span>{CATEGORIES[meta(selected, "category")] || "개발 요청"}</span><span>우선순위 {PRIORITY[selected.priority]}</span><span>{date(selected.created_at)} 등록</span></div><section><h3>{meta(selected, "category") === "feature" ? "필요한 기능" : "현재 문제"}</h3><p>{selected.description}</p></section>{meta(selected, "expectedResult") && <section><h3>기대하는 결과</h3><p>{meta(selected, "expectedResult")}</p></section>}<div className="dev-detail-links"><SafeLink url={fullPageUrl(meta(selected, "pageUrl"))}>{meta(selected, "category") === "feature" ? "관련 페이지" : "문제가 발생한 페이지"}</SafeLink>{meta(selected, "attachmentPath") ? <button type="button" className="dev-attachment-link" onClick={() => openAttachment(selected)}><Paperclip size={13} />{meta(selected, "attachmentName") || "첨부 자료"}{meta(selected, "attachmentSize") && <small>{fileSize(meta(selected, "attachmentSize"))}</small>}</button> : <SafeLink url={meta(selected, "attachmentUrl")}>첨부 자료 확인</SafeLink>}</div><button className="dev-button dev-wide" onClick={() => copy(selected)}><Copy size={14} /> 이 요청을 Work에 전달</button>
-      {(admin || (selected.created_by === profile?.id && selected.status === "backlog")) && <button className="dev-text-button" onClick={() => open("edit")}>요청 내용 수정</button>}
+      {(admin || selected.created_by === profile?.id) && <div className="dev-request-actions">{(admin || selected.status === "backlog") && <button className="dev-text-button" onClick={() => open("edit")}>요청 내용 수정</button>}<button className="dev-text-button danger" disabled={saving} onClick={deleteSelected}><Trash2 size={13} /> 요청 삭제</button></div>}
       <section className="dev-resolution"><h3><GitCommitHorizontal size={14} /> 처리 결과</h3><p>{meta(selected, "resolution") || "아직 처리 결과가 등록되지 않았습니다."}</p><div className="dev-detail-links"><SafeLink url={meta(selected, "prUrl")}>GitHub 변경 내역</SafeLink><SafeLink url={meta(selected, "deploymentUrl")}>반영 화면 확인</SafeLink></div>{meta(selected, "commitSha") && <small>커밋 {meta(selected, "commitSha").slice(0, 12)}</small>}</section>
       {admin ? <form key={`${selected.id}-${selected.version}`} className="dev-resolution-form" onSubmit={saveResolution}><h3>처리 상태 업데이트</h3>{!demo && <button type="button" className="dev-text-button" disabled={saving} onClick={refreshSelected}>최신 요청 다시 열기 · 입력 중인 내용 초기화</button>}<label>상태<select name="status" defaultValue={selected.status}>{FLOW.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}</select></label><label>수정 내용·검증 결과<textarea name="resolution" rows={4} defaultValue={meta(selected, "resolution")} maxLength={10000} placeholder="무엇을 수정했고 어떻게 확인했나요? 해결 처리 시 필수" /></label><details><summary><GitBranch size={13} /> 코드·배포 연결</summary><label>브랜치<input name="branch" defaultValue={meta(selected, "branch")} maxLength={200} /></label><label>커밋 SHA<input name="commitSha" defaultValue={meta(selected, "commitSha")} pattern="[a-fA-F0-9]{7,40}" /></label><label>GitHub PR 주소<input type="url" name="prUrl" defaultValue={meta(selected, "prUrl")} placeholder="https://github.com/…/pull/…" /></label><label>Preview 또는 운영 주소<input type="url" name="deploymentUrl" defaultValue={meta(selected, "deploymentUrl")} /></label></details><button className="dev-button primary dev-wide" disabled={saving}>{saving ? "저장 중…" : "처리 결과 저장"}</button></form> : null}
       {selected.created_by === profile?.id && ["done", "review"].includes(selected.status) && <button className="dev-button dev-wide" disabled={saving} onClick={() => patchSelected({ status: "backlog" })}>아직 문제가 있어요 · 다시 요청</button>}

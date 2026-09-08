@@ -4,6 +4,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { DEVELOPMENT_REQUEST_STATUSES, DevelopmentRequestPolicyError, developmentRequestCreateSchema, developmentRequestMetadata, developmentRequestUpdateFields, developmentRequestUpdateSchema, validateDevelopmentRequestUpdate } from "@/lib/development-requests";
 import type { OsRecord } from "@/lib/record-types";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
+import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,10 @@ const querySchema = z.object({
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(30),
   summary: z.enum(["0", "1"]).optional(),
+});
+const deleteSchema = z.object({
+  id: z.string().uuid(),
+  expectedVersion: z.coerce.number().int().min(1),
 });
 
 function respondError(error: unknown) {
@@ -91,5 +96,21 @@ export async function PATCH(request: Request) {
     if (error) throw new ApiError(500, "REQUEST_UPDATE_FAILED", "수정 요청을 변경하지 못했습니다.");
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
     return NextResponse.json({ record: data }, { headers });
+  } catch (error) { return respondError(error); }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const actor = await authenticateRequest(request);
+    const input = deleteSchema.parse(Object.fromEntries(new URL(request.url).searchParams));
+    const { data: current, error: readError } = await actor.supabase.from("os_records").select("id,created_by,version").eq("id", input.id).eq("record_type", "ai_job").eq("metadata->>kind", "development_request").is("archived_at", null).maybeSingle();
+    if (readError) throw new ApiError(500, "REQUEST_READ_FAILED", "요청을 확인하지 못했습니다.");
+    if (!current) throw new ApiError(404, "REQUEST_NOT_FOUND", "개발 요청을 찾지 못했습니다.");
+    if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
+    if (current.created_by !== actor.id && actor.role !== "admin") throw new ApiError(403, "REQUEST_DELETE_FORBIDDEN", "본인이 등록한 요청만 삭제할 수 있습니다.");
+    const { data, error } = await createServiceSupabase().from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("id").maybeSingle();
+    if (error) throw new ApiError(500, "REQUEST_DELETE_FAILED", "개발 요청을 삭제하지 못했습니다.");
+    if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
+    return NextResponse.json({ archived: true, id: data.id }, { headers });
   } catch (error) { return respondError(error); }
 }
