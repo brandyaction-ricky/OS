@@ -82,8 +82,8 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
   assert.match(workspace, /source: "markdown"/);
   assert.match(workspace, /sourceRef: item\.fileName/);
   assert.match(workspace, /item\.duplicate/);
-  assert.match(workspace, /view=summary&limit=200&offset=/);
-  assert.match(workspace, /getDocument\(accessToken, selected\.id\)/);
+  assert.match(workspace, /exactFolder: "true"/);
+  assert.match(workspace, /getDocument\(accessToken, selectedId\)/);
   assert.match(client, /sourceRef\?: string \| null/);
   assert.match(route, /DOCUMENT_SOURCE_EXISTS/);
   assert.match(route, /\.eq\("source_ref", input\.sourceRef\)/);

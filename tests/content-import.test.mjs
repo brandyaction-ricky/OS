@@ -15,7 +15,7 @@ test("local content snapshot import is admin-only, idempotent and preserves appr
   assert.match(route, /legacyId/);
   assert.match(route, /finalApprovalRequired: true/);
   assert.match(route, /normalizedPublishStatus/);
-  assert.match(workspace, /로컬 자료 가져오기/);
+  assert.match(workspace, /콘텐츠 JSON 가져오기/);
   assert.match(client, /importContentSnapshot/);
   assert.doesNotMatch(route, /googleapis|uploadType: "resumable"|fetch\([^)]*youtube/i);
 });

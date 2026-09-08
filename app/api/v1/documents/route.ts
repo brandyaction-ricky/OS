@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await authenticateRequest(request);
+    const actor = await authenticateRequest(request);
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 50), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
@@ -31,7 +31,14 @@ export async function GET(request: Request) {
       .range(offset, offset + limit - 1);
     if (statuses?.length) builder = builder.in("status", statuses);
     if (owner) builder = builder.eq("owner_id", owner);
-    if (folder) builder = builder.or(`folder.eq.${folder},folder.like.${folder}/%`);
+    if (url.searchParams.get("exactFolder") === "true") builder = builder.eq("folder", folder === "분류 없음" ? "" : folder ?? "");
+    else if (folder) builder = builder.or(`folder.eq.${folder},folder.like.${folder}/%`);
+    const scope = url.searchParams.get("scope");
+    if (scope === "mine_company") builder = builder.or(`owner_id.eq.${actor.id},status.eq.canonical`);
+    else if (scope === "mine") builder = builder.eq("owner_id", actor.id);
+    else if (["canonical", "team", "archived"].includes(scope ?? "")) builder = builder.eq("status", scope);
+    else if (scope === "review") builder = builder.in("status", ["review", "reviewed"]);
+    if (scope && scope !== "archived") builder = builder.neq("status", "archived");
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%`);
     const { data, count, error } = await builder;
     if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);

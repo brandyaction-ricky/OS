@@ -6,6 +6,7 @@ import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation"
 import { authenticateRequest, requireAgentScope, type RequestActor } from "@/lib/server/auth";
 import { assertOrganization } from "@/lib/server/organization";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 
 export const runtime = "nodejs";
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
     const organization = organizationId.parse(raw.organizationId);
     await assertOrganization(actor, organization);
     const input = recordCreateSchema.parse(raw);
+    if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     enforceHumanGates(input.recordType, input.status);
     await rateLimit(actor, "record.create");
@@ -118,6 +120,7 @@ export async function PATCH(request: Request) {
     const { data: current } = await service.from("os_records").select("record_type,status,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 변경해 주세요.");
+    if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     const recordType = (input.recordType ?? current.record_type) as RecordType;
     enforceHumanGates(recordType, input.status);

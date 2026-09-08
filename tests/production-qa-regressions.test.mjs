@@ -20,10 +20,10 @@ test("global shell controls do not present dead actions", async () => {
   assert.match(notifications, /요청 현황을 불러오는 중입니다/);
 });
 
-test("knowledge workspace renders the first page before loading the remainder", async () => {
+test("knowledge workspace requests folder inventory and loads expanded folders lazily", async () => {
   const workspace = await read("components/knowledge-workspace.tsx");
-  assert.match(workspace, /view=summary&limit=200&offset=0/);
-  assert.match(workspace, /setDocuments\(\[\.\.\.all\]\)/);
+  assert.match(workspace, /documents\/index\?folders=true/);
+  assert.match(workspace, /expandedFolders\]\.map\(loadFolder\)/);
   assert.match(workspace, /Promise\.all/);
   assert.match(workspace, /문서 불러오는 중/);
   assert.match(workspace, /setSortAscending/);

@@ -4,6 +4,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
+import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 
 export const runtime = "nodejs";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 const CONTENT_PUBLISH_TRANSITIONS: Record<string, string[]> = {
   draft: ["review", "blocked"], review: ["ready", "blocked"], blocked: ["review"],
-  ready: ["scheduled", "review"], scheduled: ["published", "ready"], published: [],
+  ready: ["scheduled", "review", "blocked"], scheduled: ["published", "ready"], published: [],
 };
 
 const COLUMN_MAP = {
@@ -79,6 +80,7 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     const payload = {
@@ -104,7 +106,10 @@ export async function PATCH(request: Request) {
     const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
+    if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
+    if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");
+    if (current.record_type === "content_publish" && input.status === "blocked" && !String(input.metadata?.rejectionReason ?? "").trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
     if (current?.record_type === "content_publish" && input.status && input.status !== current.status) {
       const allowed = CONTENT_PUBLISH_TRANSITIONS[current.status] ?? [];
       if (!allowed.includes(input.status)) throw new ApiError(409, "CONTENT_APPROVAL_REQUIRED", "검토 완료와 최종 승인을 순서대로 거쳐야 합니다.");
@@ -118,6 +123,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ record: data });
     }
     const payload = toDatabase(input);
+    if (current.record_type === "content_publish" && ["ready", "scheduled"].includes(current.status) && (input.description !== undefined || input.title !== undefined || (input.metadata?.derivHtml !== undefined && input.metadata.derivHtml !== current.metadata.derivHtml))) payload.status = "review";
     payload.updated_by = actor.id;
     const { data, error } = await actor.supabase
       .from("os_records")

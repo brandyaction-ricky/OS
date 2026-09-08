@@ -119,7 +119,7 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
 
   const band = (key: "myin" | "edu" | "all"): RevenueBandValue => {
     const matches = (record: OsRecord) => key === "all" || brandKey(record.brand || record.title) === key;
-    const current = revenue.filter((record) => recordDate(record).startsWith(month) && matches(record)).reduce((sum, record) => sum + revenueAmount(record), 0);
+    const current = revenue.filter((record) => recordDate(record).startsWith(month) && recordDate(record) <= today && matches(record)).reduce((sum, record) => sum + revenueAmount(record), 0);
     // Compare month-to-date with the same elapsed days of the previous month.
     // A full previous month against the first few days of a new month creates a
     // false -100% warning and is not an actionable operating signal.
@@ -142,7 +142,7 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
     return {
       current,
       goal,
-      monthChange: changePercent(current, priorMonth),
+      monthChange: revenue.some((record) => recordDate(record).startsWith(month) && recordDate(record) <= today && matches(record)) ? changePercent(current, priorMonth) : null,
       weekChange: changePercent(weekly.current, weekly.previous),
     };
   };

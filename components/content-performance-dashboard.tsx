@@ -1,143 +1,68 @@
 "use client";
 
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  BarChart3,
-  Check,
-  CircleAlert,
-  CircleDollarSign,
-  Eye,
-  Gauge,
-  Plus,
-  RefreshCw,
-  ShoppingBag,
-  Target,
-  Users,
-  X,
-} from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { createRecord, listRecords } from "@/lib/api-client";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, updateRecord } from "@/lib/api-client";
+import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-function meta<T>(record: OsRecord | null | undefined, key: string, fallback: T): T {
-  const found = record?.metadata?.[key];
-  return found == null ? fallback : found as T;
-}
-
-function formText(form: FormData, key: string) { return String(form.get(key) ?? "").trim(); }
-function number(form: FormData, key: string) { return Number(formText(form, key) || 0); }
-function money(value: number) { return `${Math.round(value).toLocaleString("ko-KR")}원`; }
+const METRICS = [{ key: "views", label: "조회", suffix: "" }, { key: "ctr", label: "노출 가중 CTR", suffix: "%" }, { key: "retention", label: "조회 가중 지속률", suffix: "%" }, { key: "purchases", label: "구매", suffix: "" }, { key: "revenue", label: "기여 매출", suffix: "원" }, { key: "subscribers", label: "구독자 순증", suffix: "" }] as const;
+const FIELDS = [{ key: "impressions", label: "노출" }, { key: "views", label: "조회" }, { key: "clicks", label: "클릭" }, { key: "ctr", label: "CTR %" }, { key: "retention", label: "시청지속률 %" }, { key: "subscribers", label: "구독자 순증" }, { key: "purchases", label: "구매" }, { key: "revenue", label: "기여 매출 (원)" }];
+const today = () => new Date().toISOString().slice(0, 10);
+const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export function ContentPerformanceDashboard() {
   const { accessToken, demo, profile } = useSession();
-  const [records, setRecords] = useState<OsRecord[]>([]);
-  const [brand, setBrand] = useState("all");
-  const [range, setRange] = useState("30");
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
+  const [records, setRecords] = useState<OsRecord[]>([]); const [hypotheses, setHypotheses] = useState<OsRecord[]>([]);
+  const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all");
+  const [from, setFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)); const [to, setTo] = useState(today());
+  const [dimension, setDimension] = useState("video"); const [weekA, setWeekA] = useState(""); const [weekB, setWeekB] = useState("");
+  const [editing, setEditing] = useState<OsRecord | null>(null); const [open, setOpen] = useState(false);
+  const [hypothesis, setHypothesis] = useState(""); const [hypothesisEdit, setHypothesisEdit] = useState<OsRecord | null>(null);
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [reportId, setReportId] = useState("");
   const load = useCallback(async () => {
     if (demo) return;
-    setBusy(true);
-    try {
-      setRecords((await listRecords(accessToken, "content_metric", "limit=200")).records);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "영상 성과를 불러오지 못했습니다.");
-    } finally { setBusy(false); }
+    const [metrics, decisions] = await Promise.all([listAllRecordsOfType(accessToken, "content_metric"), listAllRecordsOfType(accessToken, "decision")]);
+    setRecords(metrics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis"));
   }, [accessToken, demo]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const filtered = useMemo(() => {
-    const cutoff = range === "all" ? null : new Date(Date.now() - Number(range) * 86_400_000);
-    return records.filter((record) => (brand === "all" || record.brand === brand) && (!cutoff || new Date(record.starts_at ?? record.created_at) >= cutoff));
-  }, [brand, range, records]);
-
-  const totals = useMemo(() => ({
-    views: filtered.reduce((sum, item) => sum + Number(meta(item, "views", item.metric_current ?? 0)), 0),
-    impressions: filtered.reduce((sum, item) => sum + Number(meta(item, "impressions", 0)), 0),
-    clicks: filtered.reduce((sum, item) => sum + Number(meta(item, "clicks", 0)), 0),
-    purchases: filtered.reduce((sum, item) => sum + Number(meta(item, "purchases", meta(item, "conversions", 0))), 0),
-    revenue: filtered.reduce((sum, item) => sum + Number(meta(item, "revenue", 0)), 0),
-    subscribers: filtered.reduce((sum, item) => sum + Number(meta(item, "subscribers", 0)), 0),
-    ctr: filtered.length ? filtered.reduce((sum, item) => sum + Number(meta(item, "ctr", 0)), 0) / filtered.length : 0,
-    retention: filtered.length ? filtered.reduce((sum, item) => sum + Number(meta(item, "retention", 0)), 0) / filtered.length : 0,
-  }), [filtered]);
-
-  const daily = useMemo(() => {
-    const map = new Map<string, { views: number; revenue: number }>();
-    for (const record of filtered) {
-      const key = (record.starts_at ?? record.created_at).slice(0, 10);
-      const current = map.get(key) ?? { views: 0, revenue: 0 };
-      current.views += Number(meta(record, "views", record.metric_current ?? 0));
-      current.revenue += Number(meta(record, "revenue", 0));
-      map.set(key, current);
-    }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-14);
-  }, [filtered]);
-  const maxDailyViews = Math.max(...daily.map(([, value]) => value.views), 1);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    setBusy(true); setError("");
-    try {
-      await createRecord(accessToken, {
-        recordType: "content_metric",
-        title: formText(form, "title"),
-        description: formText(form, "note"),
-        status: "measuring",
-        priority: "normal",
-        stage: "성과 측정",
-        brand: formText(form, "brand"),
-        team: profile?.team || "콘텐츠",
-        sourceUrl: formText(form, "sourceUrl") || null,
-        startsAt: new Date(`${formText(form, "date")}T12:00:00`).toISOString(),
-        metricCurrent: number(form, "views"),
-        metricUnit: "조회",
-        tags: ["영상성과", formText(form, "platform")].filter(Boolean),
-        metadata: {
-          platform: formText(form, "platform"), hierarchy: formText(form, "hierarchy"),
-          views: number(form, "views"), impressions: number(form, "impressions"), clicks: number(form, "clicks"),
-          ctr: number(form, "ctr"), retention: number(form, "retention"), purchases: number(form, "purchases"),
-          conversions: number(form, "purchases"), revenue: number(form, "revenue"), subscribers: number(form, "subscribers"),
-          traffic: formText(form, "traffic"), measuredAt: new Date().toISOString(),
-        },
-      });
-      setOpen(false); await load();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "성과 기록을 저장하지 못했습니다.");
-    } finally { setBusy(false); }
+  useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);
+  const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
+  const scope = useMemo(() => records.filter((item) => (brand === "all" || item.brand === brand) && (platform === "all" || item.metadata.platform === platform) && (hierarchy === "all" || item.metadata.hierarchy === hierarchy)), [records, brand, platform, hierarchy]);
+  const filtered = useMemo(() => dedupeMetricSnapshots(scope.filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= from && date <= to; })), [scope, from, to]);
+  const totals = summarizeMetrics(filtered);
+  const daily = groupMetricDimension(filtered.filter((record) => record.metadata.metricMode !== "cumulative").map((record) => ({ ...record, metadata: { ...record.metadata, day: (record.starts_at ?? record.created_at).slice(0, 10) } })), "day").sort((a, b) => a.title.localeCompare(b.title));
+  const groups = groupMetricDimension(filtered, dimension).sort((a, b) => (b.revenue ?? -1) - (a.revenue ?? -1));
+  const compare = [weekA, weekB].map((start) => { const week = fixedWeek(start); const data = week ? dedupeMetricSnapshots(scope.filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= week.start && date <= week.end; })) : []; return { week, count: data.length, totals: summarizeMetrics(data) }; });
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    await perform(async () => {
+      const numeric = Object.fromEntries(FIELDS.map(({ key }) => [key, text(form, key) === "" ? null : Number(text(form, key))]));
+      const payload = { title: text(form, "title"), description: text(form, "note"), status: "measuring", brand: text(form, "brand"), team: profile?.team || "콘텐츠", sourceUrl: text(form, "sourceUrl") || null, startsAt: `${text(form, "date")}T12:00:00Z`, metricCurrent: numeric.views, metricUnit: "조회", metadata: { ...(editing?.metadata ?? {}), ...numeric, platform: text(form, "platform"), hierarchy: text(form, "hierarchy"), topic: text(form, "topic"), hookType: text(form, "hookType"), traffic: text(form, "traffic"), contentId: text(form, "contentId"), metricMode: text(form, "metricMode"), dataSource: "manual", measuredAt: new Date().toISOString() } };
+      if (editing) await updateRecord(accessToken, { id: editing.id, expectedVersion: editing.version, ...payload }); else await createRecord(accessToken, { recordType: "content_metric", ...payload });
+      setOpen(false); setEditing(null);
+    });
   };
-
-  const brands = [...new Set(records.map((record) => record.brand).filter(Boolean))];
-  const conversionRate = totals.views ? totals.purchases / totals.views * 100 : 0;
-
+  const saveHypothesis = () => perform(async () => {
+    const metadata = { ...(hypothesisEdit?.metadata ?? {}), kind: "content_hypothesis", periodFrom: from, periodTo: to, brandFilter: brand, platformFilter: platform, hierarchyFilter: hierarchy, sampleCount: filtered.length };
+    if (hypothesisEdit) await updateRecord(accessToken, { id: hypothesisEdit.id, expectedVersion: hypothesisEdit.version, title: hypothesis.slice(0, 240), description: hypothesis, status: "review", metadata });
+    else await createRecord(accessToken, { recordType: "decision", title: hypothesis.slice(0, 240), description: hypothesis, status: "review", stage: "콘텐츠 가설", metadata });
+    setHypothesis(""); setHypothesisEdit(null);
+  });
+  const weeklyReport = () => perform(async () => {
+    const { document } = await createDocument(accessToken, { title: `콘텐츠 성과 검토 ${from} ~ ${to}`, folder: "콘텐츠/성과/주간리포트", tags: ["콘텐츠", "주간리포트"], content: `# 콘텐츠 성과 검토\n\n기간: ${from} ~ ${to} · 브랜드: ${brand} · 채널: ${platform} · 위계: ${hierarchy}\n\n## 1. 확인한 사실\n표본 ${filtered.length}건. ${METRICS.map((item) => `${item.label}: ${metricDisplay(totals[item.key], item.suffix)}`).join(" · ")}\n\n## 2. 검토할 가설\n${hypotheses.filter((item) => item.status === "review").map((item) => `- ${item.description}`).join("\n") || "- 등록된 가설 없음"}\n\n## 3. 다음 주 실험\n- A/B 기간, 대상 영상, 변경 변수와 성공 기준을 사람이 입력\n\n## 4. 사람 판정\n- 채택 / 폐기 / 관찰 / 수정 결정 대기\n- 미연결 값은 0으로 해석하지 않음. 자동 정본 반영·외부 발행 없음.\n` }); setReportId(document.id);
+  });
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">채널 성과 판정</span><h1>영상 성과</h1><p>조회·CTR·시청지속에서 구매·매출까지 한 화면에서 확인하고, 콘텐츠 위계별 역할을 판정합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={busy} onClick={load}><RefreshCw className={busy ? "spin" : ""} size={15} /> 새로고침</button><button className="primary-button" onClick={() => setOpen(true)}><Plus size={15} /> 성과 기록</button></div></header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-    <section className="panel content-performance-filters"><div><strong>영상 성과 대시보드</strong><span>실측 데이터 기준 · API 연결 데이터와 수기 기록을 동일 구조로 저장</span></div><label>브랜드<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="all">전체</option>{brands.map((item) => <option key={item}>{item}</option>)}</select></label><label>기간<select value={range} onChange={(event) => setRange(event.target.value)}><option value="7">최근 7일</option><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="all">전체</option></select></label></section>
-    <section className="metric-grid content-performance-metrics">
-      <div className="metric-card"><div className="metric-top"><span>총 조회</span><Eye size={16} /></div><div className="metric-value">{totals.views.toLocaleString("ko-KR")}</div><div className="metric-caption"><ArrowUpRight size={12} /> 선택 기간 합계</div></div>
-      <div className="metric-card"><div className="metric-top"><span>평균 CTR</span><Target size={16} /></div><div className="metric-value">{totals.ctr.toFixed(1)}%</div><div className="metric-caption">패키징 신호</div></div>
-      <div className="metric-card"><div className="metric-top"><span>평균 지속률</span><Gauge size={16} /></div><div className="metric-value">{totals.retention.toFixed(1)}%</div><div className="metric-caption">전달력 신호</div></div>
-      <div className="metric-card"><div className="metric-top"><span>구매</span><ShoppingBag size={16} /></div><div className="metric-value">{totals.purchases.toLocaleString("ko-KR")}</div><div className="metric-caption">조회 대비 {conversionRate.toFixed(2)}%</div></div>
-      <div className="metric-card"><div className="metric-top"><span>기여 매출</span><CircleDollarSign size={16} /></div><div className="metric-value money-value">{money(totals.revenue)}</div><div className="metric-caption good">콘텐츠 귀속 기준</div></div>
-      <div className="metric-card"><div className="metric-top"><span>구독자 순증</span><Users size={16} /></div><div className="metric-value">{totals.subscribers.toLocaleString("ko-KR")}</div><div className="metric-caption">영상별 순증 합계</div></div>
-    </section>
-    <section className="performance-analysis-grid content-analysis-grid">
-      <article className="panel daily-revenue-chart"><div className="panel-header"><div><h2>일별 조회 흐름</h2><p>최근 기록일 기준 최대 14일</p></div><BarChart3 size={17} /></div>{daily.map(([date, values]) => <div key={date}><time>{date.slice(5)}</time><span><i style={{ width: `${Math.max(2, values.views / maxDailyViews * 100)}%` }} /></span><strong>{values.views.toLocaleString("ko-KR")}</strong></div>)}{!daily.length ? <p className="small-empty">기간 내 기록이 없습니다.</p> : null}</article>
-      <article className="panel conversion-funnel"><div className="panel-header"><div><h2>콘텐츠 전환 퍼널</h2><p>노출 → 조회 → 클릭 → 구매</p></div></div>{[
-        ["노출", totals.impressions, 100], ["조회", totals.views, totals.impressions ? totals.views / totals.impressions * 100 : 0], ["클릭", totals.clicks, totals.views ? totals.clicks / totals.views * 100 : 0], ["구매", totals.purchases, totals.clicks ? totals.purchases / totals.clicks * 100 : 0],
-      ].map(([label, value, rate], index) => <div key={String(label)}><span><i style={{ width: `${Math.max(12, 100 - index * 18)}%` }} /></span><strong>{String(label)}</strong><em>{Number(value).toLocaleString("ko-KR")}</em><small>{Number(rate).toFixed(1)}%</small></div>)}</article>
-      <article className="panel source-revenue-list"><div className="panel-header"><div><h2>매출 기여 상위 영상</h2><p>수기·연동 귀속 매출 기준</p></div></div>{[...filtered].sort((a, b) => Number(meta(b, "revenue", 0)) - Number(meta(a, "revenue", 0))).slice(0, 6).map((record) => <div key={record.id}><span>{record.title}</span><strong>{money(Number(meta(record, "revenue", 0)))}</strong></div>)}{!filtered.length ? <p className="small-empty">성과 기록이 없습니다.</p> : null}</article>
-    </section>
-    <section className="panel performance-table content-performance-table"><div className="panel-header"><div><h2>전체 영상</h2><p>조회수 하나가 아니라 패키징·지속·전환 신호를 함께 판정합니다.</p></div><span>{filtered.length}개</span></div>{filtered.length ? <table><thead><tr><th>영상</th><th>위계</th><th>플랫폼</th><th>조회</th><th>CTR</th><th>지속률</th><th>구매</th><th>매출</th><th>판정</th></tr></thead><tbody>{filtered.map((record) => { const ctr = Number(meta(record, "ctr", 0)); const retention = Number(meta(record, "retention", 0)); const purchases = Number(meta(record, "purchases", meta(record, "conversions", 0))); const signal = ctr >= 5 && retention >= 35 ? "확장" : ctr < 3 ? "패키징 점검" : retention < 25 ? "원고 점검" : purchases > 0 ? "전환 유지" : "관찰"; return <tr key={record.id}><td><strong>{record.title}</strong><small>{record.brand || "공통"}</small></td><td>{meta(record, "hierarchy", "미정")}</td><td>{meta(record, "platform", "YouTube")}</td><td>{Number(meta(record, "views", record.metric_current ?? 0)).toLocaleString("ko-KR")}</td><td>{ctr.toFixed(1)}%</td><td>{retention.toFixed(1)}%</td><td>{purchases}</td><td>{money(Number(meta(record, "revenue", 0)))}</td><td><span className={`performance-signal ${signal === "확장" ? "good" : signal.includes("점검") ? "warning" : ""}`}>{signal === "확장" ? <ArrowUpRight size={12} /> : signal.includes("점검") ? <ArrowDownRight size={12} /> : <Check size={12} />}{signal}</span></td></tr>; })}</tbody></table> : <div className="compact-empty"><BarChart3 size={26} /><strong>측정된 영상이 없습니다.</strong><span>성과 기록을 추가하면 대시보드와 퍼널이 계산됩니다.</span></div>}</section>
-
-    {open ? <div className="drawer-backdrop" onMouseDown={() => !busy && setOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">실측 데이터</span><h2>영상 성과 기록</h2></div><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18} /></button></div><label><span>영상 제목</span><input name="title" required /></label><div className="form-grid"><label><span>브랜드</span><input name="brand" defaultValue="브랜디액션" /></label><label><span>측정일</span><input type="date" name="date" required defaultValue={new Date().toISOString().slice(0, 10)} /></label></div><div className="form-grid"><label><span>플랫폼</span><select name="platform"><option>YouTube</option><option>YouTube Shorts</option><option>Instagram</option><option>Threads</option></select></label><label><span>콘텐츠 위계</span><select name="hierarchy"><option>유입형</option><option>전환형</option><option>판매형</option></select></label></div><div className="form-grid"><label><span>노출</span><input type="number" name="impressions" min="0" /></label><label><span>조회</span><input type="number" name="views" min="0" /></label></div><div className="form-grid"><label><span>클릭</span><input type="number" name="clicks" min="0" /></label><label><span>CTR %</span><input type="number" name="ctr" min="0" max="100" step="0.1" /></label></div><div className="form-grid"><label><span>시청지속률 %</span><input type="number" name="retention" min="0" max="100" step="0.1" /></label><label><span>구독자 순증</span><input type="number" name="subscribers" /></label></div><div className="form-grid"><label><span>구매</span><input type="number" name="purchases" min="0" /></label><label><span>기여 매출</span><input type="number" name="revenue" min="0" /></label></div><label><span>주요 유입 경로</span><input name="traffic" placeholder="탐색, 추천, 검색, 외부" /></label><label><span>영상 URL</span><input type="url" name="sourceUrl" /></label><label><span>판정 메모</span><textarea name="note" rows={4} /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>취소</button><button className="primary-button" disabled={busy}>성과 저장</button></div></form></div> : null}
+    <header className="page-header"><div className="page-title-group"><h1>영상 성과</h1><p>실측 성과를 비교하고 다음 제작 가설을 검토합니다. 빈 값은 미연결로 표시합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={busy} onClick={() => void perform(load)}>새로고침</button><button className="secondary-button" disabled={busy || !filtered.length} onClick={weeklyReport}>주간리포트 초안</button><button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}>성과 기록</button></div></header>
+    {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}{reportId ? <p className="inline-alert success"><Link href={`/knowledge?document=${reportId}`}>저장된 주간리포트 열기</Link></p> : null}
+    <section className="panel content-performance-filters"><label>브랜드<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => item.brand).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>플랫폼<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => String(item.metadata.platform ?? "")).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>위계<select value={hierarchy} onChange={(event) => setHierarchy(event.target.value)}><option value="all">전체</option>{["유입형", "전환형", "판매형"].map((value) => <option key={value}>{value}</option>)}</select></label><label>시작<input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} /></label><label>종료<input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} /></label></section>
+    <p className="metric-caption">중복 측정 제거 후 {filtered.length}건 · 누적 측정은 영상별 최신 값 사용 · 비율은 노출·조회 수가 있는 기록으로 계산</p>
+    <section className="metric-grid content-performance-metrics">{METRICS.map((item) => <div className="metric-card" key={item.key}><div className="metric-top">{item.label}</div><div className="metric-value">{metricDisplay(totals[item.key], item.suffix)}</div><small>측정 {filtered.filter((record) => metricValue(record, item.key) !== null).length}/{filtered.length}건</small></div>)}</section>
+    <section className="performance-analysis-grid"><article className="panel pipeline-panel"><h2>일별 조회 흐름</h2><p>당일 증가분 기록만 표시합니다. 누적 스냅샷은 합산하지 않습니다.</p>{daily.slice(-14).map((day) => <p key={day.key}>{day.title} · {metricDisplay(day.views)}회</p>)}{!daily.length ? <p>당일 증가분 기록이 없습니다.</p> : null}</article><article className="panel pipeline-panel"><h2>콘텐츠 전환 퍼널</h2><p>선택 기간 실측값 · 미연결 구간은 판정 보류</p>{[["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", totals.purchases]].map(([label, value]) => <p key={String(label)}>{label}: {metricDisplay(value as number | null)}</p>)}</article></section>
+    <section className="panel performance-table"><div className="panel-header"><h2>성과 비교</h2><label>묶음 기준<select value={dimension} onChange={(event) => setDimension(event.target.value)}>{[["video", "영상"], ["hierarchy", "위계"], ["topic", "주제"], ["hookType", "훅 형식"], ["traffic", "유입원"]].map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div><table><thead><tr><th>구분</th><th>측정</th>{METRICS.map((item) => <th key={item.key}>{item.label}</th>)}</tr></thead><tbody>{groups.map((group) => <tr key={group.key}><td>{group.title}</td><td>{group.count}</td>{METRICS.map((item) => <td key={item.key}>{metricDisplay(group[item.key], item.suffix)}</td>)}</tr>)}</tbody></table>{!groups.length ? <p className="small-empty">선택 기간에 측정된 성과가 없습니다.</p> : null}</section>
+    <section className="panel pipeline-panel"><h2>A/B 주차 비교</h2><p>두 주의 시작일을 고정하면 각각 7일을 비교합니다. 표본 수와 누락을 확인한 뒤 사람이 판정합니다.</p><div className="form-grid"><label>A 주 시작<input type="date" value={weekA} onChange={(event) => setWeekA(event.target.value)} /></label><label>B 주 시작<input type="date" value={weekB} onChange={(event) => setWeekB(event.target.value)} /></label></div><div className="form-grid">{compare.map((item, index) => <article key={index}><strong>{index ? "B" : "A"} · {item.week ? `${item.week.start} ~ ${item.week.end}` : "기간 선택"}</strong><p>표본 {item.count}건</p>{METRICS.map((metric) => <p key={metric.key}>{metric.label}: {metricDisplay(item.totals[metric.key], metric.suffix)}</p>)}</article>)}</div></section>
+    <section className="panel pipeline-panel"><h2>다음 제작 가설</h2><p>현재 필터의 측정 기간과 표본 수를 함께 저장합니다. 가설 수정 시 다시 검토 상태가 됩니다.</p><textarea aria-label="가설 내용" value={hypothesis} onChange={(event) => setHypothesis(event.target.value)} rows={3} /><button className="primary-button" disabled={busy || !hypothesis.trim()} onClick={saveHypothesis}>{hypothesisEdit ? "가설 수정 저장" : "가설 추가"}</button>{hypotheses.map((item) => <article className="hypothesis-row" key={item.id}><p>{item.description}</p><small>{String(item.metadata.periodFrom ?? "")} ~ {String(item.metadata.periodTo ?? "")} · 표본 {String(item.metadata.sampleCount ?? "미정")}</small><div className="pipeline-actions"><select aria-label={`${item.title} 판정`} disabled={busy} value={item.status} onChange={(event) => { const status = event.target.value; void perform(() => updateRecord(accessToken, { id: item.id, expectedVersion: item.version, status, metadata: { ...item.metadata, decidedAt: new Date().toISOString(), decidedBy: profile?.id } })); }}>{[["review", "검토 대기"], ["adopted", "채택"], ["discarded", "폐기"], ["observing", "관찰"], ["revising", "수정"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><button className="ghost-button" onClick={() => { setHypothesisEdit(item); setHypothesis(item.description); }}>수정</button><button className="ghost-button" disabled={busy} onClick={() => void perform(() => archiveRecord(accessToken, item.id))}>휴지통</button></div></article>)}</section>
+    <section className="panel performance-table"><div className="panel-header"><h2>측정 기록</h2></div><table><thead><tr><th>영상</th><th>기준일</th><th>출처</th><th>측정 방식</th><th>관리</th></tr></thead><tbody>{filtered.map((item) => <tr key={item.id}><td>{item.title}</td><td>{(item.starts_at ?? item.created_at).slice(0, 10)}</td><td>{String(item.metadata.dataSource ?? "출처 미입력")}</td><td>{item.metadata.metricMode === "cumulative" ? "누적" : "당일"}</td><td><button className="ghost-button" onClick={() => { setEditing(item); setOpen(true); }}>수정</button><button className="ghost-button" disabled={busy} onClick={() => void perform(() => archiveRecord(accessToken, item.id))}>휴지통</button></td></tr>)}</tbody></table></section>
+    {open ? <div className="drawer-backdrop"><form className="record-drawer" key={editing?.id ?? "new"} onSubmit={save}><div className="drawer-head"><h2>{editing ? "영상 성과 수정" : "영상 성과 기록"}</h2><button type="button" className="ghost-button" disabled={busy} onClick={() => setOpen(false)}>닫기</button></div><p>확인하지 못한 수치는 비워 두세요. 0은 실제 측정값으로 저장됩니다.</p><label>영상 제목<input required name="title" defaultValue={editing?.title} /></label><label>브랜드<input name="brand" defaultValue={editing?.brand || "브랜디액션"} /></label><label>측정일<input type="date" required name="date" defaultValue={editing ? (editing.starts_at ?? editing.created_at).slice(0, 10) : today()} /></label><label>콘텐츠 ID 또는 YouTube 영상 ID<input name="contentId" defaultValue={String(editing?.metadata.contentId ?? "")} /></label><label>영상 URL<input type="url" name="sourceUrl" defaultValue={editing?.source_url ?? ""} /></label><div className="form-grid"><label>플랫폼<select name="platform" defaultValue={String(editing?.metadata.platform ?? "YouTube")}>{["YouTube", "YouTube Shorts", "Instagram", "Threads"].map((value) => <option key={value}>{value}</option>)}</select></label><label>측정 방식<select name="metricMode" defaultValue={String(editing?.metadata.metricMode ?? "daily")}><option value="daily">해당 날짜 증가분</option><option value="cumulative">측정 시점 누적값</option></select></label></div><label>위계<select name="hierarchy" defaultValue={String(editing?.metadata.hierarchy ?? "유입형")}>{["유입형", "전환형", "판매형"].map((value) => <option key={value}>{value}</option>)}</select></label><div className="form-grid">{FIELDS.map((field) => <label key={field.key}>{field.label}<input type="number" step="any" name={field.key} min={field.key === "subscribers" ? undefined : 0} max={["ctr", "retention"].includes(field.key) ? 100 : undefined} defaultValue={editing ? metricValue(editing, field.key) ?? "" : ""} /></label>)}</div>{[["topic", "주제"], ["hookType", "훅 형식"], ["traffic", "유입원"]].map(([key, label]) => <label key={key}>{label}<input name={key} defaultValue={String(editing?.metadata[key] ?? "")} /></label>)}<label>판정 메모<textarea name="note" defaultValue={editing?.description} /></label><div className="drawer-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setOpen(false)}>취소</button><button className="primary-button" disabled={busy}>성과 저장</button></div></form></div> : null}
   </>;
 }

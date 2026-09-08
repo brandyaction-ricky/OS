@@ -6,6 +6,7 @@ import { createDocument, createRecord, generateContent, getDocument, listDocumen
 import { buildScriptDocumentInput, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
+import { ContentLinkedScripts } from "./content-linked-scripts";
 import { useSession } from "./session-provider";
 
 function value<T>(record: OsRecord | null | undefined, key: string, fallback: T): T {
@@ -180,14 +181,15 @@ export function ContentScriptsWorkspace() {
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
+    <ContentLinkedScripts />
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
-        {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleDateString("ko-KR")}</small></span></button>)}
+        {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{["기획", "패키징", "자료", "축", "설계표", "초안", "다듬기", "발행"].map((stage) => `${documents.some((doc) => doc.folder === item.name && `${doc.source_ref || ""} ${doc.title}`.includes(stage)) ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
         {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
       </aside>
       <article className="panel script-detail script-document-reader">{selected ? <>
-        <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder}</p></div><span className="count-badge">v{selected.current_version}</span></header>
+        <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder} · 최근 수정 {new Date(selected.updated_at).toLocaleString("ko-KR")}</p>{selected.status === "review" ? <p className="inline-alert warning">원고 검토·승인 대기 중입니다.</p> : null}</div><span className="count-badge">v{selected.current_version}</span></header>
         <nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{document.source_ref || document.title}</button>)}</nav>
         {readerError ? <div className="inline-alert danger" role="alert">{readerError}<button className="ghost-button" onClick={() => setReaderRevision((current) => current + 1)}>다시 불러오기</button></div> : readerLoading || reader?.id !== selected.id ? <div className="list-empty" role="status">본문을 불러오는 중입니다.</div> : <pre>{reader.content_md || "아직 본문이 없습니다. 지식에서 내용을 작성해 주세요."}</pre>}
       </> : <div className="empty-state"><div><FileText /><h3>{loading ? "원고를 불러오는 중입니다" : "첫 원고를 작성해 보세요"}</h3><p>제목과 영상 폴더명을 정하면 원고 작업을 시작할 수 있습니다.</p><button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></div>}</article>

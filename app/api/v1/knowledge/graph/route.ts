@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await service
         .from("os_documents")
-        .select("id,title,content_md,folder,status,owner_id")
+        .select("id,title,content_md,folder,status,owner_id,source_ref")
         .neq("status", "archived")
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);

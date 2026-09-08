@@ -6,7 +6,7 @@ interface RequestOptions extends RequestInit {
   token?: string | null;
 }
 
-async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
   if (options.body && !(options.body instanceof FormData)) headers.set("content-type", "application/json");
@@ -119,6 +119,15 @@ export async function listRecords(token: string | null, recordType: RecordType, 
   const params = new URLSearchParams(query);
   params.set("type", recordType);
   return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+}
+
+export async function listAllRecordsOfType(token: string | null, recordType: RecordType) {
+  const records: OsRecord[] = [];
+  for (let offset = 0; ; offset += 200) {
+    const page = await listRecords(token, recordType, `limit=200&offset=${offset}`);
+    records.push(...page.records);
+    if (page.records.length < 200 || records.length >= page.total) return records;
+  }
 }
 
 export async function listAllRecords(token: string | null, query = "limit=200") {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
+import { PIPELINE_PROTECTED_KEYS } from "@/lib/content-pipeline";
+import { assertOrganization } from "@/lib/server/organization";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { isDevelopmentRequest } from "@/lib/development-requests";
@@ -20,12 +22,13 @@ const restorable = [
   "currency", "source_url", "tags", "metadata", "archived_at",
 ] as const;
 
-async function authorize(request: Request, id: string) {
-  const actor = await authenticateRequest(request);
+async function authorize(request: Request, id: string, write = false) {
+  const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: write ? "records.write" : "records.read" });
+  if (actor.type === "agent") await assertOrganization(actor, z.string().uuid().parse(new URL(request.url).searchParams.get("organizationId")));
   const service = createServiceSupabase();
   const { data, error } = await service.from("os_records").select("*").eq("id", id).maybeSingle();
   if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
-  if (actor.role !== "admin" && ![data.owner_id, data.created_by, data.assignee_id].includes(actor.id)) {
+  if (actor.role !== "admin" && ![data.owner_id, data.created_by, data.assignee_id].includes(actor.ownerId)) {
     throw new ApiError(403, "RECORD_RESTORE_FORBIDDEN", "이 운영 기록의 버전을 복원할 권한이 없습니다.");
   }
   return { actor, service, current: data };
@@ -51,21 +54,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   try {
     const id = z.string().uuid().parse((await context.params).id);
     const input = restoreSchema.parse(await parseJson(request, 16_000));
-    const { actor, service, current } = await authorize(request, id);
+    const { actor, service, current } = await authorize(request, id, true);
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 복원 대신 요청 화면에서 다시 열어 주세요.");
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.");
-    const { data: events, error: versionError } = await service.from("os_record_events").select("snapshot").eq("record_id", id).order("created_at", { ascending: false }).limit(200);
+    const { data: events, error: versionError } = await service.from("os_record_events").select("snapshot").eq("record_id", id).eq("snapshot->>version", String(input.version)).limit(1);
     if (versionError) throw new ApiError(400, "RECORD_VERSION_READ_FAILED", "복원할 버전을 확인하지 못했습니다.", versionError.message);
     const snapshot = (events ?? []).map((event) => event.snapshot).find((value) => Number(value?.version) === input.version);
     if (!snapshot) throw new ApiError(404, "RECORD_VERSION_NOT_FOUND", "복원할 운영 기록 버전을 찾지 못했습니다.");
+    if (current.record_type === "access_rule" && actor.role !== "admin") throw new ApiError(403, "HUMAN_PERMISSION_GATE", "권한 정책 복원은 관리자가 처리해야 합니다.");
+    if (["leave_balance", "leave_request"].includes(current.record_type) && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "연차·휴가 상태 복원은 관리자가 처리해야 합니다.");
+    if (current.record_type === "content_publish" && [current.status, snapshot.status].some((status) => ["scheduled", "published"].includes(status))) throw new ApiError(409, "PUBLISH_RESTORE_BLOCKED", "예약·발행 이력은 버전 복원으로 변경할 수 없습니다. 발행 화면에서 확인해 주세요.");
     const payload = Object.fromEntries(restorable.map((field) => [field, snapshot[field]]));
     payload.metadata = { ...(snapshot.metadata ?? {}), restoredFromVersion: input.version, restoreReason: input.reason };
-    payload.updated_by = actor.id;
+    for (const key of PIPELINE_PROTECTED_KEYS) {
+      if (current.metadata[key] === undefined) delete (payload.metadata as Record<string, unknown>)[key];
+      else (payload.metadata as Record<string, unknown>)[key] = current.metadata[key];
+    }
+    if (current.metadata.pipelineEnabled === true) (payload.metadata as Record<string, unknown>).pipelineEnabled = true;
+    payload.updated_by = actor.ownerId;
     const { data, error } = await service.from("os_records").update(payload).eq("id", id).eq("version", input.expectedVersion).select("*").maybeSingle();
     if (error) throw new ApiError(400, "RECORD_RESTORE_FAILED", "운영 기록을 복원하지 못했습니다.", error.message);
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.");
-    const { data: latestEvent } = await service.from("os_record_events").select("id").eq("record_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const { data: latestEvent } = await service.from("os_record_events").select("id").eq("record_id", id).eq("snapshot->>version", String(data.version)).limit(1).maybeSingle();
     if (latestEvent) await service.from("os_record_events").update({ event_type: "restored", note: input.reason }).eq("id", latestEvent.id);
+    if (actor.type === "agent") {
+      const { error: auditError } = await service.from("os_agent_audit_logs").insert({ organization_id: actor.organizationId, agent_key_id: actor.id, owner_user_id: actor.ownerId, action: "record.restore", record_id: id, title_snapshot: data.title, changed_fields: restorable, reason: input.reason });
+      if (auditError) throw new ApiError(500, "AGENT_AUDIT_FAILED", "기록은 복원됐지만 AI 감사 기록 저장을 확인하지 못했습니다.");
+    }
     return NextResponse.json({ record: data });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_RECORD_VERSION", "복원할 버전을 확인해 주세요.", error.flatten()));

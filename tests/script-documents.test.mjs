@@ -65,6 +65,7 @@ function setup(overrides = {}, initialSession = {}) {
     "lucide-react": new Proxy({}, { get: (_target, name) => String(name) }),
     "@/lib/api-client": api, "@/lib/script-documents": scripts,
     "./session-provider": { useSession: () => session },
+    "./content-linked-scripts": { ContentLinkedScripts: "ContentLinkedScripts" },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {

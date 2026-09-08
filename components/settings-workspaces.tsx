@@ -420,7 +420,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
               <section className="channel-hero panel">
                 <div className="connection-icon"><Bot /></div>
                 <div><span className="eyebrow">텔레그램</span><h2>@brandyOS_Bot</h2><p>회사 정본 질문, 프로젝트·업무 조회, 아이디어·후기·사진 캡처를 처리합니다.</p></div>
-                <em className={`status-pill status-${telegram?.configured ? "ready" : "waiting"}`}>{telegram?.configured ? "웹훅 연결됨" : "연결 대기"}</em>
+                <em className={`status-pill status-${telegram?.configured ? "ready" : "waiting"}`}>{telegram?.configured ? "키 등록됨 · 모니터링에서 웹훅 확인" : "연결 대기"}</em>
               </section>
               <section className="studio-two">
                 <article className="panel company-block">

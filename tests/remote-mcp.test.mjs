@@ -16,7 +16,7 @@ test("remote MCP route exposes the five guarded knowledge tools", async () => {
   assert.match(route, /Bearer bos_pat_/);
   assert.match(route, /instructions:/);
   assert.match(tools, /z\.literal\(true\)/);
-  assert.match(tools, /status: "personal_draft"/);
+  assert.match(tools, /status: "draft"/);
   assert.doesNotMatch(route, /bos_pat_[A-Za-z0-9_-]{16,}/);
   assert.doesNotMatch(tools, /bos_pat_[A-Za-z0-9_-]{16,}/);
 });
