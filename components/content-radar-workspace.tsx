@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, createRecord, generateContent, listRecords, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -102,8 +103,9 @@ export function ContentRadarWorkspace() {
     const kind = meta<string>(record, "studioKind", "");
     return !["channel", "outlier"].includes(kind) && record.metadata?.automationSource !== true;
   }), [records]);
-  const nicheTopics = useMemo(() => topics.filter((topic) => topic.status !== "planned"), [topics]);
-  const plannedTopics = useMemo(() => topics.filter((topic) => topic.status === "planned"), [topics]);
+  const nicheQueue = useMemo(() => records.filter(isNicheQueueRecord), [records]);
+  const nicheTopics = useMemo(() => nicheQueue.filter((topic) => topic.status !== "planned"), [nicheQueue]);
+  const plannedTopics = useMemo(() => nicheQueue.filter((topic) => topic.status === "planned"), [nicheQueue]);
   const plans = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "topic_plan"), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
   const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
