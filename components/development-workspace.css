@@ -10,8 +10,7 @@
 .dev-overview-grid article { min-width: 0; padding: 20px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
 .dev-project-title { padding: 0; border: 0; background: transparent; color: var(--text); font-size: 17px; font-weight: 600; text-align: left; }
 .dev-project-counts { display: grid; grid-template-columns: repeat(4, 1fr); margin: 20px 0; gap: 4px; }
-.dev-project-counts button { display: grid; gap: 8px; padding: 9px 2px; border: 0; border-radius: 5px; background: var(--panel-2); color: var(--text); }
-.dev-project-counts span { color: var(--muted); font-size: 11px; }
+.dev-project-counts button { display: grid; place-items: center; min-height: 62px; padding: 9px 2px; border: 0; border-radius: 5px; background: var(--panel-2); color: var(--text); }
 .dev-project-counts strong { font-size: 22px; }
 .dev-workspace .dev-tabs { flex-wrap: wrap; gap: 16px; }
 .dev-workspace { max-width: 1540px; margin: 0 auto; color: var(--text); }
@@ -33,6 +32,8 @@
 .dev-icon-button { padding: 5px; display: inline-flex; border: none; border-radius: 4px; background: transparent; color: var(--muted); }
 .dev-icon-button:hover { background: var(--panel-3); color: var(--text); }
 .dev-text-button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 0; border: none; background: transparent; color: var(--accent-2); font-size: 12px; }
+.dev-text-button.danger { color: var(--danger); }
+.dev-request-actions { display: flex; align-items: center; gap: 16px; margin-bottom: 10px; }
 .dev-banner, .dev-notice, .dev-error { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; line-height: 1.6; }
 .dev-banner { color: var(--warning); background: var(--panel); }
 .dev-notice { color: var(--text-2); background: var(--accent-soft); }

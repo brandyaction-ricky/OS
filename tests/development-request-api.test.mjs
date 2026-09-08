@@ -69,6 +69,7 @@ function setup(rows = []) {
       if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
       return actor;
     } },
+    "@/lib/supabase/server": { createServiceSupabase: () => actor.supabase },
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ error: { code: error.code ?? "ERROR", message: error.message } }, { status: error.status ?? 500 }) },
   };
   const commonJsModule = { exports: {} };
@@ -165,4 +166,18 @@ test("API enforces stale versions, reporter ownership and administrator completi
   assert.equal(response.status, 200);
   assert.equal((await response.json()).record.version, 2);
   assert.equal(rows[0].metadata.resolution, "안내 완료");
+});
+
+test("request deletion is authenticated, versioned and limited to the reporter or administrator", async () => {
+  const { routes, actor, rows } = setup([record()]);
+  const remove = (version = 1, authenticated = true) => request("DELETE", null, `?id=${requestId}&expectedVersion=${version}`, authenticated);
+  assert.equal((await routes.DELETE(remove(1, false))).status, 401);
+  assert.equal((await routes.DELETE(remove(99))).status, 409);
+  actor.id = "other";
+  assert.equal((await routes.DELETE(remove())).status, 403);
+  actor.role = "admin";
+  const response = await routes.DELETE(remove());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).archived, true);
+  assert.ok(rows[0].archived_at);
 });
