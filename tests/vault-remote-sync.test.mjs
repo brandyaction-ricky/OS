@@ -13,6 +13,8 @@ test("vault importer accepts a remote OS endpoint without exposing a service rol
 test("vault changesets are authenticated, bounded and indexed", async () => {
   const source = await readFile(new URL("../app/api/v1/knowledge/sync/route.ts", import.meta.url), "utf8");
   assert.match(source, /requiredAgentScope: "knowledge\.write"/);
+  assert.match(source, /actor\.role !== "admin"/);
+  assert.match(source, /actor\.allowedStatuses/);
   assert.match(source, /\.max\(100\)/);
   assert.match(source, /contentHash/);
   assert.match(source, /indexDocument\(documentId\)/);
