@@ -35,8 +35,25 @@ async function sendTelegram(chatId: number, text: string, replyTo: number) {
 
 async function ownerId(supabase: ReturnType<typeof createServiceSupabase>) {
   const email = process.env.TELEGRAM_CAPTURE_OWNER_EMAIL?.trim();
-  if (!email) throw new ApiError(503, "CAPTURE_OWNER_NOT_CONFIGURED", "폰 캡처 저장 담당자가 연결되지 않아 저장하지 않았습니다. 관리자에게 연결을 요청해 주세요.");
-  const { data, error } = await supabase.from("os_profiles").select("id").eq("email", email).eq("is_active", true).maybeSingle();
+  let configuredOwnerId = "";
+  if (!email) {
+    const { data: setting, error: settingError } = await supabase
+      .from("os_records")
+      .select("assignee_id")
+      .eq("record_type", "company_setting")
+      .eq("title", "Telegram 캡처 담당자")
+      .eq("status", "active")
+      .is("archived_at", null)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (settingError) throw new ApiError(503, "CAPTURE_OWNER_SETTING_FAILED", "폰 캡처 저장 담당자 설정을 확인하지 못했습니다. 잠시 뒤 다시 요청해 주세요.");
+    configuredOwnerId = String(setting?.assignee_id ?? "").trim();
+  }
+  if (!email && !configuredOwnerId) throw new ApiError(503, "CAPTURE_OWNER_NOT_CONFIGURED", "폰 캡처 저장 담당자가 연결되지 않아 저장하지 않았습니다. 관리자에게 연결을 요청해 주세요.");
+  let query = supabase.from("os_profiles").select("id").eq("is_active", true);
+  query = email ? query.eq("email", email) : query.eq("id", configuredOwnerId);
+  const { data, error } = await query.maybeSingle();
   if (error || !data) throw new ApiError(503, "CAPTURE_OWNER_MISSING", "폰 캡처를 저장할 활성 구성원이 없습니다.");
   return data.id as string;
 }
