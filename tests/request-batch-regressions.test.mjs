@@ -9,6 +9,7 @@ import { sanitizePublicCopyValue } from "../lib/content-safety.ts";
 import { buildHomeRevenueView } from "../lib/home-dashboard.ts";
 import { fuzzyDocumentScore } from "../lib/knowledge-navigation.ts";
 import { structureBorrowInput, structureBorrowGuidance } from "../lib/structure-borrow.ts";
+import { hasLexicalEvidence } from "../lib/search-relevance.ts";
 
 test("quick open matches sparse filename letters and ranks exact titles ahead of fuzzy matches", () => {
   assert.ok(fuzzyDocumentScore("원최", "원고_낭독본_최종.md") > 0);
@@ -92,6 +93,12 @@ test("public generation copy removes internal terms recursively without losing s
   assert.equal(result.score, 4);
   assert.doesNotMatch(JSON.stringify(result), /배선|결핍|대상a|증환/);
   assert.ok(result.candidates[0].title.length);
+});
+
+test("degraded knowledge search rejects unrelated evidence", () => {
+  const result = { title: "시각화 시스템 프롬프트", heading: "본문", text: "HTML 보고서와 육각 레이더를 구성한다." };
+  assert.equal(hasLexicalEvidence(result, "푸른삼각형을 내일로 접어줘"), false);
+  assert.equal(hasLexicalEvidence(result, "HTML 보고서 구성 알려줘"), true);
 });
 
 test("headings fold hierarchically and fenced code retains blank lines and fake headings", () => {
