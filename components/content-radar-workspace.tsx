@@ -18,8 +18,10 @@ import {
   X,
   Youtube,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest, createRecord, generateContent, listRecords, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest, createRecord, generateContent, listAllRecordsOfType, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { structureBorrowInput } from "@/lib/structure-borrow";
+import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
@@ -68,10 +70,21 @@ export function ContentRadarWorkspace() {
   const [tab, setTab] = useState<RadarTab>("channels");
   const [selectedId, setSelectedId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [resultQuery, setResultQuery] = useState("");
+  const searchInFlight = useRef(false);
   const [results, setResults] = useState<YoutubeMarketItem[]>([]);
   const [durationFilter, setDurationFilter] = useState("long");
   const [daysFilter, setDaysFilter] = useState("all");
-  const [resultSort, setResultSort] = useState("views");
+  const [resultSort, setResultSort] = useState("ratio");
+  const [outliersOnly, setOutliersOnly] = useState(true);
+  const [region, setRegion] = useState("KR");
+  const [resultRegion, setResultRegion] = useState("KR");
+  const [notice, setNotice] = useState("");
+  const [borrowItem, setBorrowItem] = useState<YoutubeMarketItem | null>(null);
+  const [singleCard, setSingleCard] = useState(false);
+  const [cardIndex, setCardIndex] = useState(0);
+  const [showDiscarded, setShowDiscarded] = useState(false);
+  const [checkedVideos, setCheckedVideos] = useState<Set<string>>(new Set());
   const [baselines, setBaselines] = useState<Record<string, { state: string; sampleCount: number; ratio: number | null; robustZ: number | null; outlier: boolean; reason: string }>>({});
   const [channelOpen, setChannelOpen] = useState(false);
   const [channelInput, setChannelInput] = useState("");
@@ -84,11 +97,11 @@ export function ContentRadarWorkspace() {
     if (demo) return;
     try {
       const [topicResult, packageResult] = await Promise.all([
-        listRecords(accessToken, "content_topic", "limit=200"),
-        listRecords(accessToken, "content_package", "limit=200"),
+        listAllRecordsOfType(accessToken, "content_topic"),
+        listAllRecordsOfType(accessToken, "content_package"),
       ]);
-      setRecords(topicResult.records);
-      setPackages(packageResult.records);
+      setRecords(topicResult);
+      setPackages(packageResult);
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "콘텐츠 탐색 자료를 불러오지 못했습니다.");
@@ -173,12 +186,16 @@ export function ContentRadarWorkspace() {
   };
 
   const runSearch = async () => {
+    if (searchInFlight.current || busy) return;
     const query = searchQuery.trim();
     if (query.length < 2) return setError("탐색 키워드를 두 글자 이상 입력해 주세요.");
+    searchInFlight.current = true;
     setBusy(true); setError("");
     try {
-      const response = await searchYoutubeMarket(accessToken, query, 20);
-      setResults(response.items);
+      const response = await searchYoutubeMarket(accessToken, query, 20, { region, order: resultSort === "recent" ? "date" : "viewCount" });
+      setResults(response.items); setResultQuery(query); setCardIndex(0); setCheckedVideos(new Set()); setResultRegion(region); setBaselines({}); setNotice("같은 채널의 비교 표본을 확인하고 있습니다…");
+      const comparison = await measureDiscovery(response.items, (item) => apiRequest(`/api/v1/youtube/outlier?videoId=${encodeURIComponent(item.id)}`, { token: accessToken }), (id, result) => setBaselines((current) => ({ ...current, [id]: result })));
+      setNotice(`비교 ${comparison.attempted}개 중 ${comparison.attempted - comparison.failed}개 처리 · ${comparison.failed}개 실패. 표본 부족은 별도로 표시됩니다. 현재 누적 조회 기준으로, 고정 연령·세부 포맷은 추가 검토가 필요합니다.`);
       await createRecord(accessToken, {
         recordType: "content_package",
         title: `${query} 탐색`,
@@ -199,7 +216,7 @@ export function ContentRadarWorkspace() {
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "시장 탐색을 완료하지 못했습니다.");
-    } finally { setBusy(false); }
+    } finally { searchInFlight.current = false; setBusy(false); }
   };
 
   const measureBaseline = async (item: YoutubeMarketItem) => {
@@ -208,13 +225,15 @@ export function ContentRadarWorkspace() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "동일 채널 기준선을 계산하지 못했습니다."); }
     finally { setBusy(false); }
   };
-  const visibleResults = results.filter((item) => (durationFilter === "all" || item.durationSeconds >= 240) && (daysFilter === "all" || (item.publishedAt && Date.now() - Date.parse(item.publishedAt) <= Number(daysFilter) * 86400000)))
-    .sort((a, b) => resultSort === "recent" ? String(b.publishedAt).localeCompare(String(a.publishedAt)) : resultSort === "ratio" ? (baselines[b.id]?.ratio ?? -1) - (baselines[a.id]?.ratio ?? -1) : b.viewCount - a.viewCount);
-  const saveOutlier = async (item: YoutubeMarketItem) => {
+  const decisions = new Map(packages.filter((record) => meta<string>(record, "packageKind", "") === "discovery_decision").slice().reverse().map((record) => [meta(record, "youtubeId", ""), record]));
+  const visibleResults = discoveryResults(results, baselines, { format: durationFilter, days: daysFilter, sort: resultSort, outliersOnly }).filter((item) => showDiscarded || decisions.get(item.id)?.status !== "blocked");
+  if (resultSort === "fit") visibleResults.sort((a, b) => Number(decisions.get(b.id)?.metadata.fitScore ?? 0) - Number(decisions.get(a.id)?.metadata.fitScore ?? 0));
+  const visibleCards = singleCard ? visibleResults.slice(Math.min(cardIndex, Math.max(0, visibleResults.length - 1)), Math.min(cardIndex, Math.max(0, visibleResults.length - 1)) + 1) : visibleResults;
+  const saveOutlier = async (item: YoutubeMarketItem, navigate = true, manageBusy = true) => {
     if (outliers.some((record) => meta(record, "youtubeId", "") === item.id)) return;
-    setBusy(true); setError("");
+    if (manageBusy) { setBusy(true); setError(""); }
     try {
-      await createRecord(accessToken, {
+      const { record } = await createRecord(accessToken, {
         recordType: "content_topic",
         title: item.title,
         description: `${item.channelTitle}에서 발견한 시장 근거 영상`,
@@ -225,7 +244,7 @@ export function ContentRadarWorkspace() {
         sourceUrl: item.url,
         metricCurrent: item.viewCount,
         metricUnit: "조회",
-        tags: ["아웃라이어", searchQuery.trim()].filter(Boolean),
+        tags: ["아웃라이어", resultQuery].filter(Boolean),
         metadata: {
           studioKind: "outlier", baseline: baselines[item.id] ?? null, discoverySource: "keyword",
           youtubeId: item.id,
@@ -235,13 +254,47 @@ export function ContentRadarWorkspace() {
           views: item.viewCount,
           likes: item.likeCount,
           comments: item.commentCount,
-          query: searchQuery.trim(),
+          query: resultQuery,
         },
       });
-      await load();
+      setRecords((current) => [record, ...current.filter((item) => item.id !== record.id)]);
+      if (navigate) { setSelectedId(record.id); setTab("niches"); setNotice("틈새 근거로 저장했습니다. 저장한 영상을 선택했습니다."); }
+      return record;
     } catch (reason) {
+      if (!manageBusy) throw reason;
       setError(reason instanceof Error ? reason.message : "근거 영상을 저장하지 못했습니다.");
-    } finally { setBusy(false); }
+    } finally { if (manageBusy) setBusy(false); }
+  };
+
+  const reviewVideo = async (item: YoutubeMarketItem, status: "review" | "blocked", fitScore = 0) => {
+    setBusy(true); setError("");
+    try {
+      const existing = decisions.get(item.id);
+      const metadata = { ...(existing?.metadata ?? {}), packageKind: "discovery_decision", youtubeId: item.id, fitScore, reviewedAt: new Date().toISOString() };
+      const response = existing ? await updateRecord(accessToken, { id: existing.id, expectedVersion: existing.version, status, metadata })
+        : await createRecord(accessToken, { recordType: "content_package", title: item.title, status, priority: "normal", sourceUrl: item.url, team: profile?.team || "콘텐츠", metadata });
+      setPackages((current) => [response.record, ...current.filter((record) => record.id !== response.record.id)]);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "영상 검토 상태를 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+  const borrow = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!borrowItem) return;
+    const form = new FormData(event.currentTarget); setBusy(true); setError("");
+    try {
+      const { record } = await createRecord(accessToken, structureBorrowInput(borrowItem, formText(form, "topic"), formText(form, "fulfillment"), profile?.team || "콘텐츠"));
+      setRecords((current) => [record, ...current]); setSelectedId(record.id); setTab("niches"); setBorrowItem(null);
+      setNotice("구조 차용 후보를 저장했습니다. 후보 뽑기 후 원본 구조와 우리 약속을 검토하고 채택해 주세요.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "구조 차용 후보를 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+  const bulkSave = async () => {
+    const items = visibleResults.filter((item) => checkedVideos.has(item.id) && item.durationSeconds >= 240 && !outliers.some((record) => meta(record, "youtubeId", "") === item.id));
+    if (!items.length) return;
+    setBusy(true); setError("");
+    const outcomes = await Promise.allSettled(items.map((item) => saveOutlier(item, false, false)));
+    const successful = new Set(items.filter((_, index) => outcomes[index].status === "fulfilled").map((item) => item.id));
+    setCheckedVideos((current) => new Set([...current].filter((id) => !successful.has(id))));
+    setNotice(`근거 ${successful.size}개 저장 · ${items.length - successful.size}개 실패. 실패한 선택은 다시 시도할 수 있게 남겼습니다.`); setBusy(false);
   };
 
   const addTopic = async (event: FormEvent<HTMLFormElement>) => {
@@ -339,20 +392,20 @@ export function ContentRadarWorkspace() {
 
     {tab === "channels" ? <>
       <section className="metric-grid compact-metrics">
-        <div className="metric-card"><div className="metric-top"><span>추적 채널</span><Users size={16} /></div><div className="metric-value">{channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
-        <div className="metric-card"><div className="metric-top"><span>수집 영상</span><Youtube size={16} /></div><div className="metric-value">{channels.reduce((sum, channel) => sum + Number(meta(channel, "videoCount", 0)), 0)}</div><div className="metric-caption">채널 메타데이터 기준</div></div>
+        <div className="metric-card"><div className="metric-top"><span>매일 보는 채널</span><Users size={16} /></div><div className="metric-value">{channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
+        <div className="metric-card"><div className="metric-top"><span>모은 영상</span><Youtube size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">OS에 저장한 근거 영상</div></div>
         <div className="metric-card"><div className="metric-top"><span>발견 근거</span><Radar size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">저장한 시장 영상</div></div>
         <div className="metric-card"><div className="metric-top"><span>기획 확정</span><Check size={16} /></div><div className="metric-value">{topics.filter((topic) => topic.status === "planned").length}</div><div className="metric-caption good">원고 공정 전달 가능</div></div>
       </section>
       <section className="panel channel-dictionary">
-        <div className="panel-header"><div><h2>채널 탐색 사전</h2><p>A–L 입구 언어로 시장을 넓히되, 채널 승인에는 반복 근거를 남깁니다.</p></div><span>{ENTRY_CATEGORIES.length}개 분류</span></div>
+        <div className="panel-header"><div><h2>채널 탐색 사전</h2><p>A–L 사람들이 찾는 말로 시장을 넓히되, 채널 승인에는 반복 근거를 남깁니다.</p></div><span>{ENTRY_CATEGORIES.length}개 분류</span></div>
         <div>{ENTRY_CATEGORIES.map(([letter, name, description]) => <button type="button" key={letter} onClick={() => { setSearchQuery(description.split(",")[0].trim()); setTab("discovery"); }}><b>{letter}</b><span><strong>{name}</strong><small>{description}</small></span></button>)}</div>
       </section>
       <section className="panel content-data-table">
-        <div className="panel-header"><div><h2>추적 채널</h2><p>채널 URL·운영 주체·대표 형식을 함께 관리합니다.</p></div><button className="ghost-button" onClick={() => setChannelOpen(true)}><Plus size={14} /> 직접 추가</button></div>
-        <div className="content-table-head"><span>채널</span><span>분류</span><span>운영 주체</span><span>기본 형식</span><span>상태</span><span /></div>
+        <div className="panel-header"><div><h2>매일 보는 채널</h2><p>채널 URL·운영하는 곳·대표 형식을 함께 관리합니다.</p></div><button className="ghost-button" onClick={() => setChannelOpen(true)}><Plus size={14} /> 직접 추가</button></div>
+        <div className="content-table-head"><span>채널</span><span>분류</span><span>운영하는 곳</span><span>기본 형식</span><span>상태</span><span /></div>
         {channels.map((channel) => <div className="content-table-row" key={channel.id}><span><strong>{channel.title}</strong><small>{channel.description || "승인 근거 미입력"}</small></span><span>{meta(channel, "category", "미분류")}</span><span>{meta(channel, "ownerGroup", "미입력")}</span><span>{meta(channel, "defaultFormat", "해설")}</span><span className="status-pill status-active">추적 중</span><span>{channel.source_url ? <a href={channel.source_url} target="_blank" rel="noreferrer" aria-label={`${channel.title} 열기`}><ExternalLink size={14} /></a> : null}</span></div>)}
-        {!channels.length ? <div className="compact-empty"><Youtube size={24} /><strong>아직 추적 채널이 없습니다.</strong><span>캡처의 채널 사전 기준으로 첫 관찰 채널을 등록하세요.</span></div> : null}
+        {!channels.length ? <div className="compact-empty"><Youtube size={24} /><strong>아직 매일 보는 채널이 없습니다.</strong><span>캡처의 채널 사전 기준으로 첫 관찰 채널을 등록하세요.</span></div> : null}
       </section>
     </> : null}
 
@@ -360,12 +413,15 @@ export function ContentRadarWorkspace() {
       <section className="panel discovery-console">
         <div><span className="eyebrow">YouTube Data API</span><h2>터진 영상 발굴</h2><p>키워드별 조회 상위 영상을 불러오고, 사람이 근거 영상을 골라 틈새 판정에 보냅니다.</p></div>
         <div className="market-search"><Search size={17} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }} placeholder="예: 직장인 강점 찾기, 퇴사 후 불안" /><button className="primary-button" disabled={busy} onClick={runSearch}>{busy ? "탐색 중…" : "영상 탐색"}</button></div>
-        <div className="radar-filters"><label>길이<select value={durationFilter} onChange={(event) => setDurationFilter(event.target.value)}><option value="long">롱폼 · 4분 이상</option><option value="all">전체</option></select></label><label>발행 기간<select value={daysFilter} onChange={(event) => setDaysFilter(event.target.value)}><option value="all">전체</option><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option></select></label><label>정렬<select value={resultSort} onChange={(event) => setResultSort(event.target.value)}><option value="views">조회순</option><option value="recent">최신순</option><option value="ratio">채널 중앙값 배율순</option></select></label><small>표시 {visibleResults.length}/{results.length} · 한국 지역 검색</small></div>
+        <div className="radar-filters"><label>길이<select value={durationFilter} onChange={(event) => setDurationFilter(event.target.value)}><option value="long">롱폼 · 4분 이상</option><option value="short">4분 미만 · 참고만</option></select></label><label>발행 기간<select value={daysFilter} onChange={(event) => setDaysFilter(event.target.value)}><option value="all">전체</option><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option></select></label><label>정렬<select value={resultSort} onChange={(event) => setResultSort(event.target.value)}><option value="views">조회순</option><option value="recent">최신순</option><option value="ratio">채널 중앙값 배율순</option><option value="fit">팀 검토 적합도순</option></select></label><label>검색 지역<select value={region} disabled={busy} onChange={(event) => setRegion(event.target.value)}><option value="KR">한국</option><option value="US">미국</option><option value="JP">일본</option><option value="all">전체</option></select></label><label><input type="checkbox" checked={outliersOnly} disabled={durationFilter === "short"} onChange={(event) => setOutliersOnly(event.target.checked)} /> 비교 기준을 넘은 후보만</label><small>표시 {visibleResults.length}/{results.length} · 결과 지역 {resultRegion} · 지역 변경은 다음 검색에 적용</small></div>
       </section>
-      {results.length ? <section className="outlier-result-grid">{visibleResults.map((item) => {
+      {notice ? <p className="inline-alert" role="status">{notice}</p> : null}
+      {results.length > 0 && visibleResults.length === 0 ? <p className="list-empty">현재 기준을 넘은 영상이 없습니다. “후보만”을 해제하면 표본 부족·일반 범위의 비교 결과도 볼 수 있습니다.</p> : null}
+      {results.length ? <div className="radar-filters"><label><input type="checkbox" checked={singleCard} onChange={(event) => { setSingleCard(event.target.checked); setCardIndex(0); }} /> 빠른 넘기기</label><label><input type="checkbox" checked={showDiscarded} onChange={(event) => setShowDiscarded(event.target.checked)} /> 검토 제외도 보기</label><button className="secondary-button" disabled={busy || !checkedVideos.size || durationFilter === "short"} onClick={() => void bulkSave()}>선택 근거 저장 ({checkedVideos.size})</button>{singleCard ? <><button disabled={cardIndex <= 0} onClick={() => setCardIndex((index) => Math.max(0, index - 1))}>이전</button><span>{visibleResults.length ? Math.min(cardIndex + 1, visibleResults.length) : 0} / {visibleResults.length}</span><button disabled={cardIndex >= visibleResults.length - 1} onClick={() => setCardIndex((index) => index + 1)}>다음</button></> : null}<small>폭넓게 모으려면 “비교 기준을 넘은 후보만”을 해제하세요. 적합도는 AI 추정이 아닌 팀이 지정한 값입니다.</small></div> : null}
+      {results.length ? <section className="outlier-result-grid">{visibleCards.map((item) => {
         const saved = outliers.some((record) => meta(record, "youtubeId", "") === item.id);
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
-        return <article className="panel outlier-result" key={item.id}><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div>{baselines[item.id] ? <p className="baseline-result">{baselines[item.id].ratio === null ? `비교 표본 ${baselines[item.id].sampleCount}/20` : `중앙값 ${baselines[item.id].ratio!.toFixed(2)}배 · ${baselines[item.id].outlier ? "이상치 후보" : "일반 범위"}`}<small>{baselines[item.id].reason}</small></p> : null}<button className="secondary-button" disabled={busy} onClick={() => measureBaseline(item)}>같은 채널 20개와 비교</button><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button></div></article>;
+        return <article className="panel outlier-result" key={item.id}><label><input type="checkbox" checked={checkedVideos.has(item.id)} disabled={busy || saved || durationFilter === "short"} onChange={(event) => setCheckedVideos((current) => { const next = new Set(current); if (event.target.checked) next.add(item.id); else next.delete(item.id); return next; })} /> 근거 선택</label><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div>{baselines[item.id] ? <p className="baseline-result">{baselines[item.id].ratio === null ? `비교 표본 ${baselines[item.id].sampleCount}/20` : `중앙값 ${baselines[item.id].ratio!.toFixed(2)}배 · ${baselines[item.id].outlier ? "이상치 후보" : "일반 범위"}`}<small>{baselines[item.id].reason}</small></p> : null}<button className="secondary-button" disabled={busy} onClick={() => measureBaseline(item)}>같은 채널 20개와 비교</button><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved || durationFilter === "short"} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button><button className="secondary-button" disabled={busy} onClick={() => setBorrowItem(item)}>구조 빌려오기</button><label>팀 검토 적합도<select value={Number(decisions.get(item.id)?.metadata.fitScore ?? 0)} disabled={busy} onChange={(event) => void reviewVideo(item, "review", Number(event.target.value))}><option value={0}>미검토</option><option value={1}>낮음</option><option value={2}>보통</option><option value={3}>높음</option></select></label><button className="ghost-button" disabled={busy} onClick={() => void reviewVideo(item, decisions.get(item.id)?.status === "blocked" ? "review" : "blocked", Number(decisions.get(item.id)?.metadata.fitScore ?? 0))}>{decisions.get(item.id)?.status === "blocked" ? "검토 제외 취소" : "팀 검토에서 제외"}</button></div></article>;
       })}</section> : <div className="panel compact-empty discovery-empty"><Radar size={28} /><strong>키워드로 시장 영상을 탐색하세요.</strong><span>검색 결과는 저장하기 전까지 운영 데이터에 들어가지 않습니다.</span></div>}
       <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}
@@ -375,13 +431,13 @@ export function ContentRadarWorkspace() {
         <div className="panel"><Flag size={17} /><span><strong>{topics.filter((item) => item.status === "planned").length}</strong><small>기획으로 넘기기</small></span></div>
         <div className="panel"><Eye size={17} /><span><strong>{topics.filter((item) => item.status === "review").length}</strong><small>더 지켜보기</small></span></div>
         <div className="panel"><Target size={17} /><span><strong>{outliers.length}</strong><small>단일 근거 영상</small></span></div>
-        <div className="panel"><FileText size={17} /><span><strong>{plans.length}</strong><small>정본 기획안</small></span></div>
+        <div className="panel"><FileText size={17} /><span><strong>{plans.length}</strong><small>완성 기획안</small></span></div>
       </section>
       <section className="content-planning-layout">
-        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "판정 전이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "판정 전"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
+        <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "미정이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "미정"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
-          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "판정 전"}</span><h2>{selected.title}</h2><p>{selected.description}</p></div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 정본으로 후보 만들기</button></header>
-          <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>검색 입구 언어</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
+          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 제목·썸네일 후보 뽑기</button></header>
+          <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
           {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
@@ -389,7 +445,8 @@ export function ContentRadarWorkspace() {
       </section>
     </> : null}
 
-    {channelOpen ? <div className="drawer-backdrop" onMouseDown={() => !busy && setChannelOpen(false)}><form className="record-drawer" onSubmit={addChannel} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">관찰 채널</span><h2>추적 채널 추가</h2></div><button type="button" className="icon-button" onClick={() => setChannelOpen(false)}><X size={18} /></button></div><label><span>YouTube 채널 URL · @핸들 · 채널 ID</span><div className="channel-verify-row"><input value={channelInput} onChange={(event) => { setChannelInput(event.target.value); setVerifiedChannel(null); }} required placeholder="https://www.youtube.com/@…" /><button type="button" className="secondary-button" disabled={busy} onClick={verifyChannel}><Search size={14} /> 채널 확인</button></div></label>{verifiedChannel ? <section className="verified-channel"><span style={{ backgroundImage: `url(${verifiedChannel.thumbnail})` }} /><div><strong>{verifiedChannel.title}</strong><small>{verifiedChannel.handle} · 구독자 {verifiedChannel.subscribers.toLocaleString("ko-KR")} · 영상 {verifiedChannel.videos.toLocaleString("ko-KR")}</small><p>{verifiedChannel.description || "채널 설명 없음"}</p></div><Check size={17} /></section> : <div className="inline-alert warning"><CircleAlert size={15} /> 이름 검색으로 추측하지 않습니다. 채널 URL 또는 @핸들로 정확한 채널을 먼저 확인하세요.</div>}<div className="form-grid"><label><span>입구 분류</span><select name="category">{ENTRY_CATEGORIES.map(([letter, name]) => <option value={`${letter}. ${name}`} key={letter}>{letter}. {name}</option>)}</select></label><label><span>대표 형식</span><select name="format"><option>해설</option><option>인터뷰</option><option>강의</option><option>브이로그</option><option>사례 분석</option></select></label></div><label><span>운영 주체</span><input name="ownerGroup" placeholder="개인·회사·미디어명" /></label><label><span>승인 근거</span><textarea name="reason" rows={4} placeholder="왜 계속 볼 채널인지, 반복해서 확인할 신호" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setChannelOpen(false)}>취소</button><button className="primary-button" disabled={busy || !verifiedChannel}>추적 채널 저장</button></div></form></div> : null}
-    {topicOpen ? <div className="drawer-backdrop" onMouseDown={() => !busy && setTopicOpen(false)}><form className="record-drawer" onSubmit={addTopic} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">틈새 입력</span><h2>새 주제 후보</h2></div><button type="button" className="icon-button" onClick={() => setTopicOpen(false)}><X size={18} /></button></div><label><span>틈새·주제</span><input name="title" required /></label><label><span>시청자가 겪는 현상·문제</span><textarea name="problem" required rows={4} /></label><div className="form-grid"><label><span>대표 시청자</span><input name="audience" /></label><label><span>콘텐츠 위계</span><select name="hierarchy"><option>유입형</option><option>전환형</option><option>판매형</option></select></label></div><label><span>검색되는 입구 언어</span><input name="entryLanguage" /></label><div className="form-grid"><label><span>채널명</span><input name="channel" /></label><label><span>브랜드</span><input name="brand" defaultValue="브랜디액션" /></label></div><label><span>근거·수치</span><textarea name="evidence" rows={3} /></label><label><span>근거 영상 URL</span><input type="url" name="sourceUrl" /></label><label><span>키워드</span><input name="keywords" placeholder="쉼표로 구분" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setTopicOpen(false)}>취소</button><button className="primary-button" disabled={busy}>틈새 후보 저장</button></div></form></div> : null}
+    {borrowItem ? <div className="drawer-backdrop"><form className="record-drawer" onSubmit={borrow}><div className="drawer-head"><h2>구조 빌려오기</h2><button type="button" className="icon-button" disabled={busy} onClick={() => setBorrowItem(null)} aria-label="구조 차용 닫기"><X size={18} /></button></div><p>원본: <a href={borrowItem.url} target="_blank" rel="noreferrer">{borrowItem.title}</a></p><p>원본의 제목·결론은 복제하지 않습니다. 제목 골격과 반전·약속 구조를 우리 주제로 옮긴 뒤 사람이 채택합니다.</p><label><span>우리 주제</span><input name="topic" required maxLength={200} /></label><label><span>실제로 설명·제공할 수 있는 내용</span><textarea name="fulfillment" required minLength={10} maxLength={3000} rows={5} /></label>{error ? <p role="alert">{error}</p> : null}<div className="drawer-actions"><button type="button" disabled={busy} className="secondary-button" onClick={() => setBorrowItem(null)}>취소</button><button className="primary-button" disabled={busy}>검토 후보 저장</button></div></form></div> : null}
+    {channelOpen ? <div className="drawer-backdrop" onMouseDown={() => !busy && setChannelOpen(false)}><form className="record-drawer" onSubmit={addChannel} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">관찰 채널</span><h2>매일 보는 채널 추가</h2></div><button type="button" className="icon-button" onClick={() => setChannelOpen(false)}><X size={18} /></button></div><label><span>YouTube 채널 URL · @핸들 · 채널 ID</span><div className="channel-verify-row"><input value={channelInput} onChange={(event) => { setChannelInput(event.target.value); setVerifiedChannel(null); }} required placeholder="https://www.youtube.com/@…" /><button type="button" className="secondary-button" disabled={busy} onClick={verifyChannel}><Search size={14} /> 채널 확인</button></div></label>{verifiedChannel ? <section className="verified-channel"><span style={{ backgroundImage: `url(${verifiedChannel.thumbnail})` }} /><div><strong>{verifiedChannel.title}</strong><small>{verifiedChannel.handle} · 구독자 {verifiedChannel.subscribers.toLocaleString("ko-KR")} · 영상 {verifiedChannel.videos.toLocaleString("ko-KR")}</small><p>{verifiedChannel.description || "채널 설명 없음"}</p></div><Check size={17} /></section> : <div className="inline-alert warning"><CircleAlert size={15} /> 이름 검색으로 추측하지 않습니다. 채널 URL 또는 @핸들로 정확한 채널을 먼저 확인하세요.</div>}<div className="form-grid"><label><span>입구 분류</span><select name="category">{ENTRY_CATEGORIES.map(([letter, name]) => <option value={`${letter}. ${name}`} key={letter}>{letter}. {name}</option>)}</select></label><label><span>대표 형식</span><select name="format"><option>해설</option><option>인터뷰</option><option>강의</option><option>브이로그</option><option>사례 분석</option></select></label></div><label><span>운영하는 곳</span><input name="ownerGroup" placeholder="개인·회사·미디어명" /></label><label><span>승인 근거</span><textarea name="reason" rows={4} placeholder="왜 계속 볼 채널인지, 반복해서 확인할 신호" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setChannelOpen(false)}>취소</button><button className="primary-button" disabled={busy || !verifiedChannel}>매일 보는 채널 저장</button></div></form></div> : null}
+    {topicOpen ? <div className="drawer-backdrop" onMouseDown={() => !busy && setTopicOpen(false)}><form className="record-drawer" onSubmit={addTopic} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">틈새 입력</span><h2>새 주제 후보</h2></div><button type="button" className="icon-button" onClick={() => setTopicOpen(false)}><X size={18} /></button></div><label><span>틈새·주제</span><input name="title" required /></label><label><span>시청자가 겪는 현상·문제</span><textarea name="problem" required rows={4} /></label><div className="form-grid"><label><span>대표 시청자</span><input name="audience" /></label><label><span>콘텐츠 위계</span><select name="hierarchy"><option>유입형</option><option>전환형</option><option>판매형</option></select></label></div><label><span>사람들이 찾는 말</span><input name="entryLanguage" /></label><div className="form-grid"><label><span>채널명</span><input name="channel" /></label><label><span>브랜드</span><input name="brand" defaultValue="브랜디액션" /></label></div><label><span>근거·수치</span><textarea name="evidence" rows={3} /></label><label><span>근거 영상 URL</span><input type="url" name="sourceUrl" /></label><label><span>키워드</span><input name="keywords" placeholder="쉼표로 구분" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setTopicOpen(false)}>취소</button><button className="primary-button" disabled={busy}>틈새 후보 저장</button></div></form></div> : null}
   </>;
 }

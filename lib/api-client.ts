@@ -270,7 +270,13 @@ export async function runIndexing(token: string | null, action: "process" | "ret
 export interface TelegramConnectionStatus {
   configured: boolean;
   bot?: { username: string | null; name: string | null };
-  webhook: null | { url: string; pendingUpdates: number; lastErrorAt: number | null; lastError: string | null };
+  webhook: null | { url: string; pendingUpdates: number; lastErrorAt: number | null; lastError: string | null; lastSynchronizationErrorAt?: number | null };
+  diagnosticError?: string | null;
+  lastReceivedAt?: string | null;
+  lastProcessingError?: { at: string; message: string } | null;
+  pendingCount?: number;
+  approvedCount?: number;
+  approvedUsers?: { external_user_id: string; display_name: string; username: string; status: string; last_received_at: string | null }[];
   pendingUsers?: { external_user_id: string; external_chat_id: string | null; display_name: string; username: string; status: "pending"; requested_at: string }[];
 }
 
@@ -379,6 +385,7 @@ export async function getContentMediaUrl(token: string | null, path: string) {
 }
 
 export interface YoutubeMarketItem {
+  live?: boolean;
   id: string;
   title: string;
   channelTitle: string;
@@ -393,8 +400,8 @@ export interface YoutubeMarketItem {
   url: string;
 }
 
-export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12) {
-  const params = new URLSearchParams({ q: query, maxResults: String(maxResults) });
+export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12, options: { region?: string; order?: string } = {}) {
+  const params = new URLSearchParams({ q: query, maxResults: String(maxResults), region: options.region ?? "KR", order: options.order ?? "viewCount" });
   return apiRequest<{ query: string; configured: boolean; items: YoutubeMarketItem[] }>(`/api/v1/youtube/search?${params}`, { token });
 }
 

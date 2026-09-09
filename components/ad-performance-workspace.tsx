@@ -102,11 +102,12 @@ export function AdPerformanceWorkspace() {
         <div className="ad-toolbar">
           {profile?.role === "admin" ? <button type="button" className="ghost-button" onClick={downloadAdCsvSample}>CSV 예제</button> : null}
           {profile?.role === "admin" ? <label className="secondary-button file-button"><FileUp size={15} /> CSV 가져오기<input type="file" accept=".csv,text/csv" onChange={importCsv} /></label> : null}
-          <button className="secondary-button" disabled={loading} onClick={load}><RefreshCw size={15} className={loading ? "spin" : ""} /> 새로고침</button>
-          {profile?.role === "admin" ? <button className="primary-button" disabled={syncing} onClick={runSync}><RefreshCw size={15} className={syncing ? "spin" : ""} /> API 동기화</button> : null}
+          <button className="secondary-button" disabled={loading} title="OS에 저장된 광고 데이터를 다시 불러옵니다. 외부 API는 호출하지 않습니다." onClick={load}><RefreshCw size={15} className={loading ? "spin" : ""} /> 새로고침</button>
+          {profile?.role === "admin" ? <button className="primary-button" disabled={syncing} title="Meta·Google 광고 API에서 최신 데이터를 수집해 저장합니다." onClick={runSync}><RefreshCw size={15} className={syncing ? "spin" : ""} /> API 동기화</button> : null}
         </div>
       </header>
       {error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}
+      <p className="field-hint">새로고침: 저장된 결과 조회 · API 동기화: 광고 플랫폼에서 최신 데이터 수집</p>
       {notice ? <div className="inline-alert success">{notice}</div> : null}
 
       <section className="ad-connection-strip">

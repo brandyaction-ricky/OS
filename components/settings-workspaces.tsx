@@ -119,6 +119,8 @@ function SettingsLoading({ page }: { page: Page }) {
   );
 }
 
+import { TelegramAccessPanel } from "./telegram-access-panel";
+
 export function SettingsWorkspace({ page }: { page: Page }) {
   const { accessToken, demo, profile } = useSession();
   const [health, setHealth] = useState<Awaited<ReturnType<typeof getHealth>> | null>(null);
@@ -142,7 +144,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
           listMembers(accessToken),
           listRecords(accessToken, "brand", "limit=100"),
           listRecords(accessToken, "goal", "limit=200"),
-          page === "channels"
+          page === "channels" && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
         ]);
@@ -161,7 +163,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
     } finally {
       setLoaded(true);
     }
-  }, [accessToken, demo, page]);
+  }, [accessToken, demo, page, profile?.role]);
 
   useEffect(() => {
     load();
@@ -369,6 +371,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
 
           {page === "company" ? (
             <>
+              <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header">
@@ -425,11 +428,11 @@ export function SettingsWorkspace({ page }: { page: Page }) {
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header"><div><h2>지원 기능</h2><p>한 두뇌 · 여러 통로</p></div></div>
-                  {["회사 정본 검색", "프로젝트·업무·목표 조회", "#인박스 아이디어 저장", "/후기 상품후기 정본", "/썸네일기록 결정 로그", "/요약 주소 요약", "사진 글자 읽기"].map((item) => <div className="company-list-row" key={item}><CheckCircle2 size={15} /><strong>{item}</strong></div>)}
+                  {["회사 정본 검색", "프로젝트·업무·목표 조회", "#인박스 아이디어 저장", "/후기 상품후기 초안", "/썸네일기록 결정 로그", "/요약 주소 요약", "사진 글자 읽기"].map((item) => <div className="company-list-row" key={item}><CheckCircle2 size={15} /><strong>{item}</strong></div>)}
                 </article>
                 <article className="panel company-block">
                   <div className="panel-header"><div><h2>접근 승인</h2><p>미등록 사용자는 기본 차단</p></div></div>
-                  <div className="channel-stat"><MessageSquareText /><span><strong>{telegram?.pendingUsers?.length ?? 0}명 승인 대기</strong><small>설정 → 운영 모니터링에서 승인·거절</small></span></div>
+                  <div className="channel-stat"><MessageSquareText /><span><strong>{telegram ? `${telegram.pendingCount ?? telegram.pendingUsers?.length ?? 0}명 승인 대기` : "관리자 확인 필요"}</strong><small>위의 접근 승인·수신 상태에서 확인</small></span></div>
                   <div className="channel-stat"><KeyRound /><span><strong>허용 명단 + 관리자 승인</strong><small>토큰과 사용자 ID는 화면에 노출하지 않음</small></span></div>
                 </article>
               </section>

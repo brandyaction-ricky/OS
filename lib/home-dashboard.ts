@@ -114,7 +114,8 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
   const lastMonth = previousMonth(month);
   const elapsedDay = Number(today.slice(8, 10));
   const todayMs = Date.parse(`${today}T00:00:00.000Z`);
-  const revenue = records.filter((record) => record.record_type === "revenue");
+  const weekElapsedDays = (now.getUTCDay() + 6) % 7; // Monday through the same weekday.
+  const revenue = records.filter((record) => record.record_type === "revenue" && !record.archived_at);
   const goals = records.filter((record) => ["goal", "kpi"].includes(record.record_type) && recordMonth(record) === month);
 
   const band = (key: "myin" | "edu" | "all"): RevenueBandValue => {
@@ -131,10 +132,10 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
       if (!matches(record)) return totals;
       const recordMs = Date.parse(`${recordDate(record)}T00:00:00.000Z`);
       const daysAgo = Math.floor((todayMs - recordMs) / 86_400_000);
-      if (daysAgo >= 0 && daysAgo < 7) totals.current += revenueAmount(record);
-      if (daysAgo >= 7 && daysAgo < 14) totals.previous += revenueAmount(record);
+      if (daysAgo >= 0 && daysAgo <= weekElapsedDays) { totals.current += revenueAmount(record); totals.currentRows++; }
+      if (daysAgo >= 7 && daysAgo <= 7 + weekElapsedDays) totals.previous += revenueAmount(record);
       return totals;
-    }, { current: 0, previous: 0 });
+    }, { current: 0, previous: 0, currentRows: 0 });
     const explicitGoal = targetByBrand(goals, key);
     const goal = key === "all" && !explicitGoal
       ? targetByBrand(goals, "myin") + targetByBrand(goals, "edu")
@@ -143,7 +144,7 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
       current,
       goal,
       monthChange: revenue.some((record) => recordDate(record).startsWith(month) && recordDate(record) <= today && matches(record)) ? changePercent(current, priorMonth) : null,
-      weekChange: changePercent(weekly.current, weekly.previous),
+      weekChange: weekly.currentRows ? changePercent(weekly.current, weekly.previous) : null,
     };
   };
 

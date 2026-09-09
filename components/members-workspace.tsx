@@ -158,6 +158,7 @@ export function MembersWorkspace() {
     } finally { setAccountBusy(false); }
   };
   const accounts = members.filter((member) => member.account_connected);
+  const roster = [...COMPANY_ROSTER, ...accounts.filter((member) => !COMPANY_ROSTER.some((person) => memberMatchesRoster(member, person.name))).map((member) => ({ name: member.display_name || member.email, affiliation: member.affiliation, roles: member.roles }))];
   const active = accounts.filter((member) => member.is_active).length;
   const admins = accounts.filter(
     (member) => member.role === "admin" && member.is_active,
@@ -187,7 +188,7 @@ export function MembersWorkspace() {
             </span>
           </div>
           <div className="metric-value">{accounts.length}</div>
-          <div className="metric-caption">로그인 이력이 있는 구성원</div>
+          <div className="metric-caption">발급된 계정 기준 · 아래 명부에 모두 표시</div>
         </div>
         <div className="metric-card">
           <div className="metric-top">
@@ -221,14 +222,14 @@ export function MembersWorkspace() {
         </div>
       </section>
       <section className="roster-grid">
-        {COMPANY_ROSTER.map((person) => {
+        {roster.map((person) => {
           const account = members.find((member) =>
             memberMatchesRoster(member, person.name),
           ) ?? members.find((member) => member.id === rosterDirectoryId(person.name));
           const roles = account?.roles?.length ? account.roles : [...person.roles];
           const representativeRoles = roles.slice(0, 2);
           return (
-            <button type="button" className="panel roster-card" key={person.name} onClick={() => account && setSelected(account)} aria-label={`${person.name} 구성원 정보 편집`}>
+            <button type="button" className="panel roster-card" key={person.name} disabled={!account} onClick={() => account && setSelected(account)} aria-label={`${person.name} 구성원 정보 편집`}>
               <span className="avatar">
                 <UserRound size={15} />
               </span>
@@ -310,7 +311,7 @@ export function MembersWorkspace() {
                 <section className="member-account-issue">
                   <div><UserRoundPlus size={17} /><span><strong>직원 로그인 계정 발급</strong><small>기존 닉네임 `{selected.display_name}`에 로그인 계정을 연결합니다.</small></span></div>
                   <label><span>직원 실명</span><input value={legalName} onChange={(event) => setLegalName(event.target.value)} placeholder="직원 실명" required /></label>
-                  <label><span>로그인 이메일</span><input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} placeholder="name@brandyaction.com" required /></label>
+                  <label><span>로그인 이메일</span><input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} placeholder="name@example.com" required /></label>
                   <button type="button" className="secondary-button" disabled={accountBusy || profile?.role !== "admin" || !legalName.trim() || !accountEmail.trim()} onClick={issueAccount}><UserRoundPlus size={15} /> {accountBusy ? "발급 중…" : "최초 비밀번호로 계정 발급"}</button>
                   <small>비밀번호 원문은 화면에 표시하지 않습니다. 직원은 최초 로그인 후 개인 비밀번호를 반드시 설정합니다.</small>
                 </section>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiErrorResponse, ApiError } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { documentIndex } from "@/lib/server/document-index";
+import { fuzzyDocumentScore } from "@/lib/knowledge-navigation";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ folders: [...folders].map(([path, count]) => ({ path, count })), total: rows.length });
     }
     const q = (url.searchParams.get("q") ?? "").normalize("NFC").toLowerCase();
-    return NextResponse.json({ documents: rows.filter(row => `${row.title} ${row.source_ref ?? ""}`.normalize("NFC").toLowerCase().includes(q)).slice(0, 30) });
+    return NextResponse.json({ documents: rows.map((row) => ({ row, score: Math.max(fuzzyDocumentScore(q, row.title), fuzzyDocumentScore(q, row.source_ref ?? "")) })).filter((item) => item.score >= 0).sort((a, b) => b.score - a.score || a.row.title.localeCompare(b.row.title, "ko")).slice(0, 30).map((item) => item.row) });
   } catch (error) { return apiErrorResponse(error); }
 }

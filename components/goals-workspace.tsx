@@ -122,7 +122,7 @@ export function GoalsWorkspace() {
 
     <div className="period-toolbar panel">
       <button className="icon-button" onClick={() => setMonth((value) => shiftMonth(value, -1))} aria-label="이전 달"><ArrowLeft size={16} /></button>
-      <label><CalendarRange size={16} /><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /><strong>{monthLabel(month)}</strong></label>
+      <label><CalendarRange size={16} /><span>기준월</span><input aria-label="목표 기준월" type="month" value={month} onChange={(event) => { if (event.target.value) setMonth(event.target.value); }} /></label>
       <button className="icon-button" onClick={() => setMonth((value) => shiftMonth(value, 1))} aria-label="다음 달"><ArrowRight size={16} /></button>
       <button className="ghost-button" onClick={() => setMonth(currentMonth())}>이번 달</button>
     </div>
