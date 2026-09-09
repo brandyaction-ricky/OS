@@ -5,35 +5,11 @@ import type { DocumentStatus, SearchResult } from "@/lib/types";
 import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { hasLexicalEvidence, searchTerms } from "@/lib/search-relevance";
 
 type SearchInput = z.infer<typeof searchSchema>;
 
 interface SearchOutcome { results: SearchResult[]; degraded: boolean; }
-
-const SEARCH_STOP_WORDS = new Set([
-  "뭐", "뭐냐", "뭔가", "어떤", "어떤거", "어떤게", "알려줘", "알려", "보여줘", "보여",
-  "찾아줘", "찾아", "있나", "있어", "있는지", "인가", "이야", "해줘", "대한", "관련",
-  "the", "a", "an", "what", "which", "show", "find", "tell", "about",
-]);
-
-function searchTerms(value: string) {
-  const normalized = value
-    .replace(/@[A-Za-z0-9_]+/g, " ")
-    .replace(/[%_,().?!/\\:;\[\]{}'\"`~@#$^&*+=|<>-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-  const words = normalized.split(" ").filter((word) => word.length >= 2 && !SEARCH_STOP_WORDS.has(word));
-  const terms = new Set<string>();
-  for (const word of words) {
-    terms.add(word);
-    if (/^[가-힣]{4,}$/.test(word)) {
-      for (let index = 0; index < word.length - 1; index += 2) terms.add(word.slice(index, index + 2));
-      terms.add(word.slice(-2));
-    }
-  }
-  return [...terms].filter((term) => term.length >= 2).slice(0, 8);
-}
 
 function countOccurrences(value: string, term: string) {
   let count = 0;
@@ -141,6 +117,9 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     score: Number(row.score ?? 0),
     citation: { documentId: row.document_id as string, version: null, chunkId: row.chunk_id as number },
   }));
+  // Without embeddings, the RPC can return low-signal full-text rows for an
+  // unrelated sentence. Do not present those rows as evidence to chat users.
+  if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
   const sharedActor = actor.type === "user" ? { ...actor, supabase: createServiceSupabase() } : actor;
   const sharedKeyword = await fallbackDocuments(sharedActor, input, statuses);
   if (!results.length) results = sharedKeyword;
