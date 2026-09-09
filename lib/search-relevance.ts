@@ -31,3 +31,8 @@ export function hasLexicalEvidence(result: Pick<SearchResult, "title" | "heading
   const searchable = `${result.title} ${result.heading} ${result.text}`.toLowerCase();
   return terms.some((term) => searchable.includes(term));
 }
+
+export function evidenceQueryText(value: string) {
+  const withoutLeadingLabel = value.replace(/^\s*\[[^\]\r\n]{1,80}\]\s*/u, "").trim();
+  return withoutLeadingLabel || value.trim();
+}
