@@ -6,6 +6,7 @@ import { answerFromKnowledge } from "@/lib/server/answer";
 import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
 import { captureKind, isBotAddressed } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
+import { evidenceQueryText, hasLexicalEvidence } from "@/lib/search-relevance";
 
 export const runtime = "nodejs";
 
@@ -217,10 +218,16 @@ export async function POST(request: Request) {
       searchDocuments(actor, { query: text, mode: "hybrid", topK: 8, filters: { statuses: ["canonical"] } }),
       operationalAnswer(supabase, text),
     ]);
-    const knowledgeAnswer = results.length ? await answerFromKnowledge(text, results) : "";
+    // Telegram is an external, conversational surface. Require a literal
+    // evidence overlap after removing an optional leading label before using
+    // semantic candidates, so an embedding nearest-neighbour is never shown
+    // as proof for an unrelated or misunderstood request.
+    const evidenceQuery = evidenceQueryText(text);
+    const verifiedResults = results.filter((result) => hasLexicalEvidence(result, evidenceQuery));
+    const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults) : "";
     const answer = [liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
     await sendTelegram(message.chat.id, answer, message.message_id);
-    await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: text, answer, source_document_ids: [...new Set(results.map((result) => result.documentId))] });
+    await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: text, answer, source_document_ids: [...new Set(verifiedResults.map((result) => result.documentId))] });
     return NextResponse.json({ ok: true });
   } catch (error) {
     // Never disclose failures to an unauthenticated webhook sender or imply a failed save succeeded.

@@ -28,8 +28,9 @@ async function setup(file, handler, options = {}) {
     "@/lib/server/auth": { authenticateRequest: async () => options.actor ?? actor, safeSecretMatch: (a, b) => a === b },
     "@/lib/supabase/server": { createServiceSupabase: () => db },
     "@/lib/telegram-intents": intents,
+    "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/server/answer": { answerFromKnowledge: async () => "근거 답변" },
-    "@/lib/server/search": { searchDocuments: async () => ({ results: [] }) },
+    "@/lib/server/search": { searchDocuments: async () => ({ results: options.searchResults ?? [] }) },
   };
   const exports = {};
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, process: { env: { TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_WEBHOOK_SECRET: "test-secret", TELEGRAM_BOT_USERNAME: "our_bot", TELEGRAM_CAPTURE_OWNER_EMAIL: "owner@example.com", ...options.env } }, Buffer, AbortSignal, URL, Date, console,
@@ -147,4 +148,25 @@ test("start returns usage guidance instead of searching arbitrary knowledge", as
   const body = await (await ctx.api.POST(incoming({ text: "/start" }))).json();
   assert.equal(body.started, true);
   assert.match(ctx.sent[0].text, /회사 지식 질문/);
+});
+
+test("a labelled nonsense question never cites semantically-near but lexically unrelated knowledge", async () => {
+  const unrelated = { documentId: "unrelated-doc", title: "현재기준", heading: "본문", text: "유튜브 운영 판정 숫자와 썸네일 기준", citation: { version: 1, chunkId: 1 }, score: 0.03 };
+  const ctx = await setup("webhook", normalHandler, { searchResults: [unrelated] });
+  const question = "[운영검수 2026-09-09] 푸른삼각형을 내일로 접어줘";
+  const body = await (await ctx.api.POST(incoming({ text: question }))).json();
+  assert.equal(body.ok, true);
+  assert.match(ctx.sent[0].text, /찾지 못했습니다/);
+  assert.doesNotMatch(ctx.sent[0].text, /근거 답변/);
+  const turn = ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload;
+  assert.equal(turn.source_document_ids.length, 0);
+});
+
+test("a labelled question keeps knowledge that has literal evidence", async () => {
+  const related = { documentId: "related-doc", title: "HTML 보고서", heading: "구성", text: "HTML 보고서 구성 원칙", citation: { version: 1, chunkId: 2 }, score: 0.03 };
+  const ctx = await setup("webhook", normalHandler, { searchResults: [related] });
+  await ctx.api.POST(incoming({ text: "[운영검수] HTML 보고서 구성 알려줘" }));
+  assert.match(ctx.sent[0].text, /근거 답변/);
+  const turn = ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload;
+  assert.equal(turn.source_document_ids[0], "related-doc");
 });
