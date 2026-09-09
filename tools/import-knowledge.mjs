@@ -10,12 +10,14 @@ const CANONICAL_ROOTS = new Set(["00_Skills", "02_Wiki"]);
 const IGNORED = new Set([".git", ".obsidian", "node_modules", ".trash", ".DS_Store"]);
 
 export function parseArgs(args) {
-  const result = { root: "", apply: false, ownerEmail: DEFAULT_OWNER };
+  const result = { root: "", apply: false, ownerEmail: DEFAULT_OWNER, endpoint: "", token: process.env.OS_AGENT_TOKEN ?? "" };
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--root") result.root = args[++index] ?? "";
     else if (args[index] === "--apply") result.apply = true;
     else if (args[index] === "--dry-run") result.apply = false;
     else if (args[index] === "--owner-email") result.ownerEmail = args[++index] ?? DEFAULT_OWNER;
+    else if (args[index] === "--endpoint") result.endpoint = args[++index] ?? "";
+    else if (args[index] === "--token") result.token = args[++index] ?? "";
     else if (["-h", "--help"].includes(args[index])) result.help = true;
     else throw new Error(`알 수 없는 옵션: ${args[index]}`);
   }
@@ -93,17 +95,35 @@ async function applyRows(rows, ownerEmail) {
   return { inserted, updated, unchanged };
 }
 
+async function applyRemote(rows, endpoint, token) {
+  if (!/^https:\/\/[^\s]+$/i.test(endpoint)) throw new Error("HTTPS OS 주소가 필요합니다.");
+  if (!token) throw new Error("OS_AGENT_TOKEN 또는 --token이 필요합니다.");
+  const counts = { created: 0, updated: 0, unchanged: 0, indexed: 0, queued: 0 };
+  for (let offset = 0; offset < rows.length; offset += 100) {
+    const response = await fetch(`${endpoint.replace(/\/$/, "")}/api/v1/knowledge/sync`, {
+      method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ documents: rows.slice(offset, offset + 100).map((row) => ({ title: row.title, content: row.content, folder: row.folder, status: row.status, source: row.source, sourceRef: row.sourceRef, contentHash: row.contentHash })) }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body?.error?.message || `원격 동기화 실패: HTTP ${response.status}`);
+    for (const key of Object.keys(counts)) counts[key] += Number(body.counts?.[key] ?? 0);
+    process.stdout.write(`\r전송 ${Math.min(offset + 100, rows.length)}/${rows.length}`);
+  }
+  process.stdout.write("\n");
+  return counts;
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   if (options.help || !options.root) {
-    console.log("사용법: npm run import:knowledge -- --root <볼트경로> [--dry-run|--apply] [--owner-email 이메일]");
+    console.log("사용법: npm run import:knowledge -- --root <볼트경로> [--dry-run|--apply] [--endpoint https://OS주소 --token 에이전트키 | --owner-email 이메일]");
     process.exit(options.help ? 0 : 1);
   }
   const rows = await scanVault(options.root);
   const summary = { total: rows.length, canonical: rows.filter((row) => row.status === "canonical").length, drafts: rows.filter((row) => row.status === "draft").length, bytes: rows.reduce((sum, row) => sum + row.bytes, 0), ownerEmail: options.ownerEmail, mode: options.apply ? "apply" : "dry-run" };
   console.log(JSON.stringify(summary, null, 2));
   if (!options.apply) return;
-  console.log(JSON.stringify(await applyRows(rows, options.ownerEmail), null, 2));
+  console.log(JSON.stringify(options.endpoint ? await applyRemote(rows, options.endpoint, options.token) : await applyRows(rows, options.ownerEmail), null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((error) => { console.error(error.message); process.exit(1); });
