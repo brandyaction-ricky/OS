@@ -27,6 +27,8 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "knowledge.write" });
     requireAgentScope(actor, "knowledge.write");
     const input = inputSchema.parse(await parseJson(request, 50_000_000));
+    if (actor.type === "user" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자 또는 지식 쓰기 에이전트만 볼트를 동기화할 수 있습니다.");
+    if (input.documents.some((document) => !actor.allowedStatuses.includes(document.status))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 저장할 수 없는 문서 공개 범위가 포함돼 있습니다.");
     const service = createServiceSupabase();
     const refs = input.documents.map((document) => document.sourceRef.normalize("NFC"));
     const { data: existing, error: readError } = await service.from("os_documents").select("id,source_ref,content_hash,current_version,status").eq("source", "obsidian_vault").in("source_ref", refs);
