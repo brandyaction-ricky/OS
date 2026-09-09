@@ -175,6 +175,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, captured: true, documentId: id });
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
+    if (/^\/?start$/i.test(text)) {
+      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용해 주세요.";
+      await sendTelegram(message.chat.id, welcome, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
+      return NextResponse.json({ ok: true, started: true });
+    }
     const actor: RequestActor = {
       type: "agent",
       id: `telegram:${message.from.id}`,
