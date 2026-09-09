@@ -127,3 +127,10 @@ test("voice is acknowledged as unavailable instead of silently disappearing", as
   assert.equal(body.unsupported, "voice"); assert.match(ctx.sent[0].text, /저장된 내용은 없습니다/);
   assert.equal(ctx.inserts.filter((item) => item.table === "os_documents").length, 0);
 });
+
+test("start returns usage guidance instead of searching arbitrary knowledge", async () => {
+  const ctx = await setup("webhook", normalHandler);
+  const body = await (await ctx.api.POST(incoming({ text: "/start" }))).json();
+  assert.equal(body.started, true);
+  assert.match(ctx.sent[0].text, /회사 지식 질문/);
+});
