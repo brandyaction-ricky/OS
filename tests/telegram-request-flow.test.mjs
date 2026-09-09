@@ -54,13 +54,27 @@ const normalHandler = (query) => {
   return { data: [], error: null };
 };
 
-test("capture without a configured owner stops before profile lookup or document writes", async () => {
-  const ctx = await setup("webhook", normalHandler, { env: { TELEGRAM_CAPTURE_OWNER_EMAIL: "" } });
+test("capture without an environment or OS-configured owner stops before profile lookup or document writes", async () => {
+  const ctx = await setup("webhook", (query) => query.table === "os_records" ? { data: null, error: null } : normalHandler(query), { env: { TELEGRAM_CAPTURE_OWNER_EMAIL: "" } });
   const response = await ctx.api.POST(incoming({ text: "#raw idea" }));
   assert.equal((await response.json()).handledError, true);
   assert.equal(ctx.calls.some((call) => call.table === "os_profiles"), false);
   assert.equal(ctx.inserts.some((call) => call.table === "os_documents"), false);
   assert.match(ctx.sent[0].text, /저장 담당자가 연결되지 않아 저장하지 않았습니다/);
+});
+
+test("capture owner can be resolved from the active OS company setting", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_records") return { data: { assignee_id: "capture-owner" }, error: null };
+    return normalHandler(query);
+  }, { env: { TELEGRAM_CAPTURE_OWNER_EMAIL: "" } });
+  const body = await (await ctx.api.POST(incoming({ text: "/후기 OS 담당자 설정 검수" }))).json();
+  assert.equal(body.captured, true);
+  const settingLookup = ctx.calls.find((call) => call.table === "os_records");
+  assert.equal(where(settingLookup, "record_type"), "company_setting");
+  assert.equal(where(settingLookup, "title"), "Telegram 캡처 담당자");
+  const profileLookup = ctx.calls.find((call) => call.table === "os_profiles");
+  assert.equal(where(profileLookup, "id"), "capture-owner");
 });
 
 test("Telegram diagnostics show approved users, exact totals and observed last receipt", async () => {
