@@ -32,6 +32,10 @@ export async function getDocument(token: string | null, id: string) {
   return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${encodeURIComponent(id)}`, { token });
 }
 
+export async function listDocumentFolders(token: string | null) {
+  return apiRequest<{ folders: string[] }>("/api/v1/documents?view=folders", { token });
+}
+
 export async function getKnowledgeGraph(token: string | null) {
   return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
 }

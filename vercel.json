@@ -16,6 +16,6 @@
   },
   "crons": [
     { "path": "/api/v1/indexing/cron", "schedule": "0 18 * * *" },
-    { "path": "/api/v1/youtube/observe", "schedule": "30 18 * * *" }
+    { "path": "/api/v1/youtube/observe", "schedule": "5 * * * *" }
   ]
 }
