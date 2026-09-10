@@ -1,4 +1,5 @@
 export interface BaselineVideo { id: string; channelId: string; title: string; publishedAt: string; views: number; durationSeconds: number; live?: boolean; categoryId?: string }
+export interface YoutubeViewSnapshot { views: number; measuredAt: string }
 export type YoutubeFormatBucket = "4–12분" | "12–30분" | "30–60분" | "60분 이상";
 
 export function youtubeFormatBucket(durationSeconds: number): YoutubeFormatBucket | null {
@@ -19,6 +20,19 @@ export function youtubeAgeCheckpoint(publishedAt: string, now = Date.now()) {
 export function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b); if (!sorted.length) return null;
   const middle = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+export function youtubeMomentum(snapshots: YoutubeViewSnapshot[]) {
+  const ordered = snapshots.filter((item) => Number.isFinite(item.views) && Number.isFinite(Date.parse(item.measuredAt)))
+    .sort((a, b) => Date.parse(a.measuredAt) - Date.parse(b.measuredAt)).slice(-3);
+  if (ordered.length < 3) return { state: "insufficient" as const, velocity: null, previousVelocity: null, acceleration: null, rising: false };
+  const firstHours = (Date.parse(ordered[1].measuredAt) - Date.parse(ordered[0].measuredAt)) / 3_600_000;
+  const secondHours = (Date.parse(ordered[2].measuredAt) - Date.parse(ordered[1].measuredAt)) / 3_600_000;
+  if (firstHours < .25 || secondHours < .25) return { state: "insufficient" as const, velocity: null, previousVelocity: null, acceleration: null, rising: false };
+  const previousVelocity = Math.max(0, ordered[1].views - ordered[0].views) / firstHours;
+  const velocity = Math.max(0, ordered[2].views - ordered[1].views) / secondHours;
+  const acceleration = (velocity - previousVelocity) / ((firstHours + secondHours) / 2);
+  return { state: "measured" as const, velocity, previousVelocity, acceleration, rising: velocity >= 50 && velocity >= Math.max(1, previousVelocity) * 1.5 && acceleration > 0 };
 }
 export function outlierBaseline(target: BaselineVideo, candidates: BaselineVideo[], now = Date.now()) {
   const age = (video: BaselineVideo) => Math.max(0, (now - Date.parse(video.publishedAt)) / 86_400_000);

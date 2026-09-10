@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { outlierBaseline, youtubeAgeCheckpoint, youtubeFormatBucket } from "../lib/youtube-outliers.ts";
+import { outlierBaseline, youtubeAgeCheckpoint, youtubeFormatBucket, youtubeMomentum } from "../lib/youtube-outliers.ts";
 
 const now = Date.parse("2026-09-09T00:00:00Z");
 const video = (id, views, durationSeconds = 900, ageDays = 10) => ({ id, channelId: "channel", title: `영상 ${id}`, publishedAt: new Date(now - ageDays * 86_400_000).toISOString(), views, durationSeconds });
@@ -23,4 +23,14 @@ test("fixed checkpoint and format labels are explicit", () => {
   assert.equal(youtubeAgeCheckpoint(video("seven", 1, 900, 7).publishedAt, now), "D+7");
   assert.equal(youtubeAgeCheckpoint(video("thirty", 1, 900, 30).publishedAt, now), "D+30");
   assert.equal(youtubeAgeCheckpoint(video("ninety", 1, 900, 90).publishedAt, now), "D+90");
+});
+
+test("early rising signals require both velocity and positive acceleration", () => {
+  const rising = youtubeMomentum([
+    { views: 100, measuredAt: "2026-09-09T00:00:00Z" },
+    { views: 140, measuredAt: "2026-09-09T01:00:00Z" },
+    { views: 240, measuredAt: "2026-09-09T02:00:00Z" },
+  ]);
+  assert.equal(rising.velocity, 100); assert.equal(rising.previousVelocity, 40); assert.equal(rising.rising, true);
+  assert.equal(youtubeMomentum([{ views: 1, measuredAt: "2026-09-09T00:00:00Z" }]).state, "insufficient");
 });

@@ -22,6 +22,17 @@ export async function GET(request: Request) {
     const query = url.searchParams.get("q")?.replace(/[%_,()]/g, " ").trim();
     const includeContent = url.searchParams.get("view") !== "summary";
 
+    if (url.searchParams.get("view") === "folders") {
+      const folders = new Set<string>();
+      for (let offset = 0; offset < 10_000; offset += 1_000) {
+        const { data, error } = await createServiceSupabase().from("os_documents").select("folder").neq("status", "archived").order("id").range(offset, offset + 999);
+        if (error) throw new ApiError(400, "DOCUMENT_FOLDER_LIST_FAILED", "지식 폴더 목록을 불러오지 못했습니다.", error.message);
+        for (const row of data ?? []) if (row.folder) folders.add(row.folder);
+        if (!data || data.length < 1_000) break;
+      }
+      return NextResponse.json({ folders: [...folders].sort((a, b) => a.localeCompare(b, "ko", { numeric: true })) });
+    }
+
     // Scope is a workspace filter, not an access boundary. Authentication is
     // checked above; the server client avoids hiding another member's notes.
     let builder = createServiceSupabase()

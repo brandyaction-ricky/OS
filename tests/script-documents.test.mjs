@@ -22,6 +22,11 @@ test("new scripts use the existing document API with a bounded video folder and 
   assert.throws(() => scripts.buildScriptDocumentInput({ title: "a".repeat(201), folderName: "영상", content: "본문" }));
 });
 
+test("scripts can use a user-selected safe knowledge root", () => {
+  assert.equal(scripts.buildScriptDocumentInput({ title: "원고", folderName: "영상", content: "본문", root: "03_Content/완료 원고" }).folder, "03_Content/완료 원고/영상");
+  for (const root of ["", "../탈출", "_숨김", "03_Content/_숨김", "03_Content\\원고"]) assert.throws(() => scripts.normalizeScriptRoot(root));
+});
+
 const source = await readFile(new URL("../components/content-pipeline-workspaces.tsx", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
@@ -34,6 +39,7 @@ function setup(overrides = {}, initialSession = {}) {
   let session = { demo: false, accessToken: "token", profile: { id: "one" }, ...initialSession };
   const api = {
     listDocuments: async (_token, query) => { listCalls.push(new URLSearchParams(query)); return overrides.list?.(query) ?? { documents: [], total: 0 }; },
+    listDocumentFolders: async () => ({ folders: [] }),
     getDocument: async (_token, id) => { readCalls.push(id); return overrides.read?.(id) ?? { document: documentRow(id, { content_md: `본문 ${id}` }) }; },
     createDocument: async (_token, input) => { createCalls.push(input); return overrides.create?.(input) ?? { document: documentRow("new", { ...input, content_md: input.content }) }; },
   };
@@ -81,7 +87,7 @@ function setup(overrides = {}, initialSession = {}) {
   };
   const open = () => {
     render().find((item) => item.type === "button" && item.props.children?.includes?.(" 새 원고 작성"))?.props.onClick();
-    return render().find((item) => item.type === "form");
+    return render().find((item) => item.type === "form" && item.props.role === "dialog");
   };
   return {
     render, open, listCalls, readCalls, createCalls,
@@ -103,7 +109,7 @@ test("an empty script library can create its first draft and select the saved do
   assert.equal(app.listCalls.length, 1, "a saved draft should not depend on a second list request");
   assert.equal(app.readCalls.at(-1), "new");
   assert.ok(view.some((item) => item.type === "a" && item.props.href === "/knowledge?document=new"));
-  assert.equal(view.some((item) => item.type === "form"), false);
+  assert.equal(view.some((item) => item.type === "form" && item.props.role === "dialog"), false);
   app.unmount();
 });
 

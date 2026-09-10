@@ -2,8 +2,8 @@
 
 import { BarChart3, Check, CircleAlert, FileText, Gauge, Plus, Search, Sparkles, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createDocument, createRecord, generateContent, getDocument, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
-import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
+import { createDocument, createRecord, generateContent, getDocument, listDocumentFolders, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
+import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, normalizeScriptRoot, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { ContentLinkedScripts } from "./content-linked-scripts";
@@ -48,7 +48,8 @@ export function ContentTopicsWorkspace() {
 
 export function ContentScriptsWorkspace() {
   const { accessToken, demo, profile } = useSession();
-  const root = SCRIPT_DOCUMENT_ROOT;
+  const [root, setRoot] = useState(SCRIPT_DOCUMENT_ROOT);
+  const [folderOptions, setFolderOptions] = useState<string[]>([]);
   const [documents, setDocuments] = useState<Omit<KnowledgeDocument, "content_md">[]>([]);
   const [folder, setFolder] = useState("");
   const [selectedId, setSelectedId] = useState("");
@@ -90,6 +91,12 @@ export function ContentScriptsWorkspace() {
       if (generation === listGeneration.current) setLoading(false);
     }
   }, [accessToken, demo, root]);
+
+  useEffect(() => {
+    const saved = typeof window === "undefined" ? null : window.localStorage.getItem("os-script-document-root");
+    if (saved) try { setRoot(normalizeScriptRoot(saved)); } catch { window.localStorage.removeItem("os-script-document-root"); }
+    if (!demo && accessToken) void listDocumentFolders(accessToken).then(({ folders }) => setFolderOptions(folders)).catch(() => setFolderOptions([]));
+  }, [accessToken, demo]);
 
   useEffect(() => {
     scopeGeneration.current += 1;
@@ -159,7 +166,7 @@ export function ContentScriptsWorkspace() {
     const scope = scopeGeneration.current;
     saveInProgress.current = true; setSaving(true); setSaveError("");
     try {
-      const input = buildScriptDocumentInput({ title: text(form, "title"), folderName: text(form, "folderName"), content: text(form, "content") });
+      const input = buildScriptDocumentInput({ title: text(form, "title"), folderName: text(form, "folderName"), content: text(form, "content"), root });
       const { document } = await createDocument(accessToken, input);
       if (scope !== scopeGeneration.current) return;
       // The successful response is authoritative. Do not turn a later list
@@ -184,6 +191,11 @@ export function ContentScriptsWorkspace() {
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
+        <form className="script-root-picker" onSubmit={(event) => { event.preventDefault(); try { const next = normalizeScriptRoot(String(new FormData(event.currentTarget).get("root") ?? "")); window.localStorage.setItem("os-script-document-root", next); setError(""); setRoot(next); } catch (cause) { setError(cause instanceof Error ? cause.message : "기준 폴더를 확인해 주세요."); } }}>
+          <label><span>기준 폴더</span><input name="root" list="script-root-options" defaultValue={root} key={root} maxLength={160} aria-label="원고 기준 폴더" /></label>
+          <datalist id="script-root-options">{folderOptions.map((option) => <option key={option} value={option} />)}</datalist>
+          <button className="secondary-button">적용</button>
+        </form>
         {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>{item.progress.published ? "발행 자료 있음" : "진행 중"} · 문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{SCRIPT_STEPS.map((stage, index) => `${item.progress.completed[index] ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
         {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
       </aside>
