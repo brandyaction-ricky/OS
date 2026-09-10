@@ -16,7 +16,7 @@ export function isVisibleScript(document: Pick<ScriptSummary, "folder" | "status
 export function compareScriptDocuments(a: ScriptSummary, b: ScriptSummary) {
   const rank = (document: ScriptSummary) => {
     const name = scriptFileName(document).replace(/[ _-]/g, "");
-    if (/직접수정본/.test(name)) return 3;
+    if (/직접수정/.test(name)) return 3;
     if (/낭독본최종|최종낭독본/.test(name)) return 2;
     if (/원고|초안/.test(name) && !/감사|검수|audit/i.test(name)) return 1;
     return 0;

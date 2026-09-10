@@ -590,11 +590,12 @@ export function MeetingWorkspace() {
                 <X size={18} />
               </button>
             </div>
-            <div className="meeting-phases">
-              <button type="button" className="done" onClick={() => document.getElementById("meeting-prepare")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>1</b> 준비</button>
-              <button type="button" className={transcript ? "done" : "active"} onClick={() => document.getElementById("meeting-transcript")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>2</b> 진행·전사</button>
-              <button type="button" className={structured ? "done" : ""} onClick={() => document.getElementById("meeting-actions")?.scrollIntoView({ behavior: "smooth", block: "start" })}><b>3</b> 결정·실행</button>
-            </div>
+            <p className="field-hint">회의 기록 순서 · 아래로 내려가며 작성하세요.</p>
+            <ol className="meeting-phase-progress" aria-label="회의 기록 순서">
+              <li>1. 준비</li>
+              <li>2. 진행·전사</li>
+              <li>3. 결정·실행</li>
+            </ol>
             <label id="meeting-prepare">
               <span>회의명</span>
               <input

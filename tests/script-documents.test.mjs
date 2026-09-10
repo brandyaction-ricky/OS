@@ -5,6 +5,15 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as scripts from "../lib/script-documents.ts";
 
+test("direct-edit variants outrank manuscript versions without requiring a specific suffix", () => {
+  const doc = (title) => ({ title, folder: "scripts", status: "draft", updated_at: "2026-09-10" });
+  for (const title of ["05_직접수정용_v1.md", "12_직접수정본_최종.md"]) {
+    const rows = [doc("원고_v6.md"), doc("낭독본_최종.md"), doc(title)].sort(scripts.compareScriptDocuments);
+    assert.equal(rows[0].title, title);
+    assert.equal(rows[1].title, "낭독본_최종.md");
+  }
+});
+
 test("new scripts use the existing document API with a bounded video folder and default outline", () => {
   const input = scripts.buildScriptDocumentInput({ title: " 첫 원고 ", folderName: " 새 영상 ", content: "" });
   assert.equal(input.title, "첫 원고");

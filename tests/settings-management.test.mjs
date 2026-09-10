@@ -133,7 +133,8 @@ test("sensitive access gaps, shared knowledge categories and action confirmation
   assert.match(knowledge, /KNOWLEDGE_CATEGORIES\.map/);
   assert.match(knowledge, /knowledge-category-options/);
   assert.match(categories, /회사 공통/);
-  assert.equal((monitoring.match(/window\.confirm/g) ?? []).length, 2);
+  assert.match(monitoring, /confirmationDialog\.current\?\.showModal/);
+  assert.match(monitoring, /onCancel=\{\(\) => setConfirmation\(null\)\}/);
   assert.match(monitoring, /지식 문서 최대 25건/);
   assert.match(monitoring, /텔레그램 웹훅을 운영 주소에 연결하거나 갱신/);
 });

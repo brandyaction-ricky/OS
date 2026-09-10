@@ -12,7 +12,7 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   connectTelegramWebhook,
   decideTelegramUser,
@@ -43,6 +43,12 @@ export function MonitoringWorkspace() {
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [confirmation, setConfirmation] = useState<"process" | "retry_failed" | "webhook" | null>(null);
+  const confirmationDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    if (confirmation) confirmationDialog.current?.showModal();
+    else confirmationDialog.current?.close();
+  }, [confirmation]);
   const load = useCallback(async () => {
     if (demo) {
       setLoaded(true);
@@ -86,12 +92,6 @@ export function MonitoringWorkspace() {
     load();
   }, [load]);
   const run = async (action: "process" | "retry_failed") => {
-    const confirmed = window.confirm(
-      action === "process"
-        ? "지식 문서 최대 25건의 검색 준비 작업을 지금 처리할까요?"
-        : "실패한 검색 준비 작업을 다시 실행할까요?",
-    );
-    if (!confirmed) return;
     setLoading(true);
     try {
       await runIndexing(accessToken, action, action === "process" ? 25 : 100);
@@ -106,8 +106,6 @@ export function MonitoringWorkspace() {
     }
   };
   const connectTelegram = async () => {
-    if (!window.confirm("텔레그램 웹훅을 운영 주소에 연결하거나 갱신할까요?"))
-      return;
     setLoading(true);
     try {
       await connectTelegramWebhook(accessToken);
@@ -283,18 +281,19 @@ export function MonitoringWorkspace() {
             <button
               className="primary-button"
               disabled={loading || !indexingConfigured}
-              onClick={() => run("process")}
+              onClick={() => setConfirmation("process")}
             >
               25건 처리
             </button>
             <button
               className="secondary-button"
               disabled={loading || !queue?.failed}
-              onClick={() => run("retry_failed")}
+              onClick={() => setConfirmation("retry_failed")}
             >
               실패 작업 재시도
             </button>
           </div>
+          {!indexingConfigured ? <p className="field-hint">OpenAI 검색 키가 연결되지 않아 실행할 수 없습니다. 키 연결 후 버튼을 누르면 실행 확인창이 열립니다.</p> : null}
         </article>
         <article className="panel">
           <div className="panel-header">
@@ -373,11 +372,12 @@ export function MonitoringWorkspace() {
             <button
               className="primary-button"
               disabled={loading || !telegramStatus?.configured}
-              onClick={connectTelegram}
+              onClick={() => setConfirmation("webhook")}
             >
               웹훅 연결·갱신
             </button>
           </div>
+          {!telegramStatus?.configured ? <p className="field-hint">텔레그램 봇 설정이 준비되지 않아 실행할 수 없습니다. 설정 완료 후 실행 확인창이 열립니다.</p> : null}
         </article>
         <article className="panel">
           <div className="panel-header">
@@ -453,6 +453,14 @@ export function MonitoringWorkspace() {
       </section>
         </>
       )}
+      <dialog ref={confirmationDialog} className="monitoring-confirmation" aria-labelledby="monitoring-confirm-title" onCancel={() => setConfirmation(null)}>
+        <h2 id="monitoring-confirm-title">작업을 실행할까요?</h2>
+        <p>{confirmation === "webhook" ? "텔레그램 웹훅을 운영 주소에 연결하거나 갱신합니다." : confirmation === "process" ? "지식 문서 최대 25건의 검색 준비 작업을 처리합니다." : "실패한 검색 준비 작업을 다시 실행합니다."}</p>
+        <div className="form-actions">
+          <button type="button" className="secondary-button" autoFocus onClick={() => setConfirmation(null)}>취소</button>
+          <button type="button" className="primary-button" disabled={loading} onClick={() => { const action = confirmation; setConfirmation(null); if (action === "webhook") void connectTelegram(); else if (action) void run(action); }}>실행</button>
+        </div>
+      </dialog>
     </>
   );
 }
