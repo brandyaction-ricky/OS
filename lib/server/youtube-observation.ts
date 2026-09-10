@@ -76,7 +76,7 @@ export async function observeYoutubeChannels(now = new Date()) {
       if (metricReadError) throw metricReadError;
       const metricsByKey = new Map((existingMetrics ?? []).map((record) => [String(record.metadata?.observationKey ?? ""), record.id]));
       const ids = videos.map((video) => video.id);
-      const { data: priorMetrics, error: priorMetricError } = ids.length ? await service.from("os_records").select("metadata,starts_at").eq("record_type", "content_metric").eq("metadata->>dataSource", "youtube_data_api").in("metadata->>contentId", ids).is("archived_at", null).order("starts_at", { ascending: false }).limit(Math.min(5_000, ids.length * 3)) : { data: [], error: null };
+      const { data: priorMetrics, error: priorMetricError } = ids.length ? await service.from("os_records").select("metadata,starts_at").eq("record_type", "content_metric").eq("metadata->>dataSource", "youtube_data_api").in("metadata->>contentId", ids).lt("starts_at", `${hour}:00:00.000Z`).is("archived_at", null).order("starts_at", { ascending: false }).limit(Math.min(5_000, ids.length * 3)) : { data: [], error: null };
       if (priorMetricError) throw priorMetricError;
       const history = new Map<string, YoutubeViewSnapshot[]>();
       for (const record of priorMetrics ?? []) {
@@ -103,7 +103,8 @@ export async function observeYoutubeChannels(now = new Date()) {
       }
       const existingOutliers = new Set<string>();
       if (ids.length) {
-        const { data } = await service.from("os_records").select("metadata").eq("record_type", "content_topic").eq("metadata->>studioKind", "outlier").in("metadata->>youtubeId", ids).is("archived_at", null);
+        const { data, error } = await service.from("os_records").select("metadata").eq("record_type", "content_topic").eq("metadata->>studioKind", "outlier").eq("metadata->>discoverySource", "tracked_channel").in("metadata->>youtubeId", ids).is("archived_at", null);
+        if (error) throw error;
         for (const record of data ?? []) existingOutliers.add(String(record.metadata?.youtubeId ?? ""));
       }
       for (const video of videos) {
@@ -118,7 +119,8 @@ export async function observeYoutubeChannels(now = new Date()) {
         existingOutliers.add(video.id); counts.outliersCreated += 1;
       }
       const risingKeys = videos.map((video) => `${channel.channelId}:${video.id}:${day}`);
-      const { data: existingRising } = risingKeys.length ? await service.from("os_records").select("metadata").eq("record_type", "content_topic").eq("metadata->>discoverySource", "rising_channel").in("metadata->>risingKey", risingKeys).is("archived_at", null) : { data: [] };
+      const { data: existingRising, error: risingReadError } = risingKeys.length ? await service.from("os_records").select("metadata").eq("record_type", "content_topic").eq("metadata->>discoverySource", "rising_channel").in("metadata->>risingKey", risingKeys).is("archived_at", null) : { data: [], error: null };
+      if (risingReadError) throw risingReadError;
       const savedRising = new Set((existingRising ?? []).map((record) => String(record.metadata?.risingKey ?? "")));
       for (const video of videos) {
         const momentum = youtubeMomentum([...(history.get(video.id) ?? []), { views: video.views, measuredAt }]);
@@ -132,7 +134,10 @@ export async function observeYoutubeChannels(now = new Date()) {
         if (error) throw error;
         savedRising.add(risingKey); counts.risingCreated += 1;
       }
-    } catch { counts.failures += 1; }
+    } catch (error) {
+      counts.failures += 1;
+      console.error(JSON.stringify({ event: "youtube_observation_failed", channelId: channel.channelId, code: error instanceof ApiError ? error.code : "OBSERVATION_STORAGE_FAILED" }));
+    }
   }
   return counts;
 }
