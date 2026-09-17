@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "observedAt": "2026-09-17",
-  "status": "ready",
-  "decision": "apply",
+  "status": "applied_dev",
+  "decision": "applied",
   "approval": {
     "environment": "development",
     "approvedAt": "2026-09-17",
@@ -12,8 +12,8 @@
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 7,
     "productionExactRepositoryMatches": 0,
-    "developmentHistoryCount": 0,
-    "developmentOsObjectCount": 0,
+    "developmentHistoryCount": 4,
+    "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
   "baseline": {
@@ -84,15 +84,15 @@
       "os_touch_updated_at"
     ],
     "localValidation": {
-      "zeroStateReset": "passed",
-      "zeroStateResetScope": "full_active_chain",
-      "migrationHistoryCount": 3,
+      "zeroStateReset": "passed_first_three_then_incremental_fourth",
+      "zeroStateResetScope": "baseline_and_first_two_forward_migrations_from_zero; privilege hardening applied incrementally",
+      "migrationHistoryCount": 4,
       "objectInventoryMatchesProduction": true,
       "generatedTypesMatchProduction": true,
       "normalizedTypesSha256": "c72573008b1d98177961adc10ce6355093fe11c0a146849a8be0e9be447e49c8",
       "authenticatedRlsTests": {
         "status": "passed",
-        "tests": 20,
+        "tests": 23,
         "file": "supabase/tests/os_rls_test.sql"
       },
       "securityAdvisors": {
@@ -105,6 +105,20 @@
         "resolvedWarnings": 18,
         "verification": "supabase_cli_db_advisors"
       }
+    },
+    "developmentValidation": {
+      "appliedAt": "2026-09-17",
+      "migrationHistoryCount": 4,
+      "publicTables": 34,
+      "publicPolicies": 40,
+      "reviewedTriggers": 11,
+      "authProfileTriggerPresent": true,
+      "anonPrivilegedFunctionExecGrants": 0,
+      "authenticatedServiceOnlyFunctionExecGrants": 0,
+      "authenticatedRequiredFunctionExecGrants": 15,
+      "performanceAdvisorWarnings": 0,
+      "securityAdvisorAcceptedWarnings": 15,
+      "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs"
     }
   },
   "forwardMigrations": [
@@ -117,6 +131,11 @@
       "file": "20260917085123_optimize_rls_policies.sql",
       "sha256": "ab03406b3c67c27e5deaa2561301df78d079421ac2507aedd314b54ecb2d38a9",
       "purpose": "remove auth initialization-plan and overlapping permissive-policy warnings without changing effective access"
+    },
+    {
+      "file": "20260917112037_restrict_security_definer_execution.sql",
+      "sha256": "b3ffab4b84b775bf99cbd59174fefb840ebd62162a91e1e560c9e8ff3e9060ac",
+      "purpose": "remove platform-default direct execution of privileged functions and explicitly allow only required authenticated entry points"
     }
   ],
   "legacyMigrations": [

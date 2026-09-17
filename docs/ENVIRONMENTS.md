@@ -67,12 +67,12 @@ Inject `E2E_TEST_PASSWORD` from the approved secret store before running the com
 
 ## Supabase Promotion Gate
 
-The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project now exists in the approved organization and Seoul region. It is healthy and empty: no public tables, migrations, or Production data were copied. QA is a verification stage on an immutable Preview commit and does not use a third database project. Before connected DEV or QA:
+The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project exists in the approved organization and Seoul region. It is healthy and contains only the reviewed four-migration schema; no Production rows were copied. QA is a verification stage on an immutable Preview commit and does not use a third database project. Before connected DEV or QA:
 
 1. Keep the provisioned DEV project isolated from Production and control concurrent Preview test data.
-2. Use the locally validated schema-only snapshot in `supabase/migrations`; the 14 prior deltas are frozen in `supabase/migrations-legacy` and must never be replayed as an active chain. Production still has 7 non-matching history entries.
-3. Preserve the passing full-chain zero-state rebuild, authenticated RLS suite, and clean Security/Performance Advisor results, then configure only environment-specific keys and confirm RLS and function grants with test identities.
-4. Run migrations only in DEV after separate approval, then verify the immutable Preview against that DEV schema while recording exact migration identities and results.
+2. Use the applied four-migration chain in `supabase/migrations`; the 14 prior deltas are frozen in `supabase/migrations-legacy` and must never be replayed as an active chain. Production still has 7 non-matching history entries.
+3. Preserve the local three-migration zero-state evidence, incremental fourth-migration validation, 23-case RLS/function-grant suite, and recorded Advisor disposition. Repeat a destructive four-migration reset only with separate approval.
+4. Preview and Development Vercel scopes contain only DEV Supabase/configuration values. Verify each immutable Preview against that DEV schema with a dedicated test identity.
 5. Keep Production migration, seed, reset, policy, auth, and configuration changes behind separate approval.
 
 The provider security review currently reports policy/grant/password-protection findings, and the performance review reports indexing and RLS-efficiency findings. These are assessment inputs, not authorization to change Production.
@@ -108,7 +108,7 @@ For every candidate, record:
 - Local demo bootstrap, dependency audit, repository validation, and browser smoke CI are implemented.
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
-- The dedicated Supabase DEV project is provisioned, healthy, and empty. Its schema and environment variables are intentionally not configured yet.
-- The complete three-migration chain rebuilds successfully from zero locally. It matches the reviewed Production object inventory and normalized generated types, restores the cross-schema Auth trigger, resolves the 18 RLS performance warnings, passes the 20-case pgTAP suite, and has no warning-or-higher Security or Performance Advisor findings. The user approved application to the isolated DEV project on 2026-09-17; Production remains blocked.
-- QA uses Preview plus isolated DEV resources. Vercel environment-variable scope remains incomplete.
-- No deployment, production database change, or production configuration change is performed by this setup.
+- The dedicated Supabase DEV project is provisioned and healthy. All four active migrations are applied without seeds or Production data; remote verification found 34 public tables, 40 policies, 11 reviewed triggers, and the Auth profile trigger.
+- The local three-migration zero-state evidence remains valid; the fourth privilege-hardening migration passes incrementally with the 23-case pgTAP suite and clean local Advisors. DEV Performance Advisor warnings are zero. Its 15 Security Advisor warnings are the intentional authenticated RLS/RPC grants; anonymous privileged and authenticated service-only execution grants are zero.
+- QA uses Preview plus isolated DEV resources. The eight core variables are configured only for Vercel Preview and Development scopes; Production values were not changed. A dedicated Auth test identity and connected Preview test are still pending.
+- No Production database, Production environment-variable, merge, promotion, or deployment change is performed by this setup.

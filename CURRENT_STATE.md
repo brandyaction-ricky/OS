@@ -29,7 +29,7 @@ Updated: 2026-09-17 Asia/Seoul.
 - Local environment readiness passes.
 - Production-mode mismatch is rejected before work begins.
 - Webhook registration without explicit confirmation is rejected before any external call.
-- The full repository verification gate passes, including lint, type checking, 230 automated tests, and a Next.js production build.
+- The full repository verification gate passes, including lint, type checking, 232 automated tests, and a Next.js production build.
 - The Chromium local-demo smoke test passes and verifies the application shell and health contract. Connected authentication QA is present but skips without explicit DEV/QA credentials.
 
 ## Deployment State
@@ -39,12 +39,12 @@ Updated: 2026-09-17 Asia/Seoul.
 - The ignored `.vercel/project.json` links this checkout to the existing project. Branch pushes create Preview deployments and `main` pushes create Production deployments.
 - The latest observed Production deployment remains ready at commit `0661eb4`.
 - The Production Supabase project has no development branches and has unresolved migration-history and advisor findings. It was not changed.
-- A separate `brandyaction-os-dev` Supabase project now exists in Seoul. It is healthy and empty, with no public tables, migration history, or copied Production data.
-- QA is a Preview verification stage using isolated DEV resources; no separate QA database is planned. Vercel environment-variable scopes remain incomplete.
-- The 14 repository migrations are frozen follow-up deltas. Production has 7 non-matching history entries and DEV has none, so remote migration execution is blocked until the missing core baseline is captured and rebuilt locally from zero.
+- A separate `brandyaction-os-dev` Supabase project exists in Seoul. All four active migrations are applied without seeds or Production data; the reviewed Auth trigger, RLS policies, and least-privilege function grants are present.
+- QA is a Preview verification stage using isolated DEV resources; no separate QA database is planned. The eight core variables are configured only for Vercel Preview and Development scopes.
+- The 14 prior repository migrations are frozen legacy evidence. Production retains 7 non-matching history entries and was not changed. DEV records the reviewed four-migration active chain.
 
 ## Continuation
 
-GitHub Actions run 141 passed the full validation and browser test workflow for pull request #41. Provision separate DEV and QA resources after cost approval, reconcile migration history, scope environment variables, and run authenticated QA against an immutable Preview commit. Obtain explicit approval before a `main` push, merge, or other Production change.
+GitHub Actions run 141 passed the earlier validation and browser test workflow for pull request #41. The next gate is to push the four-migration DEV state, verify the resulting immutable Preview and CI, and run authenticated QA with a dedicated DEV-only identity. Obtain explicit approval before a `main` push, merge, or other Production change.
 
 Next.js remains on the tested 15.x line; the affected transitive PostCSS release is overridden to a patched version. Treat a Next.js 16 upgrade as a separate compatibility migration.

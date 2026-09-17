@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions, auth;
 
-SELECT plan(20);
+SELECT plan(23);
 
 INSERT INTO auth.users (
   id,
@@ -72,6 +72,24 @@ SELECT is(
   auth.uid(),
   '00000000-0000-0000-0000-000000000003'::uuid,
   'authenticated JWT subject is available through auth.uid()'
+);
+
+SELECT is(
+  has_function_privilege('anon', 'public.os_is_admin()', 'EXECUTE'),
+  false,
+  'anonymous users cannot execute privileged helper functions'
+);
+
+SELECT is(
+  has_function_privilege('authenticated', 'public.os_claim_embedding_job()', 'EXECUTE'),
+  false,
+  'authenticated users cannot execute service-only worker functions'
+);
+
+SELECT is(
+  has_function_privilege('authenticated', 'public.os_is_admin()', 'EXECUTE'),
+  true,
+  'authenticated users retain required RLS helper execution'
 );
 
 SELECT results_eq(

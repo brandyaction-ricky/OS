@@ -55,10 +55,10 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 ## Known Migration Gaps
 
 - The local checkout is linked to the existing Vercel project through an ignored local metadata file. Git integration is active: task branches create Preview deployments and `main` creates Production deployments.
-- A dedicated empty Supabase DEV project exists in Seoul, but its schema and environment variables are not configured yet. QA uses an immutable Preview commit against isolated DEV resources; a separate QA database is not required. Production must not be used for connected local or QA tests.
-- Vercel environment-variable scope is not yet verified because provider-setting access requires a signed-in session.
-- A schema-only Production snapshot is now the single active baseline and rebuilds successfully from zero locally. The 14 prior deltas are frozen outside the active chain, Production still records 7 non-matching history entries, and DEV remains empty. Authenticated RLS/type comparison, performance-warning disposition, and explicit DEV approval are still required. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
-- Connected authentication QA is implemented but remains intentionally skipped until the isolated DEV target, Preview environment variables, and a test account are ready.
-- Supabase security and performance advisors have open findings that require a separate, dependency-aware remediation review.
+- A dedicated Supabase DEV project exists in Seoul. Its four-migration active chain is applied without seeds or Production data. QA uses an immutable Preview commit against this isolated DEV resource; a separate QA database is not required. Production must not be used for connected local or QA tests.
+- The eight core Vercel variables are scoped only to Preview and Development. Production values were not changed.
+- A schema-only Production snapshot is the single active baseline. The 14 prior deltas are frozen outside the active chain, Production still records 7 non-matching history entries, and DEV records the reviewed active chain. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
+- Connected authentication QA is implemented but remains intentionally skipped until the dedicated DEV test identity is created and the new Preview is ready.
+- DEV performance findings are resolved. The remaining 15 DEV Security Advisor findings are the intentional authenticated execution grants required by RLS helpers and user-facing RPCs; anonymous privileged and authenticated service-only execution grants are zero.
 
 See `docs/ENVIRONMENTS.md` for setup and promotion procedures.
