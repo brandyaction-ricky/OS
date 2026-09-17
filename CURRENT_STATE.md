@@ -10,6 +10,7 @@ Updated: 2026-09-17 Asia/Seoul.
 - Migration-guidance merge: `0db8b54`
 - Local environment implementation: `337919a`
 - Local migration readiness record: `a5ef2a6`
+- Browser QA and remote environment gates: `b31e56c`
 - No remote push or pull request has been created.
 
 ## Local Development Environment

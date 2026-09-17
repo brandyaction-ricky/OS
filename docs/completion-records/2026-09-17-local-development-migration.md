@@ -13,7 +13,7 @@
 - 검증 완료: `npm ci`, `npm run setup:local` 생성·비덮어쓰기, `npm run env:check`, `npm run verify`(230/230 테스트·린트·타입 검사·빌드 통과), Production 모드 불일치 차단, 명시적 확인 없는 webhook 등록 차단, Playwright Chromium 로컬 데모 `/home` 렌더링·콘솔 오류 부재·`/api/v1/health` 계약 확인
 - 검증 미수행: 실제 Supabase/Auth 로그인, 외부 AI, YouTube, Telegram, 광고 연동, DEV/QA Preview의 인증 사용자 흐름. 전용 DEV/QA 리소스와 테스트 계정이 없어서 연결형 인증 테스트는 1건 skip했다.
 - 보안 점검: `postcss`를 수정 버전 `8.5.28`로 고정했고 `npm audit --omit=dev`는 알려진 취약점 0건이다. Supabase 제공자 보안·성능 advisor에는 정책, 함수 권한, 유출 비밀번호 보호, 인덱스, RLS 평가 관련 검토 항목이 남아 있다. Production 변경은 수행하지 않았다.
-- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록). 이번 후속 변경의 결과 커밋은 아래 후속 기록에서 확정한다.
+- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트)
 - 원격 PR: 없음
 - 배포: 미실행. 기존 Vercel Git 연결은 확인했으며 작업 브랜치 push는 Preview, `main` push는 Production을 자동 생성한다. 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태이고 이번 작업으로 바뀌지 않았다.
 - 원격 환경 점검: 로컬 checkout은 ignored `.vercel/project.json`으로 기존 프로젝트에 연결했다. 연결된 Supabase는 Production이며 개발 branch가 없다. 저장소와 원격의 migration history 식별자가 일치하지 않아 조정 전 migration 실행을 차단한다. Vercel 환경변수 scope는 UI 로그인 제약으로 확인하지 못했다.
