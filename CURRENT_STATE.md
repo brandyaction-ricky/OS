@@ -1,6 +1,6 @@
 # Development handoff
 
-Updated: 2026-09-17 Asia/Seoul.
+Updated: 2026-09-18 Asia/Seoul.
 
 ## Repository
 
@@ -34,8 +34,8 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Deployment State
 
-- Vercel automatically created a Preview for pull request #41 at commit `5b8ef05`; it reached `READY` and returned HTTP 200 for `/home` and `/api/v1/health`.
-- The Preview health response reports missing database and auth configuration, so it is a deployment smoke target rather than connected QA.
+- Vercel automatically created a Preview for pull request #41 at commit `da421f4`; it reached `READY` and `/api/v1/health` returned HTTP 200 with database, auth, account-password, and agent-MCP readiness.
+- A dedicated DEV-only Auth identity was created with automatic confirmation. Manual connected browser QA on the same Preview passed: login redirected to `/home`, the profile-backed account menu rendered, and the UI reported `서버 연결됨`.
 - The ignored `.vercel/project.json` links this checkout to the existing project. Branch pushes create Preview deployments and `main` pushes create Production deployments.
 - The latest observed Production deployment remains ready at commit `0661eb4`.
 - The Production Supabase project has no development branches and has unresolved migration-history and advisor findings. It was not changed.
@@ -45,6 +45,6 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Continuation
 
-GitHub Actions run 141 passed the earlier validation and browser test workflow for pull request #41. The next gate is to push the four-migration DEV state, verify the resulting immutable Preview and CI, and run authenticated QA with a dedicated DEV-only identity. Obtain explicit approval before a `main` push, merge, or other Production change.
+The three required pull-request checks pass for commit `da421f4`, including repository validation and browser smoke coverage. Local verification also passes with 232 automated tests and the 23-case database suite. The local-environment migration and connected DEV/Preview QA are complete. The remaining gates are PR review and separate approval for merge, `main` push, Production migration reconciliation, or any Production deployment/change.
 
 Next.js remains on the tested 15.x line; the affected transitive PostCSS release is overridden to a patched version. Treat a Next.js 16 upgrade as a separate compatibility migration.

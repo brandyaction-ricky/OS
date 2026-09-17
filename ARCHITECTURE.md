@@ -58,7 +58,7 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 - A dedicated Supabase DEV project exists in Seoul. Its four-migration active chain is applied without seeds or Production data. QA uses an immutable Preview commit against this isolated DEV resource; a separate QA database is not required. Production must not be used for connected local or QA tests.
 - The eight core Vercel variables are scoped only to Preview and Development. Production values were not changed.
 - A schema-only Production snapshot is the single active baseline. The 14 prior deltas are frozen outside the active chain, Production still records 7 non-matching history entries, and DEV records the reviewed active chain. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
-- Connected authentication QA is implemented but remains intentionally skipped until the dedicated DEV test identity is created and the new Preview is ready.
+- A dedicated DEV-only Auth identity exists. Connected browser QA against the immutable `da421f4` Preview completed successfully: login redirected to `/home`, the user profile was available, and the UI reported `서버 연결됨`. Credentials are kept outside Git and completion records.
 - DEV performance findings are resolved. The remaining 15 DEV Security Advisor findings are the intentional authenticated execution grants required by RLS helpers and user-facing RPCs; anonymous privileged and authenticated service-only execution grants are zero.
 
 See `docs/ENVIRONMENTS.md` for setup and promotion procedures.
