@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:connected": "playwright test tests/e2e/authenticated.smoke.spec.ts",
     "verify": "npm run env:check -- --mode local --file .env.example && npm run lint && npm run typecheck && npm test && npm run build",
     "env:check": "node tools/check-environment.mjs",
     "telegram:webhook:register": "node tools/register-telegram-webhook.mjs",
@@ -24,12 +26,16 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "^22.18.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "eslint": "^9.34.0",
     "eslint-config-next": "^15.5.2",
     "typescript": "^5.9.2"
+  },
+  "overrides": {
+    "postcss": "8.5.28"
   },
   "engines": {
     "node": ">=20"

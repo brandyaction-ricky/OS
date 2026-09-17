@@ -18,7 +18,10 @@ Run the full local gate with:
 
 ```bash
 npm run verify
+npm run test:e2e
 ```
+
+The browser test starts a local development server, verifies `/home` in demo mode, and checks the `/api/v1/health` response contract. It does not use external credentials.
 
 ## Environment Contract
 
@@ -46,7 +49,33 @@ codex/<task> or work/<task>
   -> post-deploy verification
 ```
 
-The repository workflow validates pull requests and pushes to `main`; it does not deploy. Vercel Git integration may still deploy automatically outside this repository, so its project settings must be inspected before the first remote push or merge.
+The repository workflow validates pull requests and pushes to `main`; it does not deploy by itself. The existing Vercel Git integration does: a task-branch push creates a Preview deployment, and a `main` push creates a Production deployment. Treat every push to `main` as a production-affecting action that requires explicit approval.
+
+The local `.vercel/project.json` links this checkout to the existing project and is intentionally ignored by Git because it contains provider identifiers. Do not copy those identifiers into tracked documentation.
+
+## Connected Browser QA
+
+Authenticated QA is opt-in and must target isolated DEV or QA resources:
+
+```bash
+PLAYWRIGHT_BASE_URL=https://approved-preview.example \
+E2E_TEST_EMAIL=dedicated-test-account@example.com \
+npm run test:e2e:connected
+```
+
+Inject `E2E_TEST_PASSWORD` from the approved secret store before running the command. Do not put these values in tracked files, command logs, completion records, or screenshots. The test skips when the required values are absent. Production URLs and employee accounts are not valid test targets.
+
+## Supabase Promotion Gate
+
+The currently connected Supabase project is Production and has no development branches. Before connected DEV or QA:
+
+1. Provision separately authorized DEV and QA resources after cost confirmation.
+2. Establish a reviewed schema baseline; current repository migration filenames and remote migration-history identifiers do not reconcile.
+3. Configure only environment-specific keys and confirm RLS and function grants with test identities.
+4. Run migrations in DEV first, then QA, recording exact migration identities and results.
+5. Keep Production migration, seed, reset, policy, auth, and configuration changes behind separate approval.
+
+The provider security review currently reports policy/grant/password-protection findings, and the performance review reports indexing and RLS-efficiency findings. These are assessment inputs, not authorization to change Production.
 
 ## External Writes
 
@@ -76,7 +105,8 @@ For every candidate, record:
 
 ## Current State
 
-- Local demo bootstrap and repository CI validation are implemented.
-- The Vercel project is not linked in this checkout.
-- DEV/QA resource separation and automatic deployment behavior remain to be confirmed in the provider settings.
-- No deployment or production configuration change is performed by this setup.
+- Local demo bootstrap, dependency audit, repository validation, and browser smoke CI are implemented.
+- The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
+- The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
+- DEV/QA resource separation and Vercel environment-variable scope remain incomplete.
+- No deployment, production database change, or production configuration change is performed by this setup.

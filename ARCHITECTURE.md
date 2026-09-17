@@ -15,7 +15,7 @@ GitHub is the source of truth for application code, migrations, tests, and opera
 | Domain logic | `lib`, `lib/server` | Validation, authorization, content workflows, search, indexing, and integration logic |
 | Database changes | `supabase/migrations` | Additive schema, policy, function, and storage changes |
 | Integration adapters | `tools`, `integrations/mcp` | Local import, explicit webhook registration, and MCP access |
-| Verification | `tests`, `.github/workflows/validate.yml` | Contract, regression, type, lint, build, and CI checks |
+| Verification | `tests`, `tests/e2e`, `.github/workflows/validate.yml` | Contract, regression, browser smoke, type, lint, build, and CI checks |
 
 ## Data and Trust Boundaries
 
@@ -45,7 +45,7 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 ## Delivery Gates
 
 1. Work starts from the latest intended base in an isolated worktree and task branch.
-2. `npm run verify` must pass without production credentials or external writes.
+2. `npm run verify` and the local demo browser smoke test must pass without production credentials or external writes.
 3. A pull request records the requested behavior, migrations, environment changes, verification, and rollback approach.
 4. DEV and QA verification use non-production resources and identify the exact commit.
 5. Production requires separate approval, an exact commit or previously verified artifact, and post-deploy verification.
@@ -53,9 +53,11 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 
 ## Known Migration Gaps
 
-- The local checkout is not linked to a Vercel project, so automatic Git deployment settings and the current deployed SHA are not verifiable from this workspace.
-- Dedicated DEV and QA Supabase/integration resources have not been confirmed.
-- Browser end-to-end tests are not yet part of the repository CI gate.
-- Dependency advisories must be resolved through a separately tested Next.js upgrade.
+- The local checkout is linked to the existing Vercel project through an ignored local metadata file. Git integration is active: task branches create Preview deployments and `main` creates Production deployments.
+- Dedicated DEV and QA Supabase/integration resources do not exist yet. The connected Supabase project is Production and must not be used for connected local or QA tests.
+- Vercel environment-variable scope is not yet verified because provider-setting access requires a signed-in session.
+- The repository migration files and the connected Production migration-history identifiers do not currently reconcile. Do not apply migrations until a reviewed baseline and forward-only reconciliation plan exist.
+- Connected authentication QA is implemented but remains intentionally skipped until an isolated DEV/QA base URL and test account are provided.
+- Supabase security and performance advisors have open findings that require a separate, dependency-aware remediation review.
 
 See `docs/ENVIRONMENTS.md` for setup and promotion procedures.
