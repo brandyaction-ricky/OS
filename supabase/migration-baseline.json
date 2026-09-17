@@ -1,8 +1,13 @@
 {
   "schemaVersion": 2,
   "observedAt": "2026-09-17",
-  "status": "validated_local",
-  "decision": "do_not_apply",
+  "status": "ready",
+  "decision": "apply",
+  "approval": {
+    "environment": "development",
+    "approvedAt": "2026-09-17",
+    "productionAuthorized": false
+  },
   "evidence": {
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 7,

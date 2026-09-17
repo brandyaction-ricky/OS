@@ -109,6 +109,6 @@ For every candidate, record:
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
 - The dedicated Supabase DEV project is provisioned, healthy, and empty. Its schema and environment variables are intentionally not configured yet.
-- The complete three-migration chain rebuilds successfully from zero locally. It matches the reviewed Production object inventory and normalized generated types, restores the cross-schema Auth trigger, resolves the 18 RLS performance warnings, passes the 20-case pgTAP suite, and has no warning-or-higher Security or Performance Advisor findings. Remote application remains guarded pending explicit DEV approval.
+- The complete three-migration chain rebuilds successfully from zero locally. It matches the reviewed Production object inventory and normalized generated types, restores the cross-schema Auth trigger, resolves the 18 RLS performance warnings, passes the 20-case pgTAP suite, and has no warning-or-higher Security or Performance Advisor findings. The user approved application to the isolated DEV project on 2026-09-17; Production remains blocked.
 - QA uses Preview plus isolated DEV resources. Vercel environment-variable scope remains incomplete.
 - No deployment, production database change, or production configuration change is performed by this setup.

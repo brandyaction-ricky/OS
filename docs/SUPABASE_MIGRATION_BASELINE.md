@@ -4,9 +4,9 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Decision
 
-Do not apply the active chain to DEV or Production yet. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus two forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, and one preserves the existing access rules while optimizing RLS policy evaluation. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The active chain is approved for the isolated `brandyaction-os-dev` project only. Do not apply it to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus two forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, and one preserves the existing access rules while optimizing RLS policy evaluation. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The manifest status is `validated_local` and its decision remains `do_not_apply`. The complete three-migration chain now passes a fresh zero-state reset, but `npm run db:migrations:ready` must continue to fail until DEV application receives separate approval. No remote migration, seed, reset, history repair, schema change, or Production data copy was performed.
+The user approved DEV application on 2026-09-17, so the manifest status is `ready` and its decision is `apply` for the development environment only. `npm run db:migrations:ready` must pass before the remote command runs. This does not authorize Production migration, seed, reset, history repair, schema change, or Production data copy.
 
 ## Current tooling state
 
@@ -52,7 +52,8 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 - [x] Run representative authenticated RLS tests (20/20 passed).
 - [x] Resolve the 18 performance warnings in a separate forward migration and confirm 0 findings for the two affected Advisor rules.
 - [x] Rebuild the complete three-migration chain from zero after explicit approval to discard the prior local database.
-- [ ] After explicit DEV approval, change the manifest to `ready`/`apply`, pass `npm run db:migrations:ready`, and apply only to DEV.
+- [x] After explicit DEV approval, change the manifest to `ready`/`apply` and pass `npm run db:migrations:ready`.
+- [ ] Apply the three migrations only to the isolated DEV project and record remote verification.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 
