@@ -1,8 +1,43 @@
-# Development completion records
+# BrandyAction OS Codex Rules
 
-- At the end of every development task, update the matching project in the company OS development management workspace. This is part of completion, not an optional follow-up.
-- Resolve the project by its existing repository mapping. Keep OS, Edu, and Myin requests and development logs under their own project IDs; never create duplicates or store another project's work under OS by default.
-- Record the change, verification performed and not performed, local commit, remote PR if created, environment, actual deployment state, and remaining work. Never infer deployment from a local build or mark unresolved work complete.
-- Update the original request when applicable using its current version. Also save a development log linked to the same project and request. Read the saved record back before claiming it was recorded.
-- Use authorized OS connectors or APIs. If access is read-only or a write is rejected, do not bypass it. Preserve the prepared completion note locally and clearly report that OS recording is pending.
-- Do not publish employee data, request contents, internal identifiers, or secrets in public GitHub documentation. This instruction does not grant new deployment, publication, or credential permissions.
+## Project Role
+
+BrandyAction OS is an internal operating system for managing company knowledge, projects, workflows, and operational data.
+
+## Before Any Code Change
+
+1. Read PROJECT_CONTEXT.md
+2. Read ARCHITECTURE.md
+3. Check related docs and existing implementation
+4. Confirm current branch and deployment target
+
+## Development Rules
+
+- Do not modify production directly.
+- Do not change database schema without migration.
+- Do not remove existing features without approval.
+- Preserve existing API contracts.
+- Verify impact before changing shared components.
+
+## Branch Flow
+
+feature/*
+  -> develop
+  -> QA
+  -> main
+  -> Production
+
+## Environment Rules
+
+Development changes must be validated in DEV before production release.
+
+## Completion Records
+
+At the end of every task record:
+- Change summary
+- Verification result
+- Commit / PR information
+- Deployment environment
+- Remaining risks
+
+Update BrandyAction OS development management records when the related system is available.
