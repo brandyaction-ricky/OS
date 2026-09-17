@@ -1,22 +1,41 @@
 # Development handoff
 
-Updated: 2026-09-08 UTC.
+Updated: 2026-09-17 Asia/Seoul.
 
-## Code
+## Repository
 
-- Working branch: `codex/new-development-requests-41-20260908`.
-- Changes cover content discovery filters and evidence selection, script file ordering, Markdown navigation, dashboard presentation, and integration feedback.
-- Telegram capture requires an explicitly configured active owner. Personal email defaults have been removed from source and the environment template.
-- The environment template contains names only. Supply environment-specific values through the deployment platform.
+- Working path: `/Users/ricky/Projects/brandyaction-os`
+- Working branch: `codex/execution-setup-20260917`
+- Source base: `origin/main` at `0661eb4`
+- Migration-guidance merge: `0db8b54`
+- Local environment implementation: `337919a`
+- No remote push or pull request has been created.
+
+## Local Development Environment
+
+- Node.js is pinned by `.nvmrc` to `24.21.0`.
+- `npm run setup:local` creates a permission-restricted `.env.local` in demo mode and never overwrites an existing file.
+- `npm run env:check` validates required key names without printing values.
+- `npm run verify` is the local and GitHub CI gate for environment shape, lint, types, tests, and build.
+- `npm run build` is side-effect free. Telegram webhook registration is a separate, guarded command.
+- Architecture and environment promotion rules are documented in `ARCHITECTURE.md` and `docs/ENVIRONMENTS.md`.
 
 ## Verification
 
-- 217 automated tests pass.
-- TypeScript, ESLint, and the local Next.js production build pass.
-- External integration tests use mocks. Live account, media processing, and authenticated browser workflows require separate verification.
+- Local demo bootstrap creation and no-overwrite behavior pass.
+- Local environment readiness passes.
+- Production-mode mismatch is rejected before work begins.
+- Webhook registration without explicit confirmation is rejected before any external call.
+- The full repository verification gate passes, including lint, type checking, 230 automated tests, and a Next.js production build.
+
+## Deployment State
+
+- No Preview, DEV, QA, or Production deployment was run.
+- The checkout has no `.vercel/project.json`; Vercel Git integration, automatic deployment behavior, and actual deployed SHAs remain unverified.
+- Dedicated DEV and QA Supabase/integration resources remain unconfirmed.
 
 ## Continuation
 
-Read `AGENTS.md` and `docs/DEVELOPMENT_WORKFLOW.md`. Check the current branch, open pull request, CI result, and actual deployment status before making changes.
+Before a remote push or merge, inspect Vercel project settings and determine whether the Git action will deploy. Provision separate DEV and QA resources, scope their environment variables, run authenticated QA against an immutable Preview commit, and obtain explicit approval before Production changes.
 
-Keep request-specific context, approvals, and completion evidence in the application's development management records. A passing build or Preview is not evidence of production deployment.
+The dependency audit still reports Next.js/PostCSS advisories whose suggested automatic fix is a Next.js major upgrade. Handle that as a separate tested change.
