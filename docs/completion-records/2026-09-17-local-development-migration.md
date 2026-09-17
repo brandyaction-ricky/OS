@@ -13,10 +13,10 @@
 - 검증 완료: `npm ci`, `npm run setup:local` 생성·비덮어쓰기, `npm run env:check`, `npm run verify`(230/230 테스트·린트·타입 검사·빌드 통과), Production 모드 불일치 차단, 명시적 확인 없는 webhook 등록 차단, Playwright Chromium 로컬 데모 `/home` 렌더링·콘솔 오류 부재·`/api/v1/health` 계약 확인
 - 검증 미수행: 실제 Supabase/Auth 로그인, 외부 AI, YouTube, Telegram, 광고 연동, DEV/QA Preview의 인증 사용자 흐름. DEV 프로젝트는 비어 있고 QA 리소스와 테스트 계정이 아직 없어 연결형 인증 테스트는 1건 skip했다.
 - 보안 점검: `postcss`를 수정 버전 `8.5.28`로 고정했고 `npm audit --omit=dev`는 알려진 취약점 0건이다. Supabase 제공자 보안·성능 advisor에는 정책, 함수 권한, 유출 비밀번호 보호, 인덱스, RLS 평가 관련 검토 항목이 남아 있다. Production 변경은 수행하지 않았다.
-- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트)
+- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트), `255e154`(격리된 Supabase DEV 프로젝트 상태 기록)
 - 원격 PR: [#41](https://github.com/brandyaction-ricky/OS/pull/41) · `codex/execution-setup-20260917` → `main` · open · 미병합
-- 원격 CI: GitHub Actions `validate` run 141 성공. `npm ci`, 전체 검증, Chromium 설치, Playwright 스모크가 모두 통과했다.
-- 배포: Vercel이 PR #41 commit `5b8ef05`의 Preview를 자동 생성했고 `READY`에 도달했다. `/home`과 `/api/v1/health`는 HTTP 200이다. Preview health에서 database/auth가 `missing`이므로 연결형 QA는 아니다. Production 배포·승격·변경은 수행하지 않았고, 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태다.
+- 원격 CI: GitHub Actions `validate` run 143이 commit `c62b439`에서 성공했다. `npm ci`, 전체 검증, Chromium 설치, Playwright 스모크가 모두 통과했다.
+- 배포: Vercel이 commit `c62b439`의 Preview를 자동 생성했고 `READY`에 도달했다. `/home`과 `/api/v1/health`는 HTTP 200이다. Preview health에서 database/auth가 `missing`이므로 연결형 QA는 아니다. Production 배포·승격·변경은 수행하지 않았고, 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태다.
 - 원격 환경 점검: 로컬 checkout은 ignored `.vercel/project.json`으로 기존 프로젝트에 연결했다. Production Supabase는 개발 branch가 없으며 저장소와 원격의 migration history 식별자가 일치하지 않아 조정 전 migration 실행을 차단한다. 월 $0 비용을 확인·승인받아 서울 리전에 별도 `brandyaction-os-dev` 프로젝트를 생성했고, healthy 상태·public 테이블 0개·migration 0개·보안 advisor 0건을 확인했다. Production 데이터·스키마·설정은 변경하거나 복사하지 않았다. Vercel 환경변수 scope는 아직 설정하지 않았다.
 - 남은 작업: 별도 비용 확인 후 QA 리소스 생성, migration history 기준선 조정과 DEV schema 구성, DEV/QA Vercel 환경변수 scope 설정, 전용 테스트 계정으로 인증 브라우저 테스트 실행, Supabase advisor 항목의 별도 영향 분석과 수정
 - OS 운영 기록: 사용자 지침에 따라 운영 DB/API에 기록하지 않았다. 이 로컬 기록의 OS 반영은 보류 상태다.
