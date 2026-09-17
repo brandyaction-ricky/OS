@@ -13,6 +13,8 @@
     "test:e2e": "playwright test",
     "test:e2e:connected": "playwright test tests/e2e/authenticated.smoke.spec.ts",
     "verify": "npm run env:check -- --mode local --file .env.example && npm run lint && npm run typecheck && npm test && npm run build",
+    "db:migrations:verify": "node tools/check-migration-baseline.mjs",
+    "db:migrations:ready": "node tools/check-migration-baseline.mjs --require-ready",
     "env:check": "node tools/check-environment.mjs",
     "telegram:webhook:register": "node tools/register-telegram-webhook.mjs",
     "import:knowledge": "node tools/import-knowledge.mjs"

@@ -37,7 +37,7 @@ Conversation history is context only.
 ## Environment Direction
 
 - Local development starts in credential-free demo mode.
-- DEV and QA must use resources separated from Production.
+- DEV and QA verification must use the isolated DEV resources and remain separated from Production. QA is a verification stage, not a separate database project.
 - Pull requests must pass the repository verification workflow before QA.
 - Production uses an approved `main` commit or an explicitly approved, already verified artifact.
 - A merge or successful build is not proof of deployment; record the actual deployed SHA and post-deploy verification separately.

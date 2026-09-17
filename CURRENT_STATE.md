@@ -40,7 +40,8 @@ Updated: 2026-09-17 Asia/Seoul.
 - The latest observed Production deployment remains ready at commit `0661eb4`.
 - The Production Supabase project has no development branches and has unresolved migration-history and advisor findings. It was not changed.
 - A separate `brandyaction-os-dev` Supabase project now exists in Seoul. It is healthy and empty, with no public tables, migration history, or copied Production data.
-- QA Supabase/integration resources and Vercel environment-variable scopes remain incomplete.
+- QA is a Preview verification stage using isolated DEV resources; no separate QA database is planned. Vercel environment-variable scopes remain incomplete.
+- The 14 repository migrations are frozen follow-up deltas. Production has 7 non-matching history entries and DEV has none, so remote migration execution is blocked until the missing core baseline is captured and rebuilt locally from zero.
 
 ## Continuation
 

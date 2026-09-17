@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-09-17",
+  "status": "blocked_missing_core_baseline",
+  "decision": "do_not_apply",
+  "evidence": {
+    "repositoryMigrationCount": 14,
+    "productionHistoryCount": 7,
+    "productionExactRepositoryMatches": 0,
+    "developmentHistoryCount": 0,
+    "developmentOsObjectCount": 0
+  },
+  "baseline": {
+    "file": null,
+    "sha256": null,
+    "mustSortBefore": "202608290001_os_integrations.sql",
+    "requiredExtensions": [
+      "vector"
+    ],
+    "requiredTypes": [
+      "os_doc_status",
+      "os_job_status",
+      "os_role",
+      "os_skill_scope",
+      "os_skill_status"
+    ],
+    "requiredTables": [
+      "os_allowed_domains",
+      "os_document_chunks",
+      "os_document_events",
+      "os_document_links",
+      "os_document_versions",
+      "os_documents",
+      "os_embedding_jobs",
+      "os_profiles",
+      "os_skill_events",
+      "os_skill_evidence",
+      "os_skill_versions",
+      "os_skills"
+    ],
+    "requiredFunctions": [
+      "os_can_read_document",
+      "os_can_read_skill",
+      "os_claim_embedding_job",
+      "os_documents_after_write",
+      "os_documents_before_write",
+      "os_documents_block_direct_status",
+      "os_finish_embedding_job",
+      "os_handle_new_user",
+      "os_is_admin",
+      "os_is_lead_or_admin",
+      "os_my_role",
+      "os_my_team",
+      "os_rollback_document",
+      "os_search_documents",
+      "os_search_knowledge",
+      "os_set_skill_status",
+      "os_skills_after_write",
+      "os_skills_before_write",
+      "os_skills_block_direct_status",
+      "os_touch_updated_at"
+    ]
+  },
+  "legacyMigrations": [
+    {
+      "file": "202608290001_os_integrations.sql",
+      "sha256": "fe3366d8008cd15b69b43cd6a16afd013b4fbd786486a448ccae5d8a2e839fd2"
+    },
+    {
+      "file": "202608290002_operating_core.sql",
+      "sha256": "6a28174df353489b0404d5fd407d37dbb91dcda113089267d13c493786e3193d"
+    },
+    {
+      "file": "202608290003_meeting_recordings.sql",
+      "sha256": "faee3ee86d95585cf4dfe2695c666a0678d3cac20c1c9a943711e5a0be6565ee"
+    },
+    {
+      "file": "202608290004_knowledge_self_publish.sql",
+      "sha256": "bc686c716e905e49b35aa87f055590b4701af3bc0fd2d03b7d0917ddc747d862"
+    },
+    {
+      "file": "202608290005_operating_v3.sql",
+      "sha256": "72e4cf63c5783e6455a81d52bc844e5d5e1ff69acd28f75798d523b89119923d"
+    },
+    {
+      "file": "202608290006_ad_performance.sql",
+      "sha256": "2c6d3322618f71c4c255c7dc96301d688c87494683f10b527831f7bee90318e3"
+    },
+    {
+      "file": "202608300007_youtube_oauth.sql",
+      "sha256": "16a5b9e7c6ac0393c4e1af1c5f5d60d79ae3bee07c4893a7aba9ee352318c0ea"
+    },
+    {
+      "file": "202608300008_content_media.sql",
+      "sha256": "1a3e854db9c962e57cd7537dfcc0395271a969f7a0f38c8a59129cc8435c4b34"
+    },
+    {
+      "file": "202608300009_knowledge_collaboration.sql",
+      "sha256": "d0714ed0b024ffe68a0766b85e729c3c9d46832ed3319a51a441956673bf19de"
+    },
+    {
+      "file": "202608310010_agent_knowledge_write.sql",
+      "sha256": "cf83d5d2565d31d0f0dfc0a3dabba0e37549266259c5086a8145b26f61da7592"
+    },
+    {
+      "file": "202609010011_agent_operating_records.sql",
+      "sha256": "ab24bc2fc0e6adb7406989d9cb5a8c995ff0294f86e76cb3323d58c2d07d1fd1"
+    },
+    {
+      "file": "202609020012_account_password_management.sql",
+      "sha256": "523da49c4c03a0cf6d141e4844b2800ce4dc1daebb86c5e694933a08a0ef6ae0"
+    },
+    {
+      "file": "202609040013_development_operations.sql",
+      "sha256": "b68b07d00fe95fda38eadb18bf666babf15dd17128c81bb17e9bb302fcadd81f"
+    },
+    {
+      "file": "202609080014_development_request_attachments.sql",
+      "sha256": "fecc892c972fad5a85720c2de4d09e6a052bdbb4a0e7f006b3687e4d6747f568"
+    }
+  ]
+}

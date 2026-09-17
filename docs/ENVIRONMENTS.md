@@ -29,7 +29,7 @@ The browser test starts a local development server, verifies `/home` in demo mod
 | --- | --- | --- | --- |
 | Local demo | `local` | None | No credentials required |
 | DEV | `development` | Development or a DEV-only Preview branch | Development-only resources |
-| QA | `qa` | Preview | QA-only resources |
+| QA | `qa` | Preview | Isolated DEV resources with controlled test data and concurrency |
 | Production | `production` | Production | Production resources |
 
 DEV, QA, and Production require the core keys reported by `npm run env:check`. Optional integration groups are reported as `configured`, `partial`, or `not configured` without printing their values.
@@ -55,7 +55,7 @@ The local `.vercel/project.json` links this checkout to the existing project and
 
 ## Connected Browser QA
 
-Authenticated QA is opt-in and must target isolated DEV or QA resources:
+Authenticated QA is opt-in and must target the isolated DEV resource:
 
 ```bash
 PLAYWRIGHT_BASE_URL=https://approved-preview.example \
@@ -67,12 +67,12 @@ Inject `E2E_TEST_PASSWORD` from the approved secret store before running the com
 
 ## Supabase Promotion Gate
 
-The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project now exists in the approved organization and Seoul region. It is healthy and empty: no public tables, migrations, or Production data were copied. Before connected DEV or QA:
+The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project now exists in the approved organization and Seoul region. It is healthy and empty: no public tables, migrations, or Production data were copied. QA is a verification stage on an immutable Preview commit and does not use a third database project. Before connected DEV or QA:
 
-1. Keep the provisioned DEV project isolated and provision QA separately after its own cost confirmation.
-2. Establish a reviewed schema baseline; current repository migration filenames and remote migration-history identifiers do not reconcile.
+1. Keep the provisioned DEV project isolated from Production and control concurrent Preview test data.
+2. Establish the reviewed schema baseline in `docs/SUPABASE_MIGRATION_BASELINE.md`; the current 14 repository migrations are follow-up deltas and Production has 7 non-matching history entries.
 3. Configure only environment-specific keys and confirm RLS and function grants with test identities.
-4. Run migrations in DEV first, then QA, recording exact migration identities and results.
+4. Run migrations only in DEV after separate approval, then verify the immutable Preview against that DEV schema while recording exact migration identities and results.
 5. Keep Production migration, seed, reset, policy, auth, and configuration changes behind separate approval.
 
 The provider security review currently reports policy/grant/password-protection findings, and the performance review reports indexing and RLS-efficiency findings. These are assessment inputs, not authorization to change Production.
@@ -109,5 +109,6 @@ For every candidate, record:
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
 - The dedicated Supabase DEV project is provisioned, healthy, and empty. Its schema and environment variables are intentionally not configured yet.
-- QA resource separation and Vercel environment-variable scope remain incomplete.
+- The migration chain is frozen and guarded until the missing core baseline is captured and rebuilt locally from zero.
+- QA uses Preview plus isolated DEV resources. Vercel environment-variable scope remains incomplete.
 - No deployment, production database change, or production configuration change is performed by this setup.

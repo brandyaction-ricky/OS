@@ -37,7 +37,7 @@ The application can call Supabase, OpenAI, Anthropic, YouTube, Telegram, Meta Ad
 | --- | --- | --- | --- |
 | Local | Task branch | Demo mode by default; optional development-only credentials | Implementation and fast verification |
 | DEV | Task branch or shared integration ref | Dedicated development resources | Connected integration verification |
-| QA | Immutable Preview commit | Dedicated QA/Preview resources | Acceptance and regression testing |
+| QA | Immutable Preview commit | Isolated DEV resources with controlled test data and concurrency | Acceptance and regression testing |
 | Production | Approved `main` commit | Production resources | Live operation after explicit approval |
 
 Preview is not automatically QA-ready: the deployment commit, environment-variable scope, database target, and requested user flow must all be verified.
@@ -54,10 +54,10 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 ## Known Migration Gaps
 
 - The local checkout is linked to the existing Vercel project through an ignored local metadata file. Git integration is active: task branches create Preview deployments and `main` creates Production deployments.
-- A dedicated empty Supabase DEV project exists in Seoul, but its schema and environment variables are not configured yet. QA Supabase/integration resources still do not exist. Production must not be used for connected local or QA tests.
+- A dedicated empty Supabase DEV project exists in Seoul, but its schema and environment variables are not configured yet. QA uses an immutable Preview commit against isolated DEV resources; a separate QA database is not required. Production must not be used for connected local or QA tests.
 - Vercel environment-variable scope is not yet verified because provider-setting access requires a signed-in session.
-- The repository migration files and the connected Production migration-history identifiers do not currently reconcile. Do not apply migrations until a reviewed baseline and forward-only reconciliation plan exist.
-- Connected authentication QA is implemented but remains intentionally skipped until an isolated DEV/QA base URL and test account are provided.
+- The repository's 14 migration files are frozen follow-up deltas, while Production records 7 non-matching history entries and DEV is empty. Do not apply migrations until the missing core baseline is captured, locally rebuilt from zero, and approved. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
+- Connected authentication QA is implemented but remains intentionally skipped until the isolated DEV target, Preview environment variables, and a test account are ready.
 - Supabase security and performance advisors have open findings that require a separate, dependency-aware remediation review.
 
 See `docs/ENVIRONMENTS.md` for setup and promotion procedures.
