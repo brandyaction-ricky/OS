@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("integration migration is additive and protects the existing OS contract", async () => {
-  const sql = await readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../supabase/migrations-legacy/202608290001_os_integrations.sql", import.meta.url), "utf8");
   assert.match(sql, /OS_CORE_SCHEMA_REQUIRED/);
   assert.match(sql, /create table if not exists public\.os_agent_keys/);
   assert.match(sql, /create table if not exists public\.os_search_logs/);
@@ -14,8 +14,8 @@ test("integration migration is additive and protects the existing OS contract", 
 
 test("scoped agent keys expose audited and reversible knowledge writes", async () => {
   const [baseMigration, writeMigration, mcp, route, manager] = await Promise.all([
-    readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8"),
-    readFile(new URL("../supabase/migrations/202608310010_agent_knowledge_write.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations-legacy/202608290001_os_integrations.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations-legacy/202608310010_agent_knowledge_write.sql", import.meta.url), "utf8"),
     readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8"),
     readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/agent-key-manager.tsx", import.meta.url), "utf8"),
@@ -46,7 +46,7 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
 });
 
 test("operating core is additive, RLS protected and event audited", async () => {
-  const sql = await readFile(new URL("../supabase/migrations/202608290002_operating_core.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../supabase/migrations-legacy/202608290002_operating_core.sql", import.meta.url), "utf8");
   assert.match(sql, /create table if not exists public\.os_records/);
   assert.match(sql, /create table if not exists public\.os_record_events/);
   assert.match(sql, /alter table public\.os_records enable row level security/);
@@ -90,7 +90,7 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
 });
 
 test("meeting recordings stay private, bounded, and use signed playback URLs", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/202608290003_meeting_recordings.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations-legacy/202608290003_meeting_recordings.sql", import.meta.url), "utf8");
   const route = await readFile(new URL("../app/api/v1/meeting-recordings/route.ts", import.meta.url), "utf8");
   assert.match(migration, /'os-meeting-recordings'/);
   assert.match(migration, /false,/);

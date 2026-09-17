@@ -6,14 +6,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const expectedCliVersion = "2.117.0";
 
-function inspectRuntime(command) {
-  const result = spawnSync(command, ["version"], {
+function inspectRuntime(command, executable = command) {
+  const result = spawnSync(executable, ["version"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
 
   return {
     command,
+    executable,
     installed: !result.error || result.error.code !== "ENOENT",
     operational: result.status === 0,
   };
@@ -43,7 +44,13 @@ export async function inspectSupabaseTooling() {
     errors.push("local seed execution must remain disabled until a reviewed seed exists");
   }
 
-  const runtimes = [inspectRuntime("docker"), inspectRuntime("podman")];
+  const runtimes = [
+    inspectRuntime("docker"),
+    ...(process.platform === "darwin"
+      ? [inspectRuntime("docker-desktop", "/Applications/Docker.app/Contents/Resources/bin/docker")]
+      : []),
+    inspectRuntime("podman"),
+  ];
   const containerRuntime = runtimes.find((runtime) => runtime.operational) ?? null;
 
   return {
@@ -52,7 +59,7 @@ export async function inspectSupabaseTooling() {
     configValid: errors.length === 0,
     containerRuntimes: runtimes,
     dumpReady: errors.length === 0 && containerRuntime !== null,
-    selectedRuntime: containerRuntime?.command ?? null,
+    selectedRuntime: containerRuntime?.executable ?? null,
     errors,
   };
 }

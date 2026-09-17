@@ -13,7 +13,8 @@ GitHub is the source of truth for application code, migrations, tests, and opera
 | App Router UI | `app/(os)`, `components` | Internal operating workspaces and navigation |
 | API layer | `app/api/v1` | Authenticated documents, records, development, content, integrations, and health APIs |
 | Domain logic | `lib`, `lib/server` | Validation, authorization, content workflows, search, indexing, and integration logic |
-| Database changes | `supabase/migrations` | Additive schema, policy, function, and storage changes |
+| Active database changes | `supabase/migrations` | Reviewed baseline and future forward-only migrations |
+| Legacy migration evidence | `supabase/migrations-legacy` | Frozen pre-baseline deltas; never applied as an active chain |
 | Integration adapters | `tools`, `integrations/mcp` | Local import, explicit webhook registration, and MCP access |
 | Verification | `tests`, `tests/e2e`, `.github/workflows/validate.yml` | Contract, regression, browser smoke, type, lint, build, and CI checks |
 
@@ -56,7 +57,7 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 - The local checkout is linked to the existing Vercel project through an ignored local metadata file. Git integration is active: task branches create Preview deployments and `main` creates Production deployments.
 - A dedicated empty Supabase DEV project exists in Seoul, but its schema and environment variables are not configured yet. QA uses an immutable Preview commit against isolated DEV resources; a separate QA database is not required. Production must not be used for connected local or QA tests.
 - Vercel environment-variable scope is not yet verified because provider-setting access requires a signed-in session.
-- The repository's 14 migration files are frozen follow-up deltas, while Production records 7 non-matching history entries and DEV is empty. Do not apply migrations until the missing core baseline is captured, locally rebuilt from zero, and approved. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
+- A schema-only Production snapshot is now the single active baseline and rebuilds successfully from zero locally. The 14 prior deltas are frozen outside the active chain, Production still records 7 non-matching history entries, and DEV remains empty. Authenticated RLS/type comparison, performance-warning disposition, and explicit DEV approval are still required. See `docs/SUPABASE_MIGRATION_BASELINE.md`.
 - Connected authentication QA is implemented but remains intentionally skipped until the isolated DEV target, Preview environment variables, and a test account are ready.
 - Supabase security and performance advisors have open findings that require a separate, dependency-aware remediation review.
 

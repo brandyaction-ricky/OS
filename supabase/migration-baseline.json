@@ -1,20 +1,38 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "observedAt": "2026-09-17",
-  "status": "blocked_missing_core_baseline",
+  "status": "validated_local",
   "decision": "do_not_apply",
   "evidence": {
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 7,
     "productionExactRepositoryMatches": 0,
     "developmentHistoryCount": 0,
-    "developmentOsObjectCount": 0
+    "developmentOsObjectCount": 0,
+    "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
   "baseline": {
-    "file": null,
-    "sha256": null,
-    "mustSortBefore": "202608290001_os_integrations.sql",
+    "strategy": "squashed_production_schema_snapshot",
+    "file": "20260917082749_core_baseline.sql",
+    "sha256": "d4bc741d193bfefe4d9d4e8c5684b894caf19a144fe4150f0db8f75825299ad3",
+    "candidateRepairs": [
+      "replace privileged pg_trgm function setting with an explicit word_similarity threshold"
+    ],
+    "statementCounts": {
+      "tables": 34,
+      "rlsEnabledTables": 34,
+      "types": 5,
+      "functions": 35,
+      "policies": 36,
+      "indexes": 58,
+      "triggers": 10,
+      "grants": 197,
+      "revokes": 31,
+      "securityDefinerFunctions": 27
+    },
     "requiredExtensions": [
+      "pgcrypto",
+      "pg_trgm",
       "vector"
     ],
     "requiredTypes": [
@@ -59,7 +77,22 @@
       "os_skills_before_write",
       "os_skills_block_direct_status",
       "os_touch_updated_at"
-    ]
+    ],
+    "localValidation": {
+      "zeroStateReset": "passed",
+      "migrationHistoryCount": 1,
+      "objectInventoryMatchesProduction": true,
+      "generatedTypesMatchProduction": true,
+      "normalizedTypesSha256": "c72573008b1d98177961adc10ce6355093fe11c0a146849a8be0e9be447e49c8",
+      "securityAdvisors": {
+        "errors": 0,
+        "warnings": 0,
+        "info": 12
+      },
+      "performanceAdvisors": {
+        "warnings": 18
+      }
+    }
   },
   "legacyMigrations": [
     {

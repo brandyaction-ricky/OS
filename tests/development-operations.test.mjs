@@ -8,7 +8,7 @@ test("development logs and deployments are first-class operating records", async
   const [types, validation, migration] = await Promise.all([
     read("lib/record-types.ts"),
     read("lib/record-validation.ts"),
-    read("supabase/migrations/202609040013_development_operations.sql"),
+    read("supabase/migrations-legacy/202609040013_development_operations.sql"),
   ]);
   for (const type of ["development_log", "deployment"]) {
     assert.match(types, new RegExp(`"${type}"`));

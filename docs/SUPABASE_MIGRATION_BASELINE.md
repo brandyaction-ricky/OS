@@ -4,47 +4,53 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Decision
 
-Do not apply the current repository migration chain to DEV or Production yet. The files in `supabase/migrations` are frozen legacy deltas, not a complete schema baseline. `npm run db:migrations:ready` is the mandatory preflight and must continue to fail until a reviewed core baseline exists.
+Do not apply the baseline to DEV or Production yet. `supabase/migrations` now contains one locally validated, schema-only snapshot of the current Production `public` schema. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-No migration, seed, reset, history repair, schema change, or Production write was performed while establishing this decision.
+The manifest status is `validated_local` and its decision remains `do_not_apply`. `npm run db:migrations:ready` must therefore continue to fail until the remaining review gates pass and DEV application receives separate approval. No remote migration, seed, reset, history repair, schema change, or Production data copy was performed.
 
 ## Current tooling state
 
 - Supabase CLI is pinned as an exact development dependency at `2.117.0`; local configuration was generated with that CLI.
 - Production PostgreSQL major version was confirmed through a read-only query as 17, and local `supabase/config.toml` matches it.
-- Local Data API automatic table exposure and automatic seed execution are disabled. The reviewed baseline must grant only the intended API privileges, and no seed will run implicitly.
-- The authenticated Production schema-only dump dry run succeeded. The real dump is currently blocked because neither Docker nor Podman is installed; Supabase CLI runs its filtered `pg_dump` in a container.
-- `npm run db:tooling:check` reports the pinned/configured state. `npm run db:tooling:ready` is the hard gate for the schema export and intentionally fails until an operational container runtime is present.
+- Docker Desktop `4.91.0` is installed and running. The repository tooling discovers its bundled CLI without requiring an administrator-owned global symlink.
+- Local Data API automatic table exposure and automatic seed execution are disabled. The baseline contains the Production grants and RLS policies explicitly, and no seed runs implicitly.
+- The authenticated Production schema-only dump completed through the official Supabase containerized `pg_dump`. The uncommitted raw artifact remains in `/private/tmp`; it contained no `INSERT`, `COPY`, credential literal, Auth rows, Storage objects, or business rows.
+- `npm run db:tooling:ready` passes with the Docker Desktop runtime.
 
-The failed export produced no schema output. It did not run a migration or modify Production or DEV.
+The first local apply exposed two snapshot portability issues: a function-scoped `pg_trgm` setting required unavailable privileges, and the filtered dump omitted the `pg_trgm` extension declaration. The candidate now uses an explicit `word_similarity(...) > 0.3` predicate and declares `pgcrypto`, `pg_trgm`, and `vector` in `extensions`. Production and DEV were not changed.
 
 ## Evidence
 
-- The repository contains 14 ordered migration files.
+- The active migration chain contains one CLI-generated `core_baseline` snapshot. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
 - Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
 - Production currently has the core OS schema, while DEV has no OS tables, functions, policies, triggers, or migration history.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
-- Additional unversioned core contracts include document versions, chunks, events, embedding jobs, skills, allowed domains, functions, triggers, policies, grants, and enum types. The non-secret inventory is frozen in `supabase/migration-baseline.json`.
+- The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
+- A clean local `supabase db reset --local --no-seed` succeeded. Local migration history contains exactly the one baseline version.
+- Generated TypeScript types match Production after removing the provider-only PostgREST version metadata block; the normalized SHA-256 values are identical.
+- Local security advisor results contain 0 errors and 0 warnings; 12 informational findings are deny-by-default RLS tables without policies. Performance advisor results contain 18 warnings: 13 auth-function initialization-plan findings and 5 multiple-permissive-policy findings.
 - Git history does not contain an earlier core migration. The application rebuild was written against an already-existing Production schema.
 
 ## Why a direct push is unsafe
 
-Running `db push`, `apply_migration`, or the SQL files individually against empty DEV would fail at the first migration. Marking migrations as applied would be worse: it would create a false history while leaving required objects absent. Production history repair is also blocked because history changes do not prove schema equivalence.
+The old delta chain could not build an empty database and must never be replayed from `supabase/migrations-legacy`. The new snapshot can build an empty local database, but applying it remotely remains blocked until authenticated RLS tests, generated type comparison, performance-warning disposition, and a separate DEV approval are recorded. Production history repair is also blocked because history changes do not prove schema equivalence.
 
 New Supabase projects also no longer guarantee automatic Data API grants for new `public` tables. The reviewed baseline must therefore contain explicit least-privilege grants as well as RLS policies. RLS alone is not sufficient. See the [Supabase Data API exposure change](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically).
 
 ## Baseline construction gate
 
-1. Keep the pinned Supabase CLI and committed local configuration. Never commit `.temp`, linked project identifiers, database URLs, or credentials.
-2. Install and start an approved Docker or Podman runtime, then pass `npm run db:tooling:ready`.
-3. Obtain a schema-only Production export through the approved read-only database connection. Do not use `db pull` against Production because it can update remote migration history. Do not export rows, Auth users, Storage objects, secrets, or employee data.
-4. Reduce the export to the application-owned core contract that predates the first frozen legacy delta. Exclude provider-managed schemas and all business data.
-5. Preserve the 14 legacy files and their checksums in an archive, then generate a clean active chain with `supabase migration new`: first `core_baseline`, followed by reviewed copies of the legacy deltas in their original order. Never invent or manually backdate migration timestamps.
-6. Review extension handling, enum types, table constraints, foreign-key indexes, triggers, `SECURITY DEFINER` functions, fixed `search_path`, function execution grants, explicit Data API grants, and RLS policies.
-7. Rebuild a disposable local Supabase stack from zero and apply the complete chain. A clean `supabase db reset` is required before any remote DEV write.
-8. Run schema contract tests, generated type comparison, security advisor, performance advisor, and representative authenticated RLS tests.
-9. Update `supabase/migration-baseline.json` for the clean active chain and its checksums, then change its status to `ready` and decision to `apply` only after review evidence is recorded.
-10. Run `npm run db:migrations:ready`. It must pass before requesting separate approval to apply migrations to DEV.
+- [x] Pin and initialize the Supabase CLI without committing `.temp`, project references, database URLs, or credentials.
+- [x] Start an approved container runtime and pass `npm run db:tooling:ready`.
+- [x] Capture a filtered, schema-only Production export without `db pull` or row data.
+- [x] Generate the snapshot filename with `supabase migration new core_baseline`; never manually backdate migration timestamps.
+- [x] Preserve the 14 legacy deltas and checksums outside the active chain.
+- [x] Review and validate extensions, object counts, RLS coverage, `SECURITY DEFINER` search paths, grants, revokes, and credential/data absence.
+- [x] Rebuild the disposable local database from zero with no seed and confirm a one-entry migration history.
+- [x] Run local security and performance advisors and freeze the findings in the manifest.
+- [x] Compare generated TypeScript schema types with Production.
+- [ ] Run representative authenticated RLS tests.
+- [ ] Review the 18 performance warnings as a separate forward migration or explicitly accept them for the baseline.
+- [ ] After those gates and explicit DEV approval, change the manifest to `ready`/`apply`, pass `npm run db:migrations:ready`, and apply only to DEV.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 

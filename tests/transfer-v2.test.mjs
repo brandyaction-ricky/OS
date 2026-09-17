@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("canonical editing is deliberate, versioned and self-publishable", async () => {
-  const [sql, workspace, route] = await Promise.all([read("supabase/migrations/202608290004_knowledge_self_publish.sql"), read("components/knowledge-workspace.tsx"), read("app/api/v1/documents/[id]/versions/route.ts")]);
+  const [sql, workspace, route] = await Promise.all([read("supabase/migrations-legacy/202608290004_knowledge_self_publish.sql"), read("components/knowledge-workspace.tsx"), read("app/api/v1/documents/[id]/versions/route.ts")]);
   assert.match(sql, /status = 'canonical'.*is_active/s);
   assert.match(sql, /os_restore_document_version/);
   assert.match(sql, /v_from in \('draft', 'team', 'review', 'reviewed'\).*p_to = 'canonical'/s);

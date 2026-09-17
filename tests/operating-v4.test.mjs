@@ -32,7 +32,7 @@ test("advertising credentials stay server-only and sync is read-only", async () 
 });
 
 test("advertising database is daily, deduplicated and RLS protected", async () => {
-  const migration = await read("supabase/migrations/202608290006_ad_performance.sql");
+  const migration = await read("supabase/migrations-legacy/202608290006_ad_performance.sql");
   assert.match(migration, /os_ad_performance_daily/);
   assert.match(migration, /unique \(provider, brand_key, metric_date\)/);
   assert.match(migration, /enable row level security/);

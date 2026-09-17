@@ -5,72 +5,141 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const migrationsDirectory = path.join(root, "supabase", "migrations");
+const legacyMigrationsDirectory = path.join(root, "supabase", "migrations-legacy");
 const manifestPath = path.join(root, "supabase", "migration-baseline.json");
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function migrationVersion(file) {
+  return file.match(/^(\d{12}|\d{14})_[a-z0-9_]+\.sql$/)?.[1] ?? null;
+}
+
+function hasPublicObject(sql, kind, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const prefix = {
+    function: "CREATE OR REPLACE FUNCTION",
+    table: "CREATE TABLE IF NOT EXISTS",
+    type: "CREATE TYPE",
+  }[kind];
+  return new RegExp(`${prefix} "public"\\."${escapedName}"`).test(sql);
+}
+
+function count(sql, pattern) {
+  return sql.match(pattern)?.length ?? 0;
+}
+
 export async function inspectMigrationBaseline() {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  const files = (await readdir(migrationsDirectory))
+  const activeFiles = (await readdir(migrationsDirectory))
     .filter((file) => file.endsWith(".sql"))
     .sort();
-  const expected = [
-    ...(manifest.baseline.file ? [manifest.baseline.file] : []),
-    ...manifest.legacyMigrations.map((entry) => entry.file),
-  ].sort();
+  const archivedFiles = (await readdir(legacyMigrationsDirectory))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  const expectedActiveFiles = manifest.baseline.file ? [manifest.baseline.file] : [];
+  const expectedArchivedFiles = manifest.legacyMigrations.map((entry) => entry.file).sort();
   const errors = [];
-  const versions = files.map((file) => file.match(/^(\d{12})_[a-z0-9_]+\.sql$/)?.[1]);
+  const allFiles = [...activeFiles, ...archivedFiles];
+  const versions = allFiles.map(migrationVersion);
 
-  if (new Set(files).size !== files.length) {
-    errors.push("duplicate migration filenames");
-  }
   if (versions.some((version) => !version)) {
-    errors.push("migration filenames must use a 12-digit version and snake-case name");
+    errors.push("migration filenames must use a CLI-compatible version and snake-case name");
   }
   if (new Set(versions).size !== versions.length) {
-    errors.push("migration versions must be unique");
+    errors.push("migration versions must be unique across active and archived files");
   }
-  if (files.join("\n") !== expected.join("\n")) {
-    errors.push("migration file set differs from the frozen legacy manifest");
+  if (activeFiles.join("\n") !== expectedActiveFiles.join("\n")) {
+    errors.push("active migration files differ from the baseline manifest");
+  }
+  if (archivedFiles.join("\n") !== expectedArchivedFiles.join("\n")) {
+    errors.push("archived legacy migrations differ from the frozen manifest");
   }
 
   for (const entry of manifest.legacyMigrations) {
     let sql;
     try {
-      sql = await readFile(path.join(migrationsDirectory, entry.file), "utf8");
+      sql = await readFile(path.join(legacyMigrationsDirectory, entry.file), "utf8");
     } catch {
-      errors.push(`missing migration: ${entry.file}`);
+      errors.push(`missing archived migration: ${entry.file}`);
       continue;
     }
     if (sha256(sql) !== entry.sha256) {
-      errors.push(`migration checksum changed: ${entry.file}`);
+      errors.push(`archived migration checksum changed: ${entry.file}`);
     }
   }
 
-  const firstMigration = files[0]
-    ? await readFile(path.join(migrationsDirectory, files[0]), "utf8")
+  const firstLegacyFile = expectedArchivedFiles[0];
+  const firstLegacySql = firstLegacyFile
+    ? await readFile(path.join(legacyMigrationsDirectory, firstLegacyFile), "utf8")
     : "";
-  if (!firstMigration.includes("OS_CORE_SCHEMA_REQUIRED")) {
-    errors.push("the first legacy migration no longer guards its core prerequisites");
+  if (!firstLegacySql.includes("OS_CORE_SCHEMA_REQUIRED")) {
+    errors.push("the first archived legacy migration no longer guards its core prerequisites");
   }
 
   const baselineFile = manifest.baseline.file;
-  let baselinePresent = false;
-  if (baselineFile) {
-    baselinePresent = files.includes(baselineFile);
-    if (!baselinePresent) errors.push(`declared baseline is missing: ${baselineFile}`);
-    if (baselineFile >= manifest.baseline.mustSortBefore) {
-      errors.push("the baseline migration must sort before the legacy chain");
+  const baselinePresent = Boolean(baselineFile && activeFiles.includes(baselineFile));
+  let baselineSql = "";
+  if (!baselinePresent) {
+    errors.push(`declared baseline is missing: ${baselineFile ?? "unset"}`);
+  } else {
+    baselineSql = await readFile(path.join(migrationsDirectory, baselineFile), "utf8");
+    if (sha256(baselineSql) !== manifest.baseline.sha256) {
+      errors.push(`baseline checksum changed: ${baselineFile}`);
     }
-    if (!manifest.baseline.sha256) {
-      errors.push("the declared baseline must have a frozen checksum");
-    } else if (baselinePresent) {
-      const baselineSql = await readFile(path.join(migrationsDirectory, baselineFile), "utf8");
-      if (sha256(baselineSql) !== manifest.baseline.sha256) {
-        errors.push(`baseline checksum changed: ${baselineFile}`);
+  }
+
+  if (baselineSql) {
+    for (const extension of manifest.baseline.requiredExtensions) {
+      if (!baselineSql.includes(`CREATE EXTENSION IF NOT EXISTS "${extension}" WITH SCHEMA "extensions";`)) {
+        errors.push(`baseline extension is missing: ${extension}`);
       }
+    }
+    for (const type of manifest.baseline.requiredTypes) {
+      if (!hasPublicObject(baselineSql, "type", type)) errors.push(`baseline type is missing: ${type}`);
+    }
+    for (const table of manifest.baseline.requiredTables) {
+      if (!hasPublicObject(baselineSql, "table", table)) errors.push(`baseline table is missing: ${table}`);
+    }
+    for (const fn of manifest.baseline.requiredFunctions) {
+      if (!hasPublicObject(baselineSql, "function", fn)) errors.push(`baseline function is missing: ${fn}`);
+    }
+
+    const tableCount = count(baselineSql, /^CREATE TABLE /gm);
+    const rlsCount = count(baselineSql, /^ALTER TABLE .* ENABLE ROW LEVEL SECURITY;/gm);
+    const statementCounts = {
+      tables: tableCount,
+      rlsEnabledTables: rlsCount,
+      types: count(baselineSql, /^CREATE TYPE /gm),
+      functions: count(baselineSql, /^CREATE OR REPLACE FUNCTION /gm),
+      policies: count(baselineSql, /^CREATE POLICY /gm),
+      indexes: count(baselineSql, /^CREATE (?:UNIQUE )?INDEX /gm),
+      triggers: count(baselineSql, /^CREATE (?:OR REPLACE )?TRIGGER /gm),
+      grants: count(baselineSql, /^GRANT /gm),
+      revokes: count(baselineSql, /^REVOKE /gm),
+      securityDefinerFunctions: count(baselineSql, /SECURITY DEFINER/g),
+    };
+    for (const [statement, expectedCount] of Object.entries(manifest.baseline.statementCounts)) {
+      if (statementCounts[statement] !== expectedCount) {
+        errors.push(`baseline ${statement} count differs from the reviewed snapshot`);
+      }
+    }
+    if (rlsCount !== tableCount) {
+      errors.push("every public baseline table must enable RLS");
+    }
+    if (/^(INSERT INTO|COPY) /m.test(baselineSql)) {
+      errors.push("baseline must not contain row data statements");
+    }
+    if (/(postgres(?:ql)?:\/\/|sb_(?:secret|publishable)_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/.test(baselineSql)) {
+      errors.push("baseline contains a credential-like literal");
+    }
+
+    const privilegedFunctions = baselineSql
+      .split(/(?=CREATE OR REPLACE FUNCTION )/)
+      .filter((block) => block.startsWith("CREATE OR REPLACE FUNCTION ") && block.includes("SECURITY DEFINER"));
+    if (privilegedFunctions.some((block) => !block.includes('SET "search_path" TO'))) {
+      errors.push("every SECURITY DEFINER function must set an explicit search_path");
     }
   }
 
@@ -79,7 +148,8 @@ export async function inspectMigrationBaseline() {
     decision: manifest.decision,
     integrityValid: errors.length === 0,
     readyToApply: manifest.status === "ready" && manifest.decision === "apply" && baselinePresent && errors.length === 0,
-    migrationCount: files.length,
+    activeMigrationCount: activeFiles.length,
+    archivedMigrationCount: archivedFiles.length,
     baselinePresent,
     errors,
   };
