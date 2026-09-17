@@ -8,6 +8,16 @@ Do not apply the current repository migration chain to DEV or Production yet. Th
 
 No migration, seed, reset, history repair, schema change, or Production write was performed while establishing this decision.
 
+## Current tooling state
+
+- Supabase CLI is pinned as an exact development dependency at `2.117.0`; local configuration was generated with that CLI.
+- Production PostgreSQL major version was confirmed through a read-only query as 17, and local `supabase/config.toml` matches it.
+- Local Data API automatic table exposure and automatic seed execution are disabled. The reviewed baseline must grant only the intended API privileges, and no seed will run implicitly.
+- The authenticated Production schema-only dump dry run succeeded. The real dump is currently blocked because neither Docker nor Podman is installed; Supabase CLI runs its filtered `pg_dump` in a container.
+- `npm run db:tooling:check` reports the pinned/configured state. `npm run db:tooling:ready` is the hard gate for the schema export and intentionally fails until an operational container runtime is present.
+
+The failed export produced no schema output. It did not run a migration or modify Production or DEV.
+
 ## Evidence
 
 - The repository contains 14 ordered migration files.
@@ -25,15 +35,16 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 
 ## Baseline construction gate
 
-1. Install a pinned Supabase CLI version and initialize local configuration. Do not commit linked project identifiers or credentials.
-2. Obtain a schema-only Production export through an approved read-only database connection. Do not use `db pull` against Production because it can update remote migration history. Do not export rows, Auth users, Storage objects, secrets, or employee data.
-3. Create the baseline file with `supabase migration new core_baseline`; never invent its timestamp manually.
-4. Reduce the export to the application-owned core contract that must precede `202608290001_os_integrations.sql`. Exclude provider-managed schemas and all business data.
-5. Review extension handling, enum types, table constraints, foreign-key indexes, triggers, `SECURITY DEFINER` functions, fixed `search_path`, function execution grants, explicit Data API grants, and RLS policies.
-6. Rebuild a disposable local Supabase stack from zero and apply the complete chain. A clean `supabase db reset` is required before any remote DEV write.
-7. Run schema contract tests, generated type comparison, security advisor, performance advisor, and representative authenticated RLS tests.
-8. Update `supabase/migration-baseline.json` with the generated baseline filename and checksum, then change its status to `ready` and decision to `apply` only after review evidence is recorded.
-9. Run `npm run db:migrations:ready`. It must pass before requesting separate approval to apply migrations to DEV.
+1. Keep the pinned Supabase CLI and committed local configuration. Never commit `.temp`, linked project identifiers, database URLs, or credentials.
+2. Install and start an approved Docker or Podman runtime, then pass `npm run db:tooling:ready`.
+3. Obtain a schema-only Production export through the approved read-only database connection. Do not use `db pull` against Production because it can update remote migration history. Do not export rows, Auth users, Storage objects, secrets, or employee data.
+4. Reduce the export to the application-owned core contract that predates the first frozen legacy delta. Exclude provider-managed schemas and all business data.
+5. Preserve the 14 legacy files and their checksums in an archive, then generate a clean active chain with `supabase migration new`: first `core_baseline`, followed by reviewed copies of the legacy deltas in their original order. Never invent or manually backdate migration timestamps.
+6. Review extension handling, enum types, table constraints, foreign-key indexes, triggers, `SECURITY DEFINER` functions, fixed `search_path`, function execution grants, explicit Data API grants, and RLS policies.
+7. Rebuild a disposable local Supabase stack from zero and apply the complete chain. A clean `supabase db reset` is required before any remote DEV write.
+8. Run schema contract tests, generated type comparison, security advisor, performance advisor, and representative authenticated RLS tests.
+9. Update `supabase/migration-baseline.json` for the clean active chain and its checksums, then change its status to `ready` and decision to `apply` only after review evidence is recorded.
+10. Run `npm run db:migrations:ready`. It must pass before requesting separate approval to apply migrations to DEV.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 
