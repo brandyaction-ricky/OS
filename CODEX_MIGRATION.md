@@ -6,7 +6,7 @@ Move BrandyAction OS development from conversation-driven changes to repository-
 
 ## Current State
 
-The repository can be installed, tested, linted, type-checked, built, and run locally in demo mode. Repository CI performs the same side-effect-free gate plus a browser smoke test. The local checkout is linked to the existing Vercel project. A dedicated empty Supabase DEV project has been provisioned. A schema-only Production snapshot rebuilds successfully from zero locally, but remains blocked from DEV pending authenticated RLS tests, performance-warning disposition, and separate approval. QA is a Preview verification stage using isolated DEV resources; Vercel environment-variable scope has not been established.
+The repository can be installed, tested, linted, type-checked, built, and run locally in demo mode. Repository CI performs the same side-effect-free gate plus a browser smoke test. The local checkout is linked to the existing Vercel project. A dedicated empty Supabase DEV project has been provisioned. A schema-only Production snapshot rebuilds successfully from zero locally; forward migrations restore the cross-schema Auth trigger and resolve the 18 RLS performance warnings, and the 20-case pgTAP RLS suite passes. DEV application remains blocked pending a zero-state rebuild of the complete active chain and separate approval. QA is a Preview verification stage using isolated DEV resources; Vercel environment-variable scope has not been established.
 
 ## Target State
 

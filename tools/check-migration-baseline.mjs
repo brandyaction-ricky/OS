@@ -38,7 +38,11 @@ export async function inspectMigrationBaseline() {
   const archivedFiles = (await readdir(legacyMigrationsDirectory))
     .filter((file) => file.endsWith(".sql"))
     .sort();
-  const expectedActiveFiles = manifest.baseline.file ? [manifest.baseline.file] : [];
+  const forwardMigrations = manifest.forwardMigrations ?? [];
+  const expectedActiveFiles = [
+    ...(manifest.baseline.file ? [manifest.baseline.file] : []),
+    ...forwardMigrations.map((entry) => entry.file),
+  ].sort();
   const expectedArchivedFiles = manifest.legacyMigrations.map((entry) => entry.file).sort();
   const errors = [];
   const allFiles = [...activeFiles, ...archivedFiles];
@@ -67,6 +71,25 @@ export async function inspectMigrationBaseline() {
     }
     if (sha256(sql) !== entry.sha256) {
       errors.push(`archived migration checksum changed: ${entry.file}`);
+    }
+  }
+
+  for (const entry of forwardMigrations) {
+    let sql;
+    try {
+      sql = await readFile(path.join(migrationsDirectory, entry.file), "utf8");
+    } catch {
+      errors.push(`missing forward migration: ${entry.file}`);
+      continue;
+    }
+    if (sha256(sql) !== entry.sha256) {
+      errors.push(`forward migration checksum changed: ${entry.file}`);
+    }
+    if (/^(INSERT INTO|COPY) /m.test(sql)) {
+      errors.push(`forward migration must not contain row data: ${entry.file}`);
+    }
+    if (/(postgres(?:ql)?:\/\/|sb_(?:secret|publishable)_[A-Za-z0-9_-]+|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,})/.test(sql)) {
+      errors.push(`forward migration contains a credential-like literal: ${entry.file}`);
     }
   }
 

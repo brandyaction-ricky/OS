@@ -71,7 +71,7 @@ The Production Supabase project has no development branches. A separate `brandya
 
 1. Keep the provisioned DEV project isolated from Production and control concurrent Preview test data.
 2. Use the locally validated schema-only snapshot in `supabase/migrations`; the 14 prior deltas are frozen in `supabase/migrations-legacy` and must never be replayed as an active chain. Production still has 7 non-matching history entries.
-3. Complete authenticated RLS tests and performance-warning disposition, then configure only environment-specific keys and confirm RLS and function grants with test identities.
+3. Preserve the passing authenticated RLS suite and resolved performance-policy checks, complete a zero-state rebuild of the full active migration chain, then configure only environment-specific keys and confirm RLS and function grants with test identities.
 4. Run migrations only in DEV after separate approval, then verify the immutable Preview against that DEV schema while recording exact migration identities and results.
 5. Keep Production migration, seed, reset, policy, auth, and configuration changes behind separate approval.
 
@@ -109,6 +109,6 @@ For every candidate, record:
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
 - The dedicated Supabase DEV project is provisioned, healthy, and empty. Its schema and environment variables are intentionally not configured yet.
-- The schema-only baseline rebuilds successfully from zero locally and matches Production object inventory and normalized generated types. Remote application remains guarded pending authenticated RLS tests, performance-warning disposition, and explicit DEV approval.
+- The schema-only baseline rebuilds successfully from zero locally and matches Production object inventory and normalized generated types. Two forward migrations restore the cross-schema Auth trigger and resolve the 18 RLS performance warnings; the 20-case pgTAP suite passes. Remote application remains guarded pending a zero-state rebuild of the complete active chain and explicit DEV approval.
 - QA uses Preview plus isolated DEV resources. Vercel environment-variable scope remains incomplete.
 - No deployment, production database change, or production configuration change is performed by this setup.

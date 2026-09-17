@@ -79,21 +79,41 @@
       "os_touch_updated_at"
     ],
     "localValidation": {
-      "zeroStateReset": "passed",
-      "migrationHistoryCount": 1,
+      "zeroStateReset": "passed_baseline_only",
+      "forwardChainZeroStateReset": "pending_explicit_local_data_reset_approval",
+      "migrationHistoryCount": 3,
       "objectInventoryMatchesProduction": true,
       "generatedTypesMatchProduction": true,
       "normalizedTypesSha256": "c72573008b1d98177961adc10ce6355093fe11c0a146849a8be0e9be447e49c8",
+      "authenticatedRlsTests": {
+        "status": "passed",
+        "tests": 20,
+        "file": "supabase/tests/os_rls_test.sql"
+      },
       "securityAdvisors": {
         "errors": 0,
         "warnings": 0,
         "info": 12
       },
       "performanceAdvisors": {
-        "warnings": 18
+        "warnings": 0,
+        "resolvedWarnings": 18,
+        "verification": "local_catalog_equivalent_rules"
       }
     }
   },
+  "forwardMigrations": [
+    {
+      "file": "20260917085013_restore_auth_profile_trigger.sql",
+      "sha256": "39ed9abe6331eb390f306dd5d989c4618c6d4e10b802c458b3776bd78a53858c",
+      "purpose": "restore the auth.users profile trigger omitted by the public-only schema export"
+    },
+    {
+      "file": "20260917085123_optimize_rls_policies.sql",
+      "sha256": "ab03406b3c67c27e5deaa2561301df78d079421ac2507aedd314b54ecb2d38a9",
+      "purpose": "remove auth initialization-plan and overlapping permissive-policy warnings without changing effective access"
+    }
+  ],
   "legacyMigrations": [
     {
       "file": "202608290001_os_integrations.sql",

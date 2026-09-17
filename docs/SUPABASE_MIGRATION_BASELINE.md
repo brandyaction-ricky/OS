@@ -4,9 +4,9 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Decision
 
-Do not apply the baseline to DEV or Production yet. `supabase/migrations` now contains one locally validated, schema-only snapshot of the current Production `public` schema. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+Do not apply the active chain to DEV or Production yet. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus two forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, and one preserves the existing access rules while optimizing RLS policy evaluation. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The manifest status is `validated_local` and its decision remains `do_not_apply`. `npm run db:migrations:ready` must therefore continue to fail until the remaining review gates pass and DEV application receives separate approval. No remote migration, seed, reset, history repair, schema change, or Production data copy was performed.
+The manifest status is `validated_local` and its decision remains `do_not_apply`. `npm run db:migrations:ready` must therefore continue to fail until the complete three-migration chain passes a fresh zero-state reset and DEV application receives separate approval. No remote migration, seed, reset, history repair, schema change, or Production data copy was performed.
 
 ## Current tooling state
 
@@ -21,19 +21,20 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Evidence
 
-- The active migration chain contains one CLI-generated `core_baseline` snapshot. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and two CLI-generated forward migrations. Their checksums are pinned in the manifest. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
 - Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
 - Production currently has the core OS schema, while DEV has no OS tables, functions, policies, triggers, or migration history.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
 - The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
-- A clean local `supabase db reset --local --no-seed` succeeded. Local migration history contains exactly the one baseline version.
+- A clean local `supabase db reset --local --no-seed` succeeded for the baseline-only chain. The two forward migrations then applied locally in order, producing three local migration-history entries. A second destructive reset of the complete chain was requested but not authorized, so that final reproducibility check remains pending.
 - Generated TypeScript types match Production after removing the provider-only PostgREST version metadata block; the normalized SHA-256 values are identical.
-- Local security advisor results contain 0 errors and 0 warnings; 12 informational findings are deny-by-default RLS tables without policies. Performance advisor results contain 18 warnings: 13 auth-function initialization-plan findings and 5 multiple-permissive-policy findings.
+- The representative pgTAP suite passes 20 authenticated, inactive, admin, lead, member, ownership-write, finance-boundary, and anonymous RLS assertions. Every fixture is transaction-scoped and rolled back.
+- Local security advisor results contain 0 errors and 0 warnings; 12 informational findings are deny-by-default RLS tables without policies. The 13 auth-function initialization-plan findings and 5 multiple-permissive-policy findings were addressed in a forward migration; equivalent local catalog checks now return 0 findings for both rules.
 - Git history does not contain an earlier core migration. The application rebuild was written against an already-existing Production schema.
 
 ## Why a direct push is unsafe
 
-The old delta chain could not build an empty database and must never be replayed from `supabase/migrations-legacy`. The new snapshot can build an empty local database, but applying it remotely remains blocked until authenticated RLS tests, generated type comparison, performance-warning disposition, and a separate DEV approval are recorded. Production history repair is also blocked because history changes do not prove schema equivalence.
+The old delta chain could not build an empty database and must never be replayed from `supabase/migrations-legacy`. The baseline can build an empty local database, and the forward migrations apply cleanly to it, but remote application remains blocked until the complete chain is rebuilt from zero and a separate DEV approval is recorded. Production history repair is also blocked because history changes do not prove schema equivalence.
 
 New Supabase projects also no longer guarantee automatic Data API grants for new `public` tables. The reviewed baseline must therefore contain explicit least-privilege grants as well as RLS policies. RLS alone is not sufficient. See the [Supabase Data API exposure change](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically).
 
@@ -45,12 +46,13 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 - [x] Generate the snapshot filename with `supabase migration new core_baseline`; never manually backdate migration timestamps.
 - [x] Preserve the 14 legacy deltas and checksums outside the active chain.
 - [x] Review and validate extensions, object counts, RLS coverage, `SECURITY DEFINER` search paths, grants, revokes, and credential/data absence.
-- [x] Rebuild the disposable local database from zero with no seed and confirm a one-entry migration history.
+- [x] Rebuild the disposable local database from zero with no seed and confirm the baseline-only migration history.
 - [x] Run local security and performance advisors and freeze the findings in the manifest.
 - [x] Compare generated TypeScript schema types with Production.
-- [ ] Run representative authenticated RLS tests.
-- [ ] Review the 18 performance warnings as a separate forward migration or explicitly accept them for the baseline.
-- [ ] After those gates and explicit DEV approval, change the manifest to `ready`/`apply`, pass `npm run db:migrations:ready`, and apply only to DEV.
+- [x] Run representative authenticated RLS tests (20/20 passed).
+- [x] Resolve the 18 performance warnings in a separate forward migration and confirm 0 findings for the two affected Advisor rules.
+- [ ] Rebuild the complete three-migration chain from zero after explicit approval to discard the current local database.
+- [ ] After that gate and explicit DEV approval, change the manifest to `ready`/`apply`, pass `npm run db:migrations:ready`, and apply only to DEV.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 

@@ -4,7 +4,7 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the squashed baseline is isolated from frozen legacy migrations", async () => {
+test("the reviewed active chain is isolated from frozen legacy migrations", async () => {
   const result = await inspectMigrationBaseline();
 
   assert.equal(result.status, "validated_local");
@@ -12,7 +12,7 @@ test("the squashed baseline is isolated from frozen legacy migrations", async ()
   assert.equal(result.integrityValid, true);
   assert.equal(result.readyToApply, false);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 1);
+  assert.equal(result.activeMigrationCount, 3);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });
