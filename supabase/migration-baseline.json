@@ -79,8 +79,8 @@
       "os_touch_updated_at"
     ],
     "localValidation": {
-      "zeroStateReset": "passed_baseline_only",
-      "forwardChainZeroStateReset": "pending_explicit_local_data_reset_approval",
+      "zeroStateReset": "passed",
+      "zeroStateResetScope": "full_active_chain",
       "migrationHistoryCount": 3,
       "objectInventoryMatchesProduction": true,
       "generatedTypesMatchProduction": true,
@@ -98,7 +98,7 @@
       "performanceAdvisors": {
         "warnings": 0,
         "resolvedWarnings": 18,
-        "verification": "local_catalog_equivalent_rules"
+        "verification": "supabase_cli_db_advisors"
       }
     }
   },
