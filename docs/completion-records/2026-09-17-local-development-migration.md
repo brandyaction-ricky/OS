@@ -14,8 +14,9 @@
 - 검증 미수행: 실제 Supabase/Auth 로그인, 외부 AI, YouTube, Telegram, 광고 연동, DEV/QA Preview의 인증 사용자 흐름. 전용 DEV/QA 리소스와 테스트 계정이 없어서 연결형 인증 테스트는 1건 skip했다.
 - 보안 점검: `postcss`를 수정 버전 `8.5.28`로 고정했고 `npm audit --omit=dev`는 알려진 취약점 0건이다. Supabase 제공자 보안·성능 advisor에는 정책, 함수 권한, 유출 비밀번호 보호, 인덱스, RLS 평가 관련 검토 항목이 남아 있다. Production 변경은 수행하지 않았다.
 - 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트)
-- 원격 PR: 없음
-- 배포: 미실행. 기존 Vercel Git 연결은 확인했으며 작업 브랜치 push는 Preview, `main` push는 Production을 자동 생성한다. 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태이고 이번 작업으로 바뀌지 않았다.
+- 원격 PR: [#41](https://github.com/brandyaction-ricky/OS/pull/41) · `codex/execution-setup-20260917` → `main` · open · 미병합
+- 원격 CI: GitHub Actions `validate` run 141 성공. `npm ci`, 전체 검증, Chromium 설치, Playwright 스모크가 모두 통과했다.
+- 배포: Vercel이 PR #41 commit `5b8ef05`의 Preview를 자동 생성했고 `READY`에 도달했다. `/home`과 `/api/v1/health`는 HTTP 200이다. Preview health에서 database/auth가 `missing`이므로 연결형 QA는 아니다. Production 배포·승격·변경은 수행하지 않았고, 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태다.
 - 원격 환경 점검: 로컬 checkout은 ignored `.vercel/project.json`으로 기존 프로젝트에 연결했다. 연결된 Supabase는 Production이며 개발 branch가 없다. 저장소와 원격의 migration history 식별자가 일치하지 않아 조정 전 migration 실행을 차단한다. Vercel 환경변수 scope는 UI 로그인 제약으로 확인하지 못했다.
 - 남은 작업: 비용·소유권 승인 후 DEV/QA 리소스 분리, migration history 기준선 조정, Vercel 환경변수 scope 확인, 전용 QA 계정으로 인증 브라우저 테스트 실행, Supabase advisor 항목의 별도 영향 분석과 수정
 - OS 운영 기록: 사용자 지침에 따라 운영 DB/API에 기록하지 않았다. 이 로컬 기록의 OS 반영은 보류 상태다.

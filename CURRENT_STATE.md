@@ -11,7 +11,7 @@ Updated: 2026-09-17 Asia/Seoul.
 - Local environment implementation: `337919a`
 - Local migration readiness record: `a5ef2a6`
 - Browser QA and remote environment gates: `b31e56c`
-- No remote push or pull request has been created.
+- Remote branch `codex/execution-setup-20260917` is published and pull request #41 is open against `main`.
 
 ## Local Development Environment
 
@@ -34,7 +34,8 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Deployment State
 
-- No Preview, DEV, QA, or Production deployment was run by this work.
+- Vercel automatically created a Preview for pull request #41 at commit `5b8ef05`; it reached `READY` and returned HTTP 200 for `/home` and `/api/v1/health`.
+- The Preview health response reports missing database and auth configuration, so it is a deployment smoke target rather than connected QA.
 - The ignored `.vercel/project.json` links this checkout to the existing project. Branch pushes create Preview deployments and `main` pushes create Production deployments.
 - The latest observed Production deployment remains ready at commit `0661eb4`.
 - The connected Supabase project is Production, has no development branches, and has unresolved migration-history and advisor findings. It was not changed.
@@ -42,6 +43,6 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Continuation
 
-Before a remote push, remember that the push itself creates a Vercel deployment. Provision separate DEV and QA resources after cost approval, reconcile migration history, scope environment variables, and run authenticated QA against an immutable Preview commit. Obtain explicit approval before a `main` push, merge, or other Production change.
+GitHub Actions run 141 passed the full validation and browser test workflow for pull request #41. Provision separate DEV and QA resources after cost approval, reconcile migration history, scope environment variables, and run authenticated QA against an immutable Preview commit. Obtain explicit approval before a `main` push, merge, or other Production change.
 
 Next.js remains on the tested 15.x line; the affected transitive PostCSS release is overridden to a patched version. Treat a Next.js 16 upgrade as a separate compatibility migration.
