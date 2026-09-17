@@ -16,13 +16,15 @@ This record contains only non-secret, non-identifying operational facts. Provide
 
 - The connected BrandyAction OS project is active and contains Production data.
 - No Supabase development branches were present.
+- A separate `brandyaction-os-dev` project was later created in the approved organization and Seoul region at a confirmed monthly cost of $0. It was verified healthy and empty, with no public tables or migration history.
+- No schema, seed data, Auth user, environment variable, or Production data was copied into DEV.
 - The provider's applied-migration history does not directly reconcile with the repository migration filenames. Migration execution is blocked pending a reviewed baseline and forward-only reconciliation plan.
 - Security advisors reported policy/grant/password-protection findings. Performance advisors reported foreign-key indexing, RLS evaluation, unused-index, and overlapping-policy findings.
 - This audit performed read-only inspection only. It did not query business row contents, run SQL, create a branch, change Auth settings, apply a migration, or change Production.
 
 ## Required gates
 
-1. Approve the provider cost and ownership for isolated DEV and QA resources.
+1. Approve the provider cost and ownership for the remaining isolated QA resource.
 2. Reconcile schema and migration history without rewriting Production history.
 3. Scope Vercel Preview/Production environment variables and verify the target project for every key.
 4. Use dedicated non-employee test identities for connected browser QA.

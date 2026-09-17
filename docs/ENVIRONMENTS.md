@@ -67,9 +67,9 @@ Inject `E2E_TEST_PASSWORD` from the approved secret store before running the com
 
 ## Supabase Promotion Gate
 
-The currently connected Supabase project is Production and has no development branches. Before connected DEV or QA:
+The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project now exists in the approved organization and Seoul region. It is healthy and empty: no public tables, migrations, or Production data were copied. Before connected DEV or QA:
 
-1. Provision separately authorized DEV and QA resources after cost confirmation.
+1. Keep the provisioned DEV project isolated and provision QA separately after its own cost confirmation.
 2. Establish a reviewed schema baseline; current repository migration filenames and remote migration-history identifiers do not reconcile.
 3. Configure only environment-specific keys and confirm RLS and function grants with test identities.
 4. Run migrations in DEV first, then QA, recording exact migration identities and results.
@@ -108,5 +108,6 @@ For every candidate, record:
 - Local demo bootstrap, dependency audit, repository validation, and browser smoke CI are implemented.
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
-- DEV/QA resource separation and Vercel environment-variable scope remain incomplete.
+- The dedicated Supabase DEV project is provisioned, healthy, and empty. Its schema and environment variables are intentionally not configured yet.
+- QA resource separation and Vercel environment-variable scope remain incomplete.
 - No deployment, production database change, or production configuration change is performed by this setup.

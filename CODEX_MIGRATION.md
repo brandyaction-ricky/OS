@@ -6,7 +6,7 @@ Move BrandyAction OS development from conversation-driven changes to repository-
 
 ## Current State
 
-The repository can be installed, tested, linted, type-checked, built, and run locally in demo mode. Repository CI performs the same side-effect-free gate plus a browser smoke test. The local checkout is linked to the existing Vercel project. Dedicated DEV and QA resources and Vercel environment-variable scope have not been established.
+The repository can be installed, tested, linted, type-checked, built, and run locally in demo mode. Repository CI performs the same side-effect-free gate plus a browser smoke test. The local checkout is linked to the existing Vercel project. A dedicated empty Supabase DEV project has been provisioned; QA resources and Vercel environment-variable scope have not been established.
 
 ## Target State
 
@@ -25,7 +25,7 @@ Pull Request Preview = QA candidate
 
 1. [x] Analyze current repository
 2. [x] Document architecture
-3. [ ] Provision and verify separate DEV and QA resources
+3. [~] Provision and verify separate DEV and QA resources (DEV project healthy and empty; QA pending)
 4. [x] Establish repository validation and promotion rules
 5. [x] Confirm Vercel Git integration and deployed commit mapping
 6. [~] Add browser end-to-end QA (local demo active; connected authentication waits for DEV/QA resources)

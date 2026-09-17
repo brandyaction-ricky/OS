@@ -54,7 +54,7 @@ Preview is not automatically QA-ready: the deployment commit, environment-variab
 ## Known Migration Gaps
 
 - The local checkout is linked to the existing Vercel project through an ignored local metadata file. Git integration is active: task branches create Preview deployments and `main` creates Production deployments.
-- Dedicated DEV and QA Supabase/integration resources do not exist yet. The connected Supabase project is Production and must not be used for connected local or QA tests.
+- A dedicated empty Supabase DEV project exists in Seoul, but its schema and environment variables are not configured yet. QA Supabase/integration resources still do not exist. Production must not be used for connected local or QA tests.
 - Vercel environment-variable scope is not yet verified because provider-setting access requires a signed-in session.
 - The repository migration files and the connected Production migration-history identifiers do not currently reconcile. Do not apply migrations until a reviewed baseline and forward-only reconciliation plan exist.
 - Connected authentication QA is implemented but remains intentionally skipped until an isolated DEV/QA base URL and test account are provided.

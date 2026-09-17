@@ -38,8 +38,9 @@ Updated: 2026-09-17 Asia/Seoul.
 - The Preview health response reports missing database and auth configuration, so it is a deployment smoke target rather than connected QA.
 - The ignored `.vercel/project.json` links this checkout to the existing project. Branch pushes create Preview deployments and `main` pushes create Production deployments.
 - The latest observed Production deployment remains ready at commit `0661eb4`.
-- The connected Supabase project is Production, has no development branches, and has unresolved migration-history and advisor findings. It was not changed.
-- Dedicated DEV and QA Supabase/integration resources and Vercel environment-variable scopes remain incomplete.
+- The Production Supabase project has no development branches and has unresolved migration-history and advisor findings. It was not changed.
+- A separate `brandyaction-os-dev` Supabase project now exists in Seoul. It is healthy and empty, with no public tables, migration history, or copied Production data.
+- QA Supabase/integration resources and Vercel environment-variable scopes remain incomplete.
 
 ## Continuation
 
