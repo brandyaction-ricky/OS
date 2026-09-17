@@ -91,7 +91,7 @@ test("YouTube market evidence stays server-side and feeds title packaging", asyn
 
 test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval gate", async () => {
   const [migration, oauth, callback, session, complete, client, workspace, health] = await Promise.all([
-    read("supabase/migrations/202608300007_youtube_oauth.sql"),
+    read("supabase/migrations-legacy/202608300007_youtube_oauth.sql"),
     read("app/api/v1/youtube/oauth/route.ts"),
     read("app/api/v1/youtube/oauth/callback/route.ts"),
     read("app/api/v1/youtube/upload/session/route.ts"),

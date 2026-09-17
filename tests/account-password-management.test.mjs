@@ -41,7 +41,7 @@ test("password changes reauthenticate, enforce policy and remove the forced-chan
 test("admin reset returns an active account to the initial-password state without exposing the password", async () => {
   const [route, migration, audit] = await Promise.all([
     read("app/api/v1/members/[id]/password-reset/route.ts"),
-    read("supabase/migrations/202609020012_account_password_management.sql"),
+    read("supabase/migrations-legacy/202609020012_account_password_management.sql"),
     read("app/api/v1/audit/route.ts"),
   ]);
   assert.match(route, /actor\.role !== "admin"/);

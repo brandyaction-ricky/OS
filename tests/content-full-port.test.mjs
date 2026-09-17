@@ -48,7 +48,7 @@ test("saved discovery evidence enters the niche queue and becomes selected", asy
 
 test("content media uses private signed uploads and expires original files", async () => {
   const [migration, route, client, cleanup, cron, shorts] = await Promise.all([
-    read("supabase/migrations/202608300008_content_media.sql"),
+    read("supabase/migrations-legacy/202608300008_content_media.sql"),
     read("app/api/v1/content/media/route.ts"),
     read("lib/api-client.ts"),
     read("lib/server/content-media.ts"),

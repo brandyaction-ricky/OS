@@ -42,7 +42,7 @@ test("Claude and Codex record tools keep the three human approval gates", async 
   const [mcp, route, migration] = await Promise.all([
     read("lib/server/mcp.ts"),
     read("app/api/v1/agent-records/route.ts"),
-    read("supabase/migrations/202609010011_agent_operating_records.sql"),
+    read("supabase/migrations-legacy/202609010011_agent_operating_records.sql"),
   ]);
   for (const tool of ["list_records", "get_record", "create_record", "edit_record", "delete_record"]) assert.match(mcp, new RegExp(`name: "${tool}"`));
   assert.match(route, /HUMAN_PERMISSION_GATE/);

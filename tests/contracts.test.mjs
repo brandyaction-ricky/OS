@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("integration migration is additive and protects the existing OS contract", async () => {
-  const sql = await readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../supabase/migrations-legacy/202608290001_os_integrations.sql", import.meta.url), "utf8");
   assert.match(sql, /OS_CORE_SCHEMA_REQUIRED/);
   assert.match(sql, /create table if not exists public\.os_agent_keys/);
   assert.match(sql, /create table if not exists public\.os_search_logs/);
@@ -14,8 +14,8 @@ test("integration migration is additive and protects the existing OS contract", 
 
 test("scoped agent keys expose audited and reversible knowledge writes", async () => {
   const [baseMigration, writeMigration, mcp, route, manager] = await Promise.all([
-    readFile(new URL("../supabase/migrations/202608290001_os_integrations.sql", import.meta.url), "utf8"),
-    readFile(new URL("../supabase/migrations/202608310010_agent_knowledge_write.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations-legacy/202608290001_os_integrations.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations-legacy/202608310010_agent_knowledge_write.sql", import.meta.url), "utf8"),
     readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8"),
     readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../components/agent-key-manager.tsx", import.meta.url), "utf8"),
@@ -46,7 +46,7 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
 });
 
 test("operating core is additive, RLS protected and event audited", async () => {
-  const sql = await readFile(new URL("../supabase/migrations/202608290002_operating_core.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../supabase/migrations-legacy/202608290002_operating_core.sql", import.meta.url), "utf8");
   assert.match(sql, /create table if not exists public\.os_records/);
   assert.match(sql, /create table if not exists public\.os_record_events/);
   assert.match(sql, /alter table public\.os_records enable row level security/);
@@ -90,7 +90,7 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
 });
 
 test("meeting recordings stay private, bounded, and use signed playback URLs", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/202608290003_meeting_recordings.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations-legacy/202608290003_meeting_recordings.sql", import.meta.url), "utf8");
   const route = await readFile(new URL("../app/api/v1/meeting-recordings/route.ts", import.meta.url), "utf8");
   assert.match(migration, /'os-meeting-recordings'/);
   assert.match(migration, /false,/);
@@ -160,17 +160,41 @@ test("telegram setup is admin-only and never returns bot secrets", async () => {
   assert.doesNotMatch(route, /token:\s*process\.env\.TELEGRAM_BOT_TOKEN/);
 });
 
-test("production build safely renews the telegram webhook", async () => {
+test("build is side-effect free and webhook registration is explicit", async () => {
   const [pkg, script] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../tools/register-telegram-webhook.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(pkg, /next build && node tools\/register-telegram-webhook\.mjs/);
+  assert.match(pkg, /"build": "next build"/);
+  assert.match(pkg, /"telegram:webhook:register": "node tools\/register-telegram-webhook\.mjs"/);
   assert.match(script, /TELEGRAM_BOT_TOKEN/);
   assert.match(script, /TELEGRAM_WEBHOOK_SECRET/);
   assert.match(script, /OS_PUBLIC_URL/);
+  assert.match(script, /OS_ENVIRONMENT/);
+  assert.match(script, /--confirm/);
   assert.match(script, /secret_token: secret/);
   assert.doesNotMatch(script, /console\.log\([^\n]*(token|secret)[^\n]*\)/);
+});
+
+test("local bootstrap is pinned, non-destructive, and matches CI", async () => {
+  const [nodeVersion, pkg, setup, envCheck, workflow, environmentDocs] = await Promise.all([
+    readFile(new URL("../.nvmrc", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../tools/setup-local.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../tools/check-environment.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/validate.yml", import.meta.url), "utf8"),
+    readFile(new URL("../docs/ENVIRONMENTS.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(nodeVersion, /^24\.21\.0\s*$/);
+  assert.match(pkg, /"setup:local": "node tools\/setup-local\.mjs"/);
+  assert.match(pkg, /"verify": "npm run env:check/);
+  assert.match(setup, /already exists; no changes made/);
+  assert.match(setup, /flag: "wx"/);
+  assert.match(setup, /mode: 0o600/);
+  assert.doesNotMatch(envCheck, /console\.(?:log|error)\([^\n]*valueFor\(/);
+  assert.match(workflow, /node-version-file: \.nvmrc/);
+  assert.match(workflow, /npm run verify/);
+  assert.match(environmentDocs, /DEV[\s\S]*QA[\s\S]*Production/);
 });
 
 test("telegram operational questions distinguish empty data from search failure", async () => {

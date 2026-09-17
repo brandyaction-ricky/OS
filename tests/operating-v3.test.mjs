@@ -5,7 +5,7 @@ import test from "node:test";
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("third handoff adds metadata-first knowledge tree and lazy bodies", async () => {
-  const [migration, route, workspace] = await Promise.all([read("supabase/migrations/202608290005_operating_v3.sql"), read("app/api/v1/documents/route.ts"), read("components/knowledge-workspace.tsx")]);
+  const [migration, route, workspace] = await Promise.all([read("supabase/migrations-legacy/202608290005_operating_v3.sql"), read("app/api/v1/documents/route.ts"), read("components/knowledge-workspace.tsx")]);
   assert.match(migration, /os_list_documents_v3/);
   assert.match(migration, /case when p_include_content/);
   assert.match(route, /view.*summary/);
@@ -15,7 +15,7 @@ test("third handoff adds metadata-first knowledge tree and lazy bodies", async (
 });
 
 test("finance records are isolated and private files are signed", async () => {
-  const [migration, files, finance] = await Promise.all([read("supabase/migrations/202608290005_operating_v3.sql"), read("app/api/v1/company-files/route.ts"), read("components/finance-workspace.tsx")]);
+  const [migration, files, finance] = await Promise.all([read("supabase/migrations-legacy/202608290005_operating_v3.sql"), read("app/api/v1/company-files/route.ts"), read("components/finance-workspace.tsx")]);
   assert.match(migration, /os_has_finance_access/);
   assert.match(migration, /record_type not in \('expense', 'contract', 'subscription', 'company_document'\)/);
   assert.match(files, /createSignedUrl/);
@@ -25,7 +25,7 @@ test("finance records are isolated and private files are signed", async () => {
 });
 
 test("leave decisions are atomic and telegram users are approved in the OS", async () => {
-  const [migration, records, telegram, monitor] = await Promise.all([read("supabase/migrations/202608290005_operating_v3.sql"), read("app/api/v1/records/route.ts"), read("app/api/v1/telegram/setup/route.ts"), read("components/monitoring-workspace.tsx")]);
+  const [migration, records, telegram, monitor] = await Promise.all([read("supabase/migrations-legacy/202608290005_operating_v3.sql"), read("app/api/v1/records/route.ts"), read("app/api/v1/telegram/setup/route.ts"), read("components/monitoring-workspace.tsx")]);
   assert.match(migration, /os_decide_leave_request/);
   assert.match(migration, /for update/);
   assert.match(records, /LEAVE_DECISION_FAILED/);

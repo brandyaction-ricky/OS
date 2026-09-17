@@ -34,7 +34,7 @@ test("attachment API authenticates every operation and never creates public URLs
 });
 
 test("attachment migration keeps the bucket private and extends the request guard", async () => {
-  const migration = await readFile(new URL("../supabase/migrations/202609080014_development_request_attachments.sql", import.meta.url), "utf8");
+  const migration = await readFile(new URL("../supabase/migrations-legacy/202609080014_development_request_attachments.sql", import.meta.url), "utf8");
   assert.match(migration, /'os-development-attachments'.*false, 26214400/s);
   for (const key of ["attachmentPath", "attachmentName", "attachmentSize", "attachmentType"]) assert.match(migration, new RegExp(key));
   assert.match(migration, /create or replace function public\.os_development_request_guard/);

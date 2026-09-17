@@ -9,7 +9,7 @@ test("knowledge workspace is a two-column tree with collaborative defaults", asy
   const [workspace, css, migration] = await Promise.all([
     read("components/knowledge-workspace.tsx"),
     read("app/globals.css"),
-    read("supabase/migrations/202608300009_knowledge_collaboration.sql"),
+    read("supabase/migrations-legacy/202608300009_knowledge_collaboration.sql"),
   ]);
   assert.match(workspace, /내 문서 \+ 회사 정본/);
   assert.match(workspace, /useState\(true\)/);
