@@ -13,7 +13,7 @@
 - 검증 완료: `npm ci`, `npm run setup:local` 생성·비덮어쓰기, `npm run env:check`, `npm run verify`(231/231 테스트·린트·타입 검사·빌드 통과), Production 모드 불일치 차단, 명시적 확인 없는 webhook 등록 차단, migration 파일 무결성 검사 통과·core baseline 부재 시 원격 적용 준비 차단, Playwright Chromium 로컬 데모 `/home` 렌더링·콘솔 오류 부재·`/api/v1/health` 계약 확인
 - 검증 미수행: 실제 Supabase/Auth 로그인, 외부 AI, YouTube, Telegram, 광고 연동, DEV Preview의 인증 사용자 흐름. DEV 프로젝트는 비어 있고 schema baseline·환경변수·테스트 계정이 아직 없어 연결형 인증 테스트는 1건 skip했다.
 - 보안 점검: `postcss`를 수정 버전 `8.5.28`로 고정했고 `npm audit --omit=dev`는 알려진 취약점 0건이다. Supabase 제공자 보안·성능 advisor에는 정책, 함수 권한, 유출 비밀번호 보호, 인덱스, RLS 평가 관련 검토 항목이 남아 있다. Production 변경은 수행하지 않았다.
-- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트), `255e154`(격리된 Supabase DEV 프로젝트 상태 기록)
+- 로컬 커밋: `0db8b54`(원격 문서 통합), `337919a`(로컬 환경과 릴리스 게이트), `a5ef2a6`(이전 준비상태 기록), `b31e56c`(브라우저 QA·보안 패치·원격 환경 게이트), `255e154`(격리된 Supabase DEV 프로젝트 상태 기록), `e3430d4`(Supabase migration 기준선 안전장치)
 - 원격 PR: [#41](https://github.com/brandyaction-ricky/OS/pull/41) · `codex/execution-setup-20260917` → `main` · open · 미병합
 - 원격 CI: GitHub Actions `validate` run 143이 commit `c62b439`에서 성공했다. `npm ci`, 전체 검증, Chromium 설치, Playwright 스모크가 모두 통과했다.
 - 배포: Vercel이 commit `c62b439`의 Preview를 자동 생성했고 `READY`에 도달했다. `/home`과 `/api/v1/health`는 HTTP 200이다. Preview health에서 database/auth가 `missing`이므로 연결형 QA는 아니다. Production 배포·승격·변경은 수행하지 않았고, 최신 관찰 Production은 원격 `main`의 `0661eb4`로 ready 상태다.
