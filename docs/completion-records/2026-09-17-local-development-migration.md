@@ -7,7 +7,7 @@
 - 작업 전 로컬 HEAD: `400c6b3356d8eb8bc33c637e64a4d1f76010e0dd`
 - 원격 기준: `origin/main` @ `0661eb4fe3aed673dae53b41ed8ab7ea9d6229c2`
 - 변경 요약: 원격 main의 프로젝트 컨텍스트와 이전 가이드를 통합했다. Node 버전 고정, 안전한 로컬 설정 생성, 환경 검사, 단일 검증 명령, CI 게이트, 아키텍처·환경 문서를 구축했다. 일반 빌드에서 Telegram webhook 변경을 제거하고 별도 확인 명령으로 분리했다. 이어서 Playwright 로컬 데모 스모크 테스트와 연결형 인증 테스트 골격을 추가하고, PostCSS 보안 수정 버전을 고정하고, 원격 Vercel/Supabase 상태를 읽기 전용으로 점검했다.
-- 원격 동기화 상태: 원격 main을 병합한 로컬 작업 브랜치이며 원격 push는 수행하지 않았다.
+- 원격 동기화 상태: 원격 main을 병합한 로컬 작업 브랜치를 동일한 이름으로 push했고, 로컬 브랜치는 원격 작업 브랜치를 추적한다. `main` 병합은 수행하지 않았다.
 - 문서: `PROJECT_CONTEXT.md`, `CODEX_MIGRATION.md`, `ARCHITECTURE.md`, `docs/ENVIRONMENTS.md`가 현재 작업 트리에 존재한다.
 - 실행 환경: Node.js `v24.21.0`, npm `11.19.0`, `.env.local` 데모 모드(권한 600)
 - 검증 완료: `npm ci`, `npm run setup:local` 생성·비덮어쓰기, `npm run env:check`, `npm run verify`(230/230 테스트·린트·타입 검사·빌드 통과), Production 모드 불일치 차단, 명시적 확인 없는 webhook 등록 차단, Playwright Chromium 로컬 데모 `/home` 렌더링·콘솔 오류 부재·`/api/v1/health` 계약 확인
