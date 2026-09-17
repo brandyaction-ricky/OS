@@ -33,3 +33,11 @@ SPEC -> DEV -> QA -> RELEASE -> Production
 
 GitHub repository, database migrations, and deployment history are the technical source of truth.
 Conversation history is context only.
+
+## Environment Direction
+
+- Local development starts in credential-free demo mode.
+- DEV and QA must use resources separated from Production.
+- Pull requests must pass the repository verification workflow before QA.
+- Production uses an approved `main` commit or an explicitly approved, already verified artifact.
+- A merge or successful build is not proof of deployment; record the actual deployed SHA and post-deploy verification separately.

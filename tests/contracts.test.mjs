@@ -160,17 +160,41 @@ test("telegram setup is admin-only and never returns bot secrets", async () => {
   assert.doesNotMatch(route, /token:\s*process\.env\.TELEGRAM_BOT_TOKEN/);
 });
 
-test("production build safely renews the telegram webhook", async () => {
+test("build is side-effect free and webhook registration is explicit", async () => {
   const [pkg, script] = await Promise.all([
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../tools/register-telegram-webhook.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(pkg, /next build && node tools\/register-telegram-webhook\.mjs/);
+  assert.match(pkg, /"build": "next build"/);
+  assert.match(pkg, /"telegram:webhook:register": "node tools\/register-telegram-webhook\.mjs"/);
   assert.match(script, /TELEGRAM_BOT_TOKEN/);
   assert.match(script, /TELEGRAM_WEBHOOK_SECRET/);
   assert.match(script, /OS_PUBLIC_URL/);
+  assert.match(script, /OS_ENVIRONMENT/);
+  assert.match(script, /--confirm/);
   assert.match(script, /secret_token: secret/);
   assert.doesNotMatch(script, /console\.log\([^\n]*(token|secret)[^\n]*\)/);
+});
+
+test("local bootstrap is pinned, non-destructive, and matches CI", async () => {
+  const [nodeVersion, pkg, setup, envCheck, workflow, environmentDocs] = await Promise.all([
+    readFile(new URL("../.nvmrc", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("../tools/setup-local.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../tools/check-environment.mjs", import.meta.url), "utf8"),
+    readFile(new URL("../.github/workflows/validate.yml", import.meta.url), "utf8"),
+    readFile(new URL("../docs/ENVIRONMENTS.md", import.meta.url), "utf8"),
+  ]);
+  assert.match(nodeVersion, /^24\.21\.0\s*$/);
+  assert.match(pkg, /"setup:local": "node tools\/setup-local\.mjs"/);
+  assert.match(pkg, /"verify": "npm run env:check/);
+  assert.match(setup, /already exists; no changes made/);
+  assert.match(setup, /flag: "wx"/);
+  assert.match(setup, /mode: 0o600/);
+  assert.doesNotMatch(envCheck, /console\.(?:log|error)\([^\n]*valueFor\(/);
+  assert.match(workflow, /node-version-file: \.nvmrc/);
+  assert.match(workflow, /npm run verify/);
+  assert.match(environmentDocs, /DEV[\s\S]*QA[\s\S]*Production/);
 });
 
 test("telegram operational questions distinguish empty data from search failure", async () => {
