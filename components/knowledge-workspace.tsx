@@ -15,11 +15,14 @@ import {
   FilePenLine,
   FilePlus2,
   Folder,
+  FolderCog,
   FolderOpen,
+  FolderPlus,
   Hash,
   Link2,
   List,
   MoreHorizontal,
+  MoveRight,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -40,6 +43,7 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
 import { resolveWikiLink } from "@/lib/knowledge-links";
+import { knowledgeFolderOptions, normalizeKnowledgeFolder, renameKnowledgeFolderPath } from "@/lib/knowledge-folders";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/company-settings";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
@@ -92,6 +96,15 @@ function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean,
     sort(node.children);
   });
   sort(roots); return roots;
+}
+
+function moveInventoryDocuments(inventory: Array<{path: string; count: number}>, moves: Array<{from: string; to: string}>) {
+  const counts = new Map(inventory.map((item) => [item.path, item.count]));
+  for (const move of moves) {
+    counts.set(move.from, Math.max(0, (counts.get(move.from) ?? 0) - 1));
+    counts.set(move.to, (counts.get(move.to) ?? 0) + 1);
+  }
+  return [...counts.entries()].filter(([, count]) => count > 0).map(([path, count]) => ({ path, count })).sort((a, b) => a.path.localeCompare(b.path, "ko", { numeric: true }));
 }
 
 function wikiLinks(content: string) {
@@ -276,6 +289,11 @@ function WorkspaceContent() {
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [newOpen, setNewOpen] = useState(searchParams.get("new") === "1");
+  const [newFolderPath, setNewFolderPath] = useState("");
+  const [newFolderCustom, setNewFolderCustom] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [folderManagerOpen, setFolderManagerOpen] = useState(false);
+  const [managedFolder, setManagedFolder] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [importItems, setImportItems] = useState<MarkdownImportItem[]>([]);
   const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
@@ -456,21 +474,86 @@ function WorkspaceContent() {
   }, [expandedFolders, folderTree]);
   const ownerNames = useMemo(() => new Map(members.map((member) => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
   const readingContent = useMemo(() => prepareReadingContent(selected?.content_md ?? ""), [selected?.content_md]);
+  const existingFolderOptions = useMemo(() => knowledgeFolderOptions([
+    ...inventory.map((item) => item.path),
+    ...documents.map((document) => documentFolder(document)),
+  ].filter((path) => path !== "분류 없음")), [documents, inventory]);
+  const folderOptions = useMemo(() => knowledgeFolderOptions([...KNOWLEDGE_CATEGORIES, ...existingFolderOptions]), [existingFolderOptions]);
 
   useEffect(() => {
     if (searchParams.get("document") || selectedId || !filtered.length) return;
     if (!selectedId || !filtered.some((document) => document.id === selectedId)) setSelectedId(filtered[0].id);
   }, [filtered, searchParams, selectedId]);
 
+  const openNewDocument = (folder = "") => {
+    setNewFolderPath(folder);
+    setNewFolderCustom(Boolean(folder && !folderOptions.includes(folder)));
+    setNewOpen(true);
+  };
+
   const moveDocument = async (documentId: string, folder: string) => {
     const item = documents.find((document) => document.id === documentId);
-    if (!item || item.folder === folder) return;
+    let destination: string;
+    try { destination = normalizeKnowledgeFolder(folder); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "이동할 폴더를 확인해 주세요."); return; }
+    if (!item || item.folder === destination) return;
     setBusy(true); setError("");
     try {
-      const { document } = await updateDocument(accessToken, { id: item.id, expectedVersion: item.current_version, folder, reason: `폴더 이동: ${folder}` });
+      let document: KnowledgeDocument;
+      if (demo) document = { ...item, folder: destination, current_version: item.current_version + 1, updated_at: new Date().toISOString() };
+      else ({ document } = await updateDocument(accessToken, { id: item.id, expectedVersion: item.current_version, folder: destination, reason: `폴더 이동: ${destination}` }));
       setDocuments((current) => current.map((row) => row.id === document.id ? document : row));
-      setToast(`“${document.title}” 문서를 ${folder}(으)로 이동했습니다.`);
+      setInventory((current) => moveInventoryDocuments(current, [{ from: documentFolder(item), to: destination }]));
+      setExpandedFolders((current) => new Set(current).add(destination));
+      setMoveOpen(false);
+      setToast(`“${document.title}” 문서를 ${destination}(으)로 이동했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더로 이동하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const renameFolder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    let source: string; let target: string;
+    try {
+      source = normalizeKnowledgeFolder(String(data.get("source") ?? ""));
+      target = normalizeKnowledgeFolder(String(data.get("target") ?? ""));
+      if (source === target) throw new Error("현재 이름과 다른 폴더 이름을 입력해 주세요.");
+      if (target.startsWith(`${source}/`)) throw new Error("현재 폴더의 하위 경로로는 이름을 변경할 수 없습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더 이름을 확인해 주세요."); return; }
+
+    setBusy(true); setError("");
+    try {
+      let affected = documents.filter((document) => documentFolder(document) === source || documentFolder(document).startsWith(`${source}/`));
+      if (!demo) {
+        affected = [];
+        for (let offset = 0; ; offset += 200) {
+          const params = new URLSearchParams({ view: "summary", limit: "200", offset: String(offset), folder: source, scope: "all" });
+          const page = await listDocuments(accessToken, params.toString());
+          affected.push(...page.documents);
+          if (affected.length >= page.total || !page.documents.length) break;
+        }
+      }
+      if (!affected.length) throw new Error("이름을 변경할 문서가 없습니다.");
+
+      const changed: KnowledgeDocument[] = [];
+      const failed: string[] = [];
+      for (const item of affected) {
+        const folder = renameKnowledgeFolderPath(documentFolder(item), source, target);
+        try {
+          if (demo) changed.push({ ...item, folder, current_version: item.current_version + 1, updated_at: new Date().toISOString() });
+          else changed.push((await updateDocument(accessToken, { id: item.id, expectedVersion: item.current_version, folder, reason: `폴더 이름 변경: ${source} → ${target}` })).document);
+        } catch { failed.push(item.title); }
+      }
+      const moves = changed.map((updated) => ({ from: documentFolder(affected.find((item) => item.id === updated.id)!), to: documentFolder(updated) }));
+      setDocuments((current) => [...current.map((item) => changed.find((updated) => updated.id === item.id) ?? item), ...changed.filter((updated) => !current.some((item) => item.id === updated.id))]);
+      setInventory((current) => moveInventoryDocuments(current, moves));
+      setExpandedFolders((current) => new Set([...current].map((path) => renameKnowledgeFolderPath(path, source, target))).add(target));
+      loadedFolders.current.clear();
+      if (failed.length) throw new Error(`${changed.length}개 문서는 이동했고 ${failed.length}개는 권한 또는 버전 충돌로 남았습니다.`);
+      setFolderManagerOpen(false); setManagedFolder(target);
+      setToast(`“${source}” 폴더를 “${target}”(으)로 변경했습니다. 문서 ${changed.length}개가 함께 이동했습니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더 이름을 변경하지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -558,24 +641,26 @@ function WorkspaceContent() {
   const create = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const input = {
-      title: String(data.get("title") ?? ""),
-      content: String(data.get("content") ?? ""),
-      folder: String(data.get("folder") ?? ""),
-      brand: String(data.get("brand") ?? ""),
-      team: String(data.get("team") ?? ""),
-      tags: String(data.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
-      source: "wiki",
-    };
     setBusy(true); setError("");
     try {
+      const input = {
+        title: String(data.get("title") ?? ""),
+        content: String(data.get("content") ?? ""),
+        folder: normalizeKnowledgeFolder(String(data.get("folder") ?? "")),
+        brand: String(data.get("brand") ?? ""),
+        team: String(data.get("team") ?? ""),
+        tags: String(data.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean),
+        source: "wiki",
+      };
       let document: KnowledgeDocument;
       if (demo) {
         const now = new Date().toISOString();
         document = { id: `demo-${Date.now()}`, ...input, content_md: input.content, status: "draft", source_ref: null, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now };
       } else ({ document } = await createDocument(accessToken, input));
       setDocuments((current) => [document, ...current]);
-      setSelectedId(document.id); setNewOpen(false); setMode("read"); setToast("개인 초안으로 저장했습니다.");
+      setInventory((current) => moveInventoryDocuments(current, [{ from: "", to: document.folder }]));
+      setExpandedFolders((current) => new Set(current).add(document.folder));
+      setSelectedId(document.id); setNewOpen(false); setNewFolderPath(""); setNewFolderCustom(false); setMode("read"); setToast("개인 초안으로 저장했습니다.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 만들지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -678,10 +763,11 @@ function WorkspaceContent() {
     <>
       <header className="page-header workspace-page-header">
         <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => setImportOpen(true)}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => setNewOpen(true)}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="header-actions"><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => setImportOpen(true)}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
       <datalist id="knowledge-category-options">
         {KNOWLEDGE_CATEGORIES.map((category) => <option value={category} key={category} />)}
+        {existingFolderOptions.filter((folder) => !KNOWLEDGE_CATEGORIES.includes(folder as (typeof KNOWLEDGE_CATEGORIES)[number])).map((folder) => <option value={folder} key={folder} />)}
       </datalist>
 
       {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link aria-current="page" href="/knowledge">문서 작업공간</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/skills">Skill 관리</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
@@ -697,18 +783,15 @@ function WorkspaceContent() {
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
+          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); }}><FolderCog size={14} /></button><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
             {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}
             {visibleRows.map((row) => row.type === "folder" ? (
-              <button
-                className="folder-row folder-tree-row"
-                style={{ paddingLeft: 10 + row.depth * 16 }} key={`folder-${row.folder.path}`}
-                onClick={() => { const opening = !expandedFolders.has(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => { event.preventDefault(); moveDocument(event.dataTransfer.getData("text/document-id"), row.folder.path); }}
-              >{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
+              <div className="folder-tree-item" key={`folder-${row.folder.path}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void moveDocument(event.dataTransfer.getData("text/document-id"), row.folder.path); }}>
+                <button className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
+                <button className="folder-inline-action" title={`${row.folder.path}에 새 문서`} aria-label={`${row.folder.path}에 새 문서`} onClick={() => openNewDocument(row.folder.path)}><FolderPlus size={14} /></button>
+              </div>
             ) : (
               <button draggable key={row.document.id} className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => event.dataTransfer.setData("text/document-id", row.document.id)} onClick={() => { selectDocument(row.document.id); setMode("read"); if (window.innerWidth < 900) setTreeOpen(false); }}>
                 <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
@@ -732,6 +815,7 @@ function WorkspaceContent() {
                 </div>
                 <div className="editor-actions">
                   {mode === "edit" ? <button className="primary-button compact" onClick={save} disabled={busy}><Save size={14} /> 저장</button> : null}
+                  {selected.status !== "archived" ? <button className="secondary-button compact" onClick={() => { setError(""); setMoveOpen(true); }} disabled={busy}><MoveRight size={14} /> 위치 이동</button> : null}
                   {nextStatus(selected.status) && statusActionLabel(selected.status) ? <button className="secondary-button compact" onClick={() => moveStatus(nextStatus(selected.status)!)} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
                   {selected.owner_id === profile?.id && ["draft", "team", "review", "reviewed"].includes(selected.status) ? <button className="primary-button compact" onClick={() => moveStatus("canonical")} disabled={busy}><BookCheck size={14} /> 회사 정본으로</button> : null}
                   <button className="icon-button" title="문서 정보" aria-label="문서 정보" onClick={() => setMode("info")}><MoreHorizontal size={17} /></button>
@@ -767,7 +851,7 @@ function WorkspaceContent() {
               )}
             </>
           ) : (
-            <div className="empty-state"><div><span><FilePenLine /></span><h3>문서를 선택하세요</h3><p>파일 트리에서 열거나 새 문서를 만들어 시작할 수 있습니다.</p><button className="primary-button" onClick={() => setNewOpen(true)}>새 문서</button></div></div>
+            <div className="empty-state"><div><span><FilePenLine /></span><h3>문서를 선택하세요</h3><p>파일 트리에서 열거나 새 문서를 만들어 시작할 수 있습니다.</p><button className="primary-button" onClick={() => openNewDocument()}>새 문서</button></div></div>
           )}
         </article>
       </section>
@@ -783,7 +867,7 @@ function WorkspaceContent() {
             <header><div><span className="eyebrow">새 지식</span><h2>새 문서 만들기</h2></div><button type="button" onClick={() => setNewOpen(false)}><X size={18} /></button></header>
             <div className="form-fields">
               <label className="wide"><span>문서 제목</span><input name="title" required autoFocus placeholder="무엇을 남길지 명확하게 적어주세요" /></label>
-              <label><span>폴더</span><input list="knowledge-category-options" name="folder" placeholder="회사 공통" /></label>
+              <label className="wide"><span>저장 위치</span><div className="folder-choice"><select name={newFolderCustom ? undefined : "folder"} required={!newFolderCustom} value={newFolderCustom ? "" : newFolderPath} onChange={(event) => setNewFolderPath(event.target.value)} disabled={newFolderCustom}><option value="">폴더를 선택하세요</option><optgroup label="기본 분류">{KNOWLEDGE_CATEGORIES.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</optgroup><optgroup label="현재 폴더">{existingFolderOptions.filter((folder) => !KNOWLEDGE_CATEGORIES.includes(folder as (typeof KNOWLEDGE_CATEGORIES)[number])).map((folder) => <option key={folder} value={folder}>{folder}</option>)}</optgroup></select><button type="button" className={newFolderCustom ? "active" : ""} onClick={() => { setNewFolderCustom((value) => !value); setNewFolderPath(""); }}>{newFolderCustom ? "기존 폴더 선택" : "새 폴더"}</button></div>{newFolderCustom ? <input name="folder" required maxLength={160} value={newFolderPath} onChange={(event) => setNewFolderPath(event.target.value)} placeholder="예: 운영·업무/회의록" /> : <small>기본 분류 또는 파일 트리의 기존 폴더를 선택하세요.</small>}</label>
               <label><span>담당 팀</span><input name="team" placeholder="콘텐츠" /></label>
               <label><span>브랜드</span><input name="brand" placeholder="브랜디액션" /></label>
               <label><span>태그</span><input name="tags" placeholder="지식, 운영, 자동화" /></label>
@@ -793,6 +877,8 @@ function WorkspaceContent() {
           </form>
         </div>
       ) : null}
+      {moveOpen && selected ? <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setMoveOpen(false)}><form className="form-modal folder-action-modal" onSubmit={(event) => { event.preventDefault(); void moveDocument(selected.id, String(new FormData(event.currentTarget).get("destination") ?? "")); }}><header><div><span className="eyebrow">문서 정리</span><h2>문서 위치 이동</h2></div><button type="button" disabled={busy} onClick={() => setMoveOpen(false)}><X size={18} /></button></header><div className="form-fields"><div className="folder-move-summary wide"><File size={18} /><span><strong>{selected.title}</strong><small>현재 위치 · {documentFolder(selected)}</small></span></div><label className="wide"><span>이동할 폴더</span><select name="destination" required defaultValue=""><option value="">폴더를 선택하세요</option>{folderOptions.filter((folder) => folder !== documentFolder(selected)).map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select></label></div><footer><span>이동 기록은 문서 버전 이력에 남습니다.</span><div><button type="button" className="ghost-button" disabled={busy} onClick={() => setMoveOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? "이동 중…" : "이동"}</button></div></footer></form></div> : null}
+      {folderManagerOpen ? <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setFolderManagerOpen(false)}><form className="form-modal folder-action-modal" onSubmit={renameFolder}><header><div><span className="eyebrow">파일 트리</span><h2>폴더 관리</h2></div><button type="button" disabled={busy} onClick={() => setFolderManagerOpen(false)}><X size={18} /></button></header><div className="form-fields">{error ? <div className="inline-alert danger wide">{error}</div> : null}<label className="wide"><span>관리할 폴더</span><select name="source" required value={managedFolder} onChange={(event) => setManagedFolder(event.target.value)}><option value="">폴더를 선택하세요</option>{existingFolderOptions.map((folder) => <option key={folder} value={folder}>{folder}</option>)}</select></label><label className="wide" key={managedFolder}><span>새 폴더 경로</span><input name="target" required maxLength={160} defaultValue={managedFolder} placeholder="예: 운영·업무/회의록" /><small>하위 폴더와 문서도 같은 구조로 함께 이동합니다.</small></label><button type="button" className="secondary-button folder-create-document wide" disabled={!managedFolder || busy} onClick={() => { setFolderManagerOpen(false); openNewDocument(managedFolder); }}><FolderPlus size={15} /> 이 폴더에 새 문서 만들기</button></div><footer><span>빈 폴더는 첫 문서를 저장할 때 만들어집니다.</span><div><button type="button" className="ghost-button" disabled={busy} onClick={() => setFolderManagerOpen(false)}>취소</button><button className="primary-button" disabled={busy || !managedFolder}>{busy ? "변경 중…" : "폴더 이름 변경"}</button></div></footer></form></div> : null}
       {canonicalGate ? <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></div> : null}
       {importOpen ? (
         <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setImportOpen(false)}>
