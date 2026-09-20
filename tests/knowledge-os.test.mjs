@@ -19,6 +19,16 @@ test("knowledge workspace is a two-column tree with collaborative defaults", asy
   assert.match(migration, /os_documents_active_member_select/);
 });
 
+test("knowledge workspace exposes folder selection, rename and document move controls", async () => {
+  const workspace = await read("components/knowledge-workspace.tsx");
+  assert.match(workspace, /폴더 관리/);
+  assert.match(workspace, /폴더 이름 변경/);
+  assert.match(workspace, /문서 위치 이동/);
+  assert.match(workspace, /저장 위치/);
+  assert.match(workspace, /폴더를 선택하세요/);
+  assert.match(workspace, /이 폴더에 새 문서 만들기/);
+});
+
 test("wiki links produce automatic edges, backlinks and broken-link evidence", () => {
   assert.deepEqual(extractWikiLinks("[[정본]] [[정본|별칭]] [[없는 문서#절]]"), ["정본", "없는 문서"]);
   const graph = buildKnowledgeGraph([
