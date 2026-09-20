@@ -6,13 +6,17 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function auditSubjectType(record?: { record_type?: string; metadata?: Record<string, unknown> } | null) {
+  return record?.record_type === "ai_job" && record.metadata?.kind === "development_request" ? "development_request" : record?.record_type ?? "record";
+}
+
 export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const service = createServiceSupabase();
     const limit = Math.min(Math.max(Number(new URL(request.url).searchParams.get("limit") ?? 100), 1), 200);
     let recordQuery = service.from("os_record_events")
-      .select("id,record_id,actor_id,event_type,from_status,to_status,changed_fields,note,created_at,os_records(title,record_type)")
+      .select("id,record_id,actor_id,event_type,from_status,to_status,changed_fields,note,created_at,os_records(title,record_type,metadata)")
       .order("created_at", { ascending: false }).limit(limit * 2);
     let documentQuery = service.from("os_document_events")
       .select("id,document_id,actor_id,from_status,to_status,note,created_at")
@@ -48,7 +52,7 @@ export async function GET(request: Request) {
       documentIds.length ? service.from("os_documents").select("id,title").in("id", documentIds) : Promise.resolve({ data: [] }),
       actorIds.length ? service.from("os_profiles").select("id,display_name,email").in("id", actorIds) : Promise.resolve({ data: [] }),
       agentKeyIds.length ? service.from("os_agent_keys").select("id,name").in("id", agentKeyIds) : Promise.resolve({ data: [] }),
-      agentRecordIds.length ? service.from("os_records").select("id,title,record_type").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
+      agentRecordIds.length ? service.from("os_records").select("id,title,record_type,metadata").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
     ]);
     const documentNames = new Map((documents.data ?? []).map((document) => [document.id, document.title]));
     const profileNames = new Map((profiles.data ?? []).map((profile) => [profile.id, profile.display_name || profile.email || "구성원"]));
@@ -59,7 +63,7 @@ export async function GET(request: Request) {
       return ({
       id: `record:${event.id}`,
       subject_id: event.record_id,
-      subject_type: record?.record_type ?? "record",
+      subject_type: auditSubjectType(record),
       title: record?.title ?? "운영 기록",
       actor_id: event.actor_id,
       actor_type: "user",
@@ -91,7 +95,7 @@ export async function GET(request: Request) {
     const agentEvents = (agentResult.data ?? []).map((event) => ({
       id: `agent:${event.id}`,
       subject_id: event.record_id || event.document_id,
-      subject_type: event.record_id ? agentRecordNames.get(event.record_id)?.record_type ?? "record" : "knowledge_document",
+      subject_type: event.record_id ? auditSubjectType(agentRecordNames.get(event.record_id)) : "knowledge_document",
       title: event.title_snapshot || (event.record_id ? agentRecordNames.get(event.record_id)?.title : documentNames.get(event.document_id)) || (event.record_id ? "운영 기록" : "지식 문서"),
       actor_id: event.agent_key_id,
       actor_type: "agent",

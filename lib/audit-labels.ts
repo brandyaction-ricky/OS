@@ -19,6 +19,7 @@ const RECORD_LABELS: Record<string, string> = {
   decision: "결정사항",
   meeting: "회의",
   ai_job: "AI 작업",
+  development_request: "개발 요청",
   content_topic: "콘텐츠 주제",
   content_script: "원고",
   content_package: "제목·썸네일",
