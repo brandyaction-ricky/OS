@@ -1,6 +1,7 @@
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
+import type { KnowledgeAsset } from "./knowledge-assets";
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -95,6 +96,24 @@ export async function restoreDocumentVersion(token: string | null, id: string, v
   return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${id}/versions`, {
     method: "POST", token, body: JSON.stringify({ version, expectedVersion, reason: `v${version}로 되돌리기` }),
   });
+}
+
+export async function listKnowledgeAssets(token: string | null, documentIds: string[]) {
+  return apiRequest<{ assets: KnowledgeAsset[]; expiresIn: number }>(`/api/v1/knowledge-assets?documentIds=${encodeURIComponent(documentIds.join(","))}`, { token });
+}
+
+export async function createKnowledgeAssetUpload(token: string | null, input: { documentId: string; reference: string; fileName: string; fileSize: number; mimeType: string; sha256?: string }) {
+  return apiRequest<{ asset: KnowledgeAsset; upload?: { path: string; token: string }; duplicate: boolean }>("/api/v1/knowledge-assets", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
+}
+
+export async function uploadKnowledgeAsset(path: string, signedToken: string, file: File) {
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const client = getBrowserSupabase();
+  if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
+  const { error } = await client.storage.from("os-knowledge-assets").uploadToSignedUrl(path, signedToken, file, { contentType: file.type, cacheControl: "3600" });
+  if (error) throw new Error(error.message || "문서 이미지를 업로드하지 못했습니다.");
 }
 
 export async function searchKnowledge(

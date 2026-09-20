@@ -12,11 +12,13 @@ import {
   Clock3,
   Eye,
   File,
+  Download,
   FilePenLine,
   FilePlus2,
   Folder,
   FolderOpen,
   Hash,
+  ImageIcon,
   Link2,
   List,
   MoreHorizontal,
@@ -29,6 +31,7 @@ import {
   Send,
   ShieldAlert,
   Table2,
+  LayoutGrid,
   Tag,
   Trash2,
   Upload,
@@ -38,8 +41,9 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
+import { apiRequest, changeDocumentStatus, createDocument, createKnowledgeAssetUpload, getDocument, listDocuments, listDocumentVersions, listKnowledgeAssets, listMembers, restoreDocumentVersion, updateDocument, uploadKnowledgeAsset, type OsMember } from "@/lib/api-client";
 import { resolveWikiLink } from "@/lib/knowledge-links";
+import { assetReferenceKey, parseMarkdownImages, type KnowledgeAsset } from "@/lib/knowledge-assets";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/company-settings";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
@@ -161,11 +165,19 @@ function statusActionLabel(status: DocumentStatus) {
   return ({ draft: "팀에 공유", team: "", review: "", reviewed: "", canonical: "", archived: "" })[status];
 }
 
-function MarkdownBlocks({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+function MarkdownImage({ reference, alt, asset, onRelink }: { reference: string; alt: string; asset?: KnowledgeAsset; onRelink?: (reference: string, file: File) => void }) {
+  if (asset?.url) return <figure className="knowledge-image"><a href={asset.url} target="_blank" rel="noreferrer"><img src={asset.url} alt={alt || asset.file_name} loading="lazy" /></a><figcaption><span>{asset.file_name} · {formatBytes(asset.file_size)}</span><a href={asset.url} download={asset.file_name}><Download size={13} /> 원본</a></figcaption></figure>;
+  return <div className="knowledge-image-missing"><ImageIcon size={22} /><span><strong>{reference.split("/").pop()}</strong><small>연결된 이미지 파일이 없습니다.</small></span>{onRelink ? <label className="secondary-button compact">다시 연결<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (file) onRelink(reference, file); event.currentTarget.value = ""; }} /></label> : null}</div>;
+}
+
+function MarkdownBlocks({ content, onOpenLink, assets = [], onRelink }: { content: string; onOpenLink: (title: string) => void; assets?: KnowledgeAsset[]; onRelink?: (reference: string, file: File) => void }) {
   const blocks = markdownBlocks(content);
+  const assetMap = new Map(assets.map((asset) => [assetReferenceKey(asset.reference), asset]));
   return (
     <div className="markdown-view">
       {blocks.map((block, index) => {
+        const imageReferences = parseMarkdownImages(block);
+        if (imageReferences.length && imageReferences.map((item) => item.raw).join("\n").trim() === block.trim()) return <div className="knowledge-image-stack" key={index}>{imageReferences.map((item) => <MarkdownImage key={item.reference} reference={item.reference} alt={item.alt} asset={assetMap.get(assetReferenceKey(item.reference))} onRelink={onRelink} />)}</div>;
         const heading = block.match(/^(#{1,4})\s+(.+)/);
         if (heading) {
           const level = heading[1].length;
@@ -207,20 +219,20 @@ function revealHeading(id: string) {
   element?.scrollIntoView({ block: "start" });
 }
 
-function MarkdownSectionView({ section, onOpenLink }: { section: MarkdownSection; onOpenLink: (title: string) => void }) {
+function MarkdownSectionView({ section, onOpenLink, assets, onRelink }: { section: MarkdownSection; onOpenLink: (title: string) => void; assets?: KnowledgeAsset[]; onRelink?: (reference: string, file: File) => void }) {
   return <details className="markdown-section" open id={`wiki-heading-${section.title.normalize("NFC").trim()}`}>
     <summary><span role="heading" aria-level={section.level}><WikiInline text={section.title} onOpenLink={onOpenLink} /></span></summary>
-    <MarkdownBlocks content={section.body} onOpenLink={onOpenLink} />
-    {section.children.map((child, index) => <MarkdownSectionView key={index} section={child} onOpenLink={onOpenLink} />)}
+    <MarkdownBlocks content={section.body} onOpenLink={onOpenLink} assets={assets} onRelink={onRelink} />
+    {section.children.map((child, index) => <MarkdownSectionView key={index} section={child} onOpenLink={onOpenLink} assets={assets} onRelink={onRelink} />)}
   </details>;
 }
 
-function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+function MarkdownView({ content, onOpenLink, assets, onRelink }: { content: string; onOpenLink: (title: string) => void; assets?: KnowledgeAsset[]; onRelink?: (reference: string, file: File) => void }) {
   const root = useMemo(() => markdownSections(content), [content]);
   const headings: MarkdownSection[] = [];
   const collect = (section: MarkdownSection) => { if (section.title) headings.push(section); section.children.forEach(collect); };
   collect(root);
-  return <>{headings.length ? <details className="document-outline"><summary>문서 목차 · {headings.length}개</summary><nav aria-label="문서 목차">{headings.map((heading, index) => <button key={index} className="ghost-button" style={{ paddingLeft: heading.level * 10 }} onClick={() => revealHeading(`wiki-heading-${heading.title.normalize("NFC").trim()}`)}>{heading.title}</button>)}</nav></details> : null}<MarkdownBlocks content={root.body} onOpenLink={onOpenLink} />{root.children.map((section, index) => <MarkdownSectionView key={index} section={section} onOpenLink={onOpenLink} />)}</>;
+  return <>{headings.length ? <details className="document-outline"><summary>문서 목차 · {headings.length}개</summary><nav aria-label="문서 목차">{headings.map((heading, index) => <button key={index} className="ghost-button" style={{ paddingLeft: heading.level * 10 }} onClick={() => revealHeading(`wiki-heading-${heading.title.normalize("NFC").trim()}`)}>{heading.title}</button>)}</nav></details> : null}<MarkdownBlocks content={root.body} onOpenLink={onOpenLink} assets={assets} onRelink={onRelink} />{root.children.map((section, index) => <MarkdownSectionView key={index} section={section} onOpenLink={onOpenLink} assets={assets} onRelink={onRelink} />)}</>;
 }
 
 interface DraftState {
@@ -300,6 +312,12 @@ function WorkspaceContent() {
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
   const [pendingAnchor, setPendingAnchor] = useState<{ id: string; heading: string } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<"document" | "gallery">("document");
+  const [galleryFolder, setGalleryFolder] = useState("");
+  const [galleryQuery, setGalleryQuery] = useState("");
+  const [galleryTag, setGalleryTag] = useState("");
+  const [cardSize, setCardSize] = useState<"small" | "medium" | "large">("medium");
+  const [assetsByDocument, setAssetsByDocument] = useState<Record<string, KnowledgeAsset[]>>({});
   const epoch = useRef(0);
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
@@ -310,6 +328,10 @@ function WorkspaceContent() {
     setTreeOpen(window.localStorage.getItem("brandy-knowledge-tree") !== "false");
     const savedWidth = window.localStorage.getItem("brandy-knowledge-width-v1");
     if (savedWidth) setPaneWidth(treeWidth(Number(savedWidth)));
+    try {
+      const savedGallery = JSON.parse(window.localStorage.getItem("brandy-knowledge-gallery-view") || "null");
+      if (savedGallery) { setGalleryFolder(String(savedGallery.folder || "")); setGalleryQuery(String(savedGallery.query || "")); setGalleryTag(String(savedGallery.tag || "")); if (["small", "medium", "large"].includes(savedGallery.cardSize)) setCardSize(savedGallery.cardSize); }
+    } catch { /* Ignore obsolete local preferences. */ }
     setPreferencesReady(true);
     return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
   }, []);
@@ -387,6 +409,21 @@ function WorkspaceContent() {
     return () => { active = false; window.clearTimeout(timer); };
   }, [linkQuery, demo, accessToken]);
   const selected = documents.find((document) => document.id === selectedId) ?? null;
+  useEffect(() => {
+    if (demo) return;
+    const ids = workspaceView === "gallery"
+      ? documents.filter((item) => !galleryFolder || documentFolder(item) === galleryFolder).slice(0, 100).map((item) => item.id)
+      : selectedId ? [selectedId] : [];
+    if (!ids.length) return;
+    let active = true;
+    listKnowledgeAssets(accessToken, ids).then(({ assets }) => {
+      if (!active) return;
+      const grouped: Record<string, KnowledgeAsset[]> = {};
+      for (const asset of assets) (grouped[asset.document_id] ??= []).push(asset);
+      setAssetsByDocument((current) => ({ ...current, ...grouped, ...Object.fromEntries(ids.filter((id) => !grouped[id]).map((id) => [id, []])) }));
+    }).catch(() => { /* The additive migration may not be applied in this environment yet. */ });
+    return () => { active = false; };
+  }, [accessToken, demo, documents, galleryFolder, selectedId, workspaceView]);
   useEffect(() => {
     if (!pendingAnchor || selected?.id !== pendingAnchor.id || selected.content_md === undefined) return;
     const frame = window.requestAnimationFrame(() => { revealHeading(`wiki-heading-${pendingAnchor.heading.normalize("NFC").trim()}`); setPendingAnchor(null); });
@@ -645,6 +682,21 @@ function WorkspaceContent() {
     }
   };
 
+  const relinkImportedImages = async (files: FileList | null) => {
+    if (!files) return;
+    const candidates = [...files]; let linked = 0;
+    for (const document of documents) {
+      for (const reference of parseMarkdownImages(document.content_md ?? "")) {
+        if (assetsByDocument[document.id]?.some((asset) => assetReferenceKey(asset.reference) === assetReferenceKey(reference.reference))) continue;
+        const expected = reference.reference.split("/").pop()?.normalize("NFC").toLocaleLowerCase("ko-KR");
+        const file = candidates.find((item) => item.name.normalize("NFC").toLocaleLowerCase("ko-KR") === expected);
+        if (!file) continue;
+        await uploadAsset(document, reference.reference, file); linked += 1;
+      }
+    }
+    setToast(`${linked}개 이미지 참조를 파일명으로 연결했습니다.`);
+  };
+
   const openWikiLink = async (title: string) => {
     try {
       const target = demo ? resolveWikiLink(title, documents, selected?.folder) :
@@ -664,6 +716,19 @@ function WorkspaceContent() {
     }
     setLinkQuery(null);
   };
+  const uploadAsset = async (document: KnowledgeDocument, reference: string, file: File) => {
+    setBusy(true); setError("");
+    try {
+      const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const result = await createKnowledgeAssetUpload(accessToken, { documentId: document.id, reference, fileName: file.name, fileSize: file.size, mimeType: file.type, sha256 });
+      if (result.upload) await uploadKnowledgeAsset(result.upload.path, result.upload.token, file);
+      const { assets } = await listKnowledgeAssets(accessToken, [document.id]);
+      setAssetsByDocument((current) => ({ ...current, [document.id]: assets }));
+      setToast(result.duplicate ? "같은 이미지를 다시 사용했습니다." : `“${reference}” 이미지를 연결했습니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "이미지를 연결하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+  const galleryDocuments = filtered.filter((item) => (!galleryFolder || documentFolder(item) === galleryFolder) && (!galleryQuery || `${item.title} ${item.folder} ${item.tags.join(" ")}`.toLocaleLowerCase("ko-KR").includes(galleryQuery.toLocaleLowerCase("ko-KR"))) && (!galleryTag || item.tags.includes(galleryTag)));
   const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / 44) - 8, treeRows.length - 45));
   const visibleRows = treeRows.slice(treeStart, treeStart + 45);
 
@@ -683,6 +748,10 @@ function WorkspaceContent() {
         {OWNER_FILTERS.map((item) => <button key={item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => setOwnerFilter(item.id)}>{item.label}</button>)}
         {members.length > 1 ? <label className={ownerFilter.startsWith("member:") ? "active" : ""}><UserRound size={13} /><select aria-label="문서 소유자" value={ownerFilter.startsWith("member:") ? ownerFilter : ""} onChange={(event) => event.target.value && setOwnerFilter(event.target.value)}><option value="">소유자 선택</option>{members.map((member) => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]}</option>)}</select></label> : null}
       </div>
+      <div className="knowledge-view-controls">
+        <div><button className={workspaceView === "document" ? "active" : ""} onClick={() => setWorkspaceView("document")}><List size={14} /> 문서</button><button className={workspaceView === "gallery" ? "active" : ""} onClick={() => setWorkspaceView("gallery")}><LayoutGrid size={14} /> 갤러리</button></div>
+        {workspaceView === "gallery" ? <><input aria-label="갤러리 검색" placeholder="제목·폴더·태그 검색" value={galleryQuery} onChange={(event) => setGalleryQuery(event.target.value)} /><select aria-label="갤러리 태그" value={galleryTag} onChange={(event) => setGalleryTag(event.target.value)}><option value="">모든 태그</option>{[...new Set(filtered.flatMap((item) => item.tags))].sort().map((tag) => <option key={tag}>{tag}</option>)}</select><select aria-label="카드 크기" value={cardSize} onChange={(event) => setCardSize(event.target.value as typeof cardSize)}><option value="small">작게</option><option value="medium">보통</option><option value="large">크게</option></select><button className="ghost-button" onClick={() => { localStorage.setItem("brandy-knowledge-gallery-view", JSON.stringify({ folder: galleryFolder, query: galleryQuery, tag: galleryTag, cardSize })); setToast("현재 갤러리 보기를 저장했습니다."); }}>보기 저장</button></> : null}
+      </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
 
       <section style={{ "--knowledge-tree-width": `${paneWidth}px` } as React.CSSProperties} className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
@@ -698,7 +767,7 @@ function WorkspaceContent() {
               <button
                 className="folder-row folder-tree-row"
                 style={{ paddingLeft: 10 + row.depth * 16 }} key={`folder-${row.folder.path}`}
-                onClick={() => { const opening = !expandedFolders.has(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}
+                onClick={() => { const opening = !expandedFolders.has(row.folder.path); setGalleryFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}
                 onDragOver={(event) => event.preventDefault()}
                 onDrop={(event) => { event.preventDefault(); moveDocument(event.dataTransfer.getData("text/document-id"), row.folder.path); }}
               >{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
@@ -715,7 +784,7 @@ function WorkspaceContent() {
         </aside>
 
         <article className="editor-pane">
-          {selected && draft ? (
+          {workspaceView === "gallery" ? <div className={`knowledge-gallery size-${cardSize}`}><header><div><span className="eyebrow">갤러리 보기</span><h2>{galleryFolder || "불러온 문서"}</h2></div><small>{galleryDocuments.length}개 문서 · 이미지를 누르면 원본, 카드를 누르면 문서가 열립니다.</small></header><div className="knowledge-gallery-grid">{galleryDocuments.map((document) => { const representative = assetsByDocument[document.id]?.[0]; return <article key={document.id} tabIndex={0} onClick={() => { setSelectedId(document.id); setWorkspaceView("document"); setMode("read"); }} onKeyDown={(event) => { if (event.key === "Enter") { setSelectedId(document.id); setWorkspaceView("document"); } }}><div className="gallery-cover">{representative?.url ? <img src={representative.url} alt="" loading="lazy" onClick={(event) => { event.stopPropagation(); window.open(representative.url, "_blank", "noopener,noreferrer"); }} /> : <ImageIcon size={28} />}</div><div><h3>{document.title}</h3><p>{document.folder || "분류 없음"}</p><span>{document.tags.slice(0, 3).map((tag) => <em key={tag}>#{tag}</em>)}</span><small>{statusLabel(document.status)} · {formatDate(document.updated_at)}</small></div></article>; })}</div>{!galleryDocuments.length ? <div className="empty-state"><div><ImageIcon /><h3>표시할 문서가 없습니다</h3><p>폴더를 펼치거나 검색 조건을 변경해 주세요.</p></div></div> : null}</div> : selected && draft ? (
             <>
               <div className="editor-toolbar">
                 <div className="editor-tabs">
@@ -741,7 +810,7 @@ function WorkspaceContent() {
                     <label><span><BookCheck size={13} /> 브랜드</span><input value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
                     <label><span><Tag size={13} /> 태그</span><input value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
-                  <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
+                  <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button><label title="이미지 첨부"><ImageIcon size={14} /><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/svg+xml" onChange={(event) => { const file = event.target.files?.[0]; if (!file || !selected || !draft) return; void uploadAsset(selected, file.name, file); setDraft({ ...draft, content: `${draft.content}${draft.content.endsWith("\n") ? "" : "\n\n"}![${file.name}](${file.name})` }); event.currentTarget.value = ""; }} /></label></div>
                   <textarea ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
                   {tagQuery !== null ? <div aria-label="태그 제안">{[...new Set(documents.flatMap((document) => document.tags))].filter((tag) => tag.toLowerCase().includes(tagQuery.toLowerCase())).slice(0, 8).map((tag) => <button key={tag} type="button" className="ghost-button" onClick={() => { const inserted = insertTag(draft.content, editorRef.current?.selectionStart ?? 0, tag); setDraft({ ...draft, content: inserted.content }); setTagQuery(null); requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(inserted.caret, inserted.caret); }); }}>#{tag}</button>)}</div> : null}
                 </div>
@@ -756,7 +825,7 @@ function WorkspaceContent() {
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => moveStatus("archived")}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => moveStatus("draft")}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
-                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /></div>
+                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} assets={assetsByDocument[selected.id]} onRelink={(reference, file) => void uploadAsset(selected, reference, file)} /></div>
               )}
             </>
           ) : (
@@ -796,6 +865,7 @@ function WorkspaceContent() {
               <label className="import-dropzone"><Upload size={24} /><strong>Markdown 파일 선택</strong><span>여러 개의 .md 파일 · 파일당 최대 {formatBytes(MAX_MARKDOWN_BYTES)}</span><input type="file" accept=".md,text/markdown" multiple disabled={busy} onChange={(event) => selectMarkdownFiles(event.target.files)} /></label>
               {importItems.length ? <div className="import-summary"><strong>{importItems.length}개 선택</strong><span>{importItems.filter((item) => item.duplicate).length}개 중복 제외 · {formatBytes(importItems.reduce((sum, item) => sum + item.bytes, 0))}</span></div> : null}
               {importItems.length ? <div className="import-file-list">{importItems.map((item) => <div className={item.duplicate ? "duplicate" : ""} key={item.id}><File size={15} /><span><strong>{item.title}</strong><small>{item.fileName} · {formatBytes(item.bytes)}</small></span><em>{item.duplicate ? "중복 제외" : "초안"}</em></div>)}</div> : null}
+              <label className="import-dropzone compact-dropzone"><ImageIcon size={20} /><strong>기존 문서 이미지 일괄 연결</strong><span>가져온 문서의 이미지 참조와 같은 파일명을 자동 연결합니다. 중복 파일은 재사용합니다.</span><input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/avif,image/svg+xml" multiple disabled={busy} onChange={(event) => void relinkImportedImages(event.target.files)} /></label>
               <div className="form-fields import-meta">
                 <label><span>저장 폴더</span><input list="knowledge-category-options" name="folder" placeholder="회사 공통" /></label>
                 <label><span>담당 팀</span><input name="team" defaultValue={profile?.team ?? ""} /></label>

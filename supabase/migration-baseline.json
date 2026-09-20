@@ -136,6 +136,11 @@
       "file": "20260917112037_restrict_security_definer_execution.sql",
       "sha256": "b3ffab4b84b775bf99cbd59174fefb840ebd62162a91e1e560c9e8ff3e9060ac",
       "purpose": "remove platform-default direct execution of privileged functions and explicitly allow only required authenticated entry points"
+    },
+    {
+      "file": "20260920014323_knowledge_document_assets.sql",
+      "sha256": "5e8e1694e88f9d2d989b274c2959557e54a600b49b1f79a3c276e0a37aca48f7",
+      "purpose": "add private deduplicated image assets for Markdown knowledge documents and gallery views"
     }
   ],
   "legacyMigrations": [
