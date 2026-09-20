@@ -17,4 +17,9 @@ test("knowledge totals expose their population and archive rule at every surface
   assert.match(workspace, /countDefinition\?\.label/);
   assert.match(graph, /graph\.countDefinition\?\.label/);
   assert.match(monitoring, /전체 문서 · 보관 포함/);
+  assert.match(documents, /view"\) === "counts"/);
+  assert.match(documents, /aiAuthored/);
+  assert.match(monitoring, /활성 · 보관 제외/);
+  assert.match(monitoring, /AI·MCP 작성/);
+  assert.match(monitoring, /휴지통/);
 });

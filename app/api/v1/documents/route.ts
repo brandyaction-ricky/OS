@@ -23,6 +23,20 @@ export async function GET(request: Request) {
     const query = url.searchParams.get("q")?.replace(/[%_,()]/g, " ").trim();
     const includeContent = url.searchParams.get("view") !== "summary";
 
+    if (url.searchParams.get("view") === "counts") {
+      const service = createServiceSupabase();
+      const results = await Promise.all([
+        service.from("os_documents").select("id", { count: "exact", head: true }),
+        service.from("os_documents").select("id", { count: "exact", head: true }).neq("status", "archived"),
+        service.from("os_documents").select("id", { count: "exact", head: true }).eq("status", "archived"),
+        service.from("os_documents").select("id", { count: "exact", head: true }).in("source", ["mcp", "agent_session", "claude_session", "codex_session"]),
+      ]);
+      const failed = results.find((result) => result.error);
+      if (failed?.error) throw new ApiError(400, "DOCUMENT_COUNT_FAILED", "지식 문서 수를 집계하지 못했습니다.", failed.error.message);
+      const [total, active, archived, aiAuthored] = results.map((result) => result.count ?? 0);
+      return NextResponse.json({ counts: { total, active, archived, aiAuthored }, checkedAt: new Date().toISOString(), note: "AI·MCP 작성 문서는 활성·휴지통 합계와 겹칠 수 있습니다." });
+    }
+
     if (url.searchParams.get("view") === "folders") {
       const folders = new Set<string>();
       for (let offset = 0; offset < 10_000; offset += 1_000) {

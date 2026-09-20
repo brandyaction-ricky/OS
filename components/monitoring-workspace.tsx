@@ -18,8 +18,8 @@ import {
   decideTelegramUser,
   getHealth,
   getIndexingStatus,
+  getKnowledgeDocumentCounts,
   getTelegramStatus,
-  listDocuments,
   listRecords,
   runIndexing,
   type EmbeddingQueueStatus,
@@ -35,6 +35,7 @@ export function MonitoringWorkspace() {
   > | null>(null);
   const [connections, setConnections] = useState<OsRecord[]>([]);
   const [documents, setDocuments] = useState(0);
+  const [documentCounts, setDocumentCounts] = useState<{ total: number; active: number; archived: number; aiAuthored: number } | null>(null);
   const [queue, setQueue] = useState<EmbeddingQueueStatus | null>(null);
   const [indexingConfigured, setIndexingConfigured] = useState(false);
   const [cronConfigured, setCronConfigured] = useState(false);
@@ -65,13 +66,14 @@ export function MonitoringWorkspace() {
       ] = await Promise.all([
         getHealth(),
         listRecords(accessToken, "connection", "limit=200"),
-        listDocuments(accessToken, "limit=1"),
+        getKnowledgeDocumentCounts(accessToken),
         getIndexingStatus(accessToken),
         getTelegramStatus(accessToken).catch(() => null),
       ]);
       setHealth(status);
       setConnections(connectionResult.records);
-      setDocuments(documentResult.total);
+      setDocuments(documentResult.counts.total);
+      setDocumentCounts(documentResult.counts);
       setQueue(indexingResult.queue);
       setIndexingConfigured(indexingResult.configured);
       setCronConfigured(indexingResult.cronConfigured);
@@ -200,6 +202,7 @@ export function MonitoringWorkspace() {
           {connections.length}개
         </small>
       </section>
+      {documentCounts ? <section className="knowledge-count-breakdown panel" aria-label="지식 문서 집계 기준"><span><strong>{documentCounts.total.toLocaleString("ko-KR")}</strong><small>전체</small></span><span><strong>{documentCounts.active.toLocaleString("ko-KR")}</strong><small>활성 · 보관 제외</small></span><span><strong>{documentCounts.aiAuthored.toLocaleString("ko-KR")}</strong><small>AI·MCP 작성</small></span><span><strong>{documentCounts.archived.toLocaleString("ko-KR")}</strong><small>휴지통</small></span><p>AI·MCP 작성 문서는 활성·휴지통 합계와 겹칠 수 있습니다.</p></section> : null}
       <section className="service-grid">
         {status(
           health?.database === "ready",

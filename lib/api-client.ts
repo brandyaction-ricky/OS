@@ -36,6 +36,10 @@ export async function listDocumentFolders(token: string | null) {
   return apiRequest<{ folders: string[] }>("/api/v1/documents?view=folders", { token });
 }
 
+export async function getKnowledgeDocumentCounts(token: string | null) {
+  return apiRequest<{ counts: { total: number; active: number; archived: number; aiAuthored: number }; checkedAt: string; note: string }>("/api/v1/documents?view=counts", { token });
+}
+
 export async function getKnowledgeGraph(token: string | null) {
   return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
 }
