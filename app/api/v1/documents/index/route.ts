@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { documentIndex } from "@/lib/server/document-index";
 import { fuzzyDocumentScore } from "@/lib/knowledge-navigation";
 import { resolveWikiLink } from "@/lib/knowledge-links";
+import { knowledgeCountDefinition } from "@/lib/knowledge-counts";
 
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     if (url.searchParams.get("folders") === "true") {
       const folders = new Map<string, number>();
       for (const row of rows) folders.set(row.folder || "분류 없음", (folders.get(row.folder || "분류 없음") ?? 0) + 1);
-      return NextResponse.json({ folders: [...folders].map(([path, count]) => ({ path, count })), total: rows.length });
+      return NextResponse.json({ folders: [...folders].map(([path, count]) => ({ path, count })), total: rows.length, countDefinition: knowledgeCountDefinition(scope) });
     }
     const q = (url.searchParams.get("q") ?? "").normalize("NFC").toLowerCase();
     return NextResponse.json({ documents: rows.map((row) => ({ row, score: Math.max(fuzzyDocumentScore(q, row.title), fuzzyDocumentScore(q, row.source_ref ?? "")) })).filter((item) => item.score >= 0).sort((a, b) => b.score - a.score || a.row.title.localeCompare(b.row.title, "ko")).slice(0, 30).map((item) => item.row) });

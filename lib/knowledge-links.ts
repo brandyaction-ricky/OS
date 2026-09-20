@@ -1,4 +1,5 @@
 import type { DocumentStatus } from "./types";
+import type { KnowledgeCountDefinition } from "./knowledge-counts";
 
 export interface KnowledgeLinkSource {
   id: string;
@@ -35,6 +36,7 @@ export interface KnowledgeGraph {
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   broken: BrokenKnowledgeLink[];
+  countDefinition?: KnowledgeCountDefinition;
 }
 
 const TEMPLATE_LINK = "다른 문서 이름";

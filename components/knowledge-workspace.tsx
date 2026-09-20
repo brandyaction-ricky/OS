@@ -43,6 +43,7 @@ import { resolveWikiLink } from "@/lib/knowledge-links";
 import { KNOWLEDGE_CATEGORIES } from "@/lib/company-settings";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
+import type { KnowledgeCountDefinition } from "@/lib/knowledge-counts";
 import { statusLabel } from "./dashboard";
 import { useSession } from "./session-provider";
 
@@ -292,6 +293,7 @@ function WorkspaceContent() {
   const [treeOpen, setTreeOpen] = useState(true);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
+  const [countDefinition, setCountDefinition] = useState<KnowledgeCountDefinition | null>(null);
   const [hoverTree, setHoverTree] = useState(false);
   const [paneWidth, setPaneWidth] = useState(280);
   const [tagQuery, setTagQuery] = useState<string | null>(null);
@@ -358,9 +360,10 @@ function WorkspaceContent() {
     loadedFolders.current.clear();
     setListLoading(true);
     try {
-      const result = await apiRequest<{folders: Array<{path: string; count: number}>}>(`/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`, {token: accessToken});
+      const result = await apiRequest<{folders: Array<{path: string; count: number}>; total: number; countDefinition: KnowledgeCountDefinition}>(`/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`, {token: accessToken});
       if (revision !== epoch.current) return;
       setInventory(result.folders);
+      setCountDefinition(result.countDefinition);
       setDocuments(current => current.filter(row => row.id === selectedId));
       await Promise.all([...expandedFolders].map(loadFolder));
       setError("");
@@ -690,7 +693,7 @@ function WorkspaceContent() {
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
+          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small title={countDefinition?.label}>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개 · {countDefinition?.label ?? "현재 보기"}</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
             {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}

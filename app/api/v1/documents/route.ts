@@ -6,6 +6,7 @@ import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus } from "@/lib/types";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
+import { knowledgeCountDefinition } from "@/lib/knowledge-counts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%`);
     const { data, count, error } = await builder;
     if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);
-    return NextResponse.json({ documents: data ?? [], total: count ?? 0 });
+    return NextResponse.json({ documents: data ?? [], total: count ?? 0, countDefinition: knowledgeCountDefinition(scope) });
   } catch (error) { return apiErrorResponse(error); }
 }
 

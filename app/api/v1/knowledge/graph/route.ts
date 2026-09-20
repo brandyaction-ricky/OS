@@ -3,6 +3,7 @@ import { apiErrorResponse, ApiError } from "@/lib/http";
 import { buildKnowledgeGraph, type KnowledgeLinkSource } from "@/lib/knowledge-links";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { KNOWLEDGE_GRAPH_COUNT_DEFINITION } from "@/lib/knowledge-counts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
       if (!data || data.length < pageSize) break;
     }
 
-    return NextResponse.json(buildKnowledgeGraph(documents));
+    return NextResponse.json({ ...buildKnowledgeGraph(documents), countDefinition: KNOWLEDGE_GRAPH_COUNT_DEFINITION });
   } catch (error) {
     return apiErrorResponse(error);
   }

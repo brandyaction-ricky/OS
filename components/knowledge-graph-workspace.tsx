@@ -91,7 +91,7 @@ export function KnowledgeGraphWorkspace() {
 
     {error ? <div className="inline-alert danger"><AlertTriangle size={15} />{error}</div> : null}
     <section className="knowledge-graph-metrics">
-      <div><CircleDot size={16} /><span><strong>{graph.nodes.length.toLocaleString("ko-KR")}</strong><small>문서</small></span></div>
+      <div title={graph.countDefinition?.label}><CircleDot size={16} /><span><strong>{graph.nodes.length.toLocaleString("ko-KR")}</strong><small>{graph.countDefinition?.label ?? "문서"}</small></span></div>
       <div><Link2 size={16} /><span><strong>{graph.edges.length.toLocaleString("ko-KR")}</strong><small>자동 연결</small></span></div>
       <div className={graph.broken.length ? "warning" : ""}><AlertTriangle size={16} /><span><strong>{graph.broken.length.toLocaleString("ko-KR")}</strong><small>깨진 링크</small></span></div>
     </section>
