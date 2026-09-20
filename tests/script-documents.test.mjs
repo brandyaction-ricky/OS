@@ -36,6 +36,18 @@ test("scripts can use a user-selected safe knowledge root", () => {
   for (const root of ["", "../탈출", "_숨김", "03_Content/_숨김", "03_Content\\원고"]) assert.throws(() => scripts.normalizeScriptRoot(root));
 });
 
+test("documents saved directly at the root do not become video folders", () => {
+  const rootDocument = { folder: scripts.SCRIPT_DOCUMENT_ROOT, status: "draft" };
+  const videoDocument = { folder: `${scripts.SCRIPT_DOCUMENT_ROOT}/영상`, status: "draft" };
+  const nestedDocument = { folder: `${scripts.SCRIPT_DOCUMENT_ROOT}/영상/자료`, status: "draft" };
+
+  assert.equal(scripts.isScriptFolderDocument(rootDocument), false);
+  assert.equal(scripts.isScriptFolderDocument(videoDocument), true);
+  assert.equal(scripts.isScriptFolderDocument(nestedDocument), true);
+  assert.equal(scripts.isScriptFolderDocument({ ...videoDocument, status: "archived" }), false);
+  assert.equal(scripts.isScriptFolderDocument(videoDocument, "03_Content/다른 원고"), false);
+});
+
 const source = await readFile(new URL("../components/content-pipeline-workspaces.tsx", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };

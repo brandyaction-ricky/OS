@@ -3,7 +3,7 @@
 import { BarChart3, Check, CircleAlert, FileText, Gauge, Plus, Search, Sparkles, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createDocument, createRecord, generateContent, getDocument, listDocumentFolders, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
-import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, normalizeScriptRoot, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
+import { buildScriptDocumentInput, compareScriptDocuments, isScriptFolderDocument, normalizeScriptRoot, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { ContentLinkedScripts } from "./content-linked-scripts";
@@ -81,7 +81,7 @@ export function ContentScriptsWorkspace() {
         loaded.push(...result.documents);
         if (loaded.length >= result.total || !result.documents.length) break;
       }
-      const active = loaded.filter(isVisibleScript).sort(compareScriptDocuments);
+      const active = loaded.filter((document) => isScriptFolderDocument(document, root)).sort(compareScriptDocuments);
       setDocuments(active);
       setFolder((current) => active.some((document) => document.folder === current) ? current : active[0]?.folder ?? "");
       setSelectedId((current) => active.some((document) => document.id === current) ? current : active[0]?.id ?? "");

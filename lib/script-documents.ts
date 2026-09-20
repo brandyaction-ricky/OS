@@ -13,6 +13,16 @@ export function isVisibleScript(document: Pick<ScriptSummary, "folder" | "status
   return document.status !== "archived" && !document.folder.split("/").some((part) => part.startsWith("_"));
 }
 
+export function isScriptFolderDocument(
+  document: Pick<ScriptSummary, "folder" | "status">,
+  root = SCRIPT_DOCUMENT_ROOT,
+) {
+  if (!isVisibleScript(document)) return false;
+  const normalizedRoot = root.replace(/^\/+|\/+$/g, "");
+  const folder = document.folder.replace(/^\/+|\/+$/g, "");
+  return folder.startsWith(`${normalizedRoot}/`) && folder.length > normalizedRoot.length + 1;
+}
+
 export function compareScriptDocuments(a: ScriptSummary, b: ScriptSummary) {
   const rank = (document: ScriptSummary) => {
     const name = scriptFileName(document).replace(/[ _-]/g, "");
