@@ -12,7 +12,8 @@
     "app/api/v1/ad-performance/route.ts": { "maxDuration": 120 },
     "app/api/v1/content/generate/route.ts": { "maxDuration": 120 },
     "app/api/v1/knowledge/sync/route.ts": { "maxDuration": 300 },
-    "app/api/v1/youtube/observe/route.ts": { "maxDuration": 120 }
+    "app/api/v1/youtube/observe/route.ts": { "maxDuration": 120 },
+    "app/api/v1/youtube/hot-videos/route.ts": { "maxDuration": 120 }
   },
   "crons": [
     { "path": "/api/v1/indexing/cron", "schedule": "0 18 * * *" },
