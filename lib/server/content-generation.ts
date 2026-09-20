@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { structureBorrowGuidance } from "@/lib/structure-borrow";
 import { ApiError } from "@/lib/http";
-import { assembleYoutubeKit, contentSourceText, parseTimedTranscript, selectChannelProcedures, validateClipRanges } from "@/lib/content-input";
+import { assembleYoutubeKit, BUNDLED_CHANNEL_PROCEDURE_VERSION, contentSourceText, parseTimedTranscript, resolveChannelProcedures, validateClipRanges } from "@/lib/content-input";
 import { PUBLIC_COPY_GUIDANCE, sanitizePublicCopyValue } from "@/lib/content-safety";
 import { type RequestActor } from "@/lib/server/auth";
 
@@ -89,7 +89,7 @@ export async function generationProcedureRevision(actor: RequestActor, action: k
     revisions.push(...(data ?? []).map((doc) => `${doc.id}:${doc.current_version}`));
     if (!data || data.length < 200) break;
   }
-  return `generation-v4-public-copy:${revisions.join(",")}`;
+  return `generation-v4-public-copy:${action === "derivatives" ? `${BUNDLED_CHANNEL_PROCEDURE_VERSION}:` : ""}${revisions.join(",")}`;
 }
 
 async function procedures(actor: RequestActor, action: keyof typeof PROCEDURE_TERMS, platforms: string[]) {
@@ -107,7 +107,7 @@ async function procedures(actor: RequestActor, action: keyof typeof PROCEDURE_TE
   }
   let selected = documents.filter((document) => document.status === "canonical");
   if (action === "derivatives") {
-    const resolution = selectChannelProcedures(documents, platforms);
+    const resolution = resolveChannelProcedures(documents, platforms);
     if (resolution.missing.length) throw new ApiError(409, "CONTENT_PROCEDURE_MISSING", resolution.missing.map((item) => `${item.file}: ${item.reason === "approval" ? "정본 승인 필요" : "문서 등록 필요"}`).join(" · ") + " — 문서 작업공간에서 확인해 주세요.", { requirements: resolution.missing });
     selected = resolution.selected;
   }
