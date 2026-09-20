@@ -18,13 +18,13 @@ export interface WorkspaceConfig {
 const flow = (...values: string[]) => values.map((value) => ({ value, label: ({
   backlog: "대기", planned: "예정", active: "진행 중", blocked: "막힘", review: "검토", done: "완료",
   draft: "초안", ready: "준비", scheduled: "예약", published: "발행", measuring: "측정 중",
-  open: "열림", decided: "결정", cancelled: "취소", healthy: "정상", warning: "주의", disconnected: "미연결",
+  open: "열림", decided: "결정", completed: "완료", superseded: "대체됨", cancelled: "취소", healthy: "정상", warning: "주의", disconnected: "미연결",
   lead: "잠재고객", customer: "고객", loyal: "충성고객", churned: "이탈",
 }[value] ?? value) }));
 
 export const WORKSPACE_CONFIGS: Record<string, WorkspaceConfig> = {
   "/home/goals": { href: "/home/goals", recordType: "goal", eyebrow: "목표 관리", title: "목표·KPI", description: "회사 목표를 수치와 실행 업무로 연결합니다.", singular: "목표", empty: "첫 목표와 측정 지표를 등록하세요.", statuses: flow("planned", "active", "blocked", "done"), defaultStatus: "active", metricMode: "target", defaultUnit: "%", helper: "목표값과 현재값을 입력하면 달성률이 자동으로 보입니다." },
-  "/home/decisions": { href: "/home/decisions", recordType: "decision", eyebrow: "결정 기록", title: "의사결정", description: "무엇을 왜 결정했는지 남기고 후속 실행을 추적합니다.", singular: "결정", empty: "첫 의사결정을 기록하세요.", statuses: flow("open", "review", "decided", "cancelled"), defaultStatus: "open", helper: "배경·선택지·결정 근거·후속 행동을 설명에 남겨두세요." },
+  "/home/decisions": { href: "/home/decisions", recordType: "decision", eyebrow: "결정 기록", title: "의사결정", description: "무엇을 왜 결정했는지 남기고 후속 실행을 추적합니다.", singular: "결정", empty: "첫 의사결정을 기록하세요.", statuses: flow("open", "review", "decided", "completed", "superseded", "cancelled"), defaultStatus: "open", helper: "배경·선택지·결정 근거·후속 행동을 설명에 남겨두세요." },
   "/content/topics": { href: "/content/topics", recordType: "content_topic", eyebrow: "콘텐츠 제작 공정", title: "주제·기획", description: "콘텐츠 아이디어를 우선순위와 제작 단계로 관리합니다.", singular: "콘텐츠 주제", empty: "제작할 첫 콘텐츠 주제를 등록하세요.", statuses: flow("backlog", "planned", "active", "review", "done"), defaultStatus: "backlog", helper: "타깃·문제·핵심 메시지와 참고 링크를 함께 기록하세요." },
   "/content/scripts": { href: "/content/scripts", recordType: "content_script", eyebrow: "원고 작업공간", title: "원고·스크립트", description: "원고 작성과 검토 상태를 한곳에서 관리합니다.", singular: "원고", empty: "작성할 원고를 등록하세요.", statuses: flow("draft", "active", "review", "done"), defaultStatus: "draft", metricMode: "progress", helper: "관련 주제와 원고 문서를 연결할 수 있도록 출처 링크를 남겨두세요." },
   "/content/packages": { href: "/content/packages", recordType: "content_package", eyebrow: "제목·썸네일 작업", title: "제목·썸네일", description: "제목과 썸네일 후보의 검토·승인을 관리합니다.", singular: "제목·썸네일 안", empty: "검토할 제목 또는 썸네일 안을 등록하세요.", statuses: flow("draft", "review", "ready", "done"), defaultStatus: "draft", helper: "ThumbnailPeak 결과나 시안 링크를 출처 링크에 붙일 수 있습니다." },

@@ -52,7 +52,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
     return matchesQuery && (statusFilter === "all" || record.status === statusFilter);
   }), [query, records, statusFilter]);
 
-  const completed = records.filter((record) => ["done", "published", "decided", "healthy", "loyal"].includes(record.status)).length;
+  const completed = records.filter((record) => ["done", "completed", "published", "decided", "healthy", "loyal"].includes(record.status)).length;
   const blocked = records.filter((record) => ["blocked", "warning", "churned", "disconnected"].includes(record.status)).length;
   const dueSoon = records.filter((record) => record.due_date && new Date(record.due_date).getTime() <= Date.now() + 7 * 86_400_000).length;
 
