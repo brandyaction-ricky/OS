@@ -91,7 +91,7 @@ export function ContentAutomationWorkspace({ initialView = "pipeline" }: { initi
   const submitSource = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = new FormData(event.currentTarget); const value = (name: string) => String(form.get(name) ?? "").trim(); setBusy(true); setError("");
     try {
-      const { record } = await createRecord(accessToken, { recordType: "content_topic", title: value("title"), description: value("transcript") || value("coreMessage"), status: "active", priority: "high", brand: value("brand"), team: value("team"), sourceUrl: value("sourceUrl") || null, metadata: { automationSource: true, sourceTextKind: value("transcript") ? "script" : "brief", transcript: value("transcript"), publishDate: value("publishDate"), audience: value("audience"), coreMessage: value("coreMessage") }, tags: ["롱폼", "멀티채널"] });
+      const { record } = await createRecord(accessToken, { recordType: "content_topic", title: value("title"), description: value("transcript") || value("coreMessage"), status: "active", priority: "high", brand: value("brand"), team: value("team"), sourceUrl: value("sourceUrl") || null, metadata: { automationSource: true, factoryVersion: 2, productionLine: value("productionLine") || "A", sourceType: value("sourceType") || "longform", rulesVersion: "v1", sourceTextKind: value("transcript") ? "script" : "brief", transcript: value("transcript"), publishDate: value("publishDate"), audience: value("audience"), coreMessage: value("coreMessage") }, tags: ["롱폼", "멀티채널"] });
       setSourceOpen(false); await load(); setSelectedId(record.id);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "원본 콘텐츠를 저장하지 못했습니다."); } finally { setBusy(false); }
   };

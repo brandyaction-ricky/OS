@@ -12,6 +12,13 @@ const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = 
   { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "script_draft", label: "원고 생성", gate: 1 },
   { action: "title_package", label: "제목·썸네일 생성", gate: 1 }, { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
 ];
+const FACTORY_PHASES = [
+  { title: "1. 기획·근거", steps: ["주제 접수", "근거 확인", "타깃 정의", "핵심 약속", "기획 브리핑"] },
+  { title: "2. 원고", steps: ["원고 초안", "팩트 점검", "브랜드 언어", "원고 검토"] },
+  { title: "3. 제작 자산", steps: ["보이스 MP3", "이미지", "캐릭터", "자막", "편집 사양"] },
+  { title: "4. 영상", steps: ["초벌 렌더", "영상 검수", "수정 반영", "최종 MP4"] },
+  { title: "5. 발행·학습", steps: ["발행키트", "최종 승인", "발행", "성과 수집"] },
+] as const;
 
 export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string; onChange: () => Promise<void> }) {
   const { accessToken } = useSession();
@@ -31,7 +38,8 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     event.preventDefault(); if (!state) return;
     const form = new FormData(event.currentTarget);
     void perform(() => updateRecord(accessToken, { id: sourceId, expectedVersion: state.source.version, metadata: { ...state.source.metadata, pipelineEnabled: true,
-      audience: String(form.get("audience") ?? "").trim(), evidence: String(form.get("evidence") ?? "").trim(), experience: String(form.get("experience") ?? "").trim(), finalVideoUrl: String(form.get("finalVideoUrl") ?? "").trim() } }));
+      productionLine: String(form.get("productionLine") ?? "A").trim(), sourceType: String(form.get("sourceType") ?? "longform").trim(), packageId: String(form.get("packageId") ?? sourceId).trim(), rulesVersion: String(form.get("rulesVersion") ?? "v1").trim(),
+      audience: String(form.get("audience") ?? "").trim(), evidence: String(form.get("evidence") ?? "").trim(), experience: String(form.get("experience") ?? "").trim(), voiceUrl: String(form.get("voiceUrl") ?? "").trim(), imageFolderUrl: String(form.get("imageFolderUrl") ?? "").trim(), characterUrl: String(form.get("characterUrl") ?? "").trim(), editSpecUrl: String(form.get("editSpecUrl") ?? "").trim(), finalVideoUrl: String(form.get("finalVideoUrl") ?? "").trim() } }));
   };
   if (!state || state.source.id !== sourceId) return <section className="panel pipeline-panel"><p>{error || "공정 불러오는 중…"}</p></section>;
   const artifacts = pipelineArtifacts(state.records);
@@ -41,12 +49,17 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     <header><h2>숏폼 제작 공정</h2><p>자료와 산출물을 확인하고 각 단계에서 승인합니다. 변경된 자료는 다시 검토해야 합니다.</p><button className="ghost-button" disabled={busy} onClick={() => void perform(load)}>새로 불러오기</button></header>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     <form key={sourceId} onSubmit={save} className="pipeline-inputs">
+      <div className="form-grid"><label>제작 라인<select name="productionLine" defaultValue={String(state.source.metadata.productionLine ?? "A")}><option value="A">A · 롱폼에서 숏폼</option><option value="B">B · 숏폼 직접 제작</option></select></label><label>원본 유형<select name="sourceType" defaultValue={String(state.source.metadata.sourceType ?? "longform")}><option value="longform">롱폼 원본</option><option value="script">승인 원고</option><option value="idea">아이디어 직접 제작</option></select></label></div>
+      <div className="form-grid"><label>패키지 ID<input name="packageId" defaultValue={String(state.source.metadata.packageId ?? sourceId)} /></label><label>규칙 버전<input name="rulesVersion" defaultValue={String(state.source.metadata.rulesVersion ?? "v1")} /></label></div>
       <label>타깃 시청자<input required name="audience" defaultValue={String(state.source.metadata.audience ?? "")} /></label>
       <label>확인한 자료·출처<textarea required name="evidence" rows={4} defaultValue={String(state.source.metadata.evidence ?? "")} placeholder="자료 링크와 직접 확인한 사실을 적어주세요." /></label>
       <label>실제 경험·사례<textarea required name="experience" rows={3} defaultValue={String(state.source.metadata.experience ?? "")} placeholder="제공할 사례 또는 해당 없는 사유" /></label>
+      <div className="form-grid"><label>보이스 MP3 URL<input type="url" name="voiceUrl" defaultValue={String(state.source.metadata.voiceUrl ?? "")} /></label><label>이미지 폴더 URL<input type="url" name="imageFolderUrl" defaultValue={String(state.source.metadata.imageFolderUrl ?? "")} /></label></div>
+      <div className="form-grid"><label>캐릭터 자산 URL<input type="url" name="characterUrl" defaultValue={String(state.source.metadata.characterUrl ?? "")} /></label><label>편집 사양 URL<input type="url" name="editSpecUrl" defaultValue={String(state.source.metadata.editSpecUrl ?? "")} /></label></div>
       <label>최종 영상 URL<input type="url" pattern="https://.*" name="finalVideoUrl" defaultValue={String(state.source.metadata.finalVideoUrl ?? "")} placeholder="편집 완료 후 검토할 영상 주소" /></label>
       <button className="primary-button" disabled={busy}>{enabled ? "입력 자료 저장" : "자료 저장·공정 시작"}</button>
     </form>
+    <section className="factory-route" aria-label="숏폼 팩토리 22단계"><header><strong>22단계 제작 경로</strong><span>라인 {String(state.source.metadata.productionLine ?? "A")} · 규칙 {String(state.source.metadata.rulesVersion ?? "v1")}</span></header><div>{FACTORY_PHASES.map((phase) => <article key={phase.title}><h3>{phase.title}</h3><ol>{phase.steps.map((step) => <li key={step}>{step}</li>)}</ol></article>)}</div><p>승인 1 · 기획/근거, 승인 2 · 원고, 승인 3 · 최종 영상. 상위 자료나 규칙 버전이 바뀌면 기존 서명이 달라져 해당 단계부터 재검토합니다.</p></section>
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
       const gate = index + 1; const prior = state.reviews.filter((review) => review.gate === gate).at(-1);
       return <article key={title}><header><strong>{gate}. {title}</strong><span className={`status-pill status-${state.approved[index] ? "ready" : "review"}`}>{state.approved[index] ? "승인 완료" : prior?.signature !== undefined && prior.signature !== state.signatures[index] ? "자료 변경 · 재검토" : prior && !prior.approved ? "수정 요청" : "검토 대기"}</span></header>
