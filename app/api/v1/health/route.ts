@@ -22,7 +22,9 @@ export async function GET() {
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "ready" : "missing";
   const contentAi = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY ? "ready" : "missing";
   const youtube = process.env.YOUTUBE_API_KEY ? "ready" : "missing";
-  const youtubeOAuth = youtubeOAuthConfigured() ? "ready" : "missing";
+  // Environment variables configure OAuth but do not mean that a user has
+  // completed Google consent or connected a channel.
+  const youtubeOAuth = youtubeOAuthConfigured() ? "configured" : "missing";
   const adConnections = adConnectionStatus();
   const advertising = adConnections.meta.configured && adConnections.google.configured
     ? "ready"

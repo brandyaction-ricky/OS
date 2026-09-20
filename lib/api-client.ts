@@ -220,7 +220,7 @@ export async function getHealth() {
     telegram: "ready" | "missing";
     contentAi: "ready" | "missing";
     youtube: "ready" | "missing";
-    youtubeOAuth: "ready" | "missing";
+    youtubeOAuth: "configured" | "missing";
     advertising: "ready" | "partial" | "missing";
     checkedAt: string;
   }>("/api/v1/health");
