@@ -202,6 +202,7 @@ export function WeeklyScheduleWorkspace() {
 export function AiOperationsWorkspace() {
   const { accessToken, demo } = useSession();
   const [jobs, setJobs] = useState<OsRecord[]>([]);
+  const [selectedJob, setSelectedJob] = useState<OsRecord | null>(null);
   const [health, setHealth] = useState<Awaited<
     ReturnType<typeof getHealth>
   > | null>(null);
@@ -247,6 +248,13 @@ export function AiOperationsWorkspace() {
     done: "완료",
     failed: "실패",
   };
+  const priorityLabel = { low: "낮음", normal: "보통", high: "높음", urgent: "긴급" } as const;
+  const jobDate = (value: string | null) => value
+    ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+    : "미정";
+  const safeSourceUrl = selectedJob?.source_url && /^https?:\/\//i.test(selectedJob.source_url)
+    ? selectedJob.source_url
+    : null;
   return (
     <>
       <header className="page-header">
@@ -290,7 +298,13 @@ export function AiOperationsWorkspace() {
         </div>
         <div className="activity-list">
           {jobs.map((job) => (
-            <div key={job.id}>
+            <button
+              type="button"
+              className="ai-job-row"
+              key={job.id}
+              onClick={() => setSelectedJob(job)}
+              aria-label={`${job.title} 상세 보기`}
+            >
               <span className="document-symbol">
                 <Sparkles size={15} />
               </span>
@@ -305,7 +319,7 @@ export function AiOperationsWorkspace() {
               >
                 {jobStatusLabel[job.status] ?? job.status}
               </span>
-            </div>
+            </button>
           ))}
           {!jobs.length ? (
             <div className="quiet-state">
@@ -316,6 +330,49 @@ export function AiOperationsWorkspace() {
           ) : null}
         </div>
       </section>
+      {selectedJob ? (
+        <div className="drawer-backdrop" onMouseDown={() => setSelectedJob(null)}>
+          <aside
+            className="record-drawer ai-job-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-job-detail-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="drawer-head">
+              <div>
+                <span className="eyebrow">AI 작업 상세</span>
+                <h2 id="ai-job-detail-title">{selectedJob.title}</h2>
+              </div>
+              <button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="ai-job-detail-status">
+              <span className={`status-pill status-${selectedJob.status}`}>{jobStatusLabel[selectedJob.status] ?? selectedJob.status}</span>
+              <span>우선순위 {priorityLabel[selectedJob.priority]}</span>
+              <span>진행률 {selectedJob.progress}%</span>
+            </div>
+            <section>
+              <h3>요청 내용</h3>
+              <p>{selectedJob.description || "등록된 요청 내용이 없습니다."}</p>
+            </section>
+            <dl>
+              <div><dt>단계</dt><dd>{selectedJob.stage || "미정"}</dd></div>
+              <div><dt>담당 팀</dt><dd>{selectedJob.team || "미지정"}</dd></div>
+              <div><dt>브랜드</dt><dd>{selectedJob.brand || "회사 공통"}</dd></div>
+              <div><dt>마감</dt><dd>{jobDate(selectedJob.due_date)}</dd></div>
+              <div><dt>등록</dt><dd>{jobDate(selectedJob.created_at)}</dd></div>
+              <div><dt>최근 변경</dt><dd>{jobDate(selectedJob.updated_at)}</dd></div>
+            </dl>
+            <section>
+              <h3>태그</h3>
+              <div className="tag-row">{selectedJob.tags.length ? selectedJob.tags.map((tag) => <span key={tag}>{tag}</span>) : <span>태그 없음</span>}</div>
+            </section>
+            {safeSourceUrl ? <a className="secondary-button ai-job-source" href={safeSourceUrl} target="_blank" rel="noreferrer">결과·참고 링크 열기</a> : null}
+          </aside>
+        </div>
+      ) : null}
     </>
   );
 }
