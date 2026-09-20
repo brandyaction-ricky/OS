@@ -30,6 +30,32 @@ export const MCP_TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: "list_skills",
+    description: "실행 가능한 회사 Skill과 이 AI 소유자의 개인 Skill을 시작 조건·결과물 요약과 함께 조회합니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string" },
+        scope: { type: "string", enum: ["all", "company", "personal"] },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+        offset: { type: "integer", minimum: 0 },
+      },
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "get_skill",
+    description: "Skill 하나의 시작 조건·입력·실행 절차·결과물·품질 기준을 읽습니다.",
+    inputSchema: {
+      type: "object",
+      properties: { skill_id: { type: "string", format: "uuid" } },
+      required: ["skill_id"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: "create_document",
     description: "새 지식을 개인 초안으로 만듭니다. 회사 정본으로 바로 만들 수 없습니다.",
     inputSchema: {
@@ -190,6 +216,13 @@ const searchArgs = z.object({
 }).strict();
 
 const getArgs = z.object({ document_id: documentId }).strict();
+const listSkillArgs = z.object({
+  query: z.string().trim().max(200).optional().default(""),
+  scope: z.enum(["all", "company", "personal"]).optional().default("all"),
+  limit: z.number().int().min(1).max(100).optional().default(50),
+  offset: z.number().int().min(0).optional().default(0),
+}).strict();
+const getSkillArgs = z.object({ skill_id: documentId }).strict();
 
 const createArgs = z.object({
   title: z.string().trim().min(1).max(200),
@@ -301,6 +334,16 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     const input = getArgs.parse(args);
     const query = new URLSearchParams({ organizationId, documentId: input.document_id });
     return fetchApi(`/api/v1/knowledge-documents?${query}`);
+  }
+  if (request.name === "list_skills") {
+    const input = listSkillArgs.parse(args);
+    const query = new URLSearchParams({ organizationId, scope: input.scope, limit: String(input.limit), offset: String(input.offset) });
+    if (input.query) query.set("q", input.query);
+    return fetchApi(`/api/v1/agent-skills?${query}`);
+  }
+  if (request.name === "get_skill") {
+    const input = getSkillArgs.parse(args);
+    return fetchApi(`/api/v1/agent-skills?${new URLSearchParams({ organizationId, skillId: input.skill_id })}`);
   }
   if (request.name === "create_document") {
     const input = createArgs.parse(args);
