@@ -1,12 +1,12 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-17 Asia/Seoul.
+Updated: 2026-09-20 Asia/Seoul.
 
 ## Decision
 
-The active chain was applied to the isolated `brandyaction-os-dev` project only. Do not apply it to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus three forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, and one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The first four migrations in the active chain were applied to the isolated `brandyaction-os-dev` project only. Do not apply them to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus four forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires, and one pending migration separates folder moves from content edits while adding configurable write-limit policies and safe retry metadata. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The user approved DEV application on 2026-09-17. The four active migrations were applied without seeds or Vault changes, and the manifest now records `applied_dev` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize Production migration, seed, reset, history repair, schema change, or Production data copy.
+The user approved DEV application on 2026-09-17. The first four active migrations were applied without seeds or Vault changes, and the manifest records that DEV state as `applied_dev` / `applied`. The fifth migration is code-reviewed work only and has not been applied to DEV or Production. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false. This does not authorize a DEV or Production migration, seed, reset, history repair, schema change, or Production data copy.
 
 ## Current tooling state
 
