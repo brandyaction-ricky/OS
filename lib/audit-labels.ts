@@ -46,6 +46,7 @@ const RECORD_LABELS: Record<string, string> = {
   expense: "지출",
   contract: "계약",
   subscription: "구독",
+  program: "프로그램",
   company_document: "회사 서류",
   account_security: "계정 보안",
 };
@@ -59,6 +60,8 @@ const STATUS_LABELS: Record<string, string> = {
   reviewed: "검토 완료",
   ready: "승인 완료",
   done: "완료",
+  completed: "완료",
+  superseded: "대체됨",
   draft: "초안",
   team: "팀 공유",
   canonical: "회사 정본",

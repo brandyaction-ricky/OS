@@ -3,6 +3,7 @@
 import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
+import { auditStatusLabel } from "@/lib/audit-labels";
 import type { OsRecord } from "@/lib/record-types";
 import type { WorkspaceConfig } from "@/lib/workspace-config";
 import { useSession } from "./session-provider";
@@ -119,7 +120,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       </div>
       {loading ? <div className="loading-state">운영 기록을 불러오는 중입니다.</div> : filtered.length ? <div className="record-list">
         {filtered.map((record) => {
-          const status = config.statuses.find((item) => item.value === record.status)?.label ?? record.status;
+          const status = config.statuses.find((item) => item.value === record.status)?.label ?? auditStatusLabel(record.status, config.recordType);
           return <article className="record-row" key={record.id} onClick={() => openEdit(record)}>
             <span className={`priority-mark priority-${record.priority}`} />
             <div className="record-main"><div><strong>{record.title}</strong><span className={`status-pill status-${record.status}`}>{status}</span></div><p>{record.description || config.helper}</p><div className="record-meta"><span>{record.brand || "전체 브랜드"}</span><span>{record.team || profile?.team || "전체 팀"}</span><span>{dateLabel(record.due_date)}</span>{record.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div></div>

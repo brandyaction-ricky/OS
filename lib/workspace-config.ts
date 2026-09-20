@@ -18,7 +18,7 @@ export interface WorkspaceConfig {
 const flow = (...values: string[]) => values.map((value) => ({ value, label: ({
   backlog: "대기", planned: "예정", active: "진행 중", blocked: "막힘", review: "검토", done: "완료",
   draft: "초안", ready: "준비", scheduled: "예약", published: "발행", measuring: "측정 중",
-  open: "열림", decided: "결정", cancelled: "취소", healthy: "정상", warning: "주의", disconnected: "미연결",
+  open: "열림", decided: "결정", completed: "완료", superseded: "대체됨", cancelled: "취소", healthy: "정상", warning: "주의", disconnected: "미연결",
   lead: "잠재고객", customer: "고객", loyal: "충성고객", churned: "이탈",
 }[value] ?? value) }));
 

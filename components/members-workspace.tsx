@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { COMPANY_ROSTER, memberMatchesRoster, rosterDirectoryId } from "@/lib/company-roster";
+import { roleLabel } from "@/lib/company-settings";
 import { useSession } from "./session-provider";
 
 interface Member {
@@ -302,7 +303,7 @@ export function MembersWorkspace() {
               <p>{selected ? (selected.account_connected ? selected.email : "로그인 계정 연결 전 · 디렉터리 정보") : "목록에서 구성원을 선택하세요."}</p>
             </div>
             {selected ? (
-              <span className="role-badge">{selected.role}</span>
+              <span className="role-badge">{roleLabel(selected.role)}</span>
             ) : null}
           </div>
           {selected ? (

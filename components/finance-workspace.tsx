@@ -23,6 +23,7 @@ import {
   uploadCompanyFile,
 } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
+import { operatingStatusLabel } from "@/lib/company-settings";
 import { useSession } from "./session-provider";
 
 type FinanceTab = "spend" | "vat" | "contract" | "subscription" | "documents";
@@ -925,10 +926,10 @@ function RecordList({
                 ? money(Number(item.amount))
                 : item.due_date
                   ? `만료 ${item.due_date}`
-                  : item.status}
+                  : operatingStatusLabel(item.status)}
             </em>
             <span className={`status-pill status-${item.status}`}>
-              {item.status}
+              {operatingStatusLabel(item.status)}
             </span>
           </div>
         ))}

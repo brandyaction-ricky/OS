@@ -29,6 +29,8 @@ export function operatingStatusLabel(status: string) {
       planned: "예정",
       paused: "일시 중지",
       done: "종료",
+      completed: "완료",
+      superseded: "대체됨",
     } as Record<string, string>
   )[status] ?? "상태 확인 필요";
 }
