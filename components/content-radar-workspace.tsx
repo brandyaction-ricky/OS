@@ -379,6 +379,33 @@ export function ContentRadarWorkspace() {
     } finally { setBusy(false); }
   };
 
+  const saveResearchBrief = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) return;
+    const form = new FormData(event.currentTarget);
+    const sourceUrls = formText(form, "researchSources").split("\n").map((value) => value.trim()).filter(Boolean).slice(0, 20);
+    setBusy(true); setError("");
+    try {
+      const { record } = await updateRecord(accessToken, {
+        id: selected.id,
+        expectedVersion: selected.version,
+        metadata: {
+          ...selected.metadata,
+          researchBrief: {
+            brandContext: formText(form, "brandContext"),
+            analystNotes: formText(form, "analystNotes"),
+            sourceUrls,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      });
+      setRecords((current) => current.map((item) => item.id === record.id ? record : item));
+      setNotice("리서치 근거와 브랜드 메모를 저장했습니다.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "리서치 메모를 저장하지 못했습니다.");
+    } finally { setBusy(false); }
+  };
+
   return <>
     <header className="page-header">
       <div className="page-title-group"><span className="eyebrow">콘텐츠 레이더</span><h1>주제·기획</h1><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
@@ -446,6 +473,13 @@ export function ContentRadarWorkspace() {
         <article className="panel planning-detail niche-detail">{selected ? <>
           <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 제목·썸네일 후보 뽑기</button></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
+          <form className="research-brief" key={`${selected.id}-${selected.version}`} onSubmit={saveResearchBrief}>
+            <div><h3>리서치 브리프</h3><p>별도 앱으로 옮기지 않고, 이 주제에 근거 출처·분석 메모·브랜드 맥락을 함께 남깁니다.</p></div>
+            <label><span>추적 출처 URL · 한 줄에 하나</span><textarea name="researchSources" rows={3} defaultValue={(meta<Record<string, unknown>>(selected, "researchBrief", {}).sourceUrls as string[] | undefined ?? [selected.source_url].filter(Boolean)).join("\n")} placeholder="https://…" /></label>
+            <label><span>분석 메모</span><textarea name="analystNotes" rows={4} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).analystNotes ?? "")} placeholder="왜 반응했는지, 구조·훅·증거·주의할 점" /></label>
+            <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
+            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>리서치 메모 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/scripts?sourceId=${selected.id}`}>스크립트 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
+          </form>
           {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
