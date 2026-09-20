@@ -75,6 +75,7 @@ export const NAV_STAGES: NavStage[] = [
       { label: "제목·썸네일", href: "/content/packages", icon: PanelTop, ready: true },
       { label: "숏폼 편집", href: "/content/shorts", icon: Film, ready: true },
       { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, ready: true },
+      { label: "발행 캘린더", href: "/content/calendar", icon: CalendarRange, ready: true },
       { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, ready: true },
       { label: "영상 성과", href: "/content/performance", icon: BarChart3, ready: true },
     ],
