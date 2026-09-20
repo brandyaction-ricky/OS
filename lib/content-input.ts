@@ -40,6 +40,28 @@ export const CHANNEL_PROCEDURES: Record<string, string> = {
   instagram: "인스타_카드뉴스_만드는_절차.md", essay: "에세이_절차.md",
 };
 type Procedure = { id: string; title: string; source_ref: string | null; status: string; content_md: string };
+
+export const BUNDLED_CHANNEL_PROCEDURE_VERSION = "channel-procedures-v1";
+const BUNDLED_CHANNEL_PROCEDURES: Record<string, string> = {
+  shorts: "원문에 있는 사실과 주장만 사용한다. 한 영상에는 핵심 주장 하나, 첫 3초에는 구체적인 문제나 결과를 제시한다. 자막은 짧은 문장으로 나누고 외부 게시나 렌더링은 하지 않는다.",
+  threads: "원문의 핵심 주장 하나를 첫 문장에 쓴다. 짧은 문단으로 근거와 사례를 이어가고, 과장·확정적 심리 진단·원문에 없는 수치를 만들지 않는다. 마지막에는 질문·저장·공유 중 하나의 가벼운 행동만 제안한다.",
+  column: "검색 의도에 답하는 제목과 요약, 목차, 본문, 결론을 작성한다. 원문 근거 밖의 사실을 만들지 않는다. HTML은 접근 가능한 heading 구조, JSON-LD, hero, 중간 영상 자리, 원본 YouTube 임베드를 포함하되 외부 발행은 하지 않는다.",
+  instagram: "한 카드에는 한 메시지만 둔다. 첫 카드는 문제나 약속, 중간 카드는 원문의 근거와 실행 단계, 마지막 카드는 요약과 가벼운 CTA로 구성한다. 이미지 제작이나 게시를 실행하지 않는다.",
+  essay: "원문의 경험과 관점을 도입·전개·전환·결론으로 재구성한다. 사실과 해석을 구분하고 원문에 없는 개인 경험을 만들지 않는다. 독자가 스스로 생각할 질문으로 마친다.",
+};
+
+export function bundledChannelProcedure(platform: string): Procedure | null {
+  const content = BUNDLED_CHANNEL_PROCEDURES[platform];
+  const file = CHANNEL_PROCEDURES[platform];
+  return content && file ? {
+    id: `bundled:${BUNDLED_CHANNEL_PROCEDURE_VERSION}:${platform}`,
+    title: `${file.replace(/\.md$/, "")} · 기본 절차`,
+    source_ref: `bundled://${BUNDLED_CHANNEL_PROCEDURE_VERSION}/${file}`,
+    status: "canonical",
+    content_md: content,
+  } : null;
+}
+
 export function selectChannelProcedures(documents: Procedure[], platforms: string[]) {
   const selected: Procedure[] = []; const missing: Array<{ file: string; reason: "missing" | "approval"; documentId?: string }> = [];
   for (const platform of [...new Set(platforms)]) {
@@ -51,6 +73,21 @@ export function selectChannelProcedures(documents: Procedure[], platforms: strin
     else missing.push({ file, reason: candidates.length ? "approval" : "missing", documentId: candidates[0]?.id });
   }
   return { selected, missing };
+}
+
+export function resolveChannelProcedures(documents: Procedure[], platforms: string[]) {
+  const resolution = selectChannelProcedures(documents, platforms);
+  const selected = [...resolution.selected];
+  const fallbackFiles: string[] = [];
+  for (const item of resolution.missing) {
+    const platform = Object.keys(CHANNEL_PROCEDURES).find((key) => CHANNEL_PROCEDURES[key] === item.file);
+    const fallback = platform ? bundledChannelProcedure(platform) : null;
+    if (fallback) {
+      selected.push(fallback);
+      fallbackFiles.push(item.file);
+    }
+  }
+  return { selected, missing: resolution.missing.filter((item) => !fallbackFiles.includes(item.file)), fallbackFiles };
 }
 
 export function validateClipRanges(clips: unknown, cues: TimedCue[]) {

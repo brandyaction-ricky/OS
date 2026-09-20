@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assembleYoutubeKit, contentSourceText, parseTimedTranscript, selectChannelProcedures, timestampSeconds, validateClipRanges } from '../lib/content-input.ts';
+import { assembleYoutubeKit, BUNDLED_CHANNEL_PROCEDURE_VERSION, contentSourceText, parseTimedTranscript, resolveChannelProcedures, selectChannelProcedures, timestampSeconds, validateClipRanges } from '../lib/content-input.ts';
 import { dedupeMetricSnapshots, metricValue, summarizeMetrics, fixedWeek } from '../lib/content-metrics.ts';
 import { buildKnowledgeGraph, resolveWikiLink } from '../lib/knowledge-links.ts';
 import { outlierBaseline } from '../lib/youtube-outliers.ts';
@@ -28,6 +28,19 @@ test('channel procedures resolve filename aliases and distinguish approval from 
   const docs = [{ id: '1', title: 'Different heading', source_ref: 'Content/쓰레드_쓰는_절차.md', status: 'draft', content_md: 'Procedure' }];
   assert.deepEqual(selectChannelProcedures(docs, ['threads', 'column']).missing, [{ file: '쓰레드_쓰는_절차.md', reason: 'approval', documentId: '1' }, { file: 'SEO칼럼_만드는_절차.md', reason: 'missing', documentId: undefined }]);
   assert.equal(selectChannelProcedures([{ ...docs[0], status: 'canonical' }], ['threads', 'threads']).selected.length, 1);
+});
+
+test('missing derivative procedures use versioned bundled defaults while OS canonical documents stay authoritative', () => {
+  const fallback = resolveChannelProcedures([], ['shorts', 'threads', 'column', 'instagram', 'essay']);
+  assert.equal(fallback.selected.length, 5);
+  assert.equal(fallback.missing.length, 0);
+  assert.equal(fallback.fallbackFiles.length, 5);
+  assert.ok(fallback.selected.every((item) => item.source_ref?.includes(BUNDLED_CHANNEL_PROCEDURE_VERSION)));
+
+  const canonical = { id: 'os-doc', title: '쓰레드_쓰는_절차', source_ref: 'company/쓰레드_쓰는_절차.md', status: 'canonical', content_md: '회사 정본 절차' };
+  const resolved = resolveChannelProcedures([canonical], ['threads']);
+  assert.deepEqual(resolved.selected, [canonical]);
+  assert.deepEqual(resolved.fallbackFiles, []);
 });
 test('YouTube kits include grounded chapters once and do not invent timings', () => {
   const result = assembleYoutubeKit({ description: 'Copy\n00:00 old', tags: ['tag', '#tag', 'other'], chapters: ['00:00 Intro', '00:10 Story', '00:25 End'], checklist: [] }, parseTimedTranscript(srt));
