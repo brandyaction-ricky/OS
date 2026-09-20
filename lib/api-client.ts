@@ -218,7 +218,7 @@ export async function getHealth() {
     agentMcp: "ready" | "missing" | "error";
     embeddings: "ready" | "keyword_only";
     telegram: "ready" | "missing";
-    contentAi: "ready" | "missing";
+    contentAi: "configured" | "missing";
     youtube: "ready" | "missing";
     youtubeOAuth: "ready" | "missing";
     advertising: "ready" | "partial" | "missing";

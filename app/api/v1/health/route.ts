@@ -20,7 +20,9 @@ export async function GET() {
   const accountPassword = OS_INITIAL_PASSWORD.length >= 10 ? "ready" : "missing";
   const embeddings = process.env.OPENAI_API_KEY ? "ready" : "keyword_only";
   const telegram = process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET ? "ready" : "missing";
-  const contentAi = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY ? "ready" : "missing";
+  // A present key only proves configuration. Actual connectivity is verified when a
+  // content job calls Claude; do not report a key as a successful connection.
+  const contentAi = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY ? "configured" : "missing";
   const youtube = process.env.YOUTUBE_API_KEY ? "ready" : "missing";
   const youtubeOAuth = youtubeOAuthConfigured() ? "ready" : "missing";
   const adConnections = adConnectionStatus();

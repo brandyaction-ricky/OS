@@ -46,6 +46,7 @@ interface ConnectionRow {
   owner: string;
   status: ConnectionStatus;
   location: string;
+  statusLabel?: string;
 }
 
 const POLICY_ROWS = [
@@ -210,8 +211,9 @@ export function SettingsWorkspace({ page }: { page: Page }) {
         system: "Claude",
         purpose: "콘텐츠 정본 실행",
         owner: "리키",
-        status: health?.contentAi === "ready" ? "ready" : "waiting",
+        status: health?.contentAi === "configured" ? "warning" : "waiting",
         location: "Vercel 환경변수",
+        statusLabel: health?.contentAi === "configured" ? "설정됨·실행 검증 필요" : "연결 대기",
       },
       {
         system: "Claude·Codex MCP",
@@ -322,7 +324,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
                     <div><strong>{row.system}</strong><p>{row.purpose}</p></div>
                     <div><small>담당</small><span>{row.owner}</span></div>
                     <div><small>설정 위치</small><span>{row.location}</span></div>
-                    <em className={`status-pill status-${row.status}`}>{row.status === "ready" ? "연결됨" : row.status === "warning" ? "일부 연결" : "연결 대기"}</em>
+                    <em className={`status-pill status-${row.status}`}>{row.statusLabel ?? (row.status === "ready" ? "연결됨" : row.status === "warning" ? "일부 연결" : "연결 대기")}</em>
                   </article>
                 ))}
               </section>
