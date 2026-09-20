@@ -1,8 +1,8 @@
 import { authenticateRequest } from "@/lib/server/auth";
 import { SYSTEM_ONE_DOCUMENT_FIELDS, type SystemOneDocumentDependencies } from "@/lib/server/system-one-document-source";
 
-// Deliberately not wired to a route or the local mock UI yet. DEV auth/RLS and
-// policy-registry qualification must be verified before enabling connected use.
+// Used by the default-disabled DEV preflight endpoint, not the local mock UI.
+// Real Auth/RLS and policy qualification must be verified before judgment use.
 export function createSystemOneUserDocumentSource(request: Request): SystemOneDocumentDependencies {
   return {
     async authenticate() {

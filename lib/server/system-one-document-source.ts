@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
-// Server-side preflight only. No route, persistence, model call, or conversion to
+// Server-side preflight only. No persistence, model call, or conversion to
 // MockInput/state="current". A readable DB head is NOT a verified company policy.
 export const SYSTEM_ONE_DOCUMENT_FIELDS = "id,title,content_md,status,owner_id,team,brand,folder,current_version,content_hash,updated_at";
 export const SYSTEM_ONE_DOCUMENT_LIMITS = Object.freeze({ bodyBytes: 120_000, bundleBytes: 512_000 });
