@@ -37,6 +37,8 @@ A passing test, local build, or Preview deployment is not evidence of production
 ## Environment and External-Side-Effect Rules
 
 - Production database data, schema, policies, and settings must not be changed automatically.
+- When the user explicitly authorizes it, Codex may update development-management request statuses, QA results, deployment records, and linked development logs through the authorized production OS UI or API. Read the saved records back before reporting success.
+- This limited authorization does not cover unrelated business records, user or employee data, database schema or policies, credentials, environment variables, payments, webhooks, or destructive operations; those continue to require their own explicit approval and applicable verification.
 - Do not run migration, seed, or reset commands automatically.
 - Do not perform live payments, refunds, production webhook calls, production deployments or promotions, or production environment-variable changes without explicit approval.
 - Tests may use only a confirmed development database and sandbox payment target. If the target is unclear, stop external writes and continue with local verification.
@@ -68,4 +70,4 @@ Report in Korean and include:
 
 - Product: BrandyAction OS
 - Repository: `brandyaction-ricky/OS`
-- During the local-environment migration, do not write to the production OS database or API. Keep a local completion record and report OS synchronization as pending.
+- During the local-environment migration, production OS writes are limited to explicitly authorized development-management records as described above. If an authorized write connection is unavailable or rejects the change, keep a local completion record and report OS synchronization as pending.
