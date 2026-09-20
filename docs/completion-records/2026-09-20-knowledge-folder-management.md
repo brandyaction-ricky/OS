@@ -11,8 +11,8 @@
 - 검증 완료: `npm run verify` 성공(린트, 타입 검사, 테스트 236/236, Next.js 빌드), `npm run test:e2e` 로컬 데모 스모크 1/1 성공, 연결형 인증 테스트 1건은 자격증명 미주입으로 스킵. 로컬 브라우저에서 `/knowledge` HTTP 200, 새 문서 저장 위치 선택, 기본 분류/현재 폴더 목록, 폴더 관리, 폴더별 새 문서, 문서 위치 이동 모달 렌더링을 확인했다. Next.js 오류 오버레이는 표시되지 않았다.
 - 검증 미수행: DEV/Preview 연결 상태에서 실제 폴더 이름 변경·문서 이동 쓰기, 전용 인증 계정 QA, 모바일 실기기 QA, Production QA. 외부 쓰기와 Production 접근은 승인 범위가 아니므로 수행하지 않았다.
 - 데이터/스키마 영향: 데이터베이스 schema 변경 없음. 기존 `os_documents.folder`와 문서 수정 RPC/API 계약을 재사용한다. 폴더 이름 변경은 권한 또는 버전 충돌 문서를 실패로 남기고 성공/실패 수를 사용자에게 알린다.
-- Pull request: 없음
-- 원격 push: 수행하지 않음
-- 배포 상태: 로컬 구현·검증만 완료. Preview 및 Production 배포 없음.
-- 남은 게이트: 원격 push와 PR 생성, CI, 격리된 DEV/Preview에서 실제 쓰기 QA, 사용자 검수, merge 및 Production 배포는 각각 별도 승인과 실행이 필요하다.
-- OS 운영 기록: 로컬 환경 이전 원칙에 따라 Production OS DB/API에 기록하지 않았다. 이 완료 기록의 OS 동기화는 보류 상태다.
+- Pull request: [#42 지식 문서 작업공간 폴더 관리 UI 개선](https://github.com/brandyaction-ricky/OS/pull/42). 선행 로컬 개발환경/DEV·QA 게이트 PR #41의 브랜치를 기준으로 한 2커밋 stacked PR이다.
+- 원격 push: `origin/codex/knowledge-folder-management`에 push했다.
+- 배포 상태: Vercel Preview가 Ready 상태다. Preview URL은 `https://brandyaction-os-git-codex-knowledge-fold-a7a110-brandyaction-os.vercel.app/knowledge`이며 로그인 화면 로드를 확인했다. Production 배포는 수행하지 않았다.
+- 남은 게이트: DEV 인증 상태에서 실제 대량 폴더 이동 쓰기, 폴더 드래그 이동, 단일 bulk API, 사전 영향·충돌 확인, 진행률, 원자적 롤백·안전 재시도, 일괄 되돌리기, 독립 빈 폴더 CRUD, 모바일 실기기 QA가 남았다. PR #41 이후 #42 검토·병합과 Production 배포는 각각 별도 승인과 실행이 필요하다.
+- OS 운영 기록: 개발 관리의 폴더 전체 이동·일괄 경로 수정 접수에 1차 구현 범위, 검증 결과, PR #42, Preview URL, 커밋과 미구현 범위를 저장하고 상태를 `수정 중`으로 변경했다. 저장 결과를 화면에서 다시 읽어 확인했다.
