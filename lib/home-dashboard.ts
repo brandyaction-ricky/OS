@@ -34,6 +34,51 @@ export interface HomeVideo {
   updatedAt: string;
 }
 
+export interface DailyBriefItem { id: string; title: string; reason: string; href: string; record: OsRecord }
+export interface DailyBriefView {
+  priorities: DailyBriefItem[];
+  primary: DailyBriefItem | null;
+  firstAction: string;
+  delayed: DailyBriefItem[];
+  decisions: OsRecord[];
+}
+
+function seoulDate(now: Date) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+}
+
+function briefHref(record: OsRecord) {
+  if (record.record_type === "decision") return "/home/decisions";
+  if (record.record_type === "meeting") return "/organization/meetings";
+  if (record.record_type === "ai_job") return "/organization/agents";
+  return "/organization/tasks";
+}
+
+export function buildDailyBrief(records: OsRecord[], now = new Date()): DailyBriefView {
+  const today = seoulDate(now);
+  const tasks = records.filter((record) => record.record_type === "task" && !record.archived_at && !["done", "cancelled"].includes(record.status));
+  const scored = tasks.map((record) => {
+    const overdue = Boolean(record.due_date && record.due_date < today);
+    const dueToday = record.due_date === today;
+    const score = (record.status === "blocked" ? 100 : 0) + (overdue ? 80 : 0) + (dueToday ? 60 : 0)
+      + ({ urgent: 30, high: 20, normal: 10, low: 0 }[record.priority] ?? 0) + Math.min(record.progress, 99) / 100;
+    const reason = record.status === "blocked" ? `막힘 · ${record.description || "해결 근거 확인 필요"}`
+      : overdue ? `${record.due_date} 기한 경과` : dueToday ? "오늘 마감" : record.priority === "urgent" ? "긴급 우선순위" : "진행 중 업무";
+    return { id: record.id, title: record.title, reason, href: briefHref(record), record, score };
+  }).sort((a, b) => b.score - a.score || (a.record.due_date || "9999").localeCompare(b.record.due_date || "9999"));
+  const asBriefItem = (item: (typeof scored)[number]): DailyBriefItem => ({ id: item.id, title: item.title, reason: item.reason, href: item.href, record: item.record });
+  const priorities = scored.slice(0, 3).map(asBriefItem);
+  const primary = priorities[0] ?? null;
+  const firstAction = primary ? String(primary.record.metadata.firstAction || primary.record.description.split("\n").find(Boolean) || "업무 상세를 열어 다음 행동을 확인하세요.") : "등록된 진행 업무가 없습니다.";
+  return {
+    priorities,
+    primary,
+    firstAction,
+    delayed: scored.filter((item) => item.record.status === "blocked" || Boolean(item.record.due_date && item.record.due_date < today)).slice(0, 4).map(asBriefItem),
+    decisions: records.filter((record) => record.record_type === "decision" && !record.archived_at && ["open", "review"].includes(record.status)).sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 2),
+  };
+}
+
 export function attainmentPercent(record: OsRecord): number | null {
   const target = Number(record.metric_target);
   const current = Number(record.metric_current);

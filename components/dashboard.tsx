@@ -8,11 +8,13 @@ import {
   Film,
   Search,
   TrendingUp,
+  Play,
+  GitBranch,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { listDocuments, listRecords } from "@/lib/api-client";
-import { buildHomeRevenueView, groupHomeVideos, type RevenueBandValue } from "@/lib/home-dashboard";
+import { createRecord, listDocuments, listRecords } from "@/lib/api-client";
+import { buildDailyBrief, buildHomeRevenueView, groupHomeVideos, type RevenueBandValue } from "@/lib/home-dashboard";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { useSession } from "./session-provider";
@@ -47,6 +49,7 @@ function changeLabel(label: string, value: number | null) {
 const DASHBOARD_RECORD_TYPES = [
   "revenue", "goal", "kpi", "meeting", "task", "content_topic", "content_script",
   "content_package", "content_short", "content_publish",
+  "decision", "ai_job", "project",
 ] as const;
 
 export function Dashboard() {
@@ -54,6 +57,7 @@ export function Dashboard() {
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [error, setError] = useState("");
+  const [starting, setStarting] = useState("");
   useEffect(() => {
     if (demo) return;
     Promise.all([
@@ -113,8 +117,17 @@ export function Dashboard() {
       }));
     const issues = [...taskIssues, ...meetingIssues].slice(0, 8);
     const videos = groupHomeVideos(records);
-    return { revenue, issues, videos, nextMeeting };
+    return { revenue, issues, videos, nextMeeting, brief: buildDailyBrief(records) };
   }, [records]);
+  async function startWork(task: OsRecord) {
+    const existing = records.find((item) => item.record_type === "ai_job" && item.metadata.sourceTaskId === task.id && !["done", "cancelled"].includes(item.status));
+    if (existing) { window.location.assign("/organization/agents"); return; }
+    setStarting(task.id);
+    try {
+      await createRecord(accessToken, { recordType: "ai_job", title: `[업무 시작] ${task.title}`, description: task.description || "Daily Brief에서 시작한 업무입니다.", status: "backlog", priority: task.priority, parentId: task.parent_id || task.id, metadata: { kind: "daily_brief", sourceTaskId: task.id, sourceVersion: task.version, startedFrom: "/home" }, tags: [...new Set([...task.tags, "Daily Brief"])] });
+      window.location.assign("/organization/agents");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "업무를 시작하지 못했습니다."); setStarting(""); }
+  }
   const revenueCard = (
     title: string,
     value: RevenueBandValue,
@@ -159,6 +172,15 @@ export function Dashboard() {
           {error}
         </div>
       ) : null}
+      <section className="panel daily-brief">
+        <div className="panel-header"><div><h2>오늘의 Daily Brief</h2><p>현재 OS 기록만 사용한 업무 시작 요약</p></div><span className="count-badge">핵심 {view.brief.priorities.length}개</span></div>
+        <div className="daily-brief-grid">
+          <article className="daily-primary"><small>가장 중요한 1개</small><h3>{view.brief.primary?.title || "진행 업무 없음"}</h3><p>{view.brief.primary?.reason || "새 업무가 등록되면 여기에 표시됩니다."}</p><strong>첫 행동</strong><p>{view.brief.firstAction}</p>{view.brief.primary ? <button className="primary-button" disabled={starting === view.brief.primary.id} onClick={() => void startWork(view.brief.primary!.record)}><Play size={14}/>{starting ? "연결 중" : "업무 시작"}</button> : null}</article>
+          <article><small>오늘 핵심 업무</small><ol>{view.brief.priorities.map((item) => <li key={item.id}><Link href={item.href}><strong>{item.title}</strong><span>{item.reason}</span></Link></li>)}</ol></article>
+          <article><small>지연·막힘 근거</small>{view.brief.delayed.length ? <ul>{view.brief.delayed.map((item) => <li key={item.id}><Link href={item.href}>{item.title}<span>{item.reason}</span></Link></li>)}</ul> : <p className="daily-clear">확인된 지연 업무가 없습니다.</p>}</article>
+          <article><small>지금 결정할 질문</small>{view.brief.decisions.length ? <ul>{view.brief.decisions.map((item) => <li key={item.id}><Link href="/home/decisions"><GitBranch size={13}/>{item.title}<span>의사결정에서 답변</span></Link></li>)}</ul> : <p className="daily-clear">대기 중인 결정이 없습니다.</p>}</article>
+        </div>
+      </section>
       <section className="revenue-band">
         {revenueCard("이번 달 통합 순매출", view.revenue.total, true)}
         {revenueCard("마이인", view.revenue.myin)}

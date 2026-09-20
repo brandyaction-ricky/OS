@@ -188,6 +188,8 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; bor
 .status-pill.status-review { color: var(--warning); background: var(--danger-soft); }
 .status-pill.status-reviewed { color: var(--accent-2); background: var(--accent-soft); }
 .count-badge, .build-progress { padding: 3px 8px; border-radius: 99px; color: var(--accent-2); background: var(--accent-soft); font-size: 10px; font-weight: 750; }
+.daily-brief{margin-bottom:14px}.daily-brief-grid{padding:14px;display:grid;grid-template-columns:1.15fr repeat(3,minmax(0,1fr));gap:10px}.daily-brief-grid>article{min-width:0;padding:14px;border:1px solid var(--line-soft);border-radius:10px;background:var(--panel-2)}.daily-brief-grid small{display:block;margin-bottom:8px;color:var(--muted);font-weight:700}.daily-primary h3{margin:0 0 5px;font-size:16px}.daily-primary p{margin:3px 0 10px;color:var(--text-2);font-size:11px;line-height:1.5}.daily-primary>strong{font-size:10px;color:var(--accent-2)}.daily-brief ol,.daily-brief ul{margin:0;padding:0;list-style:none}.daily-brief li+li{border-top:1px solid var(--line-soft)}.daily-brief li a{padding:8px 0;display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:11px}.daily-brief li strong{width:100%}.daily-brief li span{width:100%;color:var(--muted);font-size:9px}.daily-clear{color:var(--muted);font-size:11px}
+@media(max-width:1100px){.daily-brief-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.daily-brief-grid{grid-template-columns:1fr}}
 .decision-list { padding: 8px; }
 .decision-list > a { min-height: 59px; padding: 9px; display: flex; align-items: center; gap: 10px; border-radius: 9px; }
 .decision-list > a:hover { background: var(--panel-2); }

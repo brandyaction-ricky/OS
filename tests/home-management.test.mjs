@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { attainmentPercent, averageAttainment, buildHomeRevenueView, groupHomeVideos } from "../lib/home-dashboard.ts";
+import { attainmentPercent, averageAttainment, buildDailyBrief, buildHomeRevenueView, groupHomeVideos } from "../lib/home-dashboard.ts";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 const record = (input = {}) => ({
@@ -57,6 +57,22 @@ test("home video grouping returns one row per content lineage", () => {
   ]);
   assert.equal(videos.length, 2);
   assert.equal(videos.find((item) => item.title === "같은 영상")?.stage, "발행 키트");
+});
+
+test("daily brief ranks blocked and overdue work and keeps decisions bounded", () => {
+  const brief = buildDailyBrief([
+    record({ record_type: "task", title: "일반 업무", priority: "normal", due_date: "2026-09-21" }),
+    record({ record_type: "task", title: "막힌 업무", status: "blocked", priority: "high", description: "승인 필요" }),
+    record({ record_type: "task", title: "기한 경과", due_date: "2026-09-19", priority: "urgent" }),
+    record({ record_type: "decision", title: "결정 1", status: "review" }),
+    record({ record_type: "decision", title: "결정 2", status: "open" }),
+    record({ record_type: "decision", title: "결정 3", status: "open", updated_at: "2026-07-01T00:00:00.000Z" }),
+  ], new Date("2026-09-20T03:00:00.000Z"));
+  assert.equal(brief.priorities[0].title, "막힌 업무");
+  assert.equal(brief.priorities.length, 3);
+  assert.equal(brief.delayed.length, 2);
+  assert.equal(brief.decisions.length, 2);
+  assert.match(brief.firstAction, /승인 필요/);
 });
 
 test("goals and monthly reports share measured-only attainment", async () => {
