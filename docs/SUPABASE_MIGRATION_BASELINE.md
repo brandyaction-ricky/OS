@@ -1,12 +1,12 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-17 Asia/Seoul.
+Updated: 2026-09-20 Asia/Seoul.
 
 ## Decision
 
-The active chain was applied to the isolated `brandyaction-os-dev` project only. Do not apply it to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus three forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, and one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The first four migrations in the active chain were applied to the isolated `brandyaction-os-dev` project only. Do not apply them to Production. `supabase/migrations` now contains the locally validated, schema-only snapshot of the current Production `public` schema plus four forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires, and one pending migration expands agent editing to allowed document statuses and adds an audited trash-restore RPC. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The user approved DEV application on 2026-09-17. The four active migrations were applied without seeds or Vault changes, and the manifest now records `applied_dev` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize Production migration, seed, reset, history repair, schema change, or Production data copy.
+The user approved DEV application of the original four migrations on 2026-09-17. They were applied without seeds or Vault changes. The fifth migration added on 2026-09-20 has not been applied to DEV or Production, so the manifest records `pending_review` / `hold`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` stays false until a separately approved DEV application. This does not authorize Production migration, seed, reset, history repair, schema change, or Production data copy.
 
 ## Current tooling state
 
@@ -21,7 +21,7 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Evidence
 
-- The active migration chain contains the CLI-generated `core_baseline` snapshot and three CLI-generated forward migrations. Their checksums are pinned in the manifest. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and four forward migrations. Their checksums are pinned in the manifest. The first four active migrations are present in DEV; the fifth remains unapplied. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
 - Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
 - Production currently has the core OS schema. DEV now records all four active migration versions and contains 34 public tables, 40 public policies, 11 reviewed triggers, and the restored Auth profile trigger.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
@@ -54,7 +54,8 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 - [x] Rebuild the original three-migration chain from zero after explicit approval to discard the prior local database.
 - [x] After explicit DEV approval, change the manifest to `ready`/`apply` and pass `npm run db:migrations:ready`.
 - [x] Apply all four active migrations only to the isolated DEV project without seed/Vault changes and record remote verification.
-- [ ] Repeat a destructive local zero-state reset for the complete four-migration chain only after separate approval; incremental local application and the 23-case suite already pass.
+- [ ] Review and apply the fifth agent edit/restore migration to DEV only after separate approval, then rerun connected authorization tests.
+- [ ] Repeat a destructive local zero-state reset for the complete five-migration chain only after separate approval; the original four-migration chain and 23-case suite already pass.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 

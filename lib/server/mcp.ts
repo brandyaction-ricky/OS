@@ -81,6 +81,22 @@ export const MCP_TOOLS = [
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: "restore_document",
+    description: "휴지통 문서를 원래 상태로 복원합니다. confirm=true와 현재 버전이 반드시 필요하며 감사 기록을 남깁니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        document_id: { type: "string", format: "uuid" },
+        expected_version: { type: "integer", minimum: 1 },
+        confirm: { type: "boolean" },
+        reason: { type: "string", minLength: 1 },
+      },
+      required: ["document_id", "expected_version", "confirm", "reason"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
     name: "list_records",
     description: "업무·목표·회의·콘텐츠·성과·경영지원 등 OS 운영 기록을 유형별로 조회합니다.",
     inputSchema: { type: "object", properties: { record_type: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 }, offset: { type: "integer", minimum: 0 } }, additionalProperties: false },
@@ -217,6 +233,13 @@ const deleteArgs = z.object({
   reason: z.string().trim().max(500).optional().default("원격 MCP 에이전트 휴지통 이동"),
 }).strict();
 
+const restoreDocumentArgs = z.object({
+  document_id: documentId,
+  expected_version: z.number().int().positive(),
+  confirm: z.literal(true),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
 const listRecordArgs = z.object({
   record_type: z.string().trim().optional(), limit: z.number().int().min(1).max(200).optional().default(100), offset: z.number().int().min(0).optional().default(0),
 }).strict();
@@ -337,6 +360,19 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     const input = deleteArgs.parse(args);
     const query = new URLSearchParams({ organizationId, documentId: input.document_id, reason: input.reason });
     return fetchApi(`/api/v1/knowledge-documents?${query}`, { method: "DELETE" });
+  }
+  if (request.name === "restore_document") {
+    const input = restoreDocumentArgs.parse(args);
+    return fetchApi("/api/v1/knowledge-documents", {
+      method: "PUT",
+      body: JSON.stringify({
+        organizationId,
+        documentId: input.document_id,
+        expectedVersion: input.expected_version,
+        confirm: input.confirm,
+        reason: input.reason,
+      }),
+    });
   }
   if (request.name === "list_records") {
     const input = listRecordArgs.parse(args);

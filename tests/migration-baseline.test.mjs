@@ -7,12 +7,12 @@ import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 test("the reviewed active chain is isolated from frozen legacy migrations", async () => {
   const result = await inspectMigrationBaseline();
 
-  assert.equal(result.status, "applied_dev");
-  assert.equal(result.decision, "applied");
+  assert.equal(result.status, "pending_review");
+  assert.equal(result.decision, "hold");
   assert.equal(result.integrityValid, true);
   assert.equal(result.readyToApply, false);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 4);
+  assert.equal(result.activeMigrationCount, 5);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "observedAt": "2026-09-17",
-  "status": "applied_dev",
-  "decision": "applied",
+  "status": "pending_review",
+  "decision": "hold",
   "approval": {
     "environment": "development",
     "approvedAt": "2026-09-17",
@@ -136,6 +136,11 @@
       "file": "20260917112037_restrict_security_definer_execution.sql",
       "sha256": "b3ffab4b84b775bf99cbd59174fefb840ebd62162a91e1e560c9e8ff3e9060ac",
       "purpose": "remove platform-default direct execution of privileged functions and explicitly allow only required authenticated entry points"
+    },
+    {
+      "file": "20260920033000_agent_document_restore.sql",
+      "sha256": "7e3c7d4b780729d5fd6c298186d0c4f4954056c92b5c99b09268279bcc25a14b",
+      "purpose": "expand agent document edits to key-allowed statuses and add version-checked audited trash restore"
     }
   ],
   "legacyMigrations": [

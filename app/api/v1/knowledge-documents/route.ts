@@ -36,6 +36,13 @@ const updateSchema = z.object({
 }).refine((input) => [input.title, input.contentMd, input.folder, input.brand, input.team, input.tags].some((value) => value !== undefined), {
   message: "수정할 필드가 필요합니다.",
 });
+const restoreSchema = z.object({
+  organizationId,
+  documentId: z.string().uuid(),
+  expectedVersion: z.number().int().positive(),
+  confirm: z.literal(true),
+  reason: z.string().trim().min(1).max(500),
+});
 
 function rpcRow<T>(data: T | T[] | null): T | null {
   return Array.isArray(data) ? data[0] ?? null : data;
@@ -70,8 +77,7 @@ export async function GET(request: Request) {
     const { data, error } = await createServiceSupabase().from("os_documents").select("*").eq("id", documentId).single();
     if (error || !data) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     if (actor.type === "agent") {
-      const ownsDocument = data.owner_id === actor.ownerId;
-      if (!actor.allowedStatuses.includes(data.status) || (data.status !== "canonical" && !ownsDocument)) {
+      if (!actor.allowedStatuses.includes(data.status)) {
         throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 문서를 열 수 없습니다.");
       }
     }
@@ -224,6 +230,30 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: true, permanent: false, documentId, document });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT_QUERY", "조직 ID와 문서 ID를 확인해 주세요.", error.flatten()));
+    return apiErrorResponse(error);
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "knowledge.write" });
+    requireAgentScope(actor, "knowledge.write");
+    const input = restoreSchema.parse(await parseJson(request));
+    await assertOrganization(actor, input.organizationId);
+    if (actor.type !== "agent") throw new ApiError(403, "AGENT_REQUIRED", "AI 접근 키로 요청해 주세요.");
+    const { data, error } = await createServiceSupabase().rpc("os_agent_restore_document", {
+      p_agent_key_id: actor.id,
+      p_organization_id: input.organizationId,
+      p_document_id: input.documentId,
+      p_expected_version: input.expectedVersion,
+      p_reason: input.reason,
+    });
+    const document = rpcRow(data) as KnowledgeDocument | null;
+    if (error || !document) throw writeError(error, "DOCUMENT_RESTORE_FAILED", "문서를 휴지통에서 복원하지 못했습니다.");
+    const indexing = await enqueueIndex(document.id);
+    return NextResponse.json({ restored: true, documentId: document.id, document, indexing });
+  } catch (error) {
+    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT_RESTORE", "복원할 문서와 확인값을 확인해 주세요.", error.flatten()));
     return apiErrorResponse(error);
   }
 }
