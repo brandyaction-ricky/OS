@@ -10,3 +10,8 @@ test("유튜브 공개 문안의 금칙어를 일상어로 치환한다", () => 
 test("발행 키트의 배열과 중첩 문안도 모두 필터링한다", () => {
   assert.deepEqual(sanitizePublicCopyValue({ tags: ["갤럽강점", "커리어"], post: { body: "StrengthsFinder 활용" } }), { tags: ["강점", "커리어"], post: { body: "강점 활용" } });
 });
+
+test("발행 키트에서 내부 제작 절차 용어를 제거한다", () => {
+  const result = sanitizePublicCopyValue({ description: "contents-script GATE 0 보이스 앵커 캘리브레이션 통념 채집" });
+  assert.doesNotMatch(JSON.stringify(result), /contents-script|GATE 0|보이스 앵커 캘리브레이션|통념 채집/i);
+});

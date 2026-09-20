@@ -174,7 +174,7 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
   const title = action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : action === "topic_plan" ? `${source.title} · 기획 브리핑` : `${source.title} · 제목·썸네일 후보`;
   const { data, error } = await actor.supabase.from("os_records").insert({
     ...base, record_type: recordType, title, description: String(result.summary ?? "정본 기준으로 생성된 패키지입니다."), status: "review", priority: "normal",
-    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { ...generationMetadata, packageKind: action, result, finalApprovalRequired: true, ...(action === "youtube_kit" ? { rulesVersion: 3, generatedAt: new Date().toISOString() } : {}) }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
+    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { ...generationMetadata, packageKind: action, result, finalApprovalRequired: true, ...(action === "youtube_kit" ? { rulesVersion: 4, generatedAt: new Date().toISOString() } : {}) }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
   }).select("*").single();
   if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "콘텐츠 패키지를 저장하지 못했습니다.", error.message); return [data];
 }

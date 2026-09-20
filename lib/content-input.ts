@@ -61,15 +61,44 @@ export function validateClipRanges(clips: unknown, cues: TimedCue[]) {
     && cues.some((cue) => cue.start < clip.end && cue.end > clip.start));
 }
 
+const CTA_URL = /https?:\/\/(?:www\.)?(?:brandyaction\.com\/diagnosis|channel\.io\/lounge[^\s]*)/gi;
+
+function normalizedTag(value: string) {
+  return value.replace(/^#+/, "").trim().toLocaleLowerCase("ko-KR");
+}
+
+/** Keep the upload fields internally consistent after both AI generation and manual edits. */
+export function normalizeYoutubeKitCopy(result: Record<string, unknown>) {
+  const tags = [...new Map((Array.isArray(result.tags) ? result.tags : [])
+    .map(String)
+    .map((tag) => [normalizedTag(tag), tag.replace(/^#+/, "").trim()] as const)
+    .filter(([key]) => Boolean(key))).values()];
+  const duplicateTags = new Set(tags.map(normalizedTag));
+  const publicFields = ["description", "pinnedComment", "kakao", "cafe", "post"] as const;
+  const fields = Object.fromEntries(publicFields.map((key) => [key, String(result[key] ?? "")])) as Record<(typeof publicFields)[number], string>;
+  const canonicalCta = fields.description.match(CTA_URL)?.[0]
+    ?? publicFields.flatMap((key) => fields[key].match(CTA_URL) ?? [])[0]
+    ?? "";
+  for (const key of publicFields) {
+    if (canonicalCta) fields[key] = fields[key].replace(CTA_URL, canonicalCta);
+  }
+  fields.description = fields.description
+    .replace(/(^|\s)#([^\s#]+)/g, (match, prefix, tag) => duplicateTags.has(normalizedTag(tag)) ? prefix : match)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { ...result, ...fields, tags };
+}
+
 export function assembleYoutubeKit(result: Record<string, unknown>, cues: TimedCue[]) {
-  const tags = [...new Set((Array.isArray(result.tags) ? result.tags : []).map(String).map((tag) => tag.replace(/^#+/, "").trim()).filter(Boolean))];
-  const chapters = (Array.isArray(result.chapters) ? result.chapters : []).map(String);
+  const normalized: Record<string, unknown> = normalizeYoutubeKitCopy(result);
+  const chapters = (Array.isArray(normalized.chapters) ? normalized.chapters : []).map(String);
   const times = chapters.map((line) => timestampSeconds(line.match(/^([\d:]+)\s+/)?.[1] ?? ""));
   const valid = cues.length > 0 && chapters.length >= 3 && times[0] === 0 && times.every((time, index) => time !== null && (index === 0 || time > (times[index - 1] ?? Infinity))
     && time <= cues.at(-1)!.end && (time === 0 || cues.some((cue) => Math.abs(cue.start - time) < 1)));
   const safeChapters = valid ? chapters : [];
-  const description = String(result.description ?? "").replace(/(?:^|\n)(?:\d{1,2}:)?\d{1,2}:\d{2}[^\n]*/g, "").trim();
-  const checklist = [...(Array.isArray(result.checklist) ? result.checklist.map(String) : [])];
+  const description = String(normalized.description ?? "").replace(/(?:^|\n)(?:\d{1,2}:)?\d{1,2}:\d{2}[^\n]*/g, "").trim();
+  const checklist = [...(Array.isArray(normalized.checklist) ? normalized.checklist.map(String) : [])];
   if (!valid) checklist.unshift("실제 영상의 챕터 시각을 확인하고 00:00부터 3개 이상 입력");
-  return { ...result, tags, chapters: safeChapters, description: safeChapters.length ? `${description}\n\n타임스탬프\n${safeChapters.join("\n")}` : description, checklist, chapterTimingVerified: valid };
+  return { ...normalized, chapters: safeChapters, description: safeChapters.length ? `${description}\n\n타임스탬프\n${safeChapters.join("\n")}` : description, checklist, chapterTimingVerified: valid };
 }

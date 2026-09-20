@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assembleYoutubeKit, contentSourceText, parseTimedTranscript, selectChannelProcedures, timestampSeconds, validateClipRanges } from '../lib/content-input.ts';
+import { assembleYoutubeKit, contentSourceText, normalizeYoutubeKitCopy, parseTimedTranscript, selectChannelProcedures, timestampSeconds, validateClipRanges } from '../lib/content-input.ts';
 import { dedupeMetricSnapshots, metricValue, summarizeMetrics, fixedWeek } from '../lib/content-metrics.ts';
 import { buildKnowledgeGraph, resolveWikiLink } from '../lib/knowledge-links.ts';
 import { outlierBaseline } from '../lib/youtube-outliers.ts';
@@ -36,6 +36,19 @@ test('YouTube kits include grounded chapters once and do not invent timings', ()
   const invalid = assembleYoutubeKit({ chapters: ['00:00 A', '00:00 B', '00:00 C'] }, parseTimedTranscript(srt));
   assert.deepEqual(invalid.chapters, []); assert.equal(invalid.chapterTimingVerified, false);
   assert.deepEqual(assembleYoutubeKit(result, []).chapters, []);
+});
+
+test('YouTube kits use one CTA and do not repeat upload tags in the description', () => {
+  const result = normalizeYoutubeKitCopy({
+    description: '설명 #마이인 #진단\nhttps://brandyaction.com/diagnosis',
+    tags: ['#마이인', '마이인', '진단'],
+    pinnedComment: '문의 https://channel.io/lounge/abc',
+    kakao: '확인 https://channel.io/lounge/abc',
+  });
+  assert.deepEqual(result.tags, ['마이인', '진단']);
+  assert.doesNotMatch(result.description, /#마이인|#진단/);
+  assert.match(result.pinnedComment, /https:\/\/brandyaction\.com\/diagnosis/);
+  assert.match(result.kakao, /https:\/\/brandyaction\.com\/diagnosis/);
 });
 test('wiki resolution follows original filename, aliases, headings and folder disambiguation', () => {
   const documents = [{ id: 'a', title: 'Heading', source_ref: 'One/File.md', folder: 'One', status: 'draft' }, { id: 'b', title: 'Heading', source_ref: 'Two/File.md', folder: 'Two', status: 'draft' }];
