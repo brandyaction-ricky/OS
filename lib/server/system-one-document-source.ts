@@ -151,6 +151,16 @@ export async function loadSystemOneDocumentBundle(
   return readBundle(parsed.data, dependencies);
 }
 
+// Internal bootstrap for a server-selected registry. Public document preflight
+// keeps its existing requirement for at least one criterion.
+export async function loadSystemOneRegistryHead(
+  reference: unknown, dependencies: SystemOneDocumentDependencies,
+): Promise<SystemOneDocumentResult> {
+  const parsed = referenceSchema.safeParse(reference);
+  if (!parsed.success) return stop("invalid_input");
+  return readBundle({ source: parsed.data, criteria: [] }, dependencies);
+}
+
 export async function recheckSystemOneDocumentBundle(
   previous: SystemOneDocumentBundle, dependencies: SystemOneDocumentDependencies,
 ): Promise<SystemOneDocumentResult> {
