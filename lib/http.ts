@@ -7,6 +7,7 @@ export class ApiError extends Error {
     public code: string,
     message: string,
     public details?: unknown,
+    public headers?: HeadersInit,
   ) {
     super(message);
   }
@@ -23,7 +24,7 @@ export function apiErrorResponse(error: unknown) {
   if (error instanceof ApiError) {
     return NextResponse.json<ApiErrorBody>(
       { error: { code: error.code, message: error.message, details: error.details } },
-      { status: error.status },
+      { status: error.status, headers: error.headers },
     );
   }
 
