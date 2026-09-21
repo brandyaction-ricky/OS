@@ -17,7 +17,7 @@ const rowSchema = z.object({
 }).strict();
 type Selection = z.infer<typeof selectionSchema>;
 type Head = Readonly<{
-  kind: "content_topic"; id: string; version: number; fingerprint: string;
+  kind: "content_topic"; id: string; version: number; brand: string; fingerprint: string;
   principalId: string; checkedAt: string; policyStatus: "unverified";
   judgment: null; executionAllowed: false;
 }>;
@@ -61,7 +61,7 @@ async function read(selection: Selection, deps: SystemOneContentDependencies, pr
     checkedAt = (deps.now?.() ?? new Date()).toISOString();
   } catch { return stop("invalid_metadata"); }
   if (previous && previous.fingerprint !== fingerprint) return stop("stale");
-  const head: Head = Object.freeze({ kind: "content_topic", id: row.id, version: row.version, fingerprint,
+  const head: Head = Object.freeze({ kind: "content_topic", id: row.id, version: row.version, brand: row.brand, fingerprint,
     principalId: principal.id, checkedAt, policyStatus: "unverified", judgment: null, executionAllowed: false });
   issued.set(head, selection);
   return { status: "ready", head };

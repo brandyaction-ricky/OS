@@ -27,6 +27,7 @@ import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace"
 import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
+import { canUseSystemOnePreflight } from "@/lib/system-one-preflight-gate";
 
 export default async function GenericPage({ params }: { params: Promise<{ stage: string; page: string }> }) {
   const resolved = await params;
@@ -44,7 +45,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/leave") return <LeaveWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
-  if (href === "/content/topics") return <ContentTopicsWorkspace />;
+  if (href === "/content/topics") return <ContentTopicsWorkspace showReferenceCheck={canUseSystemOnePreflight(process.env)} />;
   if (href === "/content/scripts") return <ContentScriptsWorkspace />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
