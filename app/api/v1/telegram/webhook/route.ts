@@ -225,7 +225,11 @@ export async function POST(request: Request) {
     const evidenceQuery = evidenceQueryText(text);
     const verifiedResults = results.filter((result) => hasLexicalEvidence(result, evidenceQuery));
     const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults) : "";
-    const answer = [liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
+    // A bare topic word (e.g. "콘텐츠") should not force an unrelated live
+    // operations listing into a question that grounded company knowledge
+    // already answers. Only surface the operations listing when no verified
+    // document evidence was found for the actual question.
+    const answer = [verifiedResults.length ? "" : liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
     await sendTelegram(message.chat.id, answer, message.message_id);
     await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: text, answer, source_document_ids: [...new Set(verifiedResults.map((result) => result.documentId))] });
     return NextResponse.json({ ok: true });

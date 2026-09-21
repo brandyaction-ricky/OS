@@ -170,3 +170,23 @@ test("a labelled question keeps knowledge that has literal evidence", async () =
   const turn = ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload;
   assert.equal(turn.source_document_ids[0], "related-doc");
 });
+
+test("a bare topic keyword does not inject an unrelated live-operations listing when grounded knowledge already answers the question", async () => {
+  const related = { documentId: "cadence-doc", title: "현재기준", heading: "케이던스", text: "하한: 주 2편. 콘텐츠 편성 최소 기준은 이 값을 따른다", citation: { version: 1, chunkId: 5 }, score: 0.4 };
+  const ctx = await setup("webhook", (q) => q.table === "os_records"
+    ? { data: [{ title: "다른 콘텐츠", status: "제작", stage: "", brand: "", team: "", due_date: null, progress: 0, updated_at: "2026-09-01" }], error: null }
+    : normalHandler(q), { searchResults: [related] });
+  const body = await (await ctx.api.POST(incoming({ text: "콘텐츠 편성 하한이 주 몇 편이야?" }))).json();
+  assert.equal(body.ok, true);
+  assert.match(ctx.sent[0].text, /근거 답변/);
+  assert.doesNotMatch(ctx.sent[0].text, /브랜디 OS의 최신/);
+});
+
+test("a bare topic keyword still surfaces the live-operations listing when no grounded knowledge answers the question", async () => {
+  const ctx = await setup("webhook", (q) => q.table === "os_records"
+    ? { data: [{ title: "사무직의 종말", status: "제작", stage: "", brand: "", team: "", due_date: null, progress: 0, updated_at: "2026-09-01" }], error: null }
+    : normalHandler(q), { searchResults: [] });
+  const body = await (await ctx.api.POST(incoming({ text: "지금 진행 중인 콘텐츠 무엇있어?" }))).json();
+  assert.equal(body.ok, true);
+  assert.match(ctx.sent[0].text, /브랜디 OS의 최신 콘텐츠입니다/);
+});
