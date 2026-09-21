@@ -22,6 +22,9 @@ const registryModule = await compile("../lib/server/system-one-registry.ts", { z
 const planning = await compile("../lib/server/system-one-planning.ts", { zod: { z },
   "@/lib/server/system-one-document-source": documents, "@/lib/server/system-one-content-source": content,
   "@/lib/server/system-one-registry": registryModule });
+const stages = await compile("../lib/server/system-one-stage-references.ts", { zod: { z },
+  "@/lib/server/system-one-document-source": documents, "@/lib/server/system-one-content-source": content,
+  "@/lib/server/system-one-registry": registryModule });
 const bundle = await compile("../lib/server/system-one-content-bundle.ts", { zod: { z }, "node:crypto": { createHash },
   "@/lib/server/system-one-content-source": content, "@/lib/server/system-one-document-source": documents,
   "@/lib/server/system-one-packaging-source": packaging });
@@ -154,6 +157,44 @@ function linkedHarness(count = 1) {
   }
   return h;
 }
+
+function stageHarness(stage = "packaging") {
+  const h = harness();
+  h.state.rows[0].content_md = h.state.rows[0].content_md.replace("youtube.planning", `youtube.${stage}`);
+  h.state.rows[0].content_hash = md5(h.state.rows[0].content_md);
+  return { ...h, input: { ...h.input, stage } };
+}
+for (const stage of ["packaging", "writing"]) test(`${stage} resolves only its entry document and never grants approval`, async () => {
+  const h = stageHarness(stage); const result = await stages.readStageReferences(h.input, h.registry, h.deps);
+  assert.equal(result.status, "ready"); assert.equal(result.entryDocument.role, `youtube.${stage}`);
+  assert.equal(result.entryDocument.id, id(3)); assert.equal(result.dependenciesStatus, "unresolved");
+  assert.equal(result.approvalStatus, "unverified"); assert.equal(result.policyStatus, "unverified");
+  assert.equal(result.judgment, null); assert.equal(result.executionAllowed, false);
+  assert.equal(JSON.stringify(result).includes("content_md"), false);
+  assert.equal(JSON.stringify(result).includes("owner_id"), false);
+});
+test("stage routing rejects unknown stages and browser-supplied document overrides before reads", async () => {
+  for (const extra of [{ stage: "publish" }, { documentId: id(4) }, { roles: ["synthetic.context"] }]) {
+    const h = stageHarness(); const result = await stages.readStageReferences({ ...h.input, ...extra }, h.registry, h.deps);
+    assert.equal(result.code, "invalid_input"); assert.equal(h.state.reads, 0);
+  }
+});
+for (const [name, mutate, expected] of [
+  ["missing role", h => { h.input.stage = "writing"; }, "missing_role"],
+  ["other brand", h => { h.state.topic.brand = "Synthetic other"; }, "unsupported_context"],
+  ["non-owner", h => { h.state.topic.owner_id = id(99); }, "unavailable"],
+  ["draft policy", h => { h.state.rows[1].status = "draft"; }, "approval_required"],
+  ["source changed during read", h => { h.state.onRead = () => { h.state.topic.description = "Changed"; }; }, "stale"],
+]) test(`stage lookup stops on ${name}`, async () => {
+  const h = stageHarness(); mutate(h);
+  const result = await stages.readStageReferences(h.input, h.registry, h.deps);
+  assert.equal(result.code, expected); assert.equal(JSON.stringify(result).includes("Synthetic reference"), false);
+});
+test("stage lookup rejects document mutation during final recheck", async () => {
+  const h = stageHarness();
+  h.state.onRead = () => { if (h.state.reads === 4) { h.state.rows[1].content_md = "Changed"; h.state.rows[1].content_hash = md5("Changed"); } };
+  assert.equal((await stages.readStageReferences(h.input, h.registry, h.deps)).code, "stale");
+});
 test("explicit linked drafts join the review bundle without becoming canonical policies", async () => {
   const h = linkedHarness(); const result = await review.readReviewContext(h.input, h.registry, h.deps, "session");
   assert.equal(result.status, "ready"); assert.equal(result.linkedDocuments[0].title, "Synthetic linked 0");
