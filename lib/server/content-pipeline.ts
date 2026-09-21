@@ -9,7 +9,10 @@ import { executeGeneration, generationProcedureRevision, generationSchema } from
 function digest(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function sourceInput(source: OsRecord) {
   return { title: source.title, description: source.description, sourceUrl: source.source_url,
-    audience: source.metadata.audience, evidence: source.metadata.evidence, experience: source.metadata.experience, coreMessage: source.metadata.coreMessage };
+    audience: source.metadata.audience, evidence: source.metadata.evidence, experience: source.metadata.experience, coreMessage: source.metadata.coreMessage,
+    // Optional for legacy sources. Changed production context must not reuse a
+    // prior pipeline approval; the last-change note also covers switching back.
+    ...(source.metadata.planningHandoff !== undefined ? { planningHandoff: source.metadata.planningHandoff, productionFormatChange: source.metadata.productionFormatChange } : {}) };
 }
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {

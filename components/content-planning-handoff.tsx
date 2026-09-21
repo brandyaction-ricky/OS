@@ -4,21 +4,24 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import "./content-planning-handoff.css";
 import { apiRequest, updateRecord } from "@/lib/api-client";
-import { contentApproaches, handoffFields, planningHandoffUpdate, productionFormats, readPlanningHandoff } from "@/lib/content-planning-handoff";
+import { contentApproaches, handoffFields, planningHandoffUpdate, productionFormats, readPlanningHandoff, readProductionFormatChange } from "@/lib/content-planning-handoff";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPackagingEvidence } from "./content-packaging-evidence";
 
-export function ContentPlanningHandoff({ source, onSaved, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; disabled?: boolean }) {
+export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; onCancel?: () => void; disabled?: boolean }) {
   const { accessToken, demo } = useSession();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [selectedFormat, setSelectedFormat] = useState(readPlanningHandoff(source.metadata.planningHandoff)?.productionFormat ?? "undecided");
   const active = useRef(true);
   const saving = useRef(false);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const handoff = readPlanningHandoff(source.metadata.planningHandoff);
   const invalid = source.metadata.planningHandoff != null && !handoff;
   const editable = Boolean(onSaved);
+  const lastFormatChange = readProductionFormatChange(source);
+  const formatChanged = handoff && selectedFormat !== handoff.productionFormat;
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!onSaved || !accessToken || demo || disabled || invalid || saving.current) return;
@@ -36,12 +39,16 @@ export function ContentPlanningHandoff({ source, onSaved, disabled = false }: { 
     <div className="panel-header"><div><h3>기획에서 제작으로 인계</h3><p>{source.title} · 주제 v{source.version} · DEV 검수용</p></div></div>
     <p>주제·방향 → 제목·썸네일 → 자료·축·설계 → 형식에 맞는 집필 → 검수 → 전달 범위 결정</p>
     <p>아래 내용은 작업 메모입니다. 저장은 패키징 승인·집필 시작 허가·공유 실행이 아닙니다. 단계별 완료 조건은 OS 정본으로 별도 확인합니다.</p>
+    <p>제작 형식은 현재 선택이며 제작 중에도 바꿀 수 있습니다. 형식을 바꿔도 기존 원고·자료·선택 기록은 삭제하거나 자동 재생성하지 않습니다.</p>
+    {lastFormatChange ? <p className="inline-alert warning">최근 형식 변경: {productionFormats[lastFormatChange.from]} → {productionFormats[lastFormatChange.to]} (주제 v{lastFormatChange.sourceVersion}에서 변경). 이전 형식으로 준비한 설계·원고·편집 지시의 적합성을 다시 확인해 주세요. 승인 이력은 보존하며, 기존 제작 공정에서는 변경된 입력에 대한 재승인이 필요합니다. 이 표시는 재검토 완료가 아닙니다.</p> : null}
     {invalid ? <p className="inline-alert danger" role="alert">인계 메모 형식을 확인할 수 없습니다. 기존 내용을 덮어쓰지 않습니다.</p> : editable ? <form className="research-brief" onSubmit={save}>
       <fieldset className="planning-handoff-fields" disabled={busy || disabled || demo || !accessToken}>
-        <div className="form-grid"><label><span>제작 형식</span><select name="productionFormat" defaultValue={handoff?.productionFormat ?? "undecided"}>{Object.entries(productionFormats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+        <div className="form-grid"><label><span>제작 형식</span><select name="productionFormat" value={selectedFormat} onChange={(event) => setSelectedFormat(event.target.value as typeof selectedFormat)}>{Object.entries(productionFormats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
           <label><span>콘텐츠 접근</span><select name="contentApproach" defaultValue={handoff?.contentApproach ?? "undecided"}>{Object.entries(contentApproaches).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div>
         {handoffFields.map(([key, label, limit]) => <label key={key}><span>{label}</span><textarea name={key} rows={3} maxLength={limit} defaultValue={handoff?.[key] ?? ""} /></label>)}
+        {formatChanged ? <p role="status">미저장 형식 변경: {productionFormats[handoff.productionFormat]} → {productionFormats[selectedFormat]}. 저장 후 기존 설계·원고·편집 지시를 새 형식에 맞게 검토해 주세요.</p> : null}
         <button className="secondary-button" type="submit">{busy ? "저장 중…" : "제작 인계 메모 저장"}</button>
+        {onCancel ? <button className="ghost-button" type="button" onClick={onCancel}>수정 닫기 · 미저장 내용 버리기</button> : null}
       </fieldset>
     </form> : handoff ? <dl className="planning-facts"><div><dt>제작 형식</dt><dd>{productionFormats[handoff.productionFormat]}</dd></div><div><dt>콘텐츠 접근</dt><dd>{contentApproaches[handoff.contentApproach]}</dd></div>{handoffFields.map(([key, label]) => <div key={key}><dt>{label}</dt><dd style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{handoff[key] || "미입력"}</dd></div>)}</dl> : <p>아직 저장된 인계 메모가 없습니다. 주제·기획에서 먼저 정리해 주세요.</p>}
     <p>칠판형은 설계·진행 메모를 중심으로 준비하며 전체 원고를 강제하지 않습니다. 원고 완성과 편집자 공유는 별개입니다.</p>
@@ -57,10 +64,12 @@ export function LinkedPlanningHandoff() {
   const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[] } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState("");
   useEffect(() => { setSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, []);
   useEffect(() => {
     let active = true;
-    setState(null); setError("");
+    setState(null); setError(""); setEditing(false); setNotice("");
     if (sourceId && accessToken && !demo) {
       // Existing authenticated read endpoint; no generation or approval request.
       void apiRequest<{ source: OsRecord; records: OsRecord[] }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source, records }) => {
@@ -73,5 +82,8 @@ export function LinkedPlanningHandoff() {
     return () => { active = false; };
   }, [accessToken, demo, sourceId, revision]);
   if (!sourceId || demo || !accessToken) return null;
-  return <><div className="drawer-actions"><button className="secondary-button" onClick={() => setRevision(value => value + 1)}>최신 기획 메모 다시 읽기</button></div>{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <><ContentPlanningHandoff key={`${state.source.id}:${state.source.version}`} source={state.source} /><ContentPackagingEvidence source={state.source} records={state.records} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
+  return <><div className="drawer-actions"><button className="secondary-button" disabled={editing} onClick={() => setRevision(value => value + 1)}>최신 기획 메모 다시 읽기</button></div>{notice ? <p role="status">{notice}</p> : null}{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <>
+    {!editing ? <button className="secondary-button" onClick={() => { setEditing(true); setNotice(""); }}>제작 형식·인계 메모 수정</button> : null}
+    <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}:${editing}`} source={state.source} onCancel={() => setEditing(false)} onSaved={editing ? record => { setState(current => current ? { ...current, source: record } : null); setEditing(false); setNotice("인계 메모를 저장했습니다. 기존 산출물·승인 이력은 보존했습니다. 변경된 입력의 공정 승인은 다시 확인해 주세요."); } : undefined} />
+    <ContentPackagingEvidence source={state.source} records={state.records} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
 }

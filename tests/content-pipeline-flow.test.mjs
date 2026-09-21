@@ -28,6 +28,25 @@ function harness() {
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
+test('changing production format invalidates existing pipeline approval without deleting artifacts', async () => {
+  const h = harness();
+  h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  const original = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, original.signatures[0], true, 'Checked synthetic format');
+  const reviews = structuredClone(h.rows[0].metadata.pipelineReviews);
+  const count = h.rows.length;
+  for (const [format, from, version] of [['mixed', 'board', 3], ['board', 'mixed', 4]]) {
+    h.rows[0].metadata.planningHandoff = { productionFormat: format };
+    h.rows[0].metadata.productionFormatChange = { from, to: format, sourceVersion: version };
+    const changed = await h.api.readPipeline(h.actor, 'source');
+    assert.equal(changed.approved[0], false);
+    await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), error => error.code === 'PIPELINE_APPROVAL_REQUIRED');
+    assert.equal(h.calls(), 1);
+    assert.equal(h.rows.length, count);
+    assert.deepEqual(h.rows[0].metadata.pipelineReviews, reviews);
+  }
+});
 test('pipeline stops at each gate and reuses successful generation', async () => {
   const h = harness();
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
