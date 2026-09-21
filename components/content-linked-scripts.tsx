@@ -6,7 +6,7 @@ import { apiRequest, updateRecord } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-export function ContentLinkedScripts() {
+export function ContentLinkedScripts({ showPlanningHandoff = false }: { showPlanningHandoff?: boolean }) {
   const { accessToken } = useSession();
   const [sourceId, setSourceId] = useState(""); const [scripts, setScripts] = useState<OsRecord[]>([]);
   const [draft, setDraft] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
@@ -29,5 +29,5 @@ export function ContentLinkedScripts() {
     finally { setBusy(false); }
   };
   if (!sourceId) return null;
-  return <section className="panel pipeline-panel"><header><h2>연결된 제작 공정 원고</h2><Link href={`/content/automation?sourceId=${sourceId}`}>공정·승인 현황으로</Link></header>{error ? <p className="inline-alert danger">{error}</p> : null}{script ? <><strong>{script.title} · v{script.version}</strong><p>원고를 수정하면 공정 화면에서 해당 자료를 다시 승인해야 합니다.</p><textarea rows={18} aria-label="연결된 원고 본문" value={draft} onChange={(event) => setDraft(event.target.value)} /><button className="primary-button" disabled={busy || !draft.trim()} onClick={save}>원고 저장</button></> : <p>연결된 원고가 없습니다. 제작 공정에서 소재 승인 후 원고를 생성해 주세요.</p>}</section>;
+  return <section className="panel pipeline-panel"><header><h2>연결된 제작 공정 원고</h2><Link href={`/content/automation?sourceId=${sourceId}`}>공정·승인 현황으로</Link></header>{error ? <p className="inline-alert danger">{error}</p> : null}{script ? <><strong>{script.title} · v{script.version}</strong><p>원고를 수정하면 공정 화면에서 해당 자료를 다시 승인해야 합니다.</p><textarea rows={18} aria-label="연결된 원고 본문" value={draft} onChange={(event) => setDraft(event.target.value)} /><button className="primary-button" disabled={busy || !draft.trim()} onClick={save}>원고 저장</button></> : <p>{showPlanningHandoff ? "연결된 제작 공정 원고가 없습니다. 기획 인계와 제작 형식을 먼저 확인해 주세요. 칠판형은 전체 원고 없이 진행할 수 있으며, 아래 문서 원고 작업공간과 제작 공정 원고는 별도로 관리됩니다." : "연결된 원고가 없습니다. 제작 공정에서 소재 승인 후 원고를 생성해 주세요."}</p>}</section>;
 }

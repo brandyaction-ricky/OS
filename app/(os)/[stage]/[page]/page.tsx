@@ -46,7 +46,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
   if (href === "/content/topics") return <ContentTopicsWorkspace showReferenceCheck={canUseSystemOnePreflight(process.env)} />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace />;
+  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={canUseSystemOnePreflight(process.env)} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/packages") return <ContentPackageWorkspace />;

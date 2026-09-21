@@ -81,6 +81,7 @@ function setup(overrides = {}, initialSession = {}) {
     "@/lib/api-client": api, "@/lib/script-documents": scripts,
     "./session-provider": { useSession: () => session },
     "./content-linked-scripts": { ContentLinkedScripts: "ContentLinkedScripts" },
+    "./content-planning-handoff": { LinkedPlanningHandoff: "LinkedPlanningHandoff" },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {

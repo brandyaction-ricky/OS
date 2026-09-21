@@ -1,0 +1,36 @@
+import { z } from "zod";
+
+// User-authored working context, never an approval or a policy snapshot.
+export const planningHandoffSchema = z.object({
+  schemaVersion: z.literal(1),
+  productionFormat: z.enum(["undecided", "script", "board", "mixed"]),
+  contentApproach: z.enum(["undecided", "information", "viewpoint", "mixed"]),
+  titlePromise: z.string().trim().max(1000),
+  thumbnailCopy: z.string().trim().max(500),
+  openingHook: z.string().trim().max(2000),
+  evidenceNotes: z.string().trim().max(4000),
+  unresolved: z.string().trim().max(2000),
+  sharingNotes: z.string().trim().max(1000),
+}).strict();
+
+export type PlanningHandoff = z.infer<typeof planningHandoffSchema>;
+export const productionFormats = { undecided: "미정", script: "원고형", board: "칠판형", mixed: "혼합형" } as const;
+export const contentApproaches = { undecided: "미정", information: "정보 중심", viewpoint: "관점 중심", mixed: "정보 + 관점" } as const;
+export const handoffFields = [
+  ["titlePromise", "제목·영상이 약속하는 내용", 1000],
+  ["thumbnailCopy", "썸네일 카피", 500],
+  ["openingHook", "도입에서 보여줄 정보·질문", 2000],
+  ["evidenceNotes", "자료·근거와 설계 메모", 4000],
+  ["unresolved", "미확정 사항·확인이 필요한 것", 2000],
+  ["sharingNotes", "편집자 전달 범위·공유 유의사항", 1000],
+] as const;
+
+export function readPlanningHandoff(value: unknown): PlanningHandoff | null {
+  const result = planningHandoffSchema.safeParse(value);
+  return result.success ? result.data : null;
+}
+
+export function planningHandoffUpdate(source: { id: string; version: number; metadata: Record<string, unknown> }, input: unknown) {
+  return { id: source.id, expectedVersion: source.version,
+    metadata: { ...source.metadata, planningHandoff: planningHandoffSchema.parse(input) } };
+}
