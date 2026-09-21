@@ -9,7 +9,8 @@ import { sanitizePublicCopyValue } from "../lib/content-safety.ts";
 import { buildHomeRevenueView } from "../lib/home-dashboard.ts";
 import { fuzzyDocumentScore } from "../lib/knowledge-navigation.ts";
 import { structureBorrowInput, structureBorrowGuidance } from "../lib/structure-borrow.ts";
-import { evidenceQueryText, hasLexicalEvidence, keywordQueryText, rankLexicalEvidence } from "../lib/search-relevance.ts";
+import { evidenceQueryText, hasLexicalEvidence, keywordQueryText, rankLexicalEvidence, rankTelegramEvidence } from "../lib/search-relevance.ts";
+import { formatKnowledgeAnswer } from "../lib/knowledge-answer.ts";
 
 test("quick open matches sparse filename letters and ranks exact titles ahead of fuzzy matches", () => {
   assert.ok(fuzzyDocumentScore("원최", "원고_낭독본_최종.md") > 0);
@@ -106,6 +107,7 @@ test("Korean knowledge questions remove particles and generic words before keywo
   assert.equal(keywordQueryText("콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
   assert.equal(keywordQueryText("콘텐츠 위계 알려줘"), "콘텐츠 위계");
   assert.equal(keywordQueryText("[운영검수 2026-09-21] 콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
+  assert.equal(keywordQueryText("썸네일은 어떻게 만들어야 돼?"), "썸네일");
 });
 
 test("Telegram evidence ignores a generic topic-only hit and promotes the rare answer term", () => {
@@ -117,6 +119,26 @@ test("Telegram evidence ignores a generic topic-only hit and promotes the rare a
   assert.equal(hasLexicalEvidence(scheduling, query), true);
   assert.equal(hasLexicalEvidence(answer, query), true);
   assert.equal(rankLexicalEvidence([scheduling, generic, answer], query)[0], answer);
+});
+
+test("Telegram how-to questions promote the current packaging procedure over analysis and legacy skill hits", () => {
+  const analysis = { documentId: "analysis", title: "분석_절차", folder: "03_Content/분석", heading: "제목·썸네일", text: "썸네일 성과를 분석한다." };
+  const legacy = { documentId: "legacy", title: "브랜디액션 유튜브 제목·썸네일 확정 스킬", folder: "00_Skills", heading: "썸네일", text: "썸네일 후보를 만든다." };
+  const procedure = { documentId: "procedure", title: "패키징_절차", folder: "03_Content/제작기준/콘텐츠절차", heading: "썸네일 장면 시안", text: "카피 확정 다음 장면 시안을 5개 이상 만든다." };
+  assert.equal(rankTelegramEvidence([analysis, legacy, procedure], "썸네일은 어떻게 만들어야 돼?")[0], procedure);
+});
+
+test("knowledge answers replace opaque evidence markers with readable linked OS sources", () => {
+  const results = [
+    { documentId: "procedure-id", title: "패키징_절차", heading: "썸네일 장면 시안" },
+    { documentId: "log-id", title: "썸네일 결정 로그", heading: "1차 확정" },
+  ];
+  const answer = formatKnowledgeAnswer("카피 확정 뒤 시안을 5개 이상 만듭니다. [근거 1][근거 2]", results, "https://os.example.com/");
+  assert.doesNotMatch(answer, /\[근거/);
+  assert.match(answer, /근거 문서/);
+  assert.match(answer, /패키징_절차 › 썸네일 장면 시안/);
+  assert.match(answer, /https:\/\/os\.example\.com\/knowledge\?document=procedure-id/);
+  assert.match(answer, /썸네일 결정 로그 › 1차 확정/);
 });
 
 test("headings fold hierarchically and fenced code retains blank lines and fake headings", () => {
