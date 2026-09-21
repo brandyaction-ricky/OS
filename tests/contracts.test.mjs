@@ -45,6 +45,27 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.match(manager, /delete_document/);
 });
 
+test("agent knowledge rate limits expose retry metadata without leaking raw responses", async () => {
+  const [migration, route, http, mcp] = await Promise.all([
+    readFile(new URL("../supabase/migrations/20260921233000_agent_write_rate_limit_metadata.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/http.ts", import.meta.url), "utf8"),
+    readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8"),
+  ]);
+  assert.match(migration, /os_agent_write_rate_limits/);
+  assert.match(migration, /knowledge\.move/);
+  assert.match(migration, /when p_action = 'knowledge\.update' then 1000/);
+  assert.match(migration, /retryAfterSeconds/);
+  assert.match(migration, /resetAt/);
+  assert.doesNotMatch(migration, /drop table|truncate\s/i);
+  assert.match(route, /Retry-After/);
+  assert.match(route, /retryAfterSeconds/);
+  assert.match(http, /headers: error\.headers/);
+  assert.match(mcp, /safe_http_error/);
+  assert.match(mcp, /AGENT_RATE_LIMITED/);
+  assert.doesNotMatch(mcp, /OS API \{error\.code\}: \{detail\}/);
+});
+
 test("operating core is additive, RLS protected and event audited", async () => {
   const sql = await readFile(new URL("../supabase/migrations-legacy/202608290002_operating_core.sql", import.meta.url), "utf8");
   assert.match(sql, /create table if not exists public\.os_records/);
