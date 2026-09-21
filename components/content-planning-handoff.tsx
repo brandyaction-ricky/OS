@@ -7,6 +7,7 @@ import { apiRequest, updateRecord } from "@/lib/api-client";
 import { contentApproaches, handoffFields, planningHandoffUpdate, productionFormats, readPlanningHandoff } from "@/lib/content-planning-handoff";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
+import { ContentPackagingEvidence } from "./content-packaging-evidence";
 
 export function ContentPlanningHandoff({ source, onSaved, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; disabled?: boolean }) {
   const { accessToken, demo } = useSession();
@@ -53,7 +54,7 @@ export function ContentPlanningHandoff({ source, onSaved, disabled = false }: { 
 export function LinkedPlanningHandoff() {
   const { accessToken, demo } = useSession();
   const [sourceId, setSourceId] = useState("");
-  const [state, setState] = useState<{ token: string; source: OsRecord } | null>(null);
+  const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[] } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => { setSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, []);
@@ -62,14 +63,15 @@ export function LinkedPlanningHandoff() {
     setState(null); setError("");
     if (sourceId && accessToken && !demo) {
       // Existing authenticated read endpoint; no generation or approval request.
-      void apiRequest<{ source: OsRecord }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source }) => {
+      void apiRequest<{ source: OsRecord; records: OsRecord[] }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source, records }) => {
         if (!active) return;
         if (source.id !== sourceId || source.record_type !== "content_topic") throw new Error("연결된 기획 주제를 확인할 수 없습니다.");
-        setState({ token: accessToken, source });
+        if (!Array.isArray(records)) throw new Error("연결된 산출물을 확인할 수 없습니다.");
+        setState({ token: accessToken, source, records });
       }).catch(() => { if (active) setError("인계 메모를 불러오지 못했습니다. 로그인·주제 접근 권한을 확인해 주세요."); });
     }
     return () => { active = false; };
   }, [accessToken, demo, sourceId, revision]);
   if (!sourceId || demo || !accessToken) return null;
-  return <><div className="drawer-actions"><button className="secondary-button" onClick={() => setRevision(value => value + 1)}>최신 기획 메모 다시 읽기</button></div>{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}`} source={state.source} /> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
+  return <><div className="drawer-actions"><button className="secondary-button" onClick={() => setRevision(value => value + 1)}>최신 기획 메모 다시 읽기</button></div>{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <><ContentPlanningHandoff key={`${state.source.id}:${state.source.version}`} source={state.source} /><ContentPackagingEvidence source={state.source} records={state.records} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
 }
