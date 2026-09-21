@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, usesShootingPlan, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -17,7 +17,7 @@ function sourceInput(source: OsRecord) {
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
-  return digest([sourceInput(source), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
+  return digest(["packaging-first-v1", sourceInput(source), reference(artifacts.research), reference(artifacts.packaging), ...(gate >= 2 ? [usesShootingPlan(source) ? source.metadata.productionPreparation : reference(artifacts.script)] : []),
     ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
@@ -58,18 +58,20 @@ export async function reviewPipeline(actor: RequestActor, id: string, gate: numb
 
 export async function runPipelineGeneration(actor: RequestActor, input: z.infer<typeof generationSchema>) {
   const state = await readPipeline(actor, input.sourceId);
-  const neededGate = ({ topic_plan: 0, script_draft: 1, title_package: 1, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
+  const neededGate = ({ topic_plan: 0, script_draft: 1, title_package: 0, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
   if (state.approved.slice(0, neededGate).some((approved) => !approved)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "이전 단계의 현재 자료를 승인한 뒤 실행해 주세요. 수정된 자료는 재승인이 필요합니다.");
   if (input.action === "topic_plan") {
-    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => name !== "기획 브리핑");
+    const missing = pipelineMissing(state.source, [], 1).filter((name) => !["기획 브리핑", "제목·썸네일 패키지"].includes(name));
     if (missing.length) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", `자료 보완 필요: ${missing.join(", ")}`);
   }
-  if (input.action === "title_package" && !pipelineArtifacts(state.records).script) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "원고를 먼저 작성해 주세요.");
+  if (input.action === "title_package" && !pipelineArtifacts(state.records).research) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "기획 브리핑을 먼저 준비해 주세요. 원고는 필요하지 않습니다.");
+  if (input.action === "script_draft" && usesShootingPlan(state.source)) throw new ApiError(409, "SHOOTING_PLAN_MODE", "현재 제작 방식은 전문 원고 대신 영상 설계와 촬영 진행표를 준비합니다.");
   const artifacts = pipelineArtifacts(state.records);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
-  const key = digest([procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
+  const key = digest(["packaging-first-v1", procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(input.action === "topic_plan" ? [] : [reference(artifacts.research)]),
-    ...(["title_package", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script)] : []),
+    ...(input.action === "script_draft" ? [reference(artifacts.packaging)] : []),
+    ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script), reference(artifacts.packaging), state.source.metadata.productionPreparation] : []),
     ...(["shorts_proposal", "youtube_kit"].includes(input.action) ? [state.source.metadata.transcriptSrt] : [])]);
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
   const prior = runs.findLast((run) => run.key === key);

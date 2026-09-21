@@ -3,6 +3,7 @@ import { structureBorrowGuidance } from "@/lib/structure-borrow";
 import { ApiError } from "@/lib/http";
 import { assembleYoutubeKit, BUNDLED_CHANNEL_PROCEDURE_VERSION, contentSourceText, parseTimedTranscript, resolveChannelProcedures, validateClipRanges } from "@/lib/content-input";
 import { PUBLIC_COPY_GUIDANCE, sanitizePublicCopyValue } from "@/lib/content-safety";
+import { usesShootingPlan } from "@/lib/content-pipeline";
 import { type RequestActor } from "@/lib/server/auth";
 
 
@@ -191,6 +192,7 @@ function requestedShape(action: z.infer<typeof generationSchema>["action"], coun
 export async function executeGeneration(actor: RequestActor, input: z.infer<typeof generationSchema>, requestKey?: string) {
     const { data: source, error } = await actor.supabase.from("os_records").select("*").eq("id", input.sourceId).is("archived_at", null).maybeSingle();
     if (error || !source) throw new ApiError(404, "CONTENT_SOURCE_NOT_FOUND", "기준 콘텐츠를 찾지 못했습니다.");
+    if (input.action === "script_draft" && usesShootingPlan(source)) throw new ApiError(409, "SHOOTING_PLAN_MODE", "칠판형·진행표 방식은 전문 원고 대신 구성안과 촬영 진행표를 준비해 주세요.");
     const platforms = input.platforms?.length ? input.platforms : ["shorts", "threads", "column", "instagram"];
     const { data: scripts, error: scriptError } = await actor.supabase.from("os_records").select("description,status").eq("parent_id", source.id).eq("record_type", "content_script").is("archived_at", null).order("updated_at", { ascending: false });
     if (scriptError) throw new ApiError(500, "SCRIPT_READ_FAILED", "연결된 원고를 읽지 못했습니다.");
