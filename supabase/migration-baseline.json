@@ -136,6 +136,11 @@
       "file": "20260917112037_restrict_security_definer_execution.sql",
       "sha256": "b3ffab4b84b775bf99cbd59174fefb840ebd62162a91e1e560c9e8ff3e9060ac",
       "purpose": "remove platform-default direct execution of privileged functions and explicitly allow only required authenticated entry points"
+    },
+    {
+      "file": "20260921140000_agent_update_daily_limit.sql",
+      "sha256": "426ee97dfebd4891b80b704af13c414ab22035972b72b541bfb673b8ded5f742",
+      "purpose": "raise only agent knowledge.update rolling daily quota to 1000; environment application is separately recorded"
     }
   ],
   "legacyMigrations": [
