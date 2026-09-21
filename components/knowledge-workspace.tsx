@@ -44,6 +44,7 @@ import { KNOWLEDGE_CATEGORIES } from "@/lib/company-settings";
 import { DEMO_DOCUMENTS } from "@/lib/demo-data";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
+import { DevelopmentDocumentLiveLog } from "./development-document-live-log";
 import { useSession } from "./session-provider";
 
 const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "canonical"];
@@ -756,7 +757,7 @@ function WorkspaceContent() {
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => moveStatus("archived")}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => moveStatus("draft")}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
-                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /></div>
+                <div className="document-reader"><h1>{selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /><DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div>
               )}
             </>
           ) : (
