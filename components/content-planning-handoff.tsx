@@ -37,8 +37,9 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
       if (active.current) setError(reason instanceof Error ? reason.message : "인계 메모를 저장하지 못했습니다.");
     } finally { saving.current = false; if (active.current) setBusy(false); }
   }
-  return <section className="panel" aria-label="기획에서 제작으로 인계">
+  return <section className="panel content-workflow-panel" aria-label="기획에서 제작으로 인계">
     <div className="panel-header"><div><h3>기획에서 제작으로 인계</h3><p>{source.title} · 주제 v{source.version} · DEV 검수용</p></div></div>
+    <div className="content-workflow-body">
     <p>주제·방향 → 제목·썸네일 → 자료·축·설계 → 형식에 맞는 집필 → 검수 → 전달 범위 결정</p>
     <p>아래 내용은 작업 메모입니다. 저장은 패키징 승인·집필 시작 허가·공유 실행이 아닙니다. 단계별 완료 조건은 OS 정본으로 별도 확인합니다.</p>
     <p>제작 형식은 현재 선택이며 제작 중에도 바꿀 수 있습니다. 형식을 바꿔도 기존 원고·자료·선택 기록은 삭제하거나 자동 재생성하지 않습니다.</p>
@@ -57,6 +58,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
     <p>이 메모는 현재 AI 원고 생성에 자동 전달되지 않습니다.</p>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     <div className="drawer-actions"><Link className="secondary-button" href={`/content/packages?sourceId=${encodeURIComponent(source.id)}`}>제목·썸네일 작업 보기</Link>{editable ? <Link className="secondary-button" href={`/content/scripts?sourceId=${encodeURIComponent(source.id)}`}>집필 화면에서 메모 확인</Link> : <Link className="secondary-button" href="/content/topics">주제·기획으로 돌아가기</Link>}</div>
+    </div>
   </section>;
 }
 

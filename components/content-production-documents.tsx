@@ -50,8 +50,9 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
     catch { if (serial === request.current) setError("연결을 해제하지 못했습니다. 최신 기획 메모를 다시 읽어 확인해 주세요."); }
     finally { if (serial === request.current) { running.current = false; setBusy(false); } }
   }
-  return <section className="panel" aria-label="설계표·원고 문서 연결">
+  return <section className="panel content-workflow-panel" aria-label="설계표·원고 문서 연결">
     <div className="panel-header"><div><h3>설계표·원고 문서 연결</h3><p>원문은 지식 작업공간에 유지 · DEV 검수용</p></div></div>
+    <div className="content-workflow-body">
     <p>이 주제에서 사용하는 문서를 직접 지정합니다. 제목·폴더명으로 추측하지 않으며 연결은 승인·내용 검증·공유 권한 부여가 아닙니다. 칠판형도 필요한 진행 메모만 연결할 수 있습니다.</p>
     {!links ? <p role="alert">기존 연결 형식을 확인할 수 없어 덮어쓰지 않습니다.</p> : <>
       {links.length ? <ul>{links.map(link => <li key={link.documentId}>
@@ -70,6 +71,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
       {links.length >= 12 ? <p>연결은 최대 12개입니다.</p> : null}
     </>}
     {error ? <p className="inline-alert warning" role="alert">{error}</p> : null}
-    <p>연결에는 문서 ID·용도·당시 버전만 저장합니다. 원문 수정·복제·생성은 하지 않습니다. 현재 버전 확인은 연결 당시 버전이나 승인 상태를 갱신하지 않습니다. 문서나 용도를 바꾸려면 연결만 해제하고 다시 지정해 주세요.</p>
+    <p className="content-workflow-note">연결에는 문서 ID·용도·당시 버전만 저장합니다. 원문 수정·복제·생성은 하지 않습니다. 현재 버전 확인은 연결 당시 버전이나 승인 상태를 갱신하지 않습니다. 문서나 용도를 바꾸려면 연결만 해제하고 다시 지정해 주세요.</p>
+    </div>
   </section>;
 }
