@@ -169,6 +169,28 @@ export async function recheckSystemOneDocumentBundle(
   return readBundle(selection, dependencies, previous);
 }
 
+// Explicit user-linked production documents, not company criteria. Discover
+// current versions in one user/RLS read, then validate the full bounded set.
+export async function loadSystemOneProductionDocumentSet(input: unknown, dependencies: SystemOneDocumentDependencies): Promise<SystemOneDocumentResult> {
+  const ids = z.array(uuid).min(1).max(12).refine(values => new Set(values).size === values.length).safeParse(input);
+  if (!ids.success) return stop("invalid_input");
+  let session: Awaited<ReturnType<SystemOneDocumentDependencies["authenticate"]>>;
+  let principal: Principal;
+  try {
+    session = await dependencies.authenticate(); principal = principalSchema.parse(session.principal);
+    if (typeof session.readHeads !== "function") return stop("authentication_failed");
+  } catch { return stop("authentication_failed"); }
+  let raw: unknown;
+  try { raw = await session.readHeads(ids.data); } catch { return stop("read_failed"); }
+  const heads = z.array(z.object({ id: uuid, current_version: z.number().int().positive().max(2_147_483_647) })).safeParse(raw);
+  if (!heads.success || heads.data.length !== ids.data.length || new Set(heads.data.map(row => row.id)).size !== ids.data.length ||
+    heads.data.some(row => !ids.data.includes(row.id))) return stop("unavailable");
+  const references = ids.data.map(id => ({ id, expectedVersion: heads.data.find(row => row.id === id)!.current_version }));
+  const result = await readBundle({ source: references[0], criteria: references.slice(1) }, dependencies);
+  if (result.status === "stopped") return result;
+  return result.bundle.principal.id === principal.id ? result : stop("unavailable");
+}
+
 // A successful read is a point-in-time preflight, not continuing authorization.
 // Re-read before any future display/decision. Auth/profile and SELECT are separate
 // statements; a future write must validate version/access atomically at commit.

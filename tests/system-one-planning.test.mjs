@@ -8,6 +8,7 @@ import { z } from "zod";
 import * as documents from "../lib/server/system-one-document-source.ts";
 import * as content from "../lib/server/system-one-content-source.ts";
 import * as packaging from "../lib/server/system-one-packaging-source.ts";
+import * as productionLinks from "../lib/content-production-links.ts";
 async function compile(path, modules, globals = {}) {
   const code = ts.transpileModule(await readFile(new URL(path, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
@@ -25,6 +26,7 @@ const bundle = await compile("../lib/server/system-one-content-bundle.ts", { zod
   "@/lib/server/system-one-content-source": content, "@/lib/server/system-one-document-source": documents,
   "@/lib/server/system-one-packaging-source": packaging });
 const review = await compile("../lib/server/system-one-review-context.ts", { "node:crypto": { createHmac },
+  "@/lib/content-production-links": productionLinks,
   "@/lib/server/system-one-content-source": content, "@/lib/server/system-one-document-source": documents,
   "@/lib/server/system-one-content-bundle": bundle, "@/lib/server/system-one-planning": planning });
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -77,7 +79,7 @@ async function routeHarness({ enabled = true, configured = true, result, throws 
   let calls = 0;
   const api = await compile(`../app/api/v1/system-one/${reviewRoute ? "review-context" : "planning"}/route.ts`, {
     "@/lib/server/system-one-review-context": { readReviewContext: async () => { calls++; if (throws) throw new Error("PRIVATE"); return result ?? {
-      status: "ready", source: { id: id(10), version: 1 }, registryVersion: 1, referenceCount: 2, packageCount: 0,
+      status: "ready", source: { id: id(10), version: 1 }, registryVersion: 1, referenceCount: 2, packageCount: 0, linkedDocuments: [],
       markers: { source: "a".repeat(64), criteria: "b".repeat(64), bundle: "c".repeat(64) }, privateBody: "PRIVATE" }; } },
     "next/server": { NextResponse: Response }, "@/lib/system-one-preflight-gate": { canUseSystemOnePreflight: () => enabled },
     "@/lib/server/system-one-planning": { planningRegistryConfig: () => configured ? { id: id(2), expectedVersion: 1 } : null,
@@ -143,4 +145,48 @@ test("review endpoint preserves DEV/auth/config gates and redacts errors", async
   assert.match(response.headers.get("cache-control"), /no-store/); assert.equal((await response.text()).includes("PRIVATE"), false);
   const bad = await routeHarness({ reviewRoute: true, throws: true });
   const failed = await bad.api.GET(bad.request()); assert.equal(failed.status, 503); assert.equal((await failed.text()).includes("PRIVATE"), false);
+});
+function linkedHarness(count = 1) {
+  const h = harness(); h.state.topic.metadata.productionDocumentLinks = [];
+  for (let n = 0; n < count; n++) {
+    h.state.rows.push({ ...h.state.rows[2], id: id(100 + n), status: "draft", title: `Synthetic linked ${n}`, content_md: "Linked body", content_hash: md5("Linked body") });
+    h.state.topic.metadata.productionDocumentLinks.push({ documentId: id(100 + n), role: "design", documentVersion: 1, sourceVersion: 1 });
+  }
+  return h;
+}
+test("explicit linked drafts join the review bundle without becoming canonical policies", async () => {
+  const h = linkedHarness(); const result = await review.readReviewContext(h.input, h.registry, h.deps, "session");
+  assert.equal(result.status, "ready"); assert.equal(result.linkedDocuments[0].title, "Synthetic linked 0");
+  assert.equal(result.linkedDocuments[0].linkedVersion, 1); assert.equal(result.policyStatus, "unverified");
+  assert.equal(JSON.stringify(result).includes("Linked body"), false); assert.equal(JSON.stringify(result).includes("owner_id"), false);
+});
+test("same-version linked body changes alter document and aggregate markers, not planning criteria", async () => {
+  const h = linkedHarness(); const first = await review.readReviewContext(h.input, h.registry, h.deps, "session");
+  h.state.rows.at(-1).content_md = "Changed body"; h.state.rows.at(-1).content_hash = md5("Changed body");
+  const next = await review.readReviewContext(h.input, h.registry, h.deps, "session");
+  assert.notEqual(first.linkedDocuments[0].marker, next.linkedDocuments[0].marker); assert.notEqual(first.markers.bundle, next.markers.bundle);
+  assert.equal(first.markers.criteria, next.markers.criteria); assert.equal(first.markers.source, next.markers.source);
+});
+test("current document version can differ from the recorded connection version", async () => {
+  const h = linkedHarness(); h.state.rows.at(-1).current_version = 2;
+  const result = await review.readReviewContext(h.input, h.registry, h.deps, "session");
+  assert.equal(result.status, "ready"); assert.equal(result.linkedDocuments[0].version, 2); assert.equal(result.linkedDocuments[0].linkedVersion, 1);
+});
+for (const [name, change] of [
+  ["missing", s => { s.rows.pop(); }], ["private", s => { s.rows.at(-1).owner_id = id(99); }],
+  ["archived", s => { s.rows.at(-1).status = "archived"; }], ["bad hash", s => { s.rows.at(-1).content_hash = "a".repeat(32); }],
+]) test(`one ${name} linked document blocks the whole response without partial titles`, async () => {
+  const h = linkedHarness(2); change(h.state); const result = await review.readReviewContext(h.input, h.registry, h.deps, "session");
+  assert.equal(result.code, "linked_documents_unavailable"); assert.equal(JSON.stringify(result).includes("Synthetic linked"), false);
+});
+test("malformed or future-version links fail instead of silently dropping documents", async () => {
+  for (const value of [null, {}, [{ documentId: id(100), role: "design", documentVersion: 1, sourceVersion: 2 }]]) {
+    const h = linkedHarness(); h.state.topic.metadata.productionDocumentLinks = value;
+    assert.equal((await review.readReviewContext(h.input, h.registry, h.deps, "session")).code, "invalid_linked_documents");
+  }
+});
+test("bounded batch supports twelve links and applies aggregate body limit", async () => {
+  const h = linkedHarness(12); assert.equal((await review.readReviewContext(h.input, h.registry, h.deps, "session")).linkedDocuments.length, 12);
+  for (const row of h.state.rows.slice(3)) { row.content_md = "x".repeat(50000); row.content_hash = md5(row.content_md); }
+  assert.equal((await review.readReviewContext(h.input, h.registry, h.deps, "session")).code, "linked_documents_unavailable");
 });

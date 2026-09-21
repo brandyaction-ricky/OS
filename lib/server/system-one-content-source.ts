@@ -19,6 +19,7 @@ type Selection = z.infer<typeof selectionSchema>;
 type Head = Readonly<{
   kind: "content_topic"; id: string; version: number; brand: string; fingerprint: string;
   principalId: string; checkedAt: string; policyStatus: "unverified";
+  productionDocumentLinks: unknown;
   judgment: null; executionAllowed: false;
 }>;
 type Code = "invalid_input" | "authentication_failed" | "unavailable" | "invalid_metadata" | "stale" | "read_failed";
@@ -62,6 +63,7 @@ async function read(selection: Selection, deps: SystemOneContentDependencies, pr
   } catch { return stop("invalid_metadata"); }
   if (previous && previous.fingerprint !== fingerprint) return stop("stale");
   const head: Head = Object.freeze({ kind: "content_topic", id: row.id, version: row.version, brand: row.brand, fingerprint,
+    productionDocumentLinks: JSON.parse(JSON.stringify(row.metadata.productionDocumentLinks === undefined ? [] : row.metadata.productionDocumentLinks)),
     principalId: principal.id, checkedAt, policyStatus: "unverified", judgment: null, executionAllowed: false });
   issued.set(head, selection);
   return { status: "ready", head };

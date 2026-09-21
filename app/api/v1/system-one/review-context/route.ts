@@ -27,6 +27,6 @@ export async function GET(request: Request) {
       result.code === "invalid_input" ? 400 : result.code === "unavailable" ? 404 : result.code === "read_failed" ? 503 : 409);
     return NextResponse.json({ status: "ready", policyStatus: "unverified", judgment: null, executionAllowed: false,
       source: result.source, registryVersion: result.registryVersion, referenceCount: result.referenceCount,
-      packageCount: result.packageCount, markers: result.markers }, { headers });
+      packageCount: result.packageCount, markers: result.markers, linkedDocuments: result.linkedDocuments }, { headers });
   } catch { return stopped("read_failed", 503); }
 }

@@ -4,12 +4,13 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import * as review from "../lib/content-review-context.ts";
+import * as production from "../lib/content-production-links.ts";
 const code = ts.transpileModule(await readFile(new URL("../components/content-review-context.tsx", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 const id = "00000000-0000-4000-8000-000000000001";
 const body = () => ({ status: "ready", policyStatus: "unverified", judgment: null, executionAllowed: false,
-  source: { id, version: 1 }, registryVersion: 1, referenceCount: 2, packageCount: 0,
+  source: { id, version: 1 }, registryVersion: 1, referenceCount: 2, packageCount: 0, linkedDocuments: [],
   markers: { source: "a".repeat(64), criteria: "b".repeat(64), bundle: "c".repeat(64) } });
 const settle = async () => { for (let n = 0; n < 10; n++) await Promise.resolve(); };
 const children = node => Array.isArray(node) ? node.flatMap(children) : node && typeof node === "object" ? [node, ...children(node.props?.children)] : [];
@@ -25,7 +26,7 @@ function setup() {
     } },
   };
   const jsx = (type, props) => ({ type, props });
-  const modules = { react, "react/jsx-runtime": { jsx, jsxs: jsx }, "@/lib/content-review-context": review };
+  const modules = { react, "react/jsx-runtime": { jsx, jsxs: jsx }, "next/link": { default: "a" }, "@/lib/content-production-links": production, "@/lib/content-review-context": review };
   const compiled = { exports: {} };
   runInNewContext(code, { module: compiled, exports: compiled.exports, AbortController,
     fetch: async (...args) => { calls.push(args); return response(...args); },
@@ -77,4 +78,11 @@ test("wrong source/version and forged completion responses never render success"
     const app = setup(), bad = body(); change(bad); app.respond(async () => ({ ok: true, json: async () => bad }));
     app.click(); await settle(); assert.doesNotMatch(app.text(), /조회 시점/); assert.match(app.text(), /자료를 확인하지 못했습니다/);
   }
+});
+test("linked documents show connection/current versions; a failed recheck hides titles", async () => {
+  const app = setup(), linked = body(); linked.linkedDocuments = [{ id: "00000000-0000-4000-8000-000000000003", title: "Synthetic manuscript", role: "manuscript", version: 2, linkedVersion: 1, linkedSourceVersion: 1, marker: "d".repeat(64) }];
+  app.respond(async () => ({ ok: true, json: async () => linked })); app.click(); await settle();
+  assert.match(app.text(), /Synthetic manuscript/); assert.match(app.text(), /연결 이후 문서 버전 변경/);
+  app.respond(async () => ({ ok: false, json: async () => ({ code: "linked_documents_unavailable" }) })); app.click(); await settle();
+  assert.doesNotMatch(app.text(), /Synthetic manuscript/); assert.match(app.text(), /전체 확인 결과는 보류/);
 });
