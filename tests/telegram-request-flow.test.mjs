@@ -30,7 +30,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/telegram-intents": intents,
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
-    "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: options.searchResults ?? [] }; } },
+    "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: typeof options.searchResults === "function" ? options.searchResults(input) : options.searchResults ?? [] }; } },
   };
   const exports = {};
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, process: { env: { TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_WEBHOOK_SECRET: "test-secret", TELEGRAM_BOT_USERNAME: "our_bot", TELEGRAM_CAPTURE_OWNER_EMAIL: "owner@example.com", ...options.env } }, Buffer, AbortSignal, URL, Date, console,
@@ -191,6 +191,16 @@ test("a cadence question rejects generic content hits and sends the rare answer 
   assert.equal(ctx.searchCalls[0].topK, 30);
   assert.equal(ctx.answeredWith[0][0].documentId, "cadence-doc");
   assert.deepEqual(Array.from(ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload.source_document_ids), ["cadence-doc", "scheduling-doc"]);
+});
+
+test("a thumbnail how-to question retrieves the governing packaging procedure outside the broad candidate window", async () => {
+  const analysis = { documentId: "analysis-doc", chunkId: 1, title: "분석_절차", folder: "02_Wiki/콘텐츠/제작기준/콘텐츠절차", heading: "Packaging 관련", text: "썸네일을 분석한다.", citation: { version: 1, chunkId: 1 }, score: 0.8 };
+  const procedure = { documentId: "procedure-doc", chunkId: 2, title: "패키징_절차", folder: "02_Wiki/콘텐츠/제작기준/콘텐츠절차", heading: "현행 적용 — 카피를 받쳐주는 인물 컷", text: "썸네일은 사람과 카피 중심으로 만든다.", citation: { version: 1, chunkId: 2 }, score: 0.5 };
+  const ctx = await setup("webhook", normalHandler, { searchResults: (input) => input.query === "패키징_절차 사람 카피" ? [procedure] : [analysis] });
+  await ctx.api.POST(incoming({ text: "썸네일은 어떻게 만들어야 돼?" }));
+  assert.equal(ctx.searchCalls.length, 2);
+  assert.equal(ctx.searchCalls[1].query, "패키징_절차 사람 카피");
+  assert.equal(ctx.answeredWith[0][0].documentId, "procedure-doc");
 });
 
 test("Telegram caps the widened candidate pool after evidence reranking", async () => {

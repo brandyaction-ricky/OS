@@ -9,7 +9,7 @@ import { sanitizePublicCopyValue } from "../lib/content-safety.ts";
 import { buildHomeRevenueView } from "../lib/home-dashboard.ts";
 import { fuzzyDocumentScore } from "../lib/knowledge-navigation.ts";
 import { structureBorrowInput, structureBorrowGuidance } from "../lib/structure-borrow.ts";
-import { evidenceQueryText, hasLexicalEvidence, keywordQueryText, rankLexicalEvidence, rankTelegramEvidence } from "../lib/search-relevance.ts";
+import { evidenceQueryText, hasLexicalEvidence, keywordQueryText, rankLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "../lib/search-relevance.ts";
 import { formatKnowledgeAnswer } from "../lib/knowledge-answer.ts";
 
 test("quick open matches sparse filename letters and ranks exact titles ahead of fuzzy matches", () => {
@@ -126,6 +126,8 @@ test("Telegram how-to questions promote the current packaging procedure over ana
   const legacy = { documentId: "legacy", title: "브랜디액션 유튜브 제목·썸네일 확정 스킬", folder: "00_Skills", heading: "썸네일", text: "썸네일 후보를 만든다." };
   const procedure = { documentId: "procedure", title: "패키징_절차", folder: "03_Content/제작기준/콘텐츠절차", heading: "썸네일 장면 시안", text: "카피 확정 다음 장면 시안을 5개 이상 만든다." };
   assert.equal(rankTelegramEvidence([analysis, legacy, procedure], "썸네일은 어떻게 만들어야 돼?")[0], procedure);
+  assert.equal(telegramAuthorityQueryText("썸네일은 어떻게 만들어야 돼?"), "패키징_절차 사람 카피");
+  assert.equal(telegramAuthorityQueryText("콘텐츠 편성 하한이 주 몇 편이야?"), "");
 });
 
 test("knowledge answers replace opaque evidence markers with readable linked OS sources", () => {

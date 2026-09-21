@@ -6,7 +6,7 @@ import { answerFromKnowledge } from "@/lib/server/answer";
 import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
 import { captureKind, isBotAddressed } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
-import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence } from "@/lib/search-relevance";
+import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 
 export const runtime = "nodejs";
 
@@ -214,13 +214,27 @@ export async function POST(request: Request) {
       mustChangePassword: false,
       supabase,
     };
-    const [{ results }, liveOperations] = await Promise.all([
-      // Retrieve a wider hybrid candidate set, then apply the Telegram-specific
-      // lexical evidence gate below. The RPC's vector/keyword RRF can otherwise
-      // truncate the literal answer chunk before application-side reranking.
-      searchDocuments(actor, { query: text, mode: "hybrid", topK: 30, filters: { statuses: ["canonical"] } }),
+    const authorityQuery = telegramAuthorityQueryText(text);
+    const [knowledgeSearches, liveOperations] = await Promise.all([
+      Promise.all([
+        // Retrieve a wider hybrid candidate set, then apply the Telegram-specific
+        // lexical evidence gate below. The RPC's vector/keyword RRF can otherwise
+        // truncate the literal answer chunk before application-side reranking.
+        searchDocuments(actor, { query: text, mode: "hybrid", topK: 30, filters: { statuses: ["canonical"] } }),
+        // A broad topic query can still omit the governing procedure from the
+        // candidate window entirely. Add a bounded role-specific lookup for
+        // recognized how-to questions before applying the same evidence gate.
+        ...(authorityQuery ? [searchDocuments(actor, { query: authorityQuery, mode: "hybrid" as const, topK: 8, filters: { statuses: ["canonical" as const] } })] : []),
+      ]),
       operationalAnswer(supabase, text),
     ]);
+    const seenChunks = new Set<string>();
+    const results = knowledgeSearches.flatMap((search) => search.results).filter((result) => {
+      const key = `${result.documentId}:${result.chunkId ?? result.heading}`;
+      if (seenChunks.has(key)) return false;
+      seenChunks.add(key);
+      return true;
+    });
     // Telegram is an external, conversational surface. Require a literal
     // evidence overlap after removing an optional leading label before using
     // semantic candidates, so an embedding nearest-neighbour is never shown
