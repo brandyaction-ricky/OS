@@ -3,7 +3,8 @@
 import { Archive, ArrowRight, CalendarDays, CheckCircle2, CircleAlert, Clipboard, Code2, Eye, FileText, Film, ImagePlus, Instagram, Layers3, NotebookPen, Pencil, Plus, Save, Send, Sparkles, Upload, X, Youtube } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { archiveRecord, createRecord, generateContent, importContentSnapshot, listRecords, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createRecord, generateContent, importContentSnapshot, listAllRecordsOfType, listRecords, updateRecord } from "@/lib/api-client";
+import { automationSourcesFor, selectedAutomationSource } from "@/lib/content-automation-sources";
 import type { OsRecord } from "@/lib/record-types";
 import { ContentPipelinePanel } from "./content-pipeline-panel";
 import { useSession } from "./session-provider";
@@ -67,15 +68,15 @@ export function ContentAutomationWorkspace({ initialView = "pipeline" }: { initi
   const load = useCallback(async () => {
     if (demo) return;
     try {
-      const [topics, publishes] = await Promise.all([listRecords(accessToken, "content_topic", "limit=200"), listRecords(accessToken, "content_publish", "limit=200")]);
-      const automationSources = topics.records.filter((record) => record.metadata?.automationSource === true || record.metadata?.pipelineEnabled === true);
+      const [topics, publishes] = await Promise.all([listAllRecordsOfType(accessToken, "content_topic"), listRecords(accessToken, "content_publish", "limit=200")]);
+      const automationSources = automationSourcesFor(topics, new URLSearchParams(window.location.search).get("sourceId"));
       setSources(automationSources); setOutputs(publishes.records.filter((record) => record.metadata?.automationOutput === true));
       setSelectedId((current) => current || new URLSearchParams(window.location.search).get("sourceId") || automationSources[0]?.id || "");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "콘텐츠 자동화 항목을 불러오지 못했습니다."); }
   }, [accessToken, demo]);
   useEffect(() => { load(); }, [load]);
 
-  const selected = sources.find((source) => source.id === selectedId) ?? sources[0] ?? null;
+  const selected = selectedAutomationSource(sources, selectedId);
   const selectedOutputs = outputs.filter((output) => output.parent_id === selected?.id);
   const reviewCount = outputs.filter((output) => ["draft", "review", "ready", "blocked"].includes(output.status)).length;
   const scheduledCount = outputs.filter((output) => output.status === "scheduled").length;
