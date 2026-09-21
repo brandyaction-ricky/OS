@@ -799,7 +799,15 @@ html[data-guidance="off"] :where(
 
 .pipeline-panel { padding:20px; display:grid; gap:16px; min-width:0; }
 .pipeline-panel h2 { margin:0; font-size:18px; }.pipeline-panel p,.pipeline-panel small { color:var(--muted); line-height:1.6; }
-.pipeline-panel label,.pipeline-inputs { display:grid; gap:7px; }.pipeline-inputs { grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.pipeline-panel label,.pipeline-inputs { display:grid; gap:7px; }.pipeline-inputs { grid-template-columns:minmax(0,1fr); gap:20px; }
+.pipeline-inputs fieldset { min-width:0; margin:0; padding:20px; display:grid; gap:18px; border:1px solid var(--line-soft); border-radius:10px; }
+.pipeline-inputs fieldset p { margin:0; }
+.pipeline-inputs textarea { min-height:110px; line-height:1.75; resize:vertical; }
+.automation-detail .pipeline-panel header p { white-space:normal; overflow:visible; font-size:13px; }
+.pipeline-panel .factory-route>div { grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; }
+.pipeline-panel .factory-route h3 { font-size:12px; }
+.pipeline-panel .factory-route ol,.pipeline-panel .factory-route>p { font-size:12px; }
+@media(max-width:1200px) { .automation-layout { grid-template-columns:minmax(0,1fr); } }
 .pipeline-panel input,.pipeline-panel textarea,.radar-filters select { width:100%; padding:9px; color:var(--text); background:var(--panel-2); border:1px solid var(--line); border-radius:7px; }
 .pipeline-gates { display:grid; gap:14px; }.pipeline-gates>article,.hypothesis-row { border:1px solid var(--line); border-radius:9px; padding:14px; display:grid; gap:10px; }.pipeline-gates header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
 .pipeline-actions,.radar-filters { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }.pipeline-actions a { color:var(--accent); }.pipeline-artifacts { display:grid; gap:12px; }.pipeline-artifacts pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:400px; overflow:auto; }

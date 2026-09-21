@@ -1,6 +1,25 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
+for (const width of [390, 1040]) {
+  test(`pipeline preparation uses readable full-width fields at ${width}px`, async ({ page }) => {
+    const styles = await readFile("app/globals.css", "utf8");
+    await page.setViewportSize({ width, height: 900 });
+    await page.setContent(`<style>${styles}body{display:block;padding:16px}</style>
+      <section class="automation-layout"><aside>주제</aside><div class="automation-detail">
+      <section class="pipeline-panel"><header><p>제목·썸네일을 먼저 정하고 제작 자료를 준비합니다.</p></header>
+      <form class="pipeline-inputs"><label>경험<textarea></textarea></label>
+      <fieldset><legend>제작 자료 준비 방식</legend><p>칠판형 구성안과 촬영 진행표</p>
+      <label>내용 구성안<textarea></textarea></label><label>촬영 진행표<textarea></textarea></label></fieldset></form>
+      </section></div></section>`);
+    await expect(page.locator('fieldset')).toHaveCSS('padding-left', '20px');
+    await expect(page.locator('.pipeline-inputs')).toHaveCSS('row-gap', '20px');
+    const bounds = await page.locator('fieldset').boundingBox();
+    expect(bounds?.width).toBeGreaterThan(width - 110);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
 for (const width of [390, 1280]) {
   test(`workflow card spacing stays readable at ${width}px`, async ({ page }) => {
     const styles = await readFile("components/content-planning-handoff.css", "utf8");
