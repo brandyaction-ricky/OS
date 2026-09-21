@@ -1,12 +1,12 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-17 Asia/Seoul.
+Updated: 2026-09-21 Asia/Seoul.
 
 ## Decision
 
-The reviewed active chain through the knowledge-search migration was applied to the isolated `brandyaction-os-dev` project. Do not replay the schema baseline against Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus forward migrations. The newest forward migration replaces a non-indexable `word_similarity(...) > 0.3` filter with the existing trigram GIN index operator while preserving the same threshold and RLS contract. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The reviewed seven-file active chain is fully recorded in the isolated `brandyaction-os-dev` project. Do not replay the schema baseline against Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the Production `public` schema plus six forward migrations: Auth profile-trigger restoration, RLS optimization, privileged-function hardening, append-only development-request comments, recipient-only development notifications, and indexed knowledge search. The newest forward migration replaces a non-indexable `word_similarity(...) > 0.3` filter with the existing trigram GIN index operator while preserving the threshold and RLS contract. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The user approved DEV application on 2026-09-17, with later reviewed forward migrations applied independently. The six repository migrations are now present in DEV without seeds or Production data, and the manifest records `applied_dev` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize replaying the schema baseline, seeds, reset, or Production data copy.
+The user approved DEV application on 2026-09-17 with later reviewed forward migrations applied independently, and separately approved the notification migration for Production on 2026-09-21. All seven repository migrations are present in DEV without seeds or Production data. Production currently records the development-comment, notification, and knowledge-search forward migrations. The manifest records `applied_dev_and_production` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
 
 ## Current tooling state
 
@@ -17,13 +17,13 @@ The user approved DEV application on 2026-09-17, with later reviewed forward mig
 - The authenticated Production schema-only dump completed through the official Supabase containerized `pg_dump`. The uncommitted raw artifact remains in `/private/tmp`; it contained no `INSERT`, `COPY`, credential literal, Auth rows, Storage objects, or business rows.
 - `npm run db:tooling:ready` passes with the Docker Desktop runtime.
 
-The first local apply exposed two snapshot portability issues: a function-scoped `pg_trgm` setting required unavailable privileges, and the filtered dump omitted the `pg_trgm` extension declaration. The candidate now uses an explicit `word_similarity(...) > 0.3` predicate and declares `pgcrypto`, `pg_trgm`, and `vector` in `extensions`. Production and DEV were not changed.
+The first local apply exposed two snapshot portability issues: a function-scoped `pg_trgm` setting required unavailable privileges, and the filtered dump omitted the `pg_trgm` extension declaration. The candidate now uses an explicit `word_similarity(...) > 0.3` predicate and declares `pgcrypto`, `pg_trgm`, and `vector` in `extensions`. Production and DEV were not changed by that snapshot-repair work; later forward migrations were applied only under their separate approvals.
 
 ## Evidence
 
-- The active migration chain contains the CLI-generated `core_baseline` snapshot and five forward migrations. Their checksums are pinned in the manifest. The fourth forward migration adds append-only development-request comments and single-level replies. The fifth repairs the knowledge-search query plan without adding or replacing indexes. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
-- Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
-- Production currently has the core OS schema. DEV records all six repository migration versions and contains the indexed knowledge-search function, development-comment guard trigger and partial index alongside the restored Auth profile trigger.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and six forward migrations. Their checksums are pinned in the manifest. The fourth adds append-only development-request comments, the fifth adds `@`멘션·담당 지정 알림 with recipient-only delivery/read state, and the sixth repairs the knowledge-search query plan without adding or replacing indexes. The 14 ordered legacy files and original SHA-256 checksums remain preserved in `supabase/migrations-legacy`.
+- Production migration history contains 10 entries, with three exact repository migration matches: development-request comments, development notifications, and indexed knowledge search. Notification postflight verification confirmed the record type, two indexes, both triggers, mention-aware comment guard, safe `SECURITY DEFINER` search path, and execution denial for `PUBLIC`, `anon`, and `authenticated`; the two existing comments were preserved and no notification fixture was created.
+- DEV records all seven active migration versions. It retains the two DEV comments and one completed notification QA record, and contains the indexed knowledge-search function, notification guard/creation triggers, inbox/deduplication indexes, comment guard, and restored Auth profile trigger. Direct execution of the privileged notification creation function is denied to `PUBLIC`, `anon`, and `authenticated`, while `service_role` remains allowed.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
 - The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
 - A clean local `supabase db reset --local --no-seed` succeeded for the original three-migration chain. The fourth privilege-hardening migration was then applied incrementally to the same local database and DEV, producing exactly four migration-history entries in both targets. A destructive zero-state reset of the four-migration chain was not repeated because that separate reset approval was not granted.
@@ -34,7 +34,7 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Why a direct push is unsafe
 
-The old delta chain could not build an empty database and must never be replayed from `supabase/migrations-legacy`. The reviewed chain is now applied to DEV only. Production application and history repair remain blocked because DEV success and history changes do not prove Production schema equivalence.
+The old delta chain could not build an empty database and must never be replayed from `supabase/migrations-legacy`. The reviewed notification migration is applied to DEV and, after an exact Production preflight and separate user approval, to Production. Broader baseline history repair remains blocked because these forward-migration approvals do not authorize rewriting unrelated Production history.
 
 New Supabase projects also no longer guarantee automatic Data API grants for new `public` tables. The reviewed baseline must therefore contain explicit least-privilege grants as well as RLS policies. RLS alone is not sufficient. See the [Supabase Data API exposure change](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically).
 
@@ -53,14 +53,15 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 - [x] Resolve the 18 performance warnings in a separate forward migration and confirm 0 findings for the two affected Advisor rules.
 - [x] Rebuild the original three-migration chain from zero after explicit approval to discard the prior local database.
 - [x] After explicit DEV approval, change the manifest to `ready`/`apply` and pass `npm run db:migrations:ready`.
-- [x] Apply all four active migrations only to the isolated DEV project without seed/Vault changes and record remote verification.
-- [ ] Repeat a destructive local zero-state reset for the complete four-migration chain only after separate approval; incremental local application and the 23-case suite already pass.
+- [x] Apply all seven active migrations to the isolated DEV project without seed/Vault changes and record remote verification.
+- [x] After separate Production approval, preflight and apply the notification migration, preserve the two existing comments, and verify history, constraints, indexes, triggers, function privileges, and zero notification fixtures.
+- [ ] Repeat a destructive local zero-state reset for the complete seven-file chain only after separate approval; incremental validation and the automated suite already pass.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 
 ## Production reconciliation gate
 
-Production is a separate future operation. First compare the reviewed baseline and every later migration with the live schema. Only then prepare a forward-only history reconciliation plan. `supabase migration repair` changes tracking records without applying SQL, so it requires a separately reviewed mapping and explicit Production approval.
+The notification migration Production gate is complete: live prerequisites were checked, explicit approval named Production Supabase and Vercel impact, the migration was applied transactionally, and postflight verification passed. A fresh inventory also confirms the later knowledge-search migration in both DEV and Production. Broader baseline reconciliation remains a different operation. `supabase migration repair` changes tracking records without applying SQL, so it still requires a separately reviewed mapping and explicit Production approval.
 
 Never reset Production, replay the legacy chain blindly, copy Production data into DEV, or use Production credentials for connected tests.
 

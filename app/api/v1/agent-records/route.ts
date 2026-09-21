@@ -14,7 +14,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const organizationId = z.string().uuid();
-const protectedTypes = new Set<RecordType>(["access_rule", "development_comment"]);
+const protectedTypes = new Set<RecordType>(["access_rule", "development_comment", "development_notification"]);
 const columnMap = {
   recordType: "record_type", assigneeId: "assignee_id", parentId: "parent_id", dueDate: "due_date",
   startsAt: "starts_at", endsAt: "ends_at", metricTarget: "metric_target", metricCurrent: "metric_current",
@@ -72,16 +72,18 @@ export async function GET(request: Request) {
       const { data, error } = await service.from("os_records").select("*").eq("id", recordId).maybeSingle();
       if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
       if (data.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
+      if (data.record_type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
       return NextResponse.json({ record: data });
     }
     const type = url.searchParams.get("type") as RecordType | null;
     if (type && !RECORD_TYPES.includes(type)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
     if (type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
+    if (type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     let query = service.from("os_records").select("*", { count: "exact" }).is("archived_at", null).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
     if (type) query = query.eq("record_type", type);
-    else query = query.neq("record_type", "development_comment");
+    else query = query.neq("record_type", "development_comment").neq("record_type", "development_notification");
     const { data, count, error } = await query;
     if (error) throw new ApiError(400, "RECORD_LIST_FAILED", "운영 기록을 불러오지 못했습니다.", error.message);
     return NextResponse.json({ records: data ?? [], total: count ?? 0 });
@@ -99,6 +101,7 @@ export async function POST(request: Request) {
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 작성해 주세요.");
+    if (input.recordType === "development_notification" || input.metadata.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     enforceHumanGates(input.recordType, input.status);
     await assertDevelopmentRequestLink(actor.supabase, input);
     await rateLimit(actor, "record.create");
@@ -127,6 +130,7 @@ export async function PATCH(request: Request) {
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 변경해 주세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
+    if (current.record_type === "development_notification" || input.metadata?.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 에이전트 API에서 변경할 수 없습니다.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     const recordType = (input.recordType ?? current.record_type) as RecordType;
@@ -159,6 +163,7 @@ export async function DELETE(request: Request) {
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다.");
     if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
+    if (current.record_type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     enforceHumanGates(current.record_type as RecordType);
     await rateLimit(actor, "record.delete");
     const { data, error } = await service.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.ownerId }).eq("id", id).eq("version", current.version).select("id,title").maybeSingle();

@@ -35,6 +35,21 @@ async function getAuthorName(actor: RequestActor) {
   return String(data?.display_name || data?.email || actor.name).split("@")[0];
 }
 
+async function getMentions(ids: string[]) {
+  if (!ids.length) return [];
+  const { data, error } = await createServiceSupabase().from("os_profiles")
+    .select("id,display_name,email")
+    .in("id", ids)
+    .eq("is_active", true);
+  if (error) throw new ApiError(500, "COMMENT_MENTION_READ_FAILED", "멘션할 구성원을 확인하지 못했습니다.");
+  if ((data ?? []).length !== ids.length) throw new ApiError(404, "COMMENT_MENTION_NOT_FOUND", "활성 상태인 구성원만 멘션할 수 있습니다.");
+  const profiles = new Map((data ?? []).map((profile) => [profile.id, profile]));
+  return ids.map((id) => {
+    const profile = profiles.get(id)!;
+    return { id, name: String(profile.display_name || profile.email || "구성원").split("@")[0] };
+  });
+}
+
 async function assertReply(actor: RequestActor, requestId: string, replyTo: string | null | undefined) {
   if (!replyTo) return;
   const { data, error } = await actor.supabase.from("os_records")
@@ -77,6 +92,7 @@ export async function POST(request: Request) {
     const developmentRequest = await getRequest(actor, input.requestId);
     await assertReply(actor, input.requestId, input.replyTo);
     const authorName = await getAuthorName(actor);
+    const mentions = await getMentions(input.mentionIds);
     const { data, error } = await actor.supabase.from("os_records").insert({
       record_type: "development_comment",
       title: input.replyTo ? "개발 요청 답글" : "개발 요청 댓글",
@@ -89,7 +105,13 @@ export async function POST(request: Request) {
       owner_id: actor.ownerId,
       created_by: actor.ownerId,
       updated_by: actor.ownerId,
-      metadata: developmentCommentMetadata({ requestId: input.requestId, replyTo: input.replyTo, authorName }),
+      metadata: developmentCommentMetadata({
+        requestId: input.requestId,
+        replyTo: input.replyTo,
+        authorName,
+        mentionIds: mentions.map((mention) => mention.id),
+        mentionNames: mentions.map((mention) => mention.name),
+      }),
     }).select("*").single();
     if (error || !data) throw new ApiError(500, "COMMENT_CREATE_FAILED", "댓글을 저장하지 못했습니다.");
     return NextResponse.json({ comment: data }, { status: 201, headers });

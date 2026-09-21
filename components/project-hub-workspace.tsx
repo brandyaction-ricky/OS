@@ -88,6 +88,7 @@ function ProjectHubContent() {
   const [commentSaving, setCommentSaving] = useState(false);
   const [commentRevision, setCommentRevision] = useState(0);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [copyFallback, setCopyFallback] = useState("");
   const [pageUrl, setPageUrl] = useState("");
@@ -103,6 +104,7 @@ function ProjectHubContent() {
   const memberNames = useMemo(() => new Map(members.map(member => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
   const assigneeName = (id: string | null) => id ? memberNames.get(id) || `구성원 ${id.slice(0, 8)}` : "미지정";
   const commentName = (comment: OsRecord) => meta(comment, "authorName") || assigneeName(comment.created_by);
+  const commentMentionNames = (comment: OsRecord) => Array.isArray(comment.metadata.mentionNames) ? comment.metadata.mentionNames.filter((name): name is string => typeof name === "string") : [];
   const commentIds = useMemo(() => new Set(comments.map(comment => comment.id)), [comments]);
   const rootComments = comments.filter(comment => !meta(comment, "replyTo") || !commentIds.has(meta(comment, "replyTo")));
   const replies = (commentId: string) => comments.filter(comment => meta(comment, "replyTo") === commentId);
@@ -212,10 +214,10 @@ function ProjectHubContent() {
   }, [accessToken, demo, projectId, revision]);
 
   useEffect(() => {
-    if (!selectedId) { setComments([]); setCommentsError(""); setReplyTo(null); return; }
-    if (demo || !accessToken) { setComments([]); setCommentsError(""); setReplyTo(null); return; }
+    if (!selectedId) { setComments([]); setCommentsError(""); setReplyTo(null); setMentionIds([]); return; }
+    if (demo || !accessToken) { setComments([]); setCommentsError(""); setReplyTo(null); setMentionIds([]); return; }
     let cancelled = false;
-    setCommentsLoading(true); setCommentsError(""); setReplyTo(null);
+    setCommentsLoading(true); setCommentsError(""); setReplyTo(null); setMentionIds([]);
     commentApi<{ comments: OsRecord[] }>(accessToken, selectedId)
       .then(result => { if (!cancelled) setComments(result.comments); })
       .catch(reason => { if (!cancelled) setCommentsError(reason instanceof Error ? reason.message : "요청 대화를 불러오지 못했습니다."); })
@@ -312,10 +314,10 @@ function ProjectHubContent() {
     setCommentSaving(true); setCommentsError("");
     try {
       const saved = demo
-        ? previewRecord({ record_type: "development_comment", title: replyTo ? "개발 요청 답글" : "개발 요청 댓글", description: body, status: "active", parent_id: selected.id, created_by: profile?.id || "demo-ricky", updated_by: profile?.id || "demo-ricky", metadata: { kind: "development_comment", requestId: selected.id, replyTo: replyTo || "", authorName: profile?.displayName || "리키", authorType: "member" } })
-        : (await commentApi<{ comment: OsRecord }>(accessToken, selected.id, { body, replyTo })).comment;
+        ? previewRecord({ record_type: "development_comment", title: replyTo ? "개발 요청 답글" : "개발 요청 댓글", description: body, status: "active", parent_id: selected.id, created_by: profile?.id || "demo-ricky", updated_by: profile?.id || "demo-ricky", metadata: { kind: "development_comment", requestId: selected.id, replyTo: replyTo || "", authorName: profile?.displayName || "리키", authorType: "member", mentionIds, mentionNames: mentionIds.map(id => assigneeName(id)) } })
+        : (await commentApi<{ comment: OsRecord }>(accessToken, selected.id, { body, replyTo, mentionIds })).comment;
       setComments(previous => [...previous, saved]);
-      formElement.reset(); setReplyTo(null); setNotice(replyTo ? "답글을 남겼습니다." : "댓글을 남겼습니다.");
+      formElement.reset(); setReplyTo(null); setMentionIds([]); setNotice(replyTo ? "답글을 남겼습니다." : "댓글을 남겼습니다.");
       if (!demo) setCommentRevision(value => value + 1);
     } catch (reason) { setCommentsError(reason instanceof Error ? reason.message : "댓글을 저장하지 못했습니다."); }
     finally { setCommentSaving(false); }
@@ -385,12 +387,21 @@ function ProjectHubContent() {
         {commentsError && <div className="dev-error" role="alert">{commentsError}</div>}
         {commentsLoading ? <p className="dev-comment-empty">대화를 불러오는 중입니다.</p> : rootComments.length ? <div className="dev-comment-list">{rootComments.map(comment => <article className="dev-comment" key={comment.id}>
           <header><strong>{commentName(comment)}</strong>{meta(comment, "authorType") === "agent" && <span>AI 대리 작성</span>}<time dateTime={comment.created_at}>{dateTime(comment.created_at)}</time></header>
+          {commentMentionNames(comment).length > 0 && <div className="dev-comment-mentions">{commentMentionNames(comment).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}
           <p>{comment.description}</p>
-          <button type="button" className="dev-text-button" onClick={() => setReplyTo(comment.id)}><CornerDownRight size={13} /> 답글</button>
-          {replies(comment.id).map(reply => <div className="dev-comment-reply" key={reply.id}><header><strong>{commentName(reply)}</strong>{meta(reply, "authorType") === "agent" && <span>AI 대리 작성</span>}<time dateTime={reply.created_at}>{dateTime(reply.created_at)}</time></header><p>{reply.description}</p></div>)}
+          <button type="button" className="dev-text-button" onClick={() => { setReplyTo(comment.id); setMentionIds(comment.created_by && comment.created_by !== profile?.id && members.some(member => member.id === comment.created_by) ? [comment.created_by] : []); }}><CornerDownRight size={13} /> 답글</button>
+          {replies(comment.id).map(reply => <div className="dev-comment-reply" key={reply.id}><header><strong>{commentName(reply)}</strong>{meta(reply, "authorType") === "agent" && <span>AI 대리 작성</span>}<time dateTime={reply.created_at}>{dateTime(reply.created_at)}</time></header>{commentMentionNames(reply).length > 0 && <div className="dev-comment-mentions">{commentMentionNames(reply).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}<p>{reply.description}</p></div>)}
         </article>)}</div> : <p className="dev-comment-empty">아직 대화가 없습니다. 진행 상황이나 확인할 내용을 남겨 보세요.</p>}
         <form className="dev-comment-form" onSubmit={submitComment}>
-          {replyTo && <div className="dev-reply-target"><span><CornerDownRight size={13} /> {commentName(comments.find(comment => comment.id === replyTo) || selected)}님의 댓글에 답글</span><button type="button" onClick={() => setReplyTo(null)}>취소</button></div>}
+          {replyTo && <div className="dev-reply-target"><span><CornerDownRight size={13} /> {commentName(comments.find(comment => comment.id === replyTo) || selected)}님의 댓글에 답글</span><button type="button" onClick={() => { setReplyTo(null); setMentionIds([]); }}>취소</button></div>}
+          <details className="dev-mention-picker">
+            <summary>@ 함께 볼 사람{mentionIds.length > 0 && <span>{mentionIds.length}명</span>}</summary>
+            <div>{members.filter(member => member.id !== profile?.id).map(member => {
+              const checked = mentionIds.includes(member.id);
+              return <label key={member.id}><input type="checkbox" checked={checked} onChange={() => setMentionIds(previous => checked ? previous.filter(id => id !== member.id) : [...previous, member.id])} /><span>@{member.display_name || member.email.split("@")[0]}</span><small>{member.team || member.affiliation}</small></label>;
+            })}{members.filter(member => member.id !== profile?.id).length === 0 && <p>멘션할 수 있는 활성 구성원이 없습니다.</p>}</div>
+          </details>
+          {mentionIds.length > 0 && <div className="dev-selected-mentions">{mentionIds.map(id => <button type="button" key={id} onClick={() => setMentionIds(previous => previous.filter(value => value !== id))}>@{assigneeName(id)} <X size={11} /></button>)}</div>}
           <label>{replyTo ? "답글" : "댓글"}<textarea name="comment" required rows={3} maxLength={5000} placeholder={replyTo ? "답글을 입력하세요." : "진행 상황, 질문, 확인할 내용을 남겨 주세요."} /></label>
           <button className="dev-button primary" disabled={commentSaving}>{commentSaving ? <><Loader2 className="dev-spin" size={14} /> 저장 중…</> : <><Send size={13} /> {replyTo ? "답글 남기기" : "댓글 남기기"}</>}</button>
         </form>

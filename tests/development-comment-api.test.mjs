@@ -9,6 +9,7 @@ import * as comments from "../lib/development-comments.ts";
 const requestId = "80950395-23b2-4b5a-bd0f-c3d8b8b78d92";
 const otherRequestId = "8abcb821-b9c9-49ff-96a2-b116030b6edf";
 const authorId = "1eecc49f-13ea-4c53-96c6-6f36dcb6d034";
+const mentionId = "74c2ada6-6a89-4560-8484-1df8c14b9690";
 const source = await readFile(new URL("../app/api/v1/development-request-comments/route.ts", import.meta.url), "utf8");
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 
@@ -44,6 +45,7 @@ function createDatabase(rows, profiles) {
       const builder = {
         select() { return builder; },
         eq(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
+        in(key, expected) { conditions.push((row) => expected.includes(value(row, key))); return builder; },
         is(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
         order(key, { ascending = true } = {}) { ordering.push([key, ascending]); return builder; },
         range(from, to) { range = [from, to]; return builder; },
@@ -63,7 +65,10 @@ function setup(extraRows = []) {
     { id: otherRequestId, record_type: "ai_job", metadata: { kind: "development_request" }, parent_id: "project", brand: "BRANDYACTION", team: "개발", archived_at: null },
     ...extraRows,
   ];
-  const database = createDatabase(rows, [{ id: authorId, display_name: "브랜디", email: "brand@example.com" }]);
+  const database = createDatabase(rows, [
+    { id: authorId, display_name: "브랜디", email: "brand@example.com", is_active: true },
+    { id: mentionId, display_name: "리키", email: "ricky@example.com", is_active: true },
+  ]);
   const actor = { id: authorId, ownerId: authorId, name: "brand@example.com", role: "admin", team: "개발", supabase: database };
   const modules = {
     "next/server": { NextResponse: Response }, zod,
@@ -108,6 +113,16 @@ test("comment API creates separate append-only records with server-owned authors
   assert.equal(created[0].owner_id, authorId);
   assert.equal(created[0].metadata.authorName, "브랜디");
   assert.equal(created[0].metadata.requestId, requestId);
+});
+
+test("comment API validates active mentions and stores server-owned names", async () => {
+  const { routes, rows } = setup();
+  const response = await routes.POST(request("POST", { requestId, body: "리키님 확인 부탁드립니다.", mentionIds: [mentionId] }));
+  assert.equal(response.status, 201);
+  assert.deepEqual(rows.at(-1).metadata.mentionIds, [mentionId]);
+  assert.deepEqual(rows.at(-1).metadata.mentionNames, ["리키"]);
+  const missing = await routes.POST(request("POST", { requestId, body: "없는 멤버", mentionIds: ["f2ae8c57-168b-46f7-85c2-d72d3f8fcd89"] }));
+  assert.equal(missing.status, 404);
 });
 
 test("replies must point to a comment on the same request", async () => {

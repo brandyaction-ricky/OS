@@ -8,6 +8,8 @@ export const developmentCommentQuerySchema = z.object({
 export const developmentCommentCreateSchema = developmentCommentQuerySchema.extend({
   body: z.string().trim().min(1).max(5_000),
   replyTo: z.string().uuid().nullable().optional(),
+  mentionIds: z.array(z.string().uuid()).max(12).default([])
+    .refine((ids) => new Set(ids).size === ids.length, "같은 구성원을 두 번 멘션할 수 없습니다."),
 });
 
 export interface DevelopmentComment extends OsRecord {
@@ -23,6 +25,8 @@ export function developmentCommentMetadata(input: {
   replyTo?: string | null;
   authorName: string;
   authorType?: "member" | "agent";
+  mentionIds?: string[];
+  mentionNames?: string[];
 }) {
   return {
     kind: "development_comment",
@@ -30,5 +34,7 @@ export function developmentCommentMetadata(input: {
     replyTo: input.replyTo ?? "",
     authorName: input.authorName,
     authorType: input.authorType ?? "member",
+    mentionIds: input.mentionIds ?? [],
+    mentionNames: input.mentionNames ?? [],
   };
 }
