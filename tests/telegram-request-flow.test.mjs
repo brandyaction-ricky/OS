@@ -11,11 +11,11 @@ class ApiError extends Error {
 const actor = { id: "admin", role: "admin", user: { id: "admin" } };
 
 async function setup(file, handler, options = {}) {
-  const calls = [], sent = [], inserts = [], answeredWith = [], searchCalls = [];
+  const calls = [], sent = [], inserts = [], answeredWith = [], searchCalls = [], telegramCalls = [];
   const db = { from(table) {
     const query = { table, operations: [] };
     const chain = { then(resolve, reject) { calls.push(query); return Promise.resolve(handler(query)).then(resolve, reject); } };
-    for (const method of ["select", "insert", "update", "upsert", "eq", "neq", "is", "in", "order", "limit", "single", "maybeSingle"]) chain[method] = (...args) => { query.operations.push({ method, args }); if (method === "insert") inserts.push({ table, payload: args[0] }); return chain; };
+    for (const method of ["select", "insert", "update", "upsert", "eq", "neq", "is", "in", "gte", "lte", "ilike", "order", "limit", "single", "maybeSingle"]) chain[method] = (...args) => { query.operations.push({ method, args }); if (method === "insert") inserts.push({ table, payload: args[0] }); return chain; };
     return chain;
   } };
   const source = await readFile(new URL(`../app/api/v1/telegram/${file}/route.ts`, import.meta.url), "utf8");
@@ -29,6 +29,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/supabase/server": { createServiceSupabase: () => db },
     "@/lib/telegram-intents": intents,
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
+    "@/lib/telegram-team": await import("../lib/telegram-team.ts"),
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
     "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: typeof options.searchResults === "function" ? options.searchResults(input) : options.searchResults ?? [] }; } },
   };
@@ -36,22 +37,27 @@ async function setup(file, handler, options = {}) {
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, process: { env: { TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_WEBHOOK_SECRET: "test-secret", TELEGRAM_BOT_USERNAME: "our_bot", TELEGRAM_CAPTURE_OWNER_EMAIL: "owner@example.com", ...options.env } }, Buffer, AbortSignal, URL, Date, console,
     fetch: async (url, init) => {
       const method = url.split("/").at(-1);
-      if (method === "sendMessage") { sent.push(JSON.parse(init.body)); return Response.json({ ok: true, result: {} }); }
+      const telegramBody = init?.body ? JSON.parse(init.body) : {};
+      telegramCalls.push({ method, body: telegramBody });
+      if (method === "sendMessage") { sent.push(telegramBody); return Response.json({ ok: true, result: { message_id: 99 } }); }
+      if (["answerCallbackQuery", "editMessageText", "editMessageReplyMarkup"].includes(method)) return Response.json({ ok: true, result: {} });
       if (options.offline) throw new Error("network unavailable");
       if (method === "getMe") return Response.json({ ok: true, result: { username: "our_bot", first_name: "Bot" } });
       if (method === "getWebhookInfo") return Response.json({ ok: true, result: { url: "https://example.com/webhook", pending_update_count: 0, last_synchronization_error_date: 42 } });
       throw new Error(`Unexpected external call ${method}`);
     },
   });
-  return { api: exports, calls, sent, inserts, answeredWith, searchCalls };
+  return { api: exports, calls, sent, inserts, answeredWith, searchCalls, telegramCalls };
 }
 
 const where = (query, key) => query.operations.find((op) => op.method === "eq" && op.args[0] === key)?.args[1];
 const incoming = (extra = {}, secret = "test-secret") => new Request("https://example.com/api/v1/telegram/webhook", { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": secret }, body: JSON.stringify({ update_id: 10, message: { message_id: 20, chat: { id: 30, type: "private" }, from: { id: 40, first_name: "직원" }, text: "질문", ...extra } }) });
+const callbackIncoming = (data) => new Request("https://example.com/api/v1/telegram/webhook", { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": "test-secret" }, body: JSON.stringify({ update_id: 11, callback_query: { id: "callback-1", from: { id: 40, first_name: "직원" }, data, message: { message_id: 99, chat: { id: 30, type: "private" }, text: "버튼" } } }) });
 const normalHandler = (query) => {
-  if (query.table === "os_telegram_users") return { data: { status: "approved" }, error: null };
+  if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
   if (query.table === "os_profiles") return { data: { id: "capture-owner" }, error: null };
   if (query.table === "os_documents") return query.operations.some((op) => op.method === "insert") ? { data: { id: "saved-doc" }, error: null } : { data: null, error: null };
+  if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "insert")) return { data: { id: 71 }, error: null };
   return { data: [], error: null };
 };
 
@@ -148,6 +154,60 @@ test("start returns usage guidance instead of searching arbitrary knowledge", as
   const body = await (await ctx.api.POST(incoming({ text: "/start" }))).json();
   assert.equal(body.started, true);
   assert.match(ctx.sent[0].text, /회사 지식 질문/);
+});
+
+test("an OS action command creates only a pending draft with an explicit confirmation button", async () => {
+  const ctx = await setup("webhook", normalHandler);
+  const body = await (await ctx.api.POST(incoming({ text: "/업무 랜딩 초안 검토 @worker 2026-09-25" }))).json();
+  assert.equal(body.actionPending, true);
+  assert.equal(ctx.inserts.filter((item) => item.table === "os_records").length, 0);
+  const draft = ctx.inserts.find((item) => item.table === "os_channel_turns").payload.metadata.draft;
+  assert.equal(draft.title, "랜딩 초안 검토");
+  assert.equal(draft.assigneeUsername, "worker");
+  assert.equal(ctx.sent[0].reply_markup.inline_keyboard[0][0].callback_data, "act:71:confirm");
+});
+
+test("confirming an action button creates one attributable OS record", async () => {
+  const draft = { kind: "task", title: "랜딩 초안 검토", assigneeUsername: "", dueDate: null, recordType: "task", status: "backlog" };
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) return { data: { id: 71, external_chat_id: "30", question: "/업무 랜딩 초안 검토", answer: "TELEGRAM_ACTION_PENDING", metadata: { draft, expiresAt: "2099-01-01T00:00:00Z" } }, error: null };
+    if (query.table === "os_records" && query.operations.some((op) => op.method === "insert")) return { data: { id: "record-1" }, error: null };
+    if (query.table === "os_records") return { data: null, error: null };
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("act:71:confirm"))).json();
+  assert.equal(body.created, true);
+  const record = ctx.inserts.find((item) => item.table === "os_records").payload;
+  assert.equal(record.created_by, "member-profile");
+  assert.equal(record.metadata.telegramTurnId, 71);
+  assert.ok(ctx.telegramCalls.some((call) => call.method === "editMessageText"));
+});
+
+test("negative answer feedback is stored and opens a deduplicated review task", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns") return { data: { id: 71, external_chat_id: "30", question: "기준?", answer: "답", source_document_ids: ["doc-1"] }, error: null };
+    if (query.table === "os_records") return query.operations.some((op) => op.method === "insert") ? { data: { id: "task-1" }, error: null } : { data: null, error: null };
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("fb:71:wrong"))).json();
+  assert.equal(body.feedback, "wrong");
+  assert.ok(ctx.calls.some((query) => query.table === "os_telegram_feedback" && query.operations.some((op) => op.method === "upsert")));
+  assert.equal(ctx.inserts.find((item) => item.table === "os_records").payload.metadata.kind, "telegram_answer_feedback");
+});
+
+test("a reply to the bot retrieves with the prior question and logs the reply relationship", async () => {
+  const related = { documentId: "procedure-doc", title: "패키징_절차", heading: "순서", text: "두 번째 단계는 카피 후보 작성이다", citation: { version: 1, chunkId: 1 }, score: 1 };
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select") && !query.operations.some((op) => op.method === "insert")) return { data: { question: "썸네일 만드는 순서 알려줘", answer: "1. 후보 2. 검토" }, error: null };
+    return normalHandler(query);
+  }, { searchResults: [related] });
+  await ctx.api.POST(incoming({ text: "그중 2번을 자세히", reply_to_message: { message_id: 99, from: { is_bot: true, username: "our_bot" } } }));
+  assert.match(ctx.searchCalls[0].query, /썸네일 만드는 순서/);
+  const turn = ctx.inserts.find((item) => item.table === "os_channel_turns").payload;
+  assert.equal(turn.reply_to_message_id, 99);
+  assert.equal(turn.metadata.kind, "knowledge_followup");
 });
 
 test("a labelled nonsense question never cites semantically-near but lexically unrelated knowledge", async () => {

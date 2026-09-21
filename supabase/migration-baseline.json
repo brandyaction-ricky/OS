@@ -1,21 +1,21 @@
 {
   "schemaVersion": 2,
-  "observedAt": "2026-09-21",
-  "status": "applied_dev_and_production",
-  "decision": "applied",
+  "observedAt": "2026-09-22",
+  "status": "ready",
+  "decision": "apply",
   "approval": {
     "environment": "development_and_production",
-    "approvedAt": "2026-09-21",
+    "approvedAt": "2026-09-22",
     "productionAuthorized": true,
-    "productionApprovedAt": "2026-09-21"
+    "productionApprovedAt": "2026-09-22"
   },
   "evidence": {
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 12,
     "productionExactRepositoryMatches": 5,
     "developmentHistoryCount": 9,
-    "pendingDevelopmentMigrationCount": 0,
-    "pendingProductionMigrationCount": 0,
+    "pendingDevelopmentMigrationCount": 1,
+    "pendingProductionMigrationCount": 1,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -197,6 +197,11 @@
       "file": "20260921233000_agent_write_rate_limit_metadata.sql",
       "sha256": "61d70a19e84f4c9b3d3bbbe053ff9231c2ed7c4a711536fa1fba37007dceed84",
       "purpose": "separate folder moves from content edits and return configurable safe retry metadata for agent knowledge writes"
+    },
+    {
+      "file": "20260922003000_telegram_team_workflow.sql",
+      "sha256": "85f562a43cad146b780706c70092fe2e0269cb51b090e9b5e03a116d3705368a",
+      "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests"
     }
   ],
   "legacyMigrations": [
