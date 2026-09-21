@@ -104,6 +104,12 @@ export function rankTelegramEvidence<T extends Pick<SearchResult, "title" | "hea
     .map(({ result }) => result);
 }
 
+export function telegramAuthorityQueryText(value: string) {
+  const procedural = /어떻게|어떡해|방법|절차|만들|해야|제작/u.test(value);
+  if (procedural && /썸네일/u.test(value)) return "패키징_절차 사람 카피";
+  return "";
+}
+
 export function evidenceQueryText(value: string) {
   const withoutLeadingLabel = value.replace(/^\s*\[[^\]\r\n]{1,80}\]\s*/u, "").trim();
   return withoutLeadingLabel || value.trim();
