@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+test("production workflow shows its content navigation and breadcrumb", async ({ page }) => {
+  await page.goto("/content/automation");
+  const breadcrumb = page.getByRole("navigation", { name: "현재 위치" });
+  await expect(breadcrumb).toContainText("콘텐츠");
+  await expect(breadcrumb).toContainText("제작 공정·파생");
+  await expect(breadcrumb).not.toContainText("오늘 현황");
+  await expect(page.getByRole("link", { name: "제작 공정·파생", exact: true })).toBeVisible();
+});
+
 test("local demo renders the application shell and health contract", async ({ page, request }) => {
   const consoleErrors: string[] = [];
   page.on("console", (message) => {

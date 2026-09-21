@@ -73,6 +73,7 @@ export const NAV_STAGES: NavStage[] = [
       { label: "주제·기획", href: "/content/topics", icon: Sparkles, ready: true },
       { label: "원고·스크립트", href: "/content/scripts", icon: NotebookPen, ready: true },
       { label: "제목·썸네일", href: "/content/packages", icon: PanelTop, ready: true },
+      { label: "제작 공정·파생", href: "/content/automation", icon: Workflow, ready: true },
       { label: "숏폼 편집", href: "/content/shorts", icon: Film, ready: true },
       { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, ready: true },
       { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, ready: true },
