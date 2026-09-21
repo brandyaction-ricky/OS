@@ -10,6 +10,7 @@ import { useSession } from "./session-provider";
 import { ContentPackagingEvidence } from "./content-packaging-evidence";
 import { ContentReviewContext } from "./content-review-context";
 import { ContentProductionDocuments } from "./content-production-documents";
+import { ContentStageReference } from "./content-stage-reference";
 
 export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; onCancel?: () => void; disabled?: boolean }) {
   const { accessToken, demo } = useSession();
@@ -90,6 +91,7 @@ export function LinkedPlanningHandoff() {
     {!editing ? <button className="secondary-button" onClick={() => { setEditing(true); setNotice(""); }}>제작 형식·인계 메모 수정</button> : null}
     <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}:${editing}`} source={state.source} onCancel={() => setEditing(false)} onSaved={editing ? record => { setState(current => current ? { ...current, source: record } : null); setEditing(false); setNotice("인계 메모를 저장했습니다. 기존 산출물·승인 이력은 보존했습니다. 변경된 입력의 공정 승인은 다시 확인해 주세요."); } : undefined} />
     <ContentPackagingEvidence source={state.source} records={state.records} />
+    <ContentStageReference sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
     <ContentReviewContext sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
     <ContentProductionDocuments key={`${state.source.id}:${state.source.version}:${accessToken}`} source={state.source} token={accessToken} disabled={editing} onSaved={record => { setState(current => current ? { ...current, source: record } : null); setNotice("문서 연결 정보를 갱신했습니다. 원문·공유 권한·승인 상태는 변경하지 않았습니다."); }} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
 }

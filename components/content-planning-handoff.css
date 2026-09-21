@@ -23,6 +23,7 @@
 .content-workflow-body > * { min-width: 0; margin-block: 0; }
 .content-workflow-body > p { max-width: 76ch; }
 .content-workflow-body > button { justify-self: start; }
+.content-workflow-body button[aria-pressed="true"] { border-color: var(--accent-2); background: var(--accent-soft); }
 .content-workflow-body > [role="status"] { display: grid; gap: 16px; }
 .content-workflow-body > [role="status"] > * { margin-block: 0; }
 .content-workflow-body ul { margin-block: 0; padding-left: 22px; }
