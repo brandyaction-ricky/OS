@@ -16,7 +16,7 @@ test.beforeEach(async ({ page, baseURL }) => {
     } else await route.continue();
   });
   await page.goto("/system-one");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("판단은 근거와 함께");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("공통 판단");
 });
 
 test.afterEach(async ({ page }) => {
@@ -99,4 +99,35 @@ test("desktop and mobile cards stay readable, and refresh clears local decisions
   await page.screenshot({ path: testInfo.outputPath("system-one-mobile.png"), fullPage: true });
   await page.reload();
   await expect(page.getByTestId("mock-verdict")).toHaveCount(0);
+});
+
+test("OS shared skin supports both themes and keyboard focus without horizontal overflow", async ({ page }, testInfo) => {
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const appearance = await page.evaluate(() => {
+      const button = document.querySelector<HTMLButtonElement>(".primary-button")!;
+      const panel = document.querySelector<HTMLElement>(".panel")!;
+      const sample = document.createElement("div");
+      sample.style.backgroundColor = "var(--accent)";
+      document.body.append(sample);
+      const accent = getComputedStyle(sample).backgroundColor;
+      sample.style.backgroundColor = "var(--panel-2)";
+      const surface = getComputedStyle(sample).backgroundColor;
+      sample.remove();
+      return { button: getComputedStyle(button).backgroundColor, accent,
+        panel: getComputedStyle(panel).backgroundColor, surface,
+        title: getComputedStyle(document.querySelector("h1")!).fontSize };
+    });
+    expect(appearance.button).toBe(appearance.accent);
+    expect(appearance.panel).toBe(appearance.surface);
+    expect(appearance.title).toBe("22px");
+    await page.getByLabel("시험 사례", { exact: true }).focus();
+    await page.keyboard.press("Tab");
+    const outline = await page.evaluate(() => getComputedStyle(document.activeElement!).outlineStyle);
+    expect(outline).not.toBe("none");
+    await page.screenshot({ path: testInfo.outputPath(`os-tone-${theme}.png`), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  }
 });
