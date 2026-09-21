@@ -62,7 +62,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
         <button type="button" className="ghost-button" disabled={busy || disabled} onClick={() => void check(link.documentId)}>현재 문서 확인</button>
         <button type="button" className="ghost-button" disabled={busy || disabled} onClick={() => void disconnect(link.documentId)}>연결만 해제 · 원문 유지</button>
       </li>)}</ul> : <p>직접 연결한 설계표·원고 문서가 없습니다. 제작 공정 원고와는 별도 연결입니다.</p>}
-      <form onSubmit={connect}><fieldset className="planning-handoff-fields" disabled={busy || disabled || links.length >= 12}>
+      <form className="research-brief" onSubmit={connect}><fieldset className="planning-handoff-fields" disabled={busy || disabled || links.length >= 12}>
         <label><span>문서 용도</span><select name="role" defaultValue="design">{Object.entries(productionDocumentRoles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         <label><span>OS 문서 링크 또는 문서 ID</span><input name="document" required maxLength={2000} placeholder="지식 작업공간의 문서 링크" /></label>
         <button className="secondary-button" type="submit">{busy ? "확인 중…" : "문서 확인 후 연결 저장"}</button>
