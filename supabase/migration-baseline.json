@@ -5,14 +5,14 @@
   "decision": "applied",
   "approval": {
     "environment": "development",
-    "approvedAt": "2026-09-17",
+    "approvedAt": "2026-09-21",
     "productionAuthorized": false
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 7,
-    "productionExactRepositoryMatches": 0,
-    "developmentHistoryCount": 5,
+    "productionHistoryCount": 8,
+    "productionExactRepositoryMatches": 1,
+    "developmentHistoryCount": 6,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -108,10 +108,10 @@
     },
     "developmentValidation": {
       "appliedAt": "2026-09-21",
-      "migrationHistoryCount": 5,
+      "migrationHistoryCount": 6,
       "publicTables": 34,
       "publicPolicies": 40,
-      "reviewedTriggers": 11,
+      "reviewedTriggers": 14,
       "authProfileTriggerPresent": true,
       "anonPrivilegedFunctionExecGrants": 0,
       "authenticatedServiceOnlyFunctionExecGrants": 0,
@@ -141,6 +141,11 @@
       "file": "20260921170000_development_request_comments.sql",
       "sha256": "1ea4f0ca6ead72c1324cd7fb2160a2a96b65f2b10826c153a5428c89f3ef2f9b",
       "purpose": "add append-only development request comments and single-level replies to the DEV operating record contract"
+    },
+    {
+      "file": "20260921210000_development_request_notifications.sql",
+      "sha256": "269f77e54e9209c6294c3078455b5b27aeebb61e1dba4aec62b43d217b20f37b",
+      "purpose": "add recipient-only development request mention and assignment notifications with delivery and read receipts"
     }
   ],
   "legacyMigrations": [
