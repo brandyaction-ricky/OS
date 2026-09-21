@@ -18,6 +18,30 @@ test("development logs and deployments are first-class operating records", async
   assert.match(migration, /os_records_project_history_idx/);
 });
 
+test("development request conversations use a dedicated append-only contract", async () => {
+  const [types, route, memberRecords, agentRecords, workspace, migration] = await Promise.all([
+    read("lib/record-types.ts"),
+    read("app/api/v1/development-request-comments/route.ts"),
+    read("app/api/v1/records/route.ts"),
+    read("app/api/v1/agent-records/route.ts"),
+    read("components/project-hub-workspace.tsx"),
+    read("supabase/migrations/20260921170000_development_request_comments.sql"),
+  ]);
+  assert.match(types, /"development_comment"/);
+  assert.match(route, /record_type: "development_comment"/);
+  assert.match(route, /metadata: developmentCommentMetadata/);
+  assert.match(route, /private, no-store/);
+  assert.match(migration, /DEVELOPMENT_COMMENT_IMMUTABLE/);
+  assert.match(migration, /os_records_development_comment_idx/);
+  assert.match(memberRecords, /COMMENT_API_REQUIRED/);
+  assert.match(agentRecords, /COMMENT_API_REQUIRED/);
+  assert.match(memberRecords, /neq\("record_type", "development_comment"\)/);
+  assert.match(agentRecords, /neq\("record_type", "development_comment"\)/);
+  assert.match(workspace, /요청 대화/);
+  assert.match(workspace, /name="comment"/);
+  assert.match(workspace, /답글 남기기/);
+});
+
 test("project context is authenticated, uncached and returns categorized history", async () => {
   const route = await read("app/api/v1/project-context/route.ts");
   assert.match(route, /requiredAgentScope: "records\.read"/);

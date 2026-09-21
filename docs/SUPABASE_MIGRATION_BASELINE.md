@@ -21,9 +21,9 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Evidence
 
-- The active migration chain contains the CLI-generated `core_baseline` snapshot and three CLI-generated forward migrations. Their checksums are pinned in the manifest. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and four forward migrations. Their checksums are pinned in the manifest. The fourth forward migration, applied to DEV on 2026-09-21, adds append-only development-request comments and single-level replies without changing Production. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
 - Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
-- Production currently has the core OS schema. DEV now records all four active migration versions and contains 34 public tables, 40 public policies, 11 reviewed triggers, and the restored Auth profile trigger.
+- Production currently has the core OS schema. DEV now records all five active migration versions and contains the added development-comment guard trigger and partial index alongside the restored Auth profile trigger.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
 - The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
 - A clean local `supabase db reset --local --no-seed` succeeded for the original three-migration chain. The fourth privilege-hardening migration was then applied incrementally to the same local database and DEV, producing exactly four migration-history entries in both targets. A destructive zero-state reset of the four-migration chain was not repeated because that separate reset approval was not granted.
