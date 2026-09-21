@@ -28,5 +28,13 @@ test("project connections accept one canonical development document ID and expos
   assert.match(workspace, /updateRecord/);
   assert.match(workspace, /프로젝트 정본 문서/);
   assert.match(workspace, /프로젝트 정본/);
+  assert.match(workspace, /`\/knowledge\?document=\$\{encodeURIComponent\(id\)\}`/);
   assert.match(workspace, /문서 본문은 자동 수정하지 않습니다/);
+});
+
+test("knowledge document selection keeps a shareable document ID in the current environment URL", async () => {
+  const workspace = await read("components/knowledge-workspace.tsx");
+  assert.match(workspace, /params\.set\("document", id\)/);
+  assert.match(workspace, /window\.history\.replaceState/);
+  assert.match(workspace, /selectDocument\(row\.document\.id\)/);
 });

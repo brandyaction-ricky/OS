@@ -304,6 +304,12 @@ function WorkspaceContent() {
   const epoch = useRef(0);
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectDocument = useCallback((id: string) => {
+    setSelectedId(id);
+    const params = new URLSearchParams(window.location.search);
+    params.set("document", id);
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+  }, []);
 
   useEffect(() => {
     const savedFocus = window.localStorage.getItem("brandy-knowledge-focus");
@@ -704,7 +710,7 @@ function WorkspaceContent() {
                 onDrop={(event) => { event.preventDefault(); moveDocument(event.dataTransfer.getData("text/document-id"), row.folder.path); }}
               >{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
             ) : (
-              <button draggable key={row.document.id} className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => event.dataTransfer.setData("text/document-id", row.document.id)} onClick={() => { setSelectedId(row.document.id); setMode("read"); if (window.innerWidth < 900) setTreeOpen(false); }}>
+              <button draggable key={row.document.id} className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => event.dataTransfer.setData("text/document-id", row.document.id)} onClick={() => { selectDocument(row.document.id); setMode("read"); if (window.innerWidth < 900) setTreeOpen(false); }}>
                 <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
               </button>
             ))}
