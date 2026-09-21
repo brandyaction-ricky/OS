@@ -78,10 +78,14 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   const statuses = intersectStatuses(requested, actor.allowedStatuses);
   if (!statuses.length) return { results: [], degraded: false };
 
+  const normalizedQuery = keywordQueryText(input.query);
   let embedding: string | null = null;
   let degraded = false;
   if (input.mode !== "keyword") {
-    if (process.env.OPENAI_API_KEY) embedding = toPgVector((await createEmbeddings([input.query]))[0]);
+    // Keep the semantic and keyword sides of the hybrid query aligned. Korean
+    // question endings and generic topic words can otherwise dominate the
+    // embedding rank even when the literal answer phrase is in the corpus.
+    if (process.env.OPENAI_API_KEY) embedding = toPgVector((await createEmbeddings([normalizedQuery]))[0]);
     else degraded = true;
   }
 
@@ -92,7 +96,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     ? statuses.filter((status) => status === "canonical")
     : statuses;
   const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
-    p_query: keywordQueryText(input.query),
+    p_query: normalizedQuery,
     p_embedding: embedding,
     p_limit: input.topK,
     p_statuses: rpcStatuses,
