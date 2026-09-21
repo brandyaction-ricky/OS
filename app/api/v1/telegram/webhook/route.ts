@@ -215,7 +215,10 @@ export async function POST(request: Request) {
       supabase,
     };
     const [{ results }, liveOperations] = await Promise.all([
-      searchDocuments(actor, { query: text, mode: "hybrid", topK: 8, filters: { statuses: ["canonical"] } }),
+      // Retrieve a wider hybrid candidate set, then apply the Telegram-specific
+      // lexical evidence gate below. The RPC's vector/keyword RRF can otherwise
+      // truncate the literal answer chunk before application-side reranking.
+      searchDocuments(actor, { query: text, mode: "hybrid", topK: 30, filters: { statuses: ["canonical"] } }),
       operationalAnswer(supabase, text),
     ]);
     // Telegram is an external, conversational surface. Require a literal
@@ -223,7 +226,7 @@ export async function POST(request: Request) {
     // semantic candidates, so an embedding nearest-neighbour is never shown
     // as proof for an unrelated or misunderstood request.
     const evidenceQuery = evidenceQueryText(text);
-    const verifiedResults = rankLexicalEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery);
+    const verifiedResults = rankLexicalEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery).slice(0, 8);
     const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults) : "";
     // A bare topic word (e.g. "콘텐츠") should not force an unrelated live
     // operations listing into a question that grounded company knowledge

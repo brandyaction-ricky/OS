@@ -11,7 +11,7 @@ class ApiError extends Error {
 const actor = { id: "admin", role: "admin", user: { id: "admin" } };
 
 async function setup(file, handler, options = {}) {
-  const calls = [], sent = [], inserts = [], answeredWith = [];
+  const calls = [], sent = [], inserts = [], answeredWith = [], searchCalls = [];
   const db = { from(table) {
     const query = { table, operations: [] };
     const chain = { then(resolve, reject) { calls.push(query); return Promise.resolve(handler(query)).then(resolve, reject); } };
@@ -30,7 +30,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/telegram-intents": intents,
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
-    "@/lib/server/search": { searchDocuments: async () => ({ results: options.searchResults ?? [] }) },
+    "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: options.searchResults ?? [] }; } },
   };
   const exports = {};
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, process: { env: { TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_WEBHOOK_SECRET: "test-secret", TELEGRAM_BOT_USERNAME: "our_bot", TELEGRAM_CAPTURE_OWNER_EMAIL: "owner@example.com", ...options.env } }, Buffer, AbortSignal, URL, Date, console,
@@ -43,7 +43,7 @@ async function setup(file, handler, options = {}) {
       throw new Error(`Unexpected external call ${method}`);
     },
   });
-  return { api: exports, calls, sent, inserts, answeredWith };
+  return { api: exports, calls, sent, inserts, answeredWith, searchCalls };
 }
 
 const where = (query, key) => query.operations.find((op) => op.method === "eq" && op.args[0] === key)?.args[1];
@@ -188,8 +188,24 @@ test("a cadence question rejects generic content hits and sends the rare answer 
   const cadence = { documentId: "cadence-doc", title: "현재기준", heading: "3. 콘텐츠 위계 · 케이던스", text: "하한: 주 2편.", citation: { version: 1, chunkId: 5 }, score: 0.4 };
   const ctx = await setup("webhook", normalHandler, { searchResults: [generic, scheduling, cadence] });
   await ctx.api.POST(incoming({ text: "콘텐츠 편성 하한이 주 몇 편이야?" }));
+  assert.equal(ctx.searchCalls[0].topK, 30);
   assert.equal(ctx.answeredWith[0][0].documentId, "cadence-doc");
   assert.deepEqual(Array.from(ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload.source_document_ids), ["cadence-doc", "scheduling-doc"]);
+});
+
+test("Telegram caps the widened candidate pool after evidence reranking", async () => {
+  const results = Array.from({ length: 12 }, (_, index) => ({
+    documentId: `doc-${index}`,
+    title: "현재기준",
+    heading: "콘텐츠 편성",
+    text: `하한 기준 ${index}`,
+    citation: { version: 1, chunkId: index + 1 },
+    score: 1 - index / 100,
+  }));
+  const ctx = await setup("webhook", normalHandler, { searchResults: results });
+  await ctx.api.POST(incoming({ text: "콘텐츠 편성 하한 알려줘" }));
+  assert.equal(ctx.answeredWith[0].length, 8);
+  assert.equal(ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload.source_document_ids.length, 8);
 });
 
 test("a bare topic keyword still surfaces the live-operations listing when no grounded knowledge answers the question", async () => {
