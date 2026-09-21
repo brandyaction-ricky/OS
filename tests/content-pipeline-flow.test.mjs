@@ -28,6 +28,32 @@ function harness() {
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
+test('recorded text changes invalidate downstream cache and final review, not preparation review', async () => {
+  for (const action of ['derivatives', 'youtube_kit', 'shorts_proposal']) {
+    const h = harness();
+    h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+    h.rows[0].metadata.productionPreparation = { kind: 'shooting_plan', design: 'Design', shootingPlan: 'Plan' };
+    await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+    await h.api.runPipelineGeneration(h.actor, input('title_package'));
+    for (const gate of [1, 2]) {
+      const state = await h.api.readPipeline(h.actor, 'source');
+      await h.api.reviewPipeline(h.actor, 'source', gate, state.signatures[gate - 1], true, 'Synthetic review');
+    }
+    h.rows[0].metadata.transcript = 'Recorded speech';
+    await h.api.runPipelineGeneration(h.actor, input(action));
+    assert.equal((await h.api.runPipelineGeneration(h.actor, input(action))).reused, true);
+    for (const key of ['transcript', 'transcriptSrt']) {
+      const before = await h.api.readPipeline(h.actor, 'source');
+      h.rows[0].metadata[key] = 'Updated recorded speech';
+      const after = await h.api.readPipeline(h.actor, 'source');
+      assert.equal(after.signatures[1], before.signatures[1]);
+      assert.notEqual(after.signatures[2], before.signatures[2]);
+      const calls = h.calls();
+      await h.api.runPipelineGeneration(h.actor, input(action));
+      assert.equal(h.calls(), calls + 1);
+    }
+  }
+});
 test('board preparation advances without full script and edits invalidate only preparation review', async () => {
   const h = harness();
   h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };

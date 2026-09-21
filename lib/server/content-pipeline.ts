@@ -18,7 +18,7 @@ function reference(record: OsRecord | null) { return record ? [record.id, record
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
   return digest(["packaging-first-v1", sourceInput(source), reference(artifacts.research), reference(artifacts.packaging), ...(gate >= 2 ? [usesShootingPlan(source) ? source.metadata.productionPreparation : reference(artifacts.script)] : []),
-    ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
+    ...(gate >= 3 ? ["recorded-source-v1", reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.transcript, source.metadata.shortsStyle] : [])]);
 }
 
 export async function readPipeline(actor: RequestActor, id: string) {
@@ -68,11 +68,11 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
   if (input.action === "script_draft" && usesShootingPlan(state.source)) throw new ApiError(409, "SHOOTING_PLAN_MODE", "현재 제작 방식은 전문 원고 대신 영상 설계와 촬영 진행표를 준비합니다.");
   const artifacts = pipelineArtifacts(state.records);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
-  const key = digest(["packaging-first-v1", procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
+  const key = digest(["recorded-source-v1", procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(input.action === "topic_plan" ? [] : [reference(artifacts.research)]),
     ...(input.action === "script_draft" ? [reference(artifacts.packaging)] : []),
     ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script), reference(artifacts.packaging), state.source.metadata.productionPreparation] : []),
-    ...(["shorts_proposal", "youtube_kit"].includes(input.action) ? [state.source.metadata.transcriptSrt] : [])]);
+    ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [state.source.metadata.transcriptSrt, state.source.metadata.transcript, state.source.metadata.script, state.source.metadata.finalScript] : [])]);
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
   const prior = runs.findLast((run) => run.key === key);
   if (prior?.state === "succeeded") return { configured: true, queued: false, reused: true, records: state.records.filter((record) => prior.recordIds?.includes(record.id)) };

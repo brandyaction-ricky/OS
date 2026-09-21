@@ -193,7 +193,9 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
     const platforms = input.platforms?.length ? input.platforms : ["shorts", "threads", "column", "instagram"];
     const { data: scripts, error: scriptError } = await actor.supabase.from("os_records").select("description,status").eq("parent_id", source.id).eq("record_type", "content_script").is("archived_at", null).order("updated_at", { ascending: false });
     if (scriptError) throw new ApiError(500, "SCRIPT_READ_FAILED", "연결된 원고를 읽지 못했습니다.");
-    const sourceText = contentSourceText(source, scripts ?? []);
+    const transcriptOnly = usesShootingPlan(source) && ["derivatives", "youtube_kit", "shorts_proposal"].includes(input.action);
+    const sourceText = contentSourceText(source, scripts ?? [], transcriptOnly);
+    if (transcriptOnly && !sourceText) throw new ApiError(409, "CONTENT_TRANSCRIPT_REQUIRED", "촬영한 영상의 실제 자막이 필요합니다. 자막·영상 편집에서 SRT/VTT를 저장해 주세요. 구성안·촬영 진행표·이전 원고는 대신 사용하지 않습니다.");
     if (["derivatives", "youtube_kit", "shorts_proposal"].includes(input.action) && !sourceText) throw new ApiError(409, "CONTENT_SCRIPT_REQUIRED", "최종 원고·자막이 없습니다. 원고를 연결하거나 원본의 스크립트·자막을 저장해 주세요.");
     const cues = parseTimedTranscript(sourceText);
     if (input.action === "shorts_proposal" && !cues.length) throw new ApiError(409, "CONTENT_TIMING_REQUIRED", "실제 구간 제안에는 시간 정보가 있는 SRT 또는 VTT 자막이 필요합니다. 숏폼 편집의 원본·자막에서 저장해 주세요.");

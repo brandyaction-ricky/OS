@@ -59,7 +59,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       <label>확인한 자료·출처<textarea required name="evidence" rows={4} defaultValue={String(state.source.metadata.evidence ?? "")} placeholder="자료 링크와 직접 확인한 사실을 적어주세요." /></label>
       <label>실제 경험·사례<textarea required name="experience" rows={3} defaultValue={String(state.source.metadata.experience ?? "")} placeholder="제공할 사례 또는 해당 없는 사유" /></label>
       <fieldset><legend>제작 자료 준비 방식</legend>
-        <p>칠판형은 구성안·촬영 진행표로 검토합니다. 형식이 바뀌어도 기존 자료는 삭제하지 않습니다.</p>
+        <p>칠판형은 구성안·촬영 진행표로 검토합니다. 형식이 바뀌어도 기존 자료는 삭제하지 않습니다. 촬영 후 파생 콘텐츠·발행키트를 만들 때는 ‘자막·영상 편집’에서 실제 촬영 자막을 저장해 주세요. 준비 자료는 실제 발화로 사용하지 않습니다.</p>
         <label>준비할 자료<select name="preparationKind" defaultValue={planMode ? "shooting_plan" : "full_script"}><option value="full_script">전문 원고 (칠판형 제외)</option><option value="shooting_plan">구성안·촬영 진행표</option></select></label>
         <label>내용 구성안<textarea name="design" rows={5} defaultValue={String(preparation.design ?? "")} placeholder="도입부의 약속 → 핵심 정보와 근거 → 해석 → 마무리" /></label>
         <label>촬영 진행표<textarea name="shootingPlan" rows={6} defaultValue={String(preparation.shootingPlan ?? "")} placeholder="설명 순서, 칠판 키워드·도식, 사례, 전환 지점. 실제 촬영 발화나 자막과는 별개입니다." /></label>
