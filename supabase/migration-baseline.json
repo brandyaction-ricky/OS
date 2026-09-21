@@ -11,11 +11,11 @@
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 10,
-    "productionExactRepositoryMatches": 4,
+    "productionHistoryCount": 12,
+    "productionExactRepositoryMatches": 5,
     "developmentHistoryCount": 9,
     "pendingDevelopmentMigrationCount": 0,
-    "pendingProductionMigrationCount": 1,
+    "pendingProductionMigrationCount": 0,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -132,9 +132,15 @@
     },
     "productionValidation": {
       "appliedAt": "2026-09-21",
-      "migrationHistoryCount": 10,
+      "migrationHistoryCount": 12,
       "agentUpdateQuotaMigrationPresent": true,
+      "agentWriteRateLimitMetadataMigrationPresent": true,
       "agentUpdateDayLimit": 1000,
+      "agentMoveBucketPresent": true,
+      "agentWriteRateLimitTableRlsEnabled": true,
+      "agentWriteRateLimitPublicPrivileges": false,
+      "agentWriteRateLimitServiceRoleAccess": true,
+      "agentAuditLookupIndexPresent": true,
       "notificationMigrationPresent": true,
       "knowledgeSearchMigrationPresent": true,
       "notificationRecordTypeAllowed": true,
@@ -170,7 +176,7 @@
     {
       "file": "20260921140000_agent_update_daily_limit.sql",
       "sha256": "426ee97dfebd4891b80b704af13c414ab22035972b72b541bfb673b8ded5f742",
-      "purpose": "raise only agent knowledge.update rolling daily quota to 1000; Production application is separately recorded and DEV remains pending"
+      "purpose": "raise only agent knowledge.update rolling daily quota to 1000; applied and verified in DEV and Production"
     },
     {
       "file": "20260921170000_development_request_comments.sql",
