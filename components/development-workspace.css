@@ -75,6 +75,7 @@
 .dev-row-main>span { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-row-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
 .dev-row-meta time { font-size: 10px; color: var(--muted); }
+.dev-assignee { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
 .dev-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
 .dev-status-active, .dev-status-working { color: var(--warning); }
 .dev-status-review, .dev-status-tested, .dev-status-dev_deployed { color: var(--accent-2); }

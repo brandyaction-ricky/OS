@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, Paperclip, Plus, RefreshCw, Rocket, Search, SlidersHorizontal, Trash2, UploadCloud, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, Paperclip, Plus, RefreshCw, Rocket, Search, SlidersHorizontal, Trash2, UploadCloud, UserRound, X } from "lucide-react";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { createDevelopmentAttachmentUpload, createRecord, deleteDevelopmentAttachment, getDevelopmentAttachmentUrl, listRecords, uploadDevelopmentAttachment } from "@/lib/api-client";
+import { createDevelopmentAttachmentUpload, createRecord, deleteDevelopmentAttachment, getDevelopmentAttachmentUrl, listMembers, listRecords, uploadDevelopmentAttachment, type OsMember } from "@/lib/api-client";
 import { buildDevelopmentHandoff, recordText as meta, repositoryUrl, safeWebUrl } from "@/lib/development-handoff";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
@@ -53,6 +53,7 @@ function ProjectHubContent() {
   const { accessToken, demo, profile, loading: sessionLoading } = useSession();
   const admin = profile?.role === "admin";
   const [projects, setProjects] = useState<OsRecord[]>([]);
+  const [members, setMembers] = useState<OsMember[]>([]);
   const [projectId, setProjectId] = useState("");
   const [inbox, setInbox] = useState<Inbox>({ requests: [], total: 0, counts: EMPTY_COUNTS });
   const [history, setHistory] = useState<OsRecord[]>([]);
@@ -81,6 +82,8 @@ function ProjectHubContent() {
   const modalRef = useRef<HTMLDivElement>(null);
   const current = projects.find(item => item.id === projectId) || null;
   const detailProject = selected ? projects.find(item => item.id === selected.parent_id) || null : current;
+  const memberNames = useMemo(() => new Map(members.map(member => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
+  const assigneeName = (id: string | null) => id ? memberNames.get(id) || `구성원 ${id.slice(0, 8)}` : "미지정";
   const chooseProject = (id: string, nextStatus = "") => { setProjectId(id); setSelected(null); setStatus(nextStatus); setScope(""); setSearch(""); setQuery(""); setOffset(0); setTab("requests"); };
 
   useEffect(() => {
@@ -122,6 +125,19 @@ function ProjectHubContent() {
     }).catch(reason => { if (!cancelled) { setError(reason.message); setLoading(false); } });
     return () => { cancelled = true; };
   }, [accessToken, demo, sessionLoading, projectRevision]);
+
+  useEffect(() => {
+    if (sessionLoading || (!demo && !accessToken)) return;
+    let cancelled = false;
+    if (demo) {
+      setMembers([{ id: "demo-ricky", email: "", display_name: "리키", role: "admin", team: "개발", is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: false, account_connected: true }]);
+      return;
+    }
+    listMembers(accessToken).then(result => {
+      if (!cancelled) setMembers(result.members.filter(member => member.is_active && member.account_connected !== false));
+    }).catch(() => { if (!cancelled) setMembers([]); });
+    return () => { cancelled = true; };
+  }, [accessToken, demo, sessionLoading]);
 
   useEffect(() => {
     if (!deepRequest.current || demo || !accessToken) return;
@@ -257,7 +273,7 @@ function ProjectHubContent() {
   const saveResolution = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!selected) return;
     const form = new FormData(event.currentTarget);
-    const body = Object.fromEntries(["status", "resolution", "branch", "commitSha", "prUrl", "deploymentUrl"].map(key => [key, String(form.get(key) || "").trim()]));
+    const body = { ...Object.fromEntries(["status", "resolution", "branch", "commitSha", "prUrl", "deploymentUrl"].map(key => [key, String(form.get(key) || "").trim()])), assigneeId: String(form.get("assigneeId") || "").trim() || null };
     await patchSelected(body);
   };
   const refreshSelected = async () => {
@@ -271,10 +287,10 @@ function ProjectHubContent() {
     if (!selected || saving) return;
     setSaving(true); setError("");
     try {
-      const saved = demo ? { ...selected, status: String(body.status || selected.status), version: selected.version + 1, metadata: { ...selected.metadata, ...Object.fromEntries(Object.entries(body).filter(([key]) => key !== "status")) } } : (await requestApi<{ record: OsRecord }>(accessToken, "", { ...body, id: selected.id, expectedVersion: selected.version }, "PATCH")).record;
+      const saved = demo ? { ...selected, status: String(body.status || selected.status), assignee_id: Object.hasOwn(body, "assigneeId") ? String(body.assigneeId || "") || null : selected.assignee_id, version: selected.version + 1, metadata: { ...selected.metadata, ...Object.fromEntries(Object.entries(body).filter(([key]) => !["status", "assigneeId"].includes(key))) } } : (await requestApi<{ record: OsRecord }>(accessToken, "", { ...body, id: selected.id, expectedVersion: selected.version }, "PATCH")).record;
       setSelected(saved); setOffset(0);
       if (demo) setDemoRequests(previous => previous.map(item => item.id === saved.id ? saved : item));
-      changed(); setNotice("처리 상태를 저장했습니다.");
+      changed(); setNotice("담당자와 처리 상태를 저장했습니다.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "상태를 변경하지 못했습니다."); }
     finally { setSaving(false); }
   };
@@ -305,15 +321,15 @@ function ProjectHubContent() {
       <div className="dev-toolbar"><div className="dev-filters"><button className={!status ? "active" : ""} onClick={() => setStatus("")}>전체</button>{FLOW.map(value => <button key={value} className={status === value ? "active" : ""} onClick={() => setStatus(value)}>{LABELS[value]}<span>{loading ? "·" : inbox.counts[value] || 0}</span></button>)}</div><div className="dev-search-tools"><form onSubmit={event => { event.preventDefault(); setQuery(search.trim()); }}><Search size={14} /><input aria-label="수정요청 검색" value={search} onChange={event => setSearch(event.target.value)} placeholder="요청 검색 후 Enter" /><button aria-label="검색 실행" type="submit"><ArrowUpRight size={13} /></button></form><button className={`dev-button ${scope ? "selected" : ""}`} onClick={() => setScope(value => value ? "" : "mine")}><SlidersHorizontal size={13} /> 내 요청</button><button className="dev-button" aria-label="요청 새로고침" onClick={changed} disabled={loading}><RefreshCw size={14} /></button></div></div>
       <div className={`dev-inbox-layout ${selected ? "has-detail" : ""}`}><section className="dev-inbox" aria-label="수정요청 목록">
         <div className="dev-list-head"><span>요청</span><span>상태 / 등록일</span></div>
-        {loading ? <div className="dev-empty"><Loader2 className="dev-spin" size={22} /><p>요청을 불러오는 중입니다.</p></div> : inbox.requests.map(item => <button className={`dev-request-row ${selected?.id === item.id ? "selected" : ""}`} disabled={saving} key={item.id} onClick={() => { setSelected(item); setError(""); }}><span className={`dev-priority ${item.priority}`} title={`우선순위 ${PRIORITY[item.priority]}`} /><div className="dev-row-main"><small>{!current && `${projects.find(project => project.id === item.parent_id)?.title || "프로젝트 미지정"} · `}{CATEGORIES[meta(item, "category")] || "수정요청"} · {item.id.slice(0, 8)}</small><strong>{item.title}</strong><span>{item.description}</span></div><div className="dev-row-meta"><Status value={item.status} /><time dateTime={item.created_at}>{date(item.created_at)}</time></div></button>)}
+        {loading ? <div className="dev-empty"><Loader2 className="dev-spin" size={22} /><p>요청을 불러오는 중입니다.</p></div> : inbox.requests.map(item => <button className={`dev-request-row ${selected?.id === item.id ? "selected" : ""}`} disabled={saving} key={item.id} onClick={() => { setSelected(item); setError(""); }}><span className={`dev-priority ${item.priority}`} title={`우선순위 ${PRIORITY[item.priority]}`} /><div className="dev-row-main"><small>{!current && `${projects.find(project => project.id === item.parent_id)?.title || "프로젝트 미지정"} · `}{CATEGORIES[meta(item, "category")] || "수정요청"} · {item.id.slice(0, 8)}</small><strong>{item.title}</strong><span>{item.description}</span></div><div className="dev-row-meta"><Status value={item.status} />{item.assignee_id && <span className="dev-assignee"><UserRound size={10} />{assigneeName(item.assignee_id)}</span>}<time dateTime={item.created_at}>{date(item.created_at)}</time></div></button>)}
         {!loading && !inbox.requests.length && <div className="dev-empty"><CheckCircle2 size={28} /><h2>{projects.length ? "표시할 요청이 없습니다" : "첫 프로젝트를 등록하세요"}</h2><p>{status || query || scope ? "검색어와 필터를 바꾸면 다른 요청을 확인할 수 있습니다." : "직원이 남긴 불편함과 개선 제안이 이곳에 모입니다."}</p>{!projects.length ? admin && <button className="dev-button primary" onClick={() => open("project")}>회사 OS 프로젝트 등록</button> : <button className="dev-button" onClick={() => open("request")}><Plus size={14} /> 첫 수정요청 남기기</button>}</div>}
         {inbox.total > PAGE_SIZE && <div className="dev-pagination"><button disabled={offset === 0 || loading} onClick={() => setOffset(value => Math.max(0, value - PAGE_SIZE))}>이전</button><span>{offset + 1}–{Math.min(offset + PAGE_SIZE, inbox.total)} / {inbox.total}</span><button disabled={offset + PAGE_SIZE >= inbox.total || loading} onClick={() => setOffset(value => value + PAGE_SIZE)}>다음</button></div>}
       </section>
-      {selected && <aside className="dev-detail" aria-label="개발 요청 상세"><div className="dev-detail-top"><span>요청 상세 · {selected.id.slice(0, 8)}</span><button className="dev-icon-button" aria-label="요청 상세 닫기" disabled={saving} onClick={() => setSelected(null)}><X size={17} /></button></div><div className="dev-detail-body"><Status value={selected.status} /><h2>{selected.title}</h2><div className="dev-detail-properties"><span>{CATEGORIES[meta(selected, "category")] || "개발 요청"}</span><span>우선순위 {PRIORITY[selected.priority]}</span><span>{date(selected.created_at)} 등록</span></div><section><h3>{meta(selected, "category") === "feature" ? "필요한 기능" : "현재 문제"}</h3><p>{selected.description}</p></section>{meta(selected, "expectedResult") && <section><h3>기대하는 결과</h3><p>{meta(selected, "expectedResult")}</p></section>}<div className="dev-detail-links"><SafeLink url={fullPageUrl(meta(selected, "pageUrl"))}>{meta(selected, "category") === "feature" ? "관련 페이지" : "문제가 발생한 페이지"}</SafeLink>{meta(selected, "attachmentPath") ? <button type="button" className="dev-attachment-link" onClick={() => openAttachment(selected)}><Paperclip size={13} />{meta(selected, "attachmentName") || "첨부 자료"}{meta(selected, "attachmentSize") && <small>{fileSize(meta(selected, "attachmentSize"))}</small>}</button> : <SafeLink url={meta(selected, "attachmentUrl")}>첨부 자료 확인</SafeLink>}</div><button className="dev-button dev-wide" onClick={() => copy(selected)}><Copy size={14} /> 이 요청을 Work에 전달</button>
+      {selected && <aside className="dev-detail" aria-label="개발 요청 상세"><div className="dev-detail-top"><span>요청 상세 · {selected.id.slice(0, 8)}</span><button className="dev-icon-button" aria-label="요청 상세 닫기" disabled={saving} onClick={() => setSelected(null)}><X size={17} /></button></div><div className="dev-detail-body"><Status value={selected.status} /><h2>{selected.title}</h2><div className="dev-detail-properties"><span>{CATEGORIES[meta(selected, "category")] || "개발 요청"}</span><span>우선순위 {PRIORITY[selected.priority]}</span><span className="dev-assignee"><UserRound size={10} />담당자 {assigneeName(selected.assignee_id)}</span><span>{date(selected.created_at)} 등록</span></div><section><h3>{meta(selected, "category") === "feature" ? "필요한 기능" : "현재 문제"}</h3><p>{selected.description}</p></section>{meta(selected, "expectedResult") && <section><h3>기대하는 결과</h3><p>{meta(selected, "expectedResult")}</p></section>}<div className="dev-detail-links"><SafeLink url={fullPageUrl(meta(selected, "pageUrl"))}>{meta(selected, "category") === "feature" ? "관련 페이지" : "문제가 발생한 페이지"}</SafeLink>{meta(selected, "attachmentPath") ? <button type="button" className="dev-attachment-link" onClick={() => openAttachment(selected)}><Paperclip size={13} />{meta(selected, "attachmentName") || "첨부 자료"}{meta(selected, "attachmentSize") && <small>{fileSize(meta(selected, "attachmentSize"))}</small>}</button> : <SafeLink url={meta(selected, "attachmentUrl")}>첨부 자료 확인</SafeLink>}</div><button className="dev-button dev-wide" onClick={() => copy(selected)}><Copy size={14} /> 이 요청을 Work에 전달</button>
       {(admin || selected.created_by === profile?.id) && <div className="dev-request-actions">{(admin || selected.status === "backlog") && <button className="dev-text-button" onClick={() => open("edit")}>요청 내용 수정</button>}<button className="dev-text-button danger" disabled={saving} onClick={deleteSelected}><Trash2 size={13} /> 요청 삭제</button></div>}
       <section className="dev-resolution"><h3><GitCommitHorizontal size={14} /> 처리 결과</h3><p>{meta(selected, "resolution") || "아직 처리 결과가 등록되지 않았습니다."}</p><div className="dev-detail-links"><SafeLink url={meta(selected, "prUrl")}>GitHub 변경 내역</SafeLink><SafeLink url={meta(selected, "deploymentUrl")}>반영 화면 확인</SafeLink></div>{meta(selected, "commitSha") && <small>커밋 {meta(selected, "commitSha").slice(0, 12)}</small>}</section>
       <section className="dev-linked-history"><h3><GitBranch size={14} /> 자동 연결된 개발 이력 <span>{selectedHistory.length}</span></h3>{historyLoading ? <p>연결 기록을 확인하는 중입니다.</p> : selectedHistory.length ? selectedHistory.slice(0, 5).map(item => <article key={item.id}><div><strong>{item.title}</strong><Status value={item.status} /></div><p>{item.description}</p><small>{date(item.created_at)}{meta(item, "branch") && ` · ${meta(item, "branch")}`}{meta(item, "commitSha") && ` · ${meta(item, "commitSha").slice(0, 12)}`}</small><SafeLink url={item.source_url}>결과 확인</SafeLink></article>) : <p>이 요청 ID로 저장된 개발·배포 기록이 아직 없습니다. Work에서 로그를 남길 때 요청 ID를 함께 보내면 여기에 자동으로 표시됩니다.</p>}</section>
-      {admin ? <form key={`${selected.id}-${selected.version}`} className="dev-resolution-form" onSubmit={saveResolution}><h3>처리 상태 업데이트</h3>{!demo && <button type="button" className="dev-text-button" disabled={saving} onClick={refreshSelected}>최신 요청 다시 열기 · 입력 중인 내용 초기화</button>}<label>상태<select name="status" defaultValue={selected.status}>{FLOW.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}</select></label><label>수정 내용·검증 결과<textarea name="resolution" rows={4} defaultValue={meta(selected, "resolution")} maxLength={10000} placeholder="무엇을 수정했고 어떻게 확인했나요? 해결 처리 시 필수" /></label><details><summary><GitBranch size={13} /> 코드·배포 연결</summary><label>브랜치<input name="branch" defaultValue={meta(selected, "branch")} maxLength={200} /></label><label>커밋 SHA<input name="commitSha" defaultValue={meta(selected, "commitSha")} pattern="[a-fA-F0-9]{7,40}" /></label><label>GitHub PR 주소<input type="url" name="prUrl" defaultValue={meta(selected, "prUrl")} placeholder="https://github.com/…/pull/…" /></label><label>Preview 또는 운영 주소<input type="url" name="deploymentUrl" defaultValue={meta(selected, "deploymentUrl")} /></label></details><button className="dev-button primary dev-wide" disabled={saving}>{saving ? "저장 중…" : "처리 결과 저장"}</button></form> : null}
+      {admin ? <form key={`${selected.id}-${selected.version}`} className="dev-resolution-form" onSubmit={saveResolution}><h3>담당자·처리 상태 업데이트</h3>{!demo && <button type="button" className="dev-text-button" disabled={saving} onClick={refreshSelected}>최신 요청 다시 열기 · 입력 중인 내용 초기화</button>}<label>담당자<select name="assigneeId" defaultValue={selected.assignee_id || ""}><option value="">담당자 미지정</option>{selected.assignee_id && !members.some(member => member.id === selected.assignee_id) && <option value={selected.assignee_id}>{assigneeName(selected.assignee_id)} · 현재 비활성</option>}{members.map(member => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label><label>상태<select name="status" defaultValue={selected.status}>{FLOW.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}</select></label><label>수정 내용·검증 결과<textarea name="resolution" rows={4} defaultValue={meta(selected, "resolution")} maxLength={10000} placeholder="무엇을 수정했고 어떻게 확인했나요? 해결 처리 시 필수" /></label><details><summary><GitBranch size={13} /> 코드·배포 연결</summary><label>브랜치<input name="branch" defaultValue={meta(selected, "branch")} maxLength={200} /></label><label>커밋 SHA<input name="commitSha" defaultValue={meta(selected, "commitSha")} pattern="[a-fA-F0-9]{7,40}" /></label><label>GitHub PR 주소<input type="url" name="prUrl" defaultValue={meta(selected, "prUrl")} placeholder="https://github.com/…/pull/…" /></label><label>Preview 또는 운영 주소<input type="url" name="deploymentUrl" defaultValue={meta(selected, "deploymentUrl")} /></label></details><button className="dev-button primary dev-wide" disabled={saving}>{saving ? "저장 중…" : "담당자·처리 결과 저장"}</button></form> : null}
       {selected.created_by === profile?.id && ["done", "review"].includes(selected.status) && <button className="dev-button dev-wide" disabled={saving} onClick={() => patchSelected({ status: "backlog" })}>아직 문제가 있어요 · 다시 요청</button>}
       </div></aside>}
       </div>

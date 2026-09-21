@@ -49,4 +49,6 @@ test("Work can load project context and write a request-linked structured develo
   assert.match(route, /knowledge\/development/);
   assert.match(workspace, /개발·배포 기록/);
   assert.match(workspace, /자동 연결된 개발 이력/);
+  assert.match(workspace, /name="assigneeId"/);
+  assert.match(workspace, /담당자·처리 상태 업데이트/);
 });
