@@ -105,6 +105,7 @@ test("degraded knowledge search rejects unrelated evidence", () => {
 test("Korean knowledge questions remove particles and generic words before keyword ranking", () => {
   assert.equal(keywordQueryText("콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
   assert.equal(keywordQueryText("콘텐츠 위계 알려줘"), "콘텐츠 위계");
+  assert.equal(keywordQueryText("[운영검수 2026-09-21] 콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
 });
 
 test("Telegram evidence ignores a generic topic-only hit and promotes the rare answer term", () => {

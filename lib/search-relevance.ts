@@ -43,7 +43,7 @@ export function searchTerms(value: string) {
 }
 
 export function keywordQueryText(value: string) {
-  const words = [...new Set(normalizedWords(value))];
+  const words = [...new Set(normalizedWords(evidenceQueryText(value)))];
   const specific = words.filter((word) => !GENERIC_KNOWLEDGE_TERMS.has(word));
   const selected = specific.length >= 2 ? specific : words;
   return selected.slice(0, 8).join(" ") || value.trim();
@@ -74,6 +74,8 @@ export function rankLexicalEvidence<T extends Pick<SearchResult, "title" | "head
   return results.map((result, index) => ({
     result,
     index,
+    // Later Korean query terms usually carry the requested property or value,
+    // while inverse document frequency keeps a common overlap from dominating.
     score: terms.reduce((score, term, termIndex) => score + (texts[index].includes(term) ? (termIndex + 1) / (frequencies.get(term) ?? 1) : 0), 0),
   })).sort((left, right) => right.score - left.score || left.index - right.index).map(({ result }) => result);
 }
