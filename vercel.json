@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
+  "git": {
+    "deploymentEnabled": {
+      "codex/system-one-preflight-20260920": false
+    }
+  },
   "regions": ["icn1"],
   "functions": {
     "app/api/v1/search/route.ts": { "maxDuration": 30 },
