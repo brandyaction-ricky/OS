@@ -4,9 +4,9 @@ Updated: 2026-09-17 Asia/Seoul.
 
 ## Decision
 
-The active chain was applied to the isolated `brandyaction-os-dev` project only. Do not apply it to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus three forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, and one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The reviewed active chain through the knowledge-search migration was applied to the isolated `brandyaction-os-dev` project. Do not replay the schema baseline against Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus forward migrations. The newest forward migration replaces a non-indexable `word_similarity(...) > 0.3` filter with the existing trigram GIN index operator while preserving the same threshold and RLS contract. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The user approved DEV application on 2026-09-17. The four active migrations were applied without seeds or Vault changes, and the manifest now records `applied_dev` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize Production migration, seed, reset, history repair, schema change, or Production data copy.
+The user approved DEV application on 2026-09-17, with later reviewed forward migrations applied independently. The six repository migrations are now present in DEV without seeds or Production data, and the manifest records `applied_dev` / `applied`. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false after application. This does not authorize replaying the schema baseline, seeds, reset, or Production data copy.
 
 ## Current tooling state
 
@@ -21,9 +21,9 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Evidence
 
-- The active migration chain contains the CLI-generated `core_baseline` snapshot and four forward migrations. Their checksums are pinned in the manifest. The fourth forward migration, applied to DEV on 2026-09-21, adds append-only development-request comments and single-level replies without changing Production. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and five forward migrations. Their checksums are pinned in the manifest. The fourth forward migration adds append-only development-request comments and single-level replies. The fifth repairs the knowledge-search query plan without adding or replacing indexes. The 14 ordered legacy files and their original SHA-256 checksums are preserved in `supabase/migrations-legacy`.
 - Production migration history contains 7 entries, with no exact identifier match to the repository filenames.
-- Production currently has the core OS schema. DEV now records all five active migration versions and contains the added development-comment guard trigger and partial index alongside the restored Auth profile trigger.
+- Production currently has the core OS schema. DEV records all six repository migration versions and contains the indexed knowledge-search function, development-comment guard trigger and partial index alongside the restored Auth profile trigger.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
 - The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
 - A clean local `supabase db reset --local --no-seed` succeeded for the original three-migration chain. The fourth privilege-hardening migration was then applied incrementally to the same local database and DEV, producing exactly four migration-history entries in both targets. A destructive zero-state reset of the four-migration chain was not repeated because that separate reset approval was not granted.
