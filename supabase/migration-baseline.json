@@ -141,6 +141,11 @@
       "file": "20260921170000_development_request_comments.sql",
       "sha256": "1ea4f0ca6ead72c1324cd7fb2160a2a96b65f2b10826c153a5428c89f3ef2f9b",
       "purpose": "add append-only development request comments and single-level replies to the DEV operating record contract"
+    },
+    {
+      "file": "20260921213500_use_trigram_index_for_knowledge_search.sql",
+      "sha256": "08e2478ad60207668c953b2d01b23f53860ae0fb8d010f6f24ac2d714e30dc8c",
+      "purpose": "make hybrid knowledge search use the existing trigram GIN index while preserving the reviewed word-similarity threshold and RLS contract"
     }
   ],
   "legacyMigrations": [
