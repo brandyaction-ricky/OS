@@ -11,7 +11,7 @@ class ApiError extends Error {
 const actor = { id: "admin", role: "admin", user: { id: "admin" } };
 
 async function setup(file, handler, options = {}) {
-  const calls = [], sent = [], inserts = [];
+  const calls = [], sent = [], inserts = [], answeredWith = [];
   const db = { from(table) {
     const query = { table, operations: [] };
     const chain = { then(resolve, reject) { calls.push(query); return Promise.resolve(handler(query)).then(resolve, reject); } };
@@ -29,7 +29,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/supabase/server": { createServiceSupabase: () => db },
     "@/lib/telegram-intents": intents,
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
-    "@/lib/server/answer": { answerFromKnowledge: async () => "근거 답변" },
+    "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
     "@/lib/server/search": { searchDocuments: async () => ({ results: options.searchResults ?? [] }) },
   };
   const exports = {};
@@ -43,7 +43,7 @@ async function setup(file, handler, options = {}) {
       throw new Error(`Unexpected external call ${method}`);
     },
   });
-  return { api: exports, calls, sent, inserts };
+  return { api: exports, calls, sent, inserts, answeredWith };
 }
 
 const where = (query, key) => query.operations.find((op) => op.method === "eq" && op.args[0] === key)?.args[1];
@@ -180,6 +180,16 @@ test("a bare topic keyword does not inject an unrelated live-operations listing 
   assert.equal(body.ok, true);
   assert.match(ctx.sent[0].text, /근거 답변/);
   assert.doesNotMatch(ctx.sent[0].text, /브랜디 OS의 최신/);
+});
+
+test("a cadence question rejects generic content hits and sends the rare answer chunk first", async () => {
+  const generic = { documentId: "generic-doc", title: "콘텐츠 아이디어", heading: "운영", text: "콘텐츠 제작 사례", citation: { version: 1, chunkId: 3 }, score: 0.8 };
+  const scheduling = { documentId: "scheduling-doc", title: "기획_절차", heading: "운영 규칙", text: "승인된 편성을 보존한다.", citation: { version: 1, chunkId: 4 }, score: 0.7 };
+  const cadence = { documentId: "cadence-doc", title: "현재기준", heading: "3. 콘텐츠 위계 · 케이던스", text: "하한: 주 2편.", citation: { version: 1, chunkId: 5 }, score: 0.4 };
+  const ctx = await setup("webhook", normalHandler, { searchResults: [generic, scheduling, cadence] });
+  await ctx.api.POST(incoming({ text: "콘텐츠 편성 하한이 주 몇 편이야?" }));
+  assert.equal(ctx.answeredWith[0][0].documentId, "cadence-doc");
+  assert.deepEqual(Array.from(ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload.source_document_ids), ["cadence-doc", "scheduling-doc"]);
 });
 
 test("a bare topic keyword still surfaces the live-operations listing when no grounded knowledge answers the question", async () => {

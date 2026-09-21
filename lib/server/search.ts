@@ -5,7 +5,7 @@ import type { DocumentStatus, SearchResult } from "@/lib/types";
 import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { hasLexicalEvidence, searchTerms } from "@/lib/search-relevance";
+import { hasLexicalEvidence, keywordQueryText, searchTerms } from "@/lib/search-relevance";
 
 type SearchInput = z.infer<typeof searchSchema>;
 
@@ -92,7 +92,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     ? statuses.filter((status) => status === "canonical")
     : statuses;
   const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
-    p_query: input.query,
+    p_query: keywordQueryText(input.query),
     p_embedding: embedding,
     p_limit: input.topK,
     p_statuses: rpcStatuses,

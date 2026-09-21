@@ -9,7 +9,7 @@ import { sanitizePublicCopyValue } from "../lib/content-safety.ts";
 import { buildHomeRevenueView } from "../lib/home-dashboard.ts";
 import { fuzzyDocumentScore } from "../lib/knowledge-navigation.ts";
 import { structureBorrowInput, structureBorrowGuidance } from "../lib/structure-borrow.ts";
-import { evidenceQueryText, hasLexicalEvidence } from "../lib/search-relevance.ts";
+import { evidenceQueryText, hasLexicalEvidence, keywordQueryText, rankLexicalEvidence } from "../lib/search-relevance.ts";
 
 test("quick open matches sparse filename letters and ranks exact titles ahead of fuzzy matches", () => {
   assert.ok(fuzzyDocumentScore("원최", "원고_낭독본_최종.md") > 0);
@@ -100,6 +100,23 @@ test("degraded knowledge search rejects unrelated evidence", () => {
   assert.equal(hasLexicalEvidence(result, "푸른삼각형을 내일로 접어줘"), false);
   assert.equal(hasLexicalEvidence(result, "HTML 보고서 구성 알려줘"), true);
   assert.equal(evidenceQueryText("[운영검수 2026-09-09] 푸른삼각형을 내일로 접어줘"), "푸른삼각형을 내일로 접어줘");
+});
+
+test("Korean knowledge questions remove particles and generic words before keyword ranking", () => {
+  assert.equal(keywordQueryText("콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
+  assert.equal(keywordQueryText("콘텐츠 위계 알려줘"), "콘텐츠 위계");
+  assert.equal(keywordQueryText("[운영검수 2026-09-21] 콘텐츠 편성 하한이 주 몇 편이야?"), "편성 하한 편");
+});
+
+test("Telegram evidence ignores a generic topic-only hit and promotes the rare answer term", () => {
+  const generic = { title: "콘텐츠 아이디어", heading: "운영", text: "콘텐츠 제작 사례" };
+  const scheduling = { title: "기획_절차", heading: "운영 규칙", text: "승인된 편성을 보존한다." };
+  const answer = { title: "현재기준", heading: "3. 콘텐츠 위계 · 케이던스", text: "하한: 주 2편." };
+  const query = "콘텐츠 편성 하한이 주 몇 편이야?";
+  assert.equal(hasLexicalEvidence(generic, query), false);
+  assert.equal(hasLexicalEvidence(scheduling, query), true);
+  assert.equal(hasLexicalEvidence(answer, query), true);
+  assert.equal(rankLexicalEvidence([scheduling, generic, answer], query)[0], answer);
 });
 
 test("headings fold hierarchically and fenced code retains blank lines and fake headings", () => {
