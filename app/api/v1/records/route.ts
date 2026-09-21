@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const recordType = url.searchParams.get("type") as RecordType | null;
     if (recordType && !RECORD_TYPES.includes(recordType)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
+    if (recordType === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 확인해 주세요.");
 
     let builder = actor.supabase
       .from("os_records")
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     if (recordType) builder = builder.eq("record_type", recordType);
+    else builder = builder.neq("record_type", "development_comment");
     if (url.searchParams.get("excludeKind") === "development_request") {
       builder = builder.or("metadata->>kind.is.null,metadata->>kind.neq.development_request");
     }
@@ -84,6 +86,7 @@ export async function POST(request: Request) {
     const input = recordCreateSchema.parse(await parseJson(request));
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
+    if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 작성해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     await assertDevelopmentRequestLink(actor.supabase, input);
     const payload = {
@@ -109,6 +112,7 @@ export async function PATCH(request: Request) {
     const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
+    if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");
@@ -153,6 +157,7 @@ export async function DELETE(request: Request) {
     const { data: current } = await actor.supabase.from("os_records").select("version,record_type,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
+    if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);
     if (error) throw new ApiError(400, "RECORD_ARCHIVE_FAILED", "운영 기록을 보관하지 못했습니다.", error.message);
     return NextResponse.json({ archived: true });

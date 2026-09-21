@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "observedAt": "2026-09-17",
+  "observedAt": "2026-09-21",
   "status": "applied_dev",
   "decision": "applied",
   "approval": {
@@ -12,7 +12,7 @@
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 7,
     "productionExactRepositoryMatches": 0,
-    "developmentHistoryCount": 4,
+    "developmentHistoryCount": 5,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -107,8 +107,8 @@
       }
     },
     "developmentValidation": {
-      "appliedAt": "2026-09-17",
-      "migrationHistoryCount": 4,
+      "appliedAt": "2026-09-21",
+      "migrationHistoryCount": 5,
       "publicTables": 34,
       "publicPolicies": 40,
       "reviewedTriggers": 11,
@@ -136,6 +136,11 @@
       "file": "20260917112037_restrict_security_definer_execution.sql",
       "sha256": "b3ffab4b84b775bf99cbd59174fefb840ebd62162a91e1e560c9e8ff3e9060ac",
       "purpose": "remove platform-default direct execution of privileged functions and explicitly allow only required authenticated entry points"
+    },
+    {
+      "file": "20260921170000_development_request_comments.sql",
+      "sha256": "1ea4f0ca6ead72c1324cd7fb2160a2a96b65f2b10826c153a5428c89f3ef2f9b",
+      "purpose": "add append-only development request comments and single-level replies to the DEV operating record contract"
     }
   ],
   "legacyMigrations": [

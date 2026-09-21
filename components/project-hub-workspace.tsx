@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, Paperclip, Plus, RefreshCw, Rocket, Search, SlidersHorizontal, Trash2, UploadCloud, UserRound, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, CornerDownRight, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, MessageCircle, Paperclip, Plus, RefreshCw, Rocket, Search, Send, SlidersHorizontal, Trash2, UploadCloud, UserRound, X } from "lucide-react";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createDevelopmentAttachmentUpload, createRecord, deleteDevelopmentAttachment, getDevelopmentAttachmentUrl, listMembers, listRecords, uploadDevelopmentAttachment, type OsMember } from "@/lib/api-client";
@@ -24,6 +24,7 @@ function previewRecord(input: Partial<OsRecord>): OsRecord {
 }
 function projectLabel(title: string) { return /\bOS\b/i.test(title) ? "OS" : /에듀|\bedu\b/i.test(title) ? "Edu" : /마이인|\bmyin\b/i.test(title) ? "Myin" : title; }
 function date(value: string) { return new Date(value).toLocaleDateString("ko-KR", { month: "short", day: "numeric" }); }
+function dateTime(value: string) { return new Date(value).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }); }
 function fileSize(value: string) { const bytes = Number(value); return !bytes ? "" : bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)}KB` : `${(bytes / 1024 / 1024).toFixed(1)}MB`; }
 function Status({ value }: { value: string }) { return <span className={`dev-status dev-status-${value}`}><Circle size={11} />{LABELS[value] || value}</span>; }
 function fullPageUrl(value: string) { return value.startsWith("/") && !value.startsWith("//") && !value.includes("\\") ? `https://brandyaction-os.vercel.app${value}` : value; }
@@ -32,6 +33,16 @@ async function requestApi<T>(token: string | null, query = "", body?: Record<str
   const response = await fetch(`/api/v1/development-requests${query ? `?${query}` : ""}`, { method, cache: "no-store", headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || "수정요청을 처리하지 못했습니다.");
+  return data;
+}
+async function commentApi<T>(token: string | null, requestId: string, body?: Record<string, unknown>): Promise<T> {
+  const response = await fetch(`/api/v1/development-request-comments${body ? "" : `?requestId=${encodeURIComponent(requestId)}`}`, {
+    method: body ? "POST" : "GET", cache: "no-store",
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+    ...(body ? { body: JSON.stringify({ requestId, ...body }) } : {}),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "요청 대화를 처리하지 못했습니다.");
   return data;
 }
 async function projectRecords(token: string | null, type: "project" | "development_log" | "deployment", parentId?: string) {
@@ -71,6 +82,12 @@ function ProjectHubContent() {
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
   const [historyError, setHistoryError] = useState("");
+  const [comments, setComments] = useState<OsRecord[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState("");
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [commentRevision, setCommentRevision] = useState(0);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [copyFallback, setCopyFallback] = useState("");
   const [pageUrl, setPageUrl] = useState("");
@@ -82,8 +99,13 @@ function ProjectHubContent() {
   const modalRef = useRef<HTMLDivElement>(null);
   const current = projects.find(item => item.id === projectId) || null;
   const detailProject = selected ? projects.find(item => item.id === selected.parent_id) || null : current;
+  const selectedId = selected?.id || "";
   const memberNames = useMemo(() => new Map(members.map(member => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
   const assigneeName = (id: string | null) => id ? memberNames.get(id) || `구성원 ${id.slice(0, 8)}` : "미지정";
+  const commentName = (comment: OsRecord) => meta(comment, "authorName") || assigneeName(comment.created_by);
+  const commentIds = useMemo(() => new Set(comments.map(comment => comment.id)), [comments]);
+  const rootComments = comments.filter(comment => !meta(comment, "replyTo") || !commentIds.has(meta(comment, "replyTo")));
+  const replies = (commentId: string) => comments.filter(comment => meta(comment, "replyTo") === commentId);
   const chooseProject = (id: string, nextStatus = "") => { setProjectId(id); setSelected(null); setStatus(nextStatus); setScope(""); setSearch(""); setQuery(""); setOffset(0); setTab("requests"); };
 
   useEffect(() => {
@@ -190,6 +212,18 @@ function ProjectHubContent() {
   }, [accessToken, demo, projectId, revision]);
 
   useEffect(() => {
+    if (!selectedId) { setComments([]); setCommentsError(""); setReplyTo(null); return; }
+    if (demo || !accessToken) { setComments([]); setCommentsError(""); setReplyTo(null); return; }
+    let cancelled = false;
+    setCommentsLoading(true); setCommentsError(""); setReplyTo(null);
+    commentApi<{ comments: OsRecord[] }>(accessToken, selectedId)
+      .then(result => { if (!cancelled) setComments(result.comments); })
+      .catch(reason => { if (!cancelled) setCommentsError(reason instanceof Error ? reason.message : "요청 대화를 불러오지 못했습니다."); })
+      .finally(() => { if (!cancelled) setCommentsLoading(false); });
+    return () => { cancelled = true; };
+  }, [accessToken, commentRevision, demo, selectedId]);
+
+  useEffect(() => {
     if (!modal && !copyFallback) return;
     const previous = document.activeElement as HTMLElement | null;
     const overflow = document.body.style.overflow;
@@ -270,6 +304,23 @@ function ProjectHubContent() {
     finally { setSaving(false); }
   };
 
+  const submitComment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); if (!selected || commentSaving) return;
+    const formElement = event.currentTarget;
+    const body = String(new FormData(formElement).get("comment") || "").trim();
+    if (!body) return;
+    setCommentSaving(true); setCommentsError("");
+    try {
+      const saved = demo
+        ? previewRecord({ record_type: "development_comment", title: replyTo ? "개발 요청 답글" : "개발 요청 댓글", description: body, status: "active", parent_id: selected.id, created_by: profile?.id || "demo-ricky", updated_by: profile?.id || "demo-ricky", metadata: { kind: "development_comment", requestId: selected.id, replyTo: replyTo || "", authorName: profile?.displayName || "리키", authorType: "member" } })
+        : (await commentApi<{ comment: OsRecord }>(accessToken, selected.id, { body, replyTo })).comment;
+      setComments(previous => [...previous, saved]);
+      formElement.reset(); setReplyTo(null); setNotice(replyTo ? "답글을 남겼습니다." : "댓글을 남겼습니다.");
+      if (!demo) setCommentRevision(value => value + 1);
+    } catch (reason) { setCommentsError(reason instanceof Error ? reason.message : "댓글을 저장하지 못했습니다."); }
+    finally { setCommentSaving(false); }
+  };
+
   const saveResolution = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!selected) return;
     const form = new FormData(event.currentTarget);
@@ -329,6 +380,21 @@ function ProjectHubContent() {
       {(admin || selected.created_by === profile?.id) && <div className="dev-request-actions">{(admin || selected.status === "backlog") && <button className="dev-text-button" onClick={() => open("edit")}>요청 내용 수정</button>}<button className="dev-text-button danger" disabled={saving} onClick={deleteSelected}><Trash2 size={13} /> 요청 삭제</button></div>}
       <section className="dev-resolution"><h3><GitCommitHorizontal size={14} /> 처리 결과</h3><p>{meta(selected, "resolution") || "아직 처리 결과가 등록되지 않았습니다."}</p><div className="dev-detail-links"><SafeLink url={meta(selected, "prUrl")}>GitHub 변경 내역</SafeLink><SafeLink url={meta(selected, "deploymentUrl")}>반영 화면 확인</SafeLink></div>{meta(selected, "commitSha") && <small>커밋 {meta(selected, "commitSha").slice(0, 12)}</small>}</section>
       <section className="dev-linked-history"><h3><GitBranch size={14} /> 자동 연결된 개발 이력 <span>{selectedHistory.length}</span></h3>{historyLoading ? <p>연결 기록을 확인하는 중입니다.</p> : selectedHistory.length ? selectedHistory.slice(0, 5).map(item => <article key={item.id}><div><strong>{item.title}</strong><Status value={item.status} /></div><p>{item.description}</p><small>{date(item.created_at)}{meta(item, "branch") && ` · ${meta(item, "branch")}`}{meta(item, "commitSha") && ` · ${meta(item, "commitSha").slice(0, 12)}`}</small><SafeLink url={item.source_url}>결과 확인</SafeLink></article>) : <p>이 요청 ID로 저장된 개발·배포 기록이 아직 없습니다. Work에서 로그를 남길 때 요청 ID를 함께 보내면 여기에 자동으로 표시됩니다.</p>}</section>
+      <section className="dev-comments" aria-label="요청 대화">
+        <h3><MessageCircle size={14} /> 요청 대화 <span>{comments.length}</span>{!demo && <button type="button" aria-label="요청 대화 새로고침" disabled={commentsLoading} onClick={() => setCommentRevision(value => value + 1)}><RefreshCw className={commentsLoading ? "dev-spin" : ""} size={13} /></button>}</h3>
+        {commentsError && <div className="dev-error" role="alert">{commentsError}</div>}
+        {commentsLoading ? <p className="dev-comment-empty">대화를 불러오는 중입니다.</p> : rootComments.length ? <div className="dev-comment-list">{rootComments.map(comment => <article className="dev-comment" key={comment.id}>
+          <header><strong>{commentName(comment)}</strong>{meta(comment, "authorType") === "agent" && <span>AI 대리 작성</span>}<time dateTime={comment.created_at}>{dateTime(comment.created_at)}</time></header>
+          <p>{comment.description}</p>
+          <button type="button" className="dev-text-button" onClick={() => setReplyTo(comment.id)}><CornerDownRight size={13} /> 답글</button>
+          {replies(comment.id).map(reply => <div className="dev-comment-reply" key={reply.id}><header><strong>{commentName(reply)}</strong>{meta(reply, "authorType") === "agent" && <span>AI 대리 작성</span>}<time dateTime={reply.created_at}>{dateTime(reply.created_at)}</time></header><p>{reply.description}</p></div>)}
+        </article>)}</div> : <p className="dev-comment-empty">아직 대화가 없습니다. 진행 상황이나 확인할 내용을 남겨 보세요.</p>}
+        <form className="dev-comment-form" onSubmit={submitComment}>
+          {replyTo && <div className="dev-reply-target"><span><CornerDownRight size={13} /> {commentName(comments.find(comment => comment.id === replyTo) || selected)}님의 댓글에 답글</span><button type="button" onClick={() => setReplyTo(null)}>취소</button></div>}
+          <label>{replyTo ? "답글" : "댓글"}<textarea name="comment" required rows={3} maxLength={5000} placeholder={replyTo ? "답글을 입력하세요." : "진행 상황, 질문, 확인할 내용을 남겨 주세요."} /></label>
+          <button className="dev-button primary" disabled={commentSaving}>{commentSaving ? <><Loader2 className="dev-spin" size={14} /> 저장 중…</> : <><Send size={13} /> {replyTo ? "답글 남기기" : "댓글 남기기"}</>}</button>
+        </form>
+      </section>
       {admin ? <form key={`${selected.id}-${selected.version}`} className="dev-resolution-form" onSubmit={saveResolution}><h3>담당자·처리 상태 업데이트</h3>{!demo && <button type="button" className="dev-text-button" disabled={saving} onClick={refreshSelected}>최신 요청 다시 열기 · 입력 중인 내용 초기화</button>}<label>담당자<select name="assigneeId" defaultValue={selected.assignee_id || ""}><option value="">담당자 미지정</option>{selected.assignee_id && !members.some(member => member.id === selected.assignee_id) && <option value={selected.assignee_id}>{assigneeName(selected.assignee_id)} · 현재 비활성</option>}{members.map(member => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label><label>상태<select name="status" defaultValue={selected.status}>{FLOW.map(value => <option key={value} value={value}>{LABELS[value]}</option>)}</select></label><label>수정 내용·검증 결과<textarea name="resolution" rows={4} defaultValue={meta(selected, "resolution")} maxLength={10000} placeholder="무엇을 수정했고 어떻게 확인했나요? 해결 처리 시 필수" /></label><details><summary><GitBranch size={13} /> 코드·배포 연결</summary><label>브랜치<input name="branch" defaultValue={meta(selected, "branch")} maxLength={200} /></label><label>커밋 SHA<input name="commitSha" defaultValue={meta(selected, "commitSha")} pattern="[a-fA-F0-9]{7,40}" /></label><label>GitHub PR 주소<input type="url" name="prUrl" defaultValue={meta(selected, "prUrl")} placeholder="https://github.com/…/pull/…" /></label><label>Preview 또는 운영 주소<input type="url" name="deploymentUrl" defaultValue={meta(selected, "deploymentUrl")} /></label></details><button className="dev-button primary dev-wide" disabled={saving}>{saving ? "저장 중…" : "담당자·처리 결과 저장"}</button></form> : null}
       {selected.created_by === profile?.id && ["done", "review"].includes(selected.status) && <button className="dev-button dev-wide" disabled={saving} onClick={() => patchSelected({ status: "backlog" })}>아직 문제가 있어요 · 다시 요청</button>}
       </div></aside>}
