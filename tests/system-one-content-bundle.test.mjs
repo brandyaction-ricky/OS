@@ -7,10 +7,11 @@ import ts from "typescript";
 import { z } from "zod";
 import * as contentModule from "../lib/server/system-one-content-source.ts";
 import * as documentModule from "../lib/server/system-one-document-source.ts";
+import * as packagingModule from "../lib/server/system-one-packaging-source.ts";
 const code = ts.transpileModule(await readFile(new URL("../lib/server/system-one-content-bundle.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
-const modules = { "node:crypto": { createHash }, zod: { z },
+const modules = { "node:crypto": { createHash }, zod: { z }, "@/lib/server/system-one-packaging-source": packagingModule,
   "@/lib/server/system-one-content-source": contentModule, "@/lib/server/system-one-document-source": documentModule };
 const compiled = { exports: {} };
 runInNewContext(code, { module: compiled, exports: compiled.exports,
@@ -90,4 +91,76 @@ test("requested role and section affect fingerprint but do not become verified r
   const second = await load(input, deps);
   assert.notEqual(first.snapshot.fingerprint, second.snapshot.fingerprint);
   assert.equal(second.snapshot.policyStatus, "unverified");
+});
+
+function withPackages() {
+  const h = harness(); h.input.packaging = "owner-visible-set";
+  h.state.packages = [{ id: id(40), record_type: "content_package", parent_id: id(10), owner_id: id(1),
+    metadata: { packageKind: "title_package", result: { titles: [{ text: "Synthetic", picked: true }] } },
+    version: 1, created_at: h.state.topic.updated_at, updated_at: h.state.topic.updated_at, archived_at: null }];
+  h.deps.packaging = { authenticate: async () => ({
+    principal: { id: id(1), type: "user", active: true, mustChangePassword: false },
+    readPackages: async () => h.state.packages,
+  }) };
+  return h;
+}
+test("optional package observation binds references but exposes neither text nor approval", async () => {
+  const { input, deps } = withPackages(); const result = await load(input, deps);
+  assert.equal(result.status, "ready"); assert.equal(result.snapshot.packaging[0].id, id(40));
+  assert.equal(result.snapshot.executionAllowed, false); assert.equal(result.snapshot.judgment, null);
+  assert.ok(Object.isFrozen(result.snapshot.packaging[0]));
+  assert.equal(JSON.stringify(result.snapshot).includes("picked"), false);
+  assert.equal((await recheck(result.snapshot, deps)).status, "ready");
+});
+for (const [name, change] of [
+  ["selection without version increment", s => { s.packages[0].metadata.result.titles[0].picked = false; }],
+  ["version increment", s => { s.packages[0].version++; }],
+  ["deletion or lost visibility", s => { s.packages = []; }],
+  ["new package", s => { s.packages.push({ ...s.packages[0], id: id(41) }); }],
+]) test(`package recheck catches ${name}`, async () => {
+  const { state, input, deps } = withPackages(); const first = await load(input, deps);
+  change(state); assert.equal((await recheck(first.snapshot, deps)).code, "stale");
+});
+test("package changes while references load stop the initial observation", async () => {
+  const { state, input, deps } = withPackages(); state.onDocuments = () => { state.packages = []; };
+  assert.equal((await load(input, deps)).code, "stale");
+});
+test("empty package set is observed, never interpreted as completed packaging", async () => {
+  const { state, input, deps } = withPackages(); state.packages = [];
+  const first = await load(input, deps); assert.equal(first.status, "ready");
+  assert.equal(first.snapshot.packaging.length, 0); assert.equal(first.snapshot.executionAllowed, false);
+});
+test("package opt-in requires a dependency; owner and parent mismatches stop", async () => {
+  const h = withPackages(); const missing = { ...h.deps }; delete missing.packaging;
+  assert.equal((await load(h.input, missing)).code, "invalid_input");
+  for (const field of ["owner_id", "parent_id"]) {
+    const { state, input, deps } = withPackages(); state.packages[0][field] = id(99);
+    assert.equal((await load(input, deps)).code, "unavailable");
+  }
+});
+test("package overflow and duplicate IDs fail closed", async () => {
+  for (const count of [2, 101]) {
+    const { state, input, deps } = withPackages(); state.packages = Array.from({ length: count }, () => ({ ...state.packages[0] }));
+    assert.equal((await load(input, deps)).code, "invalid_metadata");
+  }
+});
+
+test("packaging set ordering does not create false changes", async () => {
+  const { state, input, deps } = withPackages(); state.packages.push({ ...state.packages[0], id: id(41) });
+  const first = await load(input, deps); state.packages.reverse();
+  assert.equal((await recheck(first.snapshot, deps)).status, "ready");
+});
+test("invalid, archived, oversized and failed package reads do not produce evidence", async () => {
+  for (const change of [s => { s.packages = null; }, s => { s.packages[0].version = 0; },
+    s => { s.packages[0].archived_at = s.topic.updated_at; }, s => { s.packages[0].metadata = { text: "x".repeat(240001) }; }]) {
+    const { state, input, deps } = withPackages(); change(state);
+    assert.equal((await load(input, deps)).code, "invalid_metadata");
+  }
+  const { input, deps } = withPackages();
+  deps.packaging.authenticate = async () => ({ principal: { id: id(2), type: "user", active: true, mustChangePassword: false },
+    readPackages: async () => { throw new Error("must not read"); } });
+  assert.equal((await load(input, deps)).code, "unavailable");
+  deps.packaging.authenticate = async () => ({ principal: { id: id(1), type: "user", active: true, mustChangePassword: false },
+    readPackages: async () => { throw new Error("synthetic"); } });
+  assert.equal((await load(input, deps)).code, "read_failed");
 });

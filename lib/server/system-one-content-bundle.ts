@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { loadSystemOneContentHead, recheckSystemOneContentHead, type SystemOneContentDependencies } from "@/lib/server/system-one-content-source";
 import { loadSystemOneDocumentBundle, type SystemOneDocumentDependencies } from "@/lib/server/system-one-document-source";
+import { loadSystemOnePackagingSet, type SystemOnePackagingDependencies } from "@/lib/server/system-one-packaging-source";
 
 // Internal, read-only observation contract. Requested roles/sections are NOT
 // qualified policies: a server-owned registry resolver must establish them later.
@@ -17,6 +18,7 @@ const selectionSchema = z.object({
   content: z.object({ kind: z.literal("content_topic"), id, expectedVersion: version }).strict(),
   registry: documentRef,
   criteria: z.array(criterionRef).min(1).max(10),
+  packaging: z.literal("owner-visible-set").optional(),
 }).strict().refine((input) => {
   const ids = [input.registry.id, ...input.criteria.map((item) => item.id)];
   const roles = input.criteria.map((item) => item.requestedRole);
@@ -30,6 +32,7 @@ type Snapshot = Readonly<{
   registry: Reference;
   criteria: readonly Readonly<Reference & { requestedRole: string; requestedSection: string }>[];
   fingerprint: string;
+  packaging?: readonly Readonly<{ kind: "content_package"; id: string; version: number }>[];
   policyStatus: "unverified";
   judgment: null;
   executionAllowed: false;
@@ -39,6 +42,7 @@ type Result = { status: "ready"; snapshot: Snapshot } | { status: "stopped"; cod
 export type SystemOneContentBundleDependencies = {
   content: SystemOneContentDependencies;
   documents: SystemOneDocumentDependencies;
+  packaging?: SystemOnePackagingDependencies;
 };
 // Only server-issued process-local objects can be rechecked. Fingerprints are
 // not signatures, persistent approvals, or an atomic cross-table transaction.
@@ -51,6 +55,10 @@ export async function loadSystemOneContentBundle(input: unknown, deps: SystemOne
   const selection = parsed.data;
   const content = await loadSystemOneContentHead(selection.content, deps.content);
   if (content.status === "stopped") return content;
+  if (selection.packaging && !deps.packaging) return stop("invalid_input");
+  const packaging = selection.packaging && deps.packaging
+    ? await loadSystemOnePackagingSet(content.head.id, content.head.principalId, deps.packaging) : null;
+  if (packaging?.status === "stopped") return packaging;
   const documents = await loadSystemOneDocumentBundle({
     source: { id: selection.registry.id, expectedVersion: selection.registry.expectedVersion },
     criteria: selection.criteria.map(({ id, expectedVersion }) => ({ id, expectedVersion })),
@@ -61,6 +69,11 @@ export async function loadSystemOneContentBundle(input: unknown, deps: SystemOne
   // This is still a point-in-time observation, not continuing authorization.
   const latestContent = await recheckSystemOneContentHead(content.head, deps.content);
   if (latestContent.status === "stopped") return latestContent;
+  if (packaging && deps.packaging) {
+    const latest = await loadSystemOnePackagingSet(content.head.id, content.head.principalId, deps.packaging);
+    if (latest.status === "stopped") return latest;
+    if (latest.fingerprint !== packaging.fingerprint) return stop("stale");
+  }
   const registry = Object.freeze({ kind: "knowledge_document" as const, id: documents.bundle.source.id,
     version: documents.bundle.source.current_version });
   const criteria = Object.freeze(documents.bundle.criteria.map((document, index) => Object.freeze({
@@ -70,10 +83,12 @@ export async function loadSystemOneContentBundle(input: unknown, deps: SystemOne
   const fingerprint = createHash("sha256").update(JSON.stringify([
     SYSTEM_ONE_CONTENT_CONTRACT, content.head.fingerprint, documents.bundle.fingerprint,
     criteria.map(({ requestedRole, requestedSection }) => [requestedRole, requestedSection]),
+    ...(packaging ? [["owner-visible-package-set-v1", packaging.fingerprint]] : []),
   ])).digest("hex");
   const snapshot: Snapshot = Object.freeze({ contractVersion: SYSTEM_ONE_CONTENT_CONTRACT,
     content: Object.freeze({ kind: "content_topic", id: content.head.id, version: content.head.version }),
-    registry, criteria, fingerprint, policyStatus: "unverified", judgment: null, executionAllowed: false });
+    registry, criteria, fingerprint, ...(packaging ? { packaging: packaging.references } : {}),
+    policyStatus: "unverified", judgment: null, executionAllowed: false });
   issued.set(snapshot, selection);
   return { status: "ready", snapshot };
 }
