@@ -25,6 +25,9 @@ export default defineConfig({
     ? undefined
     : {
         command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+        // CI has no ignored .env.local. Only the Playwright-owned local server
+        // gets demo flags; external Preview targets and credential gates stay intact.
+        env: { OS_ENVIRONMENT: "local", NEXT_PUBLIC_DEMO_MODE: "true" },
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
