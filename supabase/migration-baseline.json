@@ -1,17 +1,18 @@
 {
   "schemaVersion": 2,
   "observedAt": "2026-09-21",
-  "status": "applied_dev",
+  "status": "applied_dev_and_production",
   "decision": "applied",
   "approval": {
-    "environment": "development",
+    "environment": "development_and_production",
     "approvedAt": "2026-09-21",
-    "productionAuthorized": false
+    "productionAuthorized": true,
+    "productionApprovedAt": "2026-09-21"
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 8,
-    "productionExactRepositoryMatches": 1,
+    "productionHistoryCount": 10,
+    "productionExactRepositoryMatches": 2,
     "developmentHistoryCount": 6,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
@@ -119,6 +120,23 @@
       "performanceAdvisorWarnings": 0,
       "securityAdvisorAcceptedWarnings": 15,
       "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs"
+    },
+    "productionValidation": {
+      "appliedAt": "2026-09-21",
+      "migrationHistoryCount": 10,
+      "notificationMigrationPresent": true,
+      "notificationRecordTypeAllowed": true,
+      "notificationIndexes": 2,
+      "notificationGuardTriggerPresent": true,
+      "notificationCreateTriggerPresent": true,
+      "commentGuardSupportsMentions": true,
+      "existingCommentsPreserved": 2,
+      "existingNotificationsAfterApply": 0,
+      "publicFunctionExecution": false,
+      "anonymousFunctionExecution": false,
+      "authenticatedFunctionExecution": false,
+      "serviceRoleFunctionExecution": true,
+      "securityDefinerSearchPathSafe": true
     }
   },
   "forwardMigrations": [
