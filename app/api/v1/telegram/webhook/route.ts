@@ -6,7 +6,7 @@ import { answerFromKnowledge } from "@/lib/server/answer";
 import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
 import { captureKind, isBotAddressed } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
-import { evidenceQueryText, hasLexicalEvidence, rankLexicalEvidence } from "@/lib/search-relevance";
+import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence } from "@/lib/search-relevance";
 
 export const runtime = "nodejs";
 
@@ -226,7 +226,7 @@ export async function POST(request: Request) {
     // semantic candidates, so an embedding nearest-neighbour is never shown
     // as proof for an unrelated or misunderstood request.
     const evidenceQuery = evidenceQueryText(text);
-    const verifiedResults = rankLexicalEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery).slice(0, 8);
+    const verifiedResults = rankTelegramEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery).slice(0, 8);
     const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults) : "";
     // A bare topic word (e.g. "콘텐츠") should not force an unrelated live
     // operations listing into a question that grounded company knowledge

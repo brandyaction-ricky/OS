@@ -3,6 +3,7 @@ import type { SearchResult } from "./types";
 const SEARCH_STOP_WORDS = new Set([
   "뭐", "뭐냐", "뭔가", "어떤", "어떤거", "어떤게", "알려줘", "알려", "보여줘", "보여",
   "찾아줘", "찾아", "있나", "있어", "있는지", "인가", "이야", "해줘", "대한", "관련",
+  "어떻게", "어떡해", "만들어야", "만드는", "해야",
   "the", "a", "an", "what", "which", "show", "find", "tell", "about",
 ]);
 
@@ -78,6 +79,29 @@ export function rankLexicalEvidence<T extends Pick<SearchResult, "title" | "head
     // while inverse document frequency keeps a common overlap from dominating.
     score: terms.reduce((score, term, termIndex) => score + (texts[index].includes(term) ? (termIndex + 1) / (frequencies.get(term) ?? 1) : 0), 0),
   })).sort((left, right) => right.score - left.score || left.index - right.index).map(({ result }) => result);
+}
+
+function procedureAuthority(result: Pick<SearchResult, "title"> & Partial<Pick<SearchResult, "folder">>, query: string) {
+  const title = result.title.toLowerCase();
+  const folder = result.folder?.toLowerCase() ?? "";
+  const procedural = /어떻게|어떡해|방법|절차|만들|해야|제작/u.test(query);
+  if (!procedural) return 0;
+  let score = 0;
+  if (/(?:^|[_\s·-])절차(?:$|[_\s·-])/u.test(title)) score += 40;
+  if (folder.includes("제작기준/콘텐츠절차")) score += 30;
+  if (/현재기준|결정\s*로그/u.test(title)) score += 20;
+  if (/썸네일/u.test(query)) {
+    if (title.includes("패키징_절차")) score += 100;
+    if (title.includes("썸네일 결정 로그")) score += 80;
+  }
+  return score;
+}
+
+export function rankTelegramEvidence<T extends Pick<SearchResult, "title" | "heading" | "text"> & Partial<Pick<SearchResult, "folder">>>(results: T[], query: string) {
+  const lexical = rankLexicalEvidence(results, query);
+  return lexical.map((result, index) => ({ result, index, authority: procedureAuthority(result, query) }))
+    .sort((left, right) => right.authority - left.authority || left.index - right.index)
+    .map(({ result }) => result);
 }
 
 export function evidenceQueryText(value: string) {
