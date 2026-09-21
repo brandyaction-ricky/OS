@@ -4,6 +4,7 @@ import test from "node:test";
 
 const sql = await readFile(new URL("../supabase/migrations/20260921140000_agent_update_daily_limit.sql", import.meta.url), "utf8");
 const baseline = await readFile(new URL("../supabase/migrations/20260917082749_core_baseline.sql", import.meta.url), "utf8");
+const history = await readFile(new URL("../supabase/maintenance/record_agent_update_quota_history.sql", import.meta.url), "utf8");
 const oldRule = sql.match(/old_rule constant text := '((?:''|[^'])*)';/)[1].replaceAll("''", "'");
 const newRule = sql.match(/new_rule constant text := '((?:''|[^'])*)';/)[1].replaceAll("''", "'");
 
@@ -23,4 +24,14 @@ test("quota migration is guarded, idempotent and preserves the deployed function
   assert.ok(sql.includes("RAISE EXCEPTION 'Unexpected agent quota definition; inspect before applying'"));
   assert.ok(sql.includes("EXECUTE replace(definition, old_rule, new_rule);"));
   assert.doesNotMatch(sql, /\b(DROP|GRANT|REVOKE|TRUNCATE)\b/i);
+});
+
+test("history reconciliation records the exact migration once without replaying or overwriting", () => {
+  assert.equal(history.match(/\$payload\$([\s\S]*?)\$payload\$/)[1], sql);
+  assert.ok(history.includes("ON CONFLICT (version) DO NOTHING"));
+  assert.ok(history.includes("existing.statements IS DISTINCT FROM ARRAY[migration_sql]"));
+  assert.ok(history.includes("Quota change not verified; refusing to record application"));
+  const outsidePayload = history.replace(/\$payload\$[\s\S]*?\$payload\$/, "");
+  assert.doesNotMatch(outsidePayload, /^\s*(EXECUTE|UPDATE|DELETE|TRUNCATE|DROP)\b/im);
+  assert.ok(outsidePayload.includes("WHERE version = '20260921140000'"));
 });

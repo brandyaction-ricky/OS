@@ -2,6 +2,27 @@
 
 Updated: 2026-09-17 Asia/Seoul.
 
+## 2026-09-21 narrowly approved quota maintenance
+
+The historical baseline status below describes the four-migration DEV rollout;
+it does not describe later individually approved Production maintenance.
+`20260921140000_agent_update_daily_limit.sql` was approved and applied separately
+to Production: only `knowledge.update` changes from 200 to 1000 per rolling
+24 hours. All minute, create/delete and authorization checks remain unchanged.
+The application was not merged or deployed to Production by this operation.
+
+The follow-up `supabase/maintenance/record_agent_update_quota_history.sql`
+records only that already-verified version and the exact migration SQL. It
+checks the live quota, refuses mismatched existing tracking records, and does
+not execute the payload or reconcile any other migration. The checksum of the
+stored statement must match the repository file after application. This is not
+approval to replay the baseline or repair unrelated historical entries.
+
+The new quota migration has not been applied to DEV by this task. Before a
+future DEV application, review that environment's live definition separately.
+The original baseline's `applied_dev` manifest fields remain historical facts,
+not a claim that every subsequently added forward migration is deployed.
+
 ## Decision
 
 The active chain was applied to the isolated `brandyaction-os-dev` project only. Do not apply it to Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the current Production `public` schema plus three forward migrations: one restores the `auth.users` profile trigger omitted by a public-only export, one preserves the existing access rules while optimizing RLS policy evaluation, and one removes platform-default direct execution grants from privileged functions while retaining only the authenticated RLS helpers and user-facing RPCs that the application requires. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
