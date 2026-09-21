@@ -8,6 +8,7 @@ import { assertOrganization } from "@/lib/server/organization";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
+import { assertDevelopmentRequestLink } from "@/lib/development-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     enforceHumanGates(input.recordType, input.status);
+    await assertDevelopmentRequestLink(actor.supabase, input);
     await rateLimit(actor, "record.create");
     const { data, error } = await createServiceSupabase().from("os_records").insert({
       ...databaseFields(input), owner_id: actor.ownerId, created_by: actor.ownerId, updated_by: actor.ownerId,
