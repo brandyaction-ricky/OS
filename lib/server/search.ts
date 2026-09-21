@@ -101,6 +101,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     p_min_score: 0,
   }) : { data: [], error: null };
   if (error) {
+    console.error("os_search_knowledge rpc failed", { message: error.message, details: error.details, hint: error.hint, code: error.code });
     const fallback = await fallbackDocuments(actor, input, statuses);
     return { results: fallback, degraded: true };
   }
