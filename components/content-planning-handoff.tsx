@@ -8,6 +8,7 @@ import { contentApproaches, handoffFields, planningHandoffUpdate, productionForm
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPackagingEvidence } from "./content-packaging-evidence";
+import { ContentReviewContext } from "./content-review-context";
 
 export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; onCancel?: () => void; disabled?: boolean }) {
   const { accessToken, demo } = useSession();
@@ -85,5 +86,6 @@ export function LinkedPlanningHandoff() {
   return <><div className="drawer-actions"><button className="secondary-button" disabled={editing} onClick={() => setRevision(value => value + 1)}>최신 기획 메모 다시 읽기</button></div>{notice ? <p role="status">{notice}</p> : null}{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <>
     {!editing ? <button className="secondary-button" onClick={() => { setEditing(true); setNotice(""); }}>제작 형식·인계 메모 수정</button> : null}
     <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}:${editing}`} source={state.source} onCancel={() => setEditing(false)} onSaved={editing ? record => { setState(current => current ? { ...current, source: record } : null); setEditing(false); setNotice("인계 메모를 저장했습니다. 기존 산출물·승인 이력은 보존했습니다. 변경된 입력의 공정 승인은 다시 확인해 주세요."); } : undefined} />
-    <ContentPackagingEvidence source={state.source} records={state.records} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
+    <ContentPackagingEvidence source={state.source} records={state.records} />
+    <ContentReviewContext sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} /></> : <p role="status">기획 인계 메모를 불러오는 중입니다.</p>}</>;
 }

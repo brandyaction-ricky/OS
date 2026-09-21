@@ -34,7 +34,8 @@ export function planningEntryRoles(markdown: string): string[] | null {
   return roles.length > 0 && roles.length <= 9 ? roles : null;
 }
 
-export async function checkPlanningReferences(input: unknown, registry: { id: string; expectedVersion: number }, deps: SystemOneContentBundleDependencies) {
+// Server-internal result. Never serialize the heads/document bodies to a client.
+export async function resolvePlanningReferences(input: unknown, registry: { id: string; expectedVersion: number }, deps: SystemOneContentBundleDependencies) {
   const parsed = inputSchema.safeParse(input);
   if (!parsed.success) return { status: "stopped", code: "invalid_input" } as const;
   const content = await loadSystemOneContentHead({ kind: "content_topic", ...parsed.data }, deps.content);
@@ -54,11 +55,17 @@ export async function checkPlanningReferences(input: unknown, registry: { id: st
   if (latestContent.status === "stopped") return latestContent;
   const latestDocuments = await recheckSystemOneDocumentBundle(references.documents, deps.documents);
   if (latestDocuments.status === "stopped") return latestDocuments;
+  return { status: "ready", content: latestContent.head, documents: latestDocuments.bundle, references: references.references } as const;
+}
+
+export async function checkPlanningReferences(input: unknown, registry: { id: string; expectedVersion: number }, deps: SystemOneContentBundleDependencies) {
+  const result = await resolvePlanningReferences(input, registry, deps);
+  if (result.status === "stopped") return result;
   // Safe projection: no body/identity/hash or policy qualification. These
   // SELECTs are not an atomic cross-table transaction or persistent approval.
   return { status: "ready", policyStatus: "unverified", judgment: null, executionAllowed: false,
-    source: { id: content.head.id, version: content.head.version },
-    registryVersion: latestDocuments.bundle.source.current_version,
-    referenceCount: references.references.length,
+    source: { id: result.content.id, version: result.content.version },
+    registryVersion: result.documents.source.current_version,
+    referenceCount: result.references.length,
   } as const;
 }
