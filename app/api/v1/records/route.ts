@@ -6,6 +6,7 @@ import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
+import { assertDevelopmentRequestLink } from "@/lib/development-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,6 +85,7 @@ export async function POST(request: Request) {
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
+    await assertDevelopmentRequestLink(actor.supabase, input);
     const payload = {
       ...toDatabase(input),
       owner_id: actor.id,

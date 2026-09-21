@@ -136,6 +136,7 @@ export const MCP_TOOLS = [
       type: "object",
       properties: {
         project_id: { type: "string", format: "uuid" },
+        request_id: { type: ["string", "null"], format: "uuid", description: "같은 프로젝트의 개발 요청 ID" },
         title: { type: "string", minLength: 1 },
         summary: { type: "string", minLength: 1 },
         status: { type: "string", enum: ["working", "tested", "dev_deployed", "review", "completed", "blocked"] },
@@ -162,6 +163,7 @@ export const MCP_TOOLS = [
       type: "object",
       properties: {
         project_id: { type: "string", format: "uuid" },
+        request_id: { type: ["string", "null"], format: "uuid", description: "같은 프로젝트의 개발 요청 ID" },
         title: { type: "string", minLength: 1 },
         environment: { type: "string", enum: ["dev", "production"] },
         status: { type: "string", enum: ["deploying", "ready", "failed", "rolled_back"] },
@@ -257,6 +259,7 @@ const getRecordArgs = z.object({ record_id: documentId }).strict();
 const getProjectContextArgs = z.object({ project_id: documentId }).strict();
 const createDevelopmentLogArgs = z.object({
   project_id: documentId,
+  request_id: documentId.nullable().optional().default(null),
   title: z.string().trim().min(1).max(240),
   summary: z.string().trim().min(1).max(20_000),
   status: z.enum(["working", "tested", "dev_deployed", "review", "completed", "blocked"]),
@@ -273,6 +276,7 @@ const createDevelopmentLogArgs = z.object({
 }).strict();
 const recordDeploymentArgs = z.object({
   project_id: documentId,
+  request_id: documentId.nullable().optional().default(null),
   title: z.string().trim().min(1).max(240),
   environment: z.enum(["dev", "production"]),
   status: z.enum(["deploying", "ready", "failed", "rolled_back"]),
@@ -411,6 +415,7 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
         sourceUrl: input.result_url,
         tags: ["development-log", input.environment],
         metadata: {
+          requestId: input.request_id,
           repository: input.repository,
           branch: input.branch,
           commitSha: input.commit_sha,
@@ -438,6 +443,7 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
         sourceUrl: input.deployment_url,
         tags: ["deployment", input.environment],
         metadata: {
+          requestId: input.request_id,
           branch: input.branch,
           commitSha: input.commit_sha,
           checks: input.checks,
