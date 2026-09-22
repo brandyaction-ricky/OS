@@ -189,9 +189,12 @@ test("회의기록 requires an OS-linked profile before it will create records",
   assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records").length, 0);
 });
 
-test("회의기록 extracts, links decisions/tasks to the meeting and pushes a knowledge document", async () => {
+test("회의기록 extracts, links decisions/tasks to the meeting and pushes raw+summary knowledge documents to the existing folders", async () => {
   const ctx = await setup("webhook", (query) => {
-    if (query.table === "os_documents") return { data: { id: "document-1" }, error: null };
+    if (query.table === "os_documents") {
+      const insertOp = query.operations.find((op) => op.method === "insert");
+      return { data: { id: insertOp.args[0].source === "meeting_raw" ? "raw-doc-1" : "summary-doc-1" }, error: null };
+    }
     if (query.table !== "os_records") return normalHandler(query);
     const insertOp = query.operations.find((op) => op.method === "insert");
     if (!insertOp) return { data: null, error: null }; // duplicate-check select finds nothing
@@ -206,18 +209,28 @@ test("회의기록 extracts, links decisions/tasks to the meeting and pushes a k
   const body = await (await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다. 네이버 유입 원인은 아직 모른다." }))).json();
   assert.equal(body.meetingRecorded, true);
   assert.equal(body.meetingId, "meeting-1");
-  assert.equal(body.documentId, "document-1");
+  assert.equal(body.rawDocumentId, "raw-doc-1");
+  assert.equal(body.summaryDocumentId, "summary-doc-1");
   const meetingInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").payload;
   assert.equal(meetingInsert.brand, "마이인"); assert.equal(meetingInsert.status, "done");
   const decisionInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "decision").payload;
   assert.equal(decisionInsert.parent_id, "meeting-1");
   const taskInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "task").payload;
   assert.equal(taskInsert.parent_id, "meeting-1"); assert.equal(taskInsert.metadata.assigneeName, "에릭");
-  const documentInsert = ctx.inserts.find((insert) => insert.table === "os_documents").payload;
-  assert.equal(documentInsert.status, "draft"); assert.equal(documentInsert.source, "meeting"); assert.equal(documentInsert.source_ref, "meeting-1");
-  assert.match(documentInsert.content_md, /광고 예산 20만원 유지/);
+  const documentInserts = ctx.inserts.filter((insert) => insert.table === "os_documents").map((insert) => insert.payload);
+  assert.equal(documentInserts.length, 2);
+  const rawInsert = documentInserts.find((doc) => doc.source === "meeting_raw");
+  assert.match(rawInsert.folder, /^01_Raw\/주간회의\/\d{4}-\d{2}$/);
+  assert.equal(rawInsert.status, "draft"); assert.equal(rawInsert.source_ref, "meeting-1");
+  assert.match(rawInsert.content_md, /광고 예산은 20만원으로 유지하기로 했다/);
+  const summaryInsert = documentInserts.find((doc) => doc.source === "meeting_summary");
+  assert.match(summaryInsert.folder, /^02_Wiki\/마이인\/운영\/주간회의요약\/\d{4}-\d{2}$/);
+  assert.equal(summaryInsert.status, "draft"); assert.equal(summaryInsert.source_ref, "meeting-1");
+  assert.match(summaryInsert.content_md, /광고 예산 20만원 유지/);
+  assert.match(summaryInsert.title, /^주간 회의 요약 \(마이인\(진단\)\) — \d{4}-\d{2}-\d{2}$/);
   assert.match(ctx.sent[0].text, /결정사항 1개/);
-  assert.match(ctx.sent[0].text, /knowledge\?document=document-1/);
+  assert.match(ctx.sent[0].text, /knowledge\?document=summary-doc-1/);
+  assert.match(ctx.sent[0].text, /knowledge\?document=raw-doc-1/);
 });
 
 test("resending the same Telegram message does not create a second meeting", async () => {

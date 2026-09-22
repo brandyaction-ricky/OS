@@ -8,7 +8,7 @@ import { captureKind, isBotAddressed, type CaptureKind } from "@/lib/telegram-in
 import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
-import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand } from "@/lib/telegram-meeting";
+import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
 import { prepareMeetingBrief } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
 
@@ -277,33 +277,50 @@ async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupaba
 // /회의기록 {사업} {회의 내용} — 사업별 회의 레코드 생성 + AI 추출(결정·미결·업무) +
 // 지식 문서함 반영을 한 메시지로 끝낸다. Telegram은 실패해도 웹훅을 재전송하므로
 // telegramReceipt로 같은 메시지의 중복 저장을 막는다.
+// 기한별로 묶은 업무 체크리스트 — 옛 봇의 "## To-do (기한별)" 절과 같은 모양(요일 표기는
+// 생략해 간소화). 기한 없는 항목은 "기한 미정"으로 모은다.
+function formatTodosMd(todos: { title: string; assignee: string; dueDate: string; dueLabel: string }[]) {
+  if (!todos.length) return "- (없음)";
+  const groups = new Map<string, typeof todos>();
+  for (const todo of todos) {
+    const key = todo.dueDate || todo.dueLabel || "기한 미정";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(todo);
+  }
+  return [...groups.entries()].map(([key, items]) =>
+    [`### ${key}`, ...items.map((item) => `- [ ] ${item.title}${item.assignee ? ` — ${item.assignee}` : ""}`)].join("\n"),
+  ).join("\n\n");
+}
+
 async function handleMeetingRecord(
   supabase: ReturnType<typeof createServiceSupabase>,
   message: TelegramMessage,
   ownerProfileId: string,
-  brand: string,
+  business: MeetingBusiness,
   content: string,
 ) {
   if (content.length < 20) throw new ApiError(400, "MEETING_CONTENT_TOO_SHORT", "회의 내용은 20자 이상 적어 주세요. 저장하지 않았습니다.");
   const receipt = `telegram:${message.chat.id}:${message.message_id}`;
   const { data: existingMeeting, error: existingError } = await supabase.from("os_records").select("id,metadata").eq("record_type", "meeting").eq("metadata->>telegramReceipt", receipt).is("archived_at", null).maybeSingle();
   if (existingError) throw new ApiError(500, "MEETING_RECEIPT_CHECK_FAILED", "중복 저장 확인에 실패해 회의를 기록하지 않았습니다. 잠시 뒤 다시 보내 주세요.");
-  if (existingMeeting) return { duplicate: true as const, meetingId: existingMeeting.id as string, documentId: null, result: null, title: "" };
+  if (existingMeeting) return { duplicate: true as const, meetingId: existingMeeting.id as string, rawDocumentId: null, summaryDocumentId: null, result: null, title: "" };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const { recordBrand, wikiFolderSegment, label } = business;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, Asia/Seoul 서버 시각 기준
+  const month = today.slice(0, 7); // YYYY-MM
   const result = await summarizeMeetingText(content, today);
-  const title = `${brand} 회의 · ${new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date())}`;
+  const title = `${recordBrand} 회의 · ${new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date())}`;
 
   const { data: meeting, error: meetingError } = await supabase.from("os_records").insert({
     record_type: "meeting", title, description: content.slice(0, 4000), status: "done", priority: "normal",
-    brand, team: "", owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, tags: [],
+    brand: recordBrand, team: "", owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, tags: [],
     metadata: { transcript: content, summary: result.summary, summaryMode: result.mode, decisions: result.decisions, pending: result.pending, todos: result.todos, source: "telegram", telegramReceipt: receipt },
   }).select("id").single();
   if (meetingError || !meeting) throw new ApiError(500, "MEETING_CREATE_FAILED", "회의 기록을 저장하지 못했습니다.", meetingError?.message);
 
   for (const decisionTitle of result.decisions) {
     const { error } = await supabase.from("os_records").insert({
-      record_type: "decision", title: decisionTitle, description: `회의: ${title}`, status: "decided", brand, team: "",
+      record_type: "decision", title: decisionTitle, description: `회의: ${title}`, status: "decided", brand: recordBrand, team: "",
       owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, parent_id: meeting.id, tags: [],
       metadata: { meetingId: meeting.id, source: "meeting" },
     });
@@ -311,7 +328,7 @@ async function handleMeetingRecord(
   }
   for (const todo of result.todos) {
     const { error } = await supabase.from("os_records").insert({
-      record_type: "task", title: todo.title, status: "planned", brand, team: "", due_date: todo.dueDate || null,
+      record_type: "task", title: todo.title, status: "planned", brand: recordBrand, team: "", due_date: todo.dueDate || null,
       description: `회의 후속 업무: ${title}${todo.assignee ? ` · 담당 ${todo.assignee}` : ""}${todo.dueLabel ? ` · ${todo.dueLabel}` : ""}`,
       owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, parent_id: meeting.id, tags: [],
       metadata: { meetingId: meeting.id, source: "meeting", assigneeName: todo.assignee, dueLabel: todo.dueLabel },
@@ -319,28 +336,43 @@ async function handleMeetingRecord(
     if (error) throw new ApiError(500, "MEETING_TASK_CREATE_FAILED", "회의는 저장됐지만 후속 업무 일부를 만들지 못했습니다.", error.message);
   }
 
-  // 문서함(지식) 반영 — 여기서 실패해도 회의·결정·업무는 이미 저장된 상태로 둔다.
-  let documentId: string | null = null;
+  // 지식 문서함 반영 — 옛 사내 봇과 같은 두 곳(raw 원문 + wiki 요약)에 같이 쌓는다.
+  // 이미 존재하는 실제 문서(02_Wiki/{사업}/운영/주간회의요약/{YYYY-MM})와 같은 모양으로 만든다.
+  // 여기서 실패해도 회의·결정·업무는 이미 저장된 상태로 둔다.
+  let rawDocumentId: string | null = null;
+  let summaryDocumentId: string | null = null;
   try {
-    const contentMd = [
-      `# ${title}`, "",
-      "## 요약", result.summary || "(요약 없음)", "",
-      "## 결정사항", result.decisions.length ? result.decisions.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
-      "## 미해결", result.pending.length ? result.pending.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
-      "## 후속 업무", result.todos.length ? result.todos.map((item) => `- ${item.title}${item.assignee ? ` · ${item.assignee}` : ""}${item.dueDate || item.dueLabel ? ` · ${item.dueDate || item.dueLabel}` : ""}`).join("\n") : "- (없음)", "",
-      "## 회의 원문", content,
-    ].join("\n");
-    const { data: doc, error: docError } = await supabase.from("os_documents").insert({
-      title, content_md: contentMd, folder: "05_Projects/브랜디OS/회의록", brand, team: "", status: "draft",
-      source: "meeting", source_ref: meeting.id, owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["회의록", brand],
+    const rawContentMd = [`# 주간 회의 (${label}) — ${today}`, "", content].join("\n");
+    const { data: rawDoc, error: rawError } = await supabase.from("os_documents").insert({
+      title: `주간 회의 (${label}) — ${today}`, content_md: rawContentMd, folder: `01_Raw/주간회의/${month}`,
+      brand: recordBrand, team: "", status: "draft", source: "meeting_raw", source_ref: meeting.id,
+      owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의", label],
     }).select("id").single();
-    if (docError) throw docError;
-    documentId = doc.id as string;
-  } catch (docError) {
-    console.error("meeting knowledge document creation failed", docError);
+    if (rawError) throw rawError;
+    rawDocumentId = rawDoc.id as string;
+  } catch (rawError) {
+    console.error("meeting raw document creation failed", rawError);
+  }
+  try {
+    const summaryContentMd = [
+      `# 주간 회의 요약 (${label}) — ${today}`, "",
+      "## 핵심 요약", result.summary || "(요약 없음)", "",
+      "## 결정사항", result.decisions.length ? result.decisions.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
+      "## 미결사항", result.pending.length ? result.pending.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
+      "## To-do (기한별)", formatTodosMd(result.todos),
+    ].join("\n");
+    const { data: summaryDoc, error: summaryError } = await supabase.from("os_documents").insert({
+      title: `주간 회의 요약 (${label}) — ${today}`, content_md: summaryContentMd, folder: `02_Wiki/${wikiFolderSegment}/운영/주간회의요약/${month}`,
+      brand: recordBrand, team: "", status: "draft", source: "meeting_summary", source_ref: meeting.id,
+      owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의요약", label],
+    }).select("id").single();
+    if (summaryError) throw summaryError;
+    summaryDocumentId = summaryDoc.id as string;
+  } catch (summaryError) {
+    console.error("meeting summary document creation failed", summaryError);
   }
 
-  return { duplicate: false as const, meetingId: meeting.id as string, documentId, result, title };
+  return { duplicate: false as const, meetingId: meeting.id as string, rawDocumentId, summaryDocumentId, result, title };
 }
 
 async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
@@ -434,12 +466,13 @@ export async function POST(request: Request) {
         await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: usage, source_document_ids: [] });
         return NextResponse.json({ ok: true, meetingUsage: true });
       }
-      const recorded = await handleMeetingRecord(supabase, message, registered.profile_id, parsed.brand, parsed.content);
+      const recorded = await handleMeetingRecord(supabase, message, registered.profile_id, parsed.business, parsed.content);
       const osUrl = (process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "");
+      const documentIds = [recorded.rawDocumentId, recorded.summaryDocumentId].filter((id): id is string => Boolean(id));
       const answer = recorded.duplicate
         ? "이미 기록된 회의입니다(중복 전송). 다시 저장하지 않았습니다."
         : [
-            `✅ [${parsed.brand}] 회의 기록 완료`,
+            `✅ [${parsed.business.label}] 회의 기록 완료`,
             "",
             `📌 결정사항 ${recorded.result!.decisions.length}개`,
             ...recorded.result!.decisions.map((item) => `  • ${item}`),
@@ -450,11 +483,12 @@ export async function POST(request: Request) {
             `✅ 후속 업무 ${recorded.result!.todos.length}개`,
             ...recorded.result!.todos.map((item) => `  • ${item.title}${item.dueLabel || item.dueDate ? ` (${item.dueLabel || item.dueDate})` : ""}`),
             "",
-            recorded.documentId ? `📁 문서함: ${osUrl}/knowledge?document=${encodeURIComponent(recorded.documentId)}` : "⚠️ 문서함 반영은 실패했지만 회의·결정·업무는 저장됐습니다.",
+            recorded.summaryDocumentId ? `📁 요약: ${osUrl}/knowledge?document=${encodeURIComponent(recorded.summaryDocumentId)}` : "⚠️ 요약 문서함 반영 실패(회의·결정·업무는 저장됨).",
+            recorded.rawDocumentId ? `📄 원문: ${osUrl}/knowledge?document=${encodeURIComponent(recorded.rawDocumentId)}` : "⚠️ 원문 문서함 반영 실패.",
           ].join("\n");
       await sendTelegram(message.chat.id, answer, message.message_id);
-      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: recorded.documentId ? [recorded.documentId] : [] });
-      return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, documentId: recorded.documentId });
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: documentIds });
+      return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, rawDocumentId: recorded.rawDocumentId, summaryDocumentId: recorded.summaryDocumentId });
     }
     const digestResponse = await configureDigest(supabase, message, registered?.profile_id ?? null, rawText);
     if (digestResponse) {
