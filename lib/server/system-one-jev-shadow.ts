@@ -15,13 +15,12 @@ const materialSchema = z.object({
 const scoreAnswer = z.object({
   type: z.literal("score"), score: z.number().min(0).max(4), confidence: z.number().min(0).max(1),
   probabilities: z.object({ "0": z.number(), "1": z.number(), "2": z.number(), "3": z.number(), "4": z.number() }).strict(),
-  legend: z.record(z.string()).optional(), stats: z.record(z.unknown()).optional(),
-}).strict();
+  legend: z.record(z.unknown()),
+}).passthrough();
 const riskAnswer = z.object({
   type: z.literal("choice"), choice: z.enum(["low", "medium", "high"]), confidence: z.number().min(0).max(1),
   probabilities: z.object({ low: z.number(), medium: z.number(), high: z.number() }).strict(),
-  stats: z.record(z.unknown()).optional(),
-}).strict();
+}).passthrough();
 const responseSchema = z.object({
   model: z.string().min(1).max(100),
   answers: z.object({
@@ -32,8 +31,7 @@ const responseSchema = z.object({
     overclaim_risk: riskAnswer,
   }).strict(),
   usage: z.object({ input_tokens: z.number().int().nonnegative(), output_tokens: z.number().int().nonnegative() }).strict(),
-  request_id: z.string().min(1).max(300), evaluation_time_ms: z.number().nonnegative(),
-}).strict();
+}).passthrough();
 
 export type JevPackagingMaterial = z.infer<typeof materialSchema>;
 type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
@@ -74,12 +72,13 @@ export async function evaluateJevPackagingShadow(input: unknown, options: {
   if (!apiKey) throw new Error("JEV_NOT_CONFIGURED");
   const state = buildJevPackagingState(input);
   const fetcher = options.fetcher ?? fetch;
+  const startedAt = Date.now();
   const response = await fetcher(JEV_SYSTEM_ONE_ENDPOINT, {
     method: "POST", signal: options.signal,
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ state, model: options.model?.trim() || "jev-latest", questions: JEV_PACKAGING_QUESTIONS }),
   });
-  if (!response.ok) throw new Error("JEV_PROVIDER_FAILED");
+  if (!response.ok) throw new Error(`JEV_PROVIDER_HTTP_${response.status}`);
   const raw = await response.text();
   if (Buffer.byteLength(raw, "utf8") > 200_000) throw new Error("JEV_RESPONSE_TOO_LARGE");
   let body: unknown;
@@ -93,7 +92,6 @@ export async function evaluateJevPackagingShadow(input: unknown, options: {
     executionAllowed: false as const,
     judgment: null,
     model: parsed.data.model,
-    requestId: parsed.data.request_id,
     scores: Object.freeze({
       topicRelevance: parsed.data.answers.topic_relevance,
       thumbnailClarity: parsed.data.answers.thumbnail_clarity,
@@ -102,6 +100,6 @@ export async function evaluateJevPackagingShadow(input: unknown, options: {
     }),
     overclaimRisk: parsed.data.answers.overclaim_risk,
     usage: parsed.data.usage,
-    evaluationTimeMs: parsed.data.evaluation_time_ms,
+    evaluationTimeMs: Date.now() - startedAt,
   });
 }

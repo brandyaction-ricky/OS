@@ -71,10 +71,14 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const name = error instanceof Error ? error.name : "";
-    if (message === "JEV_PROVIDER_FAILED" || message === "JEV_INVALID_RESPONSE" || message === "JEV_RESPONSE_TOO_LARGE" ||
-      name === "TimeoutError" || name === "AbortError") {
-      return stopped("provider_unavailable", 503);
-    }
+    if (message === "JEV_NOT_CONFIGURED") return stopped("provider_not_configured", 503);
+    if (message === "JEV_INVALID_RESPONSE") return stopped("provider_response_invalid", 503);
+    if (message === "JEV_RESPONSE_TOO_LARGE") return stopped("provider_response_too_large", 503);
+    if (message === "JEV_PROVIDER_HTTP_401" || message === "JEV_PROVIDER_HTTP_403") return stopped("provider_auth_failed", 503);
+    if (message === "JEV_PROVIDER_HTTP_429") return stopped("provider_rate_limited", 503);
+    if (/^JEV_PROVIDER_HTTP_4\d\d$/.test(message)) return stopped("provider_request_rejected", 503);
+    if (/^JEV_PROVIDER_HTTP_5\d\d$/.test(message)) return stopped("provider_unavailable", 503);
+    if (name === "TimeoutError" || name === "AbortError") return stopped("provider_timeout", 503);
     return stopped("read_failed", 503);
   }
 }

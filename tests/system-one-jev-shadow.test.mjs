@@ -16,12 +16,13 @@ const baseEnv = {
 const material = { title: "AI 변화", thumbnailCopy: "사무직 3가지 미래", audience: "직장인", coreContent: "복수 시나리오를 비교한다.",
   evidenceNotes: "사실, 시나리오, 해석을 구분한다.", viewerPromise: "세 가지 경로와 준비 기준을 제공한다." };
 const score = (value, confidence = 0.8) => ({ type: "score", score: value, confidence,
-  probabilities: { "0": 0, "1": 0, "2": 0.1, "3": 0.8, "4": 0.1 }, stats: {} });
+  probabilities: { "0": 0, "1": 0, "2": 0.1, "3": 0.8, "4": 0.1 },
+  legend: { "0": "매우 낮음", "1": "낮음", "2": "보통", "3": "높음", "4": "매우 높음" } });
 const response = {
   model: "jev-1.13.0", answers: { topic_relevance: score(3.1), thumbnail_clarity: score(2.2),
     curiosity_strength: score(3), evidence_boundary: score(3.8),
     overclaim_risk: { type: "choice", choice: "low", confidence: 0.5, probabilities: { low: 0.6, medium: 0.39, high: 0.01 }, stats: {} } },
-  usage: { input_tokens: 100, output_tokens: 50 }, request_id: "synthetic-request", evaluation_time_ms: 91,
+  usage: { input_tokens: 100, output_tokens: 50 },
 };
 
 test("JEV shadow gate is DEV/QA-only, preview-only when deployed, and fail-closed", () => {
@@ -61,7 +62,7 @@ test("adapter sends one typed request and returns a non-authoritative normalized
 
 test("adapter fails closed on provider and schema errors", async () => {
   await assert.rejects(() => evaluateJevPackagingShadow(material, { apiKey: "", fetcher: async () => Response.json(response) }), /JEV_NOT_CONFIGURED/);
-  await assert.rejects(() => evaluateJevPackagingShadow(material, { apiKey: "key", fetcher: async () => new Response("denied", { status: 401 }) }), /JEV_PROVIDER_FAILED/);
+  await assert.rejects(() => evaluateJevPackagingShadow(material, { apiKey: "key", fetcher: async () => new Response("denied", { status: 401 }) }), /JEV_PROVIDER_HTTP_401/);
   await assert.rejects(() => evaluateJevPackagingShadow(material, { apiKey: "key", fetcher: async () => Response.json({ ...response, answers: { ...response.answers, overclaim_risk: { ...response.answers.overclaim_risk, choice: "approve" } } }) }), /JEV_INVALID_RESPONSE/);
 });
 
@@ -71,7 +72,9 @@ test("route and UI keep the experiment read-only and server-side", async () => {
   assert.match(route, /if \(!token \|\| token\.startsWith\("bos_pat_"\)\) return stopped\("authentication_failed", 401\)/);
   assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
   assert.match(route, /name === "TimeoutError"/);
+  assert.match(route, /provider_response_invalid/); assert.match(route, /provider_rate_limited/);
   assert.match(route, /shadowEvaluation/); assert.doesNotMatch(route, /insert\(|update\(|upsert\(|service_role/);
   assert.match(ui, /승인·저장·단계 이동에는 사용하지 않습니다/); assert.match(ui, /active\.current\?\.abort\(\)/);
+  assert.match(ui, /provider_auth_failed/); assert.match(ui, /provider_response_invalid/);
   assert.doesNotMatch(ui, /TYPESAFE_API_KEY/);
 });
