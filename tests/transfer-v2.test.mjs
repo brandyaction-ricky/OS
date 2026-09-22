@@ -22,6 +22,17 @@ test("meeting workflow includes prep, transcription and structured actions", asy
   assert.match(prep, /record_type.*kpi/s); assert.match(transcription, /audio\/transcriptions/);
 });
 
+test("meeting title auto-fills from brand and recording chains into transcription and extraction", async () => {
+  const workspace = await read("components/meeting-workspace.tsx");
+  assert.match(workspace, /function suggestMeetingTitle/);
+  assert.match(workspace, /titleEditedRef/);
+  assert.match(workspace, /if \(!titleEditedRef\.current\) setTitle\(suggestMeetingTitle\(value\)\)/);
+  assert.match(workspace, /const transcribeBlob = async \(blob: Blob\)/);
+  assert.match(workspace, /await extractFromText\(result\.transcript\)/);
+  assert.match(workspace, /setStartsAtDraft\(nowLocalInput\(\)\)/);
+  assert.match(workspace, /setStatusDraft\("active"\)/);
+});
+
 test("growth and phone capture use the transferred business contract", async () => {
   const [performance, telegram] = await Promise.all([read("components/performance-workspaces.tsx"), read("app/api/v1/telegram/webhook/route.ts")]);
   for (const field of ["gross", "cancel", "refund", "net", "orders", "buyers", "source"]) assert.match(performance, new RegExp(field));
