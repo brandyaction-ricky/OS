@@ -4,9 +4,17 @@ Updated: 2026-09-22 Asia/Seoul.
 
 ## Decision
 
-The reviewed ten-file active chain contains the isolated `brandyaction-os-dev` schema, the nine migrations already applied to DEV and Production where separately approved, and the Telegram team-workflow migration. Do not replay the schema baseline against Production. The newest migration adds Telegram message receipts, OS-profile links, feedback, confirmed actions, and opt-in digest state; its timestamp follows the independently merged agent write-limit migration. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The reviewed eleven-file active chain contains the isolated `brandyaction-os-dev` schema, the nine migrations already applied to DEV and Production where separately approved, and the Telegram team-workflow migration. Do not replay the schema baseline against Production. The newest migration adds Telegram message receipts, OS-profile links, feedback, confirmed actions, and opt-in digest state; its timestamp follows the independently merged agent write-limit migration. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
 The user explicitly approved DEV and Production database application plus Production deployment on 2026-09-22 after the repository tests and first Preview passed. The manifest records `ready` / `apply`; the Telegram migration has been applied and verified in Production, while DEV remains pending. This approval does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
+
+## Knowledge review return release — 2026-09-22
+
+The approved `20260922063605_knowledge_review_return.sql` migration was applied independently to DEV and Production. The live function source matched the reviewed prerequisite in both environments before execution. A guarded transaction replaced only that function and recorded the exact SQL; no baseline replay, seed, reset, or unrelated migration was executed. DEV now has 10 history entries and Production has 14; the Telegram DEV migration remains pending.
+
+DEV transaction-scoped tests passed for owner review requests, active reviewer return, audit events, inactive and anonymous denial, nonowner publish denial, and repeated-call idempotence. All synthetic fixtures were rolled back. Postflight confirmed the function source, migration entry, anonymous denial, authenticated execution, and unchanged Production Security Advisor findings. The original function definition is retained outside Git for rollback; the previous application remains compatible with this additive transition.
+
+The manifest approval applies to this exact forward migration and does not authorize whole-chain Production application or history reconciliation. Earlier evidence below remains a historical record.
 
 ## Current tooling state
 

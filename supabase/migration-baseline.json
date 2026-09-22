@@ -11,9 +11,9 @@
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 13,
-    "productionExactRepositoryMatches": 6,
-    "developmentHistoryCount": 9,
+    "productionHistoryCount": 14,
+    "productionExactRepositoryMatches": 7,
+    "developmentHistoryCount": 10,
     "pendingDevelopmentMigrationCount": 1,
     "pendingProductionMigrationCount": 0,
     "developmentPublicTableCount": 34,
@@ -111,7 +111,7 @@
     },
     "developmentValidation": {
       "appliedAt": "2026-09-21",
-      "migrationHistoryCount": 9,
+      "migrationHistoryCount": 10,
       "publicTables": 35,
       "publicPolicies": 40,
       "reviewedTriggers": 14,
@@ -128,11 +128,13 @@
       "authenticatedRequiredFunctionExecGrants": 15,
       "performanceAdvisorWarnings": 0,
       "securityAdvisorAcceptedWarnings": 15,
-      "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs"
+      "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs",
+      "knowledgeReviewReturnMigrationPresent": true,
+      "knowledgeReviewReturnAnonymousExecution": false
     },
     "productionValidation": {
       "appliedAt": "2026-09-22",
-      "migrationHistoryCount": 13,
+      "migrationHistoryCount": 14,
       "publicTables": 37,
       "publicPolicies": 39,
       "agentUpdateQuotaMigrationPresent": true,
@@ -163,7 +165,9 @@
       "telegramWorkflowTables": 2,
       "telegramWorkflowIndexes": 4,
       "telegramWorkflowPolicies": 3,
-      "telegramWorkflowTablesRlsEnabled": 2
+      "telegramWorkflowTablesRlsEnabled": 2,
+      "knowledgeReviewReturnMigrationPresent": true,
+      "knowledgeReviewReturnAnonymousExecution": false
     }
   },
   "forwardMigrations": [
@@ -215,8 +219,13 @@
     {
       "file": "20260922063605_knowledge_review_return.sql",
       "sha256": "6cbdd32fff70bbab0aa3bb28f7e3100400d41b2b7a5ed506fb599ae5a15e5723",
-      "purpose": "allow active reviewers to return a review document to team with the existing audit event; authored only, not applied",
-      "requiresApproval": true
+      "purpose": "allow active reviewers to return a review document to team with the existing audit event; applied and verified in DEV and Production",
+      "requiresApproval": false,
+      "approvedAt": "2026-09-22",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ]
     }
   ],
   "legacyMigrations": [
