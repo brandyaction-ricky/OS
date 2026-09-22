@@ -74,10 +74,11 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
   const [busy, setBusy] = useState(false);
   const [humanScores, setHumanScores] = useState<HumanScores>(emptyHumanScores);
   const [humanRisk, setHumanRisk] = useState<RiskChoice>("");
+  const [humanReason, setHumanReason] = useState("");
   const active = useRef<AbortController | null>(null);
   useEffect(() => {
     setResult(null); setMessage("");
-    setHumanScores(emptyHumanScores()); setHumanRisk("");
+    setHumanScores(emptyHumanScores()); setHumanRisk(""); setHumanReason("");
     active.current?.abort(); active.current = null; setBusy(false);
     return () => { active.current?.abort(); };
   }, [sourceId, sourceVersion]);
@@ -85,8 +86,8 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
 
   async function run() {
     if (busy || disabled) return;
-    if (labels.some(([key]) => humanScores[key] === "") || humanRisk === "") {
-      setMessage("JEV 결과를 보기 전에 사람 판정 5개를 먼저 입력해 주세요.");
+    if (labels.some(([key]) => humanScores[key] === "") || humanRisk === "" || humanReason.trim().length < 10) {
+      setMessage("JEV 결과를 보기 전에 사람 판정 5개와 판정 이유를 먼저 입력해 주세요.");
       return;
     }
     const controller = new AbortController(); active.current?.abort(); active.current = controller;
@@ -119,12 +120,15 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
           onChange={(event) => { setHumanRisk(event.target.value as RiskChoice); setMessage(""); }}>
           {riskOptions.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}
         </select></label></div>
+      <label className="jev-human-reason"><span>판정 이유·문제 표현</span><small>점수와 과장 위험을 그렇게 선택한 이유를 적습니다. 문제 표현이 없으면 없다고 적어 주세요. 10자 이상이며 결과와 함께 이 화면에만 남습니다.</small><textarea aria-label="사람 판정 · 이유" rows={3} maxLength={1000} value={humanReason}
+        onChange={(event) => { setHumanReason(event.target.value); setMessage(""); }} /></label>
     </fieldset>
     {evaluation ? <div role="status"><div className="jev-shadow-grid">{labels.map(([key, label]) => {
       const score = evaluation.scores[key];
       const human = Number(humanScores[key]);
       return <article key={key}><small>{label}</small><strong>{score.score.toFixed(2)}<i>/4</i></strong><span>사람 {human}/4 · 차이 {Math.abs(score.score - human).toFixed(2)}</span><span>JEV 확신도 {Math.round(score.confidence * 100)}%</span></article>;
     })}<article className={`risk-${evaluation.overclaimRisk.choice}`}><small>과장 위험</small><strong>{riskLabels[evaluation.overclaimRisk.choice]}</strong><span>사람 {humanRisk ? riskLabels[humanRisk] : "미입력"}</span><span>높음 {Math.round(evaluation.overclaimRisk.probabilities.high * 100)}% · 보완 {Math.round(evaluation.overclaimRisk.probabilities.medium * 100)}%</span></article></div>
+      <p className="jev-human-reason-result"><strong>사람 판정 이유</strong><span>{humanReason.trim()}</span></p>
       <p className="content-workflow-note">{evaluation.model} · {Math.round(evaluation.evaluationTimeMs)}ms · 시험 계약 {evaluation.contractVersion}. 이 결과는 대표 판단이나 승인 기록이 아닙니다.</p></div> : null}
     {message ? <p className="inline-alert warning" role="status">{message}</p> : null}
   </section>;

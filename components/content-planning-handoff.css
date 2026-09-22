@@ -53,6 +53,12 @@
 .jev-human-labels label { min-width: 0; display: grid; gap: 6px; color: var(--text-2); font-size: 9px; }
 .jev-human-labels label small { min-height: 3.2em; color: var(--muted); font-size: 8px; line-height: 1.55; }
 .jev-human-labels select { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); font: inherit; }
+.jev-human-reason { margin-top: 14px; display: grid; gap: 6px; color: var(--text-2); font-size: 9px; }
+.jev-human-reason small { min-height: 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.jev-human-reason textarea { width: 100%; resize: vertical; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); font: inherit; line-height: 1.65; }
+.jev-human-reason-result { margin: 12px 0 0; padding: 13px 14px; display: grid; gap: 6px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
+.jev-human-reason-result strong { font-size: 9px; }
+.jev-human-reason-result span { color: var(--text-2); font-size: 9px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .jev-shadow-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .jev-shadow-grid article { min-width: 0; padding: 14px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
 .jev-shadow-grid small { color: var(--text-2); font-size: 8px; }
