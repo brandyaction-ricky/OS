@@ -76,8 +76,8 @@ test("duplicate peers cannot fabricate a 20-video baseline", () => {
   assert.equal(outlierBaseline(target, Array(20).fill(peer), Date.parse("2026-09-08")).state, "insufficient");
 });
 
-test("Korean commands use whitespace boundaries, not ASCII word boundaries", () => {
-  for (const [input, expected] of [["/후기 수강생 소감", "review"], ["후기\n내용", "review"], ["/썸네일기록 선택", "thumbnail"], ["#인박스 아이디어", "inbox"], ["/요약 https://example.com", "summary"], ["#RAW 자료", "raw"], ["후기좋아요", "question"]]) assert.equal(captureKind(input), expected);
+test("Korean commands use whitespace boundaries, not ASCII word boundaries", async () => {
+  for (const [input, expected] of [["/후기 수강생 소감", "review"], ["후기\n내용", "review"], ["/썸네일기록 선택", "thumbnail"], ["#인박스 아이디어", "inbox"], ["/요약 https://example.com", "summary"], ["#RAW 자료", "raw"], ["후기좋아요", "question"]]) assert.equal(await captureKind(input), expected);
 });
 
 test("group messages only address this exact bot, not another bot or prefix username", () => {
