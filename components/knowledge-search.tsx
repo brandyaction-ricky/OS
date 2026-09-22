@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { SEARCH_DEGRADATION_MESSAGES, type SearchDegradation } from "@/lib/search-diagnostics";
 import { createLatestSearch } from "@/lib/knowledge-search-state";
 import { searchKnowledge } from "@/lib/api-client";
 import { searchDemoDocuments } from "@/lib/demo-data";
@@ -37,6 +38,7 @@ function SearchContent() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [degraded, setDegraded] = useState(false);
+  const [reasons, setReasons] = useState<SearchDegradation[]>([]);
   const [tookMs, setTookMs] = useState(0);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
@@ -46,7 +48,7 @@ function SearchContent() {
     if (!trimmed) return;
     const request = generation.current.start();
     const criteria = { query: trimmed, mode, statuses: [...statuses] };
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setReasons([]); setDegraded(false);
     const started = performance.now();
     try {
       if (!criteria.statuses.length) {
@@ -59,7 +61,7 @@ function SearchContent() {
       } else {
         const response = await searchKnowledge(accessToken, { query: trimmed, mode, topK: 20, filters: { statuses } });
         if (!generation.current.current(request)) return;
-        setResults(response.results); setDegraded(response.degraded); setTookMs(response.tookMs);
+        setResults(response.results); setDegraded(response.degraded); setReasons(response.degradationReasons ?? []); setTookMs(response.tookMs);
       }
       setApplied(criteria); setLastQuery(trimmed);
     } catch (reason) {
@@ -110,8 +112,8 @@ function SearchContent() {
 
       {!statuses.length ? <p className="inline-alert">검색할 문서 상태를 하나 이상 선택해 주세요.</p> : null}
       {conditionsChanged ? <p className="inline-alert" role="status">조건 변경됨 · 아래는 이전 검색 결과입니다. 다시 검색하면 새 조건을 적용합니다.</p> : null}
-      {degraded ? <div className="inline-alert"><CircleAlert size={15} /> 일부 검색 기능을 사용할 수 없어 키워드 기반 대체 결과를 표시합니다.</div> : null}
-      {error ? <div className="inline-alert danger"><CircleAlert size={15} /> {error}</div> : null}
+      {degraded ? <div className="inline-alert"><CircleAlert size={15} /> {reasons.length ? reasons.map(reason => SEARCH_DEGRADATION_MESSAGES[reason]).join(" ") : "일부 검색 기능을 사용할 수 없어 단어 검색 결과를 표시합니다."} <button type="button" className="ghost-button" disabled={loading} onClick={() => execute()}>다시 검색</button></div> : null}
+      {error ? <div className="inline-alert danger"><CircleAlert size={15} /> {error}<button className="ghost-button" disabled={loading} onClick={() => execute()}>다시 검색</button></div> : null}
 
       {!lastQuery && !loading ? (
         <section className="search-start">

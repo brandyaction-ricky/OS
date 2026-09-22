@@ -8,6 +8,11 @@ export function documentDraft(document: KnowledgeDocument): KnowledgeDraft {
 export function draftChanged(draft: KnowledgeDraft, baseline: KnowledgeDraft) {
   return (Object.keys(baseline) as Array<keyof KnowledgeDraft>).some(key => draft[key] !== baseline[key]);
 }
+export function rebaseKnowledgeDraft(draft: KnowledgeDraft, baseline: KnowledgeDraft, latest: KnowledgeDraft): KnowledgeDraft {
+  const merged = {...latest};
+  for (const key of Object.keys(baseline) as Array<keyof KnowledgeDraft>) if (draft[key] !== baseline[key]) merged[key] = draft[key];
+  return merged;
+}
 export function inKnowledgeScope(document: KnowledgeDocument, scope: string, ownerId?: string) {
   if (scope === "archived") return document.status === "archived";
   if (document.status === "archived") return false;

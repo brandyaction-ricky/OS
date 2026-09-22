@@ -41,7 +41,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
 import { documentCreateSchema } from "@/lib/validation";
@@ -52,8 +52,11 @@ import { WikiInline } from "./knowledge-inline";
 import { KnowledgeReviewHistory } from "./knowledge-review-history";
 import { KnowledgeDocumentMover } from "./knowledge-document-mover";
 import { KnowledgeFolderManager } from "./knowledge-folder-manager";
+import { KnowledgeDocumentFinder } from "./knowledge-document-finder";
+import { KnowledgeImport } from "./knowledge-import";
+import { KnowledgeVersionComparison } from "./knowledge-version-comparison";
 import { KnowledgeModal } from "./knowledge-modal";
-import { getDemoKnowledgeDocuments, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
+import { getDemoKnowledgeDocuments, getDemoKnowledgeVersions, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
 import { DevelopmentDocumentLiveLog } from "./development-document-live-log";
@@ -223,28 +226,6 @@ function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (t
   return <>{headings.length ? <details className="document-outline"><summary>문서 목차 · {headings.length}개</summary><nav aria-label="문서 목차">{headings.map((heading, index) => <button key={index} className="ghost-button" style={{ paddingLeft: heading.level * 10 }} onClick={() => revealHeading(`wiki-heading-${heading.title.normalize("NFC").trim()}`)}>{heading.title}</button>)}</nav></details> : null}<MarkdownBlocks content={root.body} onOpenLink={onOpenLink} />{root.children.map((section, index) => <MarkdownSectionView key={index} section={section} onOpenLink={onOpenLink} />)}</>;
 }
 
-interface MarkdownImportItem {
-  id: string;
-  fileName: string;
-  title: string;
-  content: string;
-  bytes: number;
-  duplicate: boolean;
-}
-
-const MAX_IMPORT_FILES = 50;
-const MAX_MARKDOWN_BYTES = 1_500_000;
-
-function markdownTitle(fileName: string, content: string) {
-  return content.match(/^#\s+(.+)$/m)?.[1]?.trim() || fileName.replace(/\.md$/i, "").replace(/[-_]+/g, " ").trim();
-}
-
-function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function WorkspaceContent() {
   const searchParams = useSearchParams();
   const { demo, accessToken, profile } = useSession();
@@ -254,7 +235,7 @@ function WorkspaceContent() {
   const [members, setMembers] = useState<OsMember[]>([]);
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
   const selected = documents.find((document) => document.id === selectedId) ?? null;
-  const { draft, setDraft, dirty, discard, expectedVersion } = useKnowledgeDraft(selected);
+  const { draft, setDraft, dirty, discard, rebase, expectedVersion } = useKnowledgeDraft(selected);
   const documentsRef = useRef(documents);
   documentsRef.current = documents;
   const bypassUnload = useRef(false);
@@ -266,7 +247,6 @@ function WorkspaceContent() {
   const [revision, setRevision] = useState(0);
   const [allFolders, setAllFolders] = useState<string[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
-  const [importFolder, setImportFolder] = useState("");
   const [newOpen, setNewOpen] = useState(searchParams.get("new") === "1");
   const [newFolderPath, setNewFolderPath] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
@@ -275,8 +255,11 @@ function WorkspaceContent() {
   const [folderManagerOpen, setFolderManagerOpen] = useState(searchParams.get("folders") === "1");
   const [managedFolder, setManagedFolder] = useState("");
   const [importOpen, setImportOpen] = useState(false);
-  const [importItems, setImportItems] = useState<MarkdownImportItem[]>([]);
-  const [importProgress, setImportProgress] = useState({ done: 0, total: 0 });
+  const [finderOpen, setFinderOpen] = useState(false);
+  const [compareVersion, setCompareVersion] = useState<DocumentVersion | null>(null);
+  const [compareBase, setCompareBase] = useState<KnowledgeDocument | null>(null);
+  const [conflict, setConflict] = useState<KnowledgeDocument | null>(null);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -299,6 +282,8 @@ function WorkspaceContent() {
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
   const [pendingAnchor, setPendingAnchor] = useState<{ id: string; heading: string } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const openFinderRef = useRef<() => void>(() => {});
+  openFinderRef.current = () => guardAction(() => setFinderOpen(true));
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
   const epoch = useRef(0);
@@ -309,8 +294,13 @@ function WorkspaceContent() {
     setSelectedId(id);
     const params = new URLSearchParams(window.location.search);
     params.set("document", id);
-    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+    if (window.location.search !== `?${params.toString()}`) window.history.pushState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
   }, []);
+
+  useEffect(() => {
+    const id = searchParams.get("document");
+    if (id !== selectedIdRef.current) { setSelectedId(id); setMode("read"); }
+  }, [searchParams]);
 
   useEffect(() => {
     const savedFocus = window.localStorage.getItem("brandy-knowledge-focus");
@@ -380,7 +370,7 @@ function WorkspaceContent() {
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") { event.preventDefault(); setQuickOpen(true); setLinkQuery(""); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") { event.preventDefault(); openFinderRef.current(); }
       if (event.key === "Escape") { setQuickOpen(false); setLinkQuery(null); }
     };
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
@@ -409,12 +399,16 @@ function WorkspaceContent() {
   }, [accessToken, demo, selected, selectedId]);
 
   useEffect(() => {
-    if (!selected || mode !== "info" || demo) return;
+    if (!selected || mode !== "info") return;
+    if (demo) { setVersions(getDemoKnowledgeVersions(selected.id)); return; }
+    let active = true;
+    setVersions([]);
     setVersionsLoading(true);
     listDocumentVersions(accessToken, selected.id)
-      .then((result) => setVersions(result.versions))
+      .then((result) => { if (active) setVersions(result.versions); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "변경 이력을 불러오지 못했습니다."))
-      .finally(() => setVersionsLoading(false));
+      .finally(() => { if (active) setVersionsLoading(false); });
+    return () => { active = false; };
   }, [accessToken, demo, mode, selected]);
 
   useEffect(() => {
@@ -557,7 +551,13 @@ function WorkspaceContent() {
       const document = demo ? { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" })).document;
       commitDocument(document); discard(document.id);
       setMode("read"); setToast("새 버전으로 저장했습니다."); return true;
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다. 작성 내용은 유지됩니다."); return false; }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "저장하지 못했습니다. 작성 내용은 유지됩니다.");
+      if (reason instanceof ApiRequestError && reason.code === "VERSION_CONFLICT") {
+        try { setConflict((await getDocument(accessToken, selected.id)).document); } catch { setError("최신 버전을 불러오지 못했습니다. 작성 내용은 유지됩니다. 다시 저장해 비교를 시도하세요."); }
+      }
+      return false;
+    }
     finally { setBusy(false); }
   };
 
@@ -568,9 +568,10 @@ function WorkspaceContent() {
       let updated: KnowledgeDocument;
       if (demo) updated = { ...(documentsRef.current.find(item => item.id === selected.id) ?? selected), status: target, updated_at: new Date().toISOString() };
       else ({ document: updated } = await changeDocumentStatus(accessToken, selected.id, target));
-      if (demo) addDemoKnowledgeEvent(updated, target === "review" ? "동료 검토를 요청했습니다." : target === "draft" ? "작성자가 검토를 회수했습니다." : "");
+      if (demo) addDemoKnowledgeEvent(updated, target === "review" ? "동료 검토를 요청했습니다." : target === "draft" && selected.status === "review" ? "작성자가 검토를 회수했습니다." : target === "draft" && selected.status === "archived" ? "휴지통 문서를 초안으로 복원했습니다." : "");
       commitDocument(updated);
-      setToast(`${statusLabel(target)} 상태로 변경했습니다.`);
+      setArchiveConfirm(false);
+      setToast(target === "archived" ? "휴지통으로 이동했습니다. 휴지통에서 초안으로 복원할 수 있습니다." : `${statusLabel(target)} 상태로 변경했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "상태를 변경하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -582,18 +583,15 @@ function WorkspaceContent() {
   };
 
   const restoreVersion = async (version: DocumentVersion) => {
-    if (!selected || !window.confirm(`v${version.version_no} 내용으로 되돌릴까요? 현재 내용도 새 버전으로 보존됩니다.`)) return;
+    if (!selected || !compareBase) return;
     setBusy(true); setError("");
     try {
       let restored: KnowledgeDocument;
       const current = documentsRef.current.find(item => item.id === selected.id) ?? selected;
       if (demo) restored = { ...current, title: version.title, content_md: version.content_md, current_version: current.current_version + 1, updated_at: new Date().toISOString() };
-      else ({ document: restored } = await restoreDocumentVersion(accessToken, selected.id, version.version_no, (documentsRef.current.find(item => item.id === selected.id)?.current_version ?? selected.current_version)));
+      else ({ document: restored } = await restoreDocumentVersion(accessToken, selected.id, version.version_no, compareBase.current_version));
+      setCompareVersion(null); setCompareBase(null);
       commitDocument(restored); discard(restored.id); setToast(`v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
-      if (!demo) {
-        const result = await listDocumentVersions(accessToken, selected.id);
-        setVersions(result.versions);
-      }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "버전을 되돌리지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -617,78 +615,6 @@ function WorkspaceContent() {
       setToast("개인 초안으로 저장했습니다.");
     } catch (reason) { setNewError(reason instanceof Error ? reason.message : "문서를 만들지 못했습니다. 입력 내용은 유지됩니다."); }
     finally { setBusy(false); }
-  };
-
-  const selectMarkdownFiles = async (files: FileList | null) => {
-    if (!files) return;
-    setError("");
-    const selectedFiles = [...files].slice(0, MAX_IMPORT_FILES);
-    const invalid = selectedFiles.filter((file) => !file.name.toLowerCase().endsWith(".md") || file.size > MAX_MARKDOWN_BYTES);
-    const existingSources = new Set(documents.map((document) => document.source_ref?.toLocaleLowerCase("ko-KR")).filter(Boolean));
-    const existingTitles = new Set(documents.map((document) => document.title.toLocaleLowerCase("ko-KR")));
-    const batchSources = new Set<string>();
-    const batchTitles = new Set<string>();
-    const items: MarkdownImportItem[] = [];
-
-    for (const file of selectedFiles) {
-      if (!file.name.toLowerCase().endsWith(".md") || file.size > MAX_MARKDOWN_BYTES) continue;
-      const content = await file.text();
-      if (!content.trim()) continue;
-      const title = markdownTitle(file.name, content);
-      const sourceKey = file.name.toLocaleLowerCase("ko-KR");
-      const titleKey = title.toLocaleLowerCase("ko-KR");
-      const duplicate = existingSources.has(sourceKey) || existingTitles.has(titleKey) || batchSources.has(sourceKey) || batchTitles.has(titleKey);
-      items.push({ id: `${file.name}-${file.lastModified}-${file.size}`, fileName: file.name, title, content, bytes: file.size, duplicate });
-      batchSources.add(sourceKey);
-      batchTitles.add(titleKey);
-    }
-    setImportItems(items);
-    setImportProgress({ done: 0, total: items.filter((item) => !item.duplicate).length });
-    if (files.length > MAX_IMPORT_FILES || invalid.length || items.length < selectedFiles.length - invalid.length) {
-      setError(`Markdown은 한 번에 ${MAX_IMPORT_FILES}개, 파일당 ${formatBytes(MAX_MARKDOWN_BYTES)} 이하의 내용 있는 파일만 가져올 수 있습니다.`);
-    }
-  };
-
-  const importMarkdown = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const ready = importItems.filter((item) => !item.duplicate);
-    if (!ready.length) return;
-    const data = new FormData(event.currentTarget);
-    let folder: string;
-    try { folder = importFolder.trim() ? normalizeKnowledgeFolder(importFolder) : ""; } catch (reason) { setError((reason as Error).message); return; }
-    const team = String(data.get("team") ?? "").trim();
-    const brand = String(data.get("brand") ?? "").trim();
-    const tags = String(data.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean);
-    const created: KnowledgeDocument[] = [];
-    const failed: string[] = [];
-    setBusy(true); setError(""); setImportProgress({ done: 0, total: ready.length });
-
-    for (const item of ready) {
-      try {
-        let document: KnowledgeDocument;
-        if (demo) {
-          const now = new Date().toISOString();
-          document = { id: `demo-import-${Date.now()}-${created.length}`, title: item.title, content_md: item.content, folder, brand, team, tags, status: "draft", source: "markdown", source_ref: item.fileName, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now };
-        } else {
-          ({ document } = await createDocument(accessToken, { title: item.title, content: item.content, folder, brand, team, tags, source: "markdown", sourceRef: item.fileName }));
-        }
-        created.push(document);
-      } catch {
-        failed.push(item.fileName);
-      }
-      setImportProgress((current) => ({ ...current, done: current.done + 1 }));
-    }
-
-    created.forEach(document => commitDocument(document));
-    setBusy(false);
-    if (created[0]) { setOwnerFilter("all"); selectDocumentNow(created[0].id); }
-    if (failed.length) {
-      setImportItems((current) => current.filter((item) => failed.includes(item.fileName)));
-      setError(`${created.length}개를 가져왔고 ${failed.length}개는 실패했습니다. 실패 파일만 다시 시도할 수 있습니다.`);
-    } else {
-      setImportOpen(false); setImportItems([]); setImportProgress({ done: 0, total: 0 });
-      setToast(`${created.length}개 Markdown 문서를 개인 초안으로 가져왔습니다.`);
-    }
   };
 
   const openWikiLink = async (title: string) => {
@@ -717,7 +643,7 @@ function WorkspaceContent() {
     <>
       <header className="page-header workspace-page-header">
         <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportFolder(managedFolder || selected?.folder || ""); setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="header-actions"><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
 
 
@@ -734,7 +660,7 @@ function WorkspaceContent() {
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={14} /></button><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
+          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={14} /></button><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button aria-label="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>폴더 내 {sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
           <div className="knowledge-bulk-actions"><button className="ghost-button" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}>목록 새로고침</button>{checkedIds.size ? <button className="secondary-button" disabled={busy} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>선택 {checkedIds.size}개 이동</button> : null}</div>
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
@@ -781,8 +707,8 @@ function WorkspaceContent() {
                   <input className="title-input" maxLength={200} disabled={busy} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} aria-label="문서 제목" />
                   <div className="meta-input-grid">
                     <KnowledgeFolderPicker options={folderOptions} value={draft.folder} onChange={folder => setDraft({ ...draft, folder })} disabled={busy} />
-                    <label><span><UserRound size={13} /> 팀</span><input disabled={busy} maxLength={120} value={draft.team} onChange={(event) => setDraft({ ...draft, team: event.target.value })} /></label>
-                    <label><span><BookCheck size={13} /> 브랜드</span><input disabled={busy} maxLength={120} value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
+                    <label><span><UserRound size={13} /> 팀</span><input list="knowledge-team-options" disabled={busy} maxLength={120} value={draft.team} onChange={(event) => setDraft({ ...draft, team: event.target.value })} /></label>
+                    <label><span><BookCheck size={13} /> 브랜드</span><input list="knowledge-brand-options" disabled={busy} maxLength={120} value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
                     <label><span><Tag size={13} /> 태그</span><input disabled={busy} maxLength={1859} value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
                   <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
@@ -796,9 +722,9 @@ function WorkspaceContent() {
                   <h3>문서 상태 흐름</h3><p>동료 검토는 선택 사항입니다. 작성자는 기존처럼 정본으로 바로 공개할 수 있습니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
                   <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} />
                   <h3>변경 이력</h3>
-                  <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => guardAction(() => restoreVersion(version))}><RotateCcw size={13} /> 되돌리기</button> : <em>현재</em>}</div>)}</div>
+                  <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => guardAction(() => {setError(""); setCompareBase(documentsRef.current.find(item => item.id === selected.id) ?? selected); setCompareVersion(version);})}><RotateCcw size={13} /> 비교·복원</button> : <em>현재</em>}</div>)}</div>
                   <h3>문서 연결</h3><div className="knowledge-links"><div><strong>나가는 링크</strong>{wikiLinks(selected.content_md).map((link) => <span key={link}><Link2 size={12} /> {link}</span>)}{!wikiLinks(selected.content_md).length ? <small>본문에 [[문서명]]을 입력하면 연결됩니다.</small> : null}</div><div><strong>백링크</strong>{backlinks.map((item) => <button key={item.id} onClick={() => { selectDocument(item.id); }}><Link2 size={12} /> {item.title}</button>)}{!backlinks.length ? <small>이 문서를 가리키는 문서가 없습니다.</small> : null}</div></div>
-                  {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => guardAction(() => moveStatus("archived"))}><Archive size={15} /> 문서 보관</button> : <button className="ghost-button archive-action" onClick={() => guardAction(() => moveStatus("draft"))}><RotateCcw size={15} /> 초안으로 복원</button>}
+                  {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><Archive size={15} /> 휴지통으로 이동</button> : <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
                 <div className="document-reader">{dirty ? <p className="inline-alert">미저장 내용 미리보기 · 저장해야 다른 사람에게 반영됩니다.</p> : null}<h1>{dirty ? draft.title : selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /><DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div>
@@ -845,27 +771,14 @@ function WorkspaceContent() {
       </KnowledgeModal> : null}
       {moveOpen ? <KnowledgeDocumentMover documents={documents.filter(document => moveIds.includes(document.id))} options={folderOptions} token={accessToken} demo={demo} onSaved={(document, previous) => { commitDocument(document, previous); discard(document.id); }} onBusy={setBusy} onClose={() => { setMoveOpen(false); setCheckedIds(new Set()); }} /> : null}
       {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => setFolderManagerOpen(false)} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); openNewDocument(folder); }} /> : null}
-      {canonicalGate ? <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></div> : null}
-      {importOpen ? (
-        <div className="modal-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !busy && setImportOpen(false)}>
-          <form className="form-modal import-modal" onSubmit={importMarkdown}>
-            <header><div><span className="eyebrow">마크다운 가져오기</span><h2>회사 지식 가져오기</h2></div><button type="button" disabled={busy} onClick={() => setImportOpen(false)}><X size={18} /></button></header>
-            <div className="import-body">
-              {error ? <div className="inline-alert danger import-alert">{error}</div> : null}
-              <label className="import-dropzone"><Upload size={24} /><strong>Markdown 파일 선택</strong><span>여러 개의 .md 파일 · 파일당 최대 {formatBytes(MAX_MARKDOWN_BYTES)}</span><input type="file" accept=".md,text/markdown" multiple disabled={busy} onChange={(event) => selectMarkdownFiles(event.target.files)} /></label>
-              {importItems.length ? <div className="import-summary"><strong>{importItems.length}개 선택</strong><span>{importItems.filter((item) => item.duplicate).length}개 중복 제외 · {formatBytes(importItems.reduce((sum, item) => sum + item.bytes, 0))}</span></div> : null}
-              {importItems.length ? <div className="import-file-list">{importItems.map((item) => <div className={item.duplicate ? "duplicate" : ""} key={item.id}><File size={15} /><span><strong>{item.title}</strong><small>{item.fileName} · {formatBytes(item.bytes)}</small></span><em>{item.duplicate ? "중복 제외" : "초안"}</em></div>)}</div> : null}
-              <div className="form-fields import-meta">
-                <KnowledgeFolderPicker options={folderOptions} value={importFolder} onChange={setImportFolder} disabled={busy} />
-                <label><span>담당 팀</span><input name="team" defaultValue={profile?.team ?? ""} /></label>
-                <label><span>브랜드</span><input name="brand" placeholder="브랜디액션" /></label>
-                <label><span>공통 태그</span><input name="tags" placeholder="가져오기, 운영" /></label>
-              </div>
-            </div>
-            <footer><span>{busy ? `${importProgress.done} / ${importProgress.total} 처리 중` : "중복 문서는 건너뛰며 모두 개인 초안으로 저장됩니다."}</span><div><button type="button" className="ghost-button" disabled={busy} onClick={() => setImportOpen(false)}>취소</button><button className="primary-button" disabled={busy || !importItems.some((item) => !item.duplicate)}>{busy ? "가져오는 중…" : `${importItems.filter((item) => !item.duplicate).length}개 가져오기`}</button></div></footer>
-          </form>
-        </div>
-      ) : null}
+      {canonicalGate ? <KnowledgeModal title="회사 정본 편집 안내" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></KnowledgeModal> : null}
+      {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(false);}} /> : null}
+      {importOpen ? <KnowledgeImport token={accessToken} demo={demo} ownerId={profile?.id ?? "demo-ricky"} team={profile?.team ?? ""} options={folderOptions} onSaved={commitDocument} onBusy={setBusy} onClose={() => setImportOpen(false)} /> : null}
+      {compareVersion && compareBase ? <KnowledgeVersionComparison title="이전 버전 비교·복원" left={{label:`v${compareVersion.version_no} 복원할 내용`,title:compareVersion.title,content:compareVersion.content_md}} right={{label:`현재 v${compareBase.current_version}`,title:compareBase.title,content:compareBase.content_md}} action={`v${compareVersion.version_no} 내용을 새 버전으로 복원`} busy={busy} error={error} onClose={() => {setCompareVersion(null);setCompareBase(null);}} onAction={() => void restoreVersion(compareVersion)} /> : null}
+      {conflict && draft ? <KnowledgeVersionComparison title="저장 충돌 · 작성 내용 유지됨" left={{label:`최신 v${conflict.current_version}`,title:conflict.title,content:conflict.content_md,properties:{폴더:conflict.folder,팀:conflict.team,브랜드:conflict.brand,태그:conflict.tags.join(", ")}}} right={{label:"내 미저장 내용",title:draft.title,content:draft.content,properties:{폴더:draft.folder,팀:draft.team,브랜드:draft.brand,태그:draft.tags}}} action="내 내용을 유지하고 최신 버전 기준으로 계속 편집" busy={busy} error="이 버튼은 저장하지 않습니다. 최신 내용과 내 내용을 비교·수정한 뒤 다시 저장하세요. 직접 변경한 값은 유지하고, 변경하지 않은 분류 항목은 최신 값으로 맞춥니다." onClose={() => setConflict(null)} onAction={() => {commitDocument(conflict);rebase(conflict);setConflict(null);setError("");setMode("edit");}} /> : null}
+      {archiveConfirm && selected ? <KnowledgeModal title={selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"} onClose={() => setArchiveConfirm(false)} busy={busy}><div className="form-modal"><header><h2>{selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</h2></header><div className="form-fields"><p className="wide"><strong>{selected.title}</strong><br/>{selected.status === "archived" ? "개인 초안으로 복원합니다. 이전 팀 공유·회사 정본 상태는 자동으로 복원하지 않습니다." : "활성 문서 목록과 검색에서 제외합니다. 본문과 변경 이력은 보존되며, 휴지통에서 초안으로 복원할 수 있습니다."}</p>{error ? <p role="alert" className="inline-alert danger">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setArchiveConfirm(false)}>취소</button><button className="primary-button" disabled={busy} onClick={() => void moveStatus(selected.status === "archived" ? "draft" : "archived")}>{busy ? "처리 중…" : selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</button></footer></div></KnowledgeModal> : null}
+      <datalist id="knowledge-team-options">{[...new Set([...members.map(member => member.team), ...documents.map(document => document.team)].filter(Boolean))].sort().map(value => <option key={value} value={value}/>)}</datalist>
+      <datalist id="knowledge-brand-options">{[...new Set(documents.map(document => document.brand).filter(Boolean))].sort().map(value => <option key={value} value={value}/>)}</datalist>
       {toast ? <button className="toast" onClick={() => setToast("")}><CircleCheck size={16} /> {toast}</button> : null}
     </>
   );

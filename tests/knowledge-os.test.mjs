@@ -37,5 +37,5 @@ test("wiki links produce automatic edges, backlinks and broken-link evidence", (
   ]);
   assert.deepEqual(graph.edges, [{ source: "a", target: "b" }]);
   assert.equal(graph.nodes.find((node) => node.id === "b")?.incoming, 1);
-  assert.deepEqual(graph.broken, [{ sourceId: "a", sourceTitle: "초안", targetTitle: "없는 문서" }]);
+  assert.deepEqual(graph.broken, [{ sourceId: "a", sourceTitle: "초안", targetTitle: "없는 문서", reason: "missing", candidates: [] }]);
 });

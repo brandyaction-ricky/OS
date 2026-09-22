@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { KnowledgeDocument } from "@/lib/types";
-import { documentDraft, draftChanged, type KnowledgeDraft } from "@/lib/knowledge-workspace-state";
+import { documentDraft, draftChanged, rebaseKnowledgeDraft, type KnowledgeDraft } from "@/lib/knowledge-workspace-state";
 
 export function useKnowledgeDraft(document: KnowledgeDocument | null) {
   const [entries, setEntries] = useState<Record<string, { draft: KnowledgeDraft; baseline: KnowledgeDraft; version: number }>>({});
@@ -20,5 +20,13 @@ export function useKnowledgeDraft(document: KnowledgeDocument | null) {
     });
   };
   const discard = (id = document?.id) => { if (id) setEntries(current => { const next = { ...current }; delete next[id]; return next; }); };
-  return { draft, setDraft, dirty, discard, expectedVersion: entry?.version ?? document?.current_version };
+  const rebase = (latest: KnowledgeDocument) => {
+    if (!draft) return;
+    setEntries(current => {
+      const latestDraft = documentDraft(latest);
+      const original = current[latest.id]?.baseline ?? latestDraft;
+      return {...current, [latest.id]: {draft: rebaseKnowledgeDraft(draft, original, latestDraft), baseline: latestDraft, version: latest.current_version}};
+    });
+  };
+  return { rebase, draft, setDraft, dirty, discard, expectedVersion: entry?.version ?? document?.current_version };
 }

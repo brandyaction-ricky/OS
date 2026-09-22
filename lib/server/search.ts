@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/http";
+import { matchingExcerpt, type SearchDegradation } from "@/lib/search-diagnostics";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 import { searchSchema } from "@/lib/validation";
@@ -9,7 +11,7 @@ import { hasLexicalEvidence, keywordQueryText, searchTerms } from "@/lib/search-
 
 type SearchInput = z.infer<typeof searchSchema>;
 
-interface SearchOutcome { results: SearchResult[]; degraded: boolean; }
+interface SearchOutcome { results: SearchResult[]; degraded: boolean; degradationReasons?: SearchDegradation[]; }
 
 function countOccurrences(value: string, term: string) {
   let count = 0;
@@ -50,7 +52,8 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
   }
   const brand = actor.brand ?? input.filters.brand;
   if (brand) builder = builder.eq("brand", brand);
-  const { data } = await builder;
+  const { data, error } = await builder.abortSignal(AbortSignal.timeout(4_000));
+  if (error) throw new ApiError(503, "SEARCH_FALLBACK_FAILED", "검색을 완료하지 못했습니다. 잠시 후 다시 검색해 주세요.");
   const ranked = (data ?? []).map((document) => {
     const title = String(document.title ?? "").toLowerCase();
     const content = String(document.content_md ?? "").toLowerCase();
@@ -64,8 +67,7 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
     folder: document.folder,
     status: document.status,
     brand: document.brand,
-    heading: "본문",
-    text: document.content_md.slice(0, 700),
+    ...matchingExcerpt(document.content_md, terms),
     score: Math.max(0.2, Math.min(0.88, 0.45 + hits * 0.025 - index * 0.02)),
     citation: { documentId: document.id, version: document.current_version, chunkId: null },
   }));
@@ -81,12 +83,15 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   const normalizedQuery = keywordQueryText(input.query);
   let embedding: string | null = null;
   let degraded = false;
+  const degradationReasons: SearchDegradation[] = [];
   if (input.mode !== "keyword") {
     // Keep the semantic and keyword sides of the hybrid query aligned. Korean
     // question endings and generic topic words can otherwise dominate the
     // embedding rank even when the literal answer phrase is in the corpus.
-    if (process.env.OPENAI_API_KEY) embedding = toPgVector((await createEmbeddings([normalizedQuery]))[0]);
-    else degraded = true;
+    if (process.env.OPENAI_API_KEY) {
+      try { embedding = toPgVector((await createEmbeddings([normalizedQuery], 3_000))[0]); }
+      catch (error) { degraded = true; degradationReasons.push(error instanceof ApiError && error.code === "EMBEDDING_TIMEOUT" ? "embedding_timeout" : "embedding_failed"); }
+    } else { degraded = true; degradationReasons.push("embeddings_unconfigured"); }
   }
 
   // The vector RPC runs through the service client for PATs. Only canonical
@@ -103,11 +108,12 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     p_folder: input.filters.folder || null,
     p_brand: actor.brand ?? input.filters.brand ?? null,
     p_min_score: 0,
-  }) : { data: [], error: null };
+  }).abortSignal(AbortSignal.timeout(4_000)) : { data: [], error: null };
   if (error) {
     console.error("os_search_knowledge rpc failed", { message: error.message, details: error.details, hint: error.hint, code: error.code });
     const fallback = await fallbackDocuments(actor, input, statuses);
-    return { results: fallback, degraded: true };
+    degradationReasons.push(error.code === "57014" || /abort|timeout/i.test(error.message) ? "search_timeout" : "search_failed");
+    return { results: fallback, degraded: true, degradationReasons };
   }
 
   let results: SearchResult[] = (data ?? []).map((row: Record<string, unknown>) => ({
@@ -126,12 +132,16 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   // unrelated sentence. Do not present those rows as evidence to chat users.
   if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
   const sharedActor = actor.type === "user" ? { ...actor, supabase: createServiceSupabase() } : actor;
-  const sharedKeyword = await fallbackDocuments(sharedActor, input, statuses);
+  let sharedKeyword: SearchResult[] = [];
+  if (results.length < input.topK) {
+    try { sharedKeyword = await fallbackDocuments(sharedActor, input, statuses); }
+    catch (error) { if (!results.length) throw error; degraded = true; degradationReasons.push("supplement_failed"); }
+  }
   if (!results.length) results = sharedKeyword;
   else {
     const seen = new Set(results.map((result) => result.documentId));
     results = [...results, ...sharedKeyword.filter((result) => !seen.has(result.documentId))].slice(0, input.topK);
     results = await addVersions(sharedActor.supabase, results);
   }
-  return { results, degraded };
+  return { results, degraded, degradationReasons };
 }
