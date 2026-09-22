@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
+import { packagingEvidence } from "@/lib/content-packaging-evidence";
 import { readPlanningHandoff } from "@/lib/content-planning-handoff";
+import type { OsRecord } from "@/lib/record-types";
 import { authenticateRequest } from "@/lib/server/auth";
 import { evaluateJevPackagingShadow } from "@/lib/server/system-one-jev-shadow";
 import { canUseSystemOneJevShadow } from "@/lib/system-one-jev-shadow-gate";
@@ -16,7 +18,6 @@ const rowSchema = z.object({
   description: z.string().trim().min(1).max(120_000), brand: z.literal("브랜디액션"), owner_id: z.string().uuid(),
   metadata: z.record(z.unknown()), version: z.number().int().positive(), archived_at: z.null(),
 }).strict();
-const candidateSchema = z.object({ title: z.string().trim().max(300).optional(), thumbnailCopy: z.string().trim().max(500).optional() }).passthrough();
 const stopped = (code: string, status: number) => NextResponse.json({ status: "stopped", code }, { status, headers });
 const asText = (value: unknown, limit: number) => typeof value === "string" && value.trim().length <= limit ? value.trim() : "";
 
@@ -45,10 +46,18 @@ export async function POST(request: Request) {
     if (source.version !== input.expectedVersion) return stopped("stale", 409);
 
     const handoff = readPlanningHandoff(source.metadata.planningHandoff);
-    const candidate = candidateSchema.safeParse(source.metadata.pickedCandidate);
     if (!handoff) return stopped("material_incomplete", 409);
-    const title = candidate.success ? candidate.data.title || source.title : source.title;
-    const thumbnailCopy = handoff.thumbnailCopy || (candidate.success ? candidate.data.thumbnailCopy ?? "" : "");
+    const { data: packageRows, error: packageError } = await actor.supabase.from("os_records")
+      .select("*").eq("parent_id", source.id).eq("record_type", "content_package")
+      .eq("owner_id", actor.id).eq("metadata->>packageKind", "title_package").is("archived_at", null)
+      .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(200)
+      .abortSignal(AbortSignal.timeout(10_000));
+    if (packageError) return stopped("read_failed", 503);
+    const selected = packagingEvidence(source.id, (packageRows ?? []) as OsRecord[], handoff.thumbnailCopy);
+    if (selected.status !== "loaded" || selected.titles.state !== "single" || selected.copies.state !== "single" || !selected.package || selected.copyDiffers)
+      return stopped("packaging_selection_required", 409);
+    const title = selected.titles.texts[0];
+    const thumbnailCopy = selected.copies.texts[0];
     const audience = asText(source.metadata.audience, 1_000) || asText(source.metadata.targetAudience, 1_000) || "브랜디액션 유튜브 시청자";
     if (!title || !thumbnailCopy || !handoff.evidenceNotes || !handoff.titlePromise) return stopped("material_incomplete", 409);
 
@@ -65,6 +74,12 @@ export async function POST(request: Request) {
       .abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
     if (latestError) return stopped("read_failed", 503);
     if (!latest || latest.id !== source.id || latest.owner_id !== actor.id || latest.archived_at !== null || latest.version !== source.version) return stopped("stale", 409);
+    const { data: latestPackage, error: latestPackageError } = await actor.supabase.from("os_records")
+      .select("id,owner_id,version,archived_at").eq("id", selected.package.id).eq("owner_id", actor.id).is("archived_at", null)
+      .abortSignal(AbortSignal.timeout(10_000)).maybeSingle();
+    if (latestPackageError) return stopped("read_failed", 503);
+    if (!latestPackage || latestPackage.id !== selected.package.id || latestPackage.owner_id !== actor.id || latestPackage.archived_at !== null || latestPackage.version !== selected.package.version)
+      return stopped("stale", 409);
 
     return NextResponse.json({ status: "ready", source: { id: source.id, version: source.version },
       shadowEvaluation }, { headers });

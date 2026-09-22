@@ -71,6 +71,8 @@ test("route and UI keep the experiment read-only and server-side", async () => {
   const ui = await readFile(new URL("../components/content-jev-shadow-check.tsx", import.meta.url), "utf8");
   assert.match(route, /if \(!token \|\| token\.startsWith\("bos_pat_"\)\) return stopped\("authentication_failed", 401\)/);
   assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
+  assert.match(route, /packagingEvidence/); assert.match(route, /packaging_selection_required/);
+  assert.doesNotMatch(route, /source\.metadata\.pickedCandidate/); assert.doesNotMatch(route, /candidate\.data\.title \|\| source\.title/);
   assert.match(route, /name === "TimeoutError"/);
   assert.match(route, /provider_response_invalid/); assert.match(route, /provider_rate_limited/);
   assert.match(route, /shadowEvaluation/); assert.doesNotMatch(route, /insert\(|update\(|upsert\(|service_role/);
@@ -80,4 +82,12 @@ test("route and UI keep the experiment read-only and server-side", async () => {
   assert.match(ui, /active\.current\?\.abort\(\)/);
   assert.match(ui, /provider_auth_failed/); assert.match(ui, /provider_response_invalid/);
   assert.doesNotMatch(ui, /TYPESAFE_API_KEY/);
+});
+
+test("manual packaging connects one picked title and copy without an AI call", async () => {
+  const ui = await readFile(new URL("../components/content-packaging-workspace.tsx", import.meta.url), "utf8");
+  assert.match(ui, /기존 제목·카피 연결/); assert.match(ui, /manualEntry: true/);
+  assert.match(ui, /titles: \[\{ text: title, picked: true \}\]/);
+  assert.match(ui, /copies: \[\{ text: thumbnailCopy, picked: true \}\]/);
+  assert.doesNotMatch(ui.slice(ui.indexOf("const createManualPackage"), ui.indexOf("return <>", ui.indexOf("const createManualPackage"))), /generateContent/);
 });
