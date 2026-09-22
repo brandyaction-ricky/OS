@@ -144,7 +144,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
           listMembers(accessToken),
           listRecords(accessToken, "brand", "limit=100"),
           listRecords(accessToken, "goal", "limit=200"),
-          page === "channels" && profile?.role === "admin"
+          (page === "channels" || page === "company") && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
         ]);
