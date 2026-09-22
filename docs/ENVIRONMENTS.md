@@ -34,6 +34,11 @@ The browser test starts a local development server, verifies `/home` in demo mod
 
 DEV, QA, and Production require the core keys reported by `npm run env:check`. Optional integration groups are reported as `configured`, `partial`, or `not configured` without printing their values.
 
+The TypeSafe/JEV integration is a separate DEV/QA-only shadow experiment. It requires `TYPESAFE_API_KEY`, both
+`SYSTEM_ONE_JEV_SHADOW_ENABLED=true` and `NEXT_PUBLIC_SYSTEM_ONE_JEV_SHADOW_ENABLED=true`, a verified DEV Supabase
+identity, and a non-main Preview (or local development). Keep both flags false in Production. Shadow results are
+ephemeral observations: they do not save a judgment, approve a stage, or move a content record.
+
 Environment values belong in `.env.local`/`.env.*.local`, the approved secret store, or Vercel environment variables. Only empty names and safe defaults belong in tracked templates. `NEXT_PUBLIC_*` values are browser-visible and must never contain secrets.
 
 ## Branch and Promotion Flow

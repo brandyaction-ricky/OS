@@ -42,8 +42,24 @@
   border-top: 1px solid var(--line-soft);
   color: var(--muted);
 }
+.jev-shadow { padding: 20px; display: grid; gap: 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel-2); }
+.jev-shadow > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.jev-shadow h4 { margin: 4px 0 0; font-size: 15px; }
+.jev-shadow header p { margin: 7px 0 0; max-width: 70ch; color: var(--muted); font-size: 10px; line-height: 1.65; }
+.jev-shadow-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.jev-shadow-grid article { min-width: 0; padding: 14px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
+.jev-shadow-grid small { color: var(--text-2); font-size: 8px; }
+.jev-shadow-grid strong { font-size: 18px; overflow-wrap: anywhere; }
+.jev-shadow-grid strong i { margin-left: 2px; color: var(--muted); font-size: 9px; font-style: normal; font-weight: 500; }
+.jev-shadow-grid span { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.jev-shadow-grid .risk-high strong { color: var(--danger); }
+.jev-shadow-grid .risk-medium strong { color: var(--warning); }
+.jev-shadow-grid .risk-low strong { color: var(--mint); }
+.jev-shadow .content-workflow-note { margin: 12px 0 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
 @media (max-width: 640px) {
   .content-workflow-panel > .panel-header { padding: 18px; }
   .content-workflow-body { padding: 18px; gap: 18px; }
   .content-workflow-body .research-brief { padding: 16px; }
+  .jev-shadow > header { align-items: stretch; flex-direction: column; }
+  .jev-shadow-grid { grid-template-columns: 1fr 1fr; }
 }

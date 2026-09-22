@@ -47,6 +47,7 @@ const coreKeys = [
 ];
 const integrationGroups = {
   ai: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"],
+  typesafe: ["TYPESAFE_API_KEY"],
   telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
   youtube: ["YOUTUBE_API_KEY", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET"],
   advertising: ["META_ADS_ACCESS_TOKEN", "GOOGLE_ADS_DEVELOPER_TOKEN"],
