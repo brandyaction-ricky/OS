@@ -22,6 +22,12 @@ const labels = [
   ["topicRelevance", "주제 관련성"], ["thumbnailClarity", "썸네일 명확성"],
   ["curiosityStrength", "궁금증"], ["evidenceBoundary", "근거 경계"],
 ] as const satisfies ReadonlyArray<readonly [ScoreKey, string]>;
+const labelDescriptions: Record<ScoreKey, string> = {
+  topicRelevance: "이 주제가 시청자의 현재 일과 판단에 직접 관련되는가",
+  thumbnailClarity: "제목 없이 썸네일만 봐도 핵심 문제가 보이는가",
+  curiosityStrength: "제목과 썸네일이 답을 확인하고 싶게 만드는가",
+  evidenceBoundary: "사실·시나리오·해석의 경계가 분명한가",
+};
 const riskLabels = { low: "낮음", medium: "보완 필요", high: "높음" } as const;
 const emptyHumanScores = (): HumanScores => ({ topicRelevance: "", thumbnailClarity: "", curiosityStrength: "", evidenceBoundary: "" });
 const scoreOptions = [["", "선택"], ["0", "0 · 매우 낮음"], ["1", "1 · 낮음"], ["2", "2 · 보통"], ["3", "3 · 높음"], ["4", "4 · 매우 높음"]] as const;
@@ -100,10 +106,10 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
     <fieldset className="jev-human-labels" disabled={busy || disabled || Boolean(evaluation)}>
       <legend>모델 결과 보기 전 사람 판정</legend>
       <p>현재 보이는 제목·썸네일·기획 메모만 기준으로 입력합니다. 페이지를 벗어나면 사라지며 평가 데이터로 저장되지 않습니다.</p>
-      <div>{labels.map(([key, label]) => <label key={key}><span>{label}</span><select aria-label={`사람 판정 · ${label}`} value={humanScores[key]}
+      <div>{labels.map(([key, label]) => <label key={key}><span>{label}</span><small>{labelDescriptions[key]}</small><select aria-label={`사람 판정 · ${label}`} value={humanScores[key]}
         onChange={(event) => { setHumanScores((current) => ({ ...current, [key]: event.target.value as HumanScores[ScoreKey] })); setMessage(""); }}>
         {scoreOptions.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}</select></label>)}
-        <label><span>과장 위험</span><select aria-label="사람 판정 · 과장 위험" value={humanRisk}
+        <label><span>과장 위험</span><small>근거보다 강하게 단정하거나 오도할 위험이 있는가</small><select aria-label="사람 판정 · 과장 위험" value={humanRisk}
           onChange={(event) => { setHumanRisk(event.target.value as RiskChoice); setMessage(""); }}>
           <option value="">선택</option><option value="low">낮음</option><option value="medium">보완 필요</option><option value="high">높음</option>
         </select></label></div>

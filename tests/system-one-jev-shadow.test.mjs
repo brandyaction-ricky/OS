@@ -75,6 +75,7 @@ test("route and UI keep the experiment read-only and server-side", async () => {
   assert.match(route, /provider_response_invalid/); assert.match(route, /provider_rate_limited/);
   assert.match(route, /shadowEvaluation/); assert.doesNotMatch(route, /insert\(|update\(|upsert\(|service_role/);
   assert.match(ui, /모델 결과를 보기 전에 사람 판정을 고정/); assert.match(ui, /평가 데이터로 저장되지 않습니다/);
+  assert.match(ui, /제목 없이 썸네일만 봐도 핵심 문제가 보이는가/);
   assert.match(ui, /사람 판정 5개를 먼저 입력/); assert.match(ui, /승인·저장·단계 이동에는 사용하지 않습니다/);
   assert.match(ui, /active\.current\?\.abort\(\)/);
   assert.match(ui, /provider_auth_failed/); assert.match(ui, /provider_response_invalid/);
