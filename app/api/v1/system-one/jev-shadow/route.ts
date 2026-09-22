@@ -22,6 +22,8 @@ const asText = (value: unknown, limit: number) => typeof value === "string" && v
 
 export async function POST(request: Request) {
   if (!canUseSystemOneJevShadow(process.env)) return stopped("not_enabled", 404);
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
+  if (!token || token.startsWith("bos_pat_")) return stopped("authentication_failed", 401);
   let input: z.infer<typeof inputSchema>;
   try {
     const parsed = inputSchema.safeParse(await parseJson(request, 1_000));

@@ -68,6 +68,7 @@ test("adapter fails closed on provider and schema errors", async () => {
 test("route and UI keep the experiment read-only and server-side", async () => {
   const route = await readFile(new URL("../app/api/v1/system-one/jev-shadow/route.ts", import.meta.url), "utf8");
   const ui = await readFile(new URL("../components/content-jev-shadow-check.tsx", import.meta.url), "utf8");
+  assert.match(route, /if \(!token \|\| token\.startsWith\("bos_pat_"\)\) return stopped\("authentication_failed", 401\)/);
   assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
   assert.match(route, /name === "TimeoutError"/);
   assert.match(route, /shadowEvaluation/); assert.doesNotMatch(route, /insert\(|update\(|upsert\(|service_role/);
