@@ -4,7 +4,7 @@ import { apiErrorResponse, ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { answerFromKnowledge } from "@/lib/server/answer";
 import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
-import { captureKind, isBotAddressed } from "@/lib/telegram-intents";
+import { captureKind, isBotAddressed, type CaptureKind } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
@@ -110,8 +110,8 @@ function titleFrom(text: string, fallback: string) {
   const clean = text.replace(/^[/#]?\S+\s*/, "").trim(); return (clean || fallback).slice(0, 120);
 }
 
-async function saveCapture(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, text: string, extracted: string) {
-  const owner = await ownerId(supabase); const kind = captureKind(text); const now = new Date(); const date = now.toISOString().slice(0, 10); const month = date.slice(0, 7);
+async function saveCapture(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, text: string, extracted: string, kind: CaptureKind) {
+  const owner = await ownerId(supabase); const now = new Date(); const date = now.toISOString().slice(0, 10); const month = date.slice(0, 7);
   const receipt = `telegram:${message.chat.id}:${message.message_id}`;
   const { data: existing, error: existingError } = await supabase.from("os_documents").select("id").eq("source", "telegram_capture").eq("source_ref", receipt).eq("owner_id", owner).neq("status", "archived").maybeSingle();
   if (existingError) throw new ApiError(500, "CAPTURE_RECEIPT_FAILED", "기존 저장 기록을 확인하지 못해 새 문서를 만들지 않았습니다. 잠시 뒤 다시 확인해 주세요.");
@@ -281,7 +281,7 @@ export async function POST(request: Request) {
     const rawText = (message.text ?? message.caption ?? "").trim();
     const botUsername = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
     const text = botUsername ? rawText.replace(new RegExp(`@${botUsername}\\b`, "ig"), "").trim() : rawText;
-    const kind = captureKind(text); const supabase = createServiceSupabase();
+    const kind = await captureKind(text); const supabase = createServiceSupabase();
     verifiedMessage = message;
     const externalUserId = String(message.from.id);
     const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
@@ -314,7 +314,7 @@ export async function POST(request: Request) {
     }
     if (kind !== "question") {
       const dataUrl = await imageData(message); const extracted = await vision(dataUrl, kind === "review" ? "상품 후기 사진에서 상품명, 구매자 표현, 장점, 개선점, 수치와 문구를 정확히 추출하세요." : kind === "thumbnail" ? "썸네일 이미지의 문구, 구성, 색상, 선택 근거로 보이는 메모를 정확히 기록하세요." : "사진 속 텍스트를 OCR하고 아이디어와 해야 할 일을 구분하세요.");
-      const source = kind === "summary" ? await summarizeUrl(text) : extracted; const id = await saveCapture(supabase, message, text, source);
+      const source = kind === "summary" ? await summarizeUrl(text) : extracted; const id = await saveCapture(supabase, message, text, source, kind);
       savedDocumentId = id;
       const { error: captureLogError } = await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: (text || "[사진]").slice(0, 4000), answer: `CAPTURE_SAVED:${id}`, source_document_ids: [id] });
       if (captureLogError) throw new ApiError(500, "CAPTURE_LOG_FAILED", "문서는 저장됐지만 수신 기록을 남기지 못했습니다.");
