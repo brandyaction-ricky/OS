@@ -18,6 +18,12 @@ test("settings wait for real data before rendering status and counts", async () 
   assert.match(audit, /loading \? "확인 중"/);
 });
 
+test("Telegram access status loads on both channel and company settings", async () => {
+  const settings = await read("components/settings-workspaces.tsx");
+  assert.match(settings, /\(page === "channels" \|\| page === "company"\) && profile\?\.role === "admin"/);
+  assert.match(settings, /<TelegramAccessPanel status=\{telegram\}/);
+});
+
 test("connection status uses automatic health values and distinct dot colors", async () => {
   const [settings, css] = await Promise.all([
     read("components/settings-workspaces.tsx"),
