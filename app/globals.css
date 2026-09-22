@@ -572,6 +572,8 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; bor
 
 /* Meeting preparation and structured extraction */
 .meeting-prep { margin-bottom:18px; }.meeting-prep-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.meeting-prep-summary { padding:13px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-2); margin-bottom:12px; }
+.meeting-prep-summary strong { color:var(--text-2); font-size:12px; }.meeting-prep-summary p { margin:8px 0 0; color:var(--muted); font-size:12px; line-height:1.55; white-space:pre-wrap; }
 .meeting-prep-grid > div,.structured-meeting > div { padding:13px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-2); }
 .meeting-prep-grid strong,.structured-meeting strong { color:var(--text-2); font-size:12px; }.meeting-prep-grid p,.structured-meeting p { margin:8px 0 0; color:var(--muted); font-size:12px; line-height:1.55; }
 .structured-meeting { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }

@@ -7,7 +7,7 @@ import { buildPerformanceSignal } from "@/lib/performance-signals";
 
 export interface MeetingPrepKpi { id: string; title: string; current: number; previous: number; unit: string; signal: string }
 export interface MeetingPrepResult {
-  latestMeeting: { id: string; title: string; date: string | null; pending: string[] } | null;
+  latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null;
   pending: string[];
   todos: Array<Record<string, unknown>>;
   kpis: MeetingPrepKpi[];
@@ -29,11 +29,12 @@ export async function prepareMeetingBrief(
   if (error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", error.message);
   const latest = (meetings.data ?? []).find((item) => item.status === "done") ?? meetings.data?.[0] ?? null;
   const pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
+  const latestSummary = typeof latest?.metadata?.summary === "string" ? latest.metadata.summary : "";
   const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
   const latestKpis = (kpis.data ?? []).slice(0, 12).map((item) => {
     const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);
     const signal = buildPerformanceSignal({ title: item.title, current, previous, target: Number(item.metric_target ?? 0) || null, unit: item.metric_unit });
     return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: signal.label };
   });
-  return { latestMeeting: latest ? { id: latest.id, title: latest.title, date: latest.starts_at, pending } : null, pending, todos: openTodos, kpis: latestKpis };
+  return { latestMeeting: latest ? { id: latest.id, title: latest.title, date: latest.starts_at, pending, summary: latestSummary } : null, pending, todos: openTodos, kpis: latestKpis };
 }

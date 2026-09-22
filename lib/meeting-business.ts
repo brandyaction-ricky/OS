@@ -37,3 +37,7 @@ export function resolveMeetingBusiness(token: string): MeetingBusiness | null {
   const normalized = token.trim().replace(/\s+/g, "").toLowerCase();
   return BRAND_ALIASES[normalized] ?? null;
 }
+
+/** 사업을 지정하지 않고 /회의준비를 부르면 순회할 KPI 추적 대상 사업 두 곳.
+ * 회사(전체)는 회의 문서함 목적지일 뿐 KPI를 추적하는 사업이 아니라 제외한다. */
+export const PRIMARY_MEETING_BUSINESSES: MeetingBusiness[] = [MYIN, BRANDYEDU];

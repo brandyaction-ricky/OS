@@ -31,6 +31,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/telegram-team": await import("../lib/telegram-team.ts"),
     "@/lib/telegram-meeting": await import("../lib/telegram-meeting.ts"),
+    "@/lib/meeting-business": await import("../lib/meeting-business.ts"),
     "@/lib/meeting-documents": await import("../lib/meeting-documents.ts"),
     "@/lib/server/meeting-prep": { prepareMeetingBrief: options.prepareMeetingBrief ?? (async () => ({ latestMeeting: null, pending: [], todos: [], kpis: [] })) },
     "@/lib/server/meeting-summary": { summarizeMeetingText: options.summarizeMeetingText ?? (async () => ({ summary: "", decisions: [], pending: [], todos: [], mode: "local" })) },
@@ -160,18 +161,34 @@ test("start returns usage guidance instead of searching arbitrary knowledge", as
   assert.match(ctx.sent[0].text, /회사 지식 질문/);
 });
 
-test("회의준비 answers with the prep brief instead of a knowledge search", async () => {
+test("회의준비 answers with the prep brief (including last meeting summary) instead of a knowledge search", async () => {
   const ctx = await setup("webhook", normalHandler, {
     prepareMeetingBrief: async (_db, { brand }) => {
       assert.equal(brand, "마이인");
-      return { latestMeeting: null, pending: ["네이버 유입 원인 미확정"], todos: [{ title: "진단 문항 확정", due_date: "2026-09-30" }], kpis: [{ id: "k1", title: "매출", current: 100, previous: 90, unit: "만원", signal: "양호" }] };
+      return { latestMeeting: { id: "m1", title: "9/1 회의", date: "2026-09-01", pending: [], summary: "광고 예산 20만원 유지 결정" }, pending: ["네이버 유입 원인 미확정"], todos: [{ title: "진단 문항 확정", due_date: "2026-09-30" }], kpis: [{ id: "k1", title: "매출", current: 100, previous: 90, unit: "만원", signal: "양호" }] };
     },
   });
   const body = await (await ctx.api.POST(incoming({ text: "/회의준비 마이인" }))).json();
   assert.equal(body.meetingPrep, true);
+  assert.match(ctx.sent[0].text, /광고 예산 20만원 유지 결정/);
   assert.match(ctx.sent[0].text, /네이버 유입 원인 미확정/);
   assert.match(ctx.sent[0].text, /진단 문항 확정 · 2026-09-30/);
   assert.equal(ctx.searchCalls.length, 0);
+});
+
+test("회의준비 without a business loops over 마이인 and 브랜디에듀 with separate summaries", async () => {
+  const ctx = await setup("webhook", normalHandler, {
+    prepareMeetingBrief: async (_db, { brand }) => ({
+      latestMeeting: { id: `m-${brand}`, title: `${brand} 회의`, date: "2026-09-01", pending: [], summary: `${brand} 지난 회의 요약` },
+      pending: [], todos: [], kpis: [],
+    }),
+  });
+  const body = await (await ctx.api.POST(incoming({ text: "/회의준비" }))).json();
+  assert.equal(body.meetingPrep, true);
+  assert.match(ctx.sent[0].text, /마이인 지난 회의 요약/);
+  assert.match(ctx.sent[0].text, /브랜디액션 에듀 지난 회의 요약/);
+  assert.match(ctx.sent[0].text, /회의 준비 · 마이인\(진단\)/);
+  assert.match(ctx.sent[0].text, /회의 준비 · 자영업 교육/);
 });
 
 test("회의기록 without a recognized business sends usage guidance and saves nothing", async () => {

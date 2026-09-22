@@ -534,6 +534,12 @@ export function MeetingWorkspace() {
               <X size={16} />
             </button>
           </div>
+          {prep.latestMeeting?.summary ? (
+            <div className="meeting-prep-summary">
+              <strong>지난 회의 요약</strong>
+              <p>{prep.latestMeeting.summary}</p>
+            </div>
+          ) : null}
           <div className="meeting-prep-grid">
             <div>
               <strong>미해결 안건</strong>
