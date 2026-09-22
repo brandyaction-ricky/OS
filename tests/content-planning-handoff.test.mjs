@@ -34,7 +34,8 @@ test("planning and script surfaces use DEV gate; saved memo is not fed to genera
   const radar = read("../components/content-radar-workspace.tsx");
   const scripts = read("../components/content-pipeline-workspaces.tsx");
   const panel = read("../components/content-planning-handoff.tsx");
-  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{canUseSystemOnePreflight\(process.env\)\}/);
+  assert.match(page, /canUseSystemOnePreflight\(process.env\) \|\| canUseSystemOneJevShadow\(process.env\)/);
+  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{systemOneContentEnabled\}/);
   assert.match(radar, /showReferenceCheck \? <ContentPlanningHandoff/);
   assert.match(scripts, /showPlanningHandoff \? <LinkedPlanningHandoff/);
   assert.match(panel, /source.id !== sourceId/);
