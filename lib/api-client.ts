@@ -6,6 +6,10 @@ interface RequestOptions extends RequestInit {
   token?: string | null;
 }
 
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly code: string, public readonly status: number) { super(message); this.name = "ApiRequestError"; }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
@@ -16,7 +20,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const message = body?.error?.message ?? `요청을 처리하지 못했습니다. (${response.status})`;
-    throw new Error(message);
+    throw new ApiRequestError(message, body?.error?.code ?? "REQUEST_FAILED", response.status);
   }
   return body as T;
 }
@@ -110,6 +114,7 @@ export async function searchKnowledge(
     query: string;
     mode: string;
     degraded: boolean;
+    degradationReasons?: import("./search-diagnostics").SearchDegradation[];
     results: SearchResult[];
     tookMs: number;
   }>("/api/v1/search", {

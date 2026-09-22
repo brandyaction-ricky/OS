@@ -39,18 +39,22 @@ export async function GET(request: Request) {
       .from("os_documents")
       .select(includeContent ? "*" : "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at", { count: "exact" })
       .order("updated_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     if (statuses?.length) builder = builder.in("status", statuses);
     if (owner) builder = builder.eq("owner_id", owner);
     if (url.searchParams.get("exactFolder") === "true") builder = builder.eq("folder", folder === "분류 없음" ? "" : folder ?? "");
     else if (folder) builder = builder.or(`folder.eq.${folder},folder.like.${folder}/%`);
+    for (const field of ["team", "brand"] as const) { const value = url.searchParams.get(field); if (value) builder = builder.eq(field, value); }
+    const tag = url.searchParams.get("tag");
+    if (tag) builder = builder.contains("tags", [tag]);
     const scope = url.searchParams.get("scope");
     if (scope === "mine_company") builder = builder.or(`owner_id.eq.${actor.id},status.eq.canonical`);
     else if (scope === "mine") builder = builder.eq("owner_id", actor.id);
     else if (["canonical", "team", "archived"].includes(scope ?? "")) builder = builder.eq("status", scope);
     else if (scope === "review") builder = builder.in("status", ["review", "reviewed"]);
     if (scope && scope !== "archived") builder = builder.neq("status", "archived");
-    if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%`);
+    if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
     const { data, count, error } = await builder;
     if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);
     return NextResponse.json({ documents: data ?? [], total: count ?? 0 });
@@ -123,6 +127,7 @@ export async function PATCH(request: Request) {
       p_tags: input.tags ?? current.tags,
       p_reason: input.reason,
     });
+    if (error?.message?.startsWith("OS_VERSION_CONFLICT:")) throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 확인하고 다시 시도해 주세요.");
     if (error || !data) throw new ApiError(400, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.", error?.message);
     let indexing: "ready" | "queued" = "queued";
     if (input.content !== undefined) {

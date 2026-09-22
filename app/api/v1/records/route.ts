@@ -1,3 +1,4 @@
+import { assertSkillSource } from "@/lib/server/skill-source";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -91,6 +92,7 @@ export async function POST(request: Request) {
     if (input.recordType === "development_notification" || input.metadata.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     await assertDevelopmentRequestLink(actor.supabase, input);
+    await assertSkillSource(actor.supabase, input.recordType, input.metadata);
     const payload = {
       ...toDatabase(input),
       owner_id: actor.id,
@@ -132,6 +134,7 @@ export async function PATCH(request: Request) {
       if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "이미 처리되었거나 다른 사람이 먼저 수정했습니다.");
       return NextResponse.json({ record: data });
     }
+    await assertSkillSource(actor.supabase, current.record_type, input.metadata, current.metadata);
     const payload = toDatabase(input);
     if (current.record_type === "content_publish" && ["ready", "scheduled"].includes(current.status) && (input.description !== undefined || input.title !== undefined || (input.metadata?.derivHtml !== undefined && input.metadata.derivHtml !== current.metadata.derivHtml))) payload.status = "review";
     payload.updated_by = actor.id;

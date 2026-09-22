@@ -4,15 +4,16 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the reviewed active chain is isolated from frozen legacy migrations", async () => {
+test("the approved active chain is intact and ready for controlled application", async () => {
   const result = await inspectMigrationBaseline();
 
   assert.equal(result.status, "ready");
   assert.equal(result.decision, "apply");
   assert.equal(result.integrityValid, true);
   assert.equal(result.readyToApply, true);
+  assert.deepEqual(result.pendingApprovalMigrations, []);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 10);
+  assert.equal(result.activeMigrationCount, 11);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });

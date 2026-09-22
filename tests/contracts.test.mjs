@@ -99,10 +99,11 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
   const workspace = await readFile(new URL("../components/knowledge-workspace.tsx", import.meta.url), "utf8");
   const client = await readFile(new URL("../lib/api-client.ts", import.meta.url), "utf8");
   const route = await readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8");
-  assert.match(workspace, /accept="\.md,text\/markdown"/);
-  assert.match(workspace, /source: "markdown"/);
-  assert.match(workspace, /sourceRef: item\.fileName/);
-  assert.match(workspace, /item\.duplicate/);
+  const importer = await readFile(new URL("../components/knowledge-import.tsx", import.meta.url), "utf8");
+  assert.match(importer, /accept="\.md,text\/markdown"/);
+  assert.match(importer, /source:\s*"markdown"/);
+  assert.match(importer, /sourceRef:\s*item\.sourceRef/);
+  assert.match(importer, /defaultImportAction/);
   assert.match(workspace, /exactFolder: "true"/);
   assert.match(workspace, /getDocument\(accessToken, selectedId\)/);
   assert.match(client, /sourceRef\?: string \| null/);

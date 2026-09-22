@@ -35,6 +35,6 @@ test("project connections accept one canonical development document ID and expos
 test("knowledge document selection keeps a shareable document ID in the current environment URL", async () => {
   const workspace = await read("components/knowledge-workspace.tsx");
   assert.match(workspace, /params\.set\("document", id\)/);
-  assert.match(workspace, /window\.history\.replaceState/);
+  assert.match(workspace, /window\.history\.pushState/);
   assert.match(workspace, /selectDocument\(row\.document\.id\)/);
 });
