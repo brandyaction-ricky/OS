@@ -178,7 +178,7 @@ test("회의기록 without a recognized business sends usage guidance and saves 
   const ctx = await setup("webhook", normalHandler);
   const body = await (await ctx.api.POST(incoming({ text: "/회의기록 모르는사업 아무 내용" }))).json();
   assert.equal(body.meetingUsage, true);
-  assert.match(ctx.sent[0].text, /사업은 마이인 또는 브랜디에듀/);
+  assert.match(ctx.sent[0].text, /사업은 마이인, 브랜디에듀\(교육\), 회사\(전체\)만 인식/);
   assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records").length, 0);
 });
 
@@ -232,6 +232,28 @@ test("회의기록 extracts, links decisions/tasks to the meeting and pushes raw
   assert.match(ctx.sent[0].text, /결정사항 1개/);
   assert.match(ctx.sent[0].text, /knowledge\?document=summary-doc-1/);
   assert.match(ctx.sent[0].text, /knowledge\?document=raw-doc-1/);
+});
+
+test("회의기록 files a non-마이인/브랜디에듀 meeting under the 회사(전체) knowledge folder", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_documents") {
+      const insertOp = query.operations.find((op) => op.method === "insert");
+      return { data: { id: insertOp.args[0].source === "meeting_raw" ? "raw-doc-2" : "summary-doc-2" }, error: null };
+    }
+    if (query.table !== "os_records") return normalHandler(query);
+    const insertOp = query.operations.find((op) => op.method === "insert");
+    if (!insertOp) return { data: null, error: null };
+    return { data: { id: `${insertOp.args[0].record_type}-2` }, error: null };
+  }, {
+    summarizeMeetingText: async () => ({ summary: "- 콘텐츠 방향 확정", decisions: [], pending: [], todos: [], mode: "local" }),
+  });
+  const body = await (await ctx.api.POST(incoming({ text: "/회의기록 회사 이번주 콘텐츠 운영 방향을 이렇게 정리했다." }))).json();
+  assert.equal(body.meetingRecorded, true);
+  const meetingInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").payload;
+  assert.equal(meetingInsert.brand, "브랜디액션");
+  const summaryInsert = ctx.inserts.find((insert) => insert.table === "os_documents" && insert.payload.source === "meeting_summary").payload;
+  assert.match(summaryInsert.folder, /^02_Wiki\/회사\/운영\/주간회의요약\/\d{4}-\d{2}$/);
+  assert.match(summaryInsert.title, /브랜디액션\(전체\)/);
 });
 
 test("resending the same Telegram message does not create a second meeting", async () => {

@@ -719,8 +719,9 @@ export function MeetingWorkspace() {
                     setBrand(value);
                     if (!titleEditedRef.current) setTitle(suggestMeetingTitle(value));
                   }}
-                  placeholder="마이인 또는 브랜디에듀"
+                  placeholder="마이인 · 브랜디에듀 · 회사(전체)"
                 />
+                <small className="field-hint">이 셋 중 하나로 입력해야 문서함(원문·요약)에 자동 반영됩니다.</small>
               </label>
               <label>
                 <span>담당 팀</span>
