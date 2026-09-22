@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 
 type Score = { score: number; confidence: number };
+type ScoreKey = "topicRelevance" | "thumbnailClarity" | "curiosityStrength" | "evidenceBoundary";
+type HumanScores = Record<ScoreKey, "" | "0" | "1" | "2" | "3" | "4">;
+type RiskChoice = "" | "low" | "medium" | "high";
 type Result = {
   status: "ready";
   source: { id: string; version: number };
@@ -18,8 +21,10 @@ type Result = {
 const labels = [
   ["topicRelevance", "주제 관련성"], ["thumbnailClarity", "썸네일 명확성"],
   ["curiosityStrength", "궁금증"], ["evidenceBoundary", "근거 경계"],
-] as const;
+] as const satisfies ReadonlyArray<readonly [ScoreKey, string]>;
 const riskLabels = { low: "낮음", medium: "보완 필요", high: "높음" } as const;
+const emptyHumanScores = (): HumanScores => ({ topicRelevance: "", thumbnailClarity: "", curiosityStrength: "", evidenceBoundary: "" });
+const scoreOptions = [["", "선택"], ["0", "0 · 매우 낮음"], ["1", "1 · 낮음"], ["2", "2 · 보통"], ["3", "3 · 높음"], ["4", "4 · 매우 높음"]] as const;
 const stoppedMessages: Record<string, string> = {
   authentication_failed: "로그인 상태를 다시 확인해 주세요.",
   stale: "기획 메모가 바뀌었습니다. 최신 내용을 다시 읽은 뒤 시험해 주세요.",
@@ -55,9 +60,12 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
   const [result, setResult] = useState<Result | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [humanScores, setHumanScores] = useState<HumanScores>(emptyHumanScores);
+  const [humanRisk, setHumanRisk] = useState<RiskChoice>("");
   const active = useRef<AbortController | null>(null);
   useEffect(() => {
     setResult(null); setMessage("");
+    setHumanScores(emptyHumanScores()); setHumanRisk("");
     active.current?.abort(); active.current = null; setBusy(false);
     return () => { active.current?.abort(); };
   }, [sourceId, sourceVersion]);
@@ -65,6 +73,10 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
 
   async function run() {
     if (busy || disabled) return;
+    if (labels.some(([key]) => humanScores[key] === "") || humanRisk === "") {
+      setMessage("JEV 결과를 보기 전에 사람 판정 5개를 먼저 입력해 주세요.");
+      return;
+    }
     const controller = new AbortController(); active.current?.abort(); active.current = controller;
     setBusy(true); setMessage(""); setResult(null);
     try {
@@ -82,13 +94,25 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
 
   const evaluation = result?.shadowEvaluation;
   return <section className="jev-shadow" aria-label="JEV 시험 판정">
-    <header><div><span className="eyebrow">DEV/QA · Shadow</span><h4>JEV 시험 판정</h4>
-      <p>저장된 기획 메모를 확률 점수로 비교합니다. 승인·저장·단계 이동에는 사용하지 않습니다.</p></div>
-      <button className="secondary-button" disabled={busy || disabled} onClick={() => void run()}>{busy ? "판정 중…" : "JEV로 시험 판정"}</button></header>
+    <header><div><span className="eyebrow">DEV/QA · Shadow</span><h4>JEV 블라인드 비교</h4>
+      <p>모델 결과를 보기 전에 사람 판정을 고정하고 같은 입력의 JEV 점수와 나란히 비교합니다. 승인·저장·단계 이동에는 사용하지 않습니다.</p></div>
+      <button className="secondary-button" disabled={busy || disabled || Boolean(evaluation)} onClick={() => void run()}>{busy ? "판정 중…" : evaluation ? "비교 완료" : "사람 판정 고정 후 JEV 비교"}</button></header>
+    <fieldset className="jev-human-labels" disabled={busy || disabled || Boolean(evaluation)}>
+      <legend>모델 결과 보기 전 사람 판정</legend>
+      <p>현재 보이는 제목·썸네일·기획 메모만 기준으로 입력합니다. 페이지를 벗어나면 사라지며 평가 데이터로 저장되지 않습니다.</p>
+      <div>{labels.map(([key, label]) => <label key={key}><span>{label}</span><select aria-label={`사람 판정 · ${label}`} value={humanScores[key]}
+        onChange={(event) => { setHumanScores((current) => ({ ...current, [key]: event.target.value as HumanScores[ScoreKey] })); setMessage(""); }}>
+        {scoreOptions.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}</select></label>)}
+        <label><span>과장 위험</span><select aria-label="사람 판정 · 과장 위험" value={humanRisk}
+          onChange={(event) => { setHumanRisk(event.target.value as RiskChoice); setMessage(""); }}>
+          <option value="">선택</option><option value="low">낮음</option><option value="medium">보완 필요</option><option value="high">높음</option>
+        </select></label></div>
+    </fieldset>
     {evaluation ? <div role="status"><div className="jev-shadow-grid">{labels.map(([key, label]) => {
       const score = evaluation.scores[key];
-      return <article key={key}><small>{label}</small><strong>{score.score.toFixed(2)}<i>/4</i></strong><span>확신도 {Math.round(score.confidence * 100)}%</span></article>;
-    })}<article className={`risk-${evaluation.overclaimRisk.choice}`}><small>과장 위험</small><strong>{riskLabels[evaluation.overclaimRisk.choice]}</strong><span>높음 {Math.round(evaluation.overclaimRisk.probabilities.high * 100)}% · 보완 {Math.round(evaluation.overclaimRisk.probabilities.medium * 100)}%</span></article></div>
+      const human = Number(humanScores[key]);
+      return <article key={key}><small>{label}</small><strong>{score.score.toFixed(2)}<i>/4</i></strong><span>사람 {human}/4 · 차이 {Math.abs(score.score - human).toFixed(2)}</span><span>JEV 확신도 {Math.round(score.confidence * 100)}%</span></article>;
+    })}<article className={`risk-${evaluation.overclaimRisk.choice}`}><small>과장 위험</small><strong>{riskLabels[evaluation.overclaimRisk.choice]}</strong><span>사람 {humanRisk ? riskLabels[humanRisk] : "미입력"}</span><span>높음 {Math.round(evaluation.overclaimRisk.probabilities.high * 100)}% · 보완 {Math.round(evaluation.overclaimRisk.probabilities.medium * 100)}%</span></article></div>
       <p className="content-workflow-note">{evaluation.model} · {Math.round(evaluation.evaluationTimeMs)}ms · 시험 계약 {evaluation.contractVersion}. 이 결과는 대표 판단이나 승인 기록이 아닙니다.</p></div> : null}
     {message ? <p className="inline-alert warning" role="status">{message}</p> : null}
   </section>;
