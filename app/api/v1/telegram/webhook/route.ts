@@ -8,6 +8,10 @@ import { captureKind, isBotAddressed, type CaptureKind } from "@/lib/telegram-in
 import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
+import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
+import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
+import { prepareMeetingBrief } from "@/lib/server/meeting-prep";
+import { summarizeMeetingText } from "@/lib/server/meeting-summary";
 
 export const runtime = "nodejs";
 
@@ -252,6 +256,102 @@ async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>
   return { created: true, recordId: record.id };
 }
 
+async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupabase>, text: string) {
+  const brand = parseMeetingPrepBrand(text);
+  const brief = await prepareMeetingBrief(supabase, { brand });
+  const todos = brief.todos.slice(0, 8) as Array<{ title?: string; due_date?: string | null }>;
+  const lines = [
+    `📋 회의 준비${brand ? ` · ${brand}` : ""}`,
+    "",
+    "▪ 지난 회의 미해결",
+    ...(brief.pending.length ? brief.pending.map((item) => `- ${item}`) : ["남은 안건이 없습니다."]),
+    "",
+    "▪ 완료 전 업무",
+    ...(todos.length ? todos.map((item) => `- ${item.title ?? ""}${item.due_date ? ` · ${item.due_date}` : ""}`) : ["미완료 업무가 없습니다."]),
+    "",
+    "▪ 최근 KPI 신호",
+    ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `- ${item.title} ${item.current}${item.unit} · ${item.signal}`) : ["최근 KPI가 없습니다."]),
+  ];
+  return lines.join("\n");
+}
+
+// /회의기록 {사업} {회의 내용} — 사업별 회의 레코드 생성 + AI 추출(결정·미결·업무) +
+// 지식 문서함 반영을 한 메시지로 끝낸다. Telegram은 실패해도 웹훅을 재전송하므로
+// telegramReceipt로 같은 메시지의 중복 저장을 막는다.
+async function handleMeetingRecord(
+  supabase: ReturnType<typeof createServiceSupabase>,
+  message: TelegramMessage,
+  ownerProfileId: string,
+  business: MeetingBusiness,
+  content: string,
+) {
+  if (content.length < 20) throw new ApiError(400, "MEETING_CONTENT_TOO_SHORT", "회의 내용은 20자 이상 적어 주세요. 저장하지 않았습니다.");
+  const receipt = `telegram:${message.chat.id}:${message.message_id}`;
+  const { data: existingMeeting, error: existingError } = await supabase.from("os_records").select("id,metadata").eq("record_type", "meeting").eq("metadata->>telegramReceipt", receipt).is("archived_at", null).maybeSingle();
+  if (existingError) throw new ApiError(500, "MEETING_RECEIPT_CHECK_FAILED", "중복 저장 확인에 실패해 회의를 기록하지 않았습니다. 잠시 뒤 다시 보내 주세요.");
+  if (existingMeeting) return { duplicate: true as const, meetingId: existingMeeting.id as string, rawDocumentId: null, summaryDocumentId: null, result: null, title: "" };
+
+  const { recordBrand, label } = business;
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, Asia/Seoul 서버 시각 기준
+  const result = await summarizeMeetingText(content, today);
+  const title = `${recordBrand} 회의 · ${new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date())}`;
+
+  const { data: meeting, error: meetingError } = await supabase.from("os_records").insert({
+    record_type: "meeting", title, description: content.slice(0, 4000), status: "done", priority: "normal",
+    brand: recordBrand, team: "", owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, tags: [],
+    metadata: { transcript: content, summary: result.summary, summaryMode: result.mode, decisions: result.decisions, pending: result.pending, todos: result.todos, source: "telegram", telegramReceipt: receipt },
+  }).select("id").single();
+  if (meetingError || !meeting) throw new ApiError(500, "MEETING_CREATE_FAILED", "회의 기록을 저장하지 못했습니다.", meetingError?.message);
+
+  for (const decisionTitle of result.decisions) {
+    const { error } = await supabase.from("os_records").insert({
+      record_type: "decision", title: decisionTitle, description: `회의: ${title}`, status: "decided", brand: recordBrand, team: "",
+      owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, parent_id: meeting.id, tags: [],
+      metadata: { meetingId: meeting.id, source: "meeting" },
+    });
+    if (error) throw new ApiError(500, "MEETING_DECISION_CREATE_FAILED", "회의는 저장됐지만 결정사항 일부를 만들지 못했습니다.", error.message);
+  }
+  for (const todo of result.todos) {
+    const { error } = await supabase.from("os_records").insert({
+      record_type: "task", title: todo.title, status: "planned", brand: recordBrand, team: "", due_date: todo.dueDate || null,
+      description: `회의 후속 업무: ${title}${todo.assignee ? ` · 담당 ${todo.assignee}` : ""}${todo.dueLabel ? ` · ${todo.dueLabel}` : ""}`,
+      owner_id: ownerProfileId, created_by: ownerProfileId, updated_by: ownerProfileId, parent_id: meeting.id, tags: [],
+      metadata: { meetingId: meeting.id, source: "meeting", assigneeName: todo.assignee, dueLabel: todo.dueLabel },
+    });
+    if (error) throw new ApiError(500, "MEETING_TASK_CREATE_FAILED", "회의는 저장됐지만 후속 업무 일부를 만들지 못했습니다.", error.message);
+  }
+
+  // 지식 문서함 반영 — 웹 회의 워크스페이스와 같은 빌더(lib/meeting-documents)로
+  // 옛 사내 봇과 같은 두 곳(raw 원문 + wiki 요약)에 같이 쌓는다. 여기서 실패해도
+  // 회의·결정·업무는 이미 저장된 상태로 둔다.
+  let rawDocumentId: string | null = null;
+  let summaryDocumentId: string | null = null;
+  try {
+    const raw = buildMeetingRawDocument(business, today, content);
+    const { data: rawDoc, error: rawError } = await supabase.from("os_documents").insert({
+      ...raw, brand: recordBrand, team: "", status: "draft", source: "meeting_raw", source_ref: meeting.id,
+      owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의", label],
+    }).select("id").single();
+    if (rawError) throw rawError;
+    rawDocumentId = rawDoc.id as string;
+  } catch (rawError) {
+    console.error("meeting raw document creation failed", rawError);
+  }
+  try {
+    const summary = buildMeetingSummaryDocument(business, today, result);
+    const { data: summaryDoc, error: summaryError } = await supabase.from("os_documents").insert({
+      ...summary, brand: recordBrand, team: "", status: "draft", source: "meeting_summary", source_ref: meeting.id,
+      owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의요약", label],
+    }).select("id").single();
+    if (summaryError) throw summaryError;
+    summaryDocumentId = summaryDoc.id as string;
+  } catch (summaryError) {
+    console.error("meeting summary document creation failed", summaryError);
+  }
+
+  return { duplicate: false as const, meetingId: meeting.id as string, rawDocumentId, summaryDocumentId, result, title };
+}
+
 async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
   const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/);
   if (!match) return null;
@@ -323,10 +423,49 @@ export async function POST(request: Request) {
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
     if (/^\/?start$/i.test(text)) {
-      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
+      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
       await sendTelegram(message.chat.id, welcome, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
       return NextResponse.json({ ok: true, started: true });
+    }
+    if (isMeetingPrepCommand(text)) {
+      const brief = await handleMeetingPrep(supabase, text);
+      await sendTelegram(message.chat.id, brief, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: brief, source_document_ids: [] });
+      return NextResponse.json({ ok: true, meetingPrep: true });
+    }
+    if (isMeetingRecordCommand(text)) {
+      if (!registered?.profile_id) throw new ApiError(403, "TELEGRAM_PROFILE_REQUIRED", "OS 구성원 계정 연결 후 회의를 기록할 수 있습니다. 관리자에게 설정의 Telegram 계정 연결을 요청해 주세요.");
+      const parsed = parseMeetingRecordCommand(text);
+      if (!parsed) {
+        const usage = "사용법: /회의기록 [사업] [회의 내용]\n예) /회의기록 마이인 광고 예산 20만원 유지 결정. 네이버 유입 원인 파악은 에릭이 이번주까지.\n사업은 마이인 또는 브랜디에듀(교육)만 인식합니다. 저장하지 않았습니다.";
+        await sendTelegram(message.chat.id, usage, message.message_id);
+        await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: usage, source_document_ids: [] });
+        return NextResponse.json({ ok: true, meetingUsage: true });
+      }
+      const recorded = await handleMeetingRecord(supabase, message, registered.profile_id, parsed.business, parsed.content);
+      const osUrl = (process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "");
+      const documentIds = [recorded.rawDocumentId, recorded.summaryDocumentId].filter((id): id is string => Boolean(id));
+      const answer = recorded.duplicate
+        ? "이미 기록된 회의입니다(중복 전송). 다시 저장하지 않았습니다."
+        : [
+            `✅ [${parsed.business.label}] 회의 기록 완료`,
+            "",
+            `📌 결정사항 ${recorded.result!.decisions.length}개`,
+            ...recorded.result!.decisions.map((item) => `  • ${item}`),
+            "",
+            `📋 미결사항 ${recorded.result!.pending.length}개`,
+            ...recorded.result!.pending.map((item) => `  • ${item}`),
+            "",
+            `✅ 후속 업무 ${recorded.result!.todos.length}개`,
+            ...recorded.result!.todos.map((item) => `  • ${item.title}${item.dueLabel || item.dueDate ? ` (${item.dueLabel || item.dueDate})` : ""}`),
+            "",
+            recorded.summaryDocumentId ? `📁 요약: ${osUrl}/knowledge?document=${encodeURIComponent(recorded.summaryDocumentId)}` : "⚠️ 요약 문서함 반영 실패(회의·결정·업무는 저장됨).",
+            recorded.rawDocumentId ? `📄 원문: ${osUrl}/knowledge?document=${encodeURIComponent(recorded.rawDocumentId)}` : "⚠️ 원문 문서함 반영 실패.",
+          ].join("\n");
+      await sendTelegram(message.chat.id, answer, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: documentIds });
+      return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, rawDocumentId: recorded.rawDocumentId, summaryDocumentId: recorded.summaryDocumentId });
     }
     const digestResponse = await configureDigest(supabase, message, registered?.profile_id ?? null, rawText);
     if (digestResponse) {

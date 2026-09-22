@@ -123,12 +123,35 @@ test("meeting recordings stay private, bounded, and use signed playback URLs", a
 });
 
 test("meeting summaries degrade locally and create linked actions", async () => {
-  const route = await readFile(new URL("../app/api/v1/meeting-summary/route.ts", import.meta.url), "utf8");
+  const route = await readFile(new URL("../lib/server/meeting-summary.ts", import.meta.url), "utf8");
   const workspace = await readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8");
   assert.match(route, /localSummary/);
   assert.match(route, /OPENAI_API_KEY/);
   assert.match(workspace, /recordType: "decision"[\s\S]*parentId: meeting\.id/);
   assert.match(workspace, /recordType: "task"[\s\S]*parentId: meeting\.id/);
+});
+
+test("saving a meeting on the web pushes the same raw+summary documents as /회의기록", async () => {
+  const [workspace, documents, business] = await Promise.all([
+    readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-business.ts", import.meta.url), "utf8"),
+  ]);
+  // 웹 저장이 텔레그램 /회의기록과 같은 빌더·사업 판정을 재사용한다(로직 두 곳에 흩어지지 않음).
+  assert.match(workspace, /from "@\/lib\/meeting-business"/);
+  assert.match(workspace, /from "@\/lib\/meeting-documents"/);
+  // 요약이 있고 사업(브랜드)을 알아볼 수 있고 아직 문서함에 안 올라간 경우에만 한 번 실행한다.
+  assert.match(workspace, /summary\.trim\(\)\s*&&\s*business\s*&&\s*!existingDocuments\?\.rawId\s*&&\s*!existingDocuments\?\.summaryId/);
+  assert.match(workspace, /createDocument\(accessToken, \{ title: raw\.title/);
+  assert.match(workspace, /createDocument\(accessToken, \{ title: summaryDoc\.title/);
+  assert.match(workspace, /knowledgeDocuments: \{ rawId:.*summaryId:/);
+  // 저장된 회의를 다시 열면 문서함 링크가 보인다(정호가 실제로 눌러 확인할 수 있게).
+  assert.match(workspace, /linkedDocuments\.summaryId/);
+  assert.match(workspace, /linkedDocuments\.rawId/);
+  assert.match(documents, /01_Raw\/주간회의\/\$\{date\.slice\(0, 7\)\}/);
+  assert.match(documents, /02_Wiki\/\$\{business\.wikiFolderSegment\}\/운영\/주간회의요약\/\$\{date\.slice\(0, 7\)\}/);
+  assert.match(business, /"마이인\(진단\)"/);
+  assert.match(business, /"자영업 교육"/);
 });
 
 test("project, task, skill and content workspaces use linked operating records", async () => {

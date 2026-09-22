@@ -15,8 +15,10 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
+  createDocument,
   createRecord,
   getMeetingRecordingUrl,
   listRecords,
@@ -26,6 +28,8 @@ import {
   updateRecord,
   type MeetingSummaryResult,
 } from "@/lib/api-client";
+import { resolveMeetingBusiness } from "@/lib/meeting-business";
+import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -337,6 +341,39 @@ export function MeetingWorkspace() {
             dueLabel: todo.dueLabel,
           },
         });
+
+      // 지식 문서함 반영 — 텔레그램 /회의기록과 같은 두 문서(원문 01_Raw/주간회의,
+      // 요약 02_Wiki/{사업}/운영/주간회의요약)를 만든다. 요약이 있고, 사업(브랜드)을
+      // 알아볼 수 있고, 이 회의가 아직 문서함에 안 올라간 경우에만 한 번 실행한다.
+      // 실패해도 회의·결정·업무 저장은 이미 끝난 상태로 둔다(부가 기능).
+      const existingDocuments = meeting.metadata?.knowledgeDocuments as
+        | { rawId?: string; summaryId?: string }
+        | undefined;
+      const business = resolveMeetingBusiness(meeting.brand);
+      if (summary.trim() && business && !existingDocuments?.rawId && !existingDocuments?.summaryId) {
+        try {
+          const meetingDate = meeting.starts_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+          const raw = buildMeetingRawDocument(business, meetingDate, transcript || meeting.description || "");
+          const summaryDoc = buildMeetingSummaryDocument(business, meetingDate, {
+            summary,
+            decisions: structured?.decisions ?? [],
+            pending: structured?.pending ?? [],
+            todos: structured?.todos ?? [],
+          });
+          const [rawResult, summaryResult] = await Promise.all([
+            createDocument(accessToken, { title: raw.title, content: raw.content_md, folder: raw.folder, brand: meeting.brand, team: meeting.team, tags: ["주간회의", business.label], source: "meeting_raw", sourceRef: meeting.id }),
+            createDocument(accessToken, { title: summaryDoc.title, content: summaryDoc.content_md, folder: summaryDoc.folder, brand: meeting.brand, team: meeting.team, tags: ["주간회의요약", business.label], source: "meeting_summary", sourceRef: meeting.id }),
+          ]);
+          await updateRecord(accessToken, {
+            id: meeting.id,
+            expectedVersion: meeting.version,
+            metadata: { ...meeting.metadata, knowledgeDocuments: { rawId: rawResult.document.id, summaryId: summaryResult.document.id } },
+          });
+        } catch (docError) {
+          console.error("meeting knowledge document push failed", docError);
+        }
+      }
+
       setDrawerOpen(false);
       setEditing(null);
       setRecordedBlob(null);
@@ -368,6 +405,9 @@ export function MeetingWorkspace() {
       item.parent_id &&
       meetings.some((meeting) => meeting.id === item.parent_id),
   );
+  const linkedDocuments = editing?.metadata.knowledgeDocuments as
+    | { rawId?: string; summaryId?: string }
+    | undefined;
 
   return (
     <>
@@ -764,6 +804,23 @@ export function MeetingWorkspace() {
                   ))}
                 </div>
               </div>
+            ) : null}
+            {linkedDocuments ? (
+              <p className="field-hint">
+                📁 문서함 반영됨
+                {linkedDocuments.summaryId ? (
+                  <>
+                    {" · "}
+                    <Link href={`/knowledge?document=${linkedDocuments.summaryId}`}>요약 보기</Link>
+                  </>
+                ) : null}
+                {linkedDocuments.rawId ? (
+                  <>
+                    {" · "}
+                    <Link href={`/knowledge?document=${linkedDocuments.rawId}`}>원문 보기</Link>
+                  </>
+                ) : null}
+              </p>
             ) : null}
             <div className="form-grid">
               <label>
