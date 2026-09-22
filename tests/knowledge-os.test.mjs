@@ -20,7 +20,7 @@ test("knowledge workspace is a two-column tree with collaborative defaults", asy
 });
 
 test("knowledge workspace exposes folder selection, rename and document move controls", async () => {
-  const workspace = await read("components/knowledge-workspace.tsx");
+  const workspace = (await Promise.all(["components/knowledge-workspace.tsx", "components/knowledge-folder-manager.tsx", "components/knowledge-document-mover.tsx", "components/knowledge-folder-picker.tsx"].map(read))).join("\n");
   assert.match(workspace, /폴더 관리/);
   assert.match(workspace, /폴더 이름 변경/);
   assert.match(workspace, /문서 위치 이동/);

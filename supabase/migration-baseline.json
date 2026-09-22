@@ -211,6 +211,12 @@
       "file": "20260922003000_telegram_team_workflow.sql",
       "sha256": "85f562a43cad146b780706c70092fe2e0269cb51b090e9b5e03a116d3705368a",
       "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests"
+    },
+    {
+      "file": "20260922063605_knowledge_review_return.sql",
+      "sha256": "6cbdd32fff70bbab0aa3bb28f7e3100400d41b2b7a5ed506fb599ae5a15e5723",
+      "purpose": "allow active reviewers to return a review document to team with the existing audit event; authored only, not applied",
+      "requiresApproval": true
     }
   ],
   "legacyMigrations": [

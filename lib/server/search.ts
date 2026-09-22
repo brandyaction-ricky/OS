@@ -74,7 +74,7 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
 export const searchInternals = { searchTerms };
 
 export async function searchDocuments(actor: RequestActor, input: SearchInput): Promise<SearchOutcome> {
-  const requested = (input.filters.statuses?.length ? input.filters.statuses : ["canonical", "reviewed", "team"]) as DocumentStatus[];
+  const requested = (input.filters.statuses ?? ["canonical", "reviewed", "team"]) as DocumentStatus[];
   const statuses = intersectStatuses(requested, actor.allowedStatuses);
   if (!statuses.length) return { results: [], degraded: false };
 

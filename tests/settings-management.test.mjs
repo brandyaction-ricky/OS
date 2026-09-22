@@ -136,8 +136,9 @@ test("sensitive access gaps, shared knowledge categories and action confirmation
   ]);
   assert.match(settings, /SENSITIVE_ACCESS_ROSTER\.map/);
   assert.match(settings, /초대 대기/);
-  assert.match(knowledge, /KNOWLEDGE_CATEGORIES\.map/);
-  assert.match(knowledge, /knowledge-category-options/);
+  assert.match(knowledge, /KnowledgeFolderPicker/);
+  assert.match(settings, /KnowledgeClassificationSettings/);
+  assert.doesNotMatch(knowledge, /KNOWLEDGE_CATEGORIES/);
   assert.match(categories, /회사 공통/);
   assert.match(monitoring, /confirmationDialog\.current\?\.showModal/);
   assert.match(monitoring, /onCancel=\{\(\) => setConfirmation\(null\)\}/);
