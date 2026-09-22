@@ -9,8 +9,9 @@ import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
 import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
+import { PRIMARY_MEETING_BUSINESSES } from "@/lib/meeting-business";
 import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
-import { prepareMeetingBrief } from "@/lib/server/meeting-prep";
+import { prepareMeetingBrief, type MeetingPrepResult } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
 
 export const runtime = "nodejs";
@@ -256,12 +257,13 @@ async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>
   return { created: true, recordId: record.id };
 }
 
-async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupabase>, text: string) {
-  const brand = parseMeetingPrepBrand(text);
-  const brief = await prepareMeetingBrief(supabase, { brand });
+function renderMeetingPrepSection(label: string, brief: MeetingPrepResult) {
   const todos = brief.todos.slice(0, 8) as Array<{ title?: string; due_date?: string | null }>;
-  const lines = [
-    `📋 회의 준비${brand ? ` · ${brand}` : ""}`,
+  return [
+    `📋 회의 준비 · ${label}`,
+    "",
+    "▪ 지난 회의 요약",
+    brief.latestMeeting?.summary?.trim() || "지난 회의 요약이 없습니다.",
     "",
     "▪ 지난 회의 미해결",
     ...(brief.pending.length ? brief.pending.map((item) => `- ${item}`) : ["남은 안건이 없습니다."]),
@@ -271,8 +273,24 @@ async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupaba
     "",
     "▪ 최근 KPI 신호",
     ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `- ${item.title} ${item.current}${item.unit} · ${item.signal}`) : ["최근 KPI가 없습니다."]),
-  ];
-  return lines.join("\n");
+  ].join("\n");
+}
+
+// /회의준비 [사업] — 사업을 생략하면 두 사업(마이인·브랜디에듀) 모두를 순회해
+// 보여준다(읽기 전용이라 오분류 위험이 없다 — 옛 사내 봇과 같은 규칙).
+async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupabase>, text: string) {
+  const brand = parseMeetingPrepBrand(text);
+  if (brand) {
+    const brief = await prepareMeetingBrief(supabase, { brand });
+    return renderMeetingPrepSection(brand, brief);
+  }
+  const sections = await Promise.all(
+    PRIMARY_MEETING_BUSINESSES.map(async (business) => {
+      const brief = await prepareMeetingBrief(supabase, { brand: business.recordBrand });
+      return renderMeetingPrepSection(business.label, brief);
+    }),
+  );
+  return sections.join("\n\n━━━━━━━━━━\n\n");
 }
 
 // /회의기록 {사업} {회의 내용} — 사업별 회의 레코드 생성 + AI 추출(결정·미결·업무) +
