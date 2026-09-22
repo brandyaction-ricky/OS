@@ -12,6 +12,12 @@ function extractSection(markdown: string, heading: string) {
   return match ? match[1].trim() : markdown.slice(0, 1000).trim();
 }
 
+/** "## {heading}" 절을 "- " 글머리표 줄 목록으로 잘라낸다. "(없음)"이거나 없으면 빈 배열. */
+function extractBulletList(markdown: string, heading: string) {
+  const section = extractSection(markdown, heading);
+  return section.split("\n").map((line) => line.replace(/^[-*]\s*/, "").trim()).filter((line) => line && line !== "(없음)");
+}
+
 export interface MeetingPrepKpi { id: string; title: string; current: number; previous: number; unit: string; signal: string }
 export interface MeetingPrepResult {
   latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null;
@@ -35,7 +41,7 @@ export async function prepareMeetingBrief(
   const error = meetings.error || tasks.error || kpis.error;
   if (error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", error.message);
   const latest = (meetings.data ?? []).find((item) => item.status === "done") ?? meetings.data?.[0] ?? null;
-  const pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
+  let pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
   let latestSummary = typeof latest?.metadata?.summary === "string" ? latest.metadata.summary : "";
   let latestTitle = latest?.title ?? "";
   let latestDate = latest?.starts_at ?? null;
@@ -57,6 +63,7 @@ export async function prepareMeetingBrief(
       latestSummary = extractSection(doc.content_md, "핵심 요약");
       latestTitle = doc.title ?? latestTitle;
       latestDate = latestDate ?? doc.updated_at ?? null;
+      if (!pending.length) pending = extractBulletList(doc.content_md, "미결사항");
     }
   }
 

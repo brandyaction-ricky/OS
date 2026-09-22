@@ -77,6 +77,25 @@ test("prepareMeetingBrief falls back to the knowledge-folder weekly summary when
   assert.doesNotMatch(result.latestMeeting.summary, /결정사항/);
   assert.equal(result.latestMeeting.id, "");
   assert.equal(result.latestMeeting.title, "주간 회의 요약 (자영업 교육) — 2026-08-07");
+  assert.equal(result.pending.length, 0); // "(없음)" 절은 빈 목록으로 취급
+});
+
+test("prepareMeetingBrief also falls back to the document's 미결사항 section for pending items", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief();
+  const supabase = fakeSupabase({
+    meetings: [],
+    documents: [{
+      title: "주간 회의 요약 (마이인(진단)) — 2026-09-01",
+      folder: "02_Wiki/마이인/운영/주간회의요약/2026-09",
+      updated_at: "2026-09-01T00:00:00Z",
+      content_md: "# 주간 회의 요약 (마이인(진단)) — 2026-09-01\n\n## 핵심 요약\n- 광고 예산 유지\n\n## 결정사항\n- (없음)\n\n## 미결사항\n- 네이버 유입 원인 미확정\n- 상세페이지 문구 확정 대기",
+    }],
+  });
+  const result = await prepareMeetingBrief(supabase, { brand: "마이인" });
+  // runInNewContext gives arrays from a separate VM realm, so compare content
+  // via JSON rather than assert.deepEqual (which checks realm-bound identity).
+  assert.equal(JSON.stringify(result.pending), JSON.stringify(["네이버 유입 원인 미확정", "상세페이지 문구 확정 대기"]));
+  assert.equal(JSON.stringify(result.latestMeeting.pending), JSON.stringify(result.pending));
 });
 
 test("prepareMeetingBrief stays empty when neither os_records nor the knowledge folder has anything", async () => {
