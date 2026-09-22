@@ -10,9 +10,10 @@ import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAu
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
 import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
 import { PRIMARY_MEETING_BUSINESSES } from "@/lib/meeting-business";
-import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
+import { appendGuidelineEntry, buildMeetingRawDocument, buildMeetingSummaryDocument, guidelineDocumentLocation } from "@/lib/meeting-documents";
 import { prepareMeetingBrief, type MeetingPrepResult } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
+import { checkGuidelineConflicts } from "@/lib/server/guideline-conflict";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,11 @@ const feedbackKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
   { text: "오래됨", callback_data: `fb:${turnId}:stale` },
   { text: "틀림", callback_data: `fb:${turnId}:wrong` },
   { text: "정본 수정", callback_data: `fb:${turnId}:canonical` },
+]] });
+
+const guidelineKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
+  { text: "운영지침에 반영", callback_data: `gl:${turnId}:confirm` },
+  { text: "취소", callback_data: `gl:${turnId}:cancel` },
 ]] });
 
 async function ownerId(supabase: ReturnType<typeof createServiceSupabase>) {
@@ -219,42 +225,87 @@ async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>
   }
 
   const action = data.match(/^act:(\d+):(confirm|cancel)$/);
-  if (!action) { await callbackNotice(callback, "지원하지 않는 버튼입니다."); return { ignored: true }; }
-  const turnId = Number(action[1]);
-  const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
-  if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_ACTION_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
-  if (action[2] === "cancel") {
-    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
-    await editCallbackMessage(callback, `${turn.question}\n\n취소했습니다. OS에는 저장하지 않았습니다.`);
-    await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+  if (action) {
+    const turnId = Number(action[1]);
+    const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+    if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_ACTION_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
+    if (action[2] === "cancel") {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n취소했습니다. OS에는 저장하지 않았습니다.`);
+      await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+    }
+    if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
+    const actionMetadata = turn.metadata as { draft?: TelegramActionDraft; expiresAt?: string } | null;
+    if (actionMetadata?.expiresAt && new Date(actionMetadata.expiresAt).getTime() < Date.now()) {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다. 명령을 다시 보내 주세요.`);
+      await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+    }
+    const draft = actionMetadata?.draft;
+    if (!draft?.title) { await callbackNotice(callback, "기록 초안을 읽지 못했습니다."); return { invalid: true }; }
+    const { data: existingAction } = await supabase.from("os_records").select("id").eq("metadata->>kind", "telegram_confirmed_action").eq("metadata->>telegramTurnId", String(turnId)).is("archived_at", null).maybeSingle();
+    if (existingAction) { await callbackNotice(callback, "이미 OS에 저장된 기록입니다."); return { created: true, recordId: existingAction.id }; }
+    let assigneeId = user.profile_id;
+    if (draft.assigneeUsername) {
+      const { data: target } = await supabase.from("os_telegram_users").select("profile_id").ilike("username", draft.assigneeUsername).eq("status", "approved").maybeSingle();
+      if (!target?.profile_id) { await callbackNotice(callback, `@${draft.assigneeUsername}의 OS 계정 연결을 찾지 못했습니다.`); return { missingAssignee: true }; }
+      assigneeId = target.profile_id;
+    }
+    const { data: record, error: recordError } = await supabase.from("os_records").insert({
+      record_type: draft.recordType, title: draft.title, description: `Telegram에서 확인 후 생성됨. 원문: ${turn.question}`,
+      status: draft.status, priority: "normal", owner_id: user.profile_id, assignee_id: assigneeId, due_date: draft.dueDate,
+      created_by: user.profile_id, updated_by: user.profile_id, tags: ["telegram"], metadata: { kind: "telegram_confirmed_action", telegramTurnId: turnId },
+    }).select("id").single();
+    if (recordError) throw new ApiError(500, "TELEGRAM_ACTION_CREATE_FAILED", "OS 기록을 만들지 못했습니다.");
+    await supabase.from("os_channel_turns").update({ answer: `TELEGRAM_ACTION_CREATED:${record.id}`, metadata: { ...(turn.metadata ?? {}), state: "created", recordId: record.id } }).eq("id", turnId);
+    await editCallbackMessage(callback, `${turn.question}\n\n✅ OS에 저장했습니다.\n${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/home/operations`);
+    await callbackNotice(callback, "OS에 저장했습니다.");
+    return { created: true, recordId: record.id };
   }
-  if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
-  const actionMetadata = turn.metadata as { draft?: TelegramActionDraft; expiresAt?: string } | null;
-  if (actionMetadata?.expiresAt && new Date(actionMetadata.expiresAt).getTime() < Date.now()) {
-    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
-    await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다. 명령을 다시 보내 주세요.`);
-    await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+
+  const guideline = data.match(/^gl:(\d+):(confirm|cancel)$/);
+  if (guideline) {
+    const turnId = Number(guideline[1]);
+    const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+    if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_GUIDELINE_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
+    if (guideline[2] === "cancel") {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_GUIDELINE_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n반영하지 않았습니다.`);
+      await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+    }
+    if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
+    const guidelineMeta = turn.metadata as { business?: MeetingBusiness; decision?: string; conflictsWith?: string | null; meetingTitle?: string; expiresAt?: string } | null;
+    if (guidelineMeta?.expiresAt && new Date(guidelineMeta.expiresAt).getTime() < Date.now()) {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_GUIDELINE_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다.`);
+      await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+    }
+    const business = guidelineMeta?.business; const decision = guidelineMeta?.decision;
+    if (!business?.wikiFolderSegment || !decision) { await callbackNotice(callback, "지침 정보를 읽지 못했습니다."); return { invalid: true }; }
+    const { data: existingDoc } = await supabase.from("os_documents").select("id,content_md,current_version").eq("source", "operating_guideline").eq("source_ref", business.recordBrand).neq("status", "archived").maybeSingle();
+    const nextContent = appendGuidelineEntry(existingDoc?.content_md ?? "", { decision, date: new Date().toISOString().slice(0, 10), meetingTitle: guidelineMeta?.meetingTitle ?? "", supersedes: guidelineMeta?.conflictsWith ?? null, businessLabel: business.label });
+    let documentId = existingDoc?.id as string | undefined;
+    if (existingDoc) {
+      const { error: updateError } = await supabase.from("os_documents").update({ content_md: nextContent, current_version: (existingDoc.current_version ?? 1) + 1, updated_at: new Date().toISOString() }).eq("id", existingDoc.id);
+      if (updateError) { await callbackNotice(callback, "운영지침 갱신에 실패했습니다."); return { failed: true }; }
+    } else {
+      const location = guidelineDocumentLocation(business);
+      const { data: created, error: createError } = await supabase.from("os_documents").insert({
+        title: location.title, content_md: nextContent, folder: location.folder, brand: business.recordBrand, team: "", status: "team",
+        source: "operating_guideline", source_ref: business.recordBrand, owner_id: user.profile_id, created_by: user.profile_id, tags: ["운영지침", business.label],
+      }).select("id").single();
+      if (createError || !created) { await callbackNotice(callback, "운영지침 문서를 만들지 못했습니다."); return { failed: true }; }
+      documentId = created.id as string;
+    }
+    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_GUIDELINE_APPLIED", metadata: { ...(turn.metadata ?? {}), state: "applied", documentId } }).eq("id", turnId);
+    const osUrl = (process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "");
+    await editCallbackMessage(callback, `${turn.question}\n\n✅ 운영지침에 반영했습니다.\n${osUrl}/knowledge?document=${encodeURIComponent(documentId ?? "")}`);
+    await callbackNotice(callback, "운영지침에 반영했습니다.");
+    return { applied: true, documentId };
   }
-  const draft = actionMetadata?.draft;
-  if (!draft?.title) { await callbackNotice(callback, "기록 초안을 읽지 못했습니다."); return { invalid: true }; }
-  const { data: existingAction } = await supabase.from("os_records").select("id").eq("metadata->>kind", "telegram_confirmed_action").eq("metadata->>telegramTurnId", String(turnId)).is("archived_at", null).maybeSingle();
-  if (existingAction) { await callbackNotice(callback, "이미 OS에 저장된 기록입니다."); return { created: true, recordId: existingAction.id }; }
-  let assigneeId = user.profile_id;
-  if (draft.assigneeUsername) {
-    const { data: target } = await supabase.from("os_telegram_users").select("profile_id").ilike("username", draft.assigneeUsername).eq("status", "approved").maybeSingle();
-    if (!target?.profile_id) { await callbackNotice(callback, `@${draft.assigneeUsername}의 OS 계정 연결을 찾지 못했습니다.`); return { missingAssignee: true }; }
-    assigneeId = target.profile_id;
-  }
-  const { data: record, error: recordError } = await supabase.from("os_records").insert({
-    record_type: draft.recordType, title: draft.title, description: `Telegram에서 확인 후 생성됨. 원문: ${turn.question}`,
-    status: draft.status, priority: "normal", owner_id: user.profile_id, assignee_id: assigneeId, due_date: draft.dueDate,
-    created_by: user.profile_id, updated_by: user.profile_id, tags: ["telegram"], metadata: { kind: "telegram_confirmed_action", telegramTurnId: turnId },
-  }).select("id").single();
-  if (recordError) throw new ApiError(500, "TELEGRAM_ACTION_CREATE_FAILED", "OS 기록을 만들지 못했습니다.");
-  await supabase.from("os_channel_turns").update({ answer: `TELEGRAM_ACTION_CREATED:${record.id}`, metadata: { ...(turn.metadata ?? {}), state: "created", recordId: record.id } }).eq("id", turnId);
-  await editCallbackMessage(callback, `${turn.question}\n\n✅ OS에 저장했습니다.\n${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/home/operations`);
-  await callbackNotice(callback, "OS에 저장했습니다.");
-  return { created: true, recordId: record.id };
+
+  await callbackNotice(callback, "지원하지 않는 버튼입니다.");
+  return { ignored: true };
 }
 
 function renderMeetingPrepSection(label: string, brief: MeetingPrepResult) {
@@ -370,6 +421,39 @@ async function handleMeetingRecord(
   return { duplicate: false as const, meetingId: meeting.id as string, rawDocumentId, summaryDocumentId, result, title };
 }
 
+// 회의의 결정사항 전부를 운영지침 후보로 본다(추가 분류 없음 — 대표 결정). 현재
+// 운영지침과 상충하는지만 AI로 참고 판정하고, 실제 반영은 텔레그램 확인 버튼으로
+// 사람이 한다 — 썸네일지침과 같은 원칙("⛔ AI가 현재 지침을 자동 갱신하지 않는다").
+async function sendGuidelineCandidates(
+  supabase: ReturnType<typeof createServiceSupabase>,
+  message: TelegramMessage,
+  externalUserId: string,
+  business: MeetingBusiness,
+  decisions: string[],
+  meetingTitle: string,
+) {
+  if (!decisions.length) return;
+  const { data: existingDoc, error: docError } = await supabase.from("os_documents").select("content_md").eq("source", "operating_guideline").eq("source_ref", business.recordBrand).neq("status", "archived").maybeSingle();
+  if (docError) { console.error("guideline lookup failed", docError); return; }
+  const conflicts = await checkGuidelineConflicts(existingDoc?.content_md ?? "", decisions);
+  for (const item of conflicts) {
+    const { data: pending, error: pendingError } = await supabase.from("os_channel_turns").insert({
+      channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id,
+      question: item.decision, answer: "TELEGRAM_GUIDELINE_PENDING", source_document_ids: [],
+      metadata: { kind: "telegram_guideline_update", state: "pending", business, decision: item.decision, conflictsWith: item.conflictsWith, meetingTitle, expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+    }).select("id").single();
+    if (pendingError || !pending) { console.error("guideline pending insert failed", pendingError); continue; }
+    const preview = [
+      item.conflictsWith ? "⚠️ 운영지침 후보 (기존 지침과 충돌)" : `📌 운영지침 후보 · ${business.label}`,
+      `결정: ${item.decision}`,
+      item.conflictsWith ? `기존 지침: ${item.conflictsWith}` : "",
+      "확인 전에는 반영되지 않습니다.",
+    ].filter(Boolean).join("\n");
+    const sent = await sendTelegram(message.chat.id, preview, message.message_id, guidelineKeyboard(pending.id));
+    await supabase.from("os_channel_turns").update({ response_message_id: sent.message_id ?? null }).eq("id", pending.id);
+  }
+}
+
 async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
   const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/);
   if (!match) return null;
@@ -460,6 +544,7 @@ export async function POST(request: Request) {
           ].join("\n");
       await sendTelegram(message.chat.id, answer, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: documentIds });
+      if (!recorded.duplicate) await sendGuidelineCandidates(supabase, message, externalUserId, parsed.business, recorded.result!.decisions, recorded.title);
       return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, rawDocumentId: recorded.rawDocumentId, summaryDocumentId: recorded.summaryDocumentId });
     }
     if (message.voice) {

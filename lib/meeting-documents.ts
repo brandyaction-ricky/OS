@@ -42,3 +42,24 @@ export function buildMeetingSummaryDocument(business: MeetingBusiness, date: str
   ].join("\n");
   return { title, content_md, folder: `02_Wiki/${business.wikiFolderSegment}/운영/주간회의요약/${date.slice(0, 7)}` };
 }
+
+/** 운영지침 문서(02_Wiki/{사업}/운영/운영지침)의 위치. 사업당 하나, 계속 누적한다. */
+export function guidelineDocumentLocation(business: MeetingBusiness) {
+  return { title: `운영지침 (${business.label})`, folder: `02_Wiki/${business.wikiFolderSegment}/운영` };
+}
+
+/** 확인된 결정 하나를 운영지침에 한 줄 추가한다. 충돌한 기존 줄은 지우지 않고
+ * "대체" 표시만 남긴다(썸네일 지침 문서의 '대체된 지침' 관례와 동일 — 나중에
+ * "그때 왜 바꿨더라"를 찾을 수 있게). 문서가 비어 있으면 제목까지 새로 만든다. */
+export function appendGuidelineEntry(
+  currentContent: string,
+  entry: { decision: string; date: string; meetingTitle: string; supersedes: string | null; businessLabel: string },
+) {
+  const line = [
+    `- **${entry.date}** ${entry.decision}`,
+    entry.meetingTitle ? ` — 회의: ${entry.meetingTitle}` : "",
+    entry.supersedes ? `\n  ↳ 대체: ~~${entry.supersedes}~~` : "",
+  ].join("");
+  const body = currentContent.trim();
+  return body ? `${body}\n${line}` : `# 운영지침 (${entry.businessLabel})\n\n${line}`;
+}

@@ -24,7 +24,9 @@ function localSummary(transcript: string): MeetingSummary {
   };
 }
 
-function jsonText(body: Record<string, unknown>) {
+// Shared with lib/server/guideline-conflict.ts — both parse the same
+// Responses API json_schema output shape.
+export function jsonText(body: Record<string, unknown>) {
   const output = Array.isArray(body.output) ? body.output : [];
   return output.flatMap((item) => item && typeof item === "object" && Array.isArray((item as { content?: unknown[] }).content) ? (item as { content: unknown[] }).content : [])
     .filter((item) => item && typeof item === "object" && (item as { type?: string }).type === "output_text")

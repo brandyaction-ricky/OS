@@ -35,6 +35,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/meeting-documents": await import("../lib/meeting-documents.ts"),
     "@/lib/server/meeting-prep": { prepareMeetingBrief: options.prepareMeetingBrief ?? (async () => ({ latestMeeting: null, pending: [], todos: [], kpis: [] })) },
     "@/lib/server/meeting-summary": { summarizeMeetingText: options.summarizeMeetingText ?? (async () => ({ summary: "", decisions: [], pending: [], todos: [], mode: "local" })) },
+    "@/lib/server/guideline-conflict": { checkGuidelineConflicts: options.checkGuidelineConflicts ?? (async (_current, decisions) => decisions.map((decision) => ({ decision, conflictsWith: null }))) },
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
     "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: typeof options.searchResults === "function" ? options.searchResults(input) : options.searchResults ?? [] }; } },
   };
@@ -211,6 +212,7 @@ test("회의기록 extracts, links decisions/tasks to the meeting and pushes raw
   const ctx = await setup("webhook", (query) => {
     if (query.table === "os_documents") {
       const insertOp = query.operations.find((op) => op.method === "insert");
+      if (!insertOp) return { data: null, error: null }; // guideline-lookup select finds nothing
       return { data: { id: insertOp.args[0].source === "meeting_raw" ? "raw-doc-1" : "summary-doc-1" }, error: null };
     }
     if (query.table !== "os_records") return normalHandler(query);
@@ -255,6 +257,7 @@ test("회의기록 files a non-마이인/브랜디에듀 meeting under the 회�
   const ctx = await setup("webhook", (query) => {
     if (query.table === "os_documents") {
       const insertOp = query.operations.find((op) => op.method === "insert");
+      if (!insertOp) return { data: null, error: null };
       return { data: { id: insertOp.args[0].source === "meeting_raw" ? "raw-doc-2" : "summary-doc-2" }, error: null };
     }
     if (query.table !== "os_records") return normalHandler(query);
@@ -282,6 +285,94 @@ test("resending the same Telegram message does not create a second meeting", asy
   assert.equal(body.meetingRecorded, true);
   assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").length, 0);
   assert.match(ctx.sent[0].text, /이미 기록된 회의입니다/);
+});
+
+test("회의기록 sends one confirm-button candidate per decision, flagging conflicts against the current operating guideline", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_documents") {
+      const insertOp = query.operations.find((op) => op.method === "insert");
+      if (!insertOp) return { data: { content_md: "# 운영지침 (마이인(진단))\n\n- **2026-09-01** 광고 예산은 30만원으로 유지한다" }, error: null };
+      return { data: { id: "doc-1" }, error: null };
+    }
+    if (query.table !== "os_records") return normalHandler(query);
+    const insertOp = query.operations.find((op) => op.method === "insert");
+    if (!insertOp) return { data: null, error: null };
+    return { data: { id: `${insertOp.args[0].record_type}-1` }, error: null };
+  }, {
+    summarizeMeetingText: async () => ({ summary: "요약", decisions: ["광고 예산 20만원 유지", "네이버 유입 캠페인 신규 진행"], pending: [], todos: [], mode: "local" }),
+    checkGuidelineConflicts: async (current, decisions) => {
+      assert.match(current, /30만원으로 유지한다/);
+      return decisions.map((decision) => ({ decision, conflictsWith: decision.includes("20만원") ? "광고 예산은 30만원으로 유지한다" : null }));
+    },
+  });
+  await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다. 네이버 유입 캠페인도 새로 진행한다." }));
+  const guidelineMessages = ctx.sent.filter((m) => m.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data?.startsWith("gl:"));
+  assert.equal(guidelineMessages.length, 2);
+  assert.match(guidelineMessages[0].text, /⚠️ 운영지침 후보 \(기존 지침과 충돌\)/);
+  assert.match(guidelineMessages[0].text, /기존 지침: 광고 예산은 30만원으로 유지한다/);
+  assert.match(guidelineMessages[1].text, /📌 운영지침 후보 · 마이인\(진단\)/);
+  const pendingTurns = ctx.inserts.filter((item) => item.table === "os_channel_turns" && item.payload.answer === "TELEGRAM_GUIDELINE_PENDING");
+  assert.equal(pendingTurns.length, 2);
+  assert.equal(pendingTurns[0].payload.metadata.conflictsWith, "광고 예산은 30만원으로 유지한다");
+  assert.equal(pendingTurns[1].payload.metadata.conflictsWith, null);
+});
+
+test("confirming a 운영지침 candidate creates the document on first use and appends on repeat use, marking superseded lines", async () => {
+  let created = null;
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 71, external_chat_id: "30", question: "광고 예산 20만원 유지", answer: "TELEGRAM_GUIDELINE_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decision: "광고 예산 20만원 유지", conflictsWith: null, meetingTitle: "마이인 회의 · 9월 22일", expiresAt: "2099-01-01T00:00:00Z" } }, error: null };
+    }
+    if (query.table === "os_documents") {
+      if (query.operations.some((op) => op.method === "insert")) { created = query.operations.find((op) => op.method === "insert").args[0]; return { data: { id: "guideline-doc-1" }, error: null }; }
+      return { data: null, error: null }; // no existing guideline doc yet
+    }
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("gl:71:confirm"))).json();
+  assert.equal(body.applied, true);
+  assert.equal(body.documentId, "guideline-doc-1");
+  assert.equal(created.folder, "02_Wiki/마이인/운영");
+  assert.equal(created.title, "운영지침 (마이인(진단))");
+  assert.equal(created.status, "team");
+  assert.match(created.content_md, /^# 운영지침 \(마이인\(진단\)\)/);
+  assert.match(created.content_md, /광고 예산 20만원 유지 — 회의: 마이인 회의 · 9월 22일/);
+  assert.ok(ctx.telegramCalls.some((call) => call.method === "editMessageText" && call.body.text.includes("운영지침에 반영했습니다")));
+});
+
+test("confirming a conflicting 운영지침 candidate appends to the existing document and marks the old line superseded", async () => {
+  let updated = null;
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 72, external_chat_id: "30", question: "광고 예산 20만원 유지", answer: "TELEGRAM_GUIDELINE_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decision: "광고 예산 20만원 유지", conflictsWith: "광고 예산은 30만원으로 유지한다", meetingTitle: "마이인 회의", expiresAt: "2099-01-01T00:00:00Z" } }, error: null };
+    }
+    if (query.table === "os_documents") {
+      if (query.operations.some((op) => op.method === "update")) { updated = query.operations.find((op) => op.method === "update").args[0]; return { data: {}, error: null }; }
+      return { data: { id: "guideline-doc-1", content_md: "# 운영지침 (마이인(진단))\n\n- **2026-09-01** 광고 예산은 30만원으로 유지한다", current_version: 3 }, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("gl:72:confirm"))).json();
+  assert.equal(body.applied, true);
+  assert.match(updated.content_md, /광고 예산은 30만원으로 유지한다/);
+  assert.match(updated.content_md, /광고 예산 20만원 유지/);
+  assert.match(updated.content_md, /대체: ~~광고 예산은 30만원으로 유지한다~~/);
+  assert.equal(updated.current_version, 4);
+});
+
+test("cancelling a 운영지침 candidate never touches os_documents", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 73, external_chat_id: "30", question: "결정", answer: "TELEGRAM_GUIDELINE_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decision: "결정", conflictsWith: null } }, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("gl:73:cancel"))).json();
+  assert.equal(body.cancelled, true);
+  assert.equal(ctx.inserts.some((item) => item.table === "os_documents"), false);
 });
 
 test("an OS action command creates only a pending draft with an explicit confirmation button", async () => {
