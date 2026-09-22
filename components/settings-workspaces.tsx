@@ -371,7 +371,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
 
           {page === "company" ? (
             <>
-              <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} onRefresh={load} />
+              <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header">

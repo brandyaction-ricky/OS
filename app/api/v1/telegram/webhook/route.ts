@@ -7,15 +7,22 @@ import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
 import { captureKind, isBotAddressed } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
+import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
 
 export const runtime = "nodejs";
 
 interface TelegramPhoto { file_id: string; file_size?: number }
 interface TelegramMessage {
-  message_id: number; chat: { id: number; type: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string };
-  text?: string; caption?: string; photo?: TelegramPhoto[]; voice?: { file_id: string }; reply_to_message?: { from?: { is_bot?: boolean; username?: string } };
+  message_id: number; chat: { id: number; type: string; title?: string }; from?: { id: number; first_name?: string; last_name?: string; username?: string };
+  text?: string; caption?: string; photo?: TelegramPhoto[]; voice?: { file_id: string }; reply_to_message?: { message_id?: number; text?: string; from?: { is_bot?: boolean; username?: string } };
 }
-interface TelegramUpdate { update_id: number; message?: TelegramMessage }
+interface TelegramCallbackQuery {
+  id: string;
+  from: NonNullable<TelegramMessage["from"]>;
+  data?: string;
+  message?: TelegramMessage;
+}
+interface TelegramUpdate { update_id: number; message?: TelegramMessage; callback_query?: TelegramCallbackQuery }
 
 function shouldRespond(message: TelegramMessage) {
   return isBotAddressed(message, process.env.TELEGRAM_BOT_USERNAME);
@@ -30,9 +37,26 @@ async function telegramApi(method: string, body: Record<string, unknown>) {
   return result.result ?? {};
 }
 
-async function sendTelegram(chatId: number, text: string, replyTo: number) {
-  await telegramApi("sendMessage", { chat_id: chatId, text: text.slice(0, 3900), reply_parameters: { message_id: replyTo } });
+async function sendTelegram(chatId: number, text: string, replyTo?: number, replyMarkup?: Record<string, unknown>) {
+  return telegramApi("sendMessage", {
+    chat_id: chatId,
+    text: text.slice(0, 3900),
+    ...(replyTo ? { reply_parameters: { message_id: replyTo } } : {}),
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  });
 }
+
+const actionKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
+  { text: "OS에 저장", callback_data: `act:${turnId}:confirm` },
+  { text: "취소", callback_data: `act:${turnId}:cancel` },
+]] });
+
+const feedbackKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
+  { text: "👍 맞음", callback_data: `fb:${turnId}:ok` },
+  { text: "오래됨", callback_data: `fb:${turnId}:stale` },
+  { text: "틀림", callback_data: `fb:${turnId}:wrong` },
+  { text: "정본 수정", callback_data: `fb:${turnId}:canonical` },
+]] });
 
 async function ownerId(supabase: ReturnType<typeof createServiceSupabase>) {
   const email = process.env.TELEGRAM_CAPTURE_OWNER_EMAIL?.trim();
@@ -145,19 +169,123 @@ async function operationalAnswer(supabase: ReturnType<typeof createServiceSupaba
   return `브랜디 OS의 최신 ${intent.label}입니다.\n\n${rows.join("\n")}`;
 }
 
+async function callbackNotice(callback: TelegramCallbackQuery, text: string) {
+  await telegramApi("answerCallbackQuery", { callback_query_id: callback.id, text: text.slice(0, 190), show_alert: false });
+}
+
+async function editCallbackMessage(callback: TelegramCallbackQuery, text: string) {
+  if (!callback.message) return;
+  await telegramApi("editMessageText", { chat_id: callback.message.chat.id, message_id: callback.message.message_id, text: text.slice(0, 3900) });
+}
+
+async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>, callback: TelegramCallbackQuery) {
+  const data = callback.data ?? "";
+  const chatId = String(callback.message?.chat.id ?? "");
+  const userId = String(callback.from.id);
+  const { data: user, error: userError } = await supabase.from("os_telegram_users").select("status,profile_id").eq("external_user_id", userId).maybeSingle();
+  if (userError || user?.status !== "approved") {
+    await callbackNotice(callback, "승인된 사용자만 처리할 수 있습니다.");
+    return { blocked: true };
+  }
+
+  const feedback = data.match(/^fb:(\d+):(ok|stale|wrong|canonical)$/);
+  if (feedback) {
+    const turnId = Number(feedback[1]); const kind = feedback[2];
+    const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,source_document_ids").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+    if (error || !turn || turn.external_chat_id !== chatId) { await callbackNotice(callback, "답변 기록을 찾지 못했습니다."); return { missing: true }; }
+    const { error: feedbackError } = await supabase.from("os_telegram_feedback").upsert({ turn_id: turnId, reporter_external_user_id: userId, kind }, { onConflict: "turn_id,reporter_external_user_id" });
+    if (feedbackError) throw new ApiError(500, "TELEGRAM_FEEDBACK_FAILED", "피드백을 저장하지 못했습니다.");
+    if (kind !== "ok" && user.profile_id) {
+      const dedupeKey = `telegram-feedback:${turnId}`;
+      const { data: existing } = await supabase.from("os_records").select("id").eq("record_type", "task").eq("metadata->>dedupeKey", dedupeKey).is("archived_at", null).maybeSingle();
+      if (!existing) {
+        const label = kind === "stale" ? "오래된 답변" : kind === "wrong" ? "잘못된 답변" : "정본 수정 요청";
+        const { error: taskError } = await supabase.from("os_records").insert({
+          record_type: "task", title: `[Telegram] ${label}: ${String(turn.question).slice(0, 140)}`,
+          description: `질문: ${turn.question}\n\n답변: ${turn.answer}`.slice(0, 20_000), status: "backlog", priority: kind === "wrong" ? "high" : "normal",
+          owner_id: user.profile_id, assignee_id: user.profile_id, created_by: user.profile_id, updated_by: user.profile_id,
+          tags: ["telegram", "answer-feedback"], metadata: { kind: "telegram_answer_feedback", dedupeKey, turnId, feedback: kind, sourceDocumentIds: turn.source_document_ids ?? [] },
+        });
+        if (taskError && taskError.code !== "23505") throw new ApiError(500, "TELEGRAM_FEEDBACK_TASK_FAILED", "피드백은 저장했지만 확인 업무를 만들지 못했습니다.");
+      }
+    }
+    await callbackNotice(callback, kind === "ok" ? "확인했습니다. 감사합니다." : user.profile_id ? "피드백과 확인 업무를 OS에 기록했습니다." : "피드백은 저장했습니다. OS 업무 생성은 계정 연결 후 가능합니다.");
+    return { feedback: kind };
+  }
+
+  const action = data.match(/^act:(\d+):(confirm|cancel)$/);
+  if (!action) { await callbackNotice(callback, "지원하지 않는 버튼입니다."); return { ignored: true }; }
+  const turnId = Number(action[1]);
+  const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+  if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_ACTION_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
+  if (action[2] === "cancel") {
+    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
+    await editCallbackMessage(callback, `${turn.question}\n\n취소했습니다. OS에는 저장하지 않았습니다.`);
+    await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+  }
+  if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
+  const actionMetadata = turn.metadata as { draft?: TelegramActionDraft; expiresAt?: string } | null;
+  if (actionMetadata?.expiresAt && new Date(actionMetadata.expiresAt).getTime() < Date.now()) {
+    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
+    await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다. 명령을 다시 보내 주세요.`);
+    await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+  }
+  const draft = actionMetadata?.draft;
+  if (!draft?.title) { await callbackNotice(callback, "기록 초안을 읽지 못했습니다."); return { invalid: true }; }
+  const { data: existingAction } = await supabase.from("os_records").select("id").eq("metadata->>kind", "telegram_confirmed_action").eq("metadata->>telegramTurnId", String(turnId)).is("archived_at", null).maybeSingle();
+  if (existingAction) { await callbackNotice(callback, "이미 OS에 저장된 기록입니다."); return { created: true, recordId: existingAction.id }; }
+  let assigneeId = user.profile_id;
+  if (draft.assigneeUsername) {
+    const { data: target } = await supabase.from("os_telegram_users").select("profile_id").ilike("username", draft.assigneeUsername).eq("status", "approved").maybeSingle();
+    if (!target?.profile_id) { await callbackNotice(callback, `@${draft.assigneeUsername}의 OS 계정 연결을 찾지 못했습니다.`); return { missingAssignee: true }; }
+    assigneeId = target.profile_id;
+  }
+  const { data: record, error: recordError } = await supabase.from("os_records").insert({
+    record_type: draft.recordType, title: draft.title, description: `Telegram에서 확인 후 생성됨. 원문: ${turn.question}`,
+    status: draft.status, priority: "normal", owner_id: user.profile_id, assignee_id: assigneeId, due_date: draft.dueDate,
+    created_by: user.profile_id, updated_by: user.profile_id, tags: ["telegram"], metadata: { kind: "telegram_confirmed_action", telegramTurnId: turnId },
+  }).select("id").single();
+  if (recordError) throw new ApiError(500, "TELEGRAM_ACTION_CREATE_FAILED", "OS 기록을 만들지 못했습니다.");
+  await supabase.from("os_channel_turns").update({ answer: `TELEGRAM_ACTION_CREATED:${record.id}`, metadata: { ...(turn.metadata ?? {}), state: "created", recordId: record.id } }).eq("id", turnId);
+  await editCallbackMessage(callback, `${turn.question}\n\n✅ OS에 저장했습니다.\n${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/home/operations`);
+  await callbackNotice(callback, "OS에 저장했습니다.");
+  return { created: true, recordId: record.id };
+}
+
+async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
+  const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/);
+  if (!match) return null;
+  if (!profileId) throw new ApiError(403, "TELEGRAM_PROFILE_REQUIRED", "OS 구성원 계정 연결 후 사용할 수 있습니다.");
+  const { data: profile } = await supabase.from("os_profiles").select("role,is_active").eq("id", profileId).maybeSingle();
+  if (!profile?.is_active || profile.role !== "admin") throw new ApiError(403, "TELEGRAM_ADMIN_REQUIRED", "관리자만 팀 요약을 설정할 수 있습니다.");
+  const enabled = match[1] === "켜기"; const hour = match[2] === undefined ? 9 : Number(match[2]);
+  if (hour < 0 || hour > 23) throw new ApiError(400, "INVALID_DIGEST_HOUR", "요약 시간은 0~23시로 입력해 주세요.");
+  const { error } = await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", digest_enabled: enabled, digest_hour_kst: hour, enabled_by: profileId, updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });
+  if (error) throw new ApiError(500, "DIGEST_SETTING_FAILED", "팀 요약 설정을 저장하지 못했습니다.");
+  return enabled ? `변경이 있을 때만 매일 ${hour}시(KST)에 팀 요약을 보냅니다.` : "팀 요약을 껐습니다.";
+}
+
 export async function POST(request: Request) {
   let verifiedMessage: TelegramMessage | undefined;
   let savedDocumentId = "";
   try {
     const expected = process.env.TELEGRAM_WEBHOOK_SECRET ?? ""; const received = request.headers.get("x-telegram-bot-api-secret-token") ?? "";
     if (!expected || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WEBHOOK_SECRET", "웹훅 인증에 실패했습니다.");
-    const message = (await request.json() as TelegramUpdate).message;
+    const update = await request.json() as TelegramUpdate;
+    if (update.callback_query) {
+      const result = await handleCallback(createServiceSupabase(), update.callback_query);
+      return NextResponse.json({ ok: true, ...result });
+    }
+    const message = update.message;
     if (!message?.from || !shouldRespond(message)) return NextResponse.json({ ok: true, ignored: true });
-    const text = (message.text ?? message.caption ?? "").replace(/@[A-Za-z0-9_]+/g, "").trim(); const kind = captureKind(text); const supabase = createServiceSupabase();
+    const rawText = (message.text ?? message.caption ?? "").trim();
+    const botUsername = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
+    const text = botUsername ? rawText.replace(new RegExp(`@${botUsername}\\b`, "ig"), "").trim() : rawText;
+    const kind = captureKind(text); const supabase = createServiceSupabase();
     verifiedMessage = message;
     const externalUserId = String(message.from.id);
     const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
-    const { data: registered, error: registrationError } = await supabase.from("os_telegram_users").select("status").eq("external_user_id", externalUserId).maybeSingle();
+    const { data: registered, error: registrationError } = await supabase.from("os_telegram_users").select("status,profile_id").eq("external_user_id", externalUserId).maybeSingle();
     if (registrationError) throw new ApiError(503, "TELEGRAM_REGISTRATION_READ_FAILED", "사용자 승인 상태를 확인하지 못했습니다. 잠시 뒤 다시 요청해 주세요.");
     if (!allowed.has(externalUserId) && registered?.status !== "approved") {
       const { error: pendingError } = await supabase.from("os_telegram_users").upsert({
@@ -173,6 +301,7 @@ export async function POST(request: Request) {
       await sendTelegram(message.chat.id, registered?.status === "rejected" ? "접근 요청이 거절된 상태입니다. 관리자에게 승인을 문의해 주세요." : "등록 요청을 확인했습니다. 관리자가 승인하면 브랜디 OS를 사용할 수 있습니다.", message.message_id);
       return NextResponse.json({ ok: true, blocked: true, registrationPending: true });
     }
+    await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });
     if (message.voice) {
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[음성 메시지]", answer: "TELEGRAM_UNSUPPORTED_VOICE", source_document_ids: [] });
       await sendTelegram(message.chat.id, "음성 전사·개인 메모 저장은 아직 연결되지 않았습니다. 저장된 내용은 없습니다. 텍스트로 보내 주세요.", message.message_id);
@@ -194,10 +323,28 @@ export async function POST(request: Request) {
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
     if (/^\/?start$/i.test(text)) {
-      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용해 주세요.";
+      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
       await sendTelegram(message.chat.id, welcome, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
       return NextResponse.json({ ok: true, started: true });
+    }
+    const digestResponse = await configureDigest(supabase, message, registered?.profile_id ?? null, rawText);
+    if (digestResponse) {
+      await sendTelegram(message.chat.id, digestResponse, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: digestResponse, source_document_ids: [] });
+      return NextResponse.json({ ok: true, digestConfigured: true });
+    }
+    const actionDraft = parseTelegramAction(rawText);
+    if (actionDraft) {
+      if (!registered?.profile_id) throw new ApiError(403, "TELEGRAM_PROFILE_REQUIRED", "OS 구성원 계정 연결 후 업무·결정 기록을 만들 수 있습니다. 관리자에게 설정의 Telegram 계정 연결을 요청해 주세요.");
+      const { data: pending, error: pendingError } = await supabase.from("os_channel_turns").insert({
+        channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id,
+        question: text, answer: "TELEGRAM_ACTION_PENDING", source_document_ids: [], metadata: { kind: "telegram_action", state: "pending", expiresAt: new Date(Date.now() + 86_400_000).toISOString(), draft: actionDraft },
+      }).select("id").single();
+      if (pendingError) throw new ApiError(500, "TELEGRAM_ACTION_DRAFT_FAILED", "확인할 기록 초안을 만들지 못했습니다.");
+      const sent = await sendTelegram(message.chat.id, actionPreview(actionDraft), message.message_id, actionKeyboard(pending.id));
+      await supabase.from("os_channel_turns").update({ response_message_id: sent.message_id ?? null }).eq("id", pending.id);
+      return NextResponse.json({ ok: true, actionPending: true });
     }
     const actor: RequestActor = {
       type: "agent",
@@ -214,19 +361,27 @@ export async function POST(request: Request) {
       mustChangePassword: false,
       supabase,
     };
-    const authorityQuery = telegramAuthorityQueryText(text);
+    let priorContext: { question: string; answer: string } | null = null;
+    if (message.reply_to_message?.from?.is_bot && message.reply_to_message.message_id) {
+      const { data: prior } = await supabase.from("os_channel_turns")
+        .select("question,answer").eq("channel", "telegram").eq("external_chat_id", String(message.chat.id))
+        .eq("response_message_id", message.reply_to_message.message_id).maybeSingle();
+      if (prior && !String(prior.answer).startsWith("TELEGRAM_")) priorContext = { question: prior.question, answer: prior.answer };
+    }
+    const retrievalQuestion = priorContext ? `${priorContext.question}\n후속 질문: ${text}` : text;
+    const authorityQuery = telegramAuthorityQueryText(retrievalQuestion);
     const [knowledgeSearches, liveOperations] = await Promise.all([
       Promise.all([
         // Retrieve a wider hybrid candidate set, then apply the Telegram-specific
         // lexical evidence gate below. The RPC's vector/keyword RRF can otherwise
         // truncate the literal answer chunk before application-side reranking.
-        searchDocuments(actor, { query: text, mode: "hybrid", topK: 30, filters: { statuses: ["canonical"] } }),
+        searchDocuments(actor, { query: retrievalQuestion, mode: "hybrid", topK: 30, filters: { statuses: ["canonical"] } }),
         // A broad topic query can still omit the governing procedure from the
         // candidate window entirely. Add a bounded role-specific lookup for
         // recognized how-to questions before applying the same evidence gate.
         ...(authorityQuery ? [searchDocuments(actor, { query: authorityQuery, mode: "hybrid" as const, topK: 8, filters: { statuses: ["canonical" as const] } })] : []),
       ]),
-      operationalAnswer(supabase, text),
+      operationalAnswer(supabase, retrievalQuestion),
     ]);
     const seenChunks = new Set<string>();
     const results = knowledgeSearches.flatMap((search) => search.results).filter((result) => {
@@ -239,16 +394,25 @@ export async function POST(request: Request) {
     // evidence overlap after removing an optional leading label before using
     // semantic candidates, so an embedding nearest-neighbour is never shown
     // as proof for an unrelated or misunderstood request.
-    const evidenceQuery = evidenceQueryText(text);
-    const verifiedResults = rankTelegramEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery).slice(0, 8);
-    const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults) : "";
+    const evidenceQuery = evidenceQueryText(retrievalQuestion);
+    const literalResults = rankTelegramEvidence(results.filter((result) => hasLexicalEvidence(result, evidenceQuery)), evidenceQuery).slice(0, 12);
+    const conflictNotice = knowledgeConflictNotice(retrievalQuestion, literalResults);
+    const activeResults = literalResults.filter((result) => !isOutdatedEvidence(result));
+    const verifiedResults = activeResults.slice(0, 8);
+    const knowledgeAnswer = verifiedResults.length ? await answerFromKnowledge(text, verifiedResults, priorContext ?? undefined, conflictNotice) : "";
     // A bare topic word (e.g. "콘텐츠") should not force an unrelated live
     // operations listing into a question that grounded company knowledge
     // already answers. Only surface the operations listing when no verified
     // document evidence was found for the actual question.
-    const answer = [verifiedResults.length ? "" : liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
-    await sendTelegram(message.chat.id, answer, message.message_id);
-    await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), question: text, answer, source_document_ids: [...new Set(verifiedResults.map((result) => result.documentId))] });
+    const answer = [conflictNotice, verifiedResults.length ? "" : liveOperations, knowledgeAnswer].filter(Boolean).join("\n\n") || "관련 회사 지식이나 운영 기록을 찾지 못했습니다. 핵심 단어를 바꿔 다시 물어봐 주세요.";
+    const { data: turn, error: turnError } = await supabase.from("os_channel_turns").insert({
+      channel: "telegram", external_user_id: String(message.from.id), external_chat_id: String(message.chat.id), request_message_id: message.message_id,
+      reply_to_message_id: message.reply_to_message?.message_id ?? null, question: text, answer,
+      source_document_ids: [...new Set(verifiedResults.map((result) => result.documentId))], metadata: priorContext ? { kind: "knowledge_followup", priorQuestion: priorContext.question } : { kind: "knowledge_answer" },
+    }).select("id").single();
+    if (turnError) throw new ApiError(500, "TELEGRAM_TURN_LOG_FAILED", "답변 기록을 저장하지 못했습니다.");
+    const sent = await sendTelegram(message.chat.id, answer, message.message_id, feedbackKeyboard(turn.id));
+    await supabase.from("os_channel_turns").update({ response_message_id: sent.message_id ?? null }).eq("id", turn.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     // Never disclose failures to an unauthenticated webhook sender or imply a failed save succeeded.

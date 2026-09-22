@@ -1,12 +1,12 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-21 Asia/Seoul.
+Updated: 2026-09-22 Asia/Seoul.
 
 ## Decision
 
-The reviewed nine-file active chain is recorded in the isolated `brandyaction-os-dev` project. Do not replay the schema baseline against Production. `supabase/migrations` contains the locally validated, schema-only snapshot of the Production `public` schema, six previously applied forward migrations, the update-quota patch, and the forward migration for separate folder-move limits and safe retry metadata. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
+The reviewed ten-file active chain contains the isolated `brandyaction-os-dev` schema, the nine migrations already applied to DEV and Production where separately approved, and the Telegram team-workflow migration. Do not replay the schema baseline against Production. The newest migration adds Telegram message receipts, OS-profile links, feedback, confirmed actions, and opt-in digest state; its timestamp follows the independently merged agent write-limit migration. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
-The user approved DEV and Production application on 2026-09-21 after repository and Preview checks. DEV records both `20260921140000_agent_update_daily_limit.sql` and `20260921233000_agent_write_rate_limit_metadata.sql`; the live verification confirmed nine history rows. Production records both migrations as well; its postflight verification confirmed 12 history rows, a 1,000-write update fallback, the separate move bucket, RLS, no public/anon/authenticated table access, service-role-only configuration access, and the audit-log lookup index. `npm run db:migrations:verify` remains the repository-integrity check; `db:migrations:ready` is intentionally false because the broader historical baseline is not reconciled. This does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
+The user explicitly approved DEV and Production database application plus Production deployment on 2026-09-22 after the repository tests and first Preview passed. The manifest records `ready` / `apply`; the Telegram migration has been applied and verified in Production, while DEV remains pending. This approval does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
 
 ## Current tooling state
 
@@ -21,9 +21,9 @@ The first local apply exposed two snapshot portability issues: a function-scoped
 
 ## Evidence
 
-- The active migration chain contains the CLI-generated `core_baseline` snapshot and eight forward migrations. Their checksums are pinned in the manifest. Later migrations add the agent update quota, append-only development-request comments, `@`멘션·담당 지정 알림, the indexed knowledge-search repair, and separate agent folder-move limits with safe retry metadata. The 14 ordered legacy files and original SHA-256 checksums remain preserved in `supabase/migrations-legacy`.
-- Production migration history contains 12 entries, with five exact repository migration matches: the agent update-quota patch, development-request comments, development notifications, indexed knowledge search, and agent write rate-limit metadata. The latest postflight confirmed the separate move bucket, 1,000-write update fallback, RLS, service-role-only table access, and audit-log lookup index. Notification verification remains unchanged: the record type, two indexes, both triggers, mention-aware comment guard, safe `SECURITY DEFINER` search path, and execution denial for `PUBLIC`, `anon`, and `authenticated` all passed; the two existing comments were preserved and no notification fixture was created.
-- DEV records all nine active migration versions. It retains the two DEV comments and one completed notification QA record, and contains the indexed knowledge-search function, notification guard/creation triggers, inbox/deduplication indexes, comment guard, agent write-limit metadata, and restored Auth profile trigger. Direct execution of privileged service-only functions is denied to `PUBLIC`, `anon`, and `authenticated`, while `service_role` remains allowed.
+- The active migration chain contains the CLI-generated `core_baseline` snapshot and nine forward migrations. Their checksums are pinned in the manifest. The newest migration is schema-only and adds two RLS-protected Telegram workflow tables plus additive receipt/profile-link columns and deduplication indexes. The 14 ordered legacy files and original SHA-256 checksums remain preserved in `supabase/migrations-legacy`.
+- Production migration history now contains 13 entries, with six exact repository migration matches: the agent update-quota patch, development-request comments, development notifications, indexed knowledge search, agent write rate-limit metadata, and Telegram team workflow. The Telegram postflight confirmed four receipt/metadata columns, one profile-link column, two RLS-enabled tables, four indexes, and three policies.
+- DEV currently records all preceding nine active migration versions. It retains the indexed knowledge-search function, notification controls, agent write-limit metadata, and restored Auth profile trigger. The Telegram migration is pending until the approved application and postflight below complete.
 - The first repository migration explicitly requires pre-existing `os_profiles`, `os_documents`, `os_doc_status`, and `os_search_knowledge` contracts and raises `OS_CORE_SCHEMA_REQUIRED` without them.
 - The snapshot contains 34 tables, 5 enum types, 35 functions, 36 policies, 58 indexes, 10 triggers, and RLS enabled on all 34 public tables. Production and rebuilt Local object inventories match with no missing or unexpected objects.
 - A clean local `supabase db reset --local --no-seed` succeeded for the original three-migration chain. The fourth privilege-hardening migration was then applied incrementally to the same local database and DEV, producing exactly four migration-history entries in both targets. A destructive zero-state reset of the four-migration chain was not repeated because that separate reset approval was not granted.
@@ -54,15 +54,17 @@ New Supabase projects also no longer guarantee automatic Data API grants for new
 - [x] Rebuild the original three-migration chain from zero after explicit approval to discard the prior local database.
 - [x] After explicit DEV approval, change the manifest to `ready`/`apply` and pass `npm run db:migrations:ready`.
 - [x] Apply all nine active migrations to the isolated DEV project without seed/Vault changes and record remote verification.
+- [x] Apply and verify the tenth Telegram workflow migration in Production under the 2026-09-22 explicit approval (history 13, public tables 37, public policies 39).
+- [ ] Apply and verify the tenth Telegram workflow migration in DEV under the 2026-09-22 explicit approval.
 - [x] After separate Production approval, preflight and apply the notification migration, preserve the two existing comments, and verify history, constraints, indexes, triggers, function privileges, and zero notification fixtures.
 - [x] After separate Production approval, preflight and apply the agent write rate-limit metadata migration, then verify migration history, the move bucket, 1,000-write update fallback, RLS, service-role-only configuration access, and the audit-log lookup index.
-- [ ] Repeat a destructive local zero-state reset for the complete nine-file chain only after separate approval; incremental validation and the automated suite already pass.
+- [ ] Repeat a destructive local zero-state reset for the complete ten-file chain only after separate approval; incremental validation and the automated suite already pass.
 
 The command sequence and review expectations follow Supabase's [local development workflow](https://supabase.com/docs/guides/local-development/cli-workflows), with the stricter constraint that Production is never modified while the baseline is captured.
 
 ## Production reconciliation gate
 
-The notification and agent write rate-limit metadata Production gates are complete: live prerequisites were checked, explicit approval named Production Supabase and Vercel impact, each migration was applied transactionally, and postflight verification passed. A fresh inventory also confirms the knowledge-search and update-quota migrations in both DEV and Production. Broader baseline reconciliation remains a different operation. `supabase migration repair` changes tracking records without applying SQL, so it still requires a separately reviewed mapping and explicit Production approval.
+The notification, agent write rate-limit metadata, and Telegram team-workflow Production gates are complete: live prerequisites were checked, explicit approval named Production Supabase and Vercel impact, each migration was applied transactionally, and postflight verification passed. A fresh inventory also confirms the knowledge-search and update-quota migrations in both DEV and Production. Broader baseline reconciliation remains a different operation. `supabase migration repair` changes tracking records without applying SQL, so it still requires a separately reviewed mapping and explicit Production approval.
 
 Never reset Production, replay the legacy chain blindly, copy Production data into DEV, or use Production credentials for connected tests.
 
