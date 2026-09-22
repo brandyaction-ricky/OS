@@ -11,11 +11,11 @@
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 12,
-    "productionExactRepositoryMatches": 5,
+    "productionHistoryCount": 13,
+    "productionExactRepositoryMatches": 6,
     "developmentHistoryCount": 9,
     "pendingDevelopmentMigrationCount": 1,
-    "pendingProductionMigrationCount": 1,
+    "pendingProductionMigrationCount": 0,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -131,8 +131,10 @@
       "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs"
     },
     "productionValidation": {
-      "appliedAt": "2026-09-21",
-      "migrationHistoryCount": 12,
+      "appliedAt": "2026-09-22",
+      "migrationHistoryCount": 13,
+      "publicTables": 37,
+      "publicPolicies": 39,
       "agentUpdateQuotaMigrationPresent": true,
       "agentWriteRateLimitMetadataMigrationPresent": true,
       "agentUpdateDayLimit": 1000,
@@ -154,7 +156,14 @@
       "anonymousFunctionExecution": false,
       "authenticatedFunctionExecution": false,
       "serviceRoleFunctionExecution": true,
-      "securityDefinerSearchPathSafe": true
+      "securityDefinerSearchPathSafe": true,
+      "telegramTeamWorkflowMigrationPresent": true,
+      "telegramTurnReceiptColumns": 4,
+      "telegramProfileLinkColumnPresent": true,
+      "telegramWorkflowTables": 2,
+      "telegramWorkflowIndexes": 4,
+      "telegramWorkflowPolicies": 3,
+      "telegramWorkflowTablesRlsEnabled": 2
     }
   },
   "forwardMigrations": [
