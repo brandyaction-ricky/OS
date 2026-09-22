@@ -13,6 +13,9 @@ test("meeting business aliases resolve to the exact os_records.brand and knowled
   assert.deepEqual(resolveMeetingBusiness("myin"), { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" });
   assert.deepEqual(resolveMeetingBusiness("교육"), { recordBrand: "브랜디액션 에듀", wikiFolderSegment: "브랜디에듀", label: "자영업 교육" });
   assert.deepEqual(resolveMeetingBusiness("브랜디에듀"), { recordBrand: "브랜디액션 에듀", wikiFolderSegment: "브랜디에듀", label: "자영업 교육" });
+  assert.deepEqual(resolveMeetingBusiness("회사"), { recordBrand: "브랜디액션", wikiFolderSegment: "회사", label: "브랜디액션(전체)" });
+  assert.deepEqual(resolveMeetingBusiness("전체"), { recordBrand: "브랜디액션", wikiFolderSegment: "회사", label: "브랜디액션(전체)" });
+  assert.deepEqual(resolveMeetingBusiness("브랜디액션"), { recordBrand: "브랜디액션", wikiFolderSegment: "회사", label: "브랜디액션(전체)" });
   assert.equal(resolveMeetingBusiness("모르는사업"), null);
 });
 

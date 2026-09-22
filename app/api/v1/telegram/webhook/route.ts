@@ -415,7 +415,7 @@ export async function POST(request: Request) {
       if (!registered?.profile_id) throw new ApiError(403, "TELEGRAM_PROFILE_REQUIRED", "OS 구성원 계정 연결 후 회의를 기록할 수 있습니다. 관리자에게 설정의 Telegram 계정 연결을 요청해 주세요.");
       const parsed = parseMeetingRecordCommand(text);
       if (!parsed) {
-        const usage = "사용법: /회의기록 [사업] [회의 내용]\n예) /회의기록 마이인 광고 예산 20만원 유지 결정. 네이버 유입 원인 파악은 에릭이 이번주까지.\n사업은 마이인 또는 브랜디에듀(교육)만 인식합니다. 저장하지 않았습니다.";
+        const usage = "사용법: /회의기록 [사업] [회의 내용]\n예) /회의기록 마이인 광고 예산 20만원 유지 결정. 네이버 유입 원인 파악은 에릭이 이번주까지.\n사업은 마이인, 브랜디에듀(교육), 회사(전체)만 인식합니다. 저장하지 않았습니다.";
         await sendTelegram(message.chat.id, usage, message.message_id);
         await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: usage, source_document_ids: [] });
         return NextResponse.json({ ok: true, meetingUsage: true });

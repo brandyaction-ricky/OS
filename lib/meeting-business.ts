@@ -15,6 +15,9 @@ export interface MeetingBusiness {
 // os_records.brand 표기(성과관리·회의·업무 등에서 공통으로 쓰는 값)를 그대로 따른다.
 const MYIN: MeetingBusiness = { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" };
 const BRANDYEDU: MeetingBusiness = { recordBrand: "브랜디액션 에듀", wikiFolderSegment: "브랜디에듀", label: "자영업 교육" };
+// 마이인·브랜디에듀 어느 쪽도 아닌 회의(콘텐츠 운영, 전사 경영 등)의 목적지.
+// 기존에 이미 쓰이는 02_Wiki/회사/전략 같은 "회사" 최상위 폴더 관례를 그대로 따른다.
+const COMPANY: MeetingBusiness = { recordBrand: "브랜디액션", wikiFolderSegment: "회사", label: "브랜디액션(전체)" };
 
 const BRAND_ALIASES: Record<string, MeetingBusiness> = {
   "마이인": MYIN,
@@ -24,6 +27,10 @@ const BRAND_ALIASES: Record<string, MeetingBusiness> = {
   "자영업교육": BRANDYEDU,
   "교육": BRANDYEDU,
   "brandyedu": BRANDYEDU,
+  "회사": COMPANY,
+  "전체": COMPANY,
+  "브랜디액션": COMPANY,
+  "company": COMPANY,
 };
 
 export function resolveMeetingBusiness(token: string): MeetingBusiness | null {
