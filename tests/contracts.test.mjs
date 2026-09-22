@@ -122,7 +122,7 @@ test("meeting recordings stay private, bounded, and use signed playback URLs", a
 });
 
 test("meeting summaries degrade locally and create linked actions", async () => {
-  const route = await readFile(new URL("../app/api/v1/meeting-summary/route.ts", import.meta.url), "utf8");
+  const route = await readFile(new URL("../lib/server/meeting-summary.ts", import.meta.url), "utf8");
   const workspace = await readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8");
   assert.match(route, /localSummary/);
   assert.match(route, /OPENAI_API_KEY/);

@@ -30,6 +30,9 @@ async function setup(file, handler, options = {}) {
     "@/lib/telegram-intents": intents,
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/telegram-team": await import("../lib/telegram-team.ts"),
+    "@/lib/telegram-meeting": await import("../lib/telegram-meeting.ts"),
+    "@/lib/server/meeting-prep": { prepareMeetingBrief: options.prepareMeetingBrief ?? (async () => ({ latestMeeting: null, pending: [], todos: [], kpis: [] })) },
+    "@/lib/server/meeting-summary": { summarizeMeetingText: options.summarizeMeetingText ?? (async () => ({ summary: "", decisions: [], pending: [], todos: [], mode: "local" })) },
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
     "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: typeof options.searchResults === "function" ? options.searchResults(input) : options.searchResults ?? [] }; } },
   };
@@ -154,6 +157,78 @@ test("start returns usage guidance instead of searching arbitrary knowledge", as
   const body = await (await ctx.api.POST(incoming({ text: "/start" }))).json();
   assert.equal(body.started, true);
   assert.match(ctx.sent[0].text, /회사 지식 질문/);
+});
+
+test("회의준비 answers with the prep brief instead of a knowledge search", async () => {
+  const ctx = await setup("webhook", normalHandler, {
+    prepareMeetingBrief: async (_db, { brand }) => {
+      assert.equal(brand, "마이인");
+      return { latestMeeting: null, pending: ["네이버 유입 원인 미확정"], todos: [{ title: "진단 문항 확정", due_date: "2026-09-30" }], kpis: [{ id: "k1", title: "매출", current: 100, previous: 90, unit: "만원", signal: "양호" }] };
+    },
+  });
+  const body = await (await ctx.api.POST(incoming({ text: "/회의준비 마이인" }))).json();
+  assert.equal(body.meetingPrep, true);
+  assert.match(ctx.sent[0].text, /네이버 유입 원인 미확정/);
+  assert.match(ctx.sent[0].text, /진단 문항 확정 · 2026-09-30/);
+  assert.equal(ctx.searchCalls.length, 0);
+});
+
+test("회의기록 without a recognized business sends usage guidance and saves nothing", async () => {
+  const ctx = await setup("webhook", normalHandler);
+  const body = await (await ctx.api.POST(incoming({ text: "/회의기록 모르는사업 아무 내용" }))).json();
+  assert.equal(body.meetingUsage, true);
+  assert.match(ctx.sent[0].text, /사업은 마이인 또는 브랜디에듀/);
+  assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records").length, 0);
+});
+
+test("회의기록 requires an OS-linked profile before it will create records", async () => {
+  const ctx = await setup("webhook", (q) => q.table === "os_telegram_users" ? { data: { status: "approved", profile_id: null }, error: null } : normalHandler(q));
+  const body = await (await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다." }))).json();
+  assert.equal(body.handledError, true);
+  assert.match(ctx.sent[0].text, /OS 구성원 계정 연결 후/);
+  assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records").length, 0);
+});
+
+test("회의기록 extracts, links decisions/tasks to the meeting and pushes a knowledge document", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_documents") return { data: { id: "document-1" }, error: null };
+    if (query.table !== "os_records") return normalHandler(query);
+    const insertOp = query.operations.find((op) => op.method === "insert");
+    if (!insertOp) return { data: null, error: null }; // duplicate-check select finds nothing
+    return { data: { id: `${insertOp.args[0].record_type}-1` }, error: null };
+  }, {
+    summarizeMeetingText: async (transcript, meetingDate) => {
+      assert.match(transcript, /광고 예산/);
+      assert.match(meetingDate, /^\d{4}-\d{2}-\d{2}$/);
+      return { summary: "- 광고 예산 유지 결정", decisions: ["광고 예산 20만원 유지"], pending: ["네이버 유입 원인 미확정"], todos: [{ title: "네이버 유입 분석", assignee: "에릭", dueDate: "", dueLabel: "이번주" }], mode: "local" };
+    },
+  });
+  const body = await (await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다. 네이버 유입 원인은 아직 모른다." }))).json();
+  assert.equal(body.meetingRecorded, true);
+  assert.equal(body.meetingId, "meeting-1");
+  assert.equal(body.documentId, "document-1");
+  const meetingInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").payload;
+  assert.equal(meetingInsert.brand, "마이인"); assert.equal(meetingInsert.status, "done");
+  const decisionInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "decision").payload;
+  assert.equal(decisionInsert.parent_id, "meeting-1");
+  const taskInsert = ctx.inserts.find((insert) => insert.table === "os_records" && insert.payload.record_type === "task").payload;
+  assert.equal(taskInsert.parent_id, "meeting-1"); assert.equal(taskInsert.metadata.assigneeName, "에릭");
+  const documentInsert = ctx.inserts.find((insert) => insert.table === "os_documents").payload;
+  assert.equal(documentInsert.status, "draft"); assert.equal(documentInsert.source, "meeting"); assert.equal(documentInsert.source_ref, "meeting-1");
+  assert.match(documentInsert.content_md, /광고 예산 20만원 유지/);
+  assert.match(ctx.sent[0].text, /결정사항 1개/);
+  assert.match(ctx.sent[0].text, /knowledge\?document=document-1/);
+});
+
+test("resending the same Telegram message does not create a second meeting", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_records" && query.operations.some((op) => op.method === "eq" && op.args[0] === "metadata->>telegramReceipt")) return { data: { id: "meeting-existing" }, error: null };
+    return normalHandler(query);
+  });
+  const body = await (await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다." }))).json();
+  assert.equal(body.meetingRecorded, true);
+  assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").length, 0);
+  assert.match(ctx.sent[0].text, /이미 기록된 회의입니다/);
 });
 
 test("an OS action command creates only a pending draft with an explicit confirmation button", async () => {
