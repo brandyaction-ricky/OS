@@ -402,32 +402,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, blocked: true, registrationPending: true });
     }
     await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });
-    if (message.voice) {
-      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[음성 메시지]", answer: "TELEGRAM_UNSUPPORTED_VOICE", source_document_ids: [] });
-      await sendTelegram(message.chat.id, "음성 전사·개인 메모 저장은 아직 연결되지 않았습니다. 저장된 내용은 없습니다. 텍스트로 보내 주세요.", message.message_id);
-      return NextResponse.json({ ok: true, unsupported: "voice" });
-    }
-    if (message.photo?.length && kind === "question") {
-      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[분류 없는 사진]", answer: "TELEGRAM_DESTINATION_REQUIRED", source_document_ids: [] });
-      await sendTelegram(message.chat.id, "어디에 저장할 사진인가요? 사진 설명에 /후기, /썸네일기록, #인박스, #raw 중 하나를 적어 다시 보내 주세요. 아직 저장하지 않았습니다.", message.message_id);
-      return NextResponse.json({ ok: true, needsDestination: true });
-    }
-    if (kind !== "question") {
-      const dataUrl = await imageData(message); const extracted = await vision(dataUrl, kind === "review" ? "상품 후기 사진에서 상품명, 구매자 표현, 장점, 개선점, 수치와 문구를 정확히 추출하세요." : kind === "thumbnail" ? "썸네일 이미지의 문구, 구성, 색상, 선택 근거로 보이는 메모를 정확히 기록하세요." : "사진 속 텍스트를 OCR하고 아이디어와 해야 할 일을 구분하세요.");
-      const source = kind === "summary" ? await summarizeUrl(text) : extracted; const id = await saveCapture(supabase, message, text, source, kind);
-      savedDocumentId = id;
-      const { error: captureLogError } = await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: (text || "[사진]").slice(0, 4000), answer: `CAPTURE_SAVED:${id}`, source_document_ids: [id] });
-      if (captureLogError) throw new ApiError(500, "CAPTURE_LOG_FAILED", "문서는 저장됐지만 수신 기록을 남기지 못했습니다.");
-      await sendTelegram(message.chat.id, `브랜디 OS에 저장했습니다.\n분류: ${kind === "review" ? "상품 후기 초안 · 승인 전" : kind === "thumbnail" ? "썸네일 결정 기록" : kind === "summary" ? "URL 요약" : kind === "inbox" ? "아이디어 인박스" : "Raw 캡처"}\n문서: ${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/knowledge?document=${encodeURIComponent(id)}`, message.message_id);
-      return NextResponse.json({ ok: true, captured: true, documentId: id });
-    }
-    if (!text) return NextResponse.json({ ok: true, ignored: true });
-    if (/^\/?start$/i.test(text)) {
-      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
-      await sendTelegram(message.chat.id, welcome, message.message_id);
-      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
-      return NextResponse.json({ ok: true, started: true });
-    }
+    // 회의 명령은 캡처 분류(AI 폴백 포함)보다 먼저 확인한다 — captureKind의 TypeSafe
+    // AI 폴백이 "회의준비"/"회의기록"을 모르는 문장으로 보고 인박스 등으로 오분류해
+    // 캡처 분기가 먼저 저장·리턴해버리면 아래 회의 처리에 영영 도달하지 못하기 때문.
     if (isMeetingPrepCommand(text)) {
       const brief = await handleMeetingPrep(supabase, text);
       await sendTelegram(message.chat.id, brief, message.message_id);
@@ -466,6 +443,32 @@ export async function POST(request: Request) {
       await sendTelegram(message.chat.id, answer, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: documentIds });
       return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, rawDocumentId: recorded.rawDocumentId, summaryDocumentId: recorded.summaryDocumentId });
+    }
+    if (message.voice) {
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[음성 메시지]", answer: "TELEGRAM_UNSUPPORTED_VOICE", source_document_ids: [] });
+      await sendTelegram(message.chat.id, "음성 전사·개인 메모 저장은 아직 연결되지 않았습니다. 저장된 내용은 없습니다. 텍스트로 보내 주세요.", message.message_id);
+      return NextResponse.json({ ok: true, unsupported: "voice" });
+    }
+    if (message.photo?.length && kind === "question") {
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[분류 없는 사진]", answer: "TELEGRAM_DESTINATION_REQUIRED", source_document_ids: [] });
+      await sendTelegram(message.chat.id, "어디에 저장할 사진인가요? 사진 설명에 /후기, /썸네일기록, #인박스, #raw 중 하나를 적어 다시 보내 주세요. 아직 저장하지 않았습니다.", message.message_id);
+      return NextResponse.json({ ok: true, needsDestination: true });
+    }
+    if (kind !== "question") {
+      const dataUrl = await imageData(message); const extracted = await vision(dataUrl, kind === "review" ? "상품 후기 사진에서 상품명, 구매자 표현, 장점, 개선점, 수치와 문구를 정확히 추출하세요." : kind === "thumbnail" ? "썸네일 이미지의 문구, 구성, 색상, 선택 근거로 보이는 메모를 정확히 기록하세요." : "사진 속 텍스트를 OCR하고 아이디어와 해야 할 일을 구분하세요.");
+      const source = kind === "summary" ? await summarizeUrl(text) : extracted; const id = await saveCapture(supabase, message, text, source, kind);
+      savedDocumentId = id;
+      const { error: captureLogError } = await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: (text || "[사진]").slice(0, 4000), answer: `CAPTURE_SAVED:${id}`, source_document_ids: [id] });
+      if (captureLogError) throw new ApiError(500, "CAPTURE_LOG_FAILED", "문서는 저장됐지만 수신 기록을 남기지 못했습니다.");
+      await sendTelegram(message.chat.id, `브랜디 OS에 저장했습니다.\n분류: ${kind === "review" ? "상품 후기 초안 · 승인 전" : kind === "thumbnail" ? "썸네일 결정 기록" : kind === "summary" ? "URL 요약" : kind === "inbox" ? "아이디어 인박스" : "Raw 캡처"}\n문서: ${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/knowledge?document=${encodeURIComponent(id)}`, message.message_id);
+      return NextResponse.json({ ok: true, captured: true, documentId: id });
+    }
+    if (!text) return NextResponse.json({ ok: true, ignored: true });
+    if (/^\/?start$/i.test(text)) {
+      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
+      await sendTelegram(message.chat.id, welcome, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
+      return NextResponse.json({ ok: true, started: true });
     }
     const digestResponse = await configureDigest(supabase, message, registered?.profile_id ?? null, rawText);
     if (digestResponse) {
