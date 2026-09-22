@@ -5,8 +5,8 @@ import {
   isMeetingRecordCommand,
   parseMeetingPrepBrand,
   parseMeetingRecordCommand,
-  resolveMeetingBusiness,
 } from "../lib/telegram-meeting.ts";
+import { resolveMeetingBusiness } from "../lib/meeting-business.ts";
 
 test("meeting business aliases resolve to the exact os_records.brand and knowledge-folder labels", () => {
   assert.deepEqual(resolveMeetingBusiness("마이인"), { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" });

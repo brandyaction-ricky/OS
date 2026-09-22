@@ -9,6 +9,7 @@ import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
 import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
+import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
 import { prepareMeetingBrief } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
 
@@ -277,21 +278,6 @@ async function handleMeetingPrep(supabase: ReturnType<typeof createServiceSupaba
 // /회의기록 {사업} {회의 내용} — 사업별 회의 레코드 생성 + AI 추출(결정·미결·업무) +
 // 지식 문서함 반영을 한 메시지로 끝낸다. Telegram은 실패해도 웹훅을 재전송하므로
 // telegramReceipt로 같은 메시지의 중복 저장을 막는다.
-// 기한별로 묶은 업무 체크리스트 — 옛 봇의 "## To-do (기한별)" 절과 같은 모양(요일 표기는
-// 생략해 간소화). 기한 없는 항목은 "기한 미정"으로 모은다.
-function formatTodosMd(todos: { title: string; assignee: string; dueDate: string; dueLabel: string }[]) {
-  if (!todos.length) return "- (없음)";
-  const groups = new Map<string, typeof todos>();
-  for (const todo of todos) {
-    const key = todo.dueDate || todo.dueLabel || "기한 미정";
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(todo);
-  }
-  return [...groups.entries()].map(([key, items]) =>
-    [`### ${key}`, ...items.map((item) => `- [ ] ${item.title}${item.assignee ? ` — ${item.assignee}` : ""}`)].join("\n"),
-  ).join("\n\n");
-}
-
 async function handleMeetingRecord(
   supabase: ReturnType<typeof createServiceSupabase>,
   message: TelegramMessage,
@@ -305,9 +291,8 @@ async function handleMeetingRecord(
   if (existingError) throw new ApiError(500, "MEETING_RECEIPT_CHECK_FAILED", "중복 저장 확인에 실패해 회의를 기록하지 않았습니다. 잠시 뒤 다시 보내 주세요.");
   if (existingMeeting) return { duplicate: true as const, meetingId: existingMeeting.id as string, rawDocumentId: null, summaryDocumentId: null, result: null, title: "" };
 
-  const { recordBrand, wikiFolderSegment, label } = business;
+  const { recordBrand, label } = business;
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, Asia/Seoul 서버 시각 기준
-  const month = today.slice(0, 7); // YYYY-MM
   const result = await summarizeMeetingText(content, today);
   const title = `${recordBrand} 회의 · ${new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric" }).format(new Date())}`;
 
@@ -336,16 +321,15 @@ async function handleMeetingRecord(
     if (error) throw new ApiError(500, "MEETING_TASK_CREATE_FAILED", "회의는 저장됐지만 후속 업무 일부를 만들지 못했습니다.", error.message);
   }
 
-  // 지식 문서함 반영 — 옛 사내 봇과 같은 두 곳(raw 원문 + wiki 요약)에 같이 쌓는다.
-  // 이미 존재하는 실제 문서(02_Wiki/{사업}/운영/주간회의요약/{YYYY-MM})와 같은 모양으로 만든다.
-  // 여기서 실패해도 회의·결정·업무는 이미 저장된 상태로 둔다.
+  // 지식 문서함 반영 — 웹 회의 워크스페이스와 같은 빌더(lib/meeting-documents)로
+  // 옛 사내 봇과 같은 두 곳(raw 원문 + wiki 요약)에 같이 쌓는다. 여기서 실패해도
+  // 회의·결정·업무는 이미 저장된 상태로 둔다.
   let rawDocumentId: string | null = null;
   let summaryDocumentId: string | null = null;
   try {
-    const rawContentMd = [`# 주간 회의 (${label}) — ${today}`, "", content].join("\n");
+    const raw = buildMeetingRawDocument(business, today, content);
     const { data: rawDoc, error: rawError } = await supabase.from("os_documents").insert({
-      title: `주간 회의 (${label}) — ${today}`, content_md: rawContentMd, folder: `01_Raw/주간회의/${month}`,
-      brand: recordBrand, team: "", status: "draft", source: "meeting_raw", source_ref: meeting.id,
+      ...raw, brand: recordBrand, team: "", status: "draft", source: "meeting_raw", source_ref: meeting.id,
       owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의", label],
     }).select("id").single();
     if (rawError) throw rawError;
@@ -354,16 +338,9 @@ async function handleMeetingRecord(
     console.error("meeting raw document creation failed", rawError);
   }
   try {
-    const summaryContentMd = [
-      `# 주간 회의 요약 (${label}) — ${today}`, "",
-      "## 핵심 요약", result.summary || "(요약 없음)", "",
-      "## 결정사항", result.decisions.length ? result.decisions.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
-      "## 미결사항", result.pending.length ? result.pending.map((item) => `- ${item}`).join("\n") : "- (없음)", "",
-      "## To-do (기한별)", formatTodosMd(result.todos),
-    ].join("\n");
+    const summary = buildMeetingSummaryDocument(business, today, result);
     const { data: summaryDoc, error: summaryError } = await supabase.from("os_documents").insert({
-      title: `주간 회의 요약 (${label}) — ${today}`, content_md: summaryContentMd, folder: `02_Wiki/${wikiFolderSegment}/운영/주간회의요약/${month}`,
-      brand: recordBrand, team: "", status: "draft", source: "meeting_summary", source_ref: meeting.id,
+      ...summary, brand: recordBrand, team: "", status: "draft", source: "meeting_summary", source_ref: meeting.id,
       owner_id: ownerProfileId, created_by: ownerProfileId, tags: ["주간회의요약", label],
     }).select("id").single();
     if (summaryError) throw summaryError;

@@ -31,6 +31,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/search-relevance": await import("../lib/search-relevance.ts"),
     "@/lib/telegram-team": await import("../lib/telegram-team.ts"),
     "@/lib/telegram-meeting": await import("../lib/telegram-meeting.ts"),
+    "@/lib/meeting-documents": await import("../lib/meeting-documents.ts"),
     "@/lib/server/meeting-prep": { prepareMeetingBrief: options.prepareMeetingBrief ?? (async () => ({ latestMeeting: null, pending: [], todos: [], kpis: [] })) },
     "@/lib/server/meeting-summary": { summarizeMeetingText: options.summarizeMeetingText ?? (async () => ({ summary: "", decisions: [], pending: [], todos: [], mode: "local" })) },
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
