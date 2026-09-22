@@ -29,6 +29,12 @@ const labelDescriptions: Record<ScoreKey, string> = {
   evidenceBoundary: "사실·시나리오·해석의 경계가 분명한가",
 };
 const riskLabels = { low: "낮음", medium: "보완 필요", high: "높음" } as const;
+const riskOptions = [
+  ["", "선택"],
+  ["low", "낮음 · 현재 표현 사용 가능"],
+  ["medium", "보완 필요 · 단서 추가 후 사용"],
+  ["high", "높음 · 핵심 표현을 바꿔야 함"],
+] as const;
 const emptyHumanScores = (): HumanScores => ({ topicRelevance: "", thumbnailClarity: "", curiosityStrength: "", evidenceBoundary: "" });
 const scoreOptions = [["", "선택"], ["0", "0 · 매우 낮음"], ["1", "1 · 낮음"], ["2", "2 · 보통"], ["3", "3 · 높음"], ["4", "4 · 매우 높음"]] as const;
 const stoppedMessages: Record<string, string> = {
@@ -109,9 +115,9 @@ export function ContentJevShadowCheck({ sourceId, sourceVersion, token, disabled
       <div>{labels.map(([key, label]) => <label key={key}><span>{label}</span><small>{labelDescriptions[key]}</small><select aria-label={`사람 판정 · ${label}`} value={humanScores[key]}
         onChange={(event) => { setHumanScores((current) => ({ ...current, [key]: event.target.value as HumanScores[ScoreKey] })); setMessage(""); }}>
         {scoreOptions.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}</select></label>)}
-        <label><span>과장 위험</span><small>근거보다 강하게 단정하거나 오도할 위험이 있는가</small><select aria-label="사람 판정 · 과장 위험" value={humanRisk}
+        <label><span>과장 위험</span><small>낮음: 현재 표현 사용 가능 · 보완 필요: 조건·근거 단서 추가 후 사용 · 높음: 단서만으로 부족해 핵심 표현 수정</small><select aria-label="사람 판정 · 과장 위험" value={humanRisk}
           onChange={(event) => { setHumanRisk(event.target.value as RiskChoice); setMessage(""); }}>
-          <option value="">선택</option><option value="low">낮음</option><option value="medium">보완 필요</option><option value="high">높음</option>
+          {riskOptions.map(([value, text]) => <option key={value || "empty"} value={value}>{text}</option>)}
         </select></label></div>
     </fieldset>
     {evaluation ? <div role="status"><div className="jev-shadow-grid">{labels.map(([key, label]) => {

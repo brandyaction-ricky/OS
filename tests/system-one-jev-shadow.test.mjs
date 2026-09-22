@@ -36,6 +36,7 @@ test("JEV shadow gate is DEV/QA-only, preview-only when deployed, and fail-close
 });
 
 test("state builder is bounded, explicit and contains no implicit identifiers", () => {
+  assert.equal(JEV_PACKAGING_SHADOW_CONTRACT, "jev-content-packaging-shadow-v2");
   const state = buildJevPackagingState(material);
   assert.match(state, /제목: AI 변화/); assert.match(state, /썸네일 카피: 사무직 3가지 미래/);
   assert.doesNotMatch(state, /sourceId|owner_id|request_id/);
@@ -78,6 +79,7 @@ test("route and UI keep the experiment read-only and server-side", async () => {
   assert.match(route, /shadowEvaluation/); assert.doesNotMatch(route, /insert\(|update\(|upsert\(|service_role/);
   assert.match(ui, /모델 결과를 보기 전에 사람 판정을 고정/); assert.match(ui, /평가 데이터로 저장되지 않습니다/);
   assert.match(ui, /제목 없이 썸네일만 봐도 핵심 문제가 보이는가/);
+  assert.match(ui, /보완 필요 · 단서 추가 후 사용/); assert.match(ui, /높음 · 핵심 표현을 바꿔야 함/);
   assert.match(ui, /사람 판정 5개를 먼저 입력/); assert.match(ui, /승인·저장·단계 이동에는 사용하지 않습니다/);
   assert.match(ui, /active\.current\?\.abort\(\)/);
   assert.match(ui, /provider_auth_failed/); assert.match(ui, /provider_response_invalid/);

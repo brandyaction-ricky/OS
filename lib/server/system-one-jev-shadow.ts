@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const JEV_PACKAGING_SHADOW_CONTRACT = "jev-content-packaging-shadow-v1";
+export const JEV_PACKAGING_SHADOW_CONTRACT = "jev-content-packaging-shadow-v2";
 export const JEV_SYSTEM_ONE_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 
 const materialSchema = z.object({
@@ -51,8 +51,8 @@ export const JEV_PACKAGING_QUESTIONS = Object.freeze({
   ] },
   overclaim_risk: { type: "choice", instructions: "제목과 썸네일이 근거가 허용하는 범위를 넘어 단정하거나 과장할 위험 수준을 선택한다.", criteria: {
     low: "근거 범위와 표현이 잘 맞아 과장 위험이 낮다",
-    medium: "관심을 끄는 표현 때문에 보완 설명이 필요하지만 관리 가능하다",
-    high: "근거보다 강하게 단정하여 시청자를 오도할 가능성이 높다",
+    medium: "핵심 표현은 유지할 수 있지만 조건·근거 단서를 추가해야 오도 위험을 관리할 수 있다",
+    high: "조건·근거 단서를 덧붙이는 것만으로 부족하며 제목·썸네일의 핵심 표현을 바꿔야 한다",
   } },
 } as const);
 
