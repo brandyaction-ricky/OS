@@ -188,9 +188,9 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, showConte
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
-    {showPlanningHandoff ? <p className="inline-alert" role="note">아래 영상 폴더는 현재 DEV 지식함의 원고 목록입니다. 운영 OS 문서는 여기에 자동 표시되지 않습니다. 선택한 주제의 문서는 위 ‘설계표·원고 문서 연결’에서 별도로 확인합니다.</p> : null}
+    {showPlanningHandoff || showContentEvidence ? <p className="inline-alert" role="note">아래 영상 폴더는 현재 DEV 지식함의 원고 목록입니다. 운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다. 주제별 제작 공정 원고·문서 연결과는 별도로 관리됩니다.</p> : null}
     {showPlanningHandoff || showContentEvidence ? <LinkedPlanningHandoff evidenceOnly={!showPlanningHandoff} showEvidence={showContentEvidence} /> : null}
-    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} />
+    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff || showContentEvidence} />
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>현재 환경의 영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
