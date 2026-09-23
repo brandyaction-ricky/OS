@@ -59,6 +59,19 @@ test("home video grouping returns one row per content lineage", () => {
   assert.equal(videos.find((item) => item.title === "같은 영상")?.stage, "발행 키트");
 });
 
+test("supporting copy and claim evidence does not advance or regress the home video stage", () => {
+  const topic = record({ record_type: "content_topic", title: "검수 영상", brand: "브랜디액션" });
+  const titlePackage = record({ record_type: "content_package", title: "선택 제목", parent_id: topic.id,
+    status: "review", metadata: { packageKind: "title_package" }, updated_at: "2026-08-02T00:00:00.000Z" });
+  const supporting = ["copy_decision_evidence", "publication_copy_observation", "claim_evidence"].map((packageKind, index) =>
+    record({ record_type: "content_package", title: "근거 기록", parent_id: topic.id, status: "draft", stage: "evidence",
+      metadata: { packageKind }, updated_at: `2026-08-0${index + 3}T00:00:00.000Z` }));
+  const [video] = groupHomeVideos([topic, titlePackage, ...supporting]);
+  assert.equal(video.stage, "제목·썸네일");
+  assert.equal(video.status, "검토");
+  assert.equal(video.updatedAt, titlePackage.updated_at);
+});
+
 test("goals and monthly reports share measured-only attainment", async () => {
   const [metrics, goals, reports] = await Promise.all([
     read("lib/home-dashboard.ts"),
