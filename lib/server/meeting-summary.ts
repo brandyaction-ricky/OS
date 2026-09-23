@@ -24,7 +24,9 @@ function localSummary(transcript: string): MeetingSummary {
   };
 }
 
-function jsonText(body: Record<string, unknown>) {
+// Shared with lib/server/operating-baseline.ts — both parse the same
+// Responses API output-text shape (json_schema or plain text).
+export function jsonText(body: Record<string, unknown>) {
   const output = Array.isArray(body.output) ? body.output : [];
   return output.flatMap((item) => item && typeof item === "object" && Array.isArray((item as { content?: unknown[] }).content) ? (item as { content: unknown[] }).content : [])
     .filter((item) => item && typeof item === "object" && (item as { type?: string }).type === "output_text")

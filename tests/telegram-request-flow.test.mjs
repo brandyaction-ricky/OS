@@ -35,6 +35,7 @@ async function setup(file, handler, options = {}) {
     "@/lib/meeting-documents": await import("../lib/meeting-documents.ts"),
     "@/lib/server/meeting-prep": { prepareMeetingBrief: options.prepareMeetingBrief ?? (async () => ({ latestMeeting: null, pending: [], todos: [], kpis: [] })) },
     "@/lib/server/meeting-summary": { summarizeMeetingText: options.summarizeMeetingText ?? (async () => ({ summary: "", decisions: [], pending: [], todos: [], mode: "local" })) },
+    "@/lib/server/operating-baseline": { synthesizeOperatingBaseline: options.synthesizeOperatingBaseline ?? (async () => null) },
     "@/lib/server/answer": { answerFromKnowledge: async (_question, results) => { answeredWith.push(results); return "근거 답변"; } },
     "@/lib/server/search": { searchDocuments: async (_actor, input) => { searchCalls.push(input); return { results: typeof options.searchResults === "function" ? options.searchResults(input) : options.searchResults ?? [] }; } },
   };
@@ -282,6 +283,120 @@ test("resending the same Telegram message does not create a second meeting", asy
   assert.equal(body.meetingRecorded, true);
   assert.equal(ctx.inserts.filter((insert) => insert.table === "os_records" && insert.payload.record_type === "meeting").length, 0);
   assert.match(ctx.sent[0].text, /이미 기록된 회의입니다/);
+});
+
+test("회의기록 with decisions offers one batch confirm button for the operating-standard candidate", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table !== "os_records") return normalHandler(query);
+    const insertOp = query.operations.find((op) => op.method === "insert");
+    if (!insertOp) return { data: null, error: null }; // duplicate-check select finds nothing
+    return { data: { id: `${insertOp.args[0].record_type}-1` }, error: null };
+  }, {
+    summarizeMeetingText: async () => ({ summary: "요약", decisions: ["광고 예산 20만원 유지", "네이버 유입 캠페인 신규 진행"], pending: [], todos: [], mode: "local" }),
+  });
+  await ctx.api.POST(incoming({ text: "/회의기록 마이인 광고 예산은 20만원으로 유지하기로 했다. 네이버 유입 캠페인도 새로 진행한다." }));
+  const opsMessages = ctx.sent.filter((m) => m.reply_markup?.inline_keyboard?.[0]?.[0]?.callback_data?.startsWith("ops:"));
+  assert.equal(opsMessages.length, 1); // one batch confirm, not one per decision
+  assert.match(opsMessages[0].text, /이 회의 결정 2건을 운영안에 반영할까요/);
+  assert.match(opsMessages[0].text, /광고 예산 20만원 유지/);
+  assert.match(opsMessages[0].text, /네이버 유입 캠페인 신규 진행/);
+  const pendingTurn = ctx.inserts.find((item) => item.table === "os_channel_turns" && item.payload.answer === "TELEGRAM_OPS_PENDING");
+  assert.deepEqual(pendingTurn.payload.metadata.decisions, ["광고 예산 20만원 유지", "네이버 유입 캠페인 신규 진행"]);
+  assert.equal(pendingTurn.payload.metadata.business.recordBrand, "마이인");
+});
+
+test("confirming the operating-standard batch saves the raw 운영안 doc and synthesizes a fresh 운영 기준 when none existed", async () => {
+  let opsInsert = null; let baselineInsert = null;
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 71, external_chat_id: "30", question: "마이인(진단) 회의 결정 2건", answer: "TELEGRAM_OPS_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decisions: ["광고 예산 20만원 유지", "네이버 유입 캠페인 신규 진행"], meetingDate: "2026-09-22", expiresAt: "2099-01-01T00:00:00Z" } }, error: null };
+    }
+    if (query.table === "os_documents") {
+      if (query.operations.some((op) => op.method === "insert")) {
+        const insertOp = query.operations.find((op) => op.method === "insert");
+        if (insertOp.args[0].source === "meeting_decision_ops") { opsInsert = insertOp.args[0]; return { data: { id: "ops-doc-1" }, error: null }; }
+        baselineInsert = insertOp.args[0];
+        return { data: { id: "baseline-doc-1" }, error: null };
+      }
+      return { data: null, error: null }; // no existing baseline yet
+    }
+    return { data: null, error: null };
+  }, {
+    synthesizeOperatingBaseline: async (label, newDocs, existingBody) => {
+      assert.equal(label, "마이인(진단)");
+      assert.equal(existingBody, "");
+      assert.equal(newDocs[0].number, 1);
+      return "[광고]\n- 예산 20만원으로 유지 ⟨1⟩\n- 네이버 유입 캠페인 신규 진행 ⟨1⟩";
+    },
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("ops:71:confirm"))).json();
+  assert.equal(body.opsApplied, true);
+  assert.equal(opsInsert.folder, "02_Wiki/마이인/운영/운영안");
+  assert.match(opsInsert.content_md, /광고 예산 20만원 유지/);
+  assert.equal(baselineInsert.folder, "02_Wiki/마이인/운영");
+  assert.equal(baselineInsert.status, "team");
+  assert.match(baselineInsert.content_md, /예산 20만원으로 유지 ⟨1⟩/);
+  assert.match(baselineInsert.content_md, /⟨1⟩ 2026-09-22 회의 결정 \(마이인\(진단\)\)/);
+  assert.ok(ctx.telegramCalls.some((call) => call.method === "sendMessage" && call.body.text.includes("운영 기준 갱신됨")));
+});
+
+test("confirming a second operating-standard batch updates the existing 운영 기준 instead of creating another one", async () => {
+  const existingLedger = [{ number: 1, title: "2026-09-01 회의 결정 (마이인(진단))", appliedAt: "2026-09-01T00:00:00Z" }];
+  const existingContent = `# 운영 기준 (마이인(진단))\n\n[광고]\n- 예산 30만원으로 유지 ⟨1⟩\n\n────────────────────────\n📄 출처\n⟨1⟩ 2026-09-01 회의 결정 (마이인(진단))\n\n<!-- ledger:${JSON.stringify(existingLedger)}-->`;
+  let baselineUpdate = null;
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 72, external_chat_id: "30", question: "마이인(진단) 회의 결정 1건", answer: "TELEGRAM_OPS_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decisions: ["광고 예산 20만원으로 인하"], meetingDate: "2026-09-22", expiresAt: "2099-01-01T00:00:00Z" } }, error: null };
+    }
+    if (query.table === "os_documents") {
+      if (query.operations.some((op) => op.method === "insert")) return { data: { id: "ops-doc-2" }, error: null };
+      if (query.operations.some((op) => op.method === "update")) { baselineUpdate = query.operations.find((op) => op.method === "update").args[0]; return { data: {}, error: null }; }
+      return { data: { id: "baseline-doc-1", content_md: existingContent, current_version: 5 }, error: null };
+    }
+    return { data: null, error: null };
+  }, {
+    synthesizeOperatingBaseline: async (_label, newDocs, existingBody) => {
+      assert.equal(newDocs[0].number, 2); // continues from the existing ledger's max number
+      assert.match(existingBody, /예산 30만원으로 유지 ⟨1⟩/);
+      return "[광고]\n- 예산 20만원으로 인하 ⟨2⟩\n  대체: ~~예산 30만원으로 유지 ⟨1⟩~~";
+    },
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("ops:72:confirm"))).json();
+  assert.equal(body.opsApplied, true);
+  assert.equal(body.baselineDocumentId, "baseline-doc-1"); // updated, not a new document
+  assert.equal(baselineUpdate.current_version, 6);
+  assert.match(baselineUpdate.content_md, /⟨1⟩ 2026-09-01 회의 결정 \(마이인\(진단\)\)/);
+  assert.match(baselineUpdate.content_md, /⟨2⟩ 2026-09-22 회의 결정 \(마이인\(진단\)\)/);
+});
+
+test("cancelling the operating-standard batch never writes to os_documents", async () => {
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_telegram_users") return { data: { status: "approved", profile_id: "member-profile" }, error: null };
+    if (query.table === "os_channel_turns" && query.operations.some((op) => op.method === "select")) {
+      return { data: { id: 73, external_chat_id: "30", question: "마이인(진단) 회의 결정 1건", answer: "TELEGRAM_OPS_PENDING", metadata: { business: { recordBrand: "마이인", wikiFolderSegment: "마이인", label: "마이인(진단)" }, decisions: ["결정"], meetingDate: "2026-09-22" } }, error: null };
+    }
+    return { data: null, error: null };
+  });
+  const body = await (await ctx.api.POST(callbackIncoming("ops:73:cancel"))).json();
+  assert.equal(body.cancelled, true);
+  assert.equal(ctx.inserts.some((item) => item.table === "os_documents"), false);
+});
+
+test("운영기준 [사업] shows the saved baseline without calling the synthesizer (free lookup)", async () => {
+  const existingContent = "# 운영 기준 (마이인(진단))\n\n[광고]\n- 예산 20만원으로 인하 ⟨2⟩\n\n────────────────────────\n📄 출처\n⟨2⟩ 2026-09-22 회의 결정 (마이인(진단))\n\n<!-- ledger:[]-->";
+  let synthesizeCalled = false;
+  const ctx = await setup("webhook", (query) => {
+    if (query.table === "os_documents") return { data: { content_md: existingContent }, error: null };
+    return normalHandler(query);
+  }, { synthesizeOperatingBaseline: async () => { synthesizeCalled = true; return null; } });
+  const body = await (await ctx.api.POST(incoming({ text: "/운영기준 마이인" }))).json();
+  assert.equal(body.operatingBaselineView, true);
+  assert.match(ctx.sent[0].text, /지금 유효한 운영 기준/);
+  assert.match(ctx.sent[0].text, /예산 20만원으로 인하/);
+  assert.doesNotMatch(ctx.sent[0].text, /ledger:/);
+  assert.equal(synthesizeCalled, false);
 });
 
 test("an OS action command creates only a pending draft with an explicit confirmation button", async () => {
