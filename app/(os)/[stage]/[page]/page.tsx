@@ -29,11 +29,13 @@ import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 import { canUseSystemOnePreflight } from "@/lib/system-one-preflight-gate";
 import { canUseSystemOneJevShadow } from "@/lib/system-one-jev-shadow-gate";
+import { canUseSystemOneContentEvidence } from "@/lib/system-one-content-evidence-gate";
 
 export default async function GenericPage({ params }: { params: Promise<{ stage: string; page: string }> }) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
   const systemOneContentEnabled = canUseSystemOnePreflight(process.env) || canUseSystemOneJevShadow(process.env);
+  const contentEvidenceEnabled = canUseSystemOneContentEvidence(process.env);
   const stage = NAV_STAGES.find((item) => item.pages.some((page) => page.href === href));
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/members") return <MembersWorkspace />;
@@ -48,7 +50,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
   if (href === "/content/topics") return <ContentTopicsWorkspace showReferenceCheck={systemOneContentEnabled} />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={systemOneContentEnabled} />;
+  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={systemOneContentEnabled} showContentEvidence={contentEvidenceEnabled} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/packages") return <ContentPackageWorkspace />;

@@ -55,7 +55,7 @@ test("typed inputs forbid extra fields, blank copy and non-HTTPS links", () => {
 });
 test("DEV-only route checks source ownership and never changes publication or approval", async () => {
   const route = await readFile(new URL("../app/api/v1/content/copy-lineage/route.ts", import.meta.url), "utf8");
-  assert.match(route, /canUseSystemOneJevShadow\(process\.env\)/);
+  assert.match(route, /canUseSystemOneContentEvidence\(process\.env\)/);
   assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
   assert.match(route, /token\.startsWith\("bos_pat_"\)/);
   assert.match(route, /source\.version !== input\.expectedSourceVersion/);

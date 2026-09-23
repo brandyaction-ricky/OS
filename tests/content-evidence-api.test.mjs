@@ -49,7 +49,7 @@ async function harness(routeName, options = {}) {
     "@/lib/content-copy-lineage": { copyLineageInput }, "@/lib/content-claim-evidence": { claimEvidenceInput },
     "@/lib/http": { ApiError, parseJson: request => request.json(), apiErrorResponse: error => Response.json({ error: { message: error.message } }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => actor },
-    "@/lib/system-one-jev-shadow-gate": { canUseSystemOneJevShadow: () => options.enabled !== false },
+    "@/lib/system-one-content-evidence-gate": { canUseSystemOneContentEvidence: () => options.enabled !== false },
   };
   const commonJsModule = { exports: {} };
   runInNewContext(`(function(require,module,exports){${code}\n})`, {

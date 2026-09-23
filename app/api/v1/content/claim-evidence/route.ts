@@ -3,14 +3,14 @@ import { ZodError } from "zod";
 import { claimEvidenceInput } from "@/lib/content-claim-evidence";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { canUseSystemOneJevShadow } from "@/lib/system-one-jev-shadow-gate";
+import { canUseSystemOneContentEvidence } from "@/lib/system-one-content-evidence-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "cache-control": "private, no-store", vary: "Authorization" };
 
 export async function POST(request: Request) {
-  if (!canUseSystemOneJevShadow(process.env)) return NextResponse.json({ error: { message: "DEV 시험 환경에서만 사용할 수 있습니다." } }, { status: 404, headers });
+  if (!canUseSystemOneContentEvidence(process.env)) return NextResponse.json({ error: { message: "DEV 시험 환경에서만 사용할 수 있습니다." } }, { status: 404, headers });
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!token || token.startsWith("bos_pat_")) return NextResponse.json({ error: { message: "사용자 로그인 상태를 확인해 주세요." } }, { status: 401, headers });
   try {

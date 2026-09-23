@@ -35,9 +35,11 @@ test("planning and script surfaces use DEV gate; saved memo is not fed to genera
   const scripts = read("../components/content-pipeline-workspaces.tsx");
   const panel = read("../components/content-planning-handoff.tsx");
   assert.match(page, /canUseSystemOnePreflight\(process.env\) \|\| canUseSystemOneJevShadow\(process.env\)/);
-  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{systemOneContentEnabled\}/);
+  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{systemOneContentEnabled\} showContentEvidence=\{contentEvidenceEnabled\}/);
   assert.match(radar, /showReferenceCheck \? <ContentPlanningHandoff/);
-  assert.match(scripts, /showPlanningHandoff \? <LinkedPlanningHandoff/);
+  assert.match(scripts, /showPlanningHandoff \|\| showContentEvidence \? <LinkedPlanningHandoff evidenceOnly=\{!showPlanningHandoff\} showEvidence=\{showContentEvidence\}/);
+  assert.match(panel, /showEvidence \? <>/);
+  assert.match(panel, /!evidenceOnly \? <>/);
   assert.match(panel, /source.id !== sourceId/);
   assert.match(panel, /return \(\) => \{ active = false; \}/);
   assert.match(panel, /expectedVersion|planningHandoffUpdate/);
