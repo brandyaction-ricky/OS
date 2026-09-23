@@ -69,7 +69,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
 export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false }: { evidenceOnly?: boolean; showEvidence?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [sourceId, setSourceId] = useState("");
-  const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[] } | null>(null);
+  const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[]; evidenceAuthors: Record<string, string> } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState(false);
@@ -80,11 +80,11 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
     setState(null); setError(""); setEditing(false); setNotice("");
     if (sourceId && accessToken && !demo) {
       // Existing authenticated read endpoint; no generation or approval request.
-      void apiRequest<{ source: OsRecord; records: OsRecord[] }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source, records }) => {
+      void apiRequest<{ source: OsRecord; records: OsRecord[]; evidenceAuthors?: Record<string, string> }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source, records, evidenceAuthors }) => {
         if (!active) return;
         if (source.id !== sourceId || source.record_type !== "content_topic") throw new Error("연결된 기획 주제를 확인할 수 없습니다.");
         if (!Array.isArray(records)) throw new Error("연결된 산출물을 확인할 수 없습니다.");
-        setState({ token: accessToken, source, records });
+        setState({ token: accessToken, source, records, evidenceAuthors: evidenceAuthors ?? {} });
       }).catch(() => { if (active) setError(`${evidenceOnly ? "증거 기록을" : "인계 메모를"} 불러오지 못했습니다. 로그인·주제 접근 권한을 확인해 주세요.`); });
     }
     return () => { active = false; };
@@ -97,9 +97,9 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
       <ContentPackagingEvidence source={state.source} records={state.records} />
     </> : null}
     {showEvidence ? <>
-      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">다른 담당자의 증거는 DB에 지정된 팀 권한이 일치할 때만 표시됩니다. 이 화면은 읽기 전용이며 기록이 보이지 않으면 계정·증거의 팀 배정을 확인해 주세요.</p> : null}
-      <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
-      <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
+      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">같은 팀 구성원은 근거를 추가할 수 있습니다. 팀원이 제출한 결정 근거는 주제 담당자의 결정 비교에 자동 반영되지 않으며, 어느 기록도 승인·사실 확인을 뜻하지 않습니다.</p> : null}
+      <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
+      <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
     {!evidenceOnly ? <>
       <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />

@@ -30,11 +30,16 @@ export async function readPipeline(actor: RequestActor, id: string) {
     if (childError) throw new ApiError(500, "PIPELINE_READ_FAILED", "공정 산출물을 읽지 못했습니다.");
     records.push(...(data ?? [])); if (!data || data.length < 200) break;
   }
+  const evidenceKinds = new Set(["copy_decision_evidence", "publication_copy_observation", "claim_evidence"]);
+  const authorIds = [...new Set(records.filter(record => record.record_type === "content_package" && evidenceKinds.has(String(record.metadata?.packageKind ?? "")))
+    .map(record => record.created_by))];
+  const { data: authors } = authorIds.length ? await actor.supabase.from("os_profiles").select("id,display_name").in("id", authorIds) : { data: [] };
+  const evidenceAuthors = Object.fromEntries((authors ?? []).map(author => [author.id, author.display_name?.trim() || `계정 ${author.id.slice(0, 8)}`]));
   const reviews = (Array.isArray(source.metadata.pipelineReviews) ? source.metadata.pipelineReviews : []) as PipelineReview[];
   const signatures = [1, 2, 3].map((gate) => gateSignature(source, records, gate));
   const matches = signatures.map((signature, index) => hasCurrentApproval(reviews, index + 1, signature));
   const approved = matches.map((_, index) => matches.slice(0, index + 1).every(Boolean));
-  return { source: source as OsRecord, records, reviews, signatures, approved, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate)) };
+  return { source: source as OsRecord, records, evidenceAuthors, reviews, signatures, approved, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate)) };
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {

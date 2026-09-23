@@ -20,10 +20,11 @@ export async function POST(request: Request) {
       throw new ApiError(401, "AUTHENTICATION_REQUIRED", "사용자 로그인 상태를 확인해 주세요.");
     const { data: source, error: sourceError } = await actor.supabase.from("os_records")
       .select("id,record_type,brand,team,owner_id,version,archived_at")
-      .eq("id", input.sourceId).eq("record_type", "content_topic").eq("owner_id", actor.id).is("archived_at", null)
+      .eq("id", input.sourceId).eq("record_type", "content_topic").is("archived_at", null)
       .maybeSingle();
     if (sourceError) throw new ApiError(503, "SOURCE_READ_FAILED", "기획 주제를 읽지 못했습니다.");
-    if (!source || source.brand !== "브랜디액션") throw new ApiError(404, "SOURCE_NOT_FOUND", "이 주제에 접근할 수 없습니다.");
+    if (!source || source.brand !== "브랜디액션" || (source.owner_id !== actor.id && (!source.team?.trim() || source.team.trim() !== actor.team.trim())))
+      throw new ApiError(404, "SOURCE_NOT_FOUND", "이 주제에 접근할 수 없습니다.");
     if (source.version !== input.expectedSourceVersion) throw new ApiError(409, "SOURCE_CHANGED", "주제가 변경됐습니다. 최신 자료를 다시 읽어 주세요.");
     const fields = {
       location: input.location, locationDetail: input.locationDetail, claimText: input.claimText,
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     const { data: record, error } = await actor.supabase.from("os_records").insert({
       record_type: "content_package", parent_id: source.id, title: `주장 근거 · ${input.location} · ${input.claimText.slice(0, 160)}`,
       description: "검토자가 입력한 주장·근거 카드. 독립 사실 검증 또는 발행 승인 아님.",
-      status: "draft", priority: "normal", stage: "evidence", brand: source.brand, team: source.team || actor.team,
+      status: "draft", priority: "normal", stage: "evidence", brand: source.brand, team: source.team,
       owner_id: actor.id, created_by: actor.id, updated_by: actor.id, source_url: input.sourceUrl || null,
       metadata: { packageKind: "claim_evidence", schemaVersion: 1, verification: "reviewer_entered", ...fields },
     }).select("*").single();

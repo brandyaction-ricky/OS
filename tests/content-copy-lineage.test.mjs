@@ -38,6 +38,18 @@ test("newest evidence is used, but identical timestamps remain ambiguous", () =>
   assert.equal(copyLineage(sourceId, ownerId, [decision(), publication(), newer]).state, "same");
   assert.equal(copyLineage(sourceId, ownerId, [decision(), publication(), publication({ id: "publication-2" })]).state, "unverified");
 });
+test("teammate decision remains a visible submission and never replaces the owner's comparison input", () => {
+  const teammateDecision = decision({ id: "team-decision", owner_id: "teammate", created_by: "teammate", team: "콘텐츠",
+    created_at: "2026-09-08T10:00:00Z", metadata: { ...decision().metadata, thumbnailCopy: "다른 결정 주장" } });
+  const teammatePublication = publication({ id: "team-publication", owner_id: "teammate", created_by: "teammate", team: "콘텐츠",
+    created_at: "2026-09-09T10:00:00Z" });
+  const result = copyLineage(sourceId, ownerId, [decision(), publication(), teammateDecision, teammatePublication], "콘텐츠");
+  assert.equal(result.decision.record.id, "decision-1");
+  assert.equal(result.publication.record.id, "team-publication");
+  assert.equal(result.pendingDecisions.length, 1);
+  assert.equal(result.pendingDecisions[0].record.id, "team-decision");
+  assert.equal(copyLineage(sourceId, ownerId, [decision(), publication(), { ...teammateDecision, team: "다른팀" }], "콘텐츠").pendingDecisions.length, 0);
+});
 test("formatting-only changes and missing decision title remain distinct", () => {
   const aligned = publication({ metadata: { ...publication().metadata, thumbnailCopy: "선택이 어려운 사람에게 / 답은, 오답 지우기" } });
   assert.equal(copyLineage(sourceId, ownerId, [decision(), aligned]).state, "same");
@@ -53,10 +65,10 @@ test("typed inputs forbid extra fields, blank copy and non-HTTPS links", () => {
     assert.equal(copyDecisionInput.safeParse({ ...base, ...patch }).success, false);
   assert.equal(publicationObservationInput.safeParse({ ...base, kind: "publication", observedAt: "2026-09-06", videoUrl: "https://www.youtube.com/watch?v=RE2hRqLR-eM" }).success, false);
 });
-test("DEV-only route checks source ownership and never changes publication or approval", async () => {
+test("DEV-only route checks source/team membership and never changes publication or approval", async () => {
   const route = await readFile(new URL("../app/api/v1/content/copy-lineage/route.ts", import.meta.url), "utf8");
   assert.match(route, /canUseSystemOneContentEvidence\(process\.env\)/);
-  assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
+  assert.match(route, /allowAgent: false/); assert.match(route, /source\.team\.trim\(\) !== actor\.team\.trim\(\)/);
   assert.match(route, /token\.startsWith\("bos_pat_"\)/);
   assert.match(route, /source\.version !== input\.expectedSourceVersion/);
   assert.match(route, /record_type: "content_package"/);
