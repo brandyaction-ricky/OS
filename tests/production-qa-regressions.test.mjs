@@ -16,8 +16,10 @@ test("global shell controls do not present dead actions", async () => {
   assert.match(notifications, /fetch\(`\/api\/v1\/development-requests\?/);
   assert.match(notifications, /Authorization: `Bearer \$\{accessToken\}`/);
   assert.match(notifications, /query\.set\("scope", "mine"\)/);
-  assert.match(notifications, /요청 현황을 불러오지 못했습니다/);
-  assert.match(notifications, /요청 현황을 불러오는 중입니다/);
+  assert.match(notifications, /fetch\("\/api\/v1\/development-notifications"/);
+  assert.match(notifications, /개발 알림을 불러오지 못했습니다/);
+  assert.match(notifications, /개발 알림을 불러오는 중입니다/);
+  assert.match(notifications, /모두 읽음/);
 });
 
 test("knowledge workspace requests folder inventory and loads expanded folders lazily", async () => {

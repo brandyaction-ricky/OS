@@ -1,3 +1,4 @@
+import { knowledgeFacets } from "@/lib/knowledge-facets";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiErrorResponse, ApiError } from "@/lib/http";
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
       throw new ApiError(400, "INVALID_SCOPE", "문서 조회 범위를 확인해 주세요.");
     }
     const rows = await documentIndex(scope, actor.id);
+    if (url.searchParams.get("facets") === "true") return NextResponse.json(knowledgeFacets(rows));
     const target = url.searchParams.get("target");
     if (target) return NextResponse.json({ document: resolveWikiLink(target, rows, url.searchParams.get("folder") ?? "") ?? null });
     if (url.searchParams.get("folders") === "true") {

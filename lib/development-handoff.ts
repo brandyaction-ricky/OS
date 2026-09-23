@@ -45,7 +45,9 @@ export function buildDevelopmentHandoff(project: OsRecord, request?: OsRecord | 
     `참고 자료: ${recordText(request, "attachmentName") ? `${recordText(request, "attachmentName")} (회사 OS 요청 상세에서 확인)` : recordText(request, "attachmentUrl") || "없음"}`,
     `기존 처리 내용: ${recordText(request, "resolution") || "없음"}`);
   const projectHistory = history.filter(item => item.parent_id === project.id).sort((a, b) => b.created_at.localeCompare(a.created_at));
-  if (projectHistory.length) lines.push("", "최근 기록 (현재 사실은 원격 코드·배포 상태로 재확인)", ...projectHistory.slice(0, 3).map(item =>
+  const requestHistory = request ? projectHistory.filter(item => recordText(item, "requestId") === request.id) : [];
+  const handoffHistory = request && requestHistory.length ? requestHistory : projectHistory;
+  if (handoffHistory.length) lines.push("", request && requestHistory.length ? "이 요청에 연결된 최근 기록 (현재 사실은 원격 코드·배포 상태로 재확인)" : "최근 기록 (현재 사실은 원격 코드·배포 상태로 재확인)", ...handoffHistory.slice(0, 3).map(item =>
     `- ${item.title}: ${item.description.slice(0, 500)} / ${item.status} / ${recordText(item, "commitSha") || "커밋 미기재"}`));
   lines.push("", "작업 원칙",
     "1. 선택한 프로젝트 자체의 저장소 지침, 인수인계 문서, 최신 운영·작업 브랜치·미병합 PR과 실제 운영 배포 SHA를 확인해줘. 다른 채팅의 미병합 작업도 확인하고, 다른 프로젝트의 저장소나 운영 주소로 대체하지 마.",

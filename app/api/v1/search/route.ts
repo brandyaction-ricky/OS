@@ -19,9 +19,6 @@ export async function POST(request: Request) {
       throw new ApiError(400, "ORGANIZATION_REQUIRED", "에이전트 검색에는 organizationId가 필요합니다.");
     }
     if (input.organizationId) await assertOrganization(actor, input.organizationId);
-    if (input.mode === "semantic" && !process.env.OPENAI_API_KEY) {
-      throw new ApiError(503, "SEMANTIC_SEARCH_UNAVAILABLE", "의미 검색 환경변수가 아직 연결되지 않았습니다.");
-    }
     const outcome = await searchDocuments(actor, input);
     const tookMs = Date.now() - started;
     try {
@@ -37,7 +34,7 @@ export async function POST(request: Request) {
         });
       }
     } catch { /* Telemetry must not fail the search. */ }
-    return NextResponse.json({ query: input.query, mode: input.mode, degraded: outcome.degraded, results: outcome.results, tookMs });
+    return NextResponse.json({ query: input.query, mode: input.mode, degraded: outcome.degraded, degradationReasons: outcome.degradationReasons ?? [], results: outcome.results, tookMs });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_SEARCH", "검색 조건을 확인해 주세요.", error.flatten()));
     return apiErrorResponse(error);

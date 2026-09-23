@@ -45,6 +45,27 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.match(manager, /delete_document/);
 });
 
+test("agent knowledge rate limits expose retry metadata without leaking raw responses", async () => {
+  const [migration, route, http, mcp] = await Promise.all([
+    readFile(new URL("../supabase/migrations/20260921233000_agent_write_rate_limit_metadata.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/http.ts", import.meta.url), "utf8"),
+    readFile(new URL("../integrations/mcp/os_knowledge_mcp.py", import.meta.url), "utf8"),
+  ]);
+  assert.match(migration, /os_agent_write_rate_limits/);
+  assert.match(migration, /knowledge\.move/);
+  assert.match(migration, /when p_action = 'knowledge\.update' then 1000/);
+  assert.match(migration, /retryAfterSeconds/);
+  assert.match(migration, /resetAt/);
+  assert.doesNotMatch(migration, /drop table|truncate\s/i);
+  assert.match(route, /Retry-After/);
+  assert.match(route, /retryAfterSeconds/);
+  assert.match(http, /headers: error\.headers/);
+  assert.match(mcp, /safe_http_error/);
+  assert.match(mcp, /AGENT_RATE_LIMITED/);
+  assert.doesNotMatch(mcp, /OS API \{error\.code\}: \{detail\}/);
+});
+
 test("operating core is additive, RLS protected and event audited", async () => {
   const sql = await readFile(new URL("../supabase/migrations-legacy/202608290002_operating_core.sql", import.meta.url), "utf8");
   assert.match(sql, /create table if not exists public\.os_records/);
@@ -78,10 +99,11 @@ test("wiki imports Markdown as deduplicated drafts and paginates documents", asy
   const workspace = await readFile(new URL("../components/knowledge-workspace.tsx", import.meta.url), "utf8");
   const client = await readFile(new URL("../lib/api-client.ts", import.meta.url), "utf8");
   const route = await readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8");
-  assert.match(workspace, /accept="\.md,text\/markdown"/);
-  assert.match(workspace, /source: "markdown"/);
-  assert.match(workspace, /sourceRef: item\.fileName/);
-  assert.match(workspace, /item\.duplicate/);
+  const importer = await readFile(new URL("../components/knowledge-import.tsx", import.meta.url), "utf8");
+  assert.match(importer, /accept="\.md,text\/markdown"/);
+  assert.match(importer, /source:\s*"markdown"/);
+  assert.match(importer, /sourceRef:\s*item\.sourceRef/);
+  assert.match(importer, /defaultImportAction/);
   assert.match(workspace, /exactFolder: "true"/);
   assert.match(workspace, /getDocument\(accessToken, selectedId\)/);
   assert.match(client, /sourceRef\?: string \| null/);
@@ -101,12 +123,35 @@ test("meeting recordings stay private, bounded, and use signed playback URLs", a
 });
 
 test("meeting summaries degrade locally and create linked actions", async () => {
-  const route = await readFile(new URL("../app/api/v1/meeting-summary/route.ts", import.meta.url), "utf8");
+  const route = await readFile(new URL("../lib/server/meeting-summary.ts", import.meta.url), "utf8");
   const workspace = await readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8");
   assert.match(route, /localSummary/);
   assert.match(route, /OPENAI_API_KEY/);
   assert.match(workspace, /recordType: "decision"[\s\S]*parentId: meeting\.id/);
   assert.match(workspace, /recordType: "task"[\s\S]*parentId: meeting\.id/);
+});
+
+test("saving a meeting on the web pushes the same raw+summary documents as /회의기록", async () => {
+  const [workspace, documents, business] = await Promise.all([
+    readFile(new URL("../components/meeting-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-documents.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/meeting-business.ts", import.meta.url), "utf8"),
+  ]);
+  // 웹 저장이 텔레그램 /회의기록과 같은 빌더·사업 판정을 재사용한다(로직 두 곳에 흩어지지 않음).
+  assert.match(workspace, /from "@\/lib\/meeting-business"/);
+  assert.match(workspace, /from "@\/lib\/meeting-documents"/);
+  // 요약이 있고 사업(브랜드)을 알아볼 수 있고 아직 문서함에 안 올라간 경우에만 한 번 실행한다.
+  assert.match(workspace, /summary\.trim\(\)\s*&&\s*business\s*&&\s*!existingDocuments\?\.rawId\s*&&\s*!existingDocuments\?\.summaryId/);
+  assert.match(workspace, /createDocument\(accessToken, \{ title: raw\.title/);
+  assert.match(workspace, /createDocument\(accessToken, \{ title: summaryDoc\.title/);
+  assert.match(workspace, /knowledgeDocuments: \{ rawId:.*summaryId:/);
+  // 저장된 회의를 다시 열면 문서함 링크가 보인다(정호가 실제로 눌러 확인할 수 있게).
+  assert.match(workspace, /linkedDocuments\.summaryId/);
+  assert.match(workspace, /linkedDocuments\.rawId/);
+  assert.match(documents, /01_Raw\/주간회의\/\$\{date\.slice\(0, 7\)\}/);
+  assert.match(documents, /02_Wiki\/\$\{business\.wikiFolderSegment\}\/운영\/주간회의요약\/\$\{date\.slice\(0, 7\)\}/);
+  assert.match(business, /"마이인\(진단\)"/);
+  assert.match(business, /"자영업 교육"/);
 });
 
 test("project, task, skill and content workspaces use linked operating records", async () => {
