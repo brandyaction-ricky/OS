@@ -9,10 +9,11 @@ import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
 import { isMeetingPrepCommand, isMeetingRecordCommand, parseMeetingPrepBrand, parseMeetingRecordCommand, type MeetingBusiness } from "@/lib/telegram-meeting";
-import { PRIMARY_MEETING_BUSINESSES } from "@/lib/meeting-business";
-import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
+import { PRIMARY_MEETING_BUSINESSES, resolveMeetingBusiness } from "@/lib/meeting-business";
+import { buildMeetingRawDocument, buildMeetingSummaryDocument, buildOpsDecisionDocument, operatingBaselineLocation, parseOperatingBaseline, renderOperatingBaseline, type OpsLedgerEntry } from "@/lib/meeting-documents";
 import { prepareMeetingBrief, type MeetingPrepResult } from "@/lib/server/meeting-prep";
 import { summarizeMeetingText } from "@/lib/server/meeting-summary";
+import { synthesizeOperatingBaseline } from "@/lib/server/operating-baseline";
 
 export const runtime = "nodejs";
 
@@ -61,6 +62,11 @@ const feedbackKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
   { text: "오래됨", callback_data: `fb:${turnId}:stale` },
   { text: "틀림", callback_data: `fb:${turnId}:wrong` },
   { text: "정본 수정", callback_data: `fb:${turnId}:canonical` },
+]] });
+
+const opsKeyboard = (turnId: number | string) => ({ inline_keyboard: [[
+  { text: "✅ 운영안에 반영", callback_data: `ops:${turnId}:confirm` },
+  { text: "✖️ 안 함", callback_data: `ops:${turnId}:cancel` },
 ]] });
 
 async function ownerId(supabase: ReturnType<typeof createServiceSupabase>) {
@@ -219,42 +225,103 @@ async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>
   }
 
   const action = data.match(/^act:(\d+):(confirm|cancel)$/);
-  if (!action) { await callbackNotice(callback, "지원하지 않는 버튼입니다."); return { ignored: true }; }
-  const turnId = Number(action[1]);
-  const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
-  if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_ACTION_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
-  if (action[2] === "cancel") {
-    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
-    await editCallbackMessage(callback, `${turn.question}\n\n취소했습니다. OS에는 저장하지 않았습니다.`);
-    await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+  if (action) {
+    const turnId = Number(action[1]);
+    const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+    if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_ACTION_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
+    if (action[2] === "cancel") {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n취소했습니다. OS에는 저장하지 않았습니다.`);
+      await callbackNotice(callback, "취소했습니다."); return { cancelled: true };
+    }
+    if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
+    const actionMetadata = turn.metadata as { draft?: TelegramActionDraft; expiresAt?: string } | null;
+    if (actionMetadata?.expiresAt && new Date(actionMetadata.expiresAt).getTime() < Date.now()) {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다. 명령을 다시 보내 주세요.`);
+      await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+    }
+    const draft = actionMetadata?.draft;
+    if (!draft?.title) { await callbackNotice(callback, "기록 초안을 읽지 못했습니다."); return { invalid: true }; }
+    const { data: existingAction } = await supabase.from("os_records").select("id").eq("metadata->>kind", "telegram_confirmed_action").eq("metadata->>telegramTurnId", String(turnId)).is("archived_at", null).maybeSingle();
+    if (existingAction) { await callbackNotice(callback, "이미 OS에 저장된 기록입니다."); return { created: true, recordId: existingAction.id }; }
+    let assigneeId = user.profile_id;
+    if (draft.assigneeUsername) {
+      const { data: target } = await supabase.from("os_telegram_users").select("profile_id").ilike("username", draft.assigneeUsername).eq("status", "approved").maybeSingle();
+      if (!target?.profile_id) { await callbackNotice(callback, `@${draft.assigneeUsername}의 OS 계정 연결을 찾지 못했습니다.`); return { missingAssignee: true }; }
+      assigneeId = target.profile_id;
+    }
+    const { data: record, error: recordError } = await supabase.from("os_records").insert({
+      record_type: draft.recordType, title: draft.title, description: `Telegram에서 확인 후 생성됨. 원문: ${turn.question}`,
+      status: draft.status, priority: "normal", owner_id: user.profile_id, assignee_id: assigneeId, due_date: draft.dueDate,
+      created_by: user.profile_id, updated_by: user.profile_id, tags: ["telegram"], metadata: { kind: "telegram_confirmed_action", telegramTurnId: turnId },
+    }).select("id").single();
+    if (recordError) throw new ApiError(500, "TELEGRAM_ACTION_CREATE_FAILED", "OS 기록을 만들지 못했습니다.");
+    await supabase.from("os_channel_turns").update({ answer: `TELEGRAM_ACTION_CREATED:${record.id}`, metadata: { ...(turn.metadata ?? {}), state: "created", recordId: record.id } }).eq("id", turnId);
+    await editCallbackMessage(callback, `${turn.question}\n\n✅ OS에 저장했습니다.\n${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/home/operations`);
+    await callbackNotice(callback, "OS에 저장했습니다.");
+    return { created: true, recordId: record.id };
   }
-  if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
-  const actionMetadata = turn.metadata as { draft?: TelegramActionDraft; expiresAt?: string } | null;
-  if (actionMetadata?.expiresAt && new Date(actionMetadata.expiresAt).getTime() < Date.now()) {
-    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_ACTION_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
-    await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다. 명령을 다시 보내 주세요.`);
-    await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+
+  const ops = data.match(/^ops:(\d+):(confirm|cancel)$/);
+  if (ops) {
+    const turnId = Number(ops[1]);
+    const { data: turn, error } = await supabase.from("os_channel_turns").select("id,external_chat_id,question,answer,metadata").eq("id", turnId).eq("channel", "telegram").maybeSingle();
+    if (error || !turn || turn.external_chat_id !== chatId || turn.answer !== "TELEGRAM_OPS_PENDING") { await callbackNotice(callback, "이미 처리됐거나 찾을 수 없는 요청입니다."); return { missing: true }; }
+    if (ops[2] === "cancel") {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_OPS_CANCELLED", metadata: { ...(turn.metadata ?? {}), state: "cancelled" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n✖️ 운영안 반영 안 함 (회의 기록에는 그대로 남아 있습니다).`);
+      await callbackNotice(callback, "반영하지 않았습니다."); return { cancelled: true };
+    }
+    if (!user.profile_id) { await callbackNotice(callback, "설정에서 Telegram 사용자와 OS 구성원을 먼저 연결해 주세요."); return { needsProfile: true }; }
+    const opsMeta = turn.metadata as { business?: MeetingBusiness; decisions?: string[]; meetingDate?: string; expiresAt?: string } | null;
+    if (opsMeta?.expiresAt && new Date(opsMeta.expiresAt).getTime() < Date.now()) {
+      await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_OPS_EXPIRED", metadata: { ...(turn.metadata ?? {}), state: "expired" } }).eq("id", turnId);
+      await editCallbackMessage(callback, `${turn.question}\n\n확인 시간이 지나 만료됐습니다.`);
+      await callbackNotice(callback, "확인 시간이 지나 만료됐습니다."); return { expired: true };
+    }
+    const business = opsMeta?.business; const decisions = opsMeta?.decisions ?? []; const meetingDate = opsMeta?.meetingDate;
+    if (!business?.wikiFolderSegment || !decisions.length || !meetingDate) { await callbackNotice(callback, "운영안 초안을 읽지 못했습니다."); return { invalid: true }; }
+    const opsDraft = buildOpsDecisionDocument(business, meetingDate, decisions);
+    const { data: opsDoc, error: opsDocError } = await supabase.from("os_documents").insert({
+      ...opsDraft, brand: business.recordBrand, team: "", status: "draft", source: "meeting_decision_ops", source_ref: `telegram:${turnId}`,
+      owner_id: user.profile_id, created_by: user.profile_id, tags: ["운영안", business.label],
+    }).select("id").single();
+    if (opsDocError || !opsDoc) { await callbackNotice(callback, "운영안 저장에 실패했습니다."); return { failed: true }; }
+    await supabase.from("os_channel_turns").update({ answer: "TELEGRAM_OPS_SAVED", metadata: { ...(turn.metadata ?? {}), state: "saved", opsDocumentId: opsDoc.id } }).eq("id", turnId);
+    await editCallbackMessage(callback, `${turn.question}\n\n✅ 운영안 반영 — 결정 ${decisions.length}건. 운영 기준 갱신 중...`);
+
+    const baselineLocation = operatingBaselineLocation(business);
+    const { data: existingBaseline } = await supabase.from("os_documents").select("id,content_md,current_version").eq("source", "operating_baseline").eq("source_ref", business.recordBrand).neq("status", "archived").maybeSingle();
+    const { body: existingBody, ledger: existingLedger } = parseOperatingBaseline(existingBaseline?.content_md ?? "");
+    const nextNumber = existingLedger.reduce((max, entry) => Math.max(max, entry.number), 0) + 1;
+    const synthesized = await synthesizeOperatingBaseline(business.label, [{ number: nextNumber, title: opsDraft.title, content: opsDraft.content_md }], existingBody);
+    if (!synthesized) {
+      await sendTelegram(Number(chatId), "⚠️ 운영안은 저장했지만 운영 기준 재작성에 실패했습니다(잠시 후 다시 시도해 주세요). 원문은 안전하게 보관돼 있습니다.");
+      return { savedOpsOnly: true, opsDocumentId: opsDoc.id };
+    }
+    const newLedger: OpsLedgerEntry[] = [...existingLedger, { number: nextNumber, title: opsDraft.title, appliedAt: new Date().toISOString() }];
+    const rendered = renderOperatingBaseline(business, synthesized, newLedger);
+    let baselineDocId = existingBaseline?.id as string | undefined;
+    if (existingBaseline) {
+      const { error: updateError } = await supabase.from("os_documents").update({ content_md: rendered, current_version: (existingBaseline.current_version ?? 1) + 1, updated_at: new Date().toISOString() }).eq("id", existingBaseline.id);
+      if (updateError) { await sendTelegram(Number(chatId), "⚠️ 운영안은 저장했지만 운영 기준 갱신에 실패했습니다."); return { savedOpsOnly: true, opsDocumentId: opsDoc.id }; }
+    } else {
+      const { data: createdBaseline, error: createError } = await supabase.from("os_documents").insert({
+        title: baselineLocation.title, content_md: rendered, folder: baselineLocation.folder, brand: business.recordBrand, team: "", status: "team",
+        source: "operating_baseline", source_ref: business.recordBrand, owner_id: user.profile_id, created_by: user.profile_id, tags: ["운영기준", business.label],
+      }).select("id").single();
+      if (createError || !createdBaseline) { await sendTelegram(Number(chatId), "⚠️ 운영안은 저장했지만 운영 기준 문서를 만들지 못했습니다."); return { savedOpsOnly: true, opsDocumentId: opsDoc.id }; }
+      baselineDocId = createdBaseline.id as string;
+    }
+    const osUrl = (process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "");
+    const visibleBaseline = rendered.replace(/<!-- ledger:[\s\S]*?-->/, "").trim();
+    await sendTelegram(Number(chatId), `${visibleBaseline}\n\n📁 운영 기준 갱신됨: ${osUrl}/knowledge?document=${encodeURIComponent(baselineDocId ?? "")}`);
+    return { opsApplied: true, opsDocumentId: opsDoc.id, baselineDocumentId: baselineDocId };
   }
-  const draft = actionMetadata?.draft;
-  if (!draft?.title) { await callbackNotice(callback, "기록 초안을 읽지 못했습니다."); return { invalid: true }; }
-  const { data: existingAction } = await supabase.from("os_records").select("id").eq("metadata->>kind", "telegram_confirmed_action").eq("metadata->>telegramTurnId", String(turnId)).is("archived_at", null).maybeSingle();
-  if (existingAction) { await callbackNotice(callback, "이미 OS에 저장된 기록입니다."); return { created: true, recordId: existingAction.id }; }
-  let assigneeId = user.profile_id;
-  if (draft.assigneeUsername) {
-    const { data: target } = await supabase.from("os_telegram_users").select("profile_id").ilike("username", draft.assigneeUsername).eq("status", "approved").maybeSingle();
-    if (!target?.profile_id) { await callbackNotice(callback, `@${draft.assigneeUsername}의 OS 계정 연결을 찾지 못했습니다.`); return { missingAssignee: true }; }
-    assigneeId = target.profile_id;
-  }
-  const { data: record, error: recordError } = await supabase.from("os_records").insert({
-    record_type: draft.recordType, title: draft.title, description: `Telegram에서 확인 후 생성됨. 원문: ${turn.question}`,
-    status: draft.status, priority: "normal", owner_id: user.profile_id, assignee_id: assigneeId, due_date: draft.dueDate,
-    created_by: user.profile_id, updated_by: user.profile_id, tags: ["telegram"], metadata: { kind: "telegram_confirmed_action", telegramTurnId: turnId },
-  }).select("id").single();
-  if (recordError) throw new ApiError(500, "TELEGRAM_ACTION_CREATE_FAILED", "OS 기록을 만들지 못했습니다.");
-  await supabase.from("os_channel_turns").update({ answer: `TELEGRAM_ACTION_CREATED:${record.id}`, metadata: { ...(turn.metadata ?? {}), state: "created", recordId: record.id } }).eq("id", turnId);
-  await editCallbackMessage(callback, `${turn.question}\n\n✅ OS에 저장했습니다.\n${(process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "")}/home/operations`);
-  await callbackNotice(callback, "OS에 저장했습니다.");
-  return { created: true, recordId: record.id };
+
+  await callbackNotice(callback, "지원하지 않는 버튼입니다.");
+  return { ignored: true };
 }
 
 function renderMeetingPrepSection(label: string, brief: MeetingPrepResult) {
@@ -370,6 +437,47 @@ async function handleMeetingRecord(
   return { duplicate: false as const, meetingId: meeting.id as string, rawDocumentId, summaryDocumentId, result, title };
 }
 
+// 회의 결정 전체를 "운영안 승격" 후보로 한 번에 확인받는다(옛 사내 봇과 같은 원칙 —
+// 결정마다 따로 묻지 않고 배치로 한 번, AI는 스스로 운영 기준을 고치지 않는다).
+// 확인은 handleCallback의 ops: 분기가 처리한다(원문 저장 → AI 재합성 → 운영 기준 갱신).
+async function offerOperatingBaselinePromotion(
+  supabase: ReturnType<typeof createServiceSupabase>,
+  message: TelegramMessage,
+  externalUserId: string,
+  business: MeetingBusiness,
+  decisions: string[],
+  meetingDate: string,
+) {
+  if (!decisions.length) return;
+  const { data: pending, error } = await supabase.from("os_channel_turns").insert({
+    channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id,
+    question: `${business.label} 회의 결정 ${decisions.length}건`, answer: "TELEGRAM_OPS_PENDING", source_document_ids: [],
+    metadata: { kind: "telegram_ops_promotion", state: "pending", business, decisions, meetingDate, expiresAt: new Date(Date.now() + 86_400_000).toISOString() },
+  }).select("id").single();
+  if (error || !pending) { console.error("ops promotion pending insert failed", error); return; }
+  const preview = [
+    `📋 이 회의 결정 ${decisions.length}건을 운영안에 반영할까요?`,
+    "",
+    ...decisions.map((item) => `  • ${item}`),
+    "",
+    "반영하면 운영 기준 문서가 갱신됩니다. 확인 전에는 반영되지 않습니다.",
+  ].join("\n");
+  const sent = await sendTelegram(message.chat.id, preview, message.message_id, opsKeyboard(pending.id));
+  await supabase.from("os_channel_turns").update({ response_message_id: sent.message_id ?? null }).eq("id", pending.id);
+}
+
+/** /운영기준 [사업] — 저장된 운영 기준을 보여준다(새 재작성 없이 그대로, API 비용 0원). */
+async function handleOperatingBaselineView(supabase: ReturnType<typeof createServiceSupabase>, text: string) {
+  const token = text.trim().replace(/^\/?운영기준(?:@\w+)?/, "").trim().split(/\s+/)[0] ?? "";
+  const business = resolveMeetingBusiness(token);
+  if (!business) return "사용법: /운영기준 [사업]\n예) /운영기준 마이인\n사업은 마이인, 브랜디에듀(교육), 회사(전체)만 인식합니다.";
+  const { data: doc, error } = await supabase.from("os_documents").select("content_md").eq("source", "operating_baseline").eq("source_ref", business.recordBrand).neq("status", "archived").maybeSingle();
+  if (error) throw new ApiError(500, "OPS_BASELINE_READ_FAILED", "운영 기준을 불러오지 못했습니다.", error.message);
+  if (!doc?.content_md) return `📂 [${business.label}] 아직 저장된 운영 기준이 없습니다. 회의 결정을 운영안에 반영하면 자동으로 만들어집니다.`;
+  const visible = doc.content_md.replace(/<!-- ledger:[\s\S]*?-->/, "").trim();
+  return `📖 [${business.label}] 지금 유효한 운영 기준\n(저장된 기준 그대로)\n\n${visible}`;
+}
+
 async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
   const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/);
   if (!match) return null;
@@ -460,7 +568,14 @@ export async function POST(request: Request) {
           ].join("\n");
       await sendTelegram(message.chat.id, answer, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer, source_document_ids: documentIds });
+      if (!recorded.duplicate) await offerOperatingBaselinePromotion(supabase, message, externalUserId, parsed.business, recorded.result!.decisions, new Date().toISOString().slice(0, 10));
       return NextResponse.json({ ok: true, meetingRecorded: true, meetingId: recorded.meetingId, rawDocumentId: recorded.rawDocumentId, summaryDocumentId: recorded.summaryDocumentId });
+    }
+    if (/^\/?운영기준(?:@\w+)?(?=\s|$)/.test(text)) {
+      const brief = await handleOperatingBaselineView(supabase, text);
+      await sendTelegram(message.chat.id, brief, message.message_id);
+      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: brief, source_document_ids: [] });
+      return NextResponse.json({ ok: true, operatingBaselineView: true });
     }
     if (message.voice) {
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[음성 메시지]", answer: "TELEGRAM_UNSUPPORTED_VOICE", source_document_ids: [] });
@@ -483,7 +598,7 @@ export async function POST(request: Request) {
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
     if (/^\/?start$/i.test(text)) {
-      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
+      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 회의 결정을 확인 버튼으로 반영하면 /운영기준 [사업]에서 지금 유효한 운영 기준을 볼 수 있습니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
       await sendTelegram(message.chat.id, welcome, message.message_id);
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
       return NextResponse.json({ ok: true, started: true });
