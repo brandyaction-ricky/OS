@@ -17,7 +17,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
   async function read(id: string) {
     const response = await fetch(`/api/v1/system-one/production-document?id=${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
     const body = await response.json();
-    if (!response.ok || body.status !== "ready" || body.executionAllowed !== false || body.judgment !== null || body.policyStatus !== "unverified") throw new Error("문서를 읽지 못했습니다. 문서 링크·접근 권한·보관 상태를 확인해 주세요.");
+    if (!response.ok || body.status !== "ready" || body.executionAllowed !== false || body.judgment !== null || body.policyStatus !== "unverified") throw new Error("현재 환경에서 문서를 읽지 못했습니다. DEV와 운영의 문서함은 분리되어 있으므로 운영 링크만 붙여 넣어서는 연결되지 않습니다. 현재 환경의 문서·접근 권한·보관 상태를 확인해 주세요.");
     const summary = productionDocumentSummarySchema.parse(body.document);
     if (summary.id !== id) throw new Error("요청한 문서와 일치하지 않습니다.");
     return summary;
@@ -53,7 +53,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
   return <section className="panel content-workflow-panel" aria-label="설계표·원고 문서 연결">
     <div className="panel-header"><div><h3>설계표·원고 문서 연결</h3><p>원문은 지식 작업공간에 유지 · DEV 검수용</p></div></div>
     <div className="content-workflow-body">
-    <p>이 주제에서 사용하는 문서를 직접 지정합니다. 제목·폴더명으로 추측하지 않으며 연결은 승인·내용 검증·공유 권한 부여가 아닙니다. 칠판형도 필요한 진행 메모만 연결할 수 있습니다.</p>
+    <p>이 주제에서 사용하는 현재 환경의 문서를 직접 지정합니다. 운영 OS 원고는 DEV에 자동 복사되지 않습니다. 제목·폴더명으로 추측하지 않으며 연결은 승인·내용 검증·공유 권한 부여가 아닙니다. 칠판형도 필요한 진행 메모만 연결할 수 있습니다.</p>
     {!links ? <p role="alert">기존 연결 형식을 확인할 수 없어 덮어쓰지 않습니다.</p> : <>
       {links.length ? <ul>{links.map(link => <li key={link.documentId}>
         <Link href={`/knowledge?document=${encodeURIComponent(link.documentId)}`}>{productionDocumentRoles[link.role]} · {checked[link.documentId]?.title ?? `문서 ${link.documentId.slice(0, 8)}`}</Link>

@@ -44,6 +44,7 @@ test("document link UI reads first, then writes only a version-checked reference
 test("read denial prevents writes; version conflict never reports a saved link", async () => {
   const denied = setup({ denied: true }); await denied.submit(); assert.equal(denied.writes.length, 0); assert.equal(denied.saved.length, 0);
   assert.match(denied.text(), /접근 권한/);
+  assert.match(denied.text(), /DEV와 운영의 문서함은 분리/);
   const conflict = setup({ conflict: true }); await conflict.submit(); assert.equal(conflict.saved.length, 0); assert.match(conflict.text(), /version conflict/);
 });
 test("duplicate submissions and editing cannot create multiple references", async () => {
