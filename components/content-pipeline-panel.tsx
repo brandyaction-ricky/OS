@@ -25,6 +25,8 @@ const FACTORY_PHASES = [
 export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string; onChange: () => Promise<void> }) {
   const { accessToken, profile } = useSession();
   const [state, setState] = useState<PipelineState | null>(null);
+  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [notes, setNotes] = useState<Record<number, string>>({});
   const [voicePlan, setVoicePlan] = useState<YoutubeAutomationPlan | null>(null);
   const [pilotAvailable, setPilotAvailable] = useState(false);
   const [voicePreviewConfigured, setVoicePreviewConfigured] = useState(false);
@@ -32,8 +34,6 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [voicePreviewKey, setVoicePreviewKey] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [imagePreviewKey, setImagePreviewKey] = useState("");
-  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  const [notes, setNotes] = useState<Record<number, string>>({});
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
     try {
