@@ -15,8 +15,10 @@ import {
   Users,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
+  createDocument,
   createRecord,
   getMeetingRecordingUrl,
   listRecords,
@@ -26,6 +28,8 @@ import {
   updateRecord,
   type MeetingSummaryResult,
 } from "@/lib/api-client";
+import { PRIMARY_MEETING_BUSINESSES, resolveMeetingBusiness } from "@/lib/meeting-business";
+import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -45,6 +49,22 @@ function dateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function nowLocalInput() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function suggestMeetingTitle(brand: string) {
+  const label = resolveMeetingBusiness(brand)?.label || brand.trim();
+  const dateLabel = new Intl.DateTimeFormat("ko-KR", {
+    month: "long",
+    day: "numeric",
+  }).format(new Date());
+  return label ? `${label} 회의 · ${dateLabel}` : `${dateLabel} 회의`;
+}
+
 export function MeetingWorkspace() {
   const { accessToken, demo, profile } = useSession();
   const [meetings, setMeetings] = useState<OsRecord[]>([]);
@@ -54,15 +74,21 @@ export function MeetingWorkspace() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [title, setTitle] = useState("");
+  const [brand, setBrand] = useState("");
+  const [startsAtDraft, setStartsAtDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState("planned");
+  const titleEditedRef = useRef(false);
   const [summary, setSummary] = useState("");
   const [summaryMode, setSummaryMode] = useState<"ai" | "local" | "">("");
   const [transcript, setTranscript] = useState("");
   const [structured, setStructured] = useState<MeetingSummaryResult | null>(
     null,
   );
-  const [prep, setPrep] = useState<Awaited<
-    ReturnType<typeof prepareMeeting>
-  > | null>(null);
+  const [prep, setPrep] = useState<Array<{
+    label: string;
+    result: Awaited<ReturnType<typeof prepareMeeting>>;
+  }> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -95,6 +121,11 @@ export function MeetingWorkspace() {
 
   const openNew = () => {
     setEditing(null);
+    setTitle(suggestMeetingTitle(""));
+    setBrand("");
+    titleEditedRef.current = false;
+    setStartsAtDraft(nowLocalInput());
+    setStatusDraft("active");
     setSummary("");
     setSummaryMode("");
     setTranscript("");
@@ -104,6 +135,11 @@ export function MeetingWorkspace() {
   };
   const openEdit = (meeting: OsRecord) => {
     setEditing(meeting);
+    setTitle(meeting.title);
+    setBrand(meeting.brand ?? "");
+    titleEditedRef.current = true;
+    setStartsAtDraft(meeting.starts_at?.slice(0, 16) ?? "");
+    setStatusDraft(meeting.status);
     setSummary(meta(meeting, "summary"));
     setSummaryMode(meta(meeting, "summaryMode") as "ai" | "local" | "");
     setTranscript(meta(meeting, "transcript"));
@@ -142,12 +178,15 @@ export function MeetingWorkspace() {
       recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         stream.getTracks().forEach((track) => track.stop());
-        if (blob.size > 4_000_000)
+        setRecording(false);
+        if (blob.size > 4_000_000) {
           setError(
             "녹음이 4MB를 넘었습니다. 약 15분 단위로 나누어 녹음해 주세요.",
           );
-        else setRecordedBlob(blob);
-        setRecording(false);
+          return;
+        }
+        setRecordedBlob(blob);
+        void transcribeBlob(blob);
       };
       recorder.start(1000);
       recorderRef.current = recorder;
@@ -161,17 +200,14 @@ export function MeetingWorkspace() {
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
   };
 
-  const makeSummary = async () => {
-    if (transcript.trim().length < 20) {
-      setError("먼저 회의 원문을 20자 이상 입력해 주세요.");
-      return;
-    }
+  const extractFromText = async (text: string) => {
+    if (text.trim().length < 20) return;
     setBusy(true);
     setError("");
     try {
       const result = await summarizeMeeting(
         accessToken,
-        transcript,
+        text,
         editing?.starts_at?.slice(0, 10),
       );
       setSummary(result.summary);
@@ -188,14 +224,18 @@ export function MeetingWorkspace() {
     }
   };
 
-  const makeTranscript = async () => {
-    if (!recordedBlob) return;
+  const makeSummary = () => extractFromText(transcript);
+
+  // 녹음 종료 → 전사 → (20자 이상이면) 결정·미해결·업무 추출까지 이어서 끝낸다.
+  // 실패해도 앞 단계 결과(녹음/전사)는 남아있어 수동 재시도 버튼으로 이어갈 수 있다.
+  const transcribeBlob = async (blob: Blob) => {
     setBusy(true);
     setError("");
     try {
-      const result = await transcribeMeeting(accessToken, recordedBlob);
+      const result = await transcribeMeeting(accessToken, blob);
       setTranscript(result.transcript);
       setRecordedBlob(null);
+      await extractFromText(result.transcript);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -207,11 +247,19 @@ export function MeetingWorkspace() {
     }
   };
 
+  const makeTranscript = () => recordedBlob && transcribeBlob(recordedBlob);
+
   const loadPrep = async () => {
     setBusy(true);
     setError("");
     try {
-      setPrep(await prepareMeeting(accessToken));
+      const results = await Promise.all(
+        PRIMARY_MEETING_BUSINESSES.map(async (business) => ({
+          label: business.label,
+          result: await prepareMeeting(accessToken, business.recordBrand),
+        })),
+      );
+      setPrep(results);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -337,6 +385,39 @@ export function MeetingWorkspace() {
             dueLabel: todo.dueLabel,
           },
         });
+
+      // 지식 문서함 반영 — 텔레그램 /회의기록과 같은 두 문서(원문 01_Raw/주간회의,
+      // 요약 02_Wiki/{사업}/운영/주간회의요약)를 만든다. 요약이 있고, 사업(브랜드)을
+      // 알아볼 수 있고, 이 회의가 아직 문서함에 안 올라간 경우에만 한 번 실행한다.
+      // 실패해도 회의·결정·업무 저장은 이미 끝난 상태로 둔다(부가 기능).
+      const existingDocuments = meeting.metadata?.knowledgeDocuments as
+        | { rawId?: string; summaryId?: string }
+        | undefined;
+      const business = resolveMeetingBusiness(meeting.brand);
+      if (summary.trim() && business && !existingDocuments?.rawId && !existingDocuments?.summaryId) {
+        try {
+          const meetingDate = meeting.starts_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+          const raw = buildMeetingRawDocument(business, meetingDate, transcript || meeting.description || "");
+          const summaryDoc = buildMeetingSummaryDocument(business, meetingDate, {
+            summary,
+            decisions: structured?.decisions ?? [],
+            pending: structured?.pending ?? [],
+            todos: structured?.todos ?? [],
+          });
+          const [rawResult, summaryResult] = await Promise.all([
+            createDocument(accessToken, { title: raw.title, content: raw.content_md, folder: raw.folder, brand: meeting.brand, team: meeting.team, tags: ["주간회의", business.label], source: "meeting_raw", sourceRef: meeting.id }),
+            createDocument(accessToken, { title: summaryDoc.title, content: summaryDoc.content_md, folder: summaryDoc.folder, brand: meeting.brand, team: meeting.team, tags: ["주간회의요약", business.label], source: "meeting_summary", sourceRef: meeting.id }),
+          ]);
+          await updateRecord(accessToken, {
+            id: meeting.id,
+            expectedVersion: meeting.version,
+            metadata: { ...meeting.metadata, knowledgeDocuments: { rawId: rawResult.document.id, summaryId: summaryResult.document.id } },
+          });
+        } catch (docError) {
+          console.error("meeting knowledge document push failed", docError);
+        }
+      }
+
       setDrawerOpen(false);
       setEditing(null);
       setRecordedBlob(null);
@@ -368,6 +449,9 @@ export function MeetingWorkspace() {
       item.parent_id &&
       meetings.some((meeting) => meeting.id === item.parent_id),
   );
+  const linkedDocuments = editing?.metadata.knowledgeDocuments as
+    | { rawId?: string; summaryId?: string }
+    | undefined;
 
   return (
     <>
@@ -447,45 +531,61 @@ export function MeetingWorkspace() {
           <div className="panel-header">
             <div>
               <h2>다음 회의 준비</h2>
-              <p>
-                {prep.latestMeeting
-                  ? `이전 회의 “${prep.latestMeeting.title}”에서 이어집니다.`
-                  : "첫 회의용 안건입니다."}
-              </p>
+              <p>마이인·브랜디에듀 각각의 이전 회의에서 이어집니다.</p>
             </div>
             <button className="icon-button" onClick={() => setPrep(null)}>
               <X size={16} />
             </button>
           </div>
-          <div className="meeting-prep-grid">
-            <div>
-              <strong>미해결 안건</strong>
-              {prep.pending.map((item) => (
-                <p key={item}>• {item}</p>
-              ))}
-              {!prep.pending.length ? <p>남은 안건이 없습니다.</p> : null}
+          {prep.map((entry) => (
+            <div className="meeting-prep-business" key={entry.label}>
+              <h3>{entry.label}</h3>
+              <p className="field-hint">
+                {entry.result.latestMeeting
+                  ? `이전 회의 "${entry.result.latestMeeting.title}"에서 이어집니다.`
+                  : "첫 회의용 안건입니다."}
+              </p>
+              {entry.result.latestMeeting?.summary ? (
+                <div className="meeting-prep-summary">
+                  <strong>지난 회의 요약</strong>
+                  {entry.result.latestMeeting.summary
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line, index) => <p key={index}>{line}</p>)}
+                </div>
+              ) : null}
+              <div className="meeting-prep-grid">
+                <div>
+                  <strong>미해결 안건</strong>
+                  {entry.result.pending.map((item) => (
+                    <p key={item}>• {item}</p>
+                  ))}
+                  {!entry.result.pending.length ? <p>남은 안건이 없습니다.</p> : null}
+                </div>
+                <div>
+                  <strong>완료 전 업무</strong>
+                  {entry.result.todos.slice(0, 8).map((item) => (
+                    <p key={item.id}>
+                      • {item.title}
+                      {item.due_date ? ` · ${item.due_date}` : ""}
+                    </p>
+                  ))}
+                  {!entry.result.todos.length ? <p>미완료 업무가 없습니다.</p> : null}
+                </div>
+                <div>
+                  <strong>주간 KPI 안건</strong>
+                  {entry.result.kpis.slice(0, 8).map((item) => (
+                    <p key={item.id}>
+                      • {item.title} {item.current}
+                      {item.unit} · {item.signal}
+                    </p>
+                  ))}
+                  {!entry.result.kpis.length ? <p>주간 KPI를 먼저 입력해 주세요.</p> : null}
+                </div>
+              </div>
             </div>
-            <div>
-              <strong>완료 전 업무</strong>
-              {prep.todos.slice(0, 8).map((item) => (
-                <p key={item.id}>
-                  • {item.title}
-                  {item.due_date ? ` · ${item.due_date}` : ""}
-                </p>
-              ))}
-              {!prep.todos.length ? <p>미완료 업무가 없습니다.</p> : null}
-            </div>
-            <div>
-              <strong>주간 KPI 안건</strong>
-              {prep.kpis.slice(0, 8).map((item) => (
-                <p key={item.id}>
-                  • {item.title} {item.current}
-                  {item.unit} · {item.signal}
-                </p>
-              ))}
-              {!prep.kpis.length ? <p>주간 KPI를 먼저 입력해 주세요.</p> : null}
-            </div>
-          </div>
+          ))}
         </section>
       ) : null}
       <section className="meeting-grid">
@@ -601,8 +701,13 @@ export function MeetingWorkspace() {
               <input
                 name="title"
                 required
-                defaultValue={editing?.title ?? ""}
+                value={title}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  titleEditedRef.current = true;
+                }}
               />
+              <small className="field-hint">브랜드를 입력하면 자동으로 채워집니다 · 직접 수정해도 됩니다.</small>
             </label>
             <div className="form-grid">
               <label>
@@ -610,14 +715,14 @@ export function MeetingWorkspace() {
                 <input
                   type="datetime-local"
                   name="startsAt"
-                  defaultValue={editing?.starts_at?.slice(0, 16) ?? ""}
+                  defaultValue={startsAtDraft}
                 />
               </label>
               <label>
                 <span>상태</span>
                 <select
                   name="status"
-                  defaultValue={editing?.status ?? "planned"}
+                  defaultValue={statusDraft}
                 >
                   <option value="planned">예정</option>
                   <option value="active">진행 중</option>
@@ -629,7 +734,17 @@ export function MeetingWorkspace() {
             <div className="form-grid">
               <label>
                 <span>브랜드</span>
-                <input name="brand" defaultValue={editing?.brand ?? ""} />
+                <input
+                  name="brand"
+                  value={brand}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setBrand(value);
+                    if (!titleEditedRef.current) setTitle(suggestMeetingTitle(value));
+                  }}
+                  placeholder="마이인 · 브랜디에듀 · 회사(전체)"
+                />
+                <small className="field-hint">이 셋 중 하나로 입력해야 문서함(원문·요약)에 자동 반영됩니다.</small>
               </label>
               <label>
                 <span>담당 팀</span>
@@ -764,6 +879,23 @@ export function MeetingWorkspace() {
                   ))}
                 </div>
               </div>
+            ) : null}
+            {linkedDocuments ? (
+              <p className="field-hint">
+                📁 문서함 반영됨
+                {linkedDocuments.summaryId ? (
+                  <>
+                    {" · "}
+                    <Link href={`/knowledge?document=${linkedDocuments.summaryId}`}>요약 보기</Link>
+                  </>
+                ) : null}
+                {linkedDocuments.rawId ? (
+                  <>
+                    {" · "}
+                    <Link href={`/knowledge?document=${linkedDocuments.rawId}`}>원문 보기</Link>
+                  </>
+                ) : null}
+              </p>
             ) : null}
             <div className="form-grid">
               <label>

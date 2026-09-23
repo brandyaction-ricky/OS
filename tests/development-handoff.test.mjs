@@ -164,3 +164,15 @@ test("handoff excludes other projects and supports saved development connection 
   assert.ok(prompt.includes("개발 브랜치: develop"));
   assert.ok(prompt.includes("저장한 기록을 다시 조회"));
 });
+
+test("request handoff prioritizes history linked to the same request ID", () => {
+  const prompt = buildDevelopmentHandoff(project, request, [
+    { parent_id: project.id, title: "PROJECT_GENERAL", description: "General", created_at: "2026-09-10", metadata: {} },
+    { parent_id: project.id, title: "OTHER_REQUEST", description: "Other", created_at: "2026-09-09", metadata: { requestId: "870a98ef-810c-4e9d-8149-8334dc9068b4" } },
+    { parent_id: project.id, title: "THIS_REQUEST", description: "Linked", created_at: "2026-09-08", status: "tested", metadata: { requestId: request.id, commitSha: "abcdef1" } },
+  ]);
+  assert.ok(prompt.includes("이 요청에 연결된 최근 기록"));
+  assert.ok(prompt.includes("THIS_REQUEST"));
+  assert.ok(!prompt.includes("PROJECT_GENERAL"));
+  assert.ok(!prompt.includes("OTHER_REQUEST"));
+});

@@ -24,6 +24,37 @@ AGENT_PAT = os.getenv("AGENT_PAT", "")
 ORG_UUID = os.getenv("ORG_UUID", "")
 
 
+class OsApiError(RuntimeError):
+    """OS API의 안전한 오류 정보만 MCP 호출자에게 전달합니다."""
+
+
+def safe_http_error(error: urllib.error.HTTPError) -> OsApiError:
+    retry_after = error.headers.get("Retry-After", "").strip()
+    try:
+        payload = json.loads(error.read().decode(errors="replace"))
+        api_error = payload.get("error", {}) if isinstance(payload, dict) else {}
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        api_error = {}
+
+    code = str(api_error.get("code") or f"HTTP_{error.code}")
+    message = str(api_error.get("message") or "OS API 요청을 처리하지 못했습니다.")
+    details = api_error.get("details") if isinstance(api_error.get("details"), dict) else {}
+    retry_seconds = details.get("retryAfterSeconds") or retry_after
+    reset_at = details.get("resetAt")
+    limit_summary = ""
+    if code == "AGENT_RATE_LIMITED":
+        allowed = {
+            key: details.get(key)
+            for key in ("bucket", "minuteLimit", "minuteUsed", "dayLimit", "dayUsed")
+            if details.get(key) is not None
+        }
+        if allowed:
+            limit_summary = f" 한도 정보={json.dumps(allowed, ensure_ascii=False, separators=(',', ':'))}."
+    retry_summary = f" Retry-After={retry_seconds}초." if retry_seconds else ""
+    reset_summary = f" 초기화 시각={reset_at}." if reset_at else ""
+    return OsApiError(f"{code}: {message}{limit_summary}{retry_summary}{reset_summary}")
+
+
 def require_connection(*, write: bool = False) -> None:
     if not AGENT_PAT:
         raise RuntimeError("AGENT_PAT가 설정되지 않았습니다.")
@@ -46,8 +77,7 @@ def api(path: str, *, method: str = "GET", body: dict[str, Any] | None = None) -
         with urllib.request.urlopen(request, timeout=30) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as error:
-        detail = error.read().decode(errors="replace")
-        raise RuntimeError(f"OS API {error.code}: {detail}") from error
+        raise safe_http_error(error) from error
 
 
 TOOLS = [

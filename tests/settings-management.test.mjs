@@ -18,6 +18,12 @@ test("settings wait for real data before rendering status and counts", async () 
   assert.match(audit, /loading \? "확인 중"/);
 });
 
+test("Telegram access status loads on both channel and company settings", async () => {
+  const settings = await read("components/settings-workspaces.tsx");
+  assert.match(settings, /\(page === "channels" \|\| page === "company"\) && profile\?\.role === "admin"/);
+  assert.match(settings, /<TelegramAccessPanel status=\{telegram\}/);
+});
+
 test("connection status uses automatic health values and distinct dot colors", async () => {
   const [settings, css] = await Promise.all([
     read("components/settings-workspaces.tsx"),
@@ -72,7 +78,7 @@ test("production QA fixes label key controls and keep the weekly board in view",
   assert.match(packaging, /aria-label="시장 썸네일 검색어"/);
   assert.match(shorts, /aria-label="제안할 클립 수"/);
   assert.match(search, /aria-label="지식 검색어"/);
-  assert.match(graph, /aria-label=\{`\$\{node\.title\} 문서 선택`\}/);
+  assert.match(graph, /aria-label=\{`\$\{node\.folder\}\/\$\{node\.title\} 문서 선택`\}/);
   assert.match(calendar, /aria-label="이전 달"/);
   assert.match(calendar, /aria-label="다음 달"/);
   assert.match(css, /\.week-board \{[^}]*minmax\(128px,1fr\)/);
@@ -130,8 +136,9 @@ test("sensitive access gaps, shared knowledge categories and action confirmation
   ]);
   assert.match(settings, /SENSITIVE_ACCESS_ROSTER\.map/);
   assert.match(settings, /초대 대기/);
-  assert.match(knowledge, /KNOWLEDGE_CATEGORIES\.map/);
-  assert.match(knowledge, /knowledge-category-options/);
+  assert.match(knowledge, /KnowledgeFolderPicker/);
+  assert.match(settings, /KnowledgeClassificationSettings/);
+  assert.doesNotMatch(knowledge, /KNOWLEDGE_CATEGORIES/);
   assert.match(categories, /회사 공통/);
   assert.match(monitoring, /confirmationDialog\.current\?\.showModal/);
   assert.match(monitoring, /onCancel=\{\(\) => setConfirmation\(null\)\}/);

@@ -27,8 +27,8 @@ OS 관리자 화면의 `설정 → 권한 → AI 접근 키`에서 다음 값을
 - `delete_document`: `confirm=true`일 때만 휴지통 이동
 - `list_records` / `get_record`: 업무·목표·회의·콘텐츠·성과·경영지원 운영 기록 조회
 - `get_project_context`: 프로젝트와 연결된 업무·AI 작업·의사결정·개발·배포 이력 일괄 조회
-- `create_development_log`: 브랜치·커밋·검증·위험·다음 단계를 프로젝트 개발 이력으로 기록
-- `record_deployment`: 이미 수행한 DEV·운영 배포 결과 기록(운영은 사람 승인 근거 필수)
+- `create_development_log`: 브랜치·커밋·검증·위험·다음 단계를 프로젝트 개발 이력으로 기록. `request_id`를 주면 같은 프로젝트의 개발 요청과 자동 연결
+- `record_deployment`: 이미 수행한 DEV·운영 배포 결과 기록(운영은 사람 승인 근거 필수). `request_id`를 주면 같은 프로젝트의 개발 요청과 자동 연결
 - `create_record` / `edit_record`: 버전 충돌 방지와 감사 로그를 적용한 운영 기록 생성·수정
 - `delete_record`: `confirm=true`일 때만 운영 기록을 휴지통으로 이동
 

@@ -54,6 +54,7 @@ function setup(initialQuery = "", { delayProjects = false } = {}) {
     "next/navigation": { useSearchParams: () => new URLSearchParams(query) },
     "@/lib/api-client": {
       listRecords: async (_token, type) => type === "project" ? projectPromise : { records: [], total: 0 },
+      listMembers: async () => ({ members: [{ id: "reporter", email: "reporter@example.com", display_name: "정호", role: "admin", team: "", is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: false, account_connected: true }] }),
       createRecord: async () => { throw new Error("Unexpected write"); },
     },
     "@/lib/development-handoff": {

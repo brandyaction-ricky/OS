@@ -52,7 +52,7 @@ test("performance alerts share one rule with meeting preparation", async () => {
   const [signals, dashboard, meeting, weekly] = await Promise.all([
     read("lib/performance-signals.ts"),
     read("components/growth-dashboard.tsx"),
-    read("app/api/v1/meeting-prep/route.ts"),
+    read("lib/server/meeting-prep.ts"),
     read("components/performance-workspaces.tsx"),
   ]);
   assert.match(signals, /2주 연속 0/);
