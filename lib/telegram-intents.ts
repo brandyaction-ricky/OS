@@ -71,6 +71,16 @@ export async function captureKind(text: string): Promise<CaptureKind> {
   return aiKind ?? "question";
 }
 
+export function isTelegramHelpRequest(text: string) {
+  const normalized = text.trim();
+  if (/^\/(?:help|도움말)(?:@\w+)?$/iu.test(normalized)) return true;
+  if (/^\/?start(?:@\w+)?$/iu.test(normalized)) return true;
+
+  const asksHowToUse = /(사용법|도움말|명령어|어떻게\s*(?:써|쓰면|사용)|뭘\s*할\s*수\s*있)/iu.test(normalized);
+  const namesThisBot = /(brandy\s*os|brandyos|브랜디\s*os|이\s*봇|봇)/iu.test(normalized);
+  return asksHowToUse && namesThisBot;
+}
+
 export function isBotAddressed(message: { chat: { type: string }; text?: string; caption?: string; reply_to_message?: { from?: { is_bot?: boolean; username?: string } } }, configuredUsername: string | undefined) {
   if (message.chat.type === "private") return true;
   const username = configuredUsername?.replace(/^@/, "").toLowerCase();

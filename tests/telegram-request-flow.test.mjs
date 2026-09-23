@@ -155,11 +155,31 @@ test("voice is acknowledged as unavailable instead of silently disappearing", as
   assert.equal(ctx.inserts.filter((item) => item.table === "os_documents").length, 0);
 });
 
-test("start returns usage guidance instead of searching arbitrary knowledge", async () => {
-  const ctx = await setup("webhook", normalHandler);
+const helpDocument = {
+  id: "telegram-help-doc",
+  content_md: "# 매뉴얼\n<!-- TELEGRAM_HELP_START -->\n🤖 brandyOS 봇 사용법\n\n- 개인 대화: 질문을 그대로 보냅니다.\n- 업무방: @brandyOS_Bot 뒤에 질문을 씁니다.\n<!-- TELEGRAM_HELP_END -->\n## 상세",
+};
+
+test("start returns the canonical OS help section instead of a hard-coded or searched answer", async () => {
+  const ctx = await setup("webhook", (query) => query.table === "os_documents" ? { data: helpDocument, error: null } : normalHandler(query));
   const body = await (await ctx.api.POST(incoming({ text: "/start" }))).json();
   assert.equal(body.started, true);
-  assert.match(ctx.sent[0].text, /회사 지식 질문/);
+  assert.equal(body.help, true);
+  assert.match(ctx.sent[0].text, /brandyOS 봇 사용법/);
+  assert.doesNotMatch(ctx.sent[0].text, /TELEGRAM_HELP_START/);
+  assert.equal(ctx.searchCalls.length, 0);
+  const turn = ctx.inserts.find((insert) => insert.table === "os_channel_turns").payload;
+  assert.equal([...turn.source_document_ids].join(","), "telegram-help-doc");
+  assert.equal(turn.metadata.kind, "telegram_help");
+});
+
+test("a natural-language bot usage question returns the same canonical help section without knowledge search", async () => {
+  const ctx = await setup("webhook", (query) => query.table === "os_documents" ? { data: helpDocument, error: null } : normalHandler(query));
+  const body = await (await ctx.api.POST(incoming({ text: "봇 사용법 말해줘" }))).json();
+  assert.equal(body.help, true);
+  assert.equal(body.started, false);
+  assert.match(ctx.sent[0].text, /업무방: @brandyOS_Bot/);
+  assert.equal(ctx.searchCalls.length, 0);
 });
 
 test("회의준비 answers with the prep brief (including last meeting summary) instead of a knowledge search", async () => {

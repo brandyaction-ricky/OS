@@ -4,7 +4,7 @@ import { apiErrorResponse, ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { answerFromKnowledge } from "@/lib/server/answer";
 import { safeSecretMatch, type RequestActor } from "@/lib/server/auth";
-import { captureKind, isBotAddressed, type CaptureKind } from "@/lib/telegram-intents";
+import { captureKind, isBotAddressed, isTelegramHelpRequest, type CaptureKind } from "@/lib/telegram-intents";
 import { searchDocuments } from "@/lib/server/search";
 import { evidenceQueryText, hasLexicalEvidence, rankTelegramEvidence, telegramAuthorityQueryText } from "@/lib/search-relevance";
 import { actionPreview, isOutdatedEvidence, knowledgeConflictNotice, parseTelegramAction, type TelegramActionDraft } from "@/lib/telegram-team";
@@ -32,6 +32,29 @@ interface TelegramUpdate { update_id: number; message?: TelegramMessage; callbac
 
 function shouldRespond(message: TelegramMessage) {
   return isBotAddressed(message, process.env.TELEGRAM_BOT_USERNAME);
+}
+
+const TELEGRAM_HELP_TITLE = "brandyOS 텔레그램 봇 사용 매뉴얼";
+const TELEGRAM_HELP_START = "<!-- TELEGRAM_HELP_START -->";
+const TELEGRAM_HELP_END = "<!-- TELEGRAM_HELP_END -->";
+
+function helpSection(content: string) {
+  const start = content.indexOf(TELEGRAM_HELP_START);
+  const end = content.indexOf(TELEGRAM_HELP_END);
+  if (start < 0 || end <= start) return "";
+  return content.slice(start + TELEGRAM_HELP_START.length, end).trim();
+}
+
+async function telegramHelp(supabase: ReturnType<typeof createServiceSupabase>) {
+  const { data, error } = await supabase.from("os_documents")
+    .select("id,content_md")
+    .eq("title", TELEGRAM_HELP_TITLE)
+    .eq("status", "canonical")
+    .maybeSingle();
+  if (error) throw new ApiError(500, "TELEGRAM_HELP_READ_FAILED", "봇 사용 매뉴얼을 불러오지 못했습니다. 잠시 뒤 다시 요청해 주세요.");
+  const answer = helpSection(String(data?.content_md ?? ""));
+  if (!data?.id || !answer) throw new ApiError(503, "TELEGRAM_HELP_NOT_READY", "봇 사용 매뉴얼이 아직 준비되지 않았습니다. OS 관리자에게 알려 주세요.");
+  return { answer, documentId: String(data.id) };
 }
 
 async function telegramApi(method: string, body: Record<string, unknown>) {
@@ -507,7 +530,7 @@ export async function POST(request: Request) {
     const rawText = (message.text ?? message.caption ?? "").trim();
     const botUsername = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, "");
     const text = botUsername ? rawText.replace(new RegExp(`@${botUsername}\\b`, "ig"), "").trim() : rawText;
-    const kind = await captureKind(text); const supabase = createServiceSupabase();
+    const supabase = createServiceSupabase();
     verifiedMessage = message;
     const externalUserId = String(message.from.id);
     const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS ?? "").split(",").map((id) => id.trim()).filter(Boolean));
@@ -528,6 +551,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, blocked: true, registrationPending: true });
     }
     await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });
+    if (isTelegramHelpRequest(text)) {
+      const help = await telegramHelp(supabase);
+      await sendTelegram(message.chat.id, help.answer, message.message_id);
+      await supabase.from("os_channel_turns").insert({
+        channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id,
+        question: text, answer: help.answer, source_document_ids: [help.documentId], metadata: { kind: "telegram_help" },
+      });
+      return NextResponse.json({ ok: true, help: true, started: /^\/?start$/i.test(text) });
+    }
     // 회의 명령은 캡처 분류(AI 폴백 포함)보다 먼저 확인한다 — captureKind의 TypeSafe
     // AI 폴백이 "회의준비"/"회의기록"을 모르는 문장으로 보고 인박스 등으로 오분류해
     // 캡처 분기가 먼저 저장·리턴해버리면 아래 회의 처리에 영영 도달하지 못하기 때문.
@@ -577,6 +609,7 @@ export async function POST(request: Request) {
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), request_message_id: message.message_id, question: text, answer: brief, source_document_ids: [] });
       return NextResponse.json({ ok: true, operatingBaselineView: true });
     }
+    const kind = await captureKind(text);
     if (message.voice) {
       await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: "[음성 메시지]", answer: "TELEGRAM_UNSUPPORTED_VOICE", source_document_ids: [] });
       await sendTelegram(message.chat.id, "음성 전사·개인 메모 저장은 아직 연결되지 않았습니다. 저장된 내용은 없습니다. 텍스트로 보내 주세요.", message.message_id);
@@ -597,12 +630,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, captured: true, documentId: id });
     }
     if (!text) return NextResponse.json({ ok: true, ignored: true });
-    if (/^\/?start$/i.test(text)) {
-      const welcome = "브랜디 OS 봇입니다. 회사 지식 질문과 프로젝트·업무·목표 조회를 할 수 있습니다. 저장은 #인박스, /후기, /썸네일기록, #raw, /요약 명령을 사용하세요. 팀 기록은 /업무, /결정, /보류 뒤에 내용을 쓰고 확인 버튼을 누르세요. 회의는 /회의준비 [사업]으로 안건을 받고, /회의기록 [사업] [내용]으로 한 번에 정리·저장합니다. 회의 결정을 확인 버튼으로 반영하면 /운영기준 [사업]에서 지금 유효한 운영 기준을 볼 수 있습니다. 관리자는 /요약켜기 9 또는 /요약끄기로 변경 요약을 설정할 수 있습니다.";
-      await sendTelegram(message.chat.id, welcome, message.message_id);
-      await supabase.from("os_channel_turns").insert({ channel: "telegram", external_user_id: externalUserId, external_chat_id: String(message.chat.id), question: text, answer: welcome, source_document_ids: [] });
-      return NextResponse.json({ ok: true, started: true });
-    }
     const digestResponse = await configureDigest(supabase, message, registered?.profile_id ?? null, rawText);
     if (digestResponse) {
       await sendTelegram(message.chat.id, digestResponse, message.message_id);
