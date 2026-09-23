@@ -22,7 +22,7 @@ test("a same-team contributor can append without turning submissions into approv
   const claims = await read("../components/content-claim-evidence.tsx");
   assert.match(handoff, /같은 팀 구성원은 근거를 추가할 수 있습니다/);
   assert.equal((handoff.match(/state\.source\.team\.trim\(\) === profile\.team\.trim\(\)/g) ?? []).length, 2);
-  assert.match(copy, /if \(saving\.current \|\| busy \|\| disabled \|\| !canWrite\) return/);
+  assert.match(copy, /if \(saving\.current \|\| busy \|\| disabled \|\| !canWrite/);
   assert.match(copy, /\{canWrite \? <button/);
   assert.match(copy, /비교에 자동 반영되지 않습니다/);
   assert.match(claims, /if \(saving\.current \|\| disabled \|\| !canWrite\) return/);

@@ -53,7 +53,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={systemOneContentEnabled} showContentEvidence={contentEvidenceEnabled} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/packages") return <ContentPackageWorkspace />;
+  if (href === "/content/packages") return <ContentPackageWorkspace showContentEvidence={contentEvidenceEnabled} />;
   if (href === "/content/shorts") return <ContentShortsWorkspace />;
   if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/youtube") return <YoutubeKitWorkspace />;
