@@ -2,6 +2,25 @@
 
 Updated: 2026-09-17 Asia/Seoul.
 
+## 2026-09-23 content evidence boundary candidate
+
+`20260923060000_content_evidence_owner_and_append_only.sql` is a forward-only
+candidate for the three content-evidence `packageKind` values. It narrows
+authenticated reads and owner assignment for those rows and rejects direct
+UPDATE/archival/DELETE or relabelling through a database trigger. It leaves
+ordinary `os_records` access unchanged. The transaction-scoped pgTAP suite is
+`supabase/tests/content_evidence_boundary_test.sql`.
+
+This migration has **not** been applied to Local, DEV or Production by this
+change. In particular, a passing repository integrity check or Preview build
+does not prove the new RLS and trigger behavior. Before any DEV application,
+review the live migration history (including the separate quota migration),
+run the pgTAP suite against an isolated local database, then obtain explicit
+approval for the exact DEV SQL and retest two independent DEV identities.
+Production requires its own schema comparison, plan and approval. Owner-entered
+rows remain user claims, not source-verified or tamper-proof audit evidence;
+a same-owner client can still INSERT unvalidated evidence directly.
+
 ## 2026-09-21 narrowly approved quota maintenance
 
 The historical baseline status below describes the four-migration DEV rollout;

@@ -141,6 +141,11 @@
       "file": "20260921140000_agent_update_daily_limit.sql",
       "sha256": "426ee97dfebd4891b80b704af13c414ab22035972b72b541bfb673b8ded5f742",
       "purpose": "raise only agent knowledge.update rolling daily quota to 1000; environment application is separately recorded"
+    },
+    {
+      "file": "20260923060000_content_evidence_owner_and_append_only.sql",
+      "sha256": "7a079762bd149ceae5fab06f2ac3921c7c217434b4b99263b0d5306ee2838fe0",
+      "purpose": "restrict content evidence reads and owner assignment, and reject evidence update, archive, deletion, or relabelling; environment application is separately approved"
     }
   ],
   "legacyMigrations": [
