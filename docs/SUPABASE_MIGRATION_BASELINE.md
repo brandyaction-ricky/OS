@@ -2,24 +2,30 @@
 
 Updated: 2026-09-17 Asia/Seoul.
 
-## 2026-09-23 content evidence boundary candidate
+## 2026-09-23 content evidence boundary — DEV applied
 
 `20260923060000_content_evidence_owner_and_append_only.sql` is a forward-only
-candidate for the three content-evidence `packageKind` values. It narrows
+migration for the three content-evidence `packageKind` values. It narrows
 authenticated reads and owner assignment for those rows and rejects direct
 UPDATE/archival/DELETE or relabelling through a database trigger. It leaves
 ordinary `os_records` access unchanged. The transaction-scoped pgTAP suite is
 `supabase/tests/content_evidence_boundary_test.sql`.
 
-This migration has **not** been applied to Local, DEV or Production by this
-change. In particular, a passing repository integrity check or Preview build
-does not prove the new RLS and trigger behavior. Before any DEV application,
-review the live migration history (including the separate quota migration),
-run the pgTAP suite against an isolated local database, then obtain explicit
-approval for the exact DEV SQL and retest two independent DEV identities.
-Production requires its own schema comparison, plan and approval. Owner-entered
-rows remain user claims, not source-verified or tamper-proof audit evidence;
-a same-owner client can still INSERT unvalidated evidence directly.
+The representative explicitly approved applying this SQL to
+`brandyaction-os-dev` only. Before application, the live DEV migration history
+(including the separate quota migration) was inspected, and the SQL plus all
+10 pgTAP checks passed inside a rolled-back DEV transaction. No local
+PostgreSQL runtime was available. The exact migration was then applied in a
+transaction and recorded as version `20260923060000`; the trigger function,
+two policies and history row were verified. The pgTAP suite passed 10/10 again
+against the applied DEV schema, and the existing owner account could still
+read its cards in Preview. Independent second-account browser QA remains open;
+the pgTAP suite did verify cross-account read denial and forged-owner INSERT
+denial using two authenticated identities. This is **not** applied to Local or
+Production. Production requires its own schema comparison, plan and explicit
+approval. Owner-entered rows remain user claims, not source-verified or
+tamper-proof audit evidence; a same-owner client can still INSERT unvalidated
+evidence directly.
 
 ## 2026-09-21 narrowly approved quota maintenance
 
