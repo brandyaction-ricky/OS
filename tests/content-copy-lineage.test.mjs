@@ -63,6 +63,7 @@ test("DEV-only route checks source ownership and never changes publication or ap
   assert.match(route, /verification: "user_entered"/);
   assert.doesNotMatch(route, /content_publish|service_role|status: "published"|finalApproved: true/);
   const generic = await readFile(new URL("../app/api/v1/records/route.ts", import.meta.url), "utf8");
-  assert.match(generic, /APPEND_ONLY_CONTENT_EVIDENCE/);
+  assert.match(generic, /isContentEvidence/);
+  assert.match(generic, /EVIDENCE_API_REQUIRED/);
   assert.match(generic, /EVIDENCE_APPEND_ONLY/);
 });

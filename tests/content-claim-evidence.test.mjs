@@ -52,5 +52,5 @@ test("claim route is DEV-only, owner-scoped, append-only, and does not mutate ap
   assert.match(route, /source\.version !== input\.expectedSourceVersion/);
   assert.match(route, /verification: "reviewer_entered"/);
   assert.doesNotMatch(route, /content_publish|service_role|status: "published"|pipelineReviews/);
-  assert.match(generic, /"claim_evidence"/); assert.match(generic, /EVIDENCE_APPEND_ONLY/);
+  assert.match(generic, /isContentEvidence/); assert.match(generic, /EVIDENCE_APPEND_ONLY/);
 });

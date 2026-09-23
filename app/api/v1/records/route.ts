@@ -6,6 +6,7 @@ import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
+import { isContentEvidence } from "@/lib/content-evidence-protection";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +15,6 @@ const CONTENT_PUBLISH_TRANSITIONS: Record<string, string[]> = {
   draft: ["review", "blocked"], review: ["ready", "blocked"], blocked: ["review"],
   ready: ["scheduled", "review", "blocked"], scheduled: ["published", "ready"], published: [],
 };
-const APPEND_ONLY_CONTENT_EVIDENCE = new Set(["copy_decision_evidence", "publication_copy_observation", "claim_evidence"]);
 
 const COLUMN_MAP = {
   recordType: "record_type", assigneeId: "assignee_id", parentId: "parent_id",
@@ -82,6 +82,7 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (isContentEvidence(input.recordType, input.metadata)) throw new ApiError(403, "EVIDENCE_API_REQUIRED", "증거 기록은 전용 화면에서 추가해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
@@ -107,7 +108,7 @@ export async function PATCH(request: Request) {
     const input = recordUpdateSchema.parse(await parseJson(request));
     const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
-    if (current.record_type === "content_package" && APPEND_ONLY_CONTENT_EVIDENCE.has(String(current.metadata?.packageKind)))
+    if (isContentEvidence(current.record_type, current.metadata) || isContentEvidence(input.recordType ?? current.record_type, input.metadata))
       throw new ApiError(409, "EVIDENCE_APPEND_ONLY", "증거 이력은 수정하지 않습니다. 정정 내용은 새 기록으로 추가해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
@@ -153,7 +154,7 @@ export async function DELETE(request: Request) {
     if (!id) throw new ApiError(400, "RECORD_ID_REQUIRED", "기록 ID가 필요합니다.");
     const { data: current } = await actor.supabase.from("os_records").select("version,record_type,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
-    if (current.record_type === "content_package" && APPEND_ONLY_CONTENT_EVIDENCE.has(String(current.metadata?.packageKind)))
+    if (isContentEvidence(current.record_type, current.metadata))
       throw new ApiError(409, "EVIDENCE_APPEND_ONLY", "증거 이력은 삭제하지 않습니다. 정정 내용은 새 기록으로 추가해 주세요.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);
