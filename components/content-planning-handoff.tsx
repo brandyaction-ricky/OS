@@ -98,8 +98,8 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
     </> : null}
     {showEvidence ? <>
       {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">같은 팀 구성원은 근거를 추가할 수 있습니다. 팀원이 제출한 결정 근거는 주제 담당자의 결정 비교에 자동 반영되지 않으며, 어느 기록도 승인·사실 확인을 뜻하지 않습니다.</p> : null}
-      <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
-      <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
+      <ContentCopyLineage key={`copy-lineage:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
+      <ContentClaimEvidence key={`claim-evidence:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
     {!evidenceOnly ? <>
       <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
