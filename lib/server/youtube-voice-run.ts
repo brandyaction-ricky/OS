@@ -12,17 +12,22 @@ import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const YOUTUBE_VOICE_RUN_KIND = "youtube_narration_voice_v1";
 export const YOUTUBE_VOICE_BUCKET = "os-youtube-voice";
+export const YOUTUBE_VOICE_TIMING_BUCKET = "os-youtube-voice-timing";
+export const YOUTUBE_VOICE_TIMING_MODE = "fish_stream_v1";
 export const YOUTUBE_VOICE_EXECUTOR_MODEL = "gpt-6-luna";
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
 const segmentSchema = z.object({
   index: z.number().int().min(0).max(79), textHash: hex,
   status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional(),
+  timingPath: z.string().optional(), audioSha256: hex.optional(),
 }).strict();
 export const voiceRunMetadataSchema = z.object({
   kind: z.literal(YOUTUBE_VOICE_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex,
   script: versionRef, packaging: versionRef, sceneRuleVersions: z.array(versionRef).length(4),
-  scenePlanGeneratedAt: z.string().datetime(), voiceReferenceFingerprint: hex, voiceModel: z.string().min(1),
+  scenePlanGeneratedAt: z.string().datetime(), sceneTemplateVersion: z.string().min(1).max(100).optional(),
+  voiceReferenceFingerprint: hex, voiceModel: z.string().min(1),
+  timingMode: z.literal(YOUTUBE_VOICE_TIMING_MODE).optional(),
   executorModel: z.literal(YOUTUBE_VOICE_EXECUTOR_MODEL), segments: z.array(segmentSchema).min(1).max(80),
   lunaReview: z.object({ ready: z.boolean(), issues: z.array(z.string().max(300)).max(20), at: z.string().datetime() }).strict().optional(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string().datetime() }).strict().optional(),
@@ -44,6 +49,10 @@ export function voiceRunId(runKey: string) {
 
 export function voiceSegmentPath(ownerId: string, sourceId: string, runId: string, index: number) {
   return `${ownerId}/${sourceId}/${runId}/${String(index).padStart(3, "0")}.mp3`;
+}
+
+export function voiceSegmentTimingPath(ownerId: string, sourceId: string, runId: string, index: number) {
+  return `${ownerId}/${sourceId}/${runId}/${String(index).padStart(3, "0")}.json`;
 }
 
 export function parseVoiceRun(record: Pick<OsRecord, "metadata">): VoiceRunMetadata {
@@ -90,13 +99,18 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Luna API 연결을 확인해 주세요.");
   const { data: bucket, error: bucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_BUCKET);
   if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소를 확인해 주세요.");
+  const { data: timingBucket, error: timingBucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_TIMING_BUCKET);
+  if (timingBucketError || !timingBucket || timingBucket.public)
+    throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 시간표 저장소를 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
-  const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey, rules.ruleVersions, generatedAt, voiceModel, fingerprint]);
+  const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey, rules.ruleVersions,
+    generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE]);
   const id = voiceRunId(runKey);
   const metadata: VoiceRunMetadata = {
     kind: YOUTUBE_VOICE_RUN_KIND, runKey, sourceId, inputKey, script: plan.script, packaging: plan.packaging,
-    sceneRuleVersions: rules.ruleVersions, scenePlanGeneratedAt: generatedAt, voiceReferenceFingerprint: fingerprint,
-    voiceModel, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
+    sceneRuleVersions: rules.ruleVersions, scenePlanGeneratedAt: generatedAt,
+    sceneTemplateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceReferenceFingerprint: fingerprint,
+    voiceModel, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
     segments: segments.map((text, index) => ({ index, textHash: digestVoiceValue(text), status: "pending" })), attempts: 0,
   };
   const { data, error } = await actor.supabase.from("os_records").insert({

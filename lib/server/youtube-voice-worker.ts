@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
@@ -6,10 +6,10 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { generateContentText } from "./content-model";
 import { readPipeline } from "./content-pipeline";
-import { splitFishNarration, synthesizeFishSegment } from "./fish-audio";
+import { splitFishNarration, synthesizeFishSegment, synthesizeFishSegmentWithTimestamps } from "./fish-audio";
 import { readYoutubeSceneRules } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { digestVoiceValue, parseVoiceRun, voiceRunId, voiceSegmentPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_EXECUTOR_MODEL, YOUTUBE_VOICE_RUN_KIND, type VoiceRunMetadata } from "./youtube-voice-run";
+import { digestVoiceValue, parseVoiceRun, voiceRunId, voiceSegmentPath, voiceSegmentTimingPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET, YOUTUBE_VOICE_EXECUTOR_MODEL, YOUTUBE_VOICE_RUN_KIND, type VoiceRunMetadata } from "./youtube-voice-run";
 
 const reviewSchema = z.object({
   ready: z.boolean(),
@@ -32,6 +32,7 @@ async function currentSegments(service: ReturnType<typeof createServiceSupabase>
     plan.script?.id !== metadata.script.id || plan.script?.version !== metadata.script.version ||
     plan.packaging?.id !== metadata.packaging.id || plan.packaging?.version !== metadata.packaging.version ||
     scenePlan?.inputKey !== metadata.inputKey || scenePlan?.generatedAt !== metadata.scenePlanGeneratedAt ||
+    (metadata.sceneTemplateVersion !== undefined && metadata.sceneTemplateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION) ||
     scenePlan?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
     JSON.stringify(scenePlan?.ruleVersions) !== JSON.stringify(metadata.sceneRuleVersions))
     throw new ApiError(409, "VOICE_RUN_STALE", "음성 제작 중 원고·패키징·화면 설계가 변경됐습니다.");
@@ -70,9 +71,9 @@ async function saveClaimedRun(service: ReturnType<typeof createServiceSupabase>,
   return { runId: record.id, status: changes.status, stage: changes.stage };
 }
 
-async function hasVoiceFile(service: ReturnType<typeof createServiceSupabase>, path: string) {
+async function hasPrivateFile(service: ReturnType<typeof createServiceSupabase>, bucket: string, path: string) {
   const slash = path.lastIndexOf("/");
-  const { data, error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).list(path.slice(0, slash), {
+  const { data, error } = await service.storage.from(bucket).list(path.slice(0, slash), {
     limit: 2, search: path.slice(slash + 1),
   });
   if (error) throw new ApiError(503, "VOICE_STORAGE_READ_FAILED", "저장된 음성 자산을 확인하지 못했습니다.");
@@ -96,6 +97,11 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
       throw new ApiError(409, "VOICE_RUN_STALE", "목소리 설정이 변경됐습니다.");
     const { data: bucket, error: bucketError } = await service.storage.getBucket(YOUTUBE_VOICE_BUCKET);
     if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소가 필요합니다.");
+    if (metadata.timingMode) {
+      const { data: timingBucket, error: timingBucketError } = await service.storage.getBucket(YOUTUBE_VOICE_TIMING_BUCKET);
+      if (timingBucketError || !timingBucket || timingBucket.public)
+        throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 시간표 저장소가 필요합니다.");
+    }
 
     if (!metadata.lunaReview) {
       const review = await lunaReview(segments);
@@ -112,22 +118,40 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
     const pending = metadata.segments.find((segment) => segment.status === "pending");
     if (!pending) return saveClaimedRun(service, record, { metadata: { ...metadata, attempts: 0 }, status: "done", stage: "voice_ready" });
     const path = voiceSegmentPath(record.owner_id, metadata.sourceId, record.id, pending.index);
+    const timingPath = metadata.timingMode ? voiceSegmentTimingPath(record.owner_id, metadata.sourceId, record.id, pending.index) : undefined;
     let bytes: number | undefined;
-    if (!await hasVoiceFile(service, path)) {
-      const audio = await synthesizeFishSegment(segments[pending.index], {
-        apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: voiceModel,
-      });
+    let audioSha256: string | undefined;
+    const audioExists = await hasPrivateFile(service, YOUTUBE_VOICE_BUCKET, path);
+    const timingExists = timingPath ? await hasPrivateFile(service, YOUTUBE_VOICE_TIMING_BUCKET, timingPath) : false;
+    if (audioExists && timingPath && !timingExists)
+      throw new ApiError(409, "VOICE_TIMING_ASSET_INCOMPLETE", "음성과 시간표가 함께 저장되지 않았습니다. 자산을 확인해 주세요.");
+    if (!audioExists) {
+      const options = { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: voiceModel };
+      const audio = timingPath
+        ? await synthesizeFishSegmentWithTimestamps(segments[pending.index], options)
+        : await synthesizeFishSegment(segments[pending.index], options);
       await currentSegments(service, record, metadata);
+      if (timingPath && "words" in audio) {
+        audioSha256 = createHash("sha256").update(audio.bytes).digest("hex");
+        const timing = JSON.stringify({ version: "fish-stream-timing-v1", textHash: pending.textHash,
+          audioSha256, durationSeconds: audio.durationSeconds, words: audio.words });
+        if (Buffer.byteLength(timing) > 1_048_576)
+          throw new ApiError(502, "VOICE_TIMING_TOO_LARGE", "음성 시간표가 저장 가능한 크기를 넘었습니다.");
+        const { error: timingError } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(timingPath,
+          Buffer.from(timing), { contentType: "application/json", cacheControl: "3600", upsert: timingExists });
+        if (timingError) throw new ApiError(502, "VOICE_TIMING_UPLOAD_FAILED", "음성 시간표를 저장하지 못했습니다.");
+      }
       const { error: uploadError } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), {
         contentType: audio.mimeType, cacheControl: "3600", upsert: false,
       });
-      if (uploadError && !await hasVoiceFile(service, path))
+      if (uploadError && !await hasPrivateFile(service, YOUTUBE_VOICE_BUCKET, path))
         throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "생성된 음성을 저장하지 못했습니다.");
       bytes = audio.bytes.length;
     }
     await currentSegments(service, record, metadata);
     const nextSegments: VoiceRunMetadata["segments"] = metadata.segments.map((segment) => segment.index === pending.index
-      ? { ...segment, status: "ready", path, ...(bytes ? { bytes } : {}) } : segment);
+      ? { ...segment, status: "ready", path, ...(timingPath ? { timingPath } : {}),
+        ...(audioSha256 ? { audioSha256 } : {}), ...(bytes ? { bytes } : {}) } : segment);
     const finished = nextSegments.every((segment) => segment.status === "ready");
     return saveClaimedRun(service, record, {
       metadata: { ...metadata, segments: nextSegments, attempts: 0 },
@@ -136,7 +160,7 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
   } catch (error) {
     const code = error instanceof ApiError ? error.code : "VOICE_WORKER_FAILED";
     const stale = code === "VOICE_RUN_STALE";
-    const needsInput = stale || (error instanceof ApiError && ["VOICE_RUN_INVALID", "VOICE_REVIEW_NEEDS_INPUT", "VOICE_WORKER_NOT_CONFIGURED", "VOICE_STORAGE_NOT_CONFIGURED"].includes(error.code));
+    const needsInput = stale || (error instanceof ApiError && ["VOICE_RUN_INVALID", "VOICE_REVIEW_NEEDS_INPUT", "VOICE_WORKER_NOT_CONFIGURED", "VOICE_STORAGE_NOT_CONFIGURED", "VOICE_TIMING_ASSET_INCOMPLETE"].includes(error.code));
     const exhausted = metadata.attempts >= 3;
     return saveClaimedRun(service, record, {
       metadata: { ...metadata, lastError: { code, at: new Date().toISOString() } },
