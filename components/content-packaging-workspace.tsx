@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Bookmark,
   Check,
@@ -75,6 +76,14 @@ export function ContentPackagingWorkspace({ showContentEvidence = false }: { sho
   const packageTabs = showContentEvidence
     ? [...BASE_PACKAGE_TABS.slice(0, 3), { key: "evidence" as const, label: "근거", hint: "선택·주장 기록" }, BASE_PACKAGE_TABS[3]]
     : BASE_PACKAGE_TABS;
+
+  const selectSource = (nextSourceId: string) => {
+    setSourceId(nextSourceId);
+    const url = new URL(window.location.href);
+    if (nextSourceId) url.searchParams.set("sourceId", nextSourceId);
+    else url.searchParams.delete("sourceId");
+    window.history.replaceState(window.history.state, "", url);
+  };
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -211,7 +220,7 @@ export function ContentPackagingWorkspace({ showContentEvidence = false }: { sho
         status: "backlog", priority: "normal", team: profile?.team || "콘텐츠", brand: String(form.get("brand") ?? "브랜디액션"),
         tags: ["빠른검증", "임시주제"], metadata: { studioKind: "quick_validation", temporary: true },
       });
-      setQuickTopicOpen(false); await load(); setSourceId(record.id);
+      setQuickTopicOpen(false); await load(); selectSource(record.id);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "검증 주제를 만들지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -249,9 +258,9 @@ export function ContentPackagingWorkspace({ showContentEvidence = false }: { sho
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : "[기획 연계] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="secondary-button" disabled={!sourceId || busy} onClick={() => setManualPackageOpen(true)}><PackageCheck size={15} /> 기존 제목·카피 연결</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => selectSource(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : "[기획 연계] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="secondary-button" disabled={!sourceId || busy} onClick={() => setManualPackageOpen(true)}><PackageCheck size={15} /> 기존 제목·카피 연결</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-    <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
+    <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장{showContentEvidence ? " → 근거 기록" : ""}</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
     <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{packageTabs.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>
 
     {tab === "search" ? <>
@@ -268,13 +277,13 @@ export function ContentPackagingWorkspace({ showContentEvidence = false }: { sho
     {tab === "thumbnail" ? <div className="studio-two packaging-two"><CandidateList title="썸네일 카피" subtitle="짧고 말이 되는 문구만 채택합니다." items={copies} copied={copied} onCopy={copy} onPick={(index) => pick("copies", index)} /><CandidateList title="디자인 프롬프트" subtitle="이미지 생성물이 아닌 디자이너 전달용 지시문입니다." items={prompts} copied={copied} onCopy={copy} /></div> : null}
 
     {tab === "evidence" && showContentEvidence ? <>
-      <section className="panel studio-manual"><h2>제목·썸네일의 근거</h2><p>제목과 카피를 정한 뒤, 결정 문서와 검토할 주장을 이 주제에 연결합니다. 아래 기록은 원고·칠판 진행안 화면에서도 그대로 이어집니다. 공개본 관측은 발행 후에만 기록하세요.</p><button className="secondary-button" onClick={() => setTab("saved")}>선택한 제목·카피 확인</button></section>
+      <section className="panel package-evidence-guide"><h2>제목·썸네일의 근거</h2><p>제목과 카피를 정한 뒤, 결정 문서와 검토할 주장을 이 주제에 연결합니다. 아래 기록은 원고·칠판 진행안 화면에서도 그대로 이어집니다. 공개본 관측은 발행 후에만 기록하세요.</p><div className="drawer-actions"><button className="secondary-button" onClick={() => setTab("saved")}>선택한 제목·카피 확인</button>{sourceId ? <Link className="secondary-button" href={`/content/scripts?sourceId=${encodeURIComponent(sourceId)}`}>원고·칠판 단계에서 이어보기</Link> : null}</div></section>
       {sourceId ? <LinkedPlanningHandoff key={`packaging-evidence:${sourceId}`} sourceIdOverride={sourceId} evidenceOnly showEvidence packagingStage /> : <p className="inline-alert warning">기준 콘텐츠를 먼저 선택해 주세요.</p>}
     </> : null}
 
     {tab === "saved" ? <>
       <section className="studio-two packaging-two"><CandidateList title="채택한 제목" subtitle="현재 콘텐츠에 채택한 제목 후보" items={titles.filter((item) => item.picked)} copied={copied} onCopy={copy} /><CandidateList title="채택한 썸네일 카피" subtitle="현재 콘텐츠에 채택한 카피 후보" items={copies.filter((item) => item.picked)} copied={copied} onCopy={copy} /></section>
-      {showContentEvidence ? <section className="panel studio-manual"><h2>다음은 근거 연결</h2><p>채택한 문구에 담긴 주장과 결정 근거를 기록한 뒤 원고 또는 칠판 진행안으로 넘기세요. 근거 기록은 승인이나 사실 검증 완료가 아닙니다.</p><button className="secondary-button" onClick={() => setTab("evidence")}>근거 기록 보기</button></section> : null}
+      {showContentEvidence ? <section className="panel package-evidence-guide"><h2>다음은 근거 연결</h2><p>채택한 문구에 담긴 주장과 결정 근거를 기록한 뒤 원고 또는 칠판 진행안으로 넘기세요. 근거 기록은 승인이나 사실 검증 완료가 아닙니다.</p><button className="secondary-button" onClick={() => setTab("evidence")}>근거 기록 보기</button></section> : null}
       <section className="panel saved-reference-list"><div className="panel-header"><div><h2>저장한 시장 레퍼런스</h2><p>원본 URL과 근거 수치를 유지합니다.</p></div><span>{references.length}개</span></div><div>{references.map((record) => <a href={record.source_url || "#"} target="_blank" rel="noreferrer" key={record.id}><span style={{ backgroundImage: `url(${meta(record, "thumbnail", "")})` }} /><span><strong>{record.title}</strong><small>{meta(record, "channelTitle", "")} · 조회 {Number(meta(record, "views", 0)).toLocaleString("ko-KR")}</small></span><ExternalLink size={13} /></a>)}{!references.length ? <div className="compact-empty"><Star size={24} /><strong>저장한 레퍼런스가 없습니다.</strong><span>검색 탭에서 시장 썸네일을 저장하세요.</span></div> : null}</div></section>
     </> : null}
 
