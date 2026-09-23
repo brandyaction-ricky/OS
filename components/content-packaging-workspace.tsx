@@ -70,6 +70,7 @@ export function ContentPackagingWorkspace() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [quickTopicOpen, setQuickTopicOpen] = useState(false);
+  const [manualPackageOpen, setManualPackageOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -211,8 +212,40 @@ export function ContentPackagingWorkspace() {
     finally { setBusy(false); }
   };
 
+  const createManualPackage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!sourceId || !selectedSource) return setError("기준 콘텐츠를 먼저 선택해 주세요.");
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("title") ?? "").trim();
+    const thumbnailCopy = String(form.get("thumbnailCopy") ?? "").trim();
+    if (!title || !thumbnailCopy) return setError("실제 사용할 제목과 썸네일 카피를 모두 입력해 주세요.");
+    setBusy(true); setError("");
+    try {
+      await createRecord(accessToken, {
+        recordType: "content_package", parentId: sourceId,
+        title: `${selectedSource.title} · 연결한 제목·썸네일`,
+        description: "사람이 확인한 기존 제목·썸네일을 생성 없이 연결했습니다.",
+        status: "review", priority: "normal", stage: "기존 패키지 연결",
+        team: profile?.team || "콘텐츠", brand: selectedSource.brand || "브랜디액션",
+        tags: ["제목", "썸네일", "수동연결"],
+        metadata: {
+          packageKind: "title_package", manualEntry: true, finalApprovalRequired: true,
+          result: {
+            summary: "사람이 확인한 기존 패키징을 연결함",
+            formula: "수동 연결 · 생성 없음",
+            titles: [{ text: title, picked: true }],
+            copies: [{ text: thumbnailCopy, picked: true }],
+            designPrompts: [],
+          },
+        },
+      });
+      setManualPackageOpen(false); await load(); setTab("saved");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "기존 제목·썸네일을 연결하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : "[기획 연계] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : "[기획 연계] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="secondary-button" disabled={!sourceId || busy} onClick={() => setManualPackageOpen(true)}><PackageCheck size={15} /> 기존 제목·카피 연결</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
     <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{PACKAGE_TABS.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>
@@ -237,5 +270,6 @@ export function ContentPackagingWorkspace() {
 
     <section className="package-footnote"><Check size={14} /><span>제목·카피는 후보를 만들고 채택 상태만 저장합니다. 실제 썸네일 이미지는 이 화면에서 자동 생성하지 않습니다.</span><PackageCheck size={14} /></section>
     {quickTopicOpen ? <div className="drawer-backdrop" onMouseDown={() => setQuickTopicOpen(false)}><form className="record-drawer" onSubmit={createQuickTopic} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">빠른 검증</span><h2>새 주제로 검증</h2></div><button type="button" className="icon-button" onClick={() => setQuickTopicOpen(false)}>×</button></div><p className="field-hint">일반 주제·임시 검증 태그로 저장되며, 저장 즉시 기준 콘텐츠로 선택됩니다.</p><label><span>검증할 주제</span><input name="title" required /></label><label><span>시청자 문제·가설</span><textarea name="problem" rows={4} /></label><label><span>브랜드</span><input name="brand" defaultValue="브랜디액션" /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setQuickTopicOpen(false)}>취소</button><button className="primary-button" disabled={busy}>저장하고 선택</button></div></form></div> : null}
+    {manualPackageOpen ? <div className="drawer-backdrop" onMouseDown={() => !busy && setManualPackageOpen(false)}><form className="record-drawer" onSubmit={createManualPackage} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">기존 패키지 연결</span><h2>실제 제목·썸네일 카피</h2></div><button type="button" className="icon-button" onClick={() => setManualPackageOpen(false)}>×</button></div><p className="field-hint">이미 확정하거나 별도로 만든 패키징을 AI 생성 없이 연결합니다. 가장 최근에 연결한 제목 1개와 카피 1개가 후속 원고·JEV 검토의 입력이 됩니다.</p><div className="inline-alert warning"><CircleAlert size={15} /> 연결은 선택값 기록이며 발행 승인이나 운영 배포를 뜻하지 않습니다.</div><label><span>실제 사용할 제목</span><input name="title" required maxLength={300} /></label><label><span>썸네일 카피</span><textarea name="thumbnailCopy" required maxLength={500} rows={4} /></label><div className="drawer-actions"><button type="button" className="secondary-button" disabled={busy} onClick={() => setManualPackageOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? "연결 중…" : "제목·카피 연결"}</button></div></form></div> : null}
   </>;
 }

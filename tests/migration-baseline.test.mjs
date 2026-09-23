@@ -4,16 +4,16 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the approved active chain is intact and ready for controlled application", async () => {
+test("the active chain is intact but the DEV-only content evidence migration is not approved for Production", async () => {
   const result = await inspectMigrationBaseline();
 
   assert.equal(result.status, "ready");
   assert.equal(result.decision, "apply");
   assert.equal(result.integrityValid, true);
-  assert.equal(result.readyToApply, true);
-  assert.deepEqual(result.pendingApprovalMigrations, []);
+  assert.equal(result.readyToApply, false);
+  assert.deepEqual(result.pendingApprovalMigrations, ["20260923060000_content_evidence_owner_and_append_only.sql"]);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 11);
+  assert.equal(result.activeMigrationCount, 12);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });

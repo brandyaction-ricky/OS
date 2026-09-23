@@ -1,21 +1,22 @@
 {
   "schemaVersion": 2,
-  "observedAt": "2026-09-22",
+  "observedAt": "2026-09-23",
   "status": "ready",
   "decision": "apply",
   "approval": {
     "environment": "development_and_production",
     "approvedAt": "2026-09-22",
-    "productionAuthorized": true,
-    "productionApprovedAt": "2026-09-22"
+    "productionAuthorized": false,
+    "productionApprovedAt": "2026-09-22",
+    "previousProductionApprovalThrough": "20260922063605_knowledge_review_return.sql"
   },
   "evidence": {
     "repositoryMigrationCount": 14,
     "productionHistoryCount": 14,
     "productionExactRepositoryMatches": 7,
-    "developmentHistoryCount": 10,
+    "developmentHistoryCount": 11,
     "pendingDevelopmentMigrationCount": 1,
-    "pendingProductionMigrationCount": 0,
+    "pendingProductionMigrationCount": 1,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -111,7 +112,7 @@
     },
     "developmentValidation": {
       "appliedAt": "2026-09-21",
-      "migrationHistoryCount": 10,
+      "migrationHistoryCount": 11,
       "publicTables": 35,
       "publicPolicies": 40,
       "reviewedTriggers": 14,
@@ -130,7 +131,8 @@
       "securityAdvisorAcceptedWarnings": 15,
       "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs",
       "knowledgeReviewReturnMigrationPresent": true,
-      "knowledgeReviewReturnAnonymousExecution": false
+      "knowledgeReviewReturnAnonymousExecution": false,
+      "contentEvidenceBoundaryAppliedAt": "2026-09-23"
     },
     "productionValidation": {
       "appliedAt": "2026-09-22",
@@ -225,6 +227,17 @@
       "appliedEnvironments": [
         "development",
         "production"
+      ]
+    },
+    {
+      "file": "20260923060000_content_evidence_owner_and_append_only.sql",
+      "sha256": "7a079762bd149ceae5fab06f2ac3921c7c217434b4b99263b0d5306ee2838fe0",
+      "purpose": "restrict content evidence reads and owner assignment, and reject evidence update, archive, deletion, or relabelling; DEV applied and verified, Production requires separate approval",
+      "requiresApproval": true,
+      "productionAuthorized": false,
+      "developmentApprovedAt": "2026-09-23",
+      "appliedEnvironments": [
+        "development"
       ]
     }
   ],

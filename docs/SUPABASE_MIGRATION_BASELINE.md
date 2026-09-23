@@ -1,6 +1,45 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-22 Asia/Seoul.
+Updated: 2026-09-23 Asia/Seoul.
+
+## 2026-09-23 content evidence boundary — DEV applied
+
+After merging this DEV-only migration into the newer eleven-file active chain,
+the manifest contains twelve active files. The 2026-09-22 Production approval
+ends at `20260922063605_knowledge_review_return.sql`; it does not extend to
+`20260923060000_content_evidence_owner_and_append_only.sql`. The current full
+chain therefore has `productionAuthorized: false` and the new entry retains
+`requiresApproval: true`. Integrity checks may pass, but
+`npm run db:migrations:ready` must fail until a separate Production decision is
+recorded. Do not treat the historical `ready`/`apply` fields as fresh approval.
+
+`20260923060000_content_evidence_owner_and_append_only.sql` is a forward-only
+migration for the three content-evidence `packageKind` values. It narrows
+authenticated reads and owner assignment for those rows and rejects direct
+UPDATE/archival/DELETE or relabelling through a database trigger. It leaves
+ordinary `os_records` access unchanged. The transaction-scoped pgTAP suite is
+`supabase/tests/content_evidence_boundary_test.sql`.
+
+The representative explicitly approved applying this SQL to
+`brandyaction-os-dev` only. Before application, the live DEV migration history
+(including the separate quota migration) was inspected, and the SQL plus all
+10 pgTAP checks passed inside a rolled-back DEV transaction. No local
+PostgreSQL runtime was available. The exact migration was then applied in a
+transaction and recorded as version `20260923060000`; the trigger function,
+two policies and history row were verified. The pgTAP suite passed 10/10 again
+against the applied DEV schema, and the existing owner account could still
+read its cards in Preview. Independent second-account browser QA remains open;
+the pgTAP suite did verify cross-account read denial and forged-owner INSERT
+denial using two authenticated identities. This is **not** applied to Local or
+Production. Production requires its own schema comparison, plan and explicit
+approval. Owner-entered rows remain user claims, not source-verified or
+tamper-proof audit evidence; a same-owner client can still INSERT unvalidated
+evidence directly.
+
+The DEV migration-history statement is the repository SQL without its final
+newline (2,391 versus 2,392 bytes). Its MD5 matches the repository file with
+only that final newline removed; no SQL statement differs. Do not mistake this
+byte-level formatting difference for a missing or different migration.
 
 ## 2026-09-21 narrowly approved quota maintenance
 
