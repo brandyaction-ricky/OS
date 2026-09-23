@@ -23,7 +23,7 @@ async function harness(routeName, options = {}) {
   const source = await readFile(new URL(`../app/api/v1/content/${file}/route.ts`, import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const inserted = [];
-  const actor = { id: ownerId, type: "user", user: { id: ownerId }, mustChangePassword: false, team: "콘텐츠",
+  const actor = { id: ownerId, type: "user", user: { id: ownerId }, mustChangePassword: false, team: options.actorTeam ?? "콘텐츠",
     supabase: { from(table) {
       assert.equal(table, "os_records");
       const checks = [];
@@ -33,7 +33,7 @@ async function harness(routeName, options = {}) {
         eq(field, value) { checks.push([field, value]); return builder; },
         is(field, value) { checks.push([field, value]); return builder; },
         async maybeSingle() {
-          const row = { id: sourceId, record_type: "content_topic", brand: "브랜디액션", team: "콘텐츠",
+          const row = { id: sourceId, record_type: "content_topic", brand: "브랜디액션", team: options.sourceTeam ?? "콘텐츠",
             owner_id: options.wrongOwner ? "33333333-3333-4333-8333-333333333333" : ownerId,
             version: options.version ?? 4, archived_at: null };
           return { data: checks.every(([field, value]) => row[field] === value) ? row : null, error: null };
@@ -80,12 +80,23 @@ test("claim card stores candidate as candidate and review-needed as reviewer-ent
   assert.equal(h.inserted[0].metadata.verification, "reviewer_entered");
   assert.equal(h.inserted[0].metadata.sourceId, undefined);
 });
-test("both routes fail before insert on disabled, agent, wrong owner, stale or malformed input", async () => {
+test("same-team contributor can append under their own identity without changing approvals", async () => {
+  for (const [name, body] of [["copy-lineage", decision], ["claim-evidence", claim]]) {
+    const h = await harness(name, { wrongOwner: true });
+    assert.equal((await h.call(body)).status, 201);
+    assert.equal(h.inserted[0].owner_id, ownerId);
+    assert.equal(h.inserted[0].created_by, ownerId);
+    assert.equal(h.inserted[0].team, "콘텐츠");
+    assert.equal(h.inserted[0].status, "draft");
+  }
+});
+test("both routes fail before insert on disabled, agent, wrong team, blank team, stale or malformed input", async () => {
   for (const [name, body] of [["copy-lineage", decision], ["claim-evidence", claim]]) {
     for (const [options, patch, authorization, status] of [
       [{ enabled: false }, {}, "Bearer synthetic", 404],
       [{}, {}, "Bearer bos_pat_synthetic", 401],
-      [{ wrongOwner: true }, {}, "Bearer synthetic", 404],
+      [{ wrongOwner: true, actorTeam: "다른팀" }, {}, "Bearer synthetic", 404],
+      [{ wrongOwner: true, sourceTeam: "" }, {}, "Bearer synthetic", 404],
       [{ version: 5 }, {}, "Bearer synthetic", 409],
       [{}, { unexpected: "x" }, "Bearer synthetic", 400],
     ]) {

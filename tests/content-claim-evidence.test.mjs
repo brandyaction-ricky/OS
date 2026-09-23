@@ -35,20 +35,21 @@ test("unsafe links, extra fields and missing source identifiers fail closed", ()
   assert.equal(claimEvidenceInput.safeParse({ ...base, sourceRelation: "candidate", sourceUrl: "javascript:alert(1)", sourceIdentifier: "x" }).success, false);
   assert.equal(claimEvidenceInput.safeParse({ ...base, sourceRelation: "candidate", sourceUrl: "https://example.com" }).success, false);
 });
-test("claim list excludes other owners and malformed records without upgrading them", () => {
+test("claim list includes valid same-team contributors but excludes wrong-team and malformed records", () => {
   const valid = row();
-  const forged = row({ id: "claim-2", owner_id: "other" });
+  const teammate = row({ id: "claim-2", owner_id: "teammate", created_by: "teammate", team: "콘텐츠" });
+  const forged = row({ id: "claim-4", owner_id: "other", created_by: "other", team: "다른팀" });
   const invalid = row({ id: "claim-3", metadata: { ...row().metadata, assessment: "reviewer_aligned" } });
-  const result = claimEvidence(sourceId, ownerId, [valid, forged, invalid]);
-  assert.equal(result.claims.length, 1); assert.equal(result.invalidCount, 1);
+  const result = claimEvidence(sourceId, ownerId, [valid, teammate, forged, invalid], "콘텐츠");
+  assert.equal(result.claims.length, 2); assert.equal(result.invalidCount, 1);
   assert.equal(result.claims[0].data.assessment, "unverified");
   assert.equal(claimEvidence(sourceId, null, [valid]).claims.length, 0);
 });
-test("claim route is DEV-only, owner-scoped, append-only, and does not mutate approvals", async () => {
+test("claim route is DEV-only, source/team-scoped, append-only, and does not mutate approvals", async () => {
   const route = await readFile(new URL("../app/api/v1/content/claim-evidence/route.ts", import.meta.url), "utf8");
   const generic = await readFile(new URL("../app/api/v1/records/route.ts", import.meta.url), "utf8");
   assert.match(route, /canUseSystemOneContentEvidence\(process\.env\)/);
-  assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
+  assert.match(route, /allowAgent: false/); assert.match(route, /source\.team\.trim\(\) !== actor\.team\.trim\(\)/);
   assert.match(route, /source\.version !== input\.expectedSourceVersion/);
   assert.match(route, /verification: "reviewer_entered"/);
   assert.doesNotMatch(route, /content_publish|service_role|status: "published"|pipelineReviews/);

@@ -36,9 +36,10 @@ const storedClaim = z.object({
   comparison: z.string().max(700), conditions: z.string().max(700), assessment, rationale: z.string().max(1_500),
 }).passthrough().superRefine(validateAssessment);
 
-export function claimEvidence(sourceId: string, ownerId: string | null, records: OsRecord[]) {
+export function claimEvidence(sourceId: string, ownerId: string | null, records: OsRecord[], team = "") {
   if (!ownerId) return { claims: [], invalidCount: 0 };
-  const rows = records.filter(row => row.record_type === "content_package" && row.parent_id === sourceId && row.owner_id === ownerId && !row.archived_at && row.metadata?.packageKind === "claim_evidence");
+  const rows = records.filter(row => row.record_type === "content_package" && row.parent_id === sourceId && !row.archived_at &&
+    (row.owner_id === ownerId || (team.trim() && row.team === team && row.owner_id === row.created_by)) && row.metadata?.packageKind === "claim_evidence");
   const claims: Array<{ record: OsRecord; data: z.infer<typeof storedClaim> }> = [];
   let invalidCount = 0;
   for (const record of rows) {

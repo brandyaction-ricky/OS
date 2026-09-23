@@ -99,7 +99,7 @@ SELECT throws_ok(
        '00000000-0000-0000-0000-000000000032',
        '00000000-0000-0000-0000-000000000032',
        '{"packageKind":"claim_evidence"}'::jsonb) $$,
-  '42501', 'new row violates row-level security policy "os_records_content_evidence_owner_insert" for table "os_records"',
+  '42501', 'new row violates row-level security policy "os_records_content_evidence_team_insert" for table "os_records"',
   'team read access does not grant owner-assigned evidence writes'
 );
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000033', true);
@@ -135,7 +135,7 @@ SELECT throws_ok(
        '00000000-0000-0000-0000-000000000033',
        '00000000-0000-0000-0000-000000000033',
        '{"packageKind":"claim_evidence"}'::jsonb) $$,
-  '42501', 'new row violates row-level security policy "os_records_content_evidence_owner_insert" for table "os_records"',
+  '42501', 'new row violates row-level security policy "os_records_content_evidence_team_insert" for table "os_records"',
   'member cannot insert evidence under another owner'
 );
 

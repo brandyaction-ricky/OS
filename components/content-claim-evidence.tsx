@@ -3,13 +3,14 @@
 import { type FormEvent, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { claimEvidence } from "@/lib/content-claim-evidence";
+import { evidenceAuthorLabel } from "@/lib/content-evidence-author";
 import type { OsRecord } from "@/lib/record-types";
 
 const locationLabels = { title: "제목", thumbnail: "썸네일", description: "설명", chapter: "챕터", spoken: "영상 발화" } as const;
 const assessmentLabels = { unverified: "미확인", review_needed: "표현 재검토", reviewer_aligned: "검토자 기록상 일치" } as const;
 
-export function ContentClaimEvidence({ source, records, token, disabled, canWrite, onSaved }: {
-  source: OsRecord; records: OsRecord[]; token: string; disabled: boolean; canWrite: boolean; onSaved: () => void;
+export function ContentClaimEvidence({ source, records, authors, viewerId, token, disabled, canWrite, onSaved }: {
+  source: OsRecord; records: OsRecord[]; authors: Record<string, string>; viewerId?: string; token: string; disabled: boolean; canWrite: boolean; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -17,7 +18,7 @@ export function ContentClaimEvidence({ source, records, token, disabled, canWrit
   const [relation, setRelation] = useState<"unlinked" | "candidate" | "identified">("unlinked");
   const [assessment, setAssessment] = useState<"unverified" | "review_needed" | "reviewer_aligned">("unverified");
   const saving = useRef(false);
-  const ledger = claimEvidence(source.id, source.owner_id, records);
+  const ledger = claimEvidence(source.id, source.owner_id, records, source.team);
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -55,7 +56,7 @@ export function ContentClaimEvidence({ source, records, token, disabled, canWrit
         {data.comparison || data.conditions ? <p>비교·조건: {[data.comparison, data.conditions].filter(Boolean).join(" · ")}</p> : null}
         {data.sourceExcerpt ? <details><summary>연결된 원문 대목 보기</summary><p>{data.sourceExcerpt}</p></details> : null}
         {data.rationale ? <p>검토 이유: {data.rationale}</p> : null}
-        <small>검토자 입력 · {new Date(record.created_at).toLocaleString("ko-KR")}</small>
+        <small>{evidenceAuthorLabel(record, authors, viewerId)} · 검토자 입력 · {new Date(record.created_at).toLocaleString("ko-KR")}</small>
         {data.sourceUrl ? <a href={data.sourceUrl} target="_blank" rel="noreferrer">연결된 원문 열기</a> : null}
       </article>)}</div> : <p>아직 연결된 주장 카드가 없습니다. 근거 메모가 있다는 사실만으로 주장 검증을 완료하지 않습니다.</p>}
       {canWrite ? <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => { setOpen(value => !value); setError(""); }}>{open ? "카드 작성 닫기" : "주장 근거 추가"}</button> : null}

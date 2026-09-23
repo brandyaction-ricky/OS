@@ -45,17 +45,24 @@ const spacing = (value: string) => value.replace(/\s+/g, " ").trim();
 
 // The snapshots are user-entered evidence, not verified publication receipts or approval.
 // Never infer approval from a picked package or status from a missing snapshot.
-export function copyLineage(sourceId: string, ownerId: string | null, records: OsRecord[]) {
-  const children = ownerId ? records.filter(row => row.parent_id === sourceId && row.owner_id === ownerId && row.record_type === "content_package" && !row.archived_at) : [];
-  const decision = latest(children.filter(row => row.metadata?.packageKind === "copy_decision_evidence"), decisionMetadata);
+export function copyLineage(sourceId: string, ownerId: string | null, records: OsRecord[], team = "") {
+  const children = ownerId ? records.filter(row => row.parent_id === sourceId && row.record_type === "content_package" && !row.archived_at &&
+    (row.owner_id === ownerId || (team.trim() && row.team === team && row.owner_id === row.created_by))) : [];
+  // A teammate may submit a historical decision source, but cannot replace the
+  // topic owner's comparison input merely by appending a newer row.
+  const ownerDecisions = children.filter(row => row.owner_id === ownerId && row.metadata?.packageKind === "copy_decision_evidence");
+  const pendingDecisions = children.filter(row => row.owner_id !== ownerId && row.metadata?.packageKind === "copy_decision_evidence")
+    .flatMap(row => { const parsed = decisionMetadata.safeParse(row.metadata); return parsed.success ? [{ record: row, data: parsed.data }] : []; })
+    .sort((a, b) => Date.parse(b.record.created_at) - Date.parse(a.record.created_at) || b.record.id.localeCompare(a.record.id));
+  const decision = latest(ownerDecisions, decisionMetadata);
   const publication = latest(children.filter(row => row.metadata?.packageKind === "publication_copy_observation"), publicationMetadata);
   if (decision.state !== "loaded" || publication.state !== "loaded" || !decision.data || !publication.data)
-    return { state: "unverified" as const, decision, publication, title: "unverified" as const, thumbnailCopy: "unverified" as const };
+    return { state: "unverified" as const, decision, publication, pendingDecisions, title: "unverified" as const, thumbnailCopy: "unverified" as const };
   const compare = (left: string, right: string) => left === right ? "same" as const : spacing(left) === spacing(right) ? "formatting_only" as const : "different" as const;
   const title = decision.data.title ? compare(decision.data.title, publication.data.title) : "unverified" as const;
   const thumbnailCopy = compare(decision.data.thumbnailCopy, publication.data.thumbnailCopy);
   return { state: title === "different" || thumbnailCopy === "different" ? "different" as const :
     title === "formatting_only" || thumbnailCopy === "formatting_only" ? "formatting_only" as const :
     title === "unverified" ? "partial" as const : "same" as const,
-    decision, publication, title, thumbnailCopy };
+    decision, publication, pendingDecisions, title, thumbnailCopy };
 }
