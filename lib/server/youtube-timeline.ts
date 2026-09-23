@@ -74,8 +74,13 @@ export type YoutubeTimedVisualBeat = {
   spokenAnchor: string;
   visualAction: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["visualAction"];
   composition: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["composition"];
+  motionKind: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["motionKind"];
+  motionPacing: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["motionPacing"];
+  motionLabels: string[];
+  motionAccentIndex: number;
   graphicSpec: string;
   displayText: string;
+  typographyAnchor: string;
   visualStartSeconds: number;
   typographyStartSeconds: number | null;
   endSeconds: number;
@@ -87,6 +92,28 @@ export type YoutubeRenderTimeline = {
   audioDurationSeconds: number;
   beats: YoutubeTimedVisualBeat[];
 };
+
+/** The private media worker serializes this brief for the offline frame renderer. */
+export function createYoutubeRenderBrief(plan: YoutubeScenePlan, timeline: YoutubeRenderTimeline) {
+  if (timeline.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION || !timeline.beats.length ||
+    plan.unresolved.length || !plan.visualFirst || plan.typographyMode !== "single_active_cue")
+    throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 설계와 시간표의 버전을 확인해 주세요.");
+  const expected = plan.scenes.reduce((count, scene) => count + scene.visualBeats.length, 0);
+  if (timeline.beats.length !== expected)
+    throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 비트와 음성 시간표 수가 다릅니다.");
+  for (const beat of timeline.beats) {
+    const planned = plan.scenes[beat.segmentIndex]?.visualBeats[beat.beatIndex];
+    if (!planned || planned.spokenAnchor !== beat.spokenAnchor || planned.visualAction !== beat.visualAction ||
+      planned.composition !== beat.composition || planned.motionKind !== beat.motionKind ||
+      planned.motionPacing !== beat.motionPacing ||
+      planned.motionAccentIndex !== beat.motionAccentIndex ||
+      JSON.stringify(planned.motionLabels) !== JSON.stringify(beat.motionLabels) ||
+      planned.displayText !== beat.displayText || planned.typographyAnchor !== beat.typographyAnchor ||
+      planned.graphicSpec !== beat.graphicSpec)
+      throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 계획이 시간표 생성 후 변경됐습니다.");
+  }
+  return { timingSource: "verified_word" as const, timeline, scenePlan: plan };
+}
 
 /**
  * Convert speech anchors into exact video positions without asking Sol to guess
@@ -136,6 +163,7 @@ export function alignYoutubeVisualBeats(
       throw new ApiError(409, "YOUTUBE_TRANSCRIPT_MISMATCH", "음성 전사와 승인된 원고가 일치하지 않습니다. 검증된 단어 시간표가 필요합니다.");
 
     const starts: number[] = [];
+    const typographyStarts: Array<number | null> = [];
     let searchFrom = 0;
     for (const beat of scene.visualBeats) {
       const anchor = normalizedSpeech(beat.spokenAnchor);
@@ -147,6 +175,15 @@ export function alignYoutubeVisualBeats(
       if (starts.length && start <= starts[starts.length - 1] + 0.04)
         throw new ApiError(409, "YOUTUBE_ANCHOR_MISMATCH", "화면 비트의 발화 시점을 서로 구분할 수 없습니다.");
       starts.push(start);
+      if (beat.typographyAnchor) {
+        const typographyIndex = sourceText.indexOf(normalizedSpeech(beat.typographyAnchor), characterIndex + 1);
+        if (typographyIndex < 0)
+          throw new ApiError(409, "YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH", "화면 문구의 발화 기준 단어를 원고에서 찾지 못했습니다.");
+        const typographyWord = segment.words[characterWordIndexes[typographyIndex]];
+        typographyStarts.push(segment.offsetSeconds + typographyWord.startSeconds);
+      } else {
+        typographyStarts.push(null);
+      }
       searchFrom = characterIndex + anchor.length;
     }
 
@@ -157,13 +194,18 @@ export function alignYoutubeVisualBeats(
       const span = end - start;
       if (span < 0.45 || (beat.visualAction === "draw_character" && span < 1.25))
         throw new ApiError(409, "YOUTUBE_BEAT_TOO_SHORT", "일부 멘트의 화면 시간이 너무 짧습니다. 화면 비트를 다시 설계해 주세요.");
-      const typographyDelay = Math.min(0.32, Math.max(0.18, span * 0.2));
+      const typographyStart = typographyStarts[beatIndex];
+      if (typographyStart !== null && (typographyStart < start + 0.16 || typographyStart >= end - 0.12))
+        throw new ApiError(409, "YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH", "화면 문구보다 그림이 먼저 보이도록 발화 기준 단어를 다시 선택해 주세요.");
       beats.push({
         segmentIndex, beatIndex, spokenAnchor: beat.spokenAnchor,
         visualAction: beat.visualAction, composition: beat.composition,
+        motionKind: beat.motionKind, motionPacing: beat.motionPacing,
+        motionLabels: beat.motionLabels, motionAccentIndex: beat.motionAccentIndex,
         graphicSpec: beat.graphicSpec, displayText: beat.displayText,
+        typographyAnchor: beat.typographyAnchor,
         visualStartSeconds: start,
-        typographyStartSeconds: beat.displayText ? start + typographyDelay : null,
+        typographyStartSeconds: typographyStart,
         endSeconds: end,
       });
     }

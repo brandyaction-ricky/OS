@@ -1,5 +1,5 @@
 /** Versioned visual direction approved for the narrated YouTube pilot. */
-export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-content-only-grid-v5";
+export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-speech-motion-v6";
 
 // Stable identifiers; private storage resolves these to owned artwork.
 export const youtubeCharacterAssetRoles = [
@@ -57,3 +57,19 @@ export const youtubeBeatCompositions = [
   "centered_flow",
   "character_left_graphic_right",
 ] as const;
+
+// A small, renderable visual vocabulary. Sol selects a different structure for
+// each idea; the media worker draws it rather than guessing from prose.
+export const youtubeMotionKinds = [
+  "character_trace",
+  "comparison",
+  "rising_curve",
+  "branch",
+  "cycle",
+  "process_stack",
+  "focus_lens",
+  "timeline",
+  "horizontal_flow",
+] as const;
+export type YoutubeMotionKind = (typeof youtubeMotionKinds)[number];
+export const youtubeMotionPacing = ["gentle", "stepped", "sweep", "snap"] as const;
