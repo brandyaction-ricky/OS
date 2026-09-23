@@ -7,6 +7,7 @@ import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation"
 import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { isContentEvidence } from "@/lib/content-evidence-protection";
+import { YOUTUBE_VOICE_RUN_KIND } from "@/lib/server/youtube-voice-run";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export async function POST(request: Request) {
     if (isContentEvidence(input.recordType, input.metadata)) throw new ApiError(403, "EVIDENCE_API_REQUIRED", "증거 기록은 전용 화면에서 추가해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
+    if (input.metadata.kind === YOUTUBE_VOICE_RUN_KIND) throw new ApiError(403, "VOICE_RUN_API_REQUIRED", "음성 제작 작업은 전용 화면에서 등록해 주세요.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     const payload = {
       ...toDatabase(input),
@@ -111,6 +113,8 @@ export async function PATCH(request: Request) {
     if (isContentEvidence(current.record_type, current.metadata) || isContentEvidence(input.recordType ?? current.record_type, input.metadata))
       throw new ApiError(409, "EVIDENCE_APPEND_ONLY", "증거 이력은 수정하지 않습니다. 정정 내용은 새 기록으로 추가해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
+    if (current.metadata?.kind === YOUTUBE_VOICE_RUN_KIND || input.metadata?.kind === YOUTUBE_VOICE_RUN_KIND)
+      throw new ApiError(403, "VOICE_RUN_API_REQUIRED", "음성 제작 작업은 전용 공정에서 변경해 주세요.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");

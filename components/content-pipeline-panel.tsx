@@ -10,6 +10,7 @@ import type { YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { useSession } from "./session-provider";
 
 interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][] }
+interface VoiceRun { id: string; sourceId: string; status: string; stage: string; segmentCount: number; segmentsReady: number; readyIndexes: number[]; needsAttention: string[]; lastErrorCode: string | null; createdAt: string; updatedAt: string }
 const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = [
   { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "title_package", label: "제목·썸네일 생성", gate: 0 },
   { action: "script_draft", label: "원고 생성", gate: 1 }, { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
@@ -34,12 +35,18 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [voicePreviewKey, setVoicePreviewKey] = useState("");
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [imagePreviewKey, setImagePreviewKey] = useState("");
+  const [voiceRuns, setVoiceRuns] = useState<VoiceRun[]>([]);
+  const [voiceRunAudioUrl, setVoiceRunAudioUrl] = useState("");
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
     try {
       const automation = await apiRequest<{ plan: YoutubeAutomationPlan; voicePreviewConfigured: boolean }>(`/api/v1/content/youtube-automation?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken });
       setVoicePlan(automation.plan); setVoicePreviewConfigured(automation.voicePreviewConfigured); setPilotAvailable(true);
-    } catch { setVoicePlan(null); setVoicePreviewConfigured(false); setPilotAvailable(false); }
+      try {
+        const history = await apiRequest<{ runs: VoiceRun[] }>(`/api/v1/content/youtube-automation/runs?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken });
+        setVoiceRuns(history.runs);
+      } catch { setVoiceRuns([]); }
+    } catch { setVoicePlan(null); setVoicePreviewConfigured(false); setPilotAvailable(false); setVoiceRuns([]); }
   }, [accessToken, sourceId]);
   useEffect(() => { setState(null); load().catch((reason) => setError(String(reason.message))); }, [load]);
   useEffect(() => () => { if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl); }, [voicePreviewUrl]);
@@ -98,6 +105,21 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     } catch (reason) { setError(reason instanceof Error ? reason.message : "화면 이미지를 만들지 못했습니다."); }
     finally { setBusy(false); }
   };
+  const queueVoice = async () => {
+    if (!voicePlan?.inputKey) return;
+    await perform(() => apiRequest("/api/v1/content/youtube-automation/runs", {
+      method: "POST", token: accessToken, body: JSON.stringify({ sourceId, inputKey: voicePlan.inputKey }),
+    }));
+  };
+  const listenVoiceSegment = async (runId: string, segmentIndex: number) => {
+    setBusy(true); setError("");
+    try {
+      const params = new URLSearchParams({ sourceId, runId, segmentIndex: String(segmentIndex) });
+      const result = await apiRequest<{ url: string }>(`/api/v1/content/youtube-automation/runs?${params}`, { token: accessToken });
+      setVoiceRunAudioUrl(result.url);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "음성을 열지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   if (!state || state.source.id !== sourceId) return <section className="panel pipeline-panel"><p>{error || "공정 불러오는 중…"}</p></section>;
   const artifacts = pipelineArtifacts(state.records);
   const enabled = state.source.metadata.pipelineEnabled === true;
@@ -139,7 +161,10 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
       {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>실사 장면 1개 미리보기</button> : null}
       {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <img src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
-      <p>전체 음성 생성, 실제 화면 자산 제작, 렌더링, 비공개 업로드 워커는 연결 전이며 이 화면의 미리듣기·설계 버튼으로 실행되지 않습니다.</p>
+      {profile?.role === "admin" && currentScenePlan && !currentScenePlan.unresolved?.length ? <button type="button" className="secondary-button" disabled={busy || !voicePreviewConfigured} onClick={() => void queueVoice()}>현재 원고 전체 음성 제작 작업 등록</button> : null}
+      {voiceRuns.length ? <details open><summary>음성 제작 작업 {voiceRuns.length}건</summary>{voiceRuns.map((run) => <div key={run.id}><p>{run.status === "done" ? "음성 준비 완료" : run.status === "blocked" ? "확인 필요" : run.status === "in_progress" ? "제작 중" : "제작 대기"} · {run.segmentsReady}/{run.segmentCount}단락 · {run.stage}{run.lastErrorCode ? ` · ${run.lastErrorCode}` : ""}</p>{run.needsAttention.map((issue) => <p key={issue}>{issue}</p>)}{run.readyIndexes.map((index) => <button type="button" className="ghost-button" disabled={busy} key={index} onClick={() => void listenVoiceSegment(run.id, index)}>{index + 1}단락 듣기</button>)}</div>)}</details> : null}
+      {voiceRunAudioUrl ? <audio key={voiceRunAudioUrl} controls src={voiceRunAudioUrl} aria-label="음성 제작 결과 듣기" /> : null}
+      <p>음성 작업은 개발용 워커가 연결된 뒤 단락별로 진행됩니다. 화면 자산 전체 제작, 렌더링, 비공개 업로드는 아직 연결 전입니다.</p>
     </section> : null}
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
       const gate = index + 1; const prior = state.reviews.filter((review) => review.gate === gate).at(-1);

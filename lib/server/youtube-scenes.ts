@@ -29,7 +29,7 @@ export const scenePlanSchema = z.object({
 }).strict();
 export type YoutubeScenePlan = z.infer<typeof scenePlanSchema>;
 
-export async function readYoutubeSceneRules(actor: RequestActor) {
+export async function readYoutubeSceneRules(actor: Pick<RequestActor, "supabase">) {
   const ids = configuredRuleIds();
   const { data, error } = await actor.supabase.from("os_documents").select("id,title,status,current_version,content_md").in("id", ids);
   if (error || !data || data.length !== ids.length || data.some((doc) => doc.status !== "canonical"))

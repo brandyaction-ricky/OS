@@ -21,7 +21,7 @@ export function gateSignature(source: OsRecord, records: OsRecord[], gate: numbe
     ...(gate >= 3 ? ["recorded-source-v1", reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.transcript, source.metadata.shortsStyle] : [])]);
 }
 
-export async function readPipeline(actor: RequestActor, id: string) {
+export async function readPipeline(actor: Pick<RequestActor, "supabase">, id: string) {
   const { data: source, error } = await actor.supabase.from("os_records").select("*").eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error || !source) throw new ApiError(404, "CONTENT_SOURCE_NOT_FOUND", "기준 콘텐츠를 찾지 못했습니다.");
   const records: OsRecord[] = [];
