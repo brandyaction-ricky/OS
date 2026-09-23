@@ -35,6 +35,7 @@ test("new evidence append policy binds author, team and parent topic and preserv
   assert.match(migration, /SECURITY DEFINER[\s\S]*?SET search_path = ''/);
   assert.match(migration, /source\.team = p_team/);
   assert.match(migration, /source\.owner_id = \(SELECT auth\.uid\(\)\)/);
+  assert.match(migration, /public\.os_is_active_member\(\)/);
   assert.match(migration, /btrim\(source\.team\) = btrim\(\(SELECT public\.os_my_team\(\)\)\)/);
   assert.match(migration, /CREATE POLICY os_records_content_evidence_team_insert[\s\S]*?AS RESTRICTIVE[\s\S]*?FOR INSERT TO authenticated/);
   assert.match(migration, /owner_id = \(SELECT auth\.uid\(\)\)/);

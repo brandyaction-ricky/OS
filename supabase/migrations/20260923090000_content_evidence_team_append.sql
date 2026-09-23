@@ -15,6 +15,7 @@ AS $$
       AND source.brand = '브랜디액션'
       AND source.archived_at IS NULL
       AND source.team = p_team
+      AND (SELECT public.os_is_active_member())
       AND (
         source.owner_id = (SELECT auth.uid())
         OR (

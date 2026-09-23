@@ -253,11 +253,10 @@
     },
     {
       "file": "20260923090000_content_evidence_team_append.sql",
-      "sha256": "a3b2fc199d58464f98221d92610c9393dcb875d1b62cc29c4e21ebb5fb79ed57",
+      "sha256": "2e0806fa8aec88350fe97ec19c4820837e743f385a7442bf4418ce376a8a9760",
       "purpose": "allow active same-team contributors to append evidence under their own identity and the matching parent topic, without editing or approval; DEV verification pending, Production requires separate approval",
       "requiresApproval": true,
       "productionAuthorized": false,
-      "developmentApprovedAt": "2026-09-23",
       "appliedEnvironments": []
     }
   ],

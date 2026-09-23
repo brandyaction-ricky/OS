@@ -2,18 +2,21 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET LOCAL search_path = public, extensions, auth;
-SELECT plan(10);
+SELECT plan(11);
 
 INSERT INTO auth.users (id, role, email, encrypted_password, email_confirmed_at, raw_user_meta_data)
 VALUES
   ('00000000-0000-0000-0000-000000000041', 'authenticated', 'append-owner@example.test', '', now(), '{}'),
   ('00000000-0000-0000-0000-000000000042', 'authenticated', 'append-member@example.test', '', now(), '{}'),
-  ('00000000-0000-0000-0000-000000000043', 'authenticated', 'append-other@example.test', '', now(), '{}');
+  ('00000000-0000-0000-0000-000000000043', 'authenticated', 'append-other@example.test', '', now(), '{}'),
+  ('00000000-0000-0000-0000-000000000044', 'authenticated', 'append-inactive@example.test', '', now(), '{}');
 
 UPDATE public.os_profiles SET team = '콘텐츠' WHERE id IN (
-  '00000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000042'
+  '00000000-0000-0000-0000-000000000041', '00000000-0000-0000-0000-000000000042',
+  '00000000-0000-0000-0000-000000000044'
 );
 UPDATE public.os_profiles SET team = '다른팀' WHERE id = '00000000-0000-0000-0000-000000000043';
+UPDATE public.os_profiles SET is_active = false WHERE id = '00000000-0000-0000-0000-000000000044';
 
 INSERT INTO public.os_records (id, record_type, title, brand, team, owner_id, created_by, updated_by)
 VALUES
@@ -87,6 +90,10 @@ SELECT throws_ok(
   '42501', 'new row violates row-level security policy "os_records_content_evidence_team_insert" for table "os_records"',
   'a different team cannot append to the topic'
 );
+
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000044', true);
+SELECT is(public.os_can_append_content_evidence('40000000-0000-0000-0000-000000000041', '콘텐츠'), false,
+  'an inactive member cannot satisfy the append predicate');
 
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000041', true);
 SELECT lives_ok(
