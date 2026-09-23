@@ -146,6 +146,11 @@
       "file": "20260923060000_content_evidence_owner_and_append_only.sql",
       "sha256": "7a079762bd149ceae5fab06f2ac3921c7c217434b4b99263b0d5306ee2838fe0",
       "purpose": "restrict content evidence reads and owner assignment, and reject evidence update, archive, deletion, or relabelling; environment application is separately approved"
+    },
+    {
+      "file": "20260923070000_youtube_voice_media.sql",
+      "sha256": "3ed7ec12d42f2f24ff36ee4ae2d4f2bced3abb0ebc47345038daeb7ec13c182d",
+      "purpose": "create a private, MP3-only narration bucket for the guarded DEV voice worker; applied to DEV after explicit approval, Production not applied"
     }
   ],
   "legacyMigrations": [
