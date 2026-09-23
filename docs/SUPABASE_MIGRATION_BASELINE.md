@@ -4,7 +4,7 @@ Updated: 2026-09-23 Asia/Seoul.
 
 ## 2026-09-23 content evidence team read — implementation candidate, not applied
 
-`20260923070000_content_evidence_team_read.sql` follows the DEV-applied owner
+`20260923080000_content_evidence_team_read.sql` follows the DEV-applied owner
 boundary below. It replaces only the restrictive evidence SELECT policy: an
 active owner still reads their rows, and another active user reads the three
 evidence subtypes only when the row has a nonblank team matching that user's

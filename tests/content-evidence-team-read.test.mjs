@@ -5,7 +5,7 @@ import test from "node:test";
 const read = path => readFile(new URL(path, import.meta.url), "utf8");
 
 test("team evidence read is explicit, fail-closed, and leaves owner-only writes intact", async () => {
-  const migration = await read("../supabase/migrations/20260923070000_content_evidence_team_read.sql");
+  const migration = await read("../supabase/migrations/20260923080000_content_evidence_team_read.sql");
   const ownerBoundary = await read("../supabase/migrations/20260923060000_content_evidence_owner_and_append_only.sql");
   assert.match(migration, /CREATE POLICY os_records_content_evidence_team_select[\s\S]*?AS RESTRICTIVE[\s\S]*?FOR SELECT TO authenticated/);
   assert.match(migration, /owner_id = \(SELECT auth\.uid\(\)\)/);

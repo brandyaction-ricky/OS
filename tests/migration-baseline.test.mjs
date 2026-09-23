@@ -13,7 +13,7 @@ test("the active chain is intact but evidence migrations still require environme
   assert.equal(result.readyToApply, false);
   assert.deepEqual(result.pendingApprovalMigrations, [
     "20260923060000_content_evidence_owner_and_append_only.sql",
-    "20260923070000_content_evidence_team_read.sql",
+    "20260923080000_content_evidence_team_read.sql",
   ]);
   assert.equal(result.baselinePresent, true);
   assert.equal(result.activeMigrationCount, 13);
