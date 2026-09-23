@@ -27,6 +27,11 @@ approval. Owner-entered rows remain user claims, not source-verified or
 tamper-proof audit evidence; a same-owner client can still INSERT unvalidated
 evidence directly.
 
+The DEV migration-history statement is the repository SQL without its final
+newline (2,391 versus 2,392 bytes). Its MD5 matches the repository file with
+only that final newline removed; no SQL statement differs. Do not mistake this
+byte-level formatting difference for a missing or different migration.
+
 ## 2026-09-21 narrowly approved quota maintenance
 
 The historical baseline status below describes the four-migration DEV rollout;
