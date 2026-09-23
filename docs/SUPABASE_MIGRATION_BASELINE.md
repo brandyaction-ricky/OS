@@ -2,7 +2,7 @@
 
 Updated: 2026-09-23 Asia/Seoul.
 
-## 2026-09-23 content evidence team read — implementation candidate, not applied
+## 2026-09-23 content evidence team read — DEV applied
 
 `20260923080000_content_evidence_team_read.sql` follows the DEV-applied owner
 boundary below. It replaces only the restrictive evidence SELECT policy: an
@@ -13,23 +13,27 @@ ordinary-record policy does not bypass this restriction. The prior owner-only
 INSERT policy and append-only trigger remain unchanged. The content screen
 shows a non-owner the cards without an add control.
 
-This migration is **not applied to DEV or Production**. Its manifest entry has
-`requiresApproval: true`, `productionAuthorized: false`, and an empty applied
-environment list. Before a DEV rollout, inspect the two intended accounts'
-active profile teams and the evidence rows' team assignments without exposing
-credentials; if assignments do not match, do not broaden the policy to blank
-or all members. Run `supabase/tests/content_evidence_boundary_test.sql` against
-the confirmed DEV schema in a rolled-back transaction (16 checks), then request
-explicit DEV policy-change approval and verify two-account read/owner-write
-behavior after applying the exact migration. A local SQL run was unavailable
-in this worktree because Docker/Podman was not on `PATH`; static and app tests
-do not substitute for that database gate. Production needs separate approval.
+The representative separately approved the DEV access change on 2026-09-23.
+Read-only preflight found exactly the three P03 evidence rows assigned to
+`콘텐츠`, one active owner and one active intended reader, both with blank
+profile teams, and no existing active content-team members. The 16-check
+transaction-scoped pgTAP suite passed against the candidate policy before
+application. In the isolated `brandyaction-os-dev` project, one guarded
+transaction assigned exactly those two profiles to `콘텐츠`, replaced the
+restrictive SELECT policy with the exact 816-byte repository migration, and
+recorded version `20260923080000` in migration history. Postflight found two
+expected active content-team profiles, three unchanged evidence rows, the new
+policy present, the old one absent, and one history entry. The recorded SQL
+MD5 `1ff47692a8082391655f0dbd92890a10` matches the repository file.
 
-Read-only DEV inspection found the P03 evidence rows assigned to `콘텐츠`, while
-both accounts used in the prior owner/non-owner browser check currently have
-blank profile teams. Applying this policy alone would therefore preserve the
-non-owner's empty evidence view. Granting either account a team is a separate
-access change, not part of this migration or a test fixture to set silently.
+The manifest now records DEV application only. `requiresApproval: true` and
+`productionAuthorized: false` remain in force. The migration did not modify
+evidence rows, INSERT policy, or append-only trigger. Browser QA on the new
+PR Preview still needs the two accounts to log in to that host; policy-level
+post-application checks and PR integration review remain release gates. A
+local SQL run was unavailable in this worktree because Docker/Podman was not
+on `PATH`; static and app tests do not substitute for the connected DEV gate.
+Production schema changes and deployment need separate approval.
 
 ## 2026-09-23 content evidence boundary — DEV applied
 
