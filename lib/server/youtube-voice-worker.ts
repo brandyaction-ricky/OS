@@ -127,14 +127,15 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
       throw new ApiError(409, "VOICE_TIMING_ASSET_INCOMPLETE", "음성과 시간표가 함께 저장되지 않았습니다. 자산을 확인해 주세요.");
     if (!audioExists) {
       const options = { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: voiceModel };
-      const audio = timingPath
+      const timedAudio = timingPath
         ? await synthesizeFishSegmentWithTimestamps(segments[pending.index], options)
-        : await synthesizeFishSegment(segments[pending.index], options);
+        : null;
+      const audio = timedAudio ?? await synthesizeFishSegment(segments[pending.index], options);
       await currentSegments(service, record, metadata);
-      if (timingPath && "words" in audio) {
+      if (timingPath && timedAudio) {
         audioSha256 = createHash("sha256").update(audio.bytes).digest("hex");
         const timing = JSON.stringify({ version: "fish-stream-timing-v1", textHash: pending.textHash,
-          audioSha256, durationSeconds: audio.durationSeconds, words: audio.words });
+          audioSha256, durationSeconds: timedAudio.durationSeconds, words: timedAudio.words });
         if (Buffer.byteLength(timing) > 1_048_576)
           throw new ApiError(502, "VOICE_TIMING_TOO_LARGE", "음성 시간표가 저장 가능한 크기를 넘었습니다.");
         const { error: timingError } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(timingPath,
