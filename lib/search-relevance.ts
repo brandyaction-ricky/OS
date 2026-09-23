@@ -3,17 +3,35 @@ import type { SearchResult } from "./types";
 const SEARCH_STOP_WORDS = new Set([
   "뭐", "뭐냐", "뭔가", "어떤", "어떤거", "어떤게", "알려줘", "알려", "보여줘", "보여",
   "찾아줘", "찾아", "있나", "있어", "있는지", "인가", "이야", "해줘", "대한", "관련",
+  "어떻게", "어떡해", "만들어야", "만드는", "해야",
   "the", "a", "an", "what", "which", "show", "find", "tell", "about",
 ]);
 
-export function searchTerms(value: string) {
+const GENERIC_KNOWLEDGE_TERMS = new Set([
+  "자료", "문서", "지식", "회사", "내용", "현재", "기준", "콘텐츠", "운영",
+]);
+
+const KOREAN_QUESTION_ENDINGS = ["인가요", "일까요", "이야", "인가", "인지", "일까", "나요"];
+const KOREAN_PARTICLES = ["에서", "으로", "에게", "한테", "이", "가", "은", "는", "을", "를", "의", "에", "도", "만", "로"];
+
+function normalizedWords(value: string) {
   const normalized = value
     .replace(/@[A-Za-z0-9_]+/g, " ")
     .replace(/[%_,().?!/\\:;\[\]{}'\"`~@#$^&*+=|<>-]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  const words = normalized.split(" ").filter((word) => word.length >= 2 && !SEARCH_STOP_WORDS.has(word));
+  return normalized.split(" ").filter((word) => word.length >= 2 && !SEARCH_STOP_WORDS.has(word)).map((word) => {
+    if (!/^[가-힣]+$/.test(word)) return word;
+    const ending = KOREAN_QUESTION_ENDINGS.find((candidate) => word.endsWith(candidate) && word.length > candidate.length);
+    if (ending) return word.slice(0, -ending.length);
+    const particle = KOREAN_PARTICLES.find((candidate) => word.endsWith(candidate) && word.length - candidate.length >= 2);
+    return particle ? word.slice(0, -particle.length) : word;
+  }).filter((word) => word && !SEARCH_STOP_WORDS.has(word));
+}
+
+export function searchTerms(value: string) {
+  const words = normalizedWords(value).filter((word) => word.length >= 2);
   const terms = new Set<string>();
   for (const word of words) {
     terms.add(word);
@@ -25,11 +43,71 @@ export function searchTerms(value: string) {
   return [...terms].filter((term) => term.length >= 2).slice(0, 8);
 }
 
+export function keywordQueryText(value: string) {
+  const words = [...new Set(normalizedWords(evidenceQueryText(value)))];
+  const specific = words.filter((word) => !GENERIC_KNOWLEDGE_TERMS.has(word));
+  const selected = specific.length >= 2 ? specific : words;
+  return selected.slice(0, 8).join(" ") || value.trim();
+}
+
+function evidenceTerms(value: string) {
+  const terms = searchTerms(value);
+  const specific = terms.filter((term) => !GENERIC_KNOWLEDGE_TERMS.has(term));
+  return specific.length ? specific : terms;
+}
+
+function searchableText(result: Pick<SearchResult, "title" | "heading" | "text">) {
+  return `${result.title} ${result.heading} ${result.text}`.toLowerCase();
+}
+
 export function hasLexicalEvidence(result: Pick<SearchResult, "title" | "heading" | "text">, query: string) {
-  const terms = searchTerms(query);
+  const terms = evidenceTerms(query);
   if (!terms.length) return false;
-  const searchable = `${result.title} ${result.heading} ${result.text}`.toLowerCase();
+  const searchable = searchableText(result);
   return terms.some((term) => searchable.includes(term));
+}
+
+export function rankLexicalEvidence<T extends Pick<SearchResult, "title" | "heading" | "text">>(results: T[], query: string) {
+  const terms = evidenceTerms(query);
+  if (!terms.length || results.length < 2) return results;
+  const texts = results.map(searchableText);
+  const frequencies = new Map(terms.map((term) => [term, Math.max(1, texts.filter((text) => text.includes(term)).length)]));
+  return results.map((result, index) => ({
+    result,
+    index,
+    // Later Korean query terms usually carry the requested property or value,
+    // while inverse document frequency keeps a common overlap from dominating.
+    score: terms.reduce((score, term, termIndex) => score + (texts[index].includes(term) ? (termIndex + 1) / (frequencies.get(term) ?? 1) : 0), 0),
+  })).sort((left, right) => right.score - left.score || left.index - right.index).map(({ result }) => result);
+}
+
+function procedureAuthority(result: Pick<SearchResult, "title"> & Partial<Pick<SearchResult, "folder">>, query: string) {
+  const title = result.title.toLowerCase();
+  const folder = result.folder?.toLowerCase() ?? "";
+  const procedural = /어떻게|어떡해|방법|절차|만들|해야|제작/u.test(query);
+  if (!procedural) return 0;
+  let score = 0;
+  if (/(?:^|[_\s·-])절차(?:$|[_\s·-])/u.test(title)) score += 40;
+  if (folder.includes("제작기준/콘텐츠절차")) score += 30;
+  if (/현재기준|결정\s*로그/u.test(title)) score += 20;
+  if (/썸네일/u.test(query)) {
+    if (title.includes("패키징_절차")) score += 100;
+    if (title.includes("썸네일 결정 로그")) score += 80;
+  }
+  return score;
+}
+
+export function rankTelegramEvidence<T extends Pick<SearchResult, "title" | "heading" | "text"> & Partial<Pick<SearchResult, "folder">>>(results: T[], query: string) {
+  const lexical = rankLexicalEvidence(results, query);
+  return lexical.map((result, index) => ({ result, index, authority: procedureAuthority(result, query) }))
+    .sort((left, right) => right.authority - left.authority || left.index - right.index)
+    .map(({ result }) => result);
+}
+
+export function telegramAuthorityQueryText(value: string) {
+  const procedural = /어떻게|어떡해|방법|절차|만들|해야|제작/u.test(value);
+  if (procedural && /썸네일/u.test(value)) return "패키징_절차 사람 카피";
+  return "";
 }
 
 export function evidenceQueryText(value: string) {

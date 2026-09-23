@@ -166,11 +166,13 @@ export async function inspectMigrationBaseline() {
     }
   }
 
+  const pendingApprovalMigrations = forwardMigrations.filter(entry => entry.requiresApproval === true).map(entry => entry.file);
   return {
     status: manifest.status,
     decision: manifest.decision,
     integrityValid: errors.length === 0,
-    readyToApply: manifest.status === "ready" && manifest.decision === "apply" && baselinePresent && errors.length === 0,
+    readyToApply: manifest.status === "ready" && manifest.decision === "apply" && baselinePresent && errors.length === 0 && pendingApprovalMigrations.length === 0,
+    pendingApprovalMigrations,
     activeMigrationCount: activeFiles.length,
     archivedMigrationCount: archivedFiles.length,
     baselinePresent,

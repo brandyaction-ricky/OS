@@ -41,10 +41,50 @@ function rpcRow<T>(data: T | T[] | null): T | null {
   return Array.isArray(data) ? data[0] ?? null : data;
 }
 
+type RateLimitDetails = {
+  bucket: string;
+  minuteLimit: number;
+  minuteUsed: number;
+  dayLimit: number;
+  dayUsed: number;
+  retryAfterSeconds: number;
+  resetAt: string;
+};
+
+function rateLimitDetails(detail: string): RateLimitDetails | null {
+  const marker = "OS_AGENT_RATE_LIMITED:";
+  const start = detail.indexOf(marker);
+  if (start < 0) return null;
+  try {
+    const parsed = JSON.parse(detail.slice(start + marker.length)) as Partial<RateLimitDetails>;
+    if (!parsed.bucket || !parsed.resetAt) return null;
+    return {
+      bucket: parsed.bucket,
+      minuteLimit: Number(parsed.minuteLimit),
+      minuteUsed: Number(parsed.minuteUsed),
+      dayLimit: Number(parsed.dayLimit),
+      dayUsed: Number(parsed.dayUsed),
+      retryAfterSeconds: Math.max(1, Number(parsed.retryAfterSeconds)),
+      resetAt: parsed.resetAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function writeError(error: { message?: string } | null, fallbackCode: string, fallbackMessage: string) {
   const detail = error?.message ?? "";
   if (detail.includes("OS_VERSION_CONFLICT")) return new ApiError(409, "VERSION_CONFLICT", "다른 작업이 먼저 문서를 수정했습니다. 최신 버전으로 다시 시도해 주세요.");
-  if (detail.includes("OS_AGENT_RATE_LIMITED")) return new ApiError(429, "AGENT_RATE_LIMITED", "AI 쓰기 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.");
+  if (detail.includes("OS_AGENT_RATE_LIMITED")) {
+    const limits = rateLimitDetails(detail);
+    const retryAfterSeconds = limits?.retryAfterSeconds ?? 60;
+    const message = limits
+      ? `AI 쓰기 요청 한도를 초과했습니다. ${retryAfterSeconds}초 후 다시 시도해 주세요.`
+      : "AI 쓰기 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.";
+    return new ApiError(429, "AGENT_RATE_LIMITED", message, limits ?? { retryAfterSeconds }, {
+      "Retry-After": String(retryAfterSeconds),
+    });
+  }
   if (detail.includes("OS_AGENT_DOCUMENT_DENIED") || detail.includes("OS_AGENT_WRITE_DENIED")) return new ApiError(403, "AGENT_WRITE_DENIED", "이 문서를 변경할 권한이 없습니다.");
   if (detail.includes("OS_AGENT_ARCHIVED_READ_ONLY")) return new ApiError(409, "DOCUMENT_ARCHIVED", "휴지통 문서는 수정할 수 없습니다.");
   if (detail.includes("OS_DOC_NOT_FOUND")) return new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");

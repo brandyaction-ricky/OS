@@ -1,18 +1,22 @@
 {
   "schemaVersion": 2,
-  "observedAt": "2026-09-17",
-  "status": "applied_dev",
-  "decision": "applied",
+  "observedAt": "2026-09-23",
+  "status": "ready",
+  "decision": "apply",
   "approval": {
-    "environment": "development",
-    "approvedAt": "2026-09-17",
-    "productionAuthorized": false
+    "environment": "development_and_production",
+    "approvedAt": "2026-09-22",
+    "productionAuthorized": false,
+    "productionApprovedAt": "2026-09-22",
+    "previousProductionApprovalThrough": "20260922063605_knowledge_review_return.sql"
   },
   "evidence": {
     "repositoryMigrationCount": 14,
-    "productionHistoryCount": 7,
-    "productionExactRepositoryMatches": 0,
-    "developmentHistoryCount": 4,
+    "productionHistoryCount": 14,
+    "productionExactRepositoryMatches": 7,
+    "developmentHistoryCount": 11,
+    "pendingDevelopmentMigrationCount": 1,
+    "pendingProductionMigrationCount": 1,
     "developmentPublicTableCount": 34,
     "productionSchemaOnlySha256": "033831ba8a1c4d4f2f8d7e6d5601ab086caa1dd0cab4af24f3f04f86b0a930de"
   },
@@ -107,18 +111,65 @@
       }
     },
     "developmentValidation": {
-      "appliedAt": "2026-09-17",
-      "migrationHistoryCount": 4,
-      "publicTables": 34,
+      "appliedAt": "2026-09-21",
+      "migrationHistoryCount": 11,
+      "publicTables": 35,
       "publicPolicies": 40,
-      "reviewedTriggers": 11,
+      "reviewedTriggers": 14,
+      "agentUpdateQuotaMigrationPresent": true,
+      "agentWriteRateLimitMetadataMigrationPresent": true,
+      "agentUpdateDayLimit": 1000,
+      "agentMoveBucketPresent": true,
+      "agentWriteRateLimitTableRlsEnabled": true,
+      "agentWriteRateLimitPublicPrivileges": false,
+      "agentWriteRateLimitServiceRoleAccess": true,
       "authProfileTriggerPresent": true,
       "anonPrivilegedFunctionExecGrants": 0,
       "authenticatedServiceOnlyFunctionExecGrants": 0,
       "authenticatedRequiredFunctionExecGrants": 15,
       "performanceAdvisorWarnings": 0,
       "securityAdvisorAcceptedWarnings": 15,
-      "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs"
+      "securityAdvisorDisposition": "intentional authenticated execution grants required by RLS helpers and user-facing RPCs",
+      "knowledgeReviewReturnMigrationPresent": true,
+      "knowledgeReviewReturnAnonymousExecution": false,
+      "contentEvidenceBoundaryAppliedAt": "2026-09-23"
+    },
+    "productionValidation": {
+      "appliedAt": "2026-09-22",
+      "migrationHistoryCount": 14,
+      "publicTables": 37,
+      "publicPolicies": 39,
+      "agentUpdateQuotaMigrationPresent": true,
+      "agentWriteRateLimitMetadataMigrationPresent": true,
+      "agentUpdateDayLimit": 1000,
+      "agentMoveBucketPresent": true,
+      "agentWriteRateLimitTableRlsEnabled": true,
+      "agentWriteRateLimitPublicPrivileges": false,
+      "agentWriteRateLimitServiceRoleAccess": true,
+      "agentAuditLookupIndexPresent": true,
+      "notificationMigrationPresent": true,
+      "knowledgeSearchMigrationPresent": true,
+      "notificationRecordTypeAllowed": true,
+      "notificationIndexes": 2,
+      "notificationGuardTriggerPresent": true,
+      "notificationCreateTriggerPresent": true,
+      "commentGuardSupportsMentions": true,
+      "existingCommentsPreserved": 2,
+      "existingNotificationsAfterApply": 0,
+      "publicFunctionExecution": false,
+      "anonymousFunctionExecution": false,
+      "authenticatedFunctionExecution": false,
+      "serviceRoleFunctionExecution": true,
+      "securityDefinerSearchPathSafe": true,
+      "telegramTeamWorkflowMigrationPresent": true,
+      "telegramTurnReceiptColumns": 4,
+      "telegramProfileLinkColumnPresent": true,
+      "telegramWorkflowTables": 2,
+      "telegramWorkflowIndexes": 4,
+      "telegramWorkflowPolicies": 3,
+      "telegramWorkflowTablesRlsEnabled": 2,
+      "knowledgeReviewReturnMigrationPresent": true,
+      "knowledgeReviewReturnAnonymousExecution": false
     }
   },
   "forwardMigrations": [
@@ -140,12 +191,54 @@
     {
       "file": "20260921140000_agent_update_daily_limit.sql",
       "sha256": "426ee97dfebd4891b80b704af13c414ab22035972b72b541bfb673b8ded5f742",
-      "purpose": "raise only agent knowledge.update rolling daily quota to 1000; environment application is separately recorded"
+      "purpose": "raise only agent knowledge.update rolling daily quota to 1000; applied and verified in DEV and Production"
+    },
+    {
+      "file": "20260921170000_development_request_comments.sql",
+      "sha256": "1ea4f0ca6ead72c1324cd7fb2160a2a96b65f2b10826c153a5428c89f3ef2f9b",
+      "purpose": "add append-only development request comments and single-level replies to the DEV operating record contract"
+    },
+    {
+      "file": "20260921210000_development_request_notifications.sql",
+      "sha256": "269f77e54e9209c6294c3078455b5b27aeebb61e1dba4aec62b43d217b20f37b",
+      "purpose": "add recipient-only development request mention and assignment notifications with delivery and read receipts"
+    },
+    {
+      "file": "20260921213500_use_trigram_index_for_knowledge_search.sql",
+      "sha256": "08e2478ad60207668c953b2d01b23f53860ae0fb8d010f6f24ac2d714e30dc8c",
+      "purpose": "make hybrid knowledge search use the existing trigram GIN index while preserving the reviewed word-similarity threshold and RLS contract"
+    },
+    {
+      "file": "20260921233000_agent_write_rate_limit_metadata.sql",
+      "sha256": "61d70a19e84f4c9b3d3bbbe053ff9231c2ed7c4a711536fa1fba37007dceed84",
+      "purpose": "separate folder moves from content edits and return configurable safe retry metadata for agent knowledge writes"
+    },
+    {
+      "file": "20260922003000_telegram_team_workflow.sql",
+      "sha256": "85f562a43cad146b780706c70092fe2e0269cb51b090e9b5e03a116d3705368a",
+      "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests"
+    },
+    {
+      "file": "20260922063605_knowledge_review_return.sql",
+      "sha256": "6cbdd32fff70bbab0aa3bb28f7e3100400d41b2b7a5ed506fb599ae5a15e5723",
+      "purpose": "allow active reviewers to return a review document to team with the existing audit event; applied and verified in DEV and Production",
+      "requiresApproval": false,
+      "approvedAt": "2026-09-22",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ]
     },
     {
       "file": "20260923060000_content_evidence_owner_and_append_only.sql",
       "sha256": "7a079762bd149ceae5fab06f2ac3921c7c217434b4b99263b0d5306ee2838fe0",
-      "purpose": "restrict content evidence reads and owner assignment, and reject evidence update, archive, deletion, or relabelling; environment application is separately approved"
+      "purpose": "restrict content evidence reads and owner assignment, and reject evidence update, archive, deletion, or relabelling; DEV applied and verified, Production requires separate approval",
+      "requiresApproval": true,
+      "productionAuthorized": false,
+      "developmentApprovedAt": "2026-09-23",
+      "appliedEnvironments": [
+        "development"
+      ]
     }
   ],
   "legacyMigrations": [

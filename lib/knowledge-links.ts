@@ -29,6 +29,8 @@ export interface BrokenKnowledgeLink {
   sourceId: string;
   sourceTitle: string;
   targetTitle: string;
+  reason?: "missing" | "ambiguous";
+  candidates?: Array<{id: string; title: string; folder: string}>;
 }
 
 export interface KnowledgeGraph {
@@ -41,7 +43,7 @@ const TEMPLATE_LINK = "다른 문서 이름";
 
 export function extractWikiLinks(content: string) {
   return [...new Set(
-    [...content.matchAll(/\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g)]
+    [...content.matchAll(/(?<!!)\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g)]
       .map((match) => match[1].trim())
       .filter(Boolean),
   )];
@@ -88,7 +90,8 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
       if (title === TEMPLATE_LINK) continue;
       const target = resolveWikiLink(title, byTitle.get(wikiKey(title)) ?? [], document.folder);
       if (!target) {
-        broken.push({ sourceId: document.id, sourceTitle: document.title, targetTitle: title });
+        const candidates = byTitle.get(wikiKey(title)) ?? [];
+        broken.push({ sourceId: document.id, sourceTitle: document.title, targetTitle: title, reason: candidates.length > 1 ? "ambiguous" : "missing", candidates: candidates.map(item => ({id: item.id, title: item.title, folder: item.folder})) });
         continue;
       }
       if (target.id === document.id) continue;

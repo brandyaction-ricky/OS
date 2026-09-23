@@ -6,6 +6,10 @@ interface RequestOptions extends RequestInit {
   token?: string | null;
 }
 
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly code: string, public readonly status: number) { super(message); this.name = "ApiRequestError"; }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
@@ -16,7 +20,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const body = await response.json().catch(() => null);
   if (!response.ok) {
     const message = body?.error?.message ?? `요청을 처리하지 못했습니다. (${response.status})`;
-    throw new Error(message);
+    throw new ApiRequestError(message, body?.error?.code ?? "REQUEST_FAILED", response.status);
   }
   return body as T;
 }
@@ -110,6 +114,7 @@ export async function searchKnowledge(
     query: string;
     mode: string;
     degraded: boolean;
+    degradationReasons?: import("./search-diagnostics").SearchDegradation[];
     results: SearchResult[];
     tookMs: number;
   }>("/api/v1/search", {
@@ -205,7 +210,7 @@ export async function summarizeMeeting(token: string | null, transcript: string,
 
 export async function prepareMeeting(token: string | null, brand = "", team = "") {
   const query = new URLSearchParams(); if (brand) query.set("brand", brand); if (team) query.set("team", team);
-  return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[] } | null; pending: string[]; todos: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[] }>(`/api/v1/meeting-prep?${query}`, { token });
+  return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null; pending: string[]; todos: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[] }>(`/api/v1/meeting-prep?${query}`, { token });
 }
 
 export async function getHealth() {
@@ -280,8 +285,8 @@ export interface TelegramConnectionStatus {
   lastProcessingError?: { at: string; message: string } | null;
   pendingCount?: number;
   approvedCount?: number;
-  approvedUsers?: { external_user_id: string; display_name: string; username: string; status: string; last_received_at: string | null }[];
-  pendingUsers?: { external_user_id: string; external_chat_id: string | null; display_name: string; username: string; status: "pending"; requested_at: string }[];
+  approvedUsers?: { external_user_id: string; display_name: string; username: string; status: string; profile_id: string | null; last_received_at: string | null }[];
+  pendingUsers?: { external_user_id: string; external_chat_id: string | null; display_name: string; username: string; status: "pending"; profile_id: string | null; requested_at: string }[];
 }
 
 export async function getTelegramStatus(token: string | null) {
@@ -292,9 +297,9 @@ export async function connectTelegramWebhook(token: string | null) {
   return apiRequest<{ connected: boolean; url: string }>("/api/v1/telegram/setup", { method: "POST", token });
 }
 
-export async function decideTelegramUser(token: string | null, externalUserId: string, action: "approve" | "reject") {
+export async function decideTelegramUser(token: string | null, externalUserId: string, action: "approve" | "reject" | "link", profileId?: string | null) {
   return apiRequest<{ user: { external_user_id: string; status: "approved" | "rejected" } }>("/api/v1/telegram/setup", {
-    method: "PATCH", token, body: JSON.stringify({ externalUserId, action }),
+    method: "PATCH", token, body: JSON.stringify({ externalUserId, action, profileId }),
   });
 }
 

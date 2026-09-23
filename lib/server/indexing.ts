@@ -35,7 +35,7 @@ export async function getEmbeddingQueueSummary(): Promise<EmbeddingQueueSummary>
 async function failJob(documentId: string, contentHash: string, reason: unknown) {
   const message = reason instanceof Error ? reason.message : "알 수 없는 인덱싱 오류";
   await createServiceSupabase().from("os_embedding_jobs").update({
-    status: "failed", finished_at: new Date().toISOString(), error_message: message.slice(0, 1000),
+    status: "failed", finished_at: new Date().toISOString(), last_error: message.slice(0, 1000),
   }).eq("document_id", documentId).eq("content_hash", contentHash).eq("status", "running");
 }
 
@@ -54,12 +54,12 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
   const contentHash = document.content_hash || createHash("sha256").update(document.content_md).digest("hex");
 
   await supabase.from("os_embedding_jobs").update({
-    status: "failed", finished_at: new Date().toISOString(), error_message: "새 문서 버전으로 대체된 작업입니다.",
+    status: "failed", finished_at: new Date().toISOString(), last_error: "새 문서 버전으로 대체된 작업입니다.",
   }).eq("document_id", documentId).eq("status", "pending").neq("content_hash", contentHash);
 
   const { data: claimed, error: claimError } = await supabase
     .from("os_embedding_jobs")
-    .update({ status: "running", started_at: new Date().toISOString(), error_message: null })
+    .update({ status: "running", started_at: new Date().toISOString(), last_error: null })
     .eq("document_id", documentId)
     .eq("content_hash", contentHash)
     .eq("status", "pending")
@@ -98,7 +98,7 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
     }
     await supabase
       .from("os_embedding_jobs")
-      .update({ status: "done", finished_at: new Date().toISOString(), error_message: null })
+      .update({ status: "done", finished_at: new Date().toISOString(), last_error: null })
       .eq("id", claimed.id)
       .eq("status", "running");
     return "ready";
@@ -118,7 +118,7 @@ export async function processEmbeddingQueue(options: { limit?: number; deadlineM
   const supabase = createServiceSupabase();
   const staleBefore = new Date(Date.now() - 15 * 60_000).toISOString();
   await supabase.from("os_embedding_jobs").update({
-    status: "pending", started_at: null, finished_at: null, error_message: "중단된 실행을 자동 복구했습니다.",
+    status: "pending", started_at: null, finished_at: null, last_error: "중단된 실행을 자동 복구했습니다.",
   }).eq("status", "running").lt("started_at", staleBefore);
   const { data: jobs, error } = await supabase.from("os_embedding_jobs")
     .select("document_id")
@@ -148,7 +148,7 @@ export async function retryFailedEmbeddingJobs(limit = 100) {
   if (error) throw error;
   const ids = (jobs ?? []).map((job) => job.id);
   if (!ids.length) return 0;
-  const { error: updateError } = await supabase.from("os_embedding_jobs").update({ status: "pending", started_at: null, finished_at: null, error_message: null }).in("id", ids).eq("status", "failed");
+  const { error: updateError } = await supabase.from("os_embedding_jobs").update({ status: "pending", started_at: null, finished_at: null, last_error: null }).in("id", ids).eq("status", "failed");
   if (updateError) throw updateError;
   return ids.length;
 }
