@@ -82,6 +82,8 @@ export async function POST(request: Request) {
       return stopped("stale", 409);
 
     return NextResponse.json({ status: "ready", source: { id: source.id, version: source.version },
+      evaluationProtocolVersion: "jev-packaging-review-v3",
+      inputChecks: { selectedPackage: true, planningHandoff: true, evidenceNotes: true, factualVerification: false },
       shadowEvaluation }, { headers });
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
