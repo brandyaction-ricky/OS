@@ -28,7 +28,7 @@ import {
   updateRecord,
   type MeetingSummaryResult,
 } from "@/lib/api-client";
-import { resolveMeetingBusiness } from "@/lib/meeting-business";
+import { PRIMARY_MEETING_BUSINESSES, resolveMeetingBusiness } from "@/lib/meeting-business";
 import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
@@ -85,9 +85,10 @@ export function MeetingWorkspace() {
   const [structured, setStructured] = useState<MeetingSummaryResult | null>(
     null,
   );
-  const [prep, setPrep] = useState<Awaited<
-    ReturnType<typeof prepareMeeting>
-  > | null>(null);
+  const [prep, setPrep] = useState<Array<{
+    label: string;
+    result: Awaited<ReturnType<typeof prepareMeeting>>;
+  }> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -252,7 +253,13 @@ export function MeetingWorkspace() {
     setBusy(true);
     setError("");
     try {
-      setPrep(await prepareMeeting(accessToken));
+      const results = await Promise.all(
+        PRIMARY_MEETING_BUSINESSES.map(async (business) => ({
+          label: business.label,
+          result: await prepareMeeting(accessToken, business.recordBrand),
+        })),
+      );
+      setPrep(results);
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -524,51 +531,57 @@ export function MeetingWorkspace() {
           <div className="panel-header">
             <div>
               <h2>다음 회의 준비</h2>
-              <p>
-                {prep.latestMeeting
-                  ? `이전 회의 “${prep.latestMeeting.title}”에서 이어집니다.`
-                  : "첫 회의용 안건입니다."}
-              </p>
+              <p>마이인·브랜디에듀 각각의 이전 회의에서 이어집니다.</p>
             </div>
             <button className="icon-button" onClick={() => setPrep(null)}>
               <X size={16} />
             </button>
           </div>
-          {prep.latestMeeting?.summary ? (
-            <div className="meeting-prep-summary">
-              <strong>지난 회의 요약</strong>
-              <p>{prep.latestMeeting.summary}</p>
+          {prep.map((entry) => (
+            <div className="meeting-prep-business" key={entry.label}>
+              <h3>{entry.label}</h3>
+              <p className="field-hint">
+                {entry.result.latestMeeting
+                  ? `이전 회의 "${entry.result.latestMeeting.title}"에서 이어집니다.`
+                  : "첫 회의용 안건입니다."}
+              </p>
+              {entry.result.latestMeeting?.summary ? (
+                <div className="meeting-prep-summary">
+                  <strong>지난 회의 요약</strong>
+                  <p>{entry.result.latestMeeting.summary}</p>
+                </div>
+              ) : null}
+              <div className="meeting-prep-grid">
+                <div>
+                  <strong>미해결 안건</strong>
+                  {entry.result.pending.map((item) => (
+                    <p key={item}>• {item}</p>
+                  ))}
+                  {!entry.result.pending.length ? <p>남은 안건이 없습니다.</p> : null}
+                </div>
+                <div>
+                  <strong>완료 전 업무</strong>
+                  {entry.result.todos.slice(0, 8).map((item) => (
+                    <p key={item.id}>
+                      • {item.title}
+                      {item.due_date ? ` · ${item.due_date}` : ""}
+                    </p>
+                  ))}
+                  {!entry.result.todos.length ? <p>미완료 업무가 없습니다.</p> : null}
+                </div>
+                <div>
+                  <strong>주간 KPI 안건</strong>
+                  {entry.result.kpis.slice(0, 8).map((item) => (
+                    <p key={item.id}>
+                      • {item.title} {item.current}
+                      {item.unit} · {item.signal}
+                    </p>
+                  ))}
+                  {!entry.result.kpis.length ? <p>주간 KPI를 먼저 입력해 주세요.</p> : null}
+                </div>
+              </div>
             </div>
-          ) : null}
-          <div className="meeting-prep-grid">
-            <div>
-              <strong>미해결 안건</strong>
-              {prep.pending.map((item) => (
-                <p key={item}>• {item}</p>
-              ))}
-              {!prep.pending.length ? <p>남은 안건이 없습니다.</p> : null}
-            </div>
-            <div>
-              <strong>완료 전 업무</strong>
-              {prep.todos.slice(0, 8).map((item) => (
-                <p key={item.id}>
-                  • {item.title}
-                  {item.due_date ? ` · ${item.due_date}` : ""}
-                </p>
-              ))}
-              {!prep.todos.length ? <p>미완료 업무가 없습니다.</p> : null}
-            </div>
-            <div>
-              <strong>주간 KPI 안건</strong>
-              {prep.kpis.slice(0, 8).map((item) => (
-                <p key={item.id}>
-                  • {item.title} {item.current}
-                  {item.unit} · {item.signal}
-                </p>
-              ))}
-              {!prep.kpis.length ? <p>주간 KPI를 먼저 입력해 주세요.</p> : null}
-            </div>
-          </div>
+          ))}
         </section>
       ) : null}
       <section className="meeting-grid">
