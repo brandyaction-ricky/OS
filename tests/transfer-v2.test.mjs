@@ -22,6 +22,13 @@ test("meeting workflow includes prep, transcription and structured actions", asy
   assert.match(prep, /record_type.*kpi/s); assert.match(transcription, /audio\/transcriptions/);
 });
 
+test("web meeting prep loads both businesses instead of one ambiguous 'latest overall' result", async () => {
+  const workspace = await read("components/meeting-workspace.tsx");
+  assert.match(workspace, /PRIMARY_MEETING_BUSINESSES\.map/);
+  assert.match(workspace, /prepareMeeting\(accessToken, business\.recordBrand\)/);
+  assert.match(workspace, /meeting-prep-business/);
+});
+
 test("meeting title auto-fills from brand and recording chains into transcription and extraction", async () => {
   const workspace = await read("components/meeting-workspace.tsx");
   assert.match(workspace, /function suggestMeetingTitle/);
