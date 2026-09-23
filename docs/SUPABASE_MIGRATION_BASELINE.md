@@ -2,6 +2,39 @@
 
 Updated: 2026-09-23 Asia/Seoul.
 
+## 2026-09-23 content evidence team read — DEV applied
+
+`20260923080000_content_evidence_team_read.sql` follows the DEV-applied owner
+boundary below. It replaces only the restrictive evidence SELECT policy: an
+active owner still reads their rows, and another active user reads the three
+evidence subtypes only when the row has a nonblank team matching that user's
+active `os_profiles.team`. A blank row or viewer team fails closed. The broad
+ordinary-record policy does not bypass this restriction. The prior owner-only
+INSERT policy and append-only trigger remain unchanged. The content screen
+shows a non-owner the cards without an add control.
+
+The representative separately approved the DEV access change on 2026-09-23.
+Read-only preflight found exactly the three P03 evidence rows assigned to
+`콘텐츠`, one active owner and one active intended reader, both with blank
+profile teams, and no existing active content-team members. The 16-check
+transaction-scoped pgTAP suite passed against the candidate policy before
+application. In the isolated `brandyaction-os-dev` project, one guarded
+transaction assigned exactly those two profiles to `콘텐츠`, replaced the
+restrictive SELECT policy with the exact 816-byte repository migration, and
+recorded version `20260923080000` in migration history. Postflight found two
+expected active content-team profiles, three unchanged evidence rows, the new
+policy present, the old one absent, and one history entry. The recorded SQL
+MD5 `1ff47692a8082391655f0dbd92890a10` matches the repository file.
+
+The manifest now records DEV application only. `requiresApproval: true` and
+`productionAuthorized: false` remain in force. The migration did not modify
+evidence rows, INSERT policy, or append-only trigger. Browser QA on the new
+PR Preview still needs the two accounts to log in to that host; policy-level
+post-application checks and PR integration review remain release gates. A
+local SQL run was unavailable in this worktree because Docker/Podman was not
+on `PATH`; static and app tests do not substitute for the connected DEV gate.
+Production schema changes and deployment need separate approval.
+
 ## 2026-09-23 content evidence boundary — DEV applied
 
 After merging this DEV-only migration into the newer eleven-file active chain,

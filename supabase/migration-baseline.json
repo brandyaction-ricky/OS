@@ -239,6 +239,17 @@
       "appliedEnvironments": [
         "development"
       ]
+    },
+    {
+      "file": "20260923080000_content_evidence_team_read.sql",
+      "sha256": "10cfe35cc881cf1a9bf4ac6c6a54979fe281ff5ba28d63849a68f61cdb1db118",
+      "purpose": "allow active members of an explicitly assigned evidence team to read content evidence while retaining owner-only writes and append-only protection; DEV applied and verified, Production requires separate approval",
+      "requiresApproval": true,
+      "productionAuthorized": false,
+      "developmentApprovedAt": "2026-09-23",
+      "appliedEnvironments": [
+        "development"
+      ]
     }
   ],
   "legacyMigrations": [
