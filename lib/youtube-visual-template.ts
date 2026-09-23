@@ -1,5 +1,5 @@
 /** Versioned visual direction approved for the narrated YouTube pilot. */
-export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-character-draw-v2";
+export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-character-draw-v3";
 
 // Stable identifiers; private storage resolves these to owned artwork.
 export const youtubeCharacterAssetRoles = [
