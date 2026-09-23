@@ -1,5 +1,5 @@
 /** Versioned visual direction approved for the narrated YouTube pilot. */
-export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-character-draw-v3";
+export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-speech-led-diagrams-v4";
 
 // Stable identifiers; private storage resolves these to owned artwork.
 export const youtubeCharacterAssetRoles = [
@@ -37,4 +37,14 @@ export const youtubeVisualTypes = [
   "diagram",
   "generated_still",
   "source_asset",
+] as const;
+
+// A paragraph can contain several distinct graphic ideas. Each visual beat
+// belongs to a spoken anchor and carries its own action and short typography.
+export const youtubeVisualActions = [
+  "draw_character",
+  "draw_diagram",
+  "draw_connector",
+  "transform_diagram",
+  "clear_and_draw",
 ] as const;
