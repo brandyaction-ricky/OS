@@ -16,7 +16,6 @@ export function ContentCopyLineage({ source, records, token, disabled, onSaved }
   const audit = copyLineage(source.id, source.owner_id, records);
   const decision = audit.decision.data;
   const publication = audit.publication.data;
-  if (process.env.NEXT_PUBLIC_SYSTEM_ONE_JEV_SHADOW_ENABLED !== "true") return null;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

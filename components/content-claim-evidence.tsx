@@ -18,7 +18,6 @@ export function ContentClaimEvidence({ source, records, token, disabled, onSaved
   const [assessment, setAssessment] = useState<"unverified" | "review_needed" | "reviewer_aligned">("unverified");
   const saving = useRef(false);
   const ledger = claimEvidence(source.id, source.owner_id, records);
-  if (process.env.NEXT_PUBLIC_SYSTEM_ONE_JEV_SHADOW_ENABLED !== "true") return null;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

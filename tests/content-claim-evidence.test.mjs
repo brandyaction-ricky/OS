@@ -47,7 +47,7 @@ test("claim list excludes other owners and malformed records without upgrading t
 test("claim route is DEV-only, owner-scoped, append-only, and does not mutate approvals", async () => {
   const route = await readFile(new URL("../app/api/v1/content/claim-evidence/route.ts", import.meta.url), "utf8");
   const generic = await readFile(new URL("../app/api/v1/records/route.ts", import.meta.url), "utf8");
-  assert.match(route, /canUseSystemOneJevShadow\(process\.env\)/);
+  assert.match(route, /canUseSystemOneContentEvidence\(process\.env\)/);
   assert.match(route, /allowAgent: false/); assert.match(route, /eq\("owner_id", actor\.id\)/);
   assert.match(route, /source\.version !== input\.expectedSourceVersion/);
   assert.match(route, /verification: "reviewer_entered"/);
