@@ -8,6 +8,7 @@ import type { RequestActor } from "./auth";
 import { readPipeline } from "./content-pipeline";
 import { splitFishNarration } from "./fish-audio";
 import { readYoutubeSceneRules, scenePlanSchema } from "./youtube-scenes";
+import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const YOUTUBE_VOICE_RUN_KIND = "youtube_narration_voice_v1";
 export const YOUTUBE_VOICE_BUCKET = "os-youtube-voice";
@@ -69,10 +70,11 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   const plan = buildYoutubeAutomationPlan(state);
   if (!plan.inputKey || plan.inputKey !== inputKey || !plan.script || !plan.packaging)
     throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 승인된 원고와 패키징을 다시 확인해 주세요.");
-  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; plan?: unknown } | undefined;
+  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
   const parsedScenes = scenePlanSchema.safeParse(scenePlan?.plan);
   const generatedAt = typeof scenePlan?.generatedAt === "string" ? scenePlan.generatedAt : "";
-  if (!scenePlan || scenePlan.inputKey !== inputKey || !parsedScenes.success || parsedScenes.data.unresolved.length ||
+  if (!scenePlan || scenePlan.inputKey !== inputKey || scenePlan.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
+    !parsedScenes.success || parsedScenes.data.unresolved.length ||
     parsedScenes.data.scenes.some((scene, index) => scene.segmentIndex !== index) || !Number.isFinite(Date.parse(generatedAt)))
     throw new ApiError(409, "SCENE_PLAN_REQUIRED", "현재 원고의 화면 설계를 완료하고 확인할 항목을 먼저 해결해 주세요.");
   const rules = await readYoutubeSceneRules(actor);

@@ -8,6 +8,7 @@ import { generateContentText } from "./content-model";
 import { readPipeline } from "./content-pipeline";
 import { splitFishNarration, synthesizeFishSegment } from "./fish-audio";
 import { readYoutubeSceneRules } from "./youtube-scenes";
+import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { digestVoiceValue, parseVoiceRun, voiceRunId, voiceSegmentPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_EXECUTOR_MODEL, YOUTUBE_VOICE_RUN_KIND, type VoiceRunMetadata } from "./youtube-voice-run";
 
 const reviewSchema = z.object({
@@ -26,11 +27,12 @@ const reviewJsonSchema = {
 async function currentSegments(service: ReturnType<typeof createServiceSupabase>, record: OsRecord, metadata: VoiceRunMetadata) {
   const state = await readPipeline({ supabase: service }, metadata.sourceId);
   const plan = buildYoutubeAutomationPlan(state);
-  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown } | undefined;
+  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown } | undefined;
   if (state.source.owner_id !== record.owner_id || plan.inputKey !== metadata.inputKey ||
     plan.script?.id !== metadata.script.id || plan.script?.version !== metadata.script.version ||
     plan.packaging?.id !== metadata.packaging.id || plan.packaging?.version !== metadata.packaging.version ||
     scenePlan?.inputKey !== metadata.inputKey || scenePlan?.generatedAt !== metadata.scenePlanGeneratedAt ||
+    scenePlan?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
     JSON.stringify(scenePlan?.ruleVersions) !== JSON.stringify(metadata.sceneRuleVersions))
     throw new ApiError(409, "VOICE_RUN_STALE", "음성 제작 중 원고·패키징·화면 설계가 변경됐습니다.");
   const rules = await readYoutubeSceneRules({ supabase: service });

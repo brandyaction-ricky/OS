@@ -7,6 +7,7 @@ import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, usesShootingPlan, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import type { YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
+import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { useSession } from "./session-provider";
 
 interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][] }
@@ -125,8 +126,9 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const enabled = state.source.metadata.pipelineEnabled === true;
   const planMode = usesShootingPlan(state.source);
   const preparation = (state.source.metadata.productionPreparation ?? {}) as Record<string, unknown>;
-  const scenePlan = (state.source.metadata.narratedScenePlan ?? null) as { inputKey?: string; plan?: { visualDirection?: string; scenes?: Array<{ segmentIndex: number; visualType: string; visualPrompt: string; onScreenText: string; evidenceNote: string }>; unresolved?: string[] } } | null;
-  const currentScenePlan = scenePlan && voicePlan?.inputKey && scenePlan.inputKey === voicePlan.inputKey ? scenePlan.plan : null;
+  const scenePlan = (state.source.metadata.narratedScenePlan ?? null) as { inputKey?: string; templateVersion?: string; plan?: { visualDirection?: string; scenes?: Array<{ segmentIndex: number; layoutTemplate: string; visualType: string; visualPrompt: string; onScreenText: string; evidenceNote: string }>; unresolved?: string[] } } | null;
+  const currentScenePlan = scenePlan && voicePlan?.inputKey && scenePlan.inputKey === voicePlan.inputKey &&
+    scenePlan.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION ? scenePlan.plan : null;
   const firstGeneratedScene = currentScenePlan?.scenes?.find((scene) => scene.visualType === "generated_still");
   const actions = ACTIONS.filter((item) => !planMode || item.action !== "script_draft");
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
@@ -152,14 +154,14 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     </form>
     <section className="factory-route" aria-label="숏폼 팩토리 22단계"><header><strong>22단계 제작 경로</strong><span>라인 {String(state.source.metadata.productionLine ?? "A")} · 규칙 {String(state.source.metadata.rulesVersion ?? "v1")}</span></header><div>{FACTORY_PHASES.map((phase) => <article key={phase.title}><h3>{phase.title}</h3><ol>{phase.steps.map((step) => <li key={step}>{step}</li>)}</ol></article>)}</div><p>검토 1 · 기획·제목·썸네일, 검토 2 · 원고 또는 구성안·촬영 진행표, 검토 3 · 최종 영상. 관련 자료가 바뀌면 다시 검토합니다. 제작 자산은 형식에 맞게 준비합니다.</p></section>
     {pilotAvailable ? <section className="panel" aria-label="내 목소리 영상 자동화 준비"><h3>내 목소리 + 제작 화면</h3>
-      <p>비공개 업로드용 제작 경로입니다. JEV 파일럿 점수는 참고 정보이며 제작·업로드 승인으로 사용하지 않습니다.</p>
+      <p>비공개 업로드용 제작 경로입니다. 기본 화면은 브랜디액션 캐릭터와 그려지는 도식입니다. JEV 파일럿 점수는 참고 정보이며 제작·업로드 승인으로 사용하지 않습니다.</p>
       {voicePlan?.missing.length ? <p>준비할 항목: {voicePlan.missing.join(" · ")}</p> : <p>현재 원고와 패키징 버전이 연결됐습니다. 음성은 첫 단락만 미리듣기할 수 있습니다.</p>}
       {!voicePreviewConfigured ? <p>Fish Audio 서버 설정이 필요합니다.</p> : null}
       {profile?.role === "admin" ? <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey || !voicePreviewConfigured} onClick={() => void previewVoice()}>내 목소리 첫 단락 미리듣기</button> : null}
       <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey} onClick={() => void generateScenes()}>Sol로 화면 설계 만들기</button>
       {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /> : null}
-      {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
-      {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>실사 장면 1개 미리보기</button> : null}
+      {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.layoutTemplate} · {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
+      {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>보조 실사 장면 미리보기</button> : null}
       {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <img src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
       {profile?.role === "admin" && currentScenePlan && !currentScenePlan.unresolved?.length ? <button type="button" className="secondary-button" disabled={busy || !voicePreviewConfigured} onClick={() => void queueVoice()}>현재 원고 전체 음성 제작 작업 등록</button> : null}
       {voiceRuns.length ? <details open><summary>음성 제작 작업 {voiceRuns.length}건</summary>{voiceRuns.map((run) => <div key={run.id}><p>{run.status === "done" ? "음성 준비 완료" : run.status === "blocked" ? "확인 필요" : run.status === "in_progress" ? "제작 중" : "제작 대기"} · {run.segmentsReady}/{run.segmentCount}단락 · {run.stage}{run.lastErrorCode ? ` · ${run.lastErrorCode}` : ""}</p>{run.needsAttention.map((issue) => <p key={issue}>{issue}</p>)}{run.readyIndexes.map((index) => <button type="button" className="ghost-button" disabled={busy} key={index} onClick={() => void listenVoiceSegment(run.id, index)}>{index + 1}단락 듣기</button>)}</div>)}</details> : null}

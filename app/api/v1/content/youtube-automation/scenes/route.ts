@@ -7,6 +7,7 @@ import { generateYoutubeScenePlan, readYoutubeSceneRules, scenePlanSchema } from
 import { selectedPackaging } from "@/lib/content-selected-packaging";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
+import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +24,9 @@ export async function POST(request: Request) {
     const plan = buildYoutubeAutomationPlan(state);
     if (!plan.inputKey || plan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
     const rules = await readYoutubeSceneRules(actor);
-    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; ruleVersions?: unknown; plan?: unknown } | undefined;
-    if (prior?.inputKey === input.inputKey && JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
+    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
+    if (prior?.inputKey === input.inputKey && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
+      JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
       return NextResponse.json({ reused: true, scenePlan: prior }, { headers: { "cache-control": "private, no-store" } });
     const script = state.records.find((record) => record.id === plan.script?.id && record.version === plan.script.version);
     const packageChoice = selectedPackaging(state.records, input.sourceId);
