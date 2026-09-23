@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, usesShootingPlan, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
@@ -103,7 +104,8 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const planMode = usesShootingPlan(state.source);
   const preparation = (state.source.metadata.productionPreparation ?? {}) as Record<string, unknown>;
   const scenePlan = (state.source.metadata.narratedScenePlan ?? null) as { inputKey?: string; plan?: { visualDirection?: string; scenes?: Array<{ segmentIndex: number; visualType: string; visualPrompt: string; onScreenText: string; evidenceNote: string }>; unresolved?: string[] } } | null;
-  const firstGeneratedScene = scenePlan?.inputKey === voicePlan?.inputKey ? scenePlan.plan?.scenes?.find((scene) => scene.visualType === "generated_still") : null;
+  const currentScenePlan = scenePlan && voicePlan?.inputKey && scenePlan.inputKey === voicePlan.inputKey ? scenePlan.plan : null;
+  const firstGeneratedScene = currentScenePlan?.scenes?.find((scene) => scene.visualType === "generated_still");
   const actions = ACTIONS.filter((item) => !planMode || item.action !== "script_draft");
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
   return <section className="panel pipeline-panel">
@@ -134,9 +136,9 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {profile?.role === "admin" ? <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey || !voicePreviewConfigured} onClick={() => void previewVoice()}>내 목소리 첫 단락 미리듣기</button> : null}
       <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey} onClick={() => void generateScenes()}>Sol로 화면 설계 만들기</button>
       {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /> : null}
-      {scenePlan?.inputKey === voicePlan?.inputKey && scenePlan.plan ? <details><summary>현재 원고의 화면 설계 {scenePlan.plan.scenes?.length ?? 0}장면</summary><p>{scenePlan.plan.visualDirection}</p><ol>{scenePlan.plan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{scenePlan.plan.unresolved?.length ? <p>확인할 항목: {scenePlan.plan.unresolved.join(" · ")}</p> : null}</details> : null}
+      {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
       {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>실사 장면 1개 미리보기</button> : null}
-      {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <img src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
+      {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <Image unoptimized src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
       <p>전체 음성 생성, 실제 화면 자산 제작, 렌더링, 비공개 업로드 워커는 연결 전이며 이 화면의 미리듣기·설계 버튼으로 실행되지 않습니다.</p>
     </section> : null}
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
