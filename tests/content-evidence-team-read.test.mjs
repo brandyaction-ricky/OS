@@ -20,7 +20,7 @@ test("a non-owner gets read-only evidence cards in the existing content screen",
   const handoff = await read("../components/content-planning-handoff.tsx");
   const copy = await read("../components/content-copy-lineage.tsx");
   const claims = await read("../components/content-claim-evidence.tsx");
-  assert.match(handoff, /팀 공유 읽기 전용/);
+  assert.match(handoff, /팀 권한이 일치할 때만 표시/);
   assert.equal((handoff.match(/canWrite=\{profile\?\.id === state\.source\.owner_id\}/g) ?? []).length, 2);
   assert.match(copy, /if \(saving\.current \|\| busy \|\| disabled \|\| !canWrite\) return/);
   assert.match(copy, /\{canWrite \? <button/);

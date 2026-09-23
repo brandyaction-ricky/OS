@@ -25,6 +25,12 @@ behavior after applying the exact migration. A local SQL run was unavailable
 in this worktree because Docker/Podman was not on `PATH`; static and app tests
 do not substitute for that database gate. Production needs separate approval.
 
+Read-only DEV inspection found the P03 evidence rows assigned to `콘텐츠`, while
+both accounts used in the prior owner/non-owner browser check currently have
+blank profile teams. Applying this policy alone would therefore preserve the
+non-owner's empty evidence view. Granting either account a team is a separate
+access change, not part of this migration or a test fixture to set silently.
+
 ## 2026-09-23 content evidence boundary — DEV applied
 
 After merging this DEV-only migration into the newer eleven-file active chain,

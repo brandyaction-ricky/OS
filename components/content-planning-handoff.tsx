@@ -97,7 +97,7 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
       <ContentPackagingEvidence source={state.source} records={state.records} />
     </> : null}
     {showEvidence ? <>
-      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">팀 공유 읽기 전용: 이 주제의 담당자만 새 증거 기록을 추가할 수 있습니다. 기존 기록은 누구도 직접 수정·삭제할 수 없습니다.</p> : null}
+      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">다른 담당자의 증거는 DB에 지정된 팀 권한이 일치할 때만 표시됩니다. 이 화면은 읽기 전용이며 기록이 보이지 않으면 계정·증거의 팀 배정을 확인해 주세요.</p> : null}
       <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
       <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
