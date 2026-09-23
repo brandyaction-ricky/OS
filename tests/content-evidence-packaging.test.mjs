@@ -31,3 +31,12 @@ test("packaging records decisions and claims before publication without changing
   assert.match(copyLineage, /kind === "publication" && !allowPublicationEntry/);
   assert.match(copyLineage, /allowPublicationEntry \? <option value="publication">공개본 관측<\/option> : null/);
 });
+
+test("changing the packaging topic keeps the URL and script handoff on that topic", () => {
+  const packagePage = read("../components/content-packaging-workspace.tsx");
+  assert.match(packagePage, /onChange=\{\(event\) => selectSource\(event\.target\.value\)\}/);
+  assert.match(packagePage, /url\.searchParams\.set\("sourceId", nextSourceId\)/);
+  assert.match(packagePage, /window\.history\.replaceState\(window\.history\.state, "", url\)/);
+  assert.match(packagePage, /selectSource\(record\.id\)/);
+  assert.match(packagePage, /href=\{`\/content\/scripts\?sourceId=\$\{encodeURIComponent\(sourceId\)\}`\}/);
+});
