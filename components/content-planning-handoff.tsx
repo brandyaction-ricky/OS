@@ -66,15 +66,16 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
   </section>;
 }
 
-export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false }: { evidenceOnly?: boolean; showEvidence?: boolean } = {}) {
+export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false, sourceIdOverride, packagingStage = false }: { evidenceOnly?: boolean; showEvidence?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [sourceId, setSourceId] = useState("");
+  const [urlSourceId, setUrlSourceId] = useState("");
+  const sourceId = sourceIdOverride ?? urlSourceId;
   const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[]; evidenceAuthors: Record<string, string> } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [editing, setEditing] = useState(false);
   const [notice, setNotice] = useState("");
-  useEffect(() => { setSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, []);
+  useEffect(() => { if (sourceIdOverride === undefined) setUrlSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, [sourceIdOverride]);
   useEffect(() => {
     let active = true;
     setState(null); setError(""); setEditing(false); setNotice("");
@@ -98,7 +99,7 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
     </> : null}
     {showEvidence ? <>
       {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">같은 팀 구성원은 근거를 추가할 수 있습니다. 팀원이 제출한 결정 근거는 주제 담당자의 결정 비교에 자동 반영되지 않으며, 어느 기록도 승인·사실 확인을 뜻하지 않습니다.</p> : null}
-      <ContentCopyLineage key={`copy-lineage:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
+      <ContentCopyLineage key={`copy-lineage:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} allowPublicationEntry={!packagingStage} onSaved={() => setRevision(value => value + 1)} />
       <ContentClaimEvidence key={`claim-evidence:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
     {!evidenceOnly ? <>

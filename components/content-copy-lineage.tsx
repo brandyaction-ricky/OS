@@ -6,8 +6,8 @@ import { copyLineage } from "@/lib/content-copy-lineage";
 import { evidenceAuthorLabel } from "@/lib/content-evidence-author";
 import type { OsRecord } from "@/lib/record-types";
 
-export function ContentCopyLineage({ source, records, authors, viewerId, token, disabled, canWrite, onSaved }: {
-  source: OsRecord; records: OsRecord[]; authors: Record<string, string>; viewerId?: string; token: string; disabled: boolean; canWrite: boolean; onSaved: () => void;
+export function ContentCopyLineage({ source, records, authors, viewerId, token, disabled, canWrite, allowPublicationEntry = true, onSaved }: {
+  source: OsRecord; records: OsRecord[]; authors: Record<string, string>; viewerId?: string; token: string; disabled: boolean; canWrite: boolean; allowPublicationEntry?: boolean; onSaved: () => void;
 }) {
   const [kind, setKind] = useState<"decision" | "publication">("decision");
   const [busy, setBusy] = useState(false);
@@ -20,7 +20,7 @@ export function ContentCopyLineage({ source, records, authors, viewerId, token, 
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving.current || busy || disabled || !canWrite) return;
+    if (saving.current || busy || disabled || !canWrite || (kind === "publication" && !allowPublicationEntry)) return;
     const form = event.currentTarget;
     const values = new FormData(form);
     const input = kind === "decision" ? {
@@ -57,8 +57,8 @@ export function ContentCopyLineage({ source, records, authors, viewerId, token, 
       <div className="copy-lineage-grid"><article><strong>주제 담당자의 결정 근거</strong><p>{decision?.title || "제목 미기록"}</p><p>{decision?.thumbnailCopy || "카피 미기록"}</p>{decision?.note ? <p>메모: {decision.note}</p> : null}<small>{decision ? `${decision.decisionAt} · ${evidenceAuthorLabel(audit.decision.record, authors, viewerId)} · 승인 여부 미확인` : "연결된 결정 근거 없음"}</small>{decision ? <a href={decision.evidenceUrl} target="_blank" rel="noreferrer">결정 근거 열기</a> : null}</article><article><strong>공개본 관측 기록</strong><p>{publication?.title || "제목 미기록"}</p><p>{publication?.thumbnailCopy || "카피 미기록"}</p>{publication?.note ? <p>메모: {publication.note}</p> : null}<small>{publication ? `${publication.observedAt} · ${evidenceAuthorLabel(audit.publication.record, authors, viewerId)} · 사용자 입력` : "연결된 공개본 관측 없음"}</small>{publication ? <a href={publication.videoUrl} target="_blank" rel="noreferrer">영상 열기</a> : null}</article></div>
       {audit.pendingDecisions.length ? <div className="claim-evidence-list" aria-label="팀원 제출 결정 근거"><p>팀원이 제출한 결정 근거 · 아래 기록은 위 비교에 자동 반영되지 않습니다.</p>{audit.pendingDecisions.map(({ record, data }) => <article key={record.id}><strong>{data.thumbnailCopy}</strong>{data.title ? <p>{data.title}</p> : null}{data.note ? <p>메모: {data.note}</p> : null}<small>{data.decisionAt} · {evidenceAuthorLabel(record, authors, viewerId)} · 승인 여부 미확인</small><a href={data.evidenceUrl} target="_blank" rel="noreferrer">제출 근거 열기</a></article>)}</div> : null}
       {audit.state === "different" ? <p className="inline-alert warning">제목: {audit.title === "different" ? "다름" : audit.title === "unverified" ? "미확인" : "같음"} · 썸네일 카피: {audit.thumbnailCopy === "different" ? "다름" : "같음"}. 누가, 언제, 왜 변경했는지는 이 비교만으로 알 수 없습니다.</p> : null}
-      {canWrite ? <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => { setOpen(value => !value); setMessage(""); }}>{open ? "기록 입력 닫기" : "근거 기록 추가"}</button> : null}
-      {open && canWrite ? <form className="copy-lineage-form" onSubmit={event => void save(event)}><div className="form-grid"><label><span>기록 종류</span><select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="decision">당시 카피 결정 근거 제출</option><option value="publication">공개본 관측</option></select></label><label><span>{kind === "decision" ? "결정 날짜" : "관측 날짜"}</span><input name="date" type="date" required /></label></div>
+      {canWrite ? <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => { setOpen(value => !value); setMessage(""); }}>{open ? "기록 입력 닫기" : allowPublicationEntry ? "근거 기록 추가" : "결정 근거 기록"}</button> : null}
+      {open && canWrite ? <form className="copy-lineage-form" onSubmit={event => void save(event)}><div className="form-grid"><label><span>기록 종류</span><select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="decision">당시 카피 결정 근거 제출</option>{allowPublicationEntry ? <option value="publication">공개본 관측</option> : null}</select></label><label><span>{kind === "decision" ? "결정 날짜" : "관측 날짜"}</span><input name="date" type="date" required /></label></div>
         <label><span>{kind === "decision" ? "결정 문서 주소" : "YouTube 영상 주소"}</span><input name="url" type="url" pattern="https://.*" placeholder="https://" required maxLength={2000} /></label>
         <label><span>제목 {kind === "decision" ? "(기록에 없으면 비워두기)" : ""}</span><input name="title" required={kind === "publication"} maxLength={300} /></label>
         <label><span>썸네일 카피</span><textarea name="copy" required maxLength={500} rows={2} /></label>
