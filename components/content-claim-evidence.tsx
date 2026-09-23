@@ -8,8 +8,8 @@ import type { OsRecord } from "@/lib/record-types";
 const locationLabels = { title: "제목", thumbnail: "썸네일", description: "설명", chapter: "챕터", spoken: "영상 발화" } as const;
 const assessmentLabels = { unverified: "미확인", review_needed: "표현 재검토", reviewer_aligned: "검토자 기록상 일치" } as const;
 
-export function ContentClaimEvidence({ source, records, token, disabled, onSaved }: {
-  source: OsRecord; records: OsRecord[]; token: string; disabled: boolean; onSaved: () => void;
+export function ContentClaimEvidence({ source, records, token, disabled, canWrite, onSaved }: {
+  source: OsRecord; records: OsRecord[]; token: string; disabled: boolean; canWrite: boolean; onSaved: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -21,7 +21,7 @@ export function ContentClaimEvidence({ source, records, token, disabled, onSaved
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving.current || disabled) return;
+    if (saving.current || disabled || !canWrite) return;
     const form = event.currentTarget;
     const values = new FormData(form);
     const field = (name: string) => String(values.get(name) ?? "").trim();
@@ -58,8 +58,8 @@ export function ContentClaimEvidence({ source, records, token, disabled, onSaved
         <small>검토자 입력 · {new Date(record.created_at).toLocaleString("ko-KR")}</small>
         {data.sourceUrl ? <a href={data.sourceUrl} target="_blank" rel="noreferrer">연결된 원문 열기</a> : null}
       </article>)}</div> : <p>아직 연결된 주장 카드가 없습니다. 근거 메모가 있다는 사실만으로 주장 검증을 완료하지 않습니다.</p>}
-      <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => { setOpen(value => !value); setError(""); }}>{open ? "카드 작성 닫기" : "주장 근거 추가"}</button>
-      {open ? <form className="claim-evidence-form" onSubmit={event => void save(event)}>
+      {canWrite ? <button type="button" className="secondary-button" disabled={disabled || busy} onClick={() => { setOpen(value => !value); setError(""); }}>{open ? "카드 작성 닫기" : "주장 근거 추가"}</button> : null}
+      {open && canWrite ? <form className="claim-evidence-form" onSubmit={event => void save(event)}>
         <div className="form-grid"><label><span>표현 위치</span><select name="location" required>{Object.entries(locationLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label><label><span>챕터 시각·문장 위치 (선택)</span><input name="locationDetail" maxLength={200} placeholder="예: 8:57 챕터" /></label></div>
         <label><span>검토할 주장 원문</span><textarea name="claimText" required maxLength={1000} rows={2} /></label>
         <div className="form-grid"><label><span>원출처 연결 상태</span><select value={relation} onChange={event => setRelation(event.target.value as typeof relation)}><option value="unlinked">원출처 미연결</option><option value="candidate">출처 후보</option><option value="identified">실제 인용 원문으로 식별</option></select></label><label><span>검토 상태</span><select value={assessment} onChange={event => setAssessment(event.target.value as typeof assessment)}><option value="unverified">미확인</option><option value="review_needed">표현 재검토</option><option value="reviewer_aligned">검토자 기록상 일치</option></select></label></div>

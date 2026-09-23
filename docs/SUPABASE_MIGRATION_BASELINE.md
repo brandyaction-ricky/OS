@@ -2,6 +2,29 @@
 
 Updated: 2026-09-23 Asia/Seoul.
 
+## 2026-09-23 content evidence team read — implementation candidate, not applied
+
+`20260923070000_content_evidence_team_read.sql` follows the DEV-applied owner
+boundary below. It replaces only the restrictive evidence SELECT policy: an
+active owner still reads their rows, and another active user reads the three
+evidence subtypes only when the row has a nonblank team matching that user's
+active `os_profiles.team`. A blank row or viewer team fails closed. The broad
+ordinary-record policy does not bypass this restriction. The prior owner-only
+INSERT policy and append-only trigger remain unchanged. The content screen
+shows a non-owner the cards without an add control.
+
+This migration is **not applied to DEV or Production**. Its manifest entry has
+`requiresApproval: true`, `productionAuthorized: false`, and an empty applied
+environment list. Before a DEV rollout, inspect the two intended accounts'
+active profile teams and the evidence rows' team assignments without exposing
+credentials; if assignments do not match, do not broaden the policy to blank
+or all members. Run `supabase/tests/content_evidence_boundary_test.sql` against
+the confirmed DEV schema in a rolled-back transaction (16 checks), then request
+explicit DEV policy-change approval and verify two-account read/owner-write
+behavior after applying the exact migration. A local SQL run was unavailable
+in this worktree because Docker/Podman was not on `PATH`; static and app tests
+do not substitute for that database gate. Production needs separate approval.
+
 ## 2026-09-23 content evidence boundary — DEV applied
 
 After merging this DEV-only migration into the newer eleven-file active chain,

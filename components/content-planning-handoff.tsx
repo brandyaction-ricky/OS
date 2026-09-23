@@ -67,7 +67,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
 }
 
 export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false }: { evidenceOnly?: boolean; showEvidence?: boolean } = {}) {
-  const { accessToken, demo } = useSession();
+  const { accessToken, demo, profile } = useSession();
   const [sourceId, setSourceId] = useState("");
   const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[] } | null>(null);
   const [error, setError] = useState("");
@@ -97,8 +97,9 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
       <ContentPackagingEvidence source={state.source} records={state.records} />
     </> : null}
     {showEvidence ? <>
-      <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} onSaved={() => setRevision(value => value + 1)} />
-      <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} onSaved={() => setRevision(value => value + 1)} />
+      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">팀 공유 읽기 전용: 이 주제의 담당자만 새 증거 기록을 추가할 수 있습니다. 기존 기록은 누구도 직접 수정·삭제할 수 없습니다.</p> : null}
+      <ContentCopyLineage key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
+      <ContentClaimEvidence key={state.source.id} source={state.source} records={state.records} token={accessToken} disabled={editing} canWrite={profile?.id === state.source.owner_id} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
     {!evidenceOnly ? <>
       <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
