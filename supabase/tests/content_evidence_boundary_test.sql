@@ -79,7 +79,7 @@ SELECT throws_ok(
        '00000000-0000-0000-0000-000000000032',
        '00000000-0000-0000-0000-000000000032',
        '{"packageKind":"claim_evidence"}'::jsonb) $$,
-  '42501', 'new row violates row-level security policy for table "os_records"',
+  '42501', 'new row violates row-level security policy "os_records_content_evidence_owner_insert" for table "os_records"',
   'member cannot insert evidence under another owner'
 );
 
