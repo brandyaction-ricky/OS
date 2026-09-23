@@ -548,7 +548,11 @@ export function MeetingWorkspace() {
               {entry.result.latestMeeting?.summary ? (
                 <div className="meeting-prep-summary">
                   <strong>지난 회의 요약</strong>
-                  <p>{entry.result.latestMeeting.summary}</p>
+                  {entry.result.latestMeeting.summary
+                    .split("\n")
+                    .map((line) => line.trim())
+                    .filter(Boolean)
+                    .map((line, index) => <p key={index}>{line}</p>)}
                 </div>
               ) : null}
               <div className="meeting-prep-grid">
