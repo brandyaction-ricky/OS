@@ -1,5 +1,5 @@
 /** Versioned visual direction approved for the narrated YouTube pilot. */
-export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-speech-led-diagrams-v4";
+export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-content-only-grid-v5";
 
 // Stable identifiers; private storage resolves these to owned artwork.
 export const youtubeCharacterAssetRoles = [
@@ -47,4 +47,13 @@ export const youtubeVisualActions = [
   "draw_connector",
   "transform_diagram",
   "clear_and_draw",
+] as const;
+
+// Fixed composition choices keep each beat's typography and graphics aligned.
+export const youtubeBeatCompositions = [
+  "centered_object",
+  "equal_two_columns",
+  "equal_three_columns",
+  "centered_flow",
+  "character_left_graphic_right",
 ] as const;
