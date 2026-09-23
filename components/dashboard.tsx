@@ -267,6 +267,6 @@ export function statusLabel(status: KnowledgeDocument["status"]) {
     review: "검토 요청",
     reviewed: "검토 완료",
     canonical: "회사 정본",
-    archived: "보관",
+    archived: "휴지통",
   }[status];
 }

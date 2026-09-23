@@ -46,6 +46,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       p_expected_version: input.expectedVersion,
       p_reason: input.reason,
     });
+    if (error?.message?.startsWith("OS_VERSION_CONFLICT:")) throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 확인하고 다시 시도해 주세요.");
     if (error) throw new ApiError(400, "DOCUMENT_RESTORE_FAILED", "이 버전으로 되돌리지 못했습니다.", error.message);
     return NextResponse.json({ document: data });
   } catch (error) {

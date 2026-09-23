@@ -57,6 +57,7 @@ export const developmentRequestUpdateSchema = z.object({
   commitSha: z.string().trim().max(64).refine((value) => !value || /^[a-f0-9]{7,64}$/i.test(value), "커밋 SHA를 확인해 주세요.").optional(),
   prUrl: link().optional(),
   deploymentUrl: link().optional(),
+  assigneeId: z.string().uuid().nullable().optional(),
 }).strict().refine((value) => Object.keys(value).some((key) => !["id", "expectedVersion"].includes(key)), "수정할 항목이 필요합니다.");
 
 export type DevelopmentRequestUpdate = z.infer<typeof developmentRequestUpdateSchema>;
@@ -75,6 +76,7 @@ export class DevelopmentRequestPolicyError extends Error {
 }
 
 const MANAGEMENT_FIELDS = ["resolution", "branch", "commitSha", "prUrl", "deploymentUrl"] as const;
+const MANAGEMENT_INPUTS = [...MANAGEMENT_FIELDS, "assigneeId"] as const;
 
 export function validateDevelopmentRequestUpdate(
   current: Pick<OsRecord, "created_by" | "status" | "metadata">,
@@ -83,7 +85,7 @@ export function validateDevelopmentRequestUpdate(
 ) {
   if (actor.role !== "admin") {
     if (current.created_by !== actor.id) throw new DevelopmentRequestPolicyError("REQUEST_OWNER_REQUIRED", "본인이 등록한 요청만 수정할 수 있습니다.");
-    if (MANAGEMENT_FIELDS.some((key) => input[key] !== undefined)) throw new DevelopmentRequestPolicyError("REQUEST_ADMIN_REQUIRED", "처리 결과와 코드 정보는 관리자만 기록할 수 있습니다.");
+    if (MANAGEMENT_INPUTS.some((key) => input[key] !== undefined)) throw new DevelopmentRequestPolicyError("REQUEST_ADMIN_REQUIRED", "처리 결과와 담당자는 관리자만 변경할 수 있습니다.");
     const keys = Object.keys(input).filter((key) => !["id", "expectedVersion"].includes(key));
     const reopening = ["done", "review"].includes(current.status) && input.status === "backlog" && keys.every((key) => key === "status");
     const editingBacklog = current.status === "backlog" && (input.status === undefined || input.status === "backlog");
@@ -108,5 +110,6 @@ export function developmentRequestUpdateFields(current: OsRecord, input: Develop
   const output: Record<string, unknown> = { metadata };
   for (const field of ["title", "description", "priority", "status"] as const) if (input[field] !== undefined) output[field] = input[field];
   if (input.parentId !== undefined) output.parent_id = input.parentId;
+  if (input.assigneeId !== undefined) output.assignee_id = input.assigneeId;
   return output;
 }

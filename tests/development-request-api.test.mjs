@@ -15,18 +15,19 @@ class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
-function createDatabase(rows) {
+function createDatabase(rows, profiles = []) {
   return {
     from(table) {
-      assert.equal(table, "os_records");
+      assert.ok(["os_records", "os_profiles"].includes(table));
+      const records = table === "os_records" ? rows : profiles;
       const conditions = [], ordering = [];
       let action = "read", fields, head = false, range;
       const value = (row, key) => key === "metadata->>kind" ? row.metadata?.kind : row[key];
       const execute = () => {
-        let matches = rows.filter((row) => conditions.every((matchesRow) => matchesRow(row)));
+        let matches = records.filter((row) => conditions.every((matchesRow) => matchesRow(row)));
         if (action === "insert") {
           const row = { ...structuredClone(fields), id: requestId, version: 1, archived_at: null, created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z" };
-          rows.push(row); matches = [row];
+          records.push(row); matches = [row];
         } else if (action === "update") {
           matches.forEach((row) => Object.assign(row, structuredClone(fields), { version: row.version + 1 }));
         }
@@ -60,8 +61,8 @@ function createDatabase(rows) {
   };
 }
 
-function setup(rows = []) {
-  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows) };
+function setup(rows = [], profiles = []) {
+  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows, profiles) };
   const modules = {
     "next/server": { NextResponse: Response }, zod,
     "@/lib/development-requests": requests,
@@ -166,6 +167,28 @@ test("API enforces stale versions, reporter ownership and administrator completi
   assert.equal(response.status, 200);
   assert.equal((await response.json()).record.version, 2);
   assert.equal(rows[0].metadata.resolution, "안내 완료");
+});
+
+test("administrator assignment accepts active profiles, supports unassignment and rejects inactive profiles", async () => {
+  const assigneeId = "00000000-0000-4000-8000-000000000003";
+  const { routes, actor, rows } = setup([record()], [{ id: assigneeId, is_active: true }]);
+  actor.role = "admin";
+  const assign = await routes.PATCH(request("PATCH", { id: requestId, expectedVersion: 1, assigneeId }));
+  assert.equal(assign.status, 200);
+  assert.equal(rows[0].assignee_id, assigneeId);
+  const unassign = await routes.PATCH(request("PATCH", { id: requestId, expectedVersion: 2, assigneeId: null }));
+  assert.equal(unassign.status, 200);
+  assert.equal(rows[0].assignee_id, null);
+
+  const inactive = setup([record()], [{ id: assigneeId, is_active: false }]);
+  inactive.actor.role = "admin";
+  const rejected = await inactive.routes.PATCH(request("PATCH", { id: requestId, expectedVersion: 1, assigneeId }));
+  assert.equal(rejected.status, 404);
+  assert.equal(inactive.rows[0].assignee_id, undefined);
+
+  inactive.rows[0].assignee_id = assigneeId;
+  const unchanged = await inactive.routes.PATCH(request("PATCH", { id: requestId, expectedVersion: 1, assigneeId, status: "active" }));
+  assert.equal(unchanged.status, 200);
 });
 
 test("request deletion is authenticated, versioned and limited to the reporter or administrator", async () => {

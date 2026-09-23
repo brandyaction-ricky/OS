@@ -7,7 +7,7 @@ export async function documentIndex(scope: string, ownerId: string) {
   const rows: KnowledgeDocument[] = [];
   for (let offset = 0; ; offset += 1000) {
     let query = createServiceSupabase().from("os_documents")
-      .select("id,title,folder,status,source_ref,owner_id,current_version,updated_at")
+      .select("id,title,folder,status,source_ref,owner_id,current_version,updated_at,team,brand,tags")
       .order("id").range(offset, offset + 999);
     if (scope === "mine_company") query = query.or(`owner_id.eq.${ownerId},status.eq.canonical`);
     else if (scope === "mine") query = query.eq("owner_id", ownerId);
