@@ -1,7 +1,7 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- Generated blob previews cannot use Next image optimization. */
 
 import Link from "next/link";
-import Image from "next/image";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, usesShootingPlan, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
@@ -138,7 +138,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /> : null}
       {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.onScreenText ? ` · 화면 문구: ${scene.onScreenText}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
       {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>실사 장면 1개 미리보기</button> : null}
-      {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <Image unoptimized src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
+      {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <img src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
       <p>전체 음성 생성, 실제 화면 자산 제작, 렌더링, 비공개 업로드 워커는 연결 전이며 이 화면의 미리듣기·설계 버튼으로 실행되지 않습니다.</p>
     </section> : null}
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
