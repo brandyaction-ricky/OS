@@ -12,7 +12,7 @@ test("the reviewed active chain is isolated from frozen legacy migrations", asyn
   assert.equal(result.integrityValid, true);
   assert.equal(result.readyToApply, false);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 6);
+  assert.equal(result.activeMigrationCount, 8);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });

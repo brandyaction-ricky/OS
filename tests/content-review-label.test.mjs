@@ -7,6 +7,7 @@ import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as pipeline from '../lib/content-pipeline.ts';
+import * as visualTemplate from '../lib/youtube-visual-template.ts';
 
 test('review history includes approvals and revision requests without calling both approvals', () => {
   const state = { source: { id: 'qa', metadata: {}, version: 1 }, records: [], reviews: [
@@ -15,7 +16,7 @@ test('review history includes approvals and revision requests without calling bo
   ], approved: [true, false, false], missing: [[], [], []], signatures: ['a', 'b', 'c'] };
   const values = [state, false, '', {}]; let cursor = 0;
   const imports = { react: { ...React, useState: () => [values[cursor++], () => {}], useEffect: () => {}, useCallback: fn => fn },
-    'react/jsx-runtime': jsx, 'next/link': { default: 'a' }, '@/lib/api-client': {}, '@/lib/content-pipeline': pipeline,
+    'react/jsx-runtime': jsx, 'next/link': { default: 'a' }, '@/lib/api-client': {}, '@/lib/content-pipeline': pipeline, '@/lib/youtube-visual-template': visualTemplate,
     './session-provider': { useSession: () => ({ accessToken: null }) } };
   const compiled = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL('../components/content-pipeline-panel.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;

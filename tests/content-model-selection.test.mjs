@@ -105,3 +105,18 @@ test('Claude adapter preserves structured output and has no provider fallback', 
   response = { ok: true, json: async () => ({ stop_reason: 'max_tokens' }) };
   await assert.rejects(api.generateContentText(request), error => error.code === 'CLAUDE_OUTPUT_TRUNCATED');
 });
+
+test('Claude transport omits sampling for current models and sends effort', async () => {
+  const bodies = [];
+  const fetch = async (_url, init) => { bodies.push(JSON.parse(init.body)); return { ok: true, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{}' }] }) }; };
+  const { generateContentText } = moduleAt('../lib/server/content-model.ts', { '@/lib/http': { ApiError } },
+    { fetch, AbortSignal, process: { env: { ANTHROPIC_API_KEY: 'test' } } });
+  await generateContentText({ prompt: 'p', model: 'claude-opus-5-5', jsonSchema: {}, maxTokens: 10, effort: 'high' });
+  await generateContentText({ prompt: 'p', model: 'claude-sonnet-5', jsonSchema: {}, maxTokens: 10 });
+  await generateContentText({ prompt: 'p', model: 'claude-haiku-4-5-20251001', jsonSchema: {}, maxTokens: 10 });
+  assert.equal('temperature' in bodies[0], false);
+  assert.equal(bodies[0].output_config.effort, 'high');
+  assert.equal('temperature' in bodies[1], false);
+  assert.equal('effort' in bodies[1].output_config, false);
+  assert.equal(bodies[2].temperature, 0.25);
+});

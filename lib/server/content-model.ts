@@ -5,7 +5,12 @@ export interface ContentModelRequest {
   model: string;
   jsonSchema: Record<string, unknown>;
   maxTokens: number;
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
 }
+
+export const hasClaudeKey = () => Boolean((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY)?.trim());
+// ponytail: name-based check; Claude 4.6+ models reject sampling parameters with a 400.
+const acceptsTemperature = (model: string) => /^claude-3|-4-[015](?:-\d{8})?$/.test(model);
 
 // Provider-specific transport only. No automatic cross-provider fallback.
 function outputText(body: Record<string, unknown>) {
@@ -14,18 +19,20 @@ function outputText(body: Record<string, unknown>) {
     .map((item) => String((item as { text?: string }).text ?? "")).join("\n").trim();
 }
 
-export async function generateContentText({ prompt, model, jsonSchema, maxTokens }: ContentModelRequest) {
+export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort }: ContentModelRequest) {
   if (model.startsWith("gpt-6-")) return generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens });
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0.25, output_config: { format: { type: "json_schema", schema: jsonSchema } }, messages: [{ role: "user", content: prompt }] }),
-    signal: AbortSignal.timeout(90_000),
+    body: JSON.stringify({ model, max_tokens: maxTokens, ...(acceptsTemperature(model) ? { temperature: 0.25 } : {}),
+      output_config: { format: { type: "json_schema", schema: jsonSchema }, ...(effort ? { effort } : {}) }, messages: [{ role: "user", content: prompt }] }),
+    signal: AbortSignal.timeout(170_000),
   });
   const body = await response.json() as Record<string, unknown>;
   if (!response.ok) throw new ApiError(502, "CLAUDE_GENERATION_FAILED", "콘텐츠 생성 요청에 실패했습니다.");
+  if (body.stop_reason === "refusal") throw new ApiError(502, "CLAUDE_REFUSED", "AI가 이 요청의 처리를 거절했습니다. 결과를 저장하지 않았습니다.");
   if (body.stop_reason === "max_tokens") throw new ApiError(502, "CLAUDE_OUTPUT_TRUNCATED", "AI 결과가 길이 제한에 걸렸습니다. 원문을 줄이거나 생성 범위를 나눠 주세요.");
   return outputText(body);
 }

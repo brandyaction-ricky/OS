@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
-import { generateYoutubeScenePlan, readYoutubeSceneRules, scenePlanSchema } from "@/lib/server/youtube-scenes";
+import { generateYoutubeScenePlan, readYoutubeSceneRules, SCENE_MODEL, scenePlanSchema } from "@/lib/server/youtube-scenes";
 import { selectedPackaging } from "@/lib/content-selected-packaging";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     const plan = buildYoutubeAutomationPlan(state);
     if (!plan.inputKey || plan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
     const rules = await readYoutubeSceneRules(actor);
-    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
-    if (prior?.inputKey === input.inputKey && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
+    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; model?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
+    if (prior?.inputKey === input.inputKey && prior.model === SCENE_MODEL && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
       JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
       return NextResponse.json({ reused: true, scenePlan: prior }, { headers: { "cache-control": "private, no-store" } });
     const script = state.records.find((record) => record.id === plan.script?.id && record.version === plan.script.version);

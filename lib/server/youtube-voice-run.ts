@@ -7,6 +7,7 @@ import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import type { RequestActor } from "./auth";
 import { readPipeline } from "./content-pipeline";
 import { splitFishNarration } from "./fish-audio";
+import { hasClaudeKey } from "./content-model";
 import { readYoutubeSceneRules, scenePlanSchema } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
@@ -14,7 +15,9 @@ export const YOUTUBE_VOICE_RUN_KIND = "youtube_narration_voice_v1";
 export const YOUTUBE_VOICE_BUCKET = "os-youtube-voice";
 export const YOUTUBE_VOICE_TIMING_BUCKET = "os-youtube-voice-timing";
 export const YOUTUBE_VOICE_TIMING_MODE = "fish_stream_v1";
-export const YOUTUBE_VOICE_EXECUTOR_MODEL = "gpt-6-luna";
+export const YOUTUBE_VOICE_EXECUTOR_MODEL = "claude-sonnet-5";
+// Jobs created before the Claude switch stay readable; the worker treats them as stale.
+const LEGACY_VOICE_EXECUTOR_MODEL = "gpt-6-luna";
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
 const segmentSchema = z.object({
@@ -28,7 +31,7 @@ export const voiceRunMetadataSchema = z.object({
   scenePlanGeneratedAt: z.string().datetime(), sceneTemplateVersion: z.string().min(1).max(100).optional(),
   voiceReferenceFingerprint: hex, voiceModel: z.string().min(1),
   timingMode: z.literal(YOUTUBE_VOICE_TIMING_MODE).optional(),
-  executorModel: z.literal(YOUTUBE_VOICE_EXECUTOR_MODEL), segments: z.array(segmentSchema).min(1).max(80),
+  executorModel: z.enum([YOUTUBE_VOICE_EXECUTOR_MODEL, LEGACY_VOICE_EXECUTOR_MODEL]), segments: z.array(segmentSchema).min(1).max(80),
   lunaReview: z.object({ ready: z.boolean(), issues: z.array(z.string().max(300)).max(20), at: z.string().datetime() }).strict().optional(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string().datetime() }).strict().optional(),
   attempts: z.number().int().min(0).max(20), lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
@@ -95,8 +98,8 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (segments.length !== parsedScenes.data.scenes.length) throw new ApiError(409, "SCENE_PLAN_MISMATCH", "원고 단락과 장면 수가 다릅니다. 화면 설계를 다시 만드세요.");
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   const voiceModel = process.env.FISH_TTS_MODEL?.trim() || "s2.1-pro";
-  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || !process.env.OPENAI_API_KEY?.trim())
-    throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Luna API 연결을 확인해 주세요.");
+  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || !hasClaudeKey())
+    throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Claude API 연결을 확인해 주세요.");
   const { data: bucket, error: bucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_BUCKET);
   if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소를 확인해 주세요.");
   const { data: timingBucket, error: timingBucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_TIMING_BUCKET);
@@ -104,7 +107,7 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 시간표 저장소를 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
   const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey, rules.ruleVersions,
-    generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE]);
+    generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE, YOUTUBE_VOICE_EXECUTOR_MODEL]);
   const id = voiceRunId(runKey);
   const metadata: VoiceRunMetadata = {
     kind: YOUTUBE_VOICE_RUN_KIND, runKey, sourceId, inputKey, script: plan.script, packaging: plan.packaging,
