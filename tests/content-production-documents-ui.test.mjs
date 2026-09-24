@@ -9,9 +9,10 @@ const code = ts.transpileModule(await readFile(new URL("../components/content-pr
 }).outputText;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const children = n => Array.isArray(n) ? n.flatMap(children) : n && typeof n === "object" ? [n, ...children(n.props?.children)] : [];
-function setup({ denied = false, conflict = false, linked = false } = {}) {
+function setup({ denied = false, conflict = false, linked = false, canEdit = true } = {}) {
   const hooks = [], effects = [], reads = [], writes = [], saved = []; let cursor = 0;
-  const source = { id: id(1), version: 4, metadata: linked ? { productionDocumentLinks: [{ documentId: id(2), role: "design", documentVersion: 1, sourceVersion: 3 }] } : {} };
+  const source = { id: id(1), version: 4, created_by: id(3), owner_id: id(3), assignee_id: null,
+    metadata: linked ? { productionDocumentLinks: [{ documentId: id(2), role: "design", documentVersion: 1, sourceVersion: 3 }] } : {} };
   const react = {
     useState(initial) { const i = cursor++; hooks[i] ??= { value: initial }; return [hooks[i].value, next => { hooks[i].value = typeof next === "function" ? next(hooks[i].value) : next; }]; },
     useRef(initial) { const i = cursor++; hooks[i] ??= { current: initial }; return hooks[i]; },
@@ -19,6 +20,7 @@ function setup({ denied = false, conflict = false, linked = false } = {}) {
   };
   const jsx = (type, props) => ({ type, props });
   const modules = { react, "react/jsx-runtime": { jsx, jsxs: jsx }, "next/link": { default: "a" },
+    "@/components/session-provider": { useSession: () => ({ profile: { id: canEdit ? id(3) : id(4), role: "member" } }) },
     "@/lib/content-production-links": links, "@/lib/api-client": { updateRecord: async (_token, input) => {
       writes.push(input); if (conflict) throw new Error("Synthetic version conflict"); return { record: { ...source, version: 5, metadata: input.metadata } };
     } } };
@@ -50,6 +52,16 @@ test("read denial prevents writes; version conflict never reports a saved link",
 test("duplicate submissions and editing cannot create multiple references", async () => {
   const app = setup(); await Promise.all([app.submit(), app.submit()]); assert.equal(app.writes.length, 1);
   const disabled = setup(); disabled.disable(); await disabled.submit(); assert.equal(disabled.reads.length, 0);
+});
+test("team member can inspect an accessible link but cannot change another owner's source", async () => {
+  const app = setup({ linked: true, canEdit: false });
+  const tree = app.render();
+  assert.match(JSON.stringify(tree), /기록 담당자 또는 관리자 계정/);
+  assert.equal(children(tree).find(n => n.type === "fieldset").props.disabled, true);
+  await app.submit(); assert.equal(app.reads.length, 0); assert.equal(app.writes.length, 0);
+  children(app.render()).find(n => n.type === "button" && n.props.children === "현재 문서 확인").props.onClick();
+  for (let i = 0; i < 12; i++) await Promise.resolve();
+  assert.equal(app.reads.length, 1); assert.equal(app.writes.length, 0);
 });
 test("linked document reread displays version change without writes", async () => {
   const app = setup({ linked: true }); children(app.render()).find(n => n.type === "button" && n.props.children === "현재 문서 확인").props.onClick();
