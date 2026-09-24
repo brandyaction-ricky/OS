@@ -13,7 +13,7 @@ test("the approved active chain is intact and ready for controlled application",
   assert.equal(result.readyToApply, true);
   assert.deepEqual(result.pendingApprovalMigrations, []);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 15);
+  assert.equal(result.activeMigrationCount, 16);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });

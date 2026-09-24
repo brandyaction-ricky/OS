@@ -246,6 +246,11 @@
       "file": "20260924090000_youtube_character_assets.sql",
       "sha256": "ba34c12c030162cf6f23c65d1244db9b056545b0a8f37e53ded120f19c4fb4c0",
       "purpose": "create a private PNG/JSON bucket for owner-provided channel character art and its catalog; applied to DEV after explicit approval, Production not applied"
+    },
+    {
+      "file": "20260924150000_youtube_narrated_video.sql",
+      "sha256": "ff29c53d1e3288d08dbacf0f100eae78736e3111a6b33e1dd371c05c731eb874",
+      "purpose": "create a private MP4/MP3 bucket for rendered narrated videos and their assembled narration; not yet applied to any environment"
     }
   ],
   "legacyMigrations": [

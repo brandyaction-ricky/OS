@@ -24,7 +24,7 @@ const reviewJsonSchema = {
   }, required: ["ready", "issues"],
 };
 
-async function currentSegments(service: ReturnType<typeof createServiceSupabase>, record: OsRecord, metadata: VoiceRunMetadata) {
+export async function currentSegments(service: ReturnType<typeof createServiceSupabase>, record: OsRecord, metadata: VoiceRunMetadata) {
   const state = await readPipeline({ supabase: service }, metadata.sourceId);
   const plan = buildYoutubeAutomationPlan(state);
   const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown } | undefined;
