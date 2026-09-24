@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { canUseSystemOnePreflight } from "@/lib/system-one-preflight-gate";
+import { canUseSystemOneContentEvidence } from "@/lib/system-one-content-evidence-gate";
 import { createSystemOneUserDocumentSource } from "@/lib/server/system-one-user-source";
 import { readProductionDocument } from "@/lib/server/system-one-production-document";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,9 @@ export const maxDuration = 60;
 const headers = { "cache-control": "private, no-store", vary: "Authorization" };
 const stopped = (code: string, status: number) => NextResponse.json({ status: "stopped", code }, { status, headers });
 export async function GET(request: Request) {
-  if (!canUseSystemOnePreflight(process.env)) return stopped("not_enabled", 404);
+  // This authenticated, summary-only read has no AI or external-provider call.
+  // Keep DEV isolation while allowing it alongside the manual evidence cards.
+  if (!canUseSystemOneContentEvidence(process.env)) return stopped("not_enabled", 404);
   const token = request.headers.get("authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
   if (!token || token.startsWith("bos_pat_")) return stopped("authentication_failed", 401);
   const query = new URL(request.url).searchParams;

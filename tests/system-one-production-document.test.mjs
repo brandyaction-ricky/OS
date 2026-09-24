@@ -44,7 +44,7 @@ test("invalid ID never queries documents", async () => {
 test("production document route gates DEV, human auth and query shape; redacts unexpected data", async () => {
   let enabled = true, calls = 0;
   const api = await compile("../app/api/v1/system-one/production-document/route.ts", {
-    "next/server": { NextResponse: Response }, "@/lib/system-one-preflight-gate": { canUseSystemOnePreflight: () => enabled },
+    "next/server": { NextResponse: Response }, "@/lib/system-one-content-evidence-gate": { canUseSystemOneContentEvidence: () => enabled },
     "@/lib/server/system-one-user-source": { createSystemOneUserDocumentSource: () => ({}) },
     "@/lib/server/system-one-production-document": { readProductionDocument: async () => { calls++; return { status: "ready", document: { id: id(2), title: "Synthetic", version: 1, status: "draft" }, privateBody: "PRIVATE" }; } },
   }, { process: { env: {} } });

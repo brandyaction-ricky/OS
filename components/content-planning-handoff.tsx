@@ -66,7 +66,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
   </section>;
 }
 
-export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false, sourceIdOverride, packagingStage = false }: { evidenceOnly?: boolean; showEvidence?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
+export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false, showProductionDocuments = false, sourceIdOverride, packagingStage = false }: { evidenceOnly?: boolean; showEvidence?: boolean; showProductionDocuments?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [urlSourceId, setUrlSourceId] = useState("");
   const sourceId = sourceIdOverride ?? urlSourceId;
@@ -106,6 +106,7 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
       <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
       <ContentStageReference sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
       <ContentReviewContext sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
-      <ContentProductionDocuments key={`${state.source.id}:${state.source.version}:${accessToken}`} source={state.source} token={accessToken} disabled={editing} onSaved={record => { setState(current => current ? { ...current, source: record } : null); setNotice("문서 연결 정보를 갱신했습니다. 원문·공유 권한·승인 상태는 변경하지 않았습니다."); }} />
-    </> : null}</> : <p role="status">{evidenceOnly ? "증거 기록을" : "기획 인계 메모를"} 불러오는 중입니다.</p>}</>;
+    </> : null}
+    {showProductionDocuments ? <ContentProductionDocuments key={`${state.source.id}:${state.source.version}:${accessToken}`} source={state.source} token={accessToken} disabled={editing} onSaved={record => { setState(current => current ? { ...current, source: record } : null); setNotice("문서 연결 정보를 갱신했습니다. 원문·공유 권한·승인 상태는 변경하지 않았습니다."); }} /> : null}
+    </> : <p role="status">{evidenceOnly ? "증거 기록을" : "기획 인계 메모를"} 불러오는 중입니다.</p>}</>;
 }
