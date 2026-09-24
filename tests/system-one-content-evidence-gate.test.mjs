@@ -42,4 +42,6 @@ test("the evidence-only UI does not turn on JEV or preflight tools", async () =>
   assert.match(panel, /<ContentCopyLineage key=\{`copy-lineage:\$\{state\.source\.id\}`\}/);
   assert.match(panel, /<ContentClaimEvidence key=\{`claim-evidence:\$\{state\.source\.id\}`\}/);
   assert.match(panel, /!evidenceOnly \? <>[\s\S]*?<ContentJevShadowCheck/);
+  assert.match(scripts, /showProductionDocuments=\{showContentEvidence\}/);
+  assert.match(panel, /showProductionDocuments \? <ContentProductionDocuments/);
 });

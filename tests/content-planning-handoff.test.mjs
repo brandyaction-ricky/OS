@@ -37,7 +37,7 @@ test("planning and script surfaces use DEV gate; saved memo is not fed to genera
   assert.match(page, /canUseSystemOnePreflight\(process.env\) \|\| canUseSystemOneJevShadow\(process.env\)/);
   assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{systemOneContentEnabled\} showContentEvidence=\{contentEvidenceEnabled\}/);
   assert.match(radar, /showReferenceCheck \? <ContentPlanningHandoff/);
-  assert.match(scripts, /showPlanningHandoff \|\| showContentEvidence \? <LinkedPlanningHandoff evidenceOnly=\{!showPlanningHandoff\} showEvidence=\{showContentEvidence\}/);
+  assert.match(scripts, /showPlanningHandoff \|\| showContentEvidence \? <LinkedPlanningHandoff evidenceOnly=\{!showPlanningHandoff\} showEvidence=\{showContentEvidence\} showProductionDocuments=\{showContentEvidence\}/);
   assert.match(panel, /showEvidence \? <>/);
   assert.match(panel, /!evidenceOnly \? <>/);
   assert.match(panel, /source.id !== sourceId/);

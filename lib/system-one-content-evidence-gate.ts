@@ -6,8 +6,9 @@ function matchesProjectUrl(value: string | undefined, reference: string) {
   return value === `https://${reference}.supabase.co` || value === `https://${reference}.supabase.co/`;
 }
 
-// Manual evidence does not call an external AI provider. Keep its DEV/QA and
-// database-isolation gate independent of the stricter preflight/JEV experiments.
+// Manual evidence and authenticated production-document summaries do not call
+// an external AI provider. Keep their DEV/QA database-isolation gate independent
+// of the stricter preflight/JEV experiments.
 export function canUseSystemOneContentEvidence(environment: Environment): boolean {
   const configured = (key: string) => Boolean(environment[key]?.trim());
   if (environment.SYSTEM_ONE_PREFLIGHT_ENABLED !== "true" && environment.SYSTEM_ONE_JEV_SHADOW_ENABLED !== "true") return false;
