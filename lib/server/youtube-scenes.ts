@@ -148,8 +148,17 @@ ${segments.map((segment, index) => `${index}. ${segment}`).join("\n")}`;
   const result = scenePlanSchema.safeParse(parsed);
   if (!result.success || result.data.scenes.length !== to - input.from || result.data.scenes.some((scene, index) => scene.segmentIndex !== input.from + index))
     throw new ApiError(502, "SCENE_PLAN_INVALID", "영상 장면이 원고 단락과 일치하지 않습니다.");
-  checkSceneBeats(result.data.scenes, segments, input.characters.ids);
-  return { window: result.data, segmentCount: segments.length };
+  // One broken drawing should not discard a paid window: drop it while its scene keeps another beat.
+  const window = result.data;
+  for (const scene of window.scenes) {
+    const kept = scene.visualBeats.filter((beat) => validateSceneSvg(beat.svg, input.characters.ids).ok);
+    if (kept.length && kept.length < scene.visualBeats.length) {
+      window.unresolved = [...window.unresolved, `${scene.segmentIndex + 1}단락 그림 ${scene.visualBeats.length - kept.length}개를 그림 오류로 뺐습니다.`].slice(0, 20);
+      scene.visualBeats = kept;
+    }
+  }
+  checkSceneBeats(window.scenes, segments, input.characters.ids);
+  return { window, segmentCount: segments.length };
 }
 
 /** Anchors follow the script and every drawing passes the SVG boundary; returns whether a channel character appears. */
