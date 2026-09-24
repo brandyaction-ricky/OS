@@ -53,7 +53,28 @@ export function hasCurrentApproval(reviews: PipelineReview[], gate: number, sign
   return latest?.approved === true && latest.signature === signature;
 }
 
-export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns"];
+export type PipelineSourceFields = { title?: unknown; description?: unknown; source_url?: unknown; metadata: Record<string, unknown> };
+export type PipelineSourceUpdate = { title?: unknown; description?: unknown; sourceUrl?: unknown; metadata?: Record<string, unknown> };
+const GATE_1_KEYS = ["audience", "evidence", "experience", "coreMessage", "planningHandoff", "productionFormatChange"];
+const GATE_3_KEYS = ["finalVideoUrl", "transcriptSrt", "transcript", "shortsStyle"];
+export function nextPipelineInputRevisions(current: PipelineSourceFields, proposed: PipelineSourceUpdate): number[] | null {
+  const metadata = proposed.metadata;
+  const changed = (key: string) => metadata !== undefined && JSON.stringify(current.metadata[key]) !== JSON.stringify(metadata[key]);
+  const first = (proposed.title !== undefined && proposed.title !== current.title)
+    || (proposed.description !== undefined && proposed.description !== current.description)
+    || (proposed.sourceUrl !== undefined && proposed.sourceUrl !== current.source_url)
+    || GATE_1_KEYS.some(changed);
+  const second = changed("productionPreparation");
+  const third = GATE_3_KEYS.some(changed);
+  if (!first && !second && !third) return null;
+  const previous = Array.isArray(current.metadata.pipelineInputRevisions) ? current.metadata.pipelineInputRevisions : [];
+  return [first, second, third].map((value, index) => {
+    const count = previous[index];
+    return (Number.isSafeInteger(count) && count >= 0 ? count : 0) + Number(value);
+  });
+}
+
+export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "pipelineInputRevisions"];
 export function protectedPipelineChange(current: Record<string, unknown>, proposed?: Record<string, unknown>) {
   return !!proposed && ((current.pipelineEnabled === true && proposed.pipelineEnabled !== true) || PIPELINE_PROTECTED_KEYS.some((key) => JSON.stringify(current[key]) !== JSON.stringify(proposed[key])));
 }

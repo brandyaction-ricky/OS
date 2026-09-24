@@ -42,7 +42,7 @@ function harness(action) {
     prompts.push(request.prompt);
     return JSON.stringify(action === 'shorts_proposal' ? { clips: [{ title: '[QA] Clip', hook: 'Synthetic recorded speech', start: 0, end: 4, reason: 'Synthetic' }] } : action === 'derivatives' ? { items: [{ platform: 'threads', title: '[QA] Post', body: 'Synthetic recorded speech' }] } : { title: '[QA] Kit', summary: 'Synthetic recorded speech', description: 'Synthetic recorded speech', chapters: [], checklist: [] });
   } } });
-  const api = load('../lib/server/content-pipeline.ts', { 'node:crypto': crypto, '@/lib/http': { ApiError }, '@/lib/content-pipeline': pipeline, './content-generation': generation });
+  const api = load('../lib/server/content-pipeline.ts', { 'node:crypto': crypto, '@/lib/http': { ApiError }, '@/lib/content-pipeline': pipeline, '@/lib/content-input': contentInput, './content-generation': generation });
   return { source, rows, prompts, actor, api, input: { sourceId: 'source', action, count: 1, platforms: ['threads'] } };
 }
 
@@ -59,7 +59,7 @@ for (const action of ['youtube_kit', 'shorts_proposal', 'derivatives']) test(`ap
   await assert.rejects(h.api.runPipelineGeneration(h.actor, h.input), error => error.code === 'CONTENT_TRANSCRIPT_REQUIRED');
   assert.equal(h.prompts.length, 0);
   assert.equal(h.rows.length, 4);
-  assert.equal(h.source.metadata.pipelineRuns.at(-1).state, 'needs_input');
+  assert.equal(h.source.metadata.pipelineRuns, undefined);
   h.source.metadata.transcriptSrt = srt;
   const generated = await h.api.runPipelineGeneration(h.actor, h.input);
   assert.equal(generated.records.length, 1);

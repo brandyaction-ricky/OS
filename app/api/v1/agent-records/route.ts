@@ -6,7 +6,7 @@ import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation"
 import { authenticateRequest, requireAgentScope, type RequestActor } from "@/lib/server/auth";
 import { assertOrganization } from "@/lib/server/organization";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { protectedPipelineChange } from "@/lib/content-pipeline";
+import { nextPipelineInputRevisions, protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { isContentEvidence } from "@/lib/content-evidence-protection";
 import { assertDevelopmentRequestLink } from "@/lib/development-links";
@@ -128,7 +128,7 @@ export async function PATCH(request: Request) {
     await assertOrganization(actor, organization);
     const input = recordUpdateSchema.parse(raw);
     const service = createServiceSupabase();
-    const { data: current } = await service.from("os_records").select("record_type,status,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
+    const { data: current } = await service.from("os_records").select("record_type,status,title,description,source_url,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isContentEvidence(current.record_type, current.metadata) || isContentEvidence(input.recordType ?? current.record_type, input.metadata))
       throw new ApiError(409, "EVIDENCE_APPEND_ONLY", "증거 이력은 수정하지 않습니다. 정정 내용은 새 기록으로 추가해 주세요.");
@@ -140,7 +140,11 @@ export async function PATCH(request: Request) {
     const recordType = (input.recordType ?? current.record_type) as RecordType;
     enforceHumanGates(recordType, input.status);
     await rateLimit(actor, "record.update");
-    const payload = { ...databaseFields(input), updated_by: actor.ownerId };
+    const payload: Record<string, unknown> = { ...databaseFields(input), updated_by: actor.ownerId };
+    if (current.record_type === "content_topic" && current.metadata.pipelineEnabled === true) {
+      const revisions = nextPipelineInputRevisions(current, input);
+      if (revisions) payload.metadata = { ...(input.metadata ?? current.metadata), pipelineInputRevisions: revisions };
+    }
     const { data, error } = await service.from("os_records").update(payload).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("*").maybeSingle();
     if (error) throw new ApiError(400, "RECORD_UPDATE_FAILED", "운영 기록을 수정하지 못했습니다.", error.message);
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전으로 다시 시도해 주세요.");
