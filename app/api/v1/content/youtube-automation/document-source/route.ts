@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const { data, error } = await actor.supabase.from("os_records").insert({
       record_type: "content_topic", title: doc.title.slice(0, 240), description: "승인된 원고 문서로 만드는 내레이션 영상입니다.",
       status: "planned", priority: "normal", stage: "영상 자동화", owner_id: actor.id, created_by: actor.id, updated_by: actor.id,
-      team: actor.team, brand: actor.brand, tags: ["유튜브", "영상자동화"],
+      team: actor.team, brand: actor.brand ?? "", tags: ["유튜브", "영상자동화"],
       metadata: { automationSource: "script_document", scriptDocument },
     }).select("*").single();
     if (error || !data) throw new ApiError(400, "DOCUMENT_SOURCE_CREATE_FAILED", "원고 문서로 영상 작업을 만들지 못했습니다.");
