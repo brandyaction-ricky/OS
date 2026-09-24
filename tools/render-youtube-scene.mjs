@@ -75,7 +75,8 @@ function pageHtml(beats, characters, faces) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
     text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
-    .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}`;
+    .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}
+    .b7{font-weight:700} .b8{font-weight:800} .start{text-anchor:start} .end{text-anchor:end}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
   html,body{margin:0;width:${W}px;height:${H}px;background:${C.paper};overflow:hidden}
   #title{position:absolute;left:0;right:0;top:92px;text-align:center;font:800 52px "Pretendard";color:${C.ink};letter-spacing:-1px;white-space:nowrap}

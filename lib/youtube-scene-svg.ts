@@ -10,7 +10,7 @@ export const YOUTUBE_SCENE_PALETTE = {
 } as const;
 // The title band above y=180 belongs to the spoken headline.
 export const YOUTUBE_SCENE_SAFE_AREA = { x1: 60, y1: 190, x2: 1220, y2: 690 } as const;
-export const youtubeSceneClasses = ["i", "r", "thin", "bold", "p", "lab", "sm", "acc", "muted"] as const;
+export const youtubeSceneClasses = ["i", "r", "thin", "bold", "p", "lab", "sm", "acc", "muted", "b7", "b8", "start", "end"] as const;
 export const youtubeSceneMotions = ["draw", "fade", "grow-x", "grow-y", "character"] as const;
 
 const NUMBER = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;
@@ -27,7 +27,7 @@ const common: Record<string, (value: string) => boolean> = {
   class: (value) => value.trim().split(/\s+/).every((name) => CLASSES.has(name)),
   transform: (value) => value.length <= 120 && TRANSFORM.test(value),
   opacity: number(0, 1), fill: (value) => COLORS.has(value), stroke: (value) => COLORS.has(value),
-  "stroke-width": number(1, 12), "data-k": (value) => MOTIONS.has(value), "data-s": number(0, 8), "data-d": number(0.05, 3),
+  "stroke-width": number(1, 90), "data-k": (value) => MOTIONS.has(value), "data-s": number(0, 8), "data-d": number(0.05, 3),
 };
 const geometry: Record<string, Record<string, (value: string) => boolean>> = {
   g: {},
@@ -38,7 +38,7 @@ const geometry: Record<string, Record<string, (value: string) => boolean>> = {
   line: { x1: coordinate, y1: coordinate, x2: coordinate, y2: coordinate },
   polyline: { points: (value) => value.length <= 2_000 && POINTS.test(value) },
   polygon: { points: (value) => value.length <= 2_000 && POINTS.test(value) },
-  text: { x: coordinate, y: coordinate, "text-anchor": (value) => ["start", "middle", "end"].includes(value), "font-size": number(16, 72) },
+  text: { x: coordinate, y: coordinate, "text-anchor": (value) => ["start", "middle", "end"].includes(value), "font-size": number(16, 180) },
   tspan: { dx: number(-400, 400), dy: number(-200, 200), fill: (value) => COLORS.has(value) },
   image: { x: coordinate, y: coordinate, width: size, height: size, "data-character": (value) => /^[a-z0-9_-]{1,40}$/.test(value) },
 };

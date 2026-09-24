@@ -24,6 +24,7 @@ export function summarizeCharacterCatalog(catalog: YoutubeCharacterCatalog) {
   return {
     digest: createHash("sha256").update(JSON.stringify(catalog)).digest("hex"),
     ids: new Set(usable.map((asset) => asset.id)),
+    sizes: new Map(usable.map((asset) => [asset.id, { width: asset.width, height: asset.height }])),
     prompt: usable.map((asset) => `${asset.id} (${asset.width}x${asset.height}) ${asset.title}: ${asset.description}${asset.embeddedText ? ` [그림 속 글자: ${asset.embeddedText}]` : ""}`).join("\n"),
   };
 }
