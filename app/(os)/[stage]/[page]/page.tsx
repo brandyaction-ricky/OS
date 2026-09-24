@@ -28,11 +28,13 @@ import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gate";
+import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 
 export default async function GenericPage({ params }: { params: Promise<{ stage: string; page: string }> }) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
+  const contentJevAssistEnabled = canUseContentJevAssist(process.env);
   const stage = NAV_STAGES.find((item) => item.pages.some((page) => page.href === href));
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/members") return <MembersWorkspace />;
@@ -50,7 +52,7 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/packages") return <ContentPackageWorkspace />;
+  if (href === "/content/packages") return <ContentPackageWorkspace showJevAssist={contentJevAssistEnabled} />;
   if (href === "/content/shorts") return <ContentShortsWorkspace />;
   if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/youtube") return <YoutubeKitWorkspace />;
