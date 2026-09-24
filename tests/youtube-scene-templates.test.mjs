@@ -27,6 +27,12 @@ export const templateSamples = {
   quote: { lines: ['선택지가 너무 많으면', '아무것도 고르지 않는다'], accent: '아무것도', attribution: '예시 인용, 연도' },
   line_chart: { points: [{ label: '1월', value: 8 }, { value: 3 }, { value: 5 }, { value: 2 }, { value: 6 }, { label: '6월', value: 9 }], highlightFrom: 3, callout: '다시 증가', source: '예시 수치' },
   donut: { slices: [{ label: '남을 보고 생김', value: 70 }, { label: '내 안에서 생김', value: 30 }], highlight: 0, center: '70%', source: '예시 수치' },
+  steps: { steps: ['떠올림', '쌓임', '순서 없음', '시작 못 함'], pick: 3 },
+  cycle: { nodes: ['많아짐', '줄이기', '또 생김'], center: '반복' },
+  balance: { left: '남의 기준', right: '내 기준', heavier: 'left' },
+  funnel: { items: ['유튜브', '쇼핑몰', '블로그', '공구'], result: '내 것만 남김' },
+  venn: { a: '내 것', b: '남의 것', both: '섞임' },
+  ranking: { first: '내 기준', second: '남의 기준', third: '유행' },
 };
 
 test('every template draws SVG that passes the shared scene boundary', () => {

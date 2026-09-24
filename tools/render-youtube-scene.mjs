@@ -72,7 +72,7 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
   return { duration, used };
 }
 
-function pageHtml(beats, characters, faces) {
+export function pageHtml(beats, characters, faces) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
     text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
@@ -99,6 +99,32 @@ function pageHtml(beats, characters, faces) {
     line.setAttribute('filter', 'url(#line' + i + ')'); line.setAttribute('clip-path', 'url(#' + clip.id + ')');
     img.parentNode.insertBefore(line, img); img._sweep = rect;
   });
+  // After fonts load: draw emphasis from measured text and centre each scene in the safe area.
+  window.layoutBeats = () => {
+    const ns = 'http://www.w3.org/2000/svg';
+    const add = (svg, tag, attrs, after) => { const el = document.createElementNS(ns, tag);
+      Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); after.after(el);
+      if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; } return el; };
+    document.querySelectorAll('svg[id^="b"]').forEach((svg, i) => {
+      // A scene without a headline is centred in the whole frame; with one, below the headline band.
+      const titled = Boolean(beats[i].displayText), top = titled ? ${SAFE.y1} : 60, mid = titled ? ${(SAFE.y1 + SAFE.y2) / 2} : 360;
+      svg.style.display = '';
+      svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6;
+        add(svg, 'path', { class: 'r bold', d: 'M' + b.x + ' ' + y + 'H' + (b.x + b.width), 'data-k': 'draw', 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
+      svg.querySelectorAll('text.ring').forEach(el => { const b = el.getBBox();
+        add(svg, 'ellipse', { class: 'r', cx: b.x + b.width / 2, cy: b.y + b.height / 2, rx: b.width / 2 + 34, ry: b.height / 2 + 16, 'data-k': 'draw', 'data-s': (+el.dataset.s || 0) + .4, 'data-d': .4 }, el); });
+      const group = document.createElementNS(ns, 'g');
+      [...svg.childNodes].filter(n => !['style', 'defs'].includes(n.nodeName)).forEach(n => group.appendChild(n));
+      svg.appendChild(group);
+      const b = group.getBBox();
+      if (b.width && b.height) {
+        const dx = Math.max(${SAFE.x1} - b.x, Math.min(${SAFE.x2} - b.x - b.width, 640 - (b.x + b.width / 2)));
+        const dy = Math.max(top - b.y, Math.min(${SAFE.y2} - b.y - b.height, mid - (b.y + b.height / 2)));
+        group.setAttribute('transform', 'translate(' + dx.toFixed(1) + ' ' + dy.toFixed(1) + ')');
+      }
+      svg.style.display = 'none';
+    });
+  };
   window.render = t => {
     const active = beats.findIndex(b => b.visualStartSeconds <= t && t < b.endSeconds);
     beats.forEach((b, i) => document.getElementById('b' + i).style.display = i === active ? '' : 'none');
@@ -129,7 +155,7 @@ function pageHtml(beats, characters, faces) {
     const problems = [], box = el => el.getBoundingClientRect();
     const svg = document.getElementById('b' + i), items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
     for (const el of items) { const r = box(el);
-      if (r.width && (r.left < ${SAFE.x1} - 1 || r.right > ${SAFE.x2} + 1 || r.top < ${SAFE.y1} - 1 || r.bottom > ${SAFE.y2} + 1))
+      if (r.width && (r.left < ${SAFE.x1} - 1 || r.right > ${SAFE.x2} + 1 || r.top < (b.displayText ? ${SAFE.y1} : 60) - 1 || r.bottom > ${SAFE.y2} + 1))
         problems.push(el.tagName + ' outside safe area'); }
     const texts = [...svg.querySelectorAll('text')].map(box), art = [...svg.querySelectorAll('image[data-k]')].map(box);
     const hit = (a, c, pad) => a.left < c.right + pad && c.left < a.right + pad && a.top < c.bottom + pad && c.top < a.bottom + pad;
@@ -175,6 +201,7 @@ async function main() {
     await page.setContent(pageHtml(beats, characters, await fontFaces()), { waitUntil: "load" });
     if (!await page.evaluate(async () => { const specs = ['800 52px "Pretendard"', '600 30px "Pretendard"']; for (const spec of specs) await document.fonts.load(spec, "가A"); return specs.every((spec) => document.fonts.check(spec, "가A")); }))
       fail("Pretendard did not load");
+    await page.evaluate(() => window.layoutBeats());
     const problems = [];
     for (let i = 0; i < beats.length; i++)
       for (const problem of new Set(await page.evaluate((n) => window.inspectBeat(n), i))) problems.push(`beat ${i + 1} (${beats[i].spokenAnchor}): ${problem}`);

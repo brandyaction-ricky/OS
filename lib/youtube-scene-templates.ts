@@ -9,6 +9,7 @@ import { YOUTUBE_SCENE_PALETTE as C } from "./youtube-scene-svg";
 export const youtubeSceneTemplates = [
   "question", "statement", "character_labels", "compare", "formula", "list",
   "bar_chart", "capture", "big_number", "quote", "line_chart", "donut",
+  "steps", "cycle", "balance", "funnel", "venn", "ranking",
 ] as const;
 export type YoutubeSceneTemplate = typeof youtubeSceneTemplates[number];
 
@@ -30,6 +31,12 @@ const slotSchemas = {
   quote: z.object({ lines: z.array(short(16)).min(1).max(2), accent, attribution: short(24) }),
   line_chart: z.object({ points: z.array(z.object({ label: z.string().trim().max(6).optional(), value })).min(3).max(8), highlightFrom: z.number().int().min(0).max(6), callout: short(10), source }),
   donut: z.object({ slices: z.array(z.object({ label: short(12), value })).min(2).max(3), highlight: z.number().int().min(0).max(2), center: short(6), source }),
+  steps: z.object({ steps: z.array(short(8)).min(2).max(4), pick: z.number().int().min(0).max(3).optional() }),
+  cycle: z.object({ nodes: z.array(short(6)).min(3).max(4), center: z.string().trim().max(8).optional() }),
+  balance: z.object({ left: short(8), right: short(8), heavier: z.enum(["left", "right", "even"]) }),
+  funnel: z.object({ items: z.array(short(6)).min(2).max(4), result: short(10) }),
+  venn: z.object({ a: short(8), b: short(8), both: short(8) }),
+  ranking: z.object({ first: short(8), second: short(8), third: z.string().trim().max(8).optional() }),
 } satisfies Record<YoutubeSceneTemplate, z.ZodType>;
 
 export type CharacterSizes = ReadonlyMap<string, { width: number; height: number }>;
@@ -42,13 +49,13 @@ const n = (value: number) => Math.round(value * 10) / 10;
 const motion = (kind: string, start: number, duration = 0.3) => `data-k="${kind}" data-s="${n(start)}" data-d="${duration}"`;
 
 /** Text with an optional red accent word. Classes: b7/b8 weight, start/end anchor, acc red, muted grey. */
-function text(x: number, y: number, size: number, body: string, cls: string, start: number, accentWord?: string) {
+function text(x: number, y: number, size: number, body: string, cls: string, start: number, accentWord?: string, underline = false) {
   const at = accentWord ? body.indexOf(accentWord) : -1;
   const inner = at < 0 || !accentWord ? esc(body)
-    : `${esc(body.slice(0, at))}<tspan class="acc">${esc(accentWord)}</tspan>${esc(body.slice(at + accentWord.length))}`;
+    : `${esc(body.slice(0, at))}<tspan class="acc${underline ? " ul" : ""}">${esc(accentWord)}</tspan>${esc(body.slice(at + accentWord.length))}`;
   return `<text${cls ? ` class="${cls}"` : ""} x="${n(x)}" y="${n(y)}" font-size="${size}" ${motion("fade", start)}>${inner}</text>`;
 }
-const sourceLine = (label: string | undefined, start: number) => label ? text(1210, 668, 22, label, "sm end", start) : "";
+const sourceLine = (label: string | undefined, start: number, x = 1020, y = 668) => label ? text(x, y, 22, label, "sm end", start) : "";
 const highest = (values: number[]) => Math.max(...values, 1e-9);
 
 function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSizes): string {
@@ -64,13 +71,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
       const s = slots as z.infer<typeof slotSchemas.statement>;
       const size = Math.min(...s.lines.map((line) => fit(line, 1000, 68)));
       const ys = s.lines.length === 1 ? [420] : [370, 470];
-      let out = s.lines.map((line, i) => text(640, ys[i], size, line, "b8", 0.15 * i, s.accent)).join("");
-      const row = s.accent ? s.lines.findIndex((line) => line.includes(s.accent!)) : -1;
-      if (row >= 0) {
-        const line = s.lines[row], left = 640 - (ems(line) * size) / 2 + ems(line.slice(0, line.indexOf(s.accent!))) * size;
-        out += `<path class="r bold" d="M${n(left)} ${ys[row] + size * 0.62}H${n(left + ems(s.accent!) * size)}" ${motion("draw", 0.7, 0.35)}/>`;
-      }
-      return out;
+      return s.lines.map((line, i) => text(640, ys[i], size, line, "b8", 0.15 * i, s.accent, true)).join("");
     }
     case "character_labels": {
       const s = slots as z.infer<typeof slotSchemas.character_labels>;
@@ -104,12 +105,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
       const s = slots as z.infer<typeof slotSchemas.list>;
       const size = Math.min(...s.items.map((item, i) => fit(`${i + 1}. ${item}`, 700, 46)));
       const top = 430 - ((s.items.length - 1) * 100) / 2;
-      let out = s.items.map((item, i) => text(360, top + i * 100, size, `${i + 1}. ${item}`, "b7 start", 0.4 * i)).join("");
-      if (s.pick !== undefined && s.pick < s.items.length) {
-        const width = ems(`${s.pick + 1}. ${s.items[s.pick]}`) * size;
-        out += `<ellipse class="r" cx="${n(360 + width / 2)}" cy="${n(top + s.pick * 100)}" rx="${n(width / 2 + 40)}" ry="48" ${motion("draw", 0.4 * s.items.length + 0.3, 0.4)}/>`;
-      }
-      return out;
+      return s.items.map((item, i) => text(360, top + i * 100, size, `${i + 1}. ${item}`, i === s.pick ? "b7 start ring" : "b7 start", 0.4 * i)).join("");
     }
     case "bar_chart": {
       const s = slots as z.infer<typeof slotSchemas.bar_chart>;
@@ -140,7 +136,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
     case "big_number": {
       const s = slots as z.infer<typeof slotSchemas.big_number>;
       return text(640, 390, fit(s.value, 1000, 170, 60), s.value, "acc", 0, undefined)
-        + text(640, 520, fit(s.caption, 900, 40), s.caption, "b7", 0.5) + sourceLine(s.source, 0.7);
+        + text(640, 520, fit(s.caption, 900, 40), s.caption, "b7", 0.5) + sourceLine(s.source, 0.7, 640, 590).replace('class="sm end"', 'class="sm"');
     }
     case "quote": {
       const s = slots as z.infer<typeof slotSchemas.quote>;
@@ -187,7 +183,67 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
         out += `<rect x="760" y="${n(top + k * 80 - 14)}" width="28" height="28" rx="6" fill="${k === 0 ? C.red : k === 1 ? C.grey : C.line}" ${motion("fade", 0.9)}/>`
           + text(805, top + k * 80, fit(s.slices[index].label, 400, 34), s.slices[index].label, k === 0 ? "b7 start" : "b7 start muted", 0.9);
       });
-      return out + sourceLine(s.source, 1.1);
+      return out + sourceLine(s.source, 1.1, 1100, 640);
+    }
+    case "steps": {
+      const s = slots as z.infer<typeof slotSchemas.steps>;
+      const w = 200, gap = 90, total = s.steps.length * w + (s.steps.length - 1) * gap, left = 640 - total / 2;
+      return s.steps.map((label, i) => {
+        const x = left + i * (w + gap), hot = i === s.pick, start = 0.35 * i;
+        const arrow = i ? `<path class="i thin" d="M${n(x - gap + 14)} 440H${n(x - 16)}M${n(x - 30)} 426L${n(x - 16)} 440L${n(x - 30)} 454" ${motion("draw", start - 0.1, 0.25)}/>` : "";
+        return arrow + `<rect class="${hot ? "r" : "i"}" x="${n(x)}" y="385" width="${w}" height="110" rx="18" ${motion("fade", start)}/>`
+          + text(x + w / 2, 440, fit(label, w - 30, 34), label, hot ? "acc" : "b8", start);
+      }).join("");
+    }
+    case "cycle": {
+      const s = slots as z.infer<typeof slotSchemas.cycle>;
+      const k = s.nodes.length, R = 175, r = 66, cy = 440;
+      const at = (i: number, radius = R) => [640 + radius * Math.sin((i / k) * 2 * Math.PI), cy - radius * Math.cos((i / k) * 2 * Math.PI)];
+      let out = "";
+      s.nodes.forEach((label, i) => {
+        const [x, y] = at(i), [ax, ay] = at(i + 0.5), start = 0.3 * i;
+        const [fx, fy] = at(i + 0.28), [tx, ty] = at(i + 0.72);
+        out += `<circle class="${i === k - 1 ? "r" : "i"}" cx="${n(x)}" cy="${n(y)}" r="${r}" ${motion("fade", start)}/>`
+          + text(x, y, fit(label, 2 * r - 20, 30), label, i === k - 1 ? "acc" : "b8", start)
+          + `<path class="i thin" d="M${n(fx)} ${n(fy)}Q${n(ax + (ax - 640) * 0.18)} ${n(ay + (ay - cy) * 0.18)} ${n(tx)} ${n(ty)}" ${motion("draw", start + 0.2, 0.3)}/>`;
+      });
+      return out + (s.center ? text(640, cy, fit(s.center, 180, 30), s.center, "muted b7", 1.2) : "");
+    }
+    case "balance": {
+      const s = slots as z.infer<typeof slotSchemas.balance>;
+      const tilt = s.heavier === "left" ? -8 : s.heavier === "right" ? 8 : 0, rad = (tilt * Math.PI) / 180;
+      const end = (side: number) => [640 + side * 300 * Math.cos(rad), 330 + side * 300 * Math.sin(rad)];
+      const [lx, ly] = end(-1), [rx, ry] = end(1);
+      const pan = (x: number, y: number, label: string, hot: boolean, start: number) =>
+        `<path class="i thin" d="M${n(x)} ${n(y)}V${n(y + 90)}" ${motion("draw", start, 0.25)}/>`
+        + `<path class="${hot ? "r" : "i"}" d="M${n(x - 110)} ${n(y + 90)}Q${n(x)} ${n(y + 150)} ${n(x + 110)} ${n(y + 90)}Z" ${motion("draw", start + 0.1, 0.3)}/>`
+        + text(x, y + 190, fit(label, 260, 36), label, hot ? "acc" : "b8", start + 0.2);
+      return `<polygon class="i" points="640,340 600,640 680,640" ${motion("draw", 0, 0.3)}/>`
+        + `<path class="i bold" d="M${n(lx)} ${n(ly)}L${n(rx)} ${n(ry)}" ${motion("draw", 0.2, 0.3)}/>`
+        + pan(lx, ly, s.left, s.heavier === "left", 0.4) + pan(rx, ry, s.right, s.heavier === "right", 0.6);
+    }
+    case "funnel": {
+      const s = slots as z.infer<typeof slotSchemas.funnel>;
+      const gap = 500 / s.items.length;
+      return s.items.map((item, i) => text(390 + gap * (i + 0.5), 250, fit(item, gap - 16, 30), item, "b7", 0.12 * i)).join("")
+        + `<polygon class="i" points="360,300 920,300 700,500 580,500" ${motion("draw", 0.4, 0.4)}/>`
+        + `<path class="r bold" d="M640 510V580M622 562L640 580L658 562" ${motion("draw", 0.9, 0.3)}/>`
+        + text(640, 630, fit(s.result, 520, 40), s.result, "acc", 1.1);
+    }
+    case "venn": {
+      const s = slots as z.infer<typeof slotSchemas.venn>;
+      return `<circle class="i" cx="530" cy="430" r="190" ${motion("fade", 0)}/>` + text(430, 430, fit(s.a, 150, 34), s.a, "b8", 0)
+        + `<circle class="i" cx="750" cy="430" r="190" ${motion("fade", 0.4)}/>` + text(850, 430, fit(s.b, 150, 34), s.b, "b8", 0.4)
+        + `<path class="r bold" d="M640 275A190 190 0 0 1 640 585A190 190 0 0 1 640 275Z" ${motion("draw", 0.9, 0.4)}/>`
+        + text(640, 430, fit(s.both, 90, 28), s.both, "acc", 1.1);
+    }
+    case "ranking": {
+      const s = slots as z.infer<typeof slotSchemas.ranking>;
+      const block = (x: number, h: number, label: string, rank: number, start: number) =>
+        `<rect class="${rank === 1 ? "r" : "i"}" x="${x - 110}" y="${620 - h}" width="220" height="${h}" rx="8" ${motion("grow-y", start, 0.35)}/>`
+        + text(x, 620 - h / 2, 44, String(rank), rank === 1 ? "acc" : "b8 muted", start + 0.2)
+        + text(x, 620 - h - 40, fit(label, 230, 34), label, rank === 1 ? "acc" : "b8", start + 0.3);
+      return block(640, 260, s.first, 1, 0.6) + block(400, 180, s.second, 2, 0.3) + (s.third ? block(880, 120, s.third, 3, 0) : "");
     }
   }
 }
@@ -213,4 +269,10 @@ capture: 기사·논문·자료의 핵심 문장 강조. {"heading": "자료 제
 big_number: 수치 하나를 크게. {"value": "10명 중 7명 같은 10자", "caption": "의미 24자", "source"?: "출처"}
 quote: 연구·책의 인용. {"lines": ["16자", "선택"], "accent"?: "빨간 단어", "attribution": "누가, 언제 24자"}
 line_chart: 시간에 따른 변화(점 3~8개). {"points": [{"label"?: "6자", "value": 숫자}], "highlightFrom": 빨간 구간 시작 번호, "callout": "핵심 지점 10자", "source"?: "출처"}
-donut: 비율·구성(조각 2~3개). {"slices": [{"label": "12자", "value": 숫자}], "highlight": 번호, "center": "가운데 6자", "source"?: "출처"}`;
+donut: 비율·구성(조각 2~3개). {"slices": [{"label": "12자", "value": 숫자}], "highlight": 번호, "center": "가운데 6자", "source"?: "출처"}
+steps: 단계·흐름·인과가 차례로 이어짐(2~4단계, 화살표). {"steps": ["8자", ...], "pick"?: 빨간 단계 번호}
+cycle: 끝나면 다시 처음으로 돌아가는 반복·악순환(3~4개, 마지막이 빨강). {"nodes": ["6자", ...], "center"?: "가운데 8자"}
+balance: 두 가지의 무게·비중을 비교하는 저울. {"left": "8자", "right": "8자", "heavier": "left|right|even"}
+funnel: 많은 것이 걸러져 하나로 좁혀짐. {"items": ["6자", 2~4개], "result": "걸러진 결과 10자"}
+venn: 두 가지가 겹치거나 섞임. {"a": "8자", "b": "8자", "both": "겹친 부분 8자"}
+ranking: 순서·우선순위(1등이 빨강). {"first": "8자", "second": "8자", "third"?: "8자"}`;
