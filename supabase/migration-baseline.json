@@ -269,7 +269,10 @@
       "requiresApproval": true,
       "productionAuthorized": false,
       "developmentApprovedAt": "2026-09-24",
-      "appliedEnvironments": []
+      "developmentAppliedAt": "2026-09-24",
+      "appliedEnvironments": [
+        "development"
+      ]
     }
   ],
   "legacyMigrations": [

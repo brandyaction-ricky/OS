@@ -81,5 +81,14 @@ SELECT results_eq(
 );
 
 RESET ROLE;
-SELECT * FROM finish();
+DO $qa$
+DECLARE
+  failures text;
+BEGIN
+  SELECT string_agg(result, E'\n') INTO failures FROM finish() AS f(result);
+  IF failures IS NOT NULL THEN
+    RAISE EXCEPTION 'Archived-document pgTAP checks failed: %', failures;
+  END IF;
+END;
+$qa$;
 ROLLBACK;
