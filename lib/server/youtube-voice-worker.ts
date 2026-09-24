@@ -3,9 +3,8 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { generateContentText, hasClaudeKey } from "./content-model";
-import { readPipeline } from "./content-pipeline";
+import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { fishVoiceSettings, splitFishNarration, synthesizeFishSegment, synthesizeFishSegmentWithTimestamps } from "./fish-audio";
 import { readYoutubeSceneRules } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
@@ -25,12 +24,11 @@ const reviewJsonSchema = {
 };
 
 export async function currentSegments(service: ReturnType<typeof createServiceSupabase>, record: OsRecord, metadata: VoiceRunMetadata) {
-  const state = await readPipeline({ supabase: service }, metadata.sourceId);
-  const plan = buildYoutubeAutomationPlan(state);
+  const { state, plan, scriptText } = await readYoutubeAutomationInput(service, metadata.sourceId);
   const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown } | undefined;
   if (state.source.owner_id !== record.owner_id || plan.inputKey !== metadata.inputKey ||
     plan.script?.id !== metadata.script.id || plan.script?.version !== metadata.script.version ||
-    plan.packaging?.id !== metadata.packaging.id || plan.packaging?.version !== metadata.packaging.version ||
+    plan.packaging?.id !== metadata.packaging?.id || plan.packaging?.version !== metadata.packaging?.version ||
     scenePlan?.inputKey !== metadata.inputKey || scenePlan?.generatedAt !== metadata.scenePlanGeneratedAt ||
     (metadata.sceneTemplateVersion !== undefined && metadata.sceneTemplateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION) ||
     scenePlan?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
@@ -39,9 +37,8 @@ export async function currentSegments(service: ReturnType<typeof createServiceSu
   const rules = await readYoutubeSceneRules({ supabase: service });
   if (JSON.stringify(rules.ruleVersions) !== JSON.stringify(metadata.sceneRuleVersions))
     throw new ApiError(409, "VOICE_RUN_STALE", "음성 제작 중 OS 영상 기준이 변경됐습니다.");
-  const script = state.records.find((item) => item.id === metadata.script.id && item.version === metadata.script.version);
-  if (!script) throw new ApiError(409, "VOICE_RUN_STALE", "승인된 원고가 변경됐습니다.");
-  const segments = splitFishNarration(script.description);
+  if (!scriptText) throw new ApiError(409, "VOICE_RUN_STALE", "승인된 원고가 변경됐습니다.");
+  const segments = splitFishNarration(scriptText);
   if (segments.length !== metadata.segments.length || segments.some((value, index) => digestVoiceValue(value) !== metadata.segments[index].textHash))
     throw new ApiError(409, "VOICE_RUN_STALE", "원고 단락이 변경됐습니다.");
   return segments;

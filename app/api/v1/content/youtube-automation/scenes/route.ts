@@ -2,11 +2,9 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { readPipeline } from "@/lib/server/content-pipeline";
+import { readYoutubeAutomationInput } from "@/lib/server/youtube-automation-input";
 import { generateYoutubeScenePlan, readYoutubeSceneRules, SCENE_MODEL, scenePlanSchema } from "@/lib/server/youtube-scenes";
-import { selectedPackaging } from "@/lib/content-selected-packaging";
 import { readYoutubeCharacterCatalog } from "@/lib/server/youtube-characters";
-import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
@@ -20,9 +18,9 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request, { allowAgent: false });
     const input = inputSchema.parse(await parseJson(request, 1_000));
-    const state = await readPipeline(actor, input.sourceId);
+    const automation = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
+    const { state, plan } = automation;
     if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 영상 장면을 설계할 수 있습니다.");
-    const plan = buildYoutubeAutomationPlan(state);
     if (!plan.inputKey || plan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
     const rules = await readYoutubeSceneRules(actor);
     const characters = await readYoutubeCharacterCatalog();
@@ -30,15 +28,13 @@ export async function POST(request: Request) {
     if (prior?.inputKey === input.inputKey && prior.model === SCENE_MODEL && prior.characterCatalogDigest === characters.digest && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
       JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
       return NextResponse.json({ reused: true, scenePlan: prior }, { headers: { "cache-control": "private, no-store" } });
-    const script = state.records.find((record) => record.id === plan.script?.id && record.version === plan.script.version);
-    const packageChoice = selectedPackaging(state.records, input.sourceId);
-    if (!script || !packageChoice) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 원고와 채택 패키징을 다시 확인해 주세요.");
+    if (!automation.scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 원고와 채택 패키징을 다시 확인해 주세요.");
     const generated = await generateYoutubeScenePlan({
-      script: script.description, title: packageChoice.title, thumbnailCopy: packageChoice.thumbnailCopies.join(" / "),
+      script: automation.scriptText, title: automation.title, thumbnailCopy: automation.thumbnailCopy,
       evidence: String(state.source.metadata.evidence ?? ""), ...rules, characters,
     });
-    const latest = await readPipeline(actor, input.sourceId);
-    if (buildYoutubeAutomationPlan(latest).inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "영상 설계 중 원고나 승인 상태가 변경됐습니다. 결과를 저장하지 않았습니다.");
+    const { state: latest, plan: latestPlan } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
+    if (latestPlan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "영상 설계 중 원고나 승인 상태가 변경됐습니다. 결과를 저장하지 않았습니다.");
     if (JSON.stringify((await readYoutubeSceneRules(actor)).ruleVersions) !== JSON.stringify(rules.ruleVersions))
       throw new ApiError(409, "SCENE_RULES_CHANGED", "영상 설계 중 OS 기준이 변경됐습니다. 결과를 저장하지 않았습니다.");
     const scenePlan = { inputKey: input.inputKey, ...generated, generatedAt: new Date().toISOString(), judgmentMode: "advisory_only" };
