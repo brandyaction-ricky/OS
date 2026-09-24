@@ -26,6 +26,7 @@ import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
+import { ContentTopicJevAssist } from "./content-topic-jev-assist";
 
 type RadarTab = "channels" | "discovery" | "niches" | "planning";
 
@@ -64,7 +65,7 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function ContentRadarWorkspace({ showPlanningHandoff = false }: { showPlanningHandoff?: boolean } = {}) {
+export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
@@ -485,6 +486,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false }: { showPla
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
           {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}`} source={selected} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("인계 메모를 저장했습니다. 승인·공유는 실행되지 않았습니다."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
+          {showTopicJevAssist ? <ContentTopicJevAssist key={`topic-jev:${selected.id}:${selected.version}:${plan?.id ?? "no-plan"}:${plan?.version ?? 0}`} topicId={selected.id} topicVersion={selected.version} {...(plan ? { planId: plan.id, planVersion: plan.version } : {})} /> : null}
         </> : <div className="compact-empty"><Target size={24} /><strong>판정할 틈새를 선택하세요.</strong></div>}</article>
       </section>
     </> : null}
