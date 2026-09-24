@@ -9,7 +9,8 @@
  */
 import { createHash } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
-import { readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -20,6 +21,23 @@ const VERSION = "brandyaction-vector-scene-v7";
 const W = 1280, H = 720;
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fail = (message) => { throw new Error(message); };
+// Pretendard (OFL-1.1) renders identically on macOS and the Linux media worker.
+const FONTS = {
+  600: ["https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-SemiBold.woff2", "c863f76a7de5c1ddc1ed8b2fa794964530774592c4f31407a84e2a2ae93f17f0"],
+  800: ["https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-ExtraBold.woff2", "dd7c1e156f508eb962acc7a33a7a1896d1e0b71e11156fad96e731689ceb6dc3"],
+};
+
+async function fontFaces() {
+  const faces = [];
+  for (const [weight, [url, digest]] of Object.entries(FONTS)) {
+    const cached = path.join(os.tmpdir(), `brandyaction-${digest}.woff2`);
+    let bytes = existsSync(cached) ? readFileSync(cached) : Buffer.from(await (await fetch(url)).arrayBuffer());
+    if (sha256(bytes) !== digest) fail(`Font checksum changed: ${url}`);
+    writeFileSync(cached, bytes);
+    faces.push(`@font-face{font-family:"Pretendard";font-weight:${weight};src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2")}`);
+  }
+  return faces.join("");
+}
 
 export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvisional) {
   if (brief.timingSource !== "verified_word" && !(allowProvisional && brief.timingSource === "provisional_pause"))
@@ -51,14 +69,14 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
   return { duration, used };
 }
 
-function pageHtml(beats, characters) {
+function pageHtml(beats, characters, faces) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${C.red}} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
-    text{font-family:"Apple SD Gothic Neo","Noto Sans KR",sans-serif;font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
-    .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:500} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}`;
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
+    .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}`;
+  return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
   html,body{margin:0;width:${W}px;height:${H}px;background:${C.paper};overflow:hidden}
-  #title{position:absolute;left:0;right:0;top:92px;text-align:center;font:800 52px "Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:${C.ink};letter-spacing:-1px;white-space:nowrap}
+  #title{position:absolute;left:0;right:0;top:92px;text-align:center;font:800 52px "Pretendard";color:${C.ink};letter-spacing:-1px;white-space:nowrap}
   #title b{color:${C.red};font-weight:800} svg{position:absolute;inset:0}</style></head><body><div id="title"></div>
   ${beats.map((beat, i) => `<svg id="b${i}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:none"><style>${style}</style>
     <defs><filter id="line${i}"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0 1 1 1"/><feFuncG type="discrete" tableValues="0 1 1 1"/><feFuncB type="discrete" tableValues="0 1 1 1"/></feComponentTransfer></filter></defs>
@@ -150,8 +168,9 @@ async function main() {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: W, height: H } });
-    await page.setContent(pageHtml(beats, characters), { waitUntil: "load" });
-    await page.evaluate(() => document.fonts.ready);
+    await page.setContent(pageHtml(beats, characters, await fontFaces()), { waitUntil: "load" });
+    if (!await page.evaluate(async () => { const specs = ['800 52px "Pretendard"', '600 30px "Pretendard"']; for (const spec of specs) await document.fonts.load(spec, "가A"); return specs.every((spec) => document.fonts.check(spec, "가A")); }))
+      fail("Pretendard did not load");
     const problems = [];
     for (let i = 0; i < beats.length; i++)
       for (const problem of new Set(await page.evaluate((n) => window.inspectBeat(n), i))) problems.push(`beat ${i + 1} (${beats[i].spokenAnchor}): ${problem}`);
