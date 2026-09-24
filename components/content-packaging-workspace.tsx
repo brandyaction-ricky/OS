@@ -18,6 +18,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { createRecord, listAllRecordsOfType, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
+import { ContentJevAssist } from "./content-jev-assist";
 
 type PackageTab = "search" | "title" | "thumbnail" | "saved";
 
@@ -52,7 +53,7 @@ function CandidateList({ title, subtitle, items, copied, onCopy, onPick }: {
   })}</div> : <div className="compact-empty"><Sparkles size={24} /><strong>생성된 후보가 없습니다.</strong><span>시장 근거를 모은 뒤 후보 생성을 실행하세요.</span></div>}</section>;
 }
 
-export function ContentPackagingWorkspace() {
+export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAssist?: boolean }) {
   const { accessToken, demo, profile } = useSession();
   const [sources, setSources] = useState<OsRecord[]>([]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
@@ -98,6 +99,8 @@ export function ContentPackagingWorkspace() {
   const result = meta<Record<string, unknown>>(latest, "result", {});
   const titles = Array.isArray(result.titles) ? result.titles as Array<Record<string, unknown>> : [];
   const copies = Array.isArray(result.copies) ? result.copies as Array<Record<string, unknown>> : [];
+  const pickedTitles = titles.filter((item) => item.picked === true);
+  const pickedCopies = copies.filter((item) => item.picked === true);
   const prompts = Array.isArray(result.designPrompts) ? result.designPrompts.map((text) => ({ text })) : [];
   const measuredCtr = (id: string) => {
     const record = ownMetrics.find((item) => item.metadata.youtubeId === id || item.metadata.youtubeVideoId === id || item.metadata.contentId === id || item.source_url?.includes(`v=${id}`));
@@ -232,6 +235,7 @@ export function ContentPackagingWorkspace() {
 
     {tab === "saved" ? <>
       <section className="studio-two packaging-two"><CandidateList title="채택한 제목" subtitle="현재 콘텐츠에 채택한 제목 후보" items={titles.filter((item) => item.picked)} copied={copied} onCopy={copy} /><CandidateList title="채택한 썸네일 카피" subtitle="현재 콘텐츠에 채택한 카피 후보" items={copies.filter((item) => item.picked)} copied={copied} onCopy={copy} /></section>
+      {showJevAssist && selectedSource && latest ? pickedTitles.length === 1 && pickedCopies.length === 1 ? <ContentJevAssist key={`${selectedSource.id}:${selectedSource.version}:${latest.id}:${latest.version}`} sourceId={selectedSource.id} sourceVersion={selectedSource.version} packageId={latest.id} packageVersion={latest.version} /> : <section className="panel content-jev-assist"><div className="panel-header"><div><h2>JEV 점수 보조 의견</h2><p>채택한 제목과 썸네일 카피를 함께 살펴봅니다.</p></div></div><p className="content-jev-assist-body">점수를 보려면 제목 후보 1개와 썸네일 카피 1개를 각각 채택해 주세요.</p></section> : null}
       <section className="panel saved-reference-list"><div className="panel-header"><div><h2>저장한 시장 레퍼런스</h2><p>원본 URL과 근거 수치를 유지합니다.</p></div><span>{references.length}개</span></div><div>{references.map((record) => <a href={record.source_url || "#"} target="_blank" rel="noreferrer" key={record.id}><span style={{ backgroundImage: `url(${meta(record, "thumbnail", "")})` }} /><span><strong>{record.title}</strong><small>{meta(record, "channelTitle", "")} · 조회 {Number(meta(record, "views", 0)).toLocaleString("ko-KR")}</small></span><ExternalLink size={13} /></a>)}{!references.length ? <div className="compact-empty"><Star size={24} /><strong>저장한 레퍼런스가 없습니다.</strong><span>검색 탭에서 시장 썸네일을 저장하세요.</span></div> : null}</div></section>
     </> : null}
 
