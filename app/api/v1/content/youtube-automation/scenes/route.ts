@@ -3,14 +3,15 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readYoutubeAutomationInput } from "@/lib/server/youtube-automation-input";
-import { generateYoutubeScenePlan, readYoutubeSceneRules, SCENE_MODEL, scenePlanSchema } from "@/lib/server/youtube-scenes";
+import { checkScenePlan, generateYoutubeSceneWindow, readYoutubeSceneRules, SCENE_MODEL, scenePlanSchema, type YoutubeScenePlan } from "@/lib/server/youtube-scenes";
+import { splitFishNarration } from "@/lib/server/fish-audio";
 import { readYoutubeCharacterCatalog } from "@/lib/server/youtube-characters";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 300;
 const inputSchema = z.object({ sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict();
 
 export async function POST(request: Request) {
@@ -29,20 +30,37 @@ export async function POST(request: Request) {
       JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
       return NextResponse.json({ reused: true, scenePlan: prior }, { headers: { "cache-control": "private, no-store" } });
     if (!automation.scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 원고와 채택 패키징을 다시 확인해 주세요.");
-    const generated = await generateYoutubeScenePlan({
+    // One window of paragraphs per call; the draft survives between calls until every paragraph has scenes.
+    const signature = { inputKey: input.inputKey, model: SCENE_MODEL, characterCatalogDigest: characters.digest,
+      templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, ruleVersions: rules.ruleVersions };
+    const stored = state.source.metadata.narratedScenePlanDraft as (typeof signature & { plan: YoutubeScenePlan }) | undefined;
+    const draft = stored && stored.inputKey === signature.inputKey && stored.model === signature.model &&
+      stored.characterCatalogDigest === signature.characterCatalogDigest && stored.templateVersion === signature.templateVersion &&
+      JSON.stringify(stored.ruleVersions) === JSON.stringify(signature.ruleVersions) && scenePlanSchema.safeParse(stored.plan).success ? stored.plan : null;
+    const from = draft?.scenes.length ?? 0;
+    const { window, segmentCount } = await generateYoutubeSceneWindow({
       script: automation.scriptText, title: automation.title, thumbnailCopy: automation.thumbnailCopy,
-      evidence: String(state.source.metadata.evidence ?? ""), ...rules, characters,
+      evidence: String(state.source.metadata.evidence ?? ""), rules: rules.rules, characters, from,
+      direction: draft?.visualDirection, recentIdeas: draft?.scenes.slice(-1).flatMap((scene) => scene.visualBeats.map((beat) => beat.idea)),
     });
+    const merged: YoutubeScenePlan = draft ? { ...draft, scenes: [...draft.scenes, ...window.scenes],
+      unresolved: [...draft.unresolved, ...window.unresolved].slice(0, 20) } : window;
     const { state: latest, plan: latestPlan } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
     if (latestPlan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "영상 설계 중 원고나 승인 상태가 변경됐습니다. 결과를 저장하지 않았습니다.");
     if (JSON.stringify((await readYoutubeSceneRules(actor)).ruleVersions) !== JSON.stringify(rules.ruleVersions))
       throw new ApiError(409, "SCENE_RULES_CHANGED", "영상 설계 중 OS 기준이 변경됐습니다. 결과를 저장하지 않았습니다.");
-    const scenePlan = { inputKey: input.inputKey, ...generated, generatedAt: new Date().toISOString(), judgmentMode: "advisory_only" };
+    const done = merged.scenes.length === segmentCount;
+    if (done) checkScenePlan(merged, splitFishNarration(automation.scriptText), characters.ids);
+    const scenePlan = done ? { ...signature, plan: merged, segmentCount, generatedAt: new Date().toISOString(), judgmentMode: "advisory_only" } : null;
+    const rest = { ...latest.source.metadata };
+    delete rest.narratedScenePlanDraft;
     const { data: saved, error } = await actor.supabase.from("os_records").update({
-      metadata: { ...latest.source.metadata, narratedScenePlan: scenePlan }, updated_by: actor.id,
+      metadata: scenePlan ? { ...rest, narratedScenePlan: scenePlan } : { ...rest, narratedScenePlanDraft: { ...signature, plan: merged } }, updated_by: actor.id,
     }).eq("id", latest.source.id).eq("version", latest.source.version).is("archived_at", null).select("id").maybeSingle();
     if (error || !saved) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "다른 작업이 먼저 콘텐츠를 변경했습니다. 새로 불러와 주세요.");
-    return NextResponse.json({ reused: false, scenePlan }, { headers: { "cache-control": "private, no-store" } });
+    if (!scenePlan) return NextResponse.json({ reused: false, done: false, progress: { scenes: merged.scenes.length, total: segmentCount } },
+      { status: 202, headers: { "cache-control": "private, no-store" } });
+    return NextResponse.json({ reused: false, done: true, scenePlan }, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠와 원고 버전을 확인해 주세요."));
     return apiErrorResponse(error);

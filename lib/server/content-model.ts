@@ -6,6 +6,7 @@ export interface ContentModelRequest {
   jsonSchema: Record<string, unknown>;
   maxTokens: number;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  timeoutMs?: number;
 }
 
 export const hasClaudeKey = () => Boolean((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY)?.trim());
@@ -19,7 +20,7 @@ function outputText(body: Record<string, unknown>) {
     .map((item) => String((item as { text?: string }).text ?? "")).join("\n").trim();
 }
 
-export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort }: ContentModelRequest) {
+export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000 }: ContentModelRequest) {
   if (model.startsWith("gpt-6-")) return generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens });
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
@@ -28,7 +29,7 @@ export async function generateContentText({ prompt, model, jsonSchema, maxTokens
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model, max_tokens: maxTokens, ...(acceptsTemperature(model) ? { temperature: 0.25 } : {}),
       output_config: { format: { type: "json_schema", schema: jsonSchema }, ...(effort ? { effort } : {}) }, messages: [{ role: "user", content: prompt }] }),
-    signal: AbortSignal.timeout(170_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const body = await response.json() as Record<string, unknown>;
   if (!response.ok) throw new ApiError(502, "CLAUDE_GENERATION_FAILED", "콘텐츠 생성 요청에 실패했습니다.");

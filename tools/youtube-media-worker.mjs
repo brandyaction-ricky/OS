@@ -16,8 +16,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
 const secret = process.env.YOUTUBE_MEDIA_WORKER_SECRET ?? "";
 
-async function call(body) {
-  const response = await fetch(`${osUrl}/api/v1/content/youtube-automation/media`, {
+async function call(body, route = "media") {
+  const response = await fetch(`${osUrl}/api/v1/content/youtube-automation/${route}`, {
     method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" }, body: JSON.stringify(body),
   });
   const json = await response.json().catch(() => ({}));
@@ -78,7 +78,9 @@ export async function processOne() {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   do {
-    const worked = await processOne().catch((error) => { console.error(error.message); return false; });
+    // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
+    const worked = await processOne().then((rendered) => rendered || call({}, "worker").then((step) => step.processed))
+      .catch((error) => { console.error(error.message); return false; });
     if (process.argv.includes("--once")) break;
     if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));
   } while (true);
