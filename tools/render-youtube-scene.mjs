@@ -16,8 +16,9 @@ import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
 import { validateSceneSvg, YOUTUBE_SCENE_PALETTE as C, YOUTUBE_SCENE_SAFE_AREA as SAFE } from "../lib/youtube-scene-svg.ts";
+import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "../lib/youtube-visual-template.ts";
 
-const VERSION = "brandyaction-vector-scene-v7";
+const VERSION = YOUTUBE_VISUAL_TEMPLATE_VERSION;
 const W = 1280, H = 720;
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fail = (message) => { throw new Error(message); };
