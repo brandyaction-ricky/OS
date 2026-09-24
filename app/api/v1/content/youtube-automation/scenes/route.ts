@@ -66,3 +66,29 @@ export async function POST(request: Request) {
     return apiErrorResponse(error);
   }
 }
+
+const acknowledgeSchema = z.object({ sourceId: z.string().uuid(), inputKey: z.string().length(64), acknowledgeUnresolved: z.literal(true) }).strict();
+
+/** The owner confirms they read the scene plan's open notes, which lets the voice stage start. */
+export async function PATCH(request: Request) {
+  if (!canUseYoutubeAutomationPilot(process.env)) return NextResponse.json({ error: { code: "AUTOMATION_PILOT_DISABLED", message: "영상 자동화 파일럿이 아직 연결되지 않았습니다." } }, { status: 404 });
+  try {
+    const actor = await authenticateRequest(request, { allowAgent: false });
+    const input = acknowledgeSchema.parse(await parseJson(request, 1_000));
+    const { state } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
+    if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 확인할 수 있습니다.");
+    const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: string; plan?: unknown } | undefined;
+    const parsed = scenePlanSchema.safeParse(scenePlan?.plan);
+    if (!scenePlan || scenePlan.inputKey !== input.inputKey || !parsed.success)
+      throw new ApiError(409, "SCENE_PLAN_REQUIRED", "현재 원고의 화면 설계를 먼저 완료해 주세요.");
+    const unresolvedAcknowledged = { by: actor.id, at: new Date().toISOString(), count: parsed.data.unresolved.length };
+    const { data: saved, error } = await actor.supabase.from("os_records").update({
+      metadata: { ...state.source.metadata, narratedScenePlan: { ...scenePlan, unresolvedAcknowledged } }, updated_by: actor.id,
+    }).eq("id", state.source.id).eq("version", state.source.version).is("archived_at", null).select("id").maybeSingle();
+    if (error || !saved) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "다른 작업이 먼저 콘텐츠를 변경했습니다. 새로 불러와 주세요.");
+    return NextResponse.json({ unresolvedAcknowledged }, { headers: { "cache-control": "private, no-store" } });
+  } catch (error) {
+    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠와 원고 버전을 확인해 주세요."));
+    return apiErrorResponse(error);
+  }
+}

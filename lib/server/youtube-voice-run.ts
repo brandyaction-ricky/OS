@@ -82,11 +82,15 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 음성 제작을 시작할 수 있습니다.");
   if (!plan.inputKey || plan.inputKey !== inputKey || !plan.script || !automation.scriptText)
     throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 승인된 원고와 패키징을 다시 확인해 주세요.");
-  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
+  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown;
+    unresolvedAcknowledged?: { by?: unknown; count?: unknown } } | undefined;
   const parsedScenes = scenePlanSchema.safeParse(scenePlan?.plan);
+  // Open notes block voice until the owner has read them (acknowledged the exact list).
+  const acknowledged = parsedScenes.success && scenePlan?.unresolvedAcknowledged?.by === actor.id &&
+    scenePlan.unresolvedAcknowledged.count === parsedScenes.data.unresolved.length;
   const generatedAt = typeof scenePlan?.generatedAt === "string" ? scenePlan.generatedAt : "";
   if (!scenePlan || scenePlan.inputKey !== inputKey || scenePlan.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
-    !parsedScenes.success || parsedScenes.data.unresolved.length ||
+    !parsedScenes.success || (parsedScenes.data.unresolved.length && !acknowledged) ||
     parsedScenes.data.scenes.some((scene, index) => scene.segmentIndex !== index) || !Number.isFinite(Date.parse(generatedAt)))
     throw new ApiError(409, "SCENE_PLAN_REQUIRED", "현재 원고의 화면 설계를 완료하고 확인할 항목을 먼저 해결해 주세요.");
   const rules = await readYoutubeSceneRules(actor);
