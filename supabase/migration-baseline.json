@@ -160,7 +160,7 @@
     {
       "file": "20260924090000_youtube_character_assets.sql",
       "sha256": "ba34c12c030162cf6f23c65d1244db9b056545b0a8f37e53ded120f19c4fb4c0",
-      "purpose": "create a private PNG/JSON bucket for owner-provided channel character art and its catalog; not yet applied to any environment"
+      "purpose": "create a private PNG/JSON bucket for owner-provided channel character art and its catalog; applied to DEV after explicit approval, Production not applied"
     }
   ],
   "legacyMigrations": [
