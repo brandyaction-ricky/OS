@@ -2,6 +2,16 @@
 
 Updated: 2026-09-24 Asia/Seoul.
 
+## How to read these records
+
+This document is a chronological migration and verification record. Counts and statements inside dated sections are
+snapshots from those dates; do not treat older counts as the live database state. At the current repository revision,
+`supabase/migrations` contains one core baseline and 14 forward migration files. The four content-evidence and
+archived-document read migrations are recorded as applied to DEV only and each has `productionAuthorized: false` in
+the migration manifest. The last recorded Production inventory is historical. Any new Production candidate requires
+a fresh read-only check of live migration history, live schema prerequisites, exact migration checksums, and the
+candidate commit before a separately approved application.
+
 ## 2026-09-24 archived document read boundary — DEV applied
 
 `20260924131455_archived_document_owner_read.sql` changes only

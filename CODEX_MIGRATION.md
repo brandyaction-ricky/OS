@@ -6,7 +6,9 @@ Move BrandyAction OS development from conversation-driven changes to repository-
 
 ## Current State
 
-The repository can be installed, tested, linted, type-checked, built, and run locally in demo mode. Repository CI performs the same side-effect-free gate plus a browser smoke test. The local checkout is linked to the existing Vercel project. The four active migrations are applied to the dedicated Supabase DEV project without seeds or Production data, including Auth-trigger restoration, RLS performance optimization, and least-privilege function execution. The 23-case pgTAP suite passes. Local Advisors are clean; DEV Performance warnings are zero and the remaining 15 DEV Security findings are the intentional authenticated RLS/RPC grants. QA uses an immutable Preview with isolated DEV resources, and the eight core Vercel variables are scoped only to Preview and Development. A dedicated DEV-only identity completed connected login QA on commit `da421f4`; Production remains blocked and untouched.
+> Historical setup notes below describe the initial migration and connectivity milestone, not the current migration inventory or current release state. For current environment/migration guidance, use [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md) and [`docs/SUPABASE_MIGRATION_BASELINE.md`](docs/SUPABASE_MIGRATION_BASELINE.md). For the current content-workflow/System One release boundary, use [`docs/SYSTEM_ONE_PRODUCTION_GATE_DESIGN.md`](docs/SYSTEM_ONE_PRODUCTION_GATE_DESIGN.md).
+
+At the initial setup milestone, the repository could be installed, tested, linted, type-checked, built, and run locally in demo mode; CI ran side-effect-free checks plus a browser smoke test. The first four-file migration bootstrap, 23-case pgTAP suite, initial Advisor review, Preview-only Vercel variables, and DEV-only login QA on commit `da421f4` are historical evidence. They do not describe the full current forward-migration chain or authorize Production changes. Production remains behind a separate review and approval.
 
 ## Target State
 

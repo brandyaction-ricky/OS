@@ -39,6 +39,11 @@ The TypeSafe/JEV integration is a separate DEV/QA-only shadow experiment. It req
 identity, and a non-main Preview (or local development). Keep both flags false in Production. Shadow results are
 ephemeral observations: they do not save a judgment, approve a stage, or move a content record.
 
+The content-planning handoff/reference panel and content-evidence panels currently share DEV/QA-only gates with
+preflight or JEV. Deploying the current code to Production therefore does not make those panels available. Do not
+reuse either experimental flag to expose a Production content workflow; use the reviewed design in
+[`SYSTEM_ONE_PRODUCTION_GATE_DESIGN.md`](SYSTEM_ONE_PRODUCTION_GATE_DESIGN.md) before implementing a separate gate.
+
 Environment values belong in `.env.local`/`.env.*.local`, the approved secret store, or Vercel environment variables. Only empty names and safe defaults belong in tracked templates. `NEXT_PUBLIC_*` values are browser-visible and must never contain secrets.
 
 ## Branch and Promotion Flow
@@ -72,11 +77,11 @@ Inject `E2E_TEST_PASSWORD` from the approved secret store before running the com
 
 ## Supabase Promotion Gate
 
-The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project exists in the approved organization and Seoul region. It is healthy and contains only the reviewed four-migration schema; no Production rows were copied. QA is a verification stage on an immutable Preview commit and does not use a third database project. Before connected DEV or QA:
+The Production Supabase project has no development branches. A separate `brandyaction-os-dev` project exists in the approved organization and Seoul region. QA is a verification stage on an immutable Preview commit and uses isolated DEV resources, not a third database project. The repository currently contains one baseline plus 14 forward migrations; the original four-file zero-state validation is historical bootstrap evidence, not verification of the entire current chain. Four later content-evidence and archived-document migrations are recorded as DEV-only and require separate Production authorization. Before any database promotion, freshly compare the exact target's migration history and schema with the candidate; do not infer live state from file counts or older snapshots.
 
 1. Keep the provisioned DEV project isolated from Production and control concurrent Preview test data.
-2. Use the applied four-migration chain in `supabase/migrations`; the 14 prior deltas are frozen in `supabase/migrations-legacy` and must never be replayed as an active chain. Production still has 7 non-matching history entries.
-3. Preserve the local three-migration zero-state evidence, incremental fourth-migration validation, 23-case RLS/function-grant suite, and recorded Advisor disposition. Repeat a destructive four-migration reset only with separate approval.
+2. Treat the core schema snapshot and forward migrations in `supabase/migrations` as the active chain. The 14 pre-baseline historical deltas are preserved in `supabase/migrations-legacy` and must never be replayed as the active chain. The most recent recorded Production inventory is a dated snapshot, not a live check; it showed unmatched history entries, so refresh it before preparing a candidate.
+3. Preserve the original four-file zero-state validation, incremental privilege-hardening check, 23-case RLS/function-grant suite, and recorded Advisor disposition as historical bootstrap evidence. A full-chain local reset is a separate destructive action and requires separate approval.
 4. Preview and Development Vercel scopes contain only DEV Supabase/configuration values. Verify each immutable Preview against that DEV schema with a dedicated test identity.
 5. Keep Production migration, seed, reset, policy, auth, and configuration changes behind separate approval.
 
@@ -113,7 +118,7 @@ For every candidate, record:
 - Local demo bootstrap, dependency audit, repository validation, and browser smoke CI are implemented.
 - The checkout is locally linked to the existing Vercel project. GitHub integration and automatic Preview/Production behavior are confirmed.
 - The latest observed Production deployment is ready at repository commit `0661eb4`; this work did not deploy or change it.
-- The dedicated Supabase DEV project is provisioned and healthy. All four active migrations are applied without seeds or Production data; remote verification found 34 public tables, 40 policies, 11 reviewed triggers, and the Auth profile trigger.
-- The local three-migration zero-state evidence remains valid; the fourth privilege-hardening migration passes incrementally with the 23-case pgTAP suite and clean local Advisors. DEV Performance Advisor warnings are zero. Its 15 Security Advisor warnings are the intentional authenticated RLS/RPC grants; anonymous privileged and authenticated service-only execution grants are zero.
+- The dedicated Supabase DEV project is provisioned and isolated. The active repository chain is one baseline plus 14 forward migrations. The original zero-state bootstrap verified the first four files; later migrations were applied individually under separate approvals. The four content-evidence/archived-document migrations are recorded as DEV-only. See `supabase/migration-baseline.json` and the dated evidence in `docs/SUPABASE_MIGRATION_BASELINE.md`; always perform a fresh read-only environment preflight before a new promotion.
+- The local four-file bootstrap validation and 23-case RLS/function-grant suite are historical evidence, not a full reset of the present chain. Do not infer current table, policy, trigger, or migration-history counts from the initial snapshot.
 - QA uses Preview plus isolated DEV resources. The eight core variables are configured only for Vercel Preview and Development scopes; Production values were not changed. A dedicated DEV-only Auth identity exists outside Git, and connected browser QA on the immutable `da421f4` Preview passed login, `/home` redirect, profile rendering, and the `서버 연결됨` readiness indicator.
 - No Production database, Production environment-variable, merge, promotion, or deployment change is performed by this setup.
