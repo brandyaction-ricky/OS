@@ -2,10 +2,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { updateRecord } from "@/lib/api-client";
+import { useSession } from "@/components/session-provider";
 import { addProductionLink, removeProductionLink, productionDocumentId, productionDocumentRoles, productionDocumentSummarySchema, readProductionLinks, type ProductionDocumentSummary } from "@/lib/content-production-links";
 import type { OsRecord } from "@/lib/record-types";
 
 export function ContentProductionDocuments({ source, token, disabled, onSaved }: { source: OsRecord; token: string; disabled: boolean; onSaved: (record: OsRecord) => void }) {
+  const { profile } = useSession();
+  const canUpdateSource = Boolean(profile && (profile.role === "admin" || [source.created_by, source.owner_id, source.assignee_id].includes(profile.id)));
   const links = readProductionLinks(source.metadata.productionDocumentLinks);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [checked, setChecked] = useState<Record<string, ProductionDocumentSummary | null>>({});
@@ -23,7 +26,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
     return summary;
   }
   async function connect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (running.current || disabled || !links) return;
+    event.preventDefault(); if (running.current || disabled || !canUpdateSource || !links) return;
     const form = new FormData(event.currentTarget), serial = ++request.current;
     running.current = true; setBusy(true); setError("");
     try {
@@ -44,7 +47,7 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
     finally { if (serial === request.current) { running.current = false; setBusy(false); } }
   }
   async function disconnect(id: string) {
-    if (running.current || disabled) return;
+    if (running.current || disabled || !canUpdateSource) return;
     const serial = ++request.current; running.current = true; setBusy(true); setError("");
     try { const result = await updateRecord(token, removeProductionLink(source, id)); if (serial === request.current) onSaved(result.record); }
     catch { if (serial === request.current) setError("연결을 해제하지 못했습니다. 최신 기획 메모를 다시 읽어 확인해 주세요."); }
@@ -61,9 +64,10 @@ export function ContentProductionDocuments({ source, token, disabled, onSaved }:
         {source.version !== link.sourceVersion ? <p>연결 이후 주제 버전이 바뀌었습니다. 제작 형식·기획·다른 연결 수정 등의 영향을 확인해 주세요. 이 문서를 반드시 고쳐야 한다는 뜻은 아닙니다.</p> : null}
         {checked[link.documentId] ? <p role="status">현재 문서 v{checked[link.documentId]!.version} · {checked[link.documentId]!.version === link.documentVersion ? "연결 당시 버전과 같습니다. 내용 검수 완료는 아닙니다." : "문서 버전이 바뀌었습니다. 연결 당시와 달라진 내용을 확인해 주세요."}</p> : <p>현재 접근·문서 버전 미확인</p>}
         <button type="button" className="ghost-button" disabled={busy || disabled} onClick={() => void check(link.documentId)}>현재 문서 확인</button>
-        <button type="button" className="ghost-button" disabled={busy || disabled} onClick={() => void disconnect(link.documentId)}>연결만 해제 · 원문 유지</button>
+        <button type="button" className="ghost-button" disabled={busy || disabled || !canUpdateSource} onClick={() => void disconnect(link.documentId)}>연결만 해제 · 원문 유지</button>
       </li>)}</ul> : <p>직접 연결한 설계표·원고 문서가 없습니다. 제작 공정 원고와는 별도 연결입니다.</p>}
-      <form className="research-brief" onSubmit={connect}><fieldset className="planning-handoff-fields" disabled={busy || disabled || links.length >= 12}>
+      {!canUpdateSource ? <p role="note">이 주제의 문서 연결은 기록 담당자 또는 관리자 계정에서 저장할 수 있습니다. 같은 팀 구성원은 위 근거 카드를 추가할 수 있지만 이 주제의 연결 정보는 수정할 수 없습니다.</p> : null}
+      <form className="research-brief" onSubmit={connect}><fieldset className="planning-handoff-fields" disabled={busy || disabled || !canUpdateSource || links.length >= 12}>
         <label><span>문서 용도</span><select name="role" defaultValue="design">{Object.entries(productionDocumentRoles).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
         <label><span>OS 문서 링크 또는 문서 ID</span><input name="document" required maxLength={2000} placeholder="지식 작업공간의 문서 링크" /></label>
         <button className="secondary-button" type="submit">{busy ? "확인 중…" : "문서 확인 후 연결 저장"}</button>
