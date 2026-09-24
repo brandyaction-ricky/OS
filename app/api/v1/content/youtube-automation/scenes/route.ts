@@ -11,7 +11,7 @@ import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 const inputSchema = z.object({ sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict();
 
 export async function POST(request: Request) {
