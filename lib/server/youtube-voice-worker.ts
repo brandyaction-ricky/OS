@@ -6,7 +6,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { generateContentText, hasClaudeKey } from "./content-model";
 import { readPipeline } from "./content-pipeline";
-import { splitFishNarration, synthesizeFishSegment, synthesizeFishSegmentWithTimestamps } from "./fish-audio";
+import { fishVoiceSettings, splitFishNarration, synthesizeFishSegment, synthesizeFishSegmentWithTimestamps } from "./fish-audio";
 import { readYoutubeSceneRules } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { digestVoiceValue, parseVoiceRun, voiceRunId, voiceSegmentPath, voiceSegmentTimingPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET, YOUTUBE_VOICE_EXECUTOR_MODEL, YOUTUBE_VOICE_RUN_KIND, type VoiceRunMetadata } from "./youtube-voice-run";
@@ -95,7 +95,8 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
       throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "음성 제작 연결이 필요합니다.");
     if (!metadata.lunaReview && metadata.executorModel !== YOUTUBE_VOICE_EXECUTOR_MODEL)
       throw new ApiError(409, "VOICE_RUN_STALE", "음성 검토 모델이 변경됐습니다. 새 작업을 시작해 주세요.");
-    if (digestVoiceValue(voiceReference) !== metadata.voiceReferenceFingerprint || voiceModel !== metadata.voiceModel)
+    if (digestVoiceValue(voiceReference) !== metadata.voiceReferenceFingerprint || voiceModel !== metadata.voiceModel ||
+      JSON.stringify(fishVoiceSettings(process.env)) !== JSON.stringify(metadata.voiceSettings ?? {}))
       throw new ApiError(409, "VOICE_RUN_STALE", "목소리 설정이 변경됐습니다.");
     const { data: bucket, error: bucketError } = await service.storage.getBucket(YOUTUBE_VOICE_BUCKET);
     if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소가 필요합니다.");
@@ -128,7 +129,7 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
     if (audioExists && timingPath && !timingExists)
       throw new ApiError(409, "VOICE_TIMING_ASSET_INCOMPLETE", "음성과 시간표가 함께 저장되지 않았습니다. 자산을 확인해 주세요.");
     if (!audioExists) {
-      const options = { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: voiceModel };
+      const options = { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: voiceModel, settings: metadata.voiceSettings };
       const timedAudio = timingPath
         ? await synthesizeFishSegmentWithTimestamps(segments[pending.index], options)
         : null;

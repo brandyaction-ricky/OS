@@ -6,7 +6,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import type { RequestActor } from "./auth";
 import { readPipeline } from "./content-pipeline";
-import { splitFishNarration } from "./fish-audio";
+import { fishVoiceSettings, splitFishNarration } from "./fish-audio";
 import { hasClaudeKey } from "./content-model";
 import { readYoutubeSceneRules, scenePlanSchema } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
@@ -30,6 +30,7 @@ export const voiceRunMetadataSchema = z.object({
   script: versionRef, packaging: versionRef, sceneRuleVersions: z.array(versionRef).length(4),
   scenePlanGeneratedAt: z.string().datetime(), sceneTemplateVersion: z.string().min(1).max(100).optional(),
   voiceReferenceFingerprint: hex, voiceModel: z.string().min(1),
+  voiceSettings: z.object({ speed: z.number().optional(), temperature: z.number().optional(), topP: z.number().optional() }).strict().optional(),
   timingMode: z.literal(YOUTUBE_VOICE_TIMING_MODE).optional(),
   executorModel: z.enum([YOUTUBE_VOICE_EXECUTOR_MODEL, LEGACY_VOICE_EXECUTOR_MODEL]), segments: z.array(segmentSchema).min(1).max(80),
   lunaReview: z.object({ ready: z.boolean(), issues: z.array(z.string().max(300)).max(20), at: z.string().datetime() }).strict().optional(),
@@ -98,6 +99,7 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (segments.length !== parsedScenes.data.scenes.length) throw new ApiError(409, "SCENE_PLAN_MISMATCH", "원고 단락과 장면 수가 다릅니다. 화면 설계를 다시 만드세요.");
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   const voiceModel = process.env.FISH_TTS_MODEL?.trim() || "s2.1-pro";
+  const voiceSettings = fishVoiceSettings(process.env);
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference || !hasClaudeKey())
     throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Claude API 연결을 확인해 주세요.");
   const { data: bucket, error: bucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_BUCKET);
@@ -107,13 +109,13 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 시간표 저장소를 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
   const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey, rules.ruleVersions,
-    generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE, YOUTUBE_VOICE_EXECUTOR_MODEL]);
+    generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE, YOUTUBE_VOICE_EXECUTOR_MODEL, voiceSettings]);
   const id = voiceRunId(runKey);
   const metadata: VoiceRunMetadata = {
     kind: YOUTUBE_VOICE_RUN_KIND, runKey, sourceId, inputKey, script: plan.script, packaging: plan.packaging,
     sceneRuleVersions: rules.ruleVersions, scenePlanGeneratedAt: generatedAt,
     sceneTemplateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceReferenceFingerprint: fingerprint,
-    voiceModel, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
+    voiceModel, voiceSettings, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
     segments: segments.map((text, index) => ({ index, textHash: digestVoiceValue(text), status: "pending" })), attempts: 0,
   };
   const { data, error } = await actor.supabase.from("os_records").insert({

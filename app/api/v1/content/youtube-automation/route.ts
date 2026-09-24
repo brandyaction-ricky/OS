@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
-import { splitFishNarration, synthesizeFishSegment } from "@/lib/server/fish-audio";
+import { splitFishNarration, fishVoiceSettings, synthesizeFishSegment } from "@/lib/server/fish-audio";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const script = state.records.find((record) => record.id === plan.script?.id && record.version === plan.script.version);
     if (!script) throw new ApiError(409, "AUTOMATION_SCRIPT_CHANGED", "현재 원고를 다시 확인해 주세요.");
     const first = splitFishNarration(script.description)[0];
-    const audio = await synthesizeFishSegment(first, { apiKey: process.env.FISH_API_KEY ?? "", referenceId: process.env.FISH_VOICE_REFERENCE_ID ?? "", model: process.env.FISH_TTS_MODEL });
+    const audio = await synthesizeFishSegment(first, { apiKey: process.env.FISH_API_KEY ?? "", referenceId: process.env.FISH_VOICE_REFERENCE_ID ?? "", model: process.env.FISH_TTS_MODEL, settings: fishVoiceSettings(process.env) });
     const latest = buildYoutubeAutomationPlan(await readPipeline(actor, input.sourceId));
     if (latest.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "음성 생성 중 원고나 승인 상태가 변경됐습니다. 이 결과는 사용하지 않습니다.");
     return new Response(new Uint8Array(audio.bytes), { headers: { ...headers, "content-type": audio.mimeType, "content-disposition": "inline; filename=voice-preview.mp3" } });

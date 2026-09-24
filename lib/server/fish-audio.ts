@@ -132,15 +132,40 @@ export function splitFishNarration(script: string): string[] {
 
 type Fetcher = (input: string, init: RequestInit) => Promise<Response>;
 
+export interface FishVoiceSettings { speed?: number; temperature?: number; topP?: number }
+
+/** Optional delivery tuning from server env; unset values keep Fish defaults. */
+export function fishVoiceSettings(env: Record<string, string | undefined>): FishVoiceSettings {
+  const read = (name: string, min: number, max: number) => {
+    const raw = env[name]?.trim();
+    if (!raw) return undefined;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < min || value > max)
+      throw new ApiError(503, "FISH_SETTINGS_INVALID", `${name} 값을 확인해 주세요.`);
+    return value;
+  };
+  const settings = { speed: read("FISH_TTS_SPEED", 0.5, 2), temperature: read("FISH_TTS_TEMPERATURE", 0, 1), topP: read("FISH_TTS_TOP_P", 0, 1) };
+  return Object.fromEntries(Object.entries(settings).filter(([, value]) => value !== undefined));
+}
+
+function fishBody(text: string, referenceId: string, settings: FishVoiceSettings = {}) {
+  return {
+    text: text.trim(), reference_id: referenceId.trim(), format: "mp3",
+    ...(settings.speed !== undefined ? { prosody: { speed: settings.speed } } : {}),
+    ...(settings.temperature !== undefined ? { temperature: settings.temperature } : {}),
+    ...(settings.topP !== undefined ? { top_p: settings.topP } : {}),
+  };
+}
+
 export async function synthesizeFishSegment(text: string, options: {
-  apiKey: string; referenceId: string; model?: string; fetcher?: Fetcher; signal?: AbortSignal;
+  apiKey: string; referenceId: string; model?: string; settings?: FishVoiceSettings; fetcher?: Fetcher; signal?: AbortSignal;
 }) {
   if (!text.trim() || text.length > FISH_SEGMENT_MAX_CHARS) throw new ApiError(400, "VOICE_SEGMENT_INVALID", "음성 단락의 길이를 확인해 주세요.");
   if (!options.apiKey.trim() || !options.referenceId.trim()) throw new ApiError(503, "FISH_NOT_CONFIGURED", "Fish Audio API 키와 비공개 목소리 ID가 필요합니다.");
   const response = await (options.fetcher ?? fetch)(FISH_TTS_ENDPOINT, {
     method: "POST", cache: "no-store", signal: options.signal ?? AbortSignal.timeout(60_000),
     headers: { authorization: `Bearer ${options.apiKey.trim()}`, "content-type": "application/json", model: options.model?.trim() || "s2.1-pro" },
-    body: JSON.stringify({ text: text.trim(), reference_id: options.referenceId.trim(), format: "mp3" }),
+    body: JSON.stringify(fishBody(text, options.referenceId, options.settings)),
   });
   if (!response.ok) throw new ApiError(502, "FISH_TTS_FAILED", `Fish Audio 음성 생성에 실패했습니다 (${response.status}).`);
   const contentType = response.headers.get("content-type") ?? "";
@@ -154,7 +179,7 @@ export async function synthesizeFishSegment(text: string, options: {
 
 /** Generate one narration segment and its word timing in the same Fish request. */
 export async function synthesizeFishSegmentWithTimestamps(text: string, options: {
-  apiKey: string; referenceId: string; model?: string; fetcher?: Fetcher; signal?: AbortSignal;
+  apiKey: string; referenceId: string; model?: string; settings?: FishVoiceSettings; fetcher?: Fetcher; signal?: AbortSignal;
 }) {
   if (!text.trim() || text.length > FISH_SEGMENT_MAX_CHARS)
     throw new ApiError(400, "VOICE_SEGMENT_INVALID", "음성 단락의 길이를 확인해 주세요.");
@@ -163,7 +188,7 @@ export async function synthesizeFishSegmentWithTimestamps(text: string, options:
   const response = await (options.fetcher ?? fetch)(FISH_TTS_TIMESTAMPS_ENDPOINT, {
     method: "POST", cache: "no-store", signal: options.signal ?? AbortSignal.timeout(90_000),
     headers: { authorization: `Bearer ${options.apiKey.trim()}`, "content-type": "application/json", model: options.model?.trim() || "s2.1-pro" },
-    body: JSON.stringify({ text: text.trim(), reference_id: options.referenceId.trim(), format: "mp3", latency: "balanced" }),
+    body: JSON.stringify({ ...fishBody(text, options.referenceId, options.settings), latency: "balanced" }),
   });
   if (!response.ok) throw new ApiError(502, "FISH_TTS_FAILED", `Fish Audio 음성 생성에 실패했습니다 (${response.status}).`);
   const contentType = response.headers.get("content-type") ?? "";
