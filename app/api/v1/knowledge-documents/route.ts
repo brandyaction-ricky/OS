@@ -107,7 +107,7 @@ export async function GET(request: Request) {
     const parsedOrganizationId = organizationId.parse(url.searchParams.get("organizationId"));
     const documentId = z.string().uuid().parse(url.searchParams.get("documentId"));
     await assertOrganization(actor, parsedOrganizationId);
-    const { data, error } = await createServiceSupabase().from("os_documents").select("*").eq("id", documentId).single();
+    const { data, error } = await actor.supabase.from("os_documents").select("*").eq("id", documentId).single();
     if (error || !data) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     if (actor.type === "agent") {
       const ownsDocument = data.owner_id === actor.ownerId;
@@ -175,7 +175,9 @@ export async function PATCH(request: Request) {
     const input = updateSchema.parse(await parseJson(request));
     await assertOrganization(actor, input.organizationId);
     const service = createServiceSupabase();
-    const { data: current, error: readError } = await service.from("os_documents").select("*").eq("id", input.documentId).single();
+    // A human must not inspect another member's private draft while preparing
+    // an update, even when the eventual write RPC would reject the change.
+    const { data: current, error: readError } = await actor.supabase.from("os_documents").select("*").eq("id", input.documentId).single();
     if (readError || !current) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     const expectedVersion = input.expectedVersion ?? current.current_version;
     const next = {
