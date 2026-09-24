@@ -156,6 +156,11 @@
       "file": "20260924010000_youtube_voice_timing.sql",
       "sha256": "9f75cfa6bec2733df717d820214c92e0881fd518a776bc4eb81ec06e1a6de69f",
       "purpose": "create a private, JSON-only word-timing bucket for the guarded DEV voice worker; applied to DEV after explicit approval, Production not applied"
+    },
+    {
+      "file": "20260924090000_youtube_character_assets.sql",
+      "sha256": "ba34c12c030162cf6f23c65d1244db9b056545b0a8f37e53ded120f19c4fb4c0",
+      "purpose": "create a private PNG/JSON bucket for owner-provided channel character art and its catalog; not yet applied to any environment"
     }
   ],
   "legacyMigrations": [

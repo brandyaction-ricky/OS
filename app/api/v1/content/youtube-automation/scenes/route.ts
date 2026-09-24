@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
 import { generateYoutubeScenePlan, readYoutubeSceneRules, SCENE_MODEL, scenePlanSchema } from "@/lib/server/youtube-scenes";
 import { selectedPackaging } from "@/lib/content-selected-packaging";
+import { readYoutubeCharacterCatalog } from "@/lib/server/youtube-characters";
 import { buildYoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
@@ -24,8 +25,9 @@ export async function POST(request: Request) {
     const plan = buildYoutubeAutomationPlan(state);
     if (!plan.inputKey || plan.inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
     const rules = await readYoutubeSceneRules(actor);
-    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; model?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
-    if (prior?.inputKey === input.inputKey && prior.model === SCENE_MODEL && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
+    const characters = await readYoutubeCharacterCatalog();
+    const prior = state.source.metadata.narratedScenePlan as { inputKey?: string; model?: unknown; characterCatalogDigest?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown } | undefined;
+    if (prior?.inputKey === input.inputKey && prior.model === SCENE_MODEL && prior.characterCatalogDigest === characters.digest && prior.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION &&
       JSON.stringify(prior.ruleVersions) === JSON.stringify(rules.ruleVersions) && scenePlanSchema.safeParse(prior.plan).success)
       return NextResponse.json({ reused: true, scenePlan: prior }, { headers: { "cache-control": "private, no-store" } });
     const script = state.records.find((record) => record.id === plan.script?.id && record.version === plan.script.version);
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
     if (!script || !packageChoice) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 원고와 채택 패키징을 다시 확인해 주세요.");
     const generated = await generateYoutubeScenePlan({
       script: script.description, title: packageChoice.title, thumbnailCopy: packageChoice.thumbnailCopies.join(" / "),
-      evidence: String(state.source.metadata.evidence ?? ""), ...rules,
+      evidence: String(state.source.metadata.evidence ?? ""), ...rules, characters,
     });
     const latest = await readPipeline(actor, input.sourceId);
     if (buildYoutubeAutomationPlan(latest).inputKey !== input.inputKey) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "영상 설계 중 원고나 승인 상태가 변경됐습니다. 결과를 저장하지 않았습니다.");

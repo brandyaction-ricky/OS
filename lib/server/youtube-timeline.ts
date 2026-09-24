@@ -72,14 +72,9 @@ export type YoutubeTimedVisualBeat = {
   segmentIndex: number;
   beatIndex: number;
   spokenAnchor: string;
-  visualAction: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["visualAction"];
-  composition: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["composition"];
-  motionKind: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["motionKind"];
-  motionPacing: YoutubeScenePlan["scenes"][number]["visualBeats"][number]["motionPacing"];
-  motionLabels: string[];
-  motionAccentIndex: number;
-  graphicSpec: string;
+  svg: string;
   displayText: string;
+  accentText: string;
   typographyAnchor: string;
   visualStartSeconds: number;
   typographyStartSeconds: number | null;
@@ -103,20 +98,16 @@ export function createYoutubeRenderBrief(plan: YoutubeScenePlan, timeline: Youtu
     throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 비트와 음성 시간표 수가 다릅니다.");
   for (const beat of timeline.beats) {
     const planned = plan.scenes[beat.segmentIndex]?.visualBeats[beat.beatIndex];
-    if (!planned || planned.spokenAnchor !== beat.spokenAnchor || planned.visualAction !== beat.visualAction ||
-      planned.composition !== beat.composition || planned.motionKind !== beat.motionKind ||
-      planned.motionPacing !== beat.motionPacing ||
-      planned.motionAccentIndex !== beat.motionAccentIndex ||
-      JSON.stringify(planned.motionLabels) !== JSON.stringify(beat.motionLabels) ||
-      planned.displayText !== beat.displayText || planned.typographyAnchor !== beat.typographyAnchor ||
-      planned.graphicSpec !== beat.graphicSpec)
+    if (!planned || planned.spokenAnchor !== beat.spokenAnchor || planned.svg !== beat.svg ||
+      planned.displayText !== beat.displayText || planned.accentText !== beat.accentText ||
+      planned.typographyAnchor !== beat.typographyAnchor)
       throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 계획이 시간표 생성 후 변경됐습니다.");
   }
   return { timingSource: "verified_word" as const, timeline, scenePlan: plan };
 }
 
 /**
- * Convert speech anchors into exact video positions without asking Sol to guess
+ * Convert speech anchors into exact video positions without asking the scene model to guess
  * seconds. The caller must supply verified word times for the final audio.
  */
 export function alignYoutubeVisualBeats(
@@ -192,18 +183,14 @@ export function alignYoutubeVisualBeats(
       const start = starts[beatIndex];
       const end = starts[beatIndex + 1] ?? segmentEnd;
       const span = end - start;
-      if (span < 0.45 || (beat.visualAction === "draw_character" && span < 1.25))
+      if (span < 0.45 || (beat.svg.includes("data-character=") && span < 1.25))
         throw new ApiError(409, "YOUTUBE_BEAT_TOO_SHORT", "일부 멘트의 화면 시간이 너무 짧습니다. 화면 비트를 다시 설계해 주세요.");
       const typographyStart = typographyStarts[beatIndex];
       if (typographyStart !== null && (typographyStart < start + 0.16 || typographyStart >= end - 0.12))
         throw new ApiError(409, "YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH", "화면 문구보다 그림이 먼저 보이도록 발화 기준 단어를 다시 선택해 주세요.");
       beats.push({
-        segmentIndex, beatIndex, spokenAnchor: beat.spokenAnchor,
-        visualAction: beat.visualAction, composition: beat.composition,
-        motionKind: beat.motionKind, motionPacing: beat.motionPacing,
-        motionLabels: beat.motionLabels, motionAccentIndex: beat.motionAccentIndex,
-        graphicSpec: beat.graphicSpec, displayText: beat.displayText,
-        typographyAnchor: beat.typographyAnchor,
+        segmentIndex, beatIndex, spokenAnchor: beat.spokenAnchor, svg: beat.svg,
+        displayText: beat.displayText, accentText: beat.accentText, typographyAnchor: beat.typographyAnchor,
         visualStartSeconds: start,
         typographyStartSeconds: typographyStart,
         endSeconds: end,
