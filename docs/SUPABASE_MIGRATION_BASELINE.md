@@ -1,6 +1,30 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-23 Asia/Seoul.
+Updated: 2026-09-24 Asia/Seoul.
+
+## 2026-09-24 archived document read boundary — DEV applied
+
+`20260924131455_archived_document_owner_read.sql` changes only
+`public.os_can_read_document`: the document owner and an administrator can
+still read a recoverable archived document, but a former team reader cannot
+read its document, versions, links, events, or chunks through the existing
+RLS policies. Ordinary same-team and company-canonical reads are unchanged.
+
+The representative approved `brandyaction-os-dev` only. A live preflight
+confirmed the previous function still allowed archived documents and the
+version was absent from DEV history. A guarded transaction applied the exact
+736-byte repository SQL and recorded version `20260924131455`; the stored
+statement MD5 `e2ddde5d888f0c390adb6b3a69073da5` matches the file.
+Nine transaction-scoped pgTAP checks completed without failure; their
+synthetic users and documents were rolled back (both remaining counts zero).
+In the existing DEV Preview, `brandybasic22` could no longer open the
+`wjdgh1346`-owned archived QA document by direct URL, while the owner still
+could. The teammate could still read a company-canonical QA document.
+
+This migration has **not** been applied to Production. Production needs a
+fresh live-function/history preflight and separate approval. Do not replay
+the whole migration chain or interpret the historical manifest `ready` /
+`apply` status as authorization for this migration.
 
 ## 2026-09-23 content evidence team read — DEV applied
 
