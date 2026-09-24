@@ -79,7 +79,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || call({}, "worker").then((step) => step.processed))
+    const worked = await processOne().then((rendered) => rendered || call({}, "worker").then((step) => {
+      if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
+      return step.processed;
+    }))
       .catch((error) => { console.error(error.message); return false; });
     if (process.argv.includes("--once")) break;
     if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));

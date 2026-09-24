@@ -102,6 +102,19 @@ ${EXAMPLE}
 [자가 점검]
 반환 전에 모든 비트에 대해 확인하세요: 멘트를 소리 없이 봐도 뜻이 전해지는가, 요소가 안전 영역 안에 있는가, 글자 겹침이 없는가, 화살표 끝이 경계에 닿는가, 캐릭터 비율이 원본과 같은가, 빨강이 핵심 한 곳뿐인가, 원고에 없는 사실을 만들지 않았는가.`;
 
+/** Free-text notes are advisory; trim overlong ones instead of discarding a paid window. Spoken and on-screen text stay strict. */
+function clampNotes(value: unknown) {
+  if (!value || typeof value !== "object") return value;
+  const plan = value as Record<string, unknown>;
+  const cut = (text: unknown, max: number) => typeof text === "string" ? text.slice(0, max) : text;
+  return { ...plan, visualDirection: cut(plan.visualDirection, 2_000), thumbnailDirection: cut(plan.thumbnailDirection, 1_000),
+    unresolved: Array.isArray(plan.unresolved) ? plan.unresolved.slice(0, 20).map((note) => cut(note, 500)) : plan.unresolved,
+    scenes: Array.isArray(plan.scenes) ? plan.scenes.map((scene: Record<string, unknown>) => ({ ...scene,
+      visualPrompt: cut(scene.visualPrompt, 1_000), evidenceNote: cut(scene.evidenceNote, 500),
+      visualBeats: Array.isArray(scene.visualBeats) ? scene.visualBeats.map((beat: Record<string, unknown>) => ({ ...beat, idea: cut(beat.idea, 200) })) : scene.visualBeats,
+    })) : plan.scenes };
+}
+
 /** Paragraphs and script characters per model call: a whole long script does not fit one request's time or output limit. */
 export const SCENE_WINDOW = 2;
 export const SCENE_WINDOW_CHARS = 260;
@@ -148,8 +161,9 @@ ${segments.map((segment, index) => `${index}. ${segment}`).join("\n")}`;
   const raw = await generateContentText({ cachedPrefix: stable, prompt, model: SCENE_MODEL, jsonSchema: outputSchema, maxTokens: 48_000, effort: "high", timeoutMs: 780_000 });
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new ApiError(502, "SCENE_PLAN_INVALID", "영상 설계 결과를 읽지 못했습니다."); }
-  const result = scenePlanSchema.safeParse(parsed);
-  if (!result.success || result.data.scenes.length !== to - input.from || result.data.scenes.some((scene, index) => scene.segmentIndex !== input.from + index))
+  const result = scenePlanSchema.safeParse(clampNotes(parsed));
+  if (!result.success) throw new ApiError(502, "SCENE_PLAN_INVALID", `영상 설계 형식이 맞지 않습니다: ${result.error.issues[0]?.path.join(".")} ${result.error.issues[0]?.message}`);
+  if (result.data.scenes.length !== to - input.from || result.data.scenes.some((scene, index) => scene.segmentIndex !== input.from + index))
     throw new ApiError(502, "SCENE_PLAN_INVALID", "영상 장면이 원고 단락과 일치하지 않습니다.");
   // One broken drawing should not discard a paid window: drop it while its scene keeps another beat.
   const window = result.data;
