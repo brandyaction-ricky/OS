@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { parseJson } from "@/lib/http";
+import { ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { evaluateJevContentAssist } from "@/lib/server/content-jev-assist";
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
@@ -96,6 +96,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ status: "ready", source: { id: topic.id, version: topic.version }, package: { id: selectedPackage.id, version: selectedPackage.version }, shadowEvaluation }, { headers });
   } catch (error) {
+    if (error instanceof ApiError) {
+      if (error.status === 401) return stopped("authentication_failed", 401);
+      if (error.status === 403) return stopped("access_denied", 403);
+      return stopped(error.status === 409 ? "stale" : "request_failed", error.status);
+    }
     const message = error instanceof Error ? error.message : "";
     const name = error instanceof Error ? error.name : "";
     if (message === "JEV_NOT_CONFIGURED") return stopped("provider_not_configured", 503);

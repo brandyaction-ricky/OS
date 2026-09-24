@@ -83,5 +83,7 @@ test("route is opt-in, authenticated, RLS scoped and has no write or broad DEV g
   assert.match(ui, /JEV 점수 보기/);
   assert.match(ui, /TypeSafe JEV로 전송됩니다/);
   assert.match(ui, /승인이나 발행 여부를 결정하지 않습니다/);
+  assert.match(ui, /조건이나 근거 단서를 더하라는 의견입니다/);
+  assert.match(ui, /핵심 표현을 바꾸라는 의견입니다/);
   assert.doesNotMatch(ui, /TYPESAFE_API_KEY/);
 });

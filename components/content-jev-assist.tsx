@@ -21,6 +21,11 @@ const labels: Array<[keyof Evaluation["scores"], string]> = [
   ["curiosityStrength", "궁금증 유발"], ["evidenceBoundary", "근거와 표현의 경계"],
 ];
 const riskLabels = { low: "낮음", medium: "보완 필요", high: "높음" } as const;
+const riskMeaning = {
+  low: "표현이 입력된 근거 범위와 대체로 맞는다는 의견입니다.",
+  medium: "핵심 표현은 유지하되 조건이나 근거 단서를 더하라는 의견입니다.",
+  high: "단서를 붙이는 것만으로 부족해 제목·썸네일의 핵심 표현을 바꾸라는 의견입니다.",
+} as const;
 const errorMessages: Record<string, string> = {
   packaging_selection_required: "제목과 썸네일 카피를 각각 하나씩 채택해 주세요.",
   stale: "콘텐츠나 패키징이 바뀌었습니다. 화면을 새로고침한 뒤 다시 눌러 주세요.",
@@ -34,7 +39,7 @@ const errorMessages: Record<string, string> = {
 function likelyCriterion(answer: ScoreAnswer) {
   const [value, probability] = Object.entries(answer.probabilities).sort((a, b) => b[1] - a[1])[0] ?? [];
   const criterion = answer.legend[value ?? ""];
-  return typeof criterion === "string" ? `${criterion} · ${Math.round((probability ?? 0) * 100)}%` : `확신도 ${Math.round(answer.confidence * 100)}%`;
+  return `${typeof criterion === "string" ? `기준: ${criterion} · 가능성 ${Math.round((probability ?? 0) * 100)}% · ` : ""}확신도 ${Math.round(answer.confidence * 100)}%`;
 }
 
 export function ContentJevAssist({ sourceId, sourceVersion, packageId, packageVersion }: {
@@ -67,10 +72,11 @@ export function ContentJevAssist({ sourceId, sourceVersion, packageId, packageVe
       <button className="secondary-button" type="button" disabled={busy || !accessToken} onClick={evaluate}>{busy ? "점수 확인 중…" : evaluation ? "다시 점수 보기" : "JEV 점수 보기"}</button>
       {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
       {evaluation ? <>
+        <p className="content-jev-result-note">일반 점수는 0~4점이며 숫자가 높을수록 해당 기준을 더 충족한다는 JEV 의견입니다. 과장 위험은 품질 점수가 아니라 표현이 근거를 넘어설 위험입니다.</p>
         <div className="content-jev-score-grid">{labels.map(([key, label]) => {
           const answer = evaluation.scores[key];
           return <article key={key}><span>{label}</span><strong>{answer.score.toFixed(1)}<small> / 4</small></strong><small>{likelyCriterion(answer)}</small></article>;
-        })}<article className={`risk-${evaluation.overclaimRisk.choice}`}><span>과장 위험</span><strong>{riskLabels[evaluation.overclaimRisk.choice]}</strong><small>확신도 {Math.round(evaluation.overclaimRisk.confidence * 100)}%</small></article></div>
+        })}<article className={`risk-${evaluation.overclaimRisk.choice}`}><span>과장 위험</span><strong>{riskLabels[evaluation.overclaimRisk.choice]}</strong><small>{riskMeaning[evaluation.overclaimRisk.choice]}</small><small>확신도 {Math.round(evaluation.overclaimRisk.confidence * 100)}%</small></article></div>
         <p className="content-jev-result-note">JEV가 이 기준으로 가장 가능성이 높다고 본 결과입니다. 객관적 정답이나 성과 예측이 아니라 의사결정을 돕는 의견으로 봐 주세요.</p>
       </> : null}
     </div>
