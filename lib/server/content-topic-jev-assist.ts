@@ -22,26 +22,31 @@ const criteria = {
   targetFit: {
     label: "타깃의 실제 고민",
     rubric: rubric(["주제와 타깃의 연결을 자료에서 찾기 어렵습니다.", "타깃과 관련은 있지만 구체적인 장면이나 고민이 보이지 않습니다.", "관련된 고민은 보이지만 누구의 어떤 상황인지 더 분명해야 합니다.", "타깃의 구체적인 상황과 주제가 잘 연결됩니다.", "타깃의 실제 장면과 지금 막힌 판단이 구체적으로 맞닿아 있습니다."]),
+    unknown: "입력에 타깃 정보가 없어 미확인입니다.",
     improvement: "누가 어떤 상황에서 무엇을 판단하기 어려운지 한 장면으로 적어 보세요.",
   },
   personalQuestion: {
     label: "자기 경험에 대입할 질문",
     rubric: rubric(["시청자가 자신에게 던질 질문이 드러나지 않습니다.", "넓은 질문은 있으나 시청자의 경험과 연결하기 어렵습니다.", "질문은 짐작되지만 한 가지로 좁히면 좋겠습니다.", "자신의 경험을 돌아볼 질문이 분명합니다.", "질문이 구체적이고 시청자가 자기 상황에 바로 대입할 수 있습니다."]),
+    unknown: "입력에서 시청자가 자신에게 던질 질문을 찾지 못해 미확인입니다.",
     improvement: "시청자가 실제로 할 법한 질문을 한 문장으로 써 보세요.",
   },
   viewerValue: {
     label: "영상 자체의 도움",
     rubric: rubric(["시청자가 얻을 판단 재료가 확인되지 않습니다.", "도움의 방향은 있으나 영상에서 얻을 구체적인 것이 모호합니다.", "도움은 예상되지만 질문·구분 기준·작은 적용 중 하나를 정하면 더 분명해집니다.", "시청자가 자신의 경험에 적용할 구분이나 단서를 얻을 수 있습니다.", "영상이 약속하는 도움과 시청자의 다음 판단이 구체적으로 연결됩니다."]),
+    unknown: "입력에서 영상이 제공할 도움이 확인되지 않아 미확인입니다.",
     improvement: "시청자가 보고 난 뒤 얻을 질문, 구분 기준 또는 작은 적용을 적어 보세요.",
   },
   evidence: {
     label: "근거와 확인 범위",
     rubric: rubric(["주요 주장을 확인할 근거가 제공되지 않았습니다.", "근거가 일부 있으나 어떤 주장에 연결되는지 불분명합니다.", "근거가 주제와 연결되지만 사실·해석·가설을 구분할 부분이 있습니다.", "근거가 주장을 뒷받침하고 확인 범위도 대체로 드러납니다.", "주장별 근거와 사실·해석·가설의 경계가 명확합니다."]),
+    unknown: "근거 정보가 없어 사실·해석의 범위를 판단할 수 없어 미확인입니다.",
     improvement: "주요 주장마다 출처를 연결하고 사실, 해석, 아직 확인하지 않은 가설을 나눠 적으세요.",
   },
   distinctAnswer: {
     label: "새로운 답과 도달 근거",
     rubric: rubric(["비교 자료가 없어 새로움이나 도달 가능성을 판단하기 어렵습니다.", "차별점 또는 시청자 언어의 근거가 아직 확인되지 않았습니다.", "새로운 답이나 도달 근거 중 하나가 일부 제시됐습니다.", "기존 답과 다른 점 및 시청자 언어·사례의 근거가 보입니다.", "기존 영상과의 차이와 실제 시청자 언어·벤치마크 근거가 구체적입니다."]),
+    unknown: "비교 대상이나 시장 근거가 입력에 없어 미확인입니다.",
     improvement: "비교할 기존 영상·시청자 표현·벤치마크 중 확인한 자료를 추가하고, 없으면 미검증이라고 표시하세요.",
   },
 } as const;
@@ -49,12 +54,12 @@ const criteria = {
 export const CONTENT_TOPIC_JEV_QUESTIONS = Object.freeze(Object.fromEntries(
   Object.entries(criteria).map(([key, item]) => [key, {
     type: "choice",
-    instructions: `주제·기획 보조 검토 항목: ${item.label}. 입력된 정보만 평가하고 정보가 없으면 낮은 점수를 추측하지 말고 가장 근접한 판단과 낮은 확신도를 표시한다. 점수는 정답·채택 기준이 아니다.`,
-    criteria: item.rubric,
+    instructions: `주제·기획 보조 검토 항목: ${item.label}. 입력된 정보만 평가한다. 관련 정보가 없거나 판단 근거가 부족하면 choice를 unknown으로 반환한다. 확인된 근거 없이 점수를 추측하지 않는다. 점수는 정답·채택 기준이 아니다.`,
+    criteria: { ...item.rubric, unknown: item.unknown },
   }]),
 ));
 
-const choiceSchema = z.object({ type: z.literal("choice"), choice: z.enum(["0", "1", "2", "3", "4"]), confidence: z.number().min(0).max(1) }).passthrough();
+const choiceSchema = z.object({ type: z.literal("choice"), choice: z.enum(["0", "1", "2", "3", "4", "unknown"]), confidence: z.number().min(0).max(1) }).passthrough();
 const responseSchema = z.object({
   model: z.string().min(1).max(100),
   answers: z.object({
@@ -108,17 +113,19 @@ export async function evaluateContentTopicJev(input: unknown, options: { apiKey:
 
   const scored = Object.entries(criteria).map(([key, item]) => {
     const answer = parsed.data.answers[key as keyof typeof parsed.data.answers];
-    const score = Number(answer.choice) as 0 | 1 | 2 | 3 | 4;
-    const meaning = item.rubric[String(score) as keyof typeof item.rubric];
-    const missing = score <= 1 ? item.improvement : "";
+    const score = answer.choice === "unknown" ? null : Number(answer.choice) as 0 | 1 | 2 | 3 | 4;
+    const meaning = score === null ? item.unknown : item.rubric[String(score) as keyof typeof item.rubric];
+    const missing = score === null || score <= 1 ? item.improvement : "";
     return { key, label: item.label, score, explanation: meaning, confidence: answer.confidence, improvement: missing };
   });
-  const overall = Number((scored.reduce((sum, item) => sum + item.score, 0) / scored.length).toFixed(1));
+  const evaluated = scored.filter((item): item is typeof item & { score: number } => item.score !== null);
+  const overall = evaluated.length ? Number((evaluated.reduce((sum, item) => sum + item.score, 0) / evaluated.length).toFixed(1)) : null;
   const uncertainties = [
     ...(!material.description ? ["주제 설명이 비어 있어 주제와 시청자 고민의 연결을 확인하기 어렵습니다."] : []),
     ...(!material.audience ? ["타깃 정보가 없어 대상과 주제의 적합성을 확인하기 어렵습니다."] : []),
     ...(!material.evidence && !material.sourceUrl && !material.researchSources && !material.analystNotes ? ["근거 메모, 리서치 출처, 분석 메모가 없어 근거 범위를 확인할 수 없습니다."] : []),
     ...(!material.planningSummary ? ["기획 요약이 없어 완성된 기획 방향을 충분히 평가하지 못했습니다."] : []),
+    ...scored.filter((item) => item.score === null).map((item) => `${item.label}: 입력 근거가 부족해 미확인입니다.`),
     ...scored.filter((item) => item.confidence < 0.55).map((item) => `${item.label}: JEV의 확신도가 낮습니다.`),
   ];
   const improvements = scored.filter((item) => item.improvement).map((item) => item.improvement);
@@ -127,6 +134,7 @@ export async function evaluateContentTopicJev(input: unknown, options: { apiKey:
     model: parsed.data.model,
     overallScore: overall,
     scale: "0~4",
+    evaluatedCount: evaluated.length,
     criteria: scored,
     uncertainties: [...new Set(uncertainties)],
     improvements: [...new Set(improvements)],

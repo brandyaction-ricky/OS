@@ -5,8 +5,8 @@ import { useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 
-type Criterion = { key: string; label: string; score: number; explanation: string; confidence: number; improvement: string };
-type Evaluation = { overallScore: number; scale: "0~4"; criteria: Criterion[]; uncertainties: string[]; improvements: string[]; advisoryOnly: true; saved: false };
+type Criterion = { key: string; label: string; score: number | null; explanation: string; confidence: number; improvement: string };
+type Evaluation = { overallScore: number | null; scale: "0~4"; evaluatedCount: number; criteria: Criterion[]; uncertainties: string[]; improvements: string[]; advisoryOnly: true; saved: false };
 type EvaluationResponse = { status: "ready"; shadowEvaluation: Evaluation };
 
 const errors: Record<string, string> = {
@@ -48,9 +48,9 @@ export function ContentTopicJevAssist({ topicId, topicVersion, planId, planVersi
       <button className="secondary-button" type="button" disabled={busy || !accessToken} onClick={evaluate}>{busy ? "점수 확인 중…" : evaluation ? "다시 TypeSafe JEV에 보내기" : "TypeSafe JEV에 보내 점수 보기"}</button>
       {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
       {evaluation ? <>
-        <p className="content-jev-result-note">종합 참고 점수 <strong>{evaluation.overallScore.toFixed(1)} / {evaluation.scale}</strong>. 항목별 평가는 제출된 정보만 본 JEV 의견입니다. 이 점수로 주제를 채택하거나 보류하지 않습니다.</p>
+        <p className="content-jev-result-note">종합 참고 점수 <strong>{evaluation.overallScore === null ? "미확인" : `${evaluation.overallScore.toFixed(1)} / ${evaluation.scale}`}</strong> · {evaluation.evaluatedCount}/5개 확인 가능 항목의 평균입니다. 항목별 평가는 제출된 정보만 본 JEV 의견입니다. 이 점수로 주제를 채택하거나 보류하지 않습니다.</p>
         <div className="topic-jev-criteria">{evaluation.criteria.map((item) => <article key={item.key}>
-          <div><strong>{item.label}</strong><span>{item.score} / 4</span></div>
+          <div><strong>{item.label}</strong><span>{item.score === null ? "미확인" : `${item.score} / 4`}</span></div>
           <p>{item.explanation}</p>
           <small>JEV 확신도 {Math.round(item.confidence * 100)}%</small>
         </article>)}</div>

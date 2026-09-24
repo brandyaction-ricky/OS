@@ -38,7 +38,7 @@ const material = {
   researchSources: "https://example.com/research", analystNotes: "비교 영상과 다른 적용 질문",
   planningSummary: "경험을 돌아보고 역할·환경을 구분한다.", handoff: "근거 확인 후 패키징 단계로 전달",
 };
-const response = { model: "jev-test", answers: Object.fromEntries(Object.keys(CONTENT_TOPIC_JEV_QUESTIONS).map((key) => [key, { type: "choice", choice: key === "evidence" ? "1" : "3", confidence: 0.8 }])) };
+const response = { model: "jev-test", answers: Object.fromEntries(Object.keys(CONTENT_TOPIC_JEV_QUESTIONS).map((key) => [key, { type: "choice", choice: key === "evidence" ? "1" : key === "distinctAnswer" ? "unknown" : "3", confidence: 0.8 }])) };
 
 test("topic planning JEV has a standalone QA Preview gate bound to the DEV database", () => {
   assert.equal(canUseContentTopicJevAssist(qa), true);
@@ -75,7 +75,10 @@ test("provider adapter returns explainable advisory scores and sends no record i
   } });
   assert.equal(calls, 1);
   assert.equal(result.criteria.length, 5);
-  assert.equal(result.overallScore, 2.6);
+  assert.equal(result.overallScore, 2.5);
+  assert.equal(result.evaluatedCount, 4);
+  assert.equal(result.criteria.find((item) => item.key === "distinctAnswer").score, null);
+  assert.match(result.criteria.find((item) => item.key === "distinctAnswer").explanation, /미확인/);
   assert.equal(result.advisoryOnly, true);
   assert.equal(result.saved, false);
   assert.match(result.improvements[0], /주요 주장마다 출처/);
