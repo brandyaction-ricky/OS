@@ -65,7 +65,7 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function ContentRadarWorkspace({ showReferenceCheck = false }: { showReferenceCheck?: boolean }) {
+export function ContentRadarWorkspace({ showPlanningHandoff = false, showReferenceCheck = false }: { showPlanningHandoff?: boolean; showReferenceCheck?: boolean }) {
   const { accessToken, demo, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
@@ -485,7 +485,7 @@ export function ContentRadarWorkspace({ showReferenceCheck = false }: { showRefe
           {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
           {showReferenceCheck ? <SystemOnePlanningCheck key={`${selected.id}:${selected.version}`} id={selected.id} version={selected.version} /> : null}
-          {showReferenceCheck ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}:${profile?.id}`} source={selected} disabled={busy} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("제작 인계 메모를 저장했습니다. 공유는 실행하지 않았습니다. 변경된 입력의 기존 공정 승인은 다시 확인해 주세요."); }} /> : null}
+          {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}:${profile?.id}`} source={selected} disabled={busy} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("제작 인계 메모를 저장했습니다. 공유는 실행하지 않았습니다. 변경된 입력의 기존 공정 승인은 다시 확인해 주세요."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
         </> : <div className="compact-empty"><Target size={24} /><strong>판정할 틈새를 선택하세요.</strong></div>}</article>
       </section>

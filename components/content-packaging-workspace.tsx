@@ -278,7 +278,7 @@ export function ContentPackagingWorkspace({ showContentEvidence = false }: { sho
 
     {tab === "evidence" && showContentEvidence ? <>
       <section className="panel package-evidence-guide"><h2>제목·썸네일의 근거</h2><p>제목과 카피를 정한 뒤, 결정 문서와 검토할 주장을 이 주제에 연결합니다. 아래 기록은 원고·칠판 진행안 화면에서도 그대로 이어집니다. 공개본 관측은 발행 후에만 기록하세요.</p><div className="drawer-actions"><button className="secondary-button" onClick={() => setTab("saved")}>선택한 제목·카피 확인</button>{sourceId ? <Link className="secondary-button" href={`/content/scripts?sourceId=${encodeURIComponent(sourceId)}`}>원고·칠판 단계에서 이어보기</Link> : null}</div></section>
-      {sourceId ? <LinkedPlanningHandoff key={`packaging-evidence:${sourceId}`} sourceIdOverride={sourceId} evidenceOnly showEvidence packagingStage /> : <p className="inline-alert warning">기준 콘텐츠를 먼저 선택해 주세요.</p>}
+      {sourceId ? <LinkedPlanningHandoff key={`packaging-evidence:${sourceId}`} sourceIdOverride={sourceId} showEvidence packagingStage /> : <p className="inline-alert warning">기준 콘텐츠를 먼저 선택해 주세요.</p>}
     </> : null}
 
     {tab === "saved" ? <>

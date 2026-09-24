@@ -37,11 +37,11 @@ test("the evidence-only UI does not turn on JEV or preflight tools", async () =>
   const panel = await readFile(new URL("../components/content-planning-handoff.tsx", import.meta.url), "utf8");
   const scripts = await readFile(new URL("../components/content-pipeline-workspaces.tsx", import.meta.url), "utf8");
   assert.match(page, /canUseSystemOneContentEvidence\(process.env\)/);
-  assert.match(scripts, /evidenceOnly=\{!showPlanningHandoff\} showEvidence=\{showContentEvidence\}/);
+  assert.match(scripts, /showPlanningHandoff=\{showPlanningHandoff\} showEvidence=\{showContentEvidence\}/);
   assert.match(panel, /showEvidence \? <>[\s\S]*?<ContentCopyLineage[\s\S]*?<ContentClaimEvidence/);
   assert.match(panel, /<ContentCopyLineage key=\{`copy-lineage:\$\{state\.source\.id\}`\}/);
   assert.match(panel, /<ContentClaimEvidence key=\{`claim-evidence:\$\{state\.source\.id\}`\}/);
-  assert.match(panel, /!evidenceOnly \? <>[\s\S]*?<ContentJevShadowCheck/);
+  assert.match(panel, /showSystemOneJevShadow \? <ContentJevShadowCheck/);
   assert.match(scripts, /showProductionDocuments=\{showContentEvidence\}/);
   assert.match(panel, /showProductionDocuments \? <ContentProductionDocuments/);
 });

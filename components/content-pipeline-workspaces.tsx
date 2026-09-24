@@ -47,7 +47,7 @@ export function ContentTopicsWorkspace() {
   </>;
 }
 
-export function ContentScriptsWorkspace({ showPlanningHandoff = false, showContentEvidence = false }: { showPlanningHandoff?: boolean; showContentEvidence?: boolean } = {}) {
+export function ContentScriptsWorkspace({ showPlanningHandoff = false, showContentEvidence = false, showSystemOnePreflight = false, showSystemOneJevShadow = false }: { showPlanningHandoff?: boolean; showContentEvidence?: boolean; showSystemOnePreflight?: boolean; showSystemOneJevShadow?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [root, setRoot] = useState(SCRIPT_DOCUMENT_ROOT);
   const [folderOptions, setFolderOptions] = useState<string[]>([]);
@@ -188,9 +188,9 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, showConte
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
-    {showPlanningHandoff || showContentEvidence ? <p className="inline-alert" role="note">아래 영상 폴더는 현재 DEV 지식함의 원고 목록입니다. 운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다. 주제별 제작 공정 원고·문서 연결과는 별도로 관리됩니다.</p> : null}
-    {showPlanningHandoff || showContentEvidence ? <LinkedPlanningHandoff evidenceOnly={!showPlanningHandoff} showEvidence={showContentEvidence} showProductionDocuments={showContentEvidence} /> : null}
-    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff || showContentEvidence} />
+    {showPlanningHandoff || showContentEvidence ? <p className="inline-alert" role="note">아래 영상 폴더는 현재 연결된 지식함의 원고 목록입니다. 운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다. 주제별 제작 공정 원고·문서 연결과는 별도로 관리됩니다.</p> : null}
+    {showPlanningHandoff || showContentEvidence ? <LinkedPlanningHandoff showPlanningHandoff={showPlanningHandoff} showEvidence={showContentEvidence} showProductionDocuments={showContentEvidence} showSystemOnePreflight={showSystemOnePreflight} showSystemOneJevShadow={showSystemOneJevShadow} /> : null}
+    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} />
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>현재 환경의 영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>

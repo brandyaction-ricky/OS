@@ -42,7 +42,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
     } finally { saving.current = false; if (active.current) setBusy(false); }
   }
   return <section className="panel content-workflow-panel" aria-label="기획에서 제작으로 인계">
-    <div className="panel-header"><div><h3>기획에서 제작으로 인계</h3><p>{source.title} · 주제 v{source.version} · DEV 검수용</p></div></div>
+    <div className="panel-header"><div><h3>기획에서 제작으로 인계</h3><p>{source.title} · 주제 v{source.version} · 작업 메모(판정·승인 아님)</p></div></div>
     <div className="content-workflow-body">
     <p>주제·방향 → 제목·썸네일 → 자료·축·설계 → 형식에 맞는 집필 → 검수 → 전달 범위 결정</p>
     <p>아래 내용은 작업 메모입니다. 저장은 패키징 승인·집필 시작 허가·공유 실행이 아닙니다. 단계별 완료 조건은 OS 정본으로 별도 확인합니다.</p>
@@ -66,7 +66,7 @@ export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = f
   </section>;
 }
 
-export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = false, showProductionDocuments = false, sourceIdOverride, packagingStage = false }: { evidenceOnly?: boolean; showEvidence?: boolean; showProductionDocuments?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
+export function LinkedPlanningHandoff({ showPlanningHandoff = false, showEvidence = false, showProductionDocuments = false, showSystemOnePreflight = false, showSystemOneJevShadow = false, sourceIdOverride, packagingStage = false }: { showPlanningHandoff?: boolean; showEvidence?: boolean; showProductionDocuments?: boolean; showSystemOnePreflight?: boolean; showSystemOneJevShadow?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [urlSourceId, setUrlSourceId] = useState("");
   const sourceId = sourceIdOverride ?? urlSourceId;
@@ -86,13 +86,13 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
         if (source.id !== sourceId || source.record_type !== "content_topic") throw new Error("연결된 기획 주제를 확인할 수 없습니다.");
         if (!Array.isArray(records)) throw new Error("연결된 산출물을 확인할 수 없습니다.");
         setState({ token: accessToken, source, records, evidenceAuthors: evidenceAuthors ?? {} });
-      }).catch(() => { if (active) setError(`${evidenceOnly ? "증거 기록을" : "인계 메모를"} 불러오지 못했습니다. 로그인·주제 접근 권한을 확인해 주세요.`); });
+      }).catch(() => { if (active) setError(`${showEvidence && !showPlanningHandoff ? "증거 기록을" : "인계 메모를"} 불러오지 못했습니다. 로그인·주제 접근 권한을 확인해 주세요.`); });
     }
     return () => { active = false; };
-  }, [accessToken, demo, evidenceOnly, sourceId, revision]);
+  }, [accessToken, demo, showEvidence, showPlanningHandoff, sourceId, revision]);
   if (!sourceId || demo || !accessToken) return null;
-  return <><div className="drawer-actions"><button className="secondary-button" disabled={editing} onClick={() => setRevision(value => value + 1)}>{evidenceOnly ? "증거 기록 다시 읽기" : "최신 기획 메모 다시 읽기"}</button></div>{notice ? <p role="status">{notice}</p> : null}{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <>
-    {!evidenceOnly ? <>
+  return <><div className="drawer-actions"><button className="secondary-button" disabled={editing} onClick={() => setRevision(value => value + 1)}>{showEvidence && !showPlanningHandoff ? "증거 기록 다시 읽기" : "최신 기획 메모 다시 읽기"}</button></div>{notice ? <p role="status">{notice}</p> : null}{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <>
+    {showPlanningHandoff ? <>
       {!editing ? <button className="secondary-button" onClick={() => { setEditing(true); setNotice(""); }}>제작 형식·인계 메모 수정</button> : null}
       <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}:${editing}`} source={state.source} onCancel={() => setEditing(false)} onSaved={editing ? record => { setState(current => current ? { ...current, source: record } : null); setEditing(false); setNotice("인계 메모를 저장했습니다. 기존 산출물·승인 이력은 보존했습니다. 변경된 입력의 공정 승인은 다시 확인해 주세요."); } : undefined} />
       <ContentPackagingEvidence source={state.source} records={state.records} />
@@ -102,11 +102,11 @@ export function LinkedPlanningHandoff({ evidenceOnly = false, showEvidence = fal
       <ContentCopyLineage key={`copy-lineage:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} allowPublicationEntry={!packagingStage} onSaved={() => setRevision(value => value + 1)} />
       <ContentClaimEvidence key={`claim-evidence:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
     </> : null}
-    {!evidenceOnly ? <>
-      <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
+    {showSystemOneJevShadow ? <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} /> : null}
+    {showSystemOnePreflight ? <>
       <ContentStageReference sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
       <ContentReviewContext sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
     </> : null}
     {showProductionDocuments ? <ContentProductionDocuments key={`${state.source.id}:${state.source.version}:${accessToken}`} source={state.source} token={accessToken} disabled={editing} onSaved={record => { setState(current => current ? { ...current, source: record } : null); setNotice("문서 연결 정보를 갱신했습니다. 원문·공유 권한·승인 상태는 변경하지 않았습니다."); }} /> : null}
-    </> : <p role="status">{evidenceOnly ? "증거 기록을" : "기획 인계 메모를"} 불러오는 중입니다.</p>}</>;
+    </> : <p role="status">{showEvidence && !showPlanningHandoff ? "증거 기록을" : "기획 인계 메모를"} 불러오는 중입니다.</p>}</>;
 }

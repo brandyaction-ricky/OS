@@ -28,18 +28,20 @@ test("reject oversized, invalid enums, missing fields and forged completion", ()
   for (const [key, , limit] of handoffFields) assert.equal(planningHandoffSchema.safeParse({ ...input(), [key]: "x".repeat(limit + 1) }).success, false);
   for (const change of [{ productionFormat: "information" }, { contentApproach: "board" }, { thumbnailCopy: undefined }, { executionAllowed: true }]) assert.throws(() => planningHandoffUpdate({ id: "test", version: 1, metadata: {} }, { ...input(), ...change }));
 });
-test("planning and script surfaces use DEV gate; saved memo is not fed to generation", () => {
+test("planning memo has an independent environment gate; judgment gates stay separate", () => {
   const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
   const page = read("../app/(os)/[stage]/[page]/page.tsx");
   const radar = read("../components/content-radar-workspace.tsx");
   const scripts = read("../components/content-pipeline-workspaces.tsx");
   const panel = read("../components/content-planning-handoff.tsx");
-  assert.match(page, /canUseSystemOnePreflight\(process.env\) \|\| canUseSystemOneJevShadow\(process.env\)/);
-  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{systemOneContentEnabled\} showContentEvidence=\{contentEvidenceEnabled\}/);
-  assert.match(radar, /showReferenceCheck \? <ContentPlanningHandoff/);
-  assert.match(scripts, /showPlanningHandoff \|\| showContentEvidence \? <LinkedPlanningHandoff evidenceOnly=\{!showPlanningHandoff\} showEvidence=\{showContentEvidence\} showProductionDocuments=\{showContentEvidence\}/);
+  assert.match(page, /canUseContentPlanningHandoff\(process.env\)/);
+  assert.match(page, /ContentScriptsWorkspace showPlanningHandoff=\{contentPlanningHandoffEnabled\} showContentEvidence=\{contentEvidenceEnabled\}/);
+  assert.match(radar, /showReferenceCheck \? <SystemOnePlanningCheck/);
+  assert.match(radar, /showPlanningHandoff \? <ContentPlanningHandoff/);
+  assert.match(scripts, /showPlanningHandoff \|\| showContentEvidence \? <LinkedPlanningHandoff showPlanningHandoff=\{showPlanningHandoff\} showEvidence=\{showContentEvidence\}/);
   assert.match(panel, /showEvidence \? <>/);
-  assert.match(panel, /!evidenceOnly \? <>/);
+  assert.match(panel, /showSystemOneJevShadow \? <ContentJevShadowCheck/);
+  assert.match(panel, /showSystemOnePreflight \? <>/);
   assert.match(panel, /source.id !== sourceId/);
   assert.match(panel, /return \(\) => \{ active = false; \}/);
   assert.match(panel, /expectedVersion|planningHandoffUpdate/);
