@@ -33,13 +33,26 @@ test('verified word times bind visual beats and headlines to the final narration
   assert.equal(createYoutubeRenderBrief(plan, timeline).timingSource, 'verified_word');
 });
 
-test('changed audio, script drift and headlines outside their beat are rejected', () => {
+test('changed audio and script drift are rejected; a headline outside its beat is left out', () => {
   const finalAudio = Buffer.from('final-audio');
   assert.throws(() => createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6,
     segments: [{ audio: Buffer.from('other'), timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] }), { code: 'YOUTUBE_AUDIO_CHANGED' });
   const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6, segments: [{ audio, timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] });
   assert.throws(() => alignYoutubeVisualBeats(plan, script, transcript, sha(Buffer.from('x'))), { code: 'YOUTUBE_AUDIO_CHANGED' });
   const early = structuredClone(plan); early.scenes[0].visualBeats[0].typographyAnchor = '에너지가';
-  assert.throws(() => alignYoutubeVisualBeats(early, script, transcript, sha(finalAudio)), { code: 'YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH' });
+  const withoutTitle = alignYoutubeVisualBeats(early, script, transcript, sha(finalAudio)).beats[0];
+  assert.equal(withoutTitle.displayText, '');
+  assert.equal(withoutTitle.typographyStartSeconds, null);
   assert.throws(() => alignYoutubeVisualBeats(plan, ['다른 원고입니다'], transcript, sha(finalAudio)), { code: 'YOUTUBE_TRANSCRIPT_MISMATCH' });
+});
+
+test('a beat too short to read is folded into the previous beat', () => {
+  const finalAudio = Buffer.from('final-audio');
+  const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6,
+    segments: [{ audio, timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] });
+  const short = structuredClone(plan);
+  short.scenes[0].visualBeats.splice(1, 0, beat('누군가는', '', ''));
+  short.scenes[0].visualBeats[1].svg = '<image data-character="ch01" x="1" y="1" width="2" height="2"/>';
+  const timeline = alignYoutubeVisualBeats(short, script, transcript, sha(finalAudio));
+  assert.equal(JSON.stringify(timeline.beats.map((b) => [b.beatIndex, b.visualStartSeconds, b.endSeconds])), '[[0,0,2],[2,2,4.6]]');
 });

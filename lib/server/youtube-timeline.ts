@@ -153,46 +153,43 @@ export function alignYoutubeVisualBeats(
     if (!sourceText || spokenText !== sourceText)
       throw new ApiError(409, "YOUTUBE_TRANSCRIPT_MISMATCH", "음성 전사와 승인된 원고가 일치하지 않습니다. 검증된 단어 시간표가 필요합니다.");
 
-    const starts: number[] = [];
-    const typographyStarts: Array<number | null> = [];
+    // Resolve each beat's spoken start; a beat whose anchor cannot be placed after the previous one is folded into it.
+    const placed: Array<{ beatIndex: number; start: number; typographyStart: number | null }> = [];
     let searchFrom = 0;
-    for (const beat of scene.visualBeats) {
+    for (const [beatIndex, beat] of scene.visualBeats.entries()) {
       const anchor = normalizedSpeech(beat.spokenAnchor);
       const characterIndex = anchor ? sourceText.indexOf(anchor, searchFrom) : -1;
-      if (characterIndex < 0)
-        throw new ApiError(409, "YOUTUBE_ANCHOR_MISMATCH", "화면 비트의 멘트를 승인된 원고 순서에서 찾지 못했습니다.");
-      const wordIndex = characterWordIndexes[characterIndex];
-      const start = segment.offsetSeconds + segment.words[wordIndex].startSeconds;
-      if (starts.length && start <= starts[starts.length - 1] + 0.04)
-        throw new ApiError(409, "YOUTUBE_ANCHOR_MISMATCH", "화면 비트의 발화 시점을 서로 구분할 수 없습니다.");
-      starts.push(start);
-      if (beat.typographyAnchor) {
-        const typographyIndex = sourceText.indexOf(normalizedSpeech(beat.typographyAnchor), characterIndex + 1);
-        if (typographyIndex < 0)
-          throw new ApiError(409, "YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH", "화면 문구의 발화 기준 단어를 원고에서 찾지 못했습니다.");
-        const typographyWord = segment.words[characterWordIndexes[typographyIndex]];
-        typographyStarts.push(segment.offsetSeconds + typographyWord.startSeconds);
-      } else {
-        typographyStarts.push(null);
-      }
+      if (characterIndex < 0) continue;
+      const start = segment.offsetSeconds + segment.words[characterWordIndexes[characterIndex]].startSeconds;
+      if (placed.length && start <= placed[placed.length - 1].start + 0.04) continue;
+      const typographyIndex = beat.typographyAnchor ? sourceText.indexOf(normalizedSpeech(beat.typographyAnchor), characterIndex + 1) : -1;
+      const typographyStart = typographyIndex < 0 ? null : segment.offsetSeconds + segment.words[characterWordIndexes[typographyIndex]].startSeconds;
+      placed.push({ beatIndex, start, typographyStart });
       searchFrom = characterIndex + anchor.length;
     }
+    if (!placed.length) throw new ApiError(409, "YOUTUBE_ANCHOR_MISMATCH", "화면 비트의 멘트를 승인된 원고 순서에서 찾지 못했습니다.");
 
+    // A beat too short to read is dropped and the previous beat stays on screen; the first beat of a segment covers from its start.
     const segmentEnd = segment.offsetSeconds + segment.durationSeconds;
-    for (const [beatIndex, beat] of scene.visualBeats.entries()) {
-      const start = starts[beatIndex];
-      const end = starts[beatIndex + 1] ?? segmentEnd;
-      const span = end - start;
-      if (span < 0.45 || (beat.svg.includes("data-character=") && span < 1.25))
-        throw new ApiError(409, "YOUTUBE_BEAT_TOO_SHORT", "일부 멘트의 화면 시간이 너무 짧습니다. 화면 비트를 다시 설계해 주세요.");
-      const typographyStart = typographyStarts[beatIndex];
-      if (typographyStart !== null && (typographyStart < start + 0.16 || typographyStart >= end - 0.12))
-        throw new ApiError(409, "YOUTUBE_TYPOGRAPHY_ANCHOR_MISMATCH", "화면 문구보다 그림이 먼저 보이도록 발화 기준 단어를 다시 선택해 주세요.");
+    const kept: typeof placed = [];
+    for (const [index, item] of placed.entries()) {
+      const span = (placed[index + 1]?.start ?? segmentEnd) - item.start;
+      const minimum = scene.visualBeats[item.beatIndex].svg.includes("data-character=") ? 1.25 : 0.45;
+      if (span >= minimum || (!kept.length && index === placed.length - 1)) kept.push(item);
+      else if (!kept.length && placed[index + 1]) placed[index + 1] = { ...placed[index + 1], start: item.start };
+    }
+    for (const [index, item] of kept.entries()) {
+      const beat = scene.visualBeats[item.beatIndex];
+      const start = index ? item.start : Math.min(item.start, placed[0].start);
+      const end = kept[index + 1]?.start ?? segmentEnd;
+      // The drawing leads the headline; a headline that cannot follow the drawing inside this beat is left out.
+      const typographyStart = item.typographyStart === null ? null : Math.max(item.typographyStart, start + 0.16);
+      const showTitle = typographyStart !== null && typographyStart < end - 0.12;
       beats.push({
-        segmentIndex, beatIndex, spokenAnchor: beat.spokenAnchor, svg: beat.svg,
-        displayText: beat.displayText, accentText: beat.accentText, typographyAnchor: beat.typographyAnchor,
+        segmentIndex, beatIndex: item.beatIndex, spokenAnchor: beat.spokenAnchor, svg: beat.svg,
+        displayText: showTitle ? beat.displayText : "", accentText: showTitle ? beat.accentText : "", typographyAnchor: showTitle ? beat.typographyAnchor : "",
         visualStartSeconds: start,
-        typographyStartSeconds: typographyStart,
+        typographyStartSeconds: showTitle ? typographyStart : null,
         endSeconds: end,
       });
     }
