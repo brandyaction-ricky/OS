@@ -261,6 +261,15 @@
       "appliedEnvironments": [
         "development"
       ]
+    },
+    {
+      "file": "20260924131455_archived_document_owner_read.sql",
+      "sha256": "38e7538de96903fa334d4ef5506a8d32d497630375128685ad1dbee030af4337",
+      "purpose": "restrict archived document reads to the owner or administrator while preserving same-team and canonical reads; DEV only, Production requires separate approval",
+      "requiresApproval": true,
+      "productionAuthorized": false,
+      "developmentApprovedAt": "2026-09-24",
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [
