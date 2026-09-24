@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, usesShootingPlan, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { contentSourceText } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -17,7 +18,10 @@ function sourceInput(source: OsRecord) {
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
+  const revisions = source.metadata.pipelineInputRevisions;
+  const relevantRevisions = Array.isArray(revisions) ? revisions.slice(0, gate) : [];
   return digest(["packaging-first-v1", sourceInput(source), reference(artifacts.research), reference(artifacts.packaging), ...(gate >= 2 ? [usesShootingPlan(source) ? source.metadata.productionPreparation : reference(artifacts.script)] : []),
+    ...(relevantRevisions.some((revision) => revision > 0) ? [relevantRevisions] : []),
     ...(gate >= 3 ? ["recorded-source-v1", reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.transcript, source.metadata.shortsStyle] : [])]);
 }
 
@@ -71,6 +75,8 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
   }
   if (input.action === "title_package" && !pipelineArtifacts(state.records).research) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "기획 브리핑을 먼저 준비해 주세요. 원고는 필요하지 않습니다.");
   if (input.action === "script_draft" && usesShootingPlan(state.source)) throw new ApiError(409, "SHOOTING_PLAN_MODE", "현재 제작 방식은 전문 원고 대신 영상 설계와 촬영 진행표를 준비합니다.");
+  if (usesShootingPlan(state.source) && ["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action)
+    && !contentSourceText(state.source, [], true)) throw new ApiError(409, "CONTENT_TRANSCRIPT_REQUIRED", "촬영한 영상의 실제 자막이 필요합니다. 자막·영상 편집에서 SRT/VTT를 저장해 주세요.");
   const artifacts = pipelineArtifacts(state.records);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
   const key = digest(["recorded-source-v1", procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
