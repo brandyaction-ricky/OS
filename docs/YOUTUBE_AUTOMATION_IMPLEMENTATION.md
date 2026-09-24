@@ -28,6 +28,22 @@ The existing System One project owns `jev-content-packaging-shadow-v2`, its API 
 
 The P0-3 shadow route is limited to DEV/Preview and returns no durable decision. Its branch PR #61 is stacked on PR #43. Do not bind a production worker to that route or merge/rebase those branches as part of this project.
 
+## Boundary with the content-flow project
+
+Another development session owns the OS content flow: topics, packaging, knowledge script documents under the script root, document-to-content links (`system-one/production-document`), document status, content evidence, and the content workspaces and pipeline panel. This project must not change those files, APIs, statuses, or document names. Its own surface is `lib/server/youtube-*`, `lib/youtube-*`, `tools/render-youtube-scene.mjs`, `app/api/v1/content/youtube-automation/*`, and the private YouTube storage migrations. Earlier small edits in shared files (pipeline panel label and scene summary, voice-job guards in the record routes) stay minimal and are not extended.
+
+Owner direction (2026-09-24): the real production process is the knowledge-document flow (00_기획 → 00_패키징 → 02_자료찾기 → 02_축확정 → 03_영상설계표 → 05_원고 and review documents) driven by canonical procedure documents. The target automation lets AI author those step documents from knowledge insights and advance them only to `review`; a person marks the approved version (`reviewed`/`canonical`). File names are never approval. Video production starts from that approved document version, and team members assigned to the content, not only the owner, may start generation and open private outputs, while approvals stay with the OS approvers.
+
+Contract requested from the content-flow project, consumed read-only by this automation:
+
+1. For a content item, the human-approved script document: document ID, version, content hash, approval status, approver and time.
+2. The selected title and thumbnail copy with their version.
+3. A listing of content items whose approved script has no current video run.
+4. The team assignment used for staff access.
+5. Where AI-authored step documents are written and which statuses AI may set.
+
+Until that contract exists, the connected pipeline path stays DEV-only and this project does not write step documents or approvals.
+
 ## Versioned run contract
 
 An automation run has a stable run ID and source ID. Capture script ID/version, selected package ID/version, source input digest, OS rule IDs/versions, prompt/model versions, voice reference fingerprint, and media template version before external work. A changed source or artifact makes the run stale. Every stage writes its own status, outputs and error category. Provider request IDs and media-template version remain future work. Retrying a voice stage reuses completed output for the same input key. Never issue a second YouTube `videos.insert` when a video ID or resumable session exists; verify the existing upload first.
