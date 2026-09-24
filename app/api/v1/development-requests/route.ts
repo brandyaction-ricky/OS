@@ -36,6 +36,14 @@ async function assertProject(actor: RequestActor, id: string | null | undefined)
   if (!data) throw new ApiError(404, "REQUEST_PROJECT_NOT_FOUND", "연결할 프로젝트가 없거나 접근할 수 없습니다.");
 }
 
+async function assertAssignee(id: string | null | undefined, currentId: string | null | undefined) {
+  if (!id || id === currentId) return;
+  const { data, error } = await createServiceSupabase().from("os_profiles")
+    .select("id").eq("id", id).eq("is_active", true).maybeSingle();
+  if (error) throw new ApiError(500, "REQUEST_ASSIGNEE_FAILED", "담당자를 확인하지 못했습니다.");
+  if (!data) throw new ApiError(404, "REQUEST_ASSIGNEE_NOT_FOUND", "활성 상태인 담당자 계정을 찾지 못했습니다.");
+}
+
 function assertAttachmentOwner(actor: RequestActor, path: string | undefined) {
   if (!path) return;
   const ownerId = path.split("/")[1];
@@ -91,6 +99,7 @@ export async function PATCH(request: Request) {
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
     validateDevelopmentRequestUpdate(current as OsRecord, input, actor);
     await assertProject(actor, input.parentId);
+    await assertAssignee(input.assigneeId, current.assignee_id);
     assertAttachmentOwner(actor, input.attachmentPath);
     const { data, error } = await actor.supabase.from("os_records").update({ ...developmentRequestUpdateFields(current as OsRecord, input), updated_by: actor.id }).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("*").maybeSingle();
     if (error) throw new ApiError(500, "REQUEST_UPDATE_FAILED", "수정 요청을 변경하지 못했습니다.");

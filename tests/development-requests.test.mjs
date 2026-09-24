@@ -32,6 +32,17 @@ test("completion requires a resolution but does not fabricate a deployment requi
   assert.throws(() => validateDevelopmentRequestUpdate({ ...current, status: "done" }, patch({ resolution: "" }), admin));
 });
 
+test("only administrators may assign active-account IDs and update fields map assignment separately from metadata", () => {
+  const assigneeId = "00000000-0000-4000-8000-000000000003";
+  const assignment = patch({ assigneeId });
+  assert.throws(() => validateDevelopmentRequestUpdate(current, assignment, reporter), { code: "REQUEST_ADMIN_REQUIRED" });
+  assert.doesNotThrow(() => validateDevelopmentRequestUpdate(current, assignment, admin));
+  const assigned = developmentRequestUpdateFields(current, assignment);
+  assert.equal(assigned.assignee_id, assigneeId);
+  assert.equal(assigned.metadata.assigneeId, undefined);
+  assert.equal(developmentRequestUpdateFields(current, patch({ assigneeId: null })).assignee_id, null);
+});
+
 test("request links reject executable schemes, credentials and protocol-relative paths", () => {
   for (const value of ["javascript:alert(1)", "data:text/html,test", "https://user:pass@example.com", "//example.com", "/\\example.com"]) {
     assert.equal(isSafeDevelopmentLink(value, true), false, value);

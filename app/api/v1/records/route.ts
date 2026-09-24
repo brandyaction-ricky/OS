@@ -1,3 +1,4 @@
+import { assertSkillSource } from "@/lib/server/skill-source";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -8,6 +9,7 @@ import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { isContentEvidence } from "@/lib/content-evidence-protection";
 import { YOUTUBE_VOICE_RUN_KIND } from "@/lib/server/youtube-voice-run";
+import { assertDevelopmentRequestLink } from "@/lib/development-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +47,8 @@ export async function GET(request: Request) {
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const recordType = url.searchParams.get("type") as RecordType | null;
     if (recordType && !RECORD_TYPES.includes(recordType)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
+    if (recordType === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 확인해 주세요.");
+    if (recordType === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 알림 화면에서 확인해 주세요.");
 
     let builder = actor.supabase
       .from("os_records")
@@ -54,6 +58,7 @@ export async function GET(request: Request) {
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
     if (recordType) builder = builder.eq("record_type", recordType);
+    else builder = builder.neq("record_type", "development_comment").neq("record_type", "development_notification");
     if (url.searchParams.get("excludeKind") === "development_request") {
       builder = builder.or("metadata->>kind.is.null,metadata->>kind.neq.development_request");
     }
@@ -87,7 +92,11 @@ export async function POST(request: Request) {
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.metadata.kind === YOUTUBE_VOICE_RUN_KIND) throw new ApiError(403, "VOICE_RUN_API_REQUIRED", "음성 제작 작업은 전용 화면에서 등록해 주세요.");
+    if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 작성해 주세요.");
+    if (input.recordType === "development_notification" || input.metadata.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
+    await assertDevelopmentRequestLink(actor.supabase, input);
+    await assertSkillSource(actor.supabase, input.recordType, input.metadata);
     const payload = {
       ...toDatabase(input),
       owner_id: actor.id,
@@ -115,6 +124,8 @@ export async function PATCH(request: Request) {
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
     if (current.metadata?.kind === YOUTUBE_VOICE_RUN_KIND || input.metadata?.kind === YOUTUBE_VOICE_RUN_KIND)
       throw new ApiError(403, "VOICE_RUN_API_REQUIRED", "음성 제작 작업은 전용 공정에서 변경해 주세요.");
+    if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
+    if (current.record_type === "development_notification" || input.metadata?.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");
@@ -131,6 +142,7 @@ export async function PATCH(request: Request) {
       if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "이미 처리되었거나 다른 사람이 먼저 수정했습니다.");
       return NextResponse.json({ record: data });
     }
+    await assertSkillSource(actor.supabase, current.record_type, input.metadata, current.metadata);
     const payload = toDatabase(input);
     if (current.record_type === "content_publish" && ["ready", "scheduled"].includes(current.status) && (input.description !== undefined || input.title !== undefined || (input.metadata?.derivHtml !== undefined && input.metadata.derivHtml !== current.metadata.derivHtml))) payload.status = "review";
     payload.updated_by = actor.id;
@@ -161,6 +173,8 @@ export async function DELETE(request: Request) {
     if (isContentEvidence(current.record_type, current.metadata))
       throw new ApiError(409, "EVIDENCE_APPEND_ONLY", "증거 이력은 삭제하지 않습니다. 정정 내용은 새 기록으로 추가해 주세요.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
+    if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
+    if (current.record_type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);
     if (error) throw new ApiError(400, "RECORD_ARCHIVE_FAILED", "운영 기록을 보관하지 못했습니다.", error.message);
     return NextResponse.json({ archived: true });

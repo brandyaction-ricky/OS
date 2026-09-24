@@ -38,7 +38,7 @@ export async function GET(request: Request) {
     await requireAdmin(request);
     const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET);
     const supabase = createServiceSupabase();
-    const fields = "external_user_id,external_chat_id,display_name,username,status,requested_at,decided_at";
+    const fields = "external_user_id,external_chat_id,display_name,username,status,requested_at,decided_at,profile_id";
     const [pending, approved, turns, botResult, webhookResult] = await Promise.all([
       supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "pending").order("requested_at", { ascending: false }).limit(100),
       supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "approved").order("decided_at", { ascending: false }).limit(100),
@@ -73,15 +73,20 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const actor = await requireAdmin(request);
-    const body = await request.json() as { externalUserId?: string; action?: "approve" | "reject" };
-    if (!body.externalUserId || !["approve", "reject"].includes(body.action ?? "")) {
+    const body = await request.json() as { externalUserId?: string; action?: "approve" | "reject" | "link"; profileId?: string | null };
+    if (!body.externalUserId || !["approve", "reject", "link"].includes(body.action ?? "")) {
       throw new ApiError(400, "INVALID_TELEGRAM_DECISION", "승인할 사용자와 처리 방식을 확인해 주세요.");
     }
-    const status = body.action === "approve" ? "approved" : "rejected";
     const supabase = createServiceSupabase();
-    const { data, error } = await supabase.from("os_telegram_users").update({
-      status, decided_at: new Date().toISOString(), decided_by: actor.user?.id ?? null,
-    }).eq("external_user_id", body.externalUserId).select("external_user_id,status").single();
+    if (body.profileId) {
+      const { data: profile, error: profileError } = await supabase.from("os_profiles").select("id").eq("id", body.profileId).eq("is_active", true).maybeSingle();
+      if (profileError || !profile) throw new ApiError(400, "INVALID_TELEGRAM_PROFILE", "연결할 활성 OS 구성원을 찾지 못했습니다.");
+    }
+    const update = body.action === "link"
+      ? { profile_id: body.profileId ?? null, decided_by: actor.user?.id ?? null }
+      : { status: body.action === "approve" ? "approved" : "rejected", profile_id: body.action === "approve" ? body.profileId ?? null : null, decided_at: new Date().toISOString(), decided_by: actor.user?.id ?? null };
+    const { data, error } = await supabase.from("os_telegram_users").update(update)
+      .eq("external_user_id", body.externalUserId).select("external_user_id,status,profile_id").single();
     if (error) throw new ApiError(500, "TELEGRAM_DECISION_FAILED", "텔레그램 사용자 승인 상태를 저장하지 못했습니다.", error.message);
     return NextResponse.json({ user: data });
   } catch (error) { return apiErrorResponse(error); }
@@ -95,7 +100,7 @@ export async function POST(request: Request) {
     await telegram("setWebhook", {
       url: `${publicUrl()}/api/v1/telegram/webhook`,
       secret_token: secret,
-      allowed_updates: ["message"],
+      allowed_updates: ["message", "callback_query"],
       drop_pending_updates: false,
     });
     return NextResponse.json({ connected: true, url: `${publicUrl()}/api/v1/telegram/webhook` });

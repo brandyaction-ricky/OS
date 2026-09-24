@@ -6,6 +6,18 @@ import { statusChangeSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
 
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const actor = await authenticateRequest(request);
+    const { id } = await params;
+    const { data: document, error: documentError } = await actor.supabase.from("os_documents").select("id").eq("id", id).maybeSingle();
+    if (documentError || !document) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+    const { data, error } = await actor.supabase.from("os_document_events").select("id,from_status,to_status,note,created_at").eq("document_id", id).order("created_at", { ascending: false }).limit(20);
+    if (error) throw new ApiError(400, "DOCUMENT_EVENTS_FAILED", "검토 이력을 불러오지 못했습니다.");
+    return NextResponse.json({ events: data ?? [] }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) { return apiErrorResponse(error); }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await authenticateRequest(request);

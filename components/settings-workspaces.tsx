@@ -1,5 +1,7 @@
 "use client";
 
+import { KnowledgeClassificationSettings } from "./knowledge-classification-settings";
+
 import {
   ArrowRight,
   Bot,
@@ -27,7 +29,6 @@ import {
   type TelegramConnectionStatus,
 } from "@/lib/api-client";
 import {
-  KNOWLEDGE_CATEGORIES,
   operatingStatusLabel,
   roleLabel,
   SENSITIVE_ACCESS_ROSTER,
@@ -144,7 +145,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
           listMembers(accessToken),
           listRecords(accessToken, "brand", "limit=100"),
           listRecords(accessToken, "goal", "limit=200"),
-          page === "channels" && profile?.role === "admin"
+          (page === "channels" || page === "company") && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
         ]);
@@ -371,7 +372,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
 
           {page === "company" ? (
             <>
-              <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} onRefresh={load} />
+              <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header">
@@ -411,10 +412,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
                   <div className="company-list-row"><Users size={16} /><span><strong>계정 연결 전 구성원도 명부 표시</strong><small>정책·부여 일수 미입력은 “미등록”으로 구분</small></span><em>명부 기준</em></div>
                 </article>
               </section>
-              <section className="panel category-grid">
-                <div className="panel-header"><div><h2>지식 분류 8종</h2><p>지식 문서의 폴더 추천값과 공유하는 회사 기본 분류</p></div></div>
-                <div>{KNOWLEDGE_CATEGORIES.map((category, index) => <span key={category}><b>{index + 1}</b>{category}</span>)}</div>
-              </section>
+              <KnowledgeClassificationSettings />
             </>
           ) : null}
 

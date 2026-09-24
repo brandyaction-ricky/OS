@@ -16,10 +16,28 @@ test("canonical editing is deliberate, versioned and self-publishable", async ()
 });
 
 test("meeting workflow includes prep, transcription and structured actions", async () => {
-  const [workspace, summary, prep, transcription] = await Promise.all([read("components/meeting-workspace.tsx"), read("app/api/v1/meeting-summary/route.ts"), read("app/api/v1/meeting-prep/route.ts"), read("app/api/v1/meeting-transcription/route.ts")]);
+  const [workspace, summary, prep, transcription] = await Promise.all([read("components/meeting-workspace.tsx"), read("lib/server/meeting-summary.ts"), read("lib/server/meeting-prep.ts"), read("app/api/v1/meeting-transcription/route.ts")]);
   assert.match(workspace, /회의 준비/); assert.match(workspace, /녹음 전사/);
   assert.match(summary, /decisions/); assert.match(summary, /pending/); assert.match(summary, /todos/); assert.match(summary, /추측하지 마세요/);
   assert.match(prep, /record_type.*kpi/s); assert.match(transcription, /audio\/transcriptions/);
+});
+
+test("web meeting prep loads both businesses instead of one ambiguous 'latest overall' result", async () => {
+  const workspace = await read("components/meeting-workspace.tsx");
+  assert.match(workspace, /PRIMARY_MEETING_BUSINESSES\.map/);
+  assert.match(workspace, /prepareMeeting\(accessToken, business\.recordBrand\)/);
+  assert.match(workspace, /meeting-prep-business/);
+});
+
+test("meeting title auto-fills from brand and recording chains into transcription and extraction", async () => {
+  const workspace = await read("components/meeting-workspace.tsx");
+  assert.match(workspace, /function suggestMeetingTitle/);
+  assert.match(workspace, /titleEditedRef/);
+  assert.match(workspace, /if \(!titleEditedRef\.current\) setTitle\(suggestMeetingTitle\(value\)\)/);
+  assert.match(workspace, /const transcribeBlob = async \(blob: Blob\)/);
+  assert.match(workspace, /await extractFromText\(result\.transcript\)/);
+  assert.match(workspace, /setStartsAtDraft\(nowLocalInput\(\)\)/);
+  assert.match(workspace, /setStatusDraft\("active"\)/);
 });
 
 test("growth and phone capture use the transferred business contract", async () => {
