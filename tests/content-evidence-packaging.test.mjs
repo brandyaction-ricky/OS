@@ -12,7 +12,7 @@ test("packaging evidence is DEV-gated and reuses the script evidence ledger for 
   assert.match(route, /const contentEvidenceEnabled = canUseSystemOneContentEvidence\(process\.env\)/);
   assert.match(route, /ContentPackageWorkspace showContentEvidence=\{contentEvidenceEnabled\}/);
   assert.match(packagePage, /showContentEvidence\s*\?\s*\[\.\.\.BASE_PACKAGE_TABS/);
-  assert.match(packagePage, /sourceIdOverride=\{sourceId\} evidenceOnly showEvidence packagingStage/);
+  assert.match(packagePage, /sourceIdOverride=\{sourceId\} showEvidence packagingStage/);
   assert.match(packagePage, /key=\{`packaging-evidence:\$\{sourceId\}`\}/);
   assert.match(linked, /const sourceId = sourceIdOverride \?\? urlSourceId/);
   assert.match(linked, /\/api\/v1\/content\/pipeline\?sourceId=/);

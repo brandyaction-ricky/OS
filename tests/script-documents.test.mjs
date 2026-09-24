@@ -127,11 +127,11 @@ test("DEV evidence-only script workspace separates this environment's library fr
   const app = setup({}, {}, { showContentEvidence: true });
   app.render(); await settle();
   const view = JSON.stringify(app.render());
-  assert.match(view, /현재 DEV 지식함의 원고 목록/);
+  assert.match(view, /현재 연결된 지식함의 원고 목록/);
   assert.match(view, /운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다/);
   assert.match(view, /현재 환경의 영상 폴더/);
   assert.match(view, /현재 환경의 선택 폴더에 원고가 없습니다/);
-  assert.ok(app.render().some((item) => item.type === "ContentLinkedScripts" && item.props.showPlanningHandoff === true));
+  assert.ok(app.render().some((item) => item.type === "ContentLinkedScripts" && item.props.showPlanningHandoff === false));
   app.unmount();
 });
 
