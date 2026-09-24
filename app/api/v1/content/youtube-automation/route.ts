@@ -20,10 +20,7 @@ export async function GET(request: Request) {
     const sourceId = z.string().uuid().parse(new URL(request.url).searchParams.get("sourceId"));
     const { state, plan } = await readYoutubeAutomationInput(actor.supabase, sourceId);
     if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 자동 제작을 준비할 수 있습니다.");
-    const key = process.env.FISH_API_KEY ?? "";
-    // TEMP diagnostic (remove after the Fish 401 is resolved): key shape only, never the value.
-    const fishKeyShape = { length: key.length, trimmedLength: key.trim().length, fishPrefix: key.trim().startsWith("sk-fish-"), quoted: /["']/.test(key), model: process.env.FISH_TTS_MODEL ?? "" };
-    return NextResponse.json({ plan, fishKeyShape, voicePreviewConfigured: Boolean(process.env.FISH_API_KEY?.trim() && process.env.FISH_VOICE_REFERENCE_ID?.trim()) }, { headers });
+    return NextResponse.json({ plan, voicePreviewConfigured: Boolean(process.env.FISH_API_KEY?.trim() && process.env.FISH_VOICE_REFERENCE_ID?.trim()) }, { headers });
   } catch (error) { return apiErrorResponse(error); }
 }
 

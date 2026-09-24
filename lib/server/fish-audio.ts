@@ -15,7 +15,7 @@ const fishTimestampEventSchema = z.object({
   chunk_audio_offset_sec: fishTime,
   alignment: z.object({
     audio_duration: fishTime,
-    segments: z.array(z.object({ text: z.string().min(1), start: fishTime, end: fishTime }).passthrough()).max(3_000),
+    segments: z.array(z.object({ text: z.string(), start: fishTime, end: fishTime }).passthrough()).max(3_000),
   }).passthrough().nullable(),
 }).passthrough();
 
@@ -55,14 +55,12 @@ export async function parseFishTimestampedStream(body: ReadableStream<Uint8Array
     if (audioBytes > MAX_AUDIO_BYTES) throw new ApiError(502, "FISH_AUDIO_TOO_LARGE", "음성 응답 크기가 허용 범위를 넘었습니다.");
     if (chunk.length) audioChunks.push(chunk);
     if (event.alignment !== null) {
-      const words = event.alignment.segments.map((segment) => ({
-        text: segment.text,
-        startSeconds: event.chunk_audio_offset_sec + segment.start,
-        endSeconds: event.chunk_audio_offset_sec + segment.end,
-      }));
-      if (words.some((word) => word.endSeconds <= word.startSeconds ||
-        word.endSeconds > event.chunk_audio_offset_sec + event.alignment!.audio_duration + 0.1))
-        throw new ApiError(502, "FISH_TIMESTAMPS_INVALID", "Fish Audio 단어 시간이 음성 길이와 맞지 않습니다.");
+      // Fish emits zero-length punctuation tokens and ends that overshoot the chunk slightly; clamp them into the chunk.
+      const offset = event.chunk_audio_offset_sec, limit = offset + event.alignment.audio_duration;
+      const words = event.alignment.segments.filter((segment) => segment.text.trim()).map((segment) => {
+        const startSeconds = Math.min(Math.max(offset + segment.start, offset), limit);
+        return { text: segment.text, startSeconds, endSeconds: Math.min(Math.max(offset + segment.end, startSeconds + 0.01), limit + 0.01) };
+      });
       alignmentByChunk.set(event.chunk_seq, {
         offset: event.chunk_audio_offset_sec, duration: event.alignment.audio_duration, words,
       });
@@ -102,8 +100,12 @@ export async function parseFishTimestampedStream(body: ReadableStream<Uint8Array
     words.push(...snapshot.words);
     durationSeconds = Math.max(durationSeconds, snapshot.offset + snapshot.duration);
   }
-  if (!words.length || words.some((word, index) => index > 0 && word.startSeconds < words[index - 1].endSeconds - 0.02))
-    throw new ApiError(502, "FISH_TIMESTAMPS_INVALID", "Fish Audio 단어 시간 순서를 확인할 수 없습니다.");
+  if (!words.length) throw new ApiError(502, "FISH_TIMESTAMPS_INVALID", "Fish Audio 단어 시간 순서를 확인할 수 없습니다.");
+  // Small overlaps between neighbouring words are alignment noise: start each word no earlier than the previous one ends.
+  for (let index = 1; index < words.length; index++) {
+    const previous = words[index - 1], word = words[index];
+    if (word.startSeconds < previous.endSeconds) words[index] = { ...word, startSeconds: previous.endSeconds, endSeconds: Math.max(word.endSeconds, previous.endSeconds + 0.01) };
+  }
   return { bytes, mimeType: "audio/mpeg" as const, words, durationSeconds };
 }
 
