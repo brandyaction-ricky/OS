@@ -56,6 +56,20 @@ export const MCP_TOOLS = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   {
+    name: "classify_request",
+    description: "JEV에 요청 분류·담당 OS 절차·빠진 정보·사람 검토 조건을 물어 참고 의견을 받습니다. 서버 기능 스위치는 기본 꺼짐이며, 사용자가 현재 요청에서 외부 처리를 명시적으로 허용한 때만 호출하세요. 비밀번호·API 키·연락처 등 민감 정보는 넣지 마세요. 권한을 바꾸거나 어떤 작업도 실행하지 않습니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        request_text: { type: "string", minLength: 1, maxLength: 8000 },
+        confirm_external_processing: { type: "boolean", const: true, description: "요청문을 JEV 처리 서비스로 전송하는 데 동의합니다." },
+      },
+      required: ["request_text", "confirm_external_processing"],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
     name: "create_document",
     description: "새 지식을 개인 초안으로 만듭니다. 회사 정본으로 바로 만들 수 없습니다.",
     inputSchema: {
@@ -225,6 +239,10 @@ const listSkillArgs = z.object({
   offset: z.number().int().min(0).optional().default(0),
 }).strict();
 const getSkillArgs = z.object({ skill_id: documentId }).strict();
+const classifyRequestArgs = z.object({
+  request_text: z.string().trim().min(1).max(8_000),
+  confirm_external_processing: z.literal(true),
+}).strict();
 
 const createArgs = z.object({
   title: z.string().trim().min(1).max(200),
@@ -348,6 +366,13 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if (request.name === "get_skill") {
     const input = getSkillArgs.parse(args);
     return fetchApi(`/api/v1/agent-skills?${new URLSearchParams({ organizationId, skillId: input.skill_id })}`);
+  }
+  if (request.name === "classify_request") {
+    const input = classifyRequestArgs.parse(args);
+    return fetchApi("/api/v1/agent-routing", {
+      method: "POST",
+      body: JSON.stringify({ organizationId, requestText: input.request_text, confirmExternalProcessing: true }),
+    });
   }
   if (request.name === "create_document") {
     const input = createArgs.parse(args);

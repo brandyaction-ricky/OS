@@ -11,6 +11,9 @@ test("MCP exposes bounded Skill discovery and detail tools", () => {
 
   assert.match(mcp, /name: "list_skills"/);
   assert.match(mcp, /name: "get_skill"/);
+  assert.match(mcp, /name: "classify_request"/);
+  assert.ok(mcp.includes("/api/v1/agent-routing"));
+  assert.match(mcp, /confirm_external_processing: z\.literal\(true\)/);
   assert.match(mcp, /\/api\/v1\/agent-skills/);
   assert.match(server, /list_skills로 적용할 회사 표준/);
   assert.match(route, /requiredAgentScope: "records\.read"/);
