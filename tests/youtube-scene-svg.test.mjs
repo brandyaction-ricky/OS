@@ -12,6 +12,10 @@ test('scene SVG accepts the drawing vocabulary and reports characters and drawin
   assert.equal(result.summary.drawSeconds, 2.45);
 });
 
+test('scene SVG accepts lines, whose attribute names contain digits', () => {
+  assert.equal(validateSceneSvg('<line class="i" x1="300" y1="400" x2="900" y2="400" data-k="draw" data-s="0" data-d=".5"/>', ids).ok, true);
+});
+
 test('scene SVG rejects active content, external resources and unregistered art', () => {
   for (const bad of [
     '<script>alert(1)</script>',

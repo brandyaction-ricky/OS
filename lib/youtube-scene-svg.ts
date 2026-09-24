@@ -51,7 +51,7 @@ export function validateSceneSvg(svg: string, characterIds: ReadonlySet<string>)
   const stack: string[] = [];
   const characters: string[] = [];
   let drawSeconds = 0, elementCount = 0, cursor = 0;
-  const token = /<(\/?)([a-z]+)((?:\s+[a-z-]+="[^"<>]*")*)\s*(\/?)>|([^<]+)/gy;
+  const token = /<(\/?)([a-z]+)((?:\s+[a-z][a-z0-9-]*="[^"<>]*")*)\s*(\/?)>|([^<]+)/gy;
   for (let match = token.exec(svg); match; match = token.exec(svg)) {
     cursor = token.lastIndex;
     const [, closing, tag, rawAttributes, selfClosing, text] = match;
@@ -68,7 +68,7 @@ export function validateSceneSvg(svg: string, characterIds: ReadonlySet<string>)
     }
     if (++elementCount > 160) return { ok: false, error: "SVG 요소가 너무 많습니다." };
     const attributes = new Map<string, string>();
-    for (const [, name, value] of rawAttributes.matchAll(/\s+([a-z-]+)="([^"]*)"/g)) {
+    for (const [, name, value] of rawAttributes.matchAll(/\s+([a-z][a-z0-9-]*)="([^"]*)"/g)) {
       const check = geometry[tag][name] ?? common[name];
       if (!check || attributes.has(name) || !check(value)) return { ok: false, error: `${tag} 요소의 ${name} 값이 허용되지 않습니다.` };
       attributes.set(name, value);
