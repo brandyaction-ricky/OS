@@ -2,6 +2,8 @@
 
 Updated: 2026-09-18 Asia/Seoul.
 
+> Historical snapshot from 2026-09-18. Its migration counts, branch state, and deployment observations are not current. For current environment and migration guidance, use [`docs/ENVIRONMENTS.md`](docs/ENVIRONMENTS.md) and [`docs/SUPABASE_MIGRATION_BASELINE.md`](docs/SUPABASE_MIGRATION_BASELINE.md).
+
 ## Repository
 
 - Working path: `/Users/ricky/Projects/brandyaction-os`

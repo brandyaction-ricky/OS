@@ -1,0 +1,112 @@
+"use client";
+
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import "./content-planning-handoff.css";
+import { apiRequest, updateRecord } from "@/lib/api-client";
+import { contentApproaches, handoffFields, planningHandoffUpdate, productionFormats, readPlanningHandoff, readProductionFormatChange } from "@/lib/content-planning-handoff";
+import type { OsRecord } from "@/lib/record-types";
+import { useSession } from "./session-provider";
+import { ContentPackagingEvidence } from "./content-packaging-evidence";
+import { ContentReviewContext } from "./content-review-context";
+import { ContentProductionDocuments } from "./content-production-documents";
+import { ContentStageReference } from "./content-stage-reference";
+import { ContentJevShadowCheck } from "./content-jev-shadow-check";
+import { ContentCopyLineage } from "./content-copy-lineage";
+import { ContentClaimEvidence } from "./content-claim-evidence";
+
+export function ContentPlanningHandoff({ source, onSaved, onCancel, disabled = false }: { source: OsRecord; onSaved?: (record: OsRecord) => void; onCancel?: () => void; disabled?: boolean }) {
+  const { accessToken, demo } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedFormat, setSelectedFormat] = useState(readPlanningHandoff(source.metadata.planningHandoff)?.productionFormat ?? "undecided");
+  const active = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
+  const handoff = readPlanningHandoff(source.metadata.planningHandoff);
+  const invalid = source.metadata.planningHandoff != null && !handoff;
+  const editable = Boolean(onSaved);
+  const lastFormatChange = readProductionFormatChange(source);
+  const formatChanged = handoff && selectedFormat !== handoff.productionFormat;
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onSaved || !accessToken || demo || disabled || invalid || saving.current) return;
+    const form = new FormData(event.currentTarget);
+    const input = { schemaVersion: 1, ...Object.fromEntries(["productionFormat", "contentApproach", ...handoffFields.map(([key]) => key)].map(key => [key, String(form.get(key) ?? "").trim()])) };
+    saving.current = true; setBusy(true); setError("");
+    try {
+      const { record } = await updateRecord(accessToken, planningHandoffUpdate(source, input));
+      if (active.current) onSaved(record);
+    } catch (reason) {
+      if (active.current) setError(reason instanceof Error ? reason.message : "인계 메모를 저장하지 못했습니다.");
+    } finally { saving.current = false; if (active.current) setBusy(false); }
+  }
+  return <section className="panel content-workflow-panel" aria-label="기획에서 제작으로 인계">
+    <div className="panel-header"><div><h3>기획에서 제작으로 인계</h3><p>{source.title} · 주제 v{source.version} · 작업 메모(판정·승인 아님)</p></div></div>
+    <div className="content-workflow-body">
+    <p>주제·방향 → 제목·썸네일 → 자료·축·설계 → 형식에 맞는 집필 → 검수 → 전달 범위 결정</p>
+    <p>아래 내용은 작업 메모입니다. 저장은 패키징 승인·집필 시작 허가·공유 실행이 아닙니다. 단계별 완료 조건은 OS 정본으로 별도 확인합니다.</p>
+    <p>제작 형식은 현재 선택이며 제작 중에도 바꿀 수 있습니다. 형식을 바꿔도 기존 원고·자료·선택 기록은 삭제하거나 자동 재생성하지 않습니다.</p>
+    {lastFormatChange ? <p className="inline-alert warning">최근 형식 변경: {productionFormats[lastFormatChange.from]} → {productionFormats[lastFormatChange.to]} (주제 v{lastFormatChange.sourceVersion}에서 변경). 이전 형식으로 준비한 설계·원고·편집 지시의 적합성을 다시 확인해 주세요. 승인 이력은 보존하며, 기존 제작 공정에서는 변경된 입력에 대한 재승인이 필요합니다. 이 표시는 재검토 완료가 아닙니다.</p> : null}
+    {invalid ? <p className="inline-alert danger" role="alert">인계 메모 형식을 확인할 수 없습니다. 기존 내용을 덮어쓰지 않습니다.</p> : editable ? <form className="research-brief" onSubmit={save}>
+      <fieldset className="planning-handoff-fields" disabled={busy || disabled || demo || !accessToken}>
+        <div className="form-grid"><label><span>제작 형식</span><select name="productionFormat" value={selectedFormat} onChange={(event) => setSelectedFormat(event.target.value as typeof selectedFormat)}>{Object.entries(productionFormats).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+          <label><span>콘텐츠 접근</span><select name="contentApproach" defaultValue={handoff?.contentApproach ?? "undecided"}>{Object.entries(contentApproaches).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div>
+        {handoffFields.map(([key, label, limit]) => <label key={key}><span>{label}</span><textarea name={key} rows={3} maxLength={limit} defaultValue={handoff?.[key] ?? ""} /></label>)}
+        {formatChanged ? <p role="status">미저장 형식 변경: {productionFormats[handoff.productionFormat]} → {productionFormats[selectedFormat]}. 저장 후 기존 설계·원고·편집 지시를 새 형식에 맞게 검토해 주세요.</p> : null}
+        <button className="secondary-button" type="submit">{busy ? "저장 중…" : "제작 인계 메모 저장"}</button>
+        {onCancel ? <button className="ghost-button" type="button" onClick={onCancel}>수정 닫기 · 미저장 내용 버리기</button> : null}
+      </fieldset>
+    </form> : handoff ? <dl className="planning-facts"><div><dt>제작 형식</dt><dd>{productionFormats[handoff.productionFormat]}</dd></div><div><dt>콘텐츠 접근</dt><dd>{contentApproaches[handoff.contentApproach]}</dd></div>{handoffFields.map(([key, label]) => <div key={key}><dt>{label}</dt><dd style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{handoff[key] || "미입력"}</dd></div>)}</dl> : <p>아직 저장된 인계 메모가 없습니다. 주제·기획에서 먼저 정리해 주세요.</p>}
+    <p>칠판형은 설계·진행 메모를 중심으로 준비하며 전체 원고를 강제하지 않습니다. 원고 완성과 편집자 공유는 별개입니다.</p>
+    <p>이 메모는 현재 AI 원고 생성에 자동 전달되지 않습니다.</p>
+    {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
+    <div className="drawer-actions"><Link className="secondary-button" href={`/content/packages?sourceId=${encodeURIComponent(source.id)}`}>제목·썸네일 작업 보기</Link>{editable ? <Link className="secondary-button" href={`/content/scripts?sourceId=${encodeURIComponent(source.id)}`}>집필 화면에서 메모 확인</Link> : <Link className="secondary-button" href="/content/topics">주제·기획으로 돌아가기</Link>}</div>
+    </div>
+  </section>;
+}
+
+export function LinkedPlanningHandoff({ showPlanningHandoff = false, showEvidence = false, showProductionDocuments = false, showSystemOnePreflight = false, showSystemOneJevShadow = false, sourceIdOverride, packagingStage = false }: { showPlanningHandoff?: boolean; showEvidence?: boolean; showProductionDocuments?: boolean; showSystemOnePreflight?: boolean; showSystemOneJevShadow?: boolean; sourceIdOverride?: string; packagingStage?: boolean } = {}) {
+  const { accessToken, demo, profile } = useSession();
+  const [urlSourceId, setUrlSourceId] = useState("");
+  const sourceId = sourceIdOverride ?? urlSourceId;
+  const [state, setState] = useState<{ token: string; source: OsRecord; records: OsRecord[]; evidenceAuthors: Record<string, string> } | null>(null);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState("");
+  useEffect(() => { if (sourceIdOverride === undefined) setUrlSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, [sourceIdOverride]);
+  useEffect(() => {
+    let active = true;
+    setState(null); setError(""); setEditing(false); setNotice("");
+    if (sourceId && accessToken && !demo) {
+      // Existing authenticated read endpoint; no generation or approval request.
+      void apiRequest<{ source: OsRecord; records: OsRecord[]; evidenceAuthors?: Record<string, string> }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }).then(({ source, records, evidenceAuthors }) => {
+        if (!active) return;
+        if (source.id !== sourceId || source.record_type !== "content_topic") throw new Error("연결된 기획 주제를 확인할 수 없습니다.");
+        if (!Array.isArray(records)) throw new Error("연결된 산출물을 확인할 수 없습니다.");
+        setState({ token: accessToken, source, records, evidenceAuthors: evidenceAuthors ?? {} });
+      }).catch(() => { if (active) setError(`${showEvidence && !showPlanningHandoff ? "증거 기록을" : "인계 메모를"} 불러오지 못했습니다. 로그인·주제 접근 권한을 확인해 주세요.`); });
+    }
+    return () => { active = false; };
+  }, [accessToken, demo, showEvidence, showPlanningHandoff, sourceId, revision]);
+  if (!sourceId || demo || !accessToken) return null;
+  return <><div className="drawer-actions"><button className="secondary-button" disabled={editing} onClick={() => setRevision(value => value + 1)}>{showEvidence && !showPlanningHandoff ? "증거 기록 다시 읽기" : "최신 기획 메모 다시 읽기"}</button></div>{notice ? <p role="status">{notice}</p> : null}{error ? <p className="inline-alert danger" role="alert">{error}</p> : state?.token === accessToken ? <>
+    {showPlanningHandoff ? <>
+      {!editing ? <button className="secondary-button" onClick={() => { setEditing(true); setNotice(""); }}>제작 형식·인계 메모 수정</button> : null}
+      <ContentPlanningHandoff key={`${state.source.id}:${state.source.version}:${editing}`} source={state.source} onCancel={() => setEditing(false)} onSaved={editing ? record => { setState(current => current ? { ...current, source: record } : null); setEditing(false); setNotice("인계 메모를 저장했습니다. 기존 산출물·승인 이력은 보존했습니다. 변경된 입력의 공정 승인은 다시 확인해 주세요."); } : undefined} />
+      <ContentPackagingEvidence source={state.source} records={state.records} />
+    </> : null}
+    {showEvidence ? <>
+      {profile?.id !== state.source.owner_id ? <p className="inline-alert" role="status">같은 팀 구성원은 근거를 추가할 수 있습니다. 팀원이 제출한 결정 근거는 주제 담당자의 결정 비교에 자동 반영되지 않으며, 어느 기록도 승인·사실 확인을 뜻하지 않습니다.</p> : null}
+      <ContentCopyLineage key={`copy-lineage:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} allowPublicationEntry={!packagingStage} onSaved={() => setRevision(value => value + 1)} />
+      <ContentClaimEvidence key={`claim-evidence:${state.source.id}`} source={state.source} records={state.records} authors={state.evidenceAuthors} viewerId={profile?.id} token={accessToken} disabled={editing} canWrite={Boolean(profile && (profile.id === state.source.owner_id || (state.source.team.trim() && state.source.team.trim() === profile.team.trim())))} onSaved={() => setRevision(value => value + 1)} />
+    </> : null}
+    {showSystemOneJevShadow ? <ContentJevShadowCheck sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} /> : null}
+    {showSystemOnePreflight ? <>
+      <ContentStageReference sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
+      <ContentReviewContext sourceId={state.source.id} sourceVersion={state.source.version} token={accessToken} disabled={editing} />
+    </> : null}
+    {showProductionDocuments ? <ContentProductionDocuments key={`${state.source.id}:${state.source.version}:${accessToken}`} source={state.source} token={accessToken} disabled={editing} onSaved={record => { setState(current => current ? { ...current, source: record } : null); setNotice("문서 연결 정보를 갱신했습니다. 원문·공유 권한·승인 상태는 변경하지 않았습니다."); }} /> : null}
+    </> : <p role="status">{showEvidence && !showPlanningHandoff ? "증거 기록을" : "기획 인계 메모를"} 불러오는 중입니다.</p>}</>;
+}

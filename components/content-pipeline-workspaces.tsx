@@ -7,6 +7,7 @@ import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, norm
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { ContentLinkedScripts } from "./content-linked-scripts";
+import { LinkedPlanningHandoff } from "./content-planning-handoff";
 import { useSession } from "./session-provider";
 
 function value<T>(record: OsRecord | null | undefined, key: string, fallback: T): T {
@@ -46,7 +47,7 @@ export function ContentTopicsWorkspace() {
   </>;
 }
 
-export function ContentScriptsWorkspace() {
+export function ContentScriptsWorkspace({ showPlanningHandoff = false, showContentEvidence = false, showSystemOnePreflight = false, showSystemOneJevShadow = false }: { showPlanningHandoff?: boolean; showContentEvidence?: boolean; showSystemOnePreflight?: boolean; showSystemOneJevShadow?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [root, setRoot] = useState(SCRIPT_DOCUMENT_ROOT);
   const [folderOptions, setFolderOptions] = useState<string[]>([]);
@@ -187,17 +188,19 @@ export function ContentScriptsWorkspace() {
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
-    <ContentLinkedScripts />
+    {showPlanningHandoff || showContentEvidence ? <p className="inline-alert" role="note">아래 영상 폴더는 현재 연결된 지식함의 원고 목록입니다. 운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다. 주제별 제작 공정 원고·문서 연결과는 별도로 관리됩니다.</p> : null}
+    {showPlanningHandoff || showContentEvidence ? <LinkedPlanningHandoff showPlanningHandoff={showPlanningHandoff} showEvidence={showContentEvidence} showProductionDocuments={showContentEvidence} showSystemOnePreflight={showSystemOnePreflight} showSystemOneJevShadow={showSystemOneJevShadow} /> : null}
+    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} />
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
-      <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
+      <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>현재 환경의 영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
         <form className="script-root-picker" onSubmit={(event) => { event.preventDefault(); try { const next = normalizeScriptRoot(String(new FormData(event.currentTarget).get("root") ?? "")); window.localStorage.setItem("os-script-document-root", next); setError(""); setRoot(next); } catch (cause) { setError(cause instanceof Error ? cause.message : "기준 폴더를 확인해 주세요."); } }}>
           <label><span>기준 폴더</span><input name="root" list="script-root-options" defaultValue={root} key={root} maxLength={160} aria-label="원고 기준 폴더" /></label>
           <datalist id="script-root-options">{folderOptions.map((option) => <option key={option} value={option} />)}</datalist>
           <button className="secondary-button">적용</button>
         </form>
         {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>{item.progress.published ? "발행 자료 있음" : "진행 중"} · 문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{SCRIPT_STEPS.map((stage, index) => `${item.progress.completed[index] ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
-        {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
+        {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "현재 환경의 선택 폴더에 원고가 없습니다."}</div> : null}
       </aside>
       <article className="panel script-detail script-document-reader">{selected ? <>
         <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder} · 최근 수정 {new Date(selected.updated_at).toLocaleString("ko-KR")}</p>{selected.status === "review" ? <p className="inline-alert warning">원고 검토·승인 대기 중입니다. 패키징·축·설계표는 승인 결과를 확인한 뒤 다음 단계로 진행해 주세요.</p> : null}</div><span className="count-badge">v{selected.current_version}</span></header>

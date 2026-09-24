@@ -15,11 +15,11 @@ const restoreSchema = z.object({
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await authenticateRequest(request);
+    const actor = await authenticateRequest(request);
     const { id } = await params;
-    const service = createServiceSupabase();
-    const { data, error } = await service.from("os_document_versions").select("version_no,title,content_md,author_id,agent_key_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false });
+    const { data, error } = await actor.supabase.from("os_document_versions").select("version_no,title,content_md,author_id,agent_key_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false });
     if (error) throw new ApiError(400, "DOCUMENT_VERSIONS_FAILED", "변경 이력을 불러오지 못했습니다.", error.message);
+    const service = createServiceSupabase();
     const authorIds = [...new Set((data ?? []).map((version) => version.author_id).filter(Boolean))];
     const { data: authors } = authorIds.length ? await service.from("os_profiles").select("id,display_name,email").in("id", authorIds) : { data: [] };
     const agentIds = [...new Set((data ?? []).map((version) => version.agent_key_id).filter(Boolean))];

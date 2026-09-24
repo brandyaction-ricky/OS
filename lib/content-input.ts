@@ -24,11 +24,13 @@ export function parseTimedTranscript(value: string): TimedCue[] {
   return cues.sort((a, b) => a.start - b.start);
 }
 
-export function contentSourceText(source: { record_type?: string; description?: string; metadata?: Record<string, unknown> }, scripts: Array<{ description?: string; status?: string }> = []) {
+export function contentSourceText(source: { record_type?: string; description?: string; metadata?: Record<string, unknown> }, scripts: Array<{ description?: string; status?: string }> = [], transcriptOnly = false) {
   const metadata = source.metadata ?? {};
-  for (const key of ["transcriptSrt", "transcript", "script", "finalScript"]) {
+  for (const key of transcriptOnly ? ["transcriptSrt", "transcript"] : ["transcriptSrt", "transcript", "script", "finalScript"]) {
     if (typeof metadata[key] === "string" && metadata[key].trim()) return metadata[key].trim();
   }
+  // Preparation and previously linked scripts are not evidence of recorded speech.
+  if (transcriptOnly) return "";
   const script = scripts.find((item) => ["ready", "done", "published"].includes(item.status ?? "")) ?? scripts[0];
   if (script?.description?.trim()) return script.description.trim();
   if (source.record_type === "content_script" || (metadata.automationSource === true && metadata.sourceTextKind !== "brief")) return source.description?.trim() ?? "";

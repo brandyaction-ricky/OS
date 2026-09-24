@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, usesShootingPlan, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { contentSourceText } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -9,13 +10,19 @@ import { executeGeneration, generationProcedureRevision, generationSchema } from
 function digest(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function sourceInput(source: OsRecord) {
   return { title: source.title, description: source.description, sourceUrl: source.source_url,
-    audience: source.metadata.audience, evidence: source.metadata.evidence, experience: source.metadata.experience, coreMessage: source.metadata.coreMessage };
+    audience: source.metadata.audience, evidence: source.metadata.evidence, experience: source.metadata.experience, coreMessage: source.metadata.coreMessage,
+    // Optional for legacy sources. Changed production context must not reuse a
+    // prior pipeline approval; the last-change note also covers switching back.
+    ...(source.metadata.planningHandoff !== undefined ? { planningHandoff: source.metadata.planningHandoff, productionFormatChange: source.metadata.productionFormatChange } : {}) };
 }
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
-  return digest([sourceInput(source), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
-    ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
+  const revisions = source.metadata.pipelineInputRevisions;
+  const relevantRevisions = Array.isArray(revisions) ? revisions.slice(0, gate) : [];
+  return digest(["packaging-first-v1", sourceInput(source), reference(artifacts.research), reference(artifacts.packaging), ...(gate >= 2 ? [usesShootingPlan(source) ? source.metadata.productionPreparation : reference(artifacts.script)] : []),
+    ...(relevantRevisions.some((revision) => revision > 0) ? [relevantRevisions] : []),
+    ...(gate >= 3 ? ["recorded-source-v1", reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.transcript, source.metadata.shortsStyle] : [])]);
 }
 
 export async function readPipeline(actor: RequestActor, id: string) {
@@ -27,11 +34,16 @@ export async function readPipeline(actor: RequestActor, id: string) {
     if (childError) throw new ApiError(500, "PIPELINE_READ_FAILED", "공정 산출물을 읽지 못했습니다.");
     records.push(...(data ?? [])); if (!data || data.length < 200) break;
   }
+  const evidenceKinds = new Set(["copy_decision_evidence", "publication_copy_observation", "claim_evidence"]);
+  const authorIds = [...new Set(records.filter(record => record.record_type === "content_package" && evidenceKinds.has(String(record.metadata?.packageKind ?? "")))
+    .map(record => record.created_by))];
+  const { data: authors } = authorIds.length ? await actor.supabase.from("os_profiles").select("id,display_name").in("id", authorIds) : { data: [] };
+  const evidenceAuthors = Object.fromEntries((authors ?? []).map(author => [author.id, author.display_name?.trim() || `계정 ${author.id.slice(0, 8)}`]));
   const reviews = (Array.isArray(source.metadata.pipelineReviews) ? source.metadata.pipelineReviews : []) as PipelineReview[];
   const signatures = [1, 2, 3].map((gate) => gateSignature(source, records, gate));
   const matches = signatures.map((signature, index) => hasCurrentApproval(reviews, index + 1, signature));
   const approved = matches.map((_, index) => matches.slice(0, index + 1).every(Boolean));
-  return { source: source as OsRecord, records, reviews, signatures, approved, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate)) };
+  return { source: source as OsRecord, records, evidenceAuthors, reviews, signatures, approved, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate)) };
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
@@ -55,19 +67,23 @@ export async function reviewPipeline(actor: RequestActor, id: string, gate: numb
 
 export async function runPipelineGeneration(actor: RequestActor, input: z.infer<typeof generationSchema>) {
   const state = await readPipeline(actor, input.sourceId);
-  const neededGate = ({ topic_plan: 0, script_draft: 1, title_package: 1, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
+  const neededGate = ({ topic_plan: 0, script_draft: 1, title_package: 0, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
   if (state.approved.slice(0, neededGate).some((approved) => !approved)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "이전 단계의 현재 자료를 승인한 뒤 실행해 주세요. 수정된 자료는 재승인이 필요합니다.");
   if (input.action === "topic_plan") {
-    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => name !== "기획 브리핑");
+    const missing = pipelineMissing(state.source, [], 1).filter((name) => !["기획 브리핑", "제목·썸네일 패키지"].includes(name));
     if (missing.length) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", `자료 보완 필요: ${missing.join(", ")}`);
   }
-  if (input.action === "title_package" && !pipelineArtifacts(state.records).script) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "원고를 먼저 작성해 주세요.");
+  if (input.action === "title_package" && !pipelineArtifacts(state.records).research) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "기획 브리핑을 먼저 준비해 주세요. 원고는 필요하지 않습니다.");
+  if (input.action === "script_draft" && usesShootingPlan(state.source)) throw new ApiError(409, "SHOOTING_PLAN_MODE", "현재 제작 방식은 전문 원고 대신 영상 설계와 촬영 진행표를 준비합니다.");
+  if (usesShootingPlan(state.source) && ["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action)
+    && !contentSourceText(state.source, [], true)) throw new ApiError(409, "CONTENT_TRANSCRIPT_REQUIRED", "촬영한 영상의 실제 자막이 필요합니다. 자막·영상 편집에서 SRT/VTT를 저장해 주세요.");
   const artifacts = pipelineArtifacts(state.records);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
-  const key = digest([procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
+  const key = digest(["recorded-source-v1", procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(input.action === "topic_plan" ? [] : [reference(artifacts.research)]),
-    ...(["title_package", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script)] : []),
-    ...(["shorts_proposal", "youtube_kit"].includes(input.action) ? [state.source.metadata.transcriptSrt] : [])]);
+    ...(input.action === "script_draft" ? [reference(artifacts.packaging)] : []),
+    ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script), reference(artifacts.packaging), state.source.metadata.productionPreparation] : []),
+    ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [state.source.metadata.transcriptSrt, state.source.metadata.transcript, state.source.metadata.script, state.source.metadata.finalScript] : [])]);
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
   const prior = runs.findLast((run) => run.key === key);
   if (prior?.state === "succeeded") return { configured: true, queued: false, reused: true, records: state.records.filter((record) => prior.recordIds?.includes(record.id)) };

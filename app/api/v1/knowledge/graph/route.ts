@@ -2,20 +2,18 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse, ApiError } from "@/lib/http";
 import { buildKnowledgeGraph, type KnowledgeLinkSource } from "@/lib/knowledge-links";
 import { authenticateRequest } from "@/lib/server/auth";
-import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    await authenticateRequest(request);
-    const service = createServiceSupabase();
+    const actor = await authenticateRequest(request);
     const documents: KnowledgeLinkSource[] = [];
     const pageSize = 500;
 
     for (let offset = 0; ; offset += pageSize) {
-      const { data, error } = await service
+      const { data, error } = await actor.supabase
         .from("os_documents")
         .select("id,title,content_md,folder,status,owner_id,source_ref")
         .neq("status", "archived")

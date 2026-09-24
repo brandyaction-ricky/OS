@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import ts from 'typescript';
 import * as pipeline from '../lib/content-pipeline.ts';
+import * as contentInput from '../lib/content-input.ts';
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const base = (id, extra = {}) => ({ id, record_type: 'content_topic', title: 'Example', description: 'Brief', source_url: null, parent_id: null, version: 1, metadata: {}, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', archived_at: null, ...extra });
@@ -20,25 +21,148 @@ function harness() {
   } };
   const generation = { generationSchema: {}, generationProcedureRevision: async () => "rules-v3", executeGeneration: async (_actor, input, key) => {
     calls++; if (pause) await pause; if (fail) throw new ApiError(502, 'FAILED', 'Temporary failure');
-    const row = base(`generated-${calls}`, { record_type: input.action === 'script_draft' ? 'content_script' : 'content_package', parent_id: 'source', description: 'Actual generated content', created_at: `2026-09-08T00:00:${String(calls).padStart(2, '0')}Z`, metadata: { packageKind: input.action, generationRequestKey: key } }); rows.push(row); return { queued: false, configured: true, records: [structuredClone(row)] };
+    const row = base(`generated-${calls}`, { record_type: input.action === 'script_draft' ? 'content_script' : 'content_package', parent_id: 'source', description: 'Actual generated content', created_at: `2026-09-08T00:00:${String(calls).padStart(2, '0')}Z`, metadata: { packageKind: input.action, generationRequestKey: key, ...(input.action === 'title_package' ? { result: { titles: [{ text: 'Selected title', picked: true }], copies: [{ text: 'Selected copy', picked: true }] } } : {}) } }); rows.push(row); return { queued: false, configured: true, records: [structuredClone(row)] };
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === './content-generation') return generation; throw Error(name); } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-input') return contentInput; if (name === './content-generation') return generation; throw Error(name); } });
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
+test('recorded text changes invalidate downstream cache and final review, not preparation review', async () => {
+  for (const action of ['derivatives', 'youtube_kit', 'shorts_proposal']) {
+    const h = harness();
+    h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+    h.rows[0].metadata.productionPreparation = { kind: 'shooting_plan', design: 'Design', shootingPlan: 'Plan' };
+    await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+    await h.api.runPipelineGeneration(h.actor, input('title_package'));
+    for (const gate of [1, 2]) {
+      const state = await h.api.readPipeline(h.actor, 'source');
+      await h.api.reviewPipeline(h.actor, 'source', gate, state.signatures[gate - 1], true, 'Synthetic review');
+    }
+    h.rows[0].metadata.transcript = 'Recorded speech';
+    await h.api.runPipelineGeneration(h.actor, input(action));
+    assert.equal((await h.api.runPipelineGeneration(h.actor, input(action))).reused, true);
+    for (const key of ['transcript', 'transcriptSrt']) {
+      const before = await h.api.readPipeline(h.actor, 'source');
+      h.rows[0].metadata[key] = 'Updated recorded speech';
+      const after = await h.api.readPipeline(h.actor, 'source');
+      assert.equal(after.signatures[1], before.signatures[1]);
+      assert.notEqual(after.signatures[2], before.signatures[2]);
+      const calls = h.calls();
+      await h.api.runPipelineGeneration(h.actor, input(action));
+      assert.equal(h.calls(), calls + 1);
+    }
+  }
+});
+test('board preparation advances without full script and edits invalidate only preparation review', async () => {
+  const h = harness();
+  h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('title_package')), error => error.code === 'PIPELINE_NEEDS_INPUT');
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  let state = await h.api.readPipeline(h.actor, 'source');
+  assert.ok(state.missing[0].includes('제목·썸네일 패키지'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Packaging checked');
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), error => error.code === 'SHOOTING_PLAN_MODE');
+  assert.equal(h.calls(), 2);
+  h.rows[0].metadata.productionPreparation = { kind: 'shooting_plan', design: 'Information and evidence', shootingPlan: 'Board diagram and examples' };
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.missing[1].length, 0);
+  await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Plan checked');
+  const history = structuredClone(h.rows[0].metadata.pipelineReviews);
+  h.rows[0].metadata.productionPreparation.shootingPlan = 'Revised order';
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.approved[0], true);
+  assert.equal(state.approved[1], false);
+  assert.deepEqual(h.rows[0].metadata.pipelineReviews, history);
+  assert.equal(h.rows.some(row => row.record_type === 'content_script'), false);
+});
+test('restoring earlier board text does not revive an approval for an older input revision', async () => {
+  const h = harness();
+  const source = h.rows[0];
+  source.metadata.planningHandoff = { productionFormat: 'board' };
+  source.metadata.productionPreparation = { kind: 'shooting_plan', design: 'Design', shootingPlan: 'Plan' };
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Synthetic packaging approval');
+  state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Synthetic preparation approval');
+  const original = structuredClone(source.metadata.productionPreparation);
+  for (const design of ['Revised design', original.design]) {
+    const proposed = { metadata: { ...source.metadata, productionPreparation: { ...original, design } } };
+    source.metadata = { ...proposed.metadata, pipelineInputRevisions: pipeline.nextPipelineInputRevisions(source, proposed) };
+    state = await h.api.readPipeline(h.actor, 'source');
+    assert.equal(state.approved[0], true);
+    assert.equal(state.approved[1], false);
+  }
+  assert.deepEqual(source.metadata.pipelineInputRevisions, [0, 2, 0]);
+});
+test('approval revision is protected and increments only for changed gate inputs', () => {
+  const source = base('source', { metadata: { pipelineEnabled: true, audience: 'Readers', productionPreparation: { design: 'A' } } });
+  const newPlan = { metadata: { ...source.metadata, productionPreparation: { design: 'B' } } };
+  assert.deepEqual(pipeline.nextPipelineInputRevisions(source, newPlan), [0, 1, 0]);
+  assert.equal(pipeline.nextPipelineInputRevisions(source, { metadata: { ...source.metadata } }), null);
+  assert.deepEqual(pipeline.nextPipelineInputRevisions(source, { title: 'Updated' }), [1, 0, 0]);
+  assert.equal(pipeline.protectedPipelineChange(source.metadata, { ...source.metadata, pipelineInputRevisions: [0, 1, 0] }), true);
+});
+test('board derivative actions require recorded captions before creating a run entry', async () => {
+  const h = harness();
+  h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+  h.rows[0].metadata.productionPreparation = { kind: 'shooting_plan', design: 'Design', shootingPlan: 'Plan' };
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  for (const gate of [1, 2]) {
+    const state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.reviewPipeline(h.actor, 'source', gate, state.signatures[gate - 1], true, 'Synthetic approval');
+  }
+  const before = h.rows[0].metadata.pipelineRuns.length;
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), error => error.code === 'CONTENT_TRANSCRIPT_REQUIRED');
+  assert.equal(h.rows[0].metadata.pipelineRuns.length, before);
+});
+test('unselected packaging cannot pass first review', async () => {
+  const h = harness();
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  const pack = h.rows.find(row => row.metadata.packageKind === 'title_package');
+  pack.metadata.result.titles[0].picked = false;
+  let state = await h.api.readPipeline(h.actor, 'source');
+  assert.ok(state.missing[0].includes('채택한 제목 1개'));
+  await assert.rejects(h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, ''), error => error.code === 'PIPELINE_NEEDS_INPUT');
+});
+test('changing production format invalidates existing pipeline approval without deleting artifacts', async () => {
+  const h = harness();
+  h.rows[0].metadata.planningHandoff = { productionFormat: 'board' };
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  const original = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, original.signatures[0], true, 'Checked synthetic format');
+  const reviews = structuredClone(h.rows[0].metadata.pipelineReviews);
+  const count = h.rows.length;
+  for (const [format, from, version] of [['mixed', 'board', 3], ['board', 'mixed', 4]]) {
+    h.rows[0].metadata.planningHandoff = { productionFormat: format };
+    h.rows[0].metadata.productionFormatChange = { from, to: format, sourceVersion: version };
+    const changed = await h.api.readPipeline(h.actor, 'source');
+    assert.equal(changed.approved[0], false);
+    await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), error => error.code === 'PIPELINE_APPROVAL_REQUIRED');
+    assert.equal(h.calls(), 2);
+    assert.equal(h.rows.length, count);
+    assert.deepEqual(h.rows[0].metadata.pipelineReviews, reviews);
+  }
+});
 test('pipeline stops at each gate and reuses successful generation', async () => {
   const h = harness();
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
   await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
   let state = await h.api.readPipeline(h.actor, 'source');
   await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Checked reference');
   await h.api.runPipelineGeneration(h.actor, input('script_draft'));
   const repeated = await h.api.runPipelineGeneration(h.actor, input('script_draft'));
-  assert.equal(repeated.reused, true); assert.equal(h.calls(), 2);
+  assert.equal(repeated.reused, true); assert.equal(h.calls(), 3);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
-  await h.api.runPipelineGeneration(h.actor, input('title_package'));
   state = await h.api.readPipeline(h.actor, 'source');
   await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Checked script');
   const script = h.rows.find((row) => row.record_type === 'content_script'); script.version++;

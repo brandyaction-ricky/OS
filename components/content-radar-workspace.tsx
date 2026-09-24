@@ -25,6 +25,8 @@ import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
+import { SystemOnePlanningCheck } from "./system-one-planning-check";
+import { ContentPlanningHandoff } from "./content-planning-handoff";
 
 type RadarTab = "channels" | "discovery" | "niches" | "planning";
 
@@ -63,7 +65,7 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function ContentRadarWorkspace() {
+export function ContentRadarWorkspace({ showPlanningHandoff = false, showReferenceCheck = false }: { showPlanningHandoff?: boolean; showReferenceCheck?: boolean }) {
   const { accessToken, demo, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
@@ -471,17 +473,19 @@ export function ContentRadarWorkspace() {
       <section className="content-planning-layout">
         <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "미정이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "미정"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
-          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 제목·썸네일 후보 뽑기</button></header>
+          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 기획 브리핑 후보 만들기</button></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
           <form className="research-brief" key={`${selected.id}-${selected.version}`} onSubmit={saveResearchBrief}>
             <div><h3>리서치 브리프</h3><p>별도 앱으로 옮기지 않고, 이 주제에 근거 출처·분석 메모·브랜드 맥락을 함께 남깁니다.</p></div>
             <label><span>추적 출처 URL · 한 줄에 하나</span><textarea name="researchSources" rows={3} defaultValue={(meta<Record<string, unknown>>(selected, "researchBrief", {}).sourceUrls as string[] | undefined ?? [selected.source_url].filter(Boolean)).join("\n")} placeholder="https://…" /></label>
             <label><span>분석 메모</span><textarea name="analystNotes" rows={4} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).analystNotes ?? "")} placeholder="왜 반응했는지, 구조·훅·증거·주의할 점" /></label>
             <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
-            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>리서치 메모 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/scripts?sourceId=${selected.id}`}>스크립트 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
+            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>리서치 메모 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일 작업으로 이동 <ArrowRight size={14} /></a> : null}</div>
           </form>
           {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
           {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
+          {showReferenceCheck ? <SystemOnePlanningCheck key={`${selected.id}:${selected.version}`} id={selected.id} version={selected.version} /> : null}
+          {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}:${profile?.id}`} source={selected} disabled={busy} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("제작 인계 메모를 저장했습니다. 공유는 실행하지 않았습니다. 변경된 입력의 기존 공정 승인은 다시 확인해 주세요."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
         </> : <div className="compact-empty"><Target size={24} /><strong>판정할 틈새를 선택하세요.</strong></div>}</article>
       </section>

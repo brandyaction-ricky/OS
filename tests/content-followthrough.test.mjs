@@ -24,6 +24,15 @@ test('content generation requires an actual script rather than a topic brief', (
   assert.equal(contentSourceText(record({ metadata: { transcriptSrt: srt } })), srt);
   assert.equal(contentSourceText(record(), [{ status: 'review', description: 'Draft' }, { status: 'ready', description: 'Approved' }]), 'Approved');
 });
+test('transcript-only source ignores preparation, descriptions and every legacy script fallback', () => {
+  const source = record({ record_type: 'content_script', description: 'Not recorded', metadata: { automationSource: true, script: 'Old script', finalScript: 'Final script', productionPreparation: { shootingPlan: 'Plan' } } });
+  assert.equal(contentSourceText(source, [{ status: 'ready', description: 'Approved script' }], true), '');
+  assert.equal(contentSourceText(source), 'Old script');
+  source.metadata.transcript = 'Recorded speech';
+  assert.equal(contentSourceText(source, [], true), 'Recorded speech');
+  source.metadata.transcriptSrt = srt;
+  assert.equal(contentSourceText(source, [], true), srt);
+});
 test('channel procedures resolve filename aliases and distinguish approval from absence', () => {
   const docs = [{ id: '1', title: 'Different heading', source_ref: 'Content/쓰레드_쓰는_절차.md', status: 'draft', content_md: 'Procedure' }];
   assert.deepEqual(selectChannelProcedures(docs, ['threads', 'column']).missing, [{ file: '쓰레드_쓰는_절차.md', reason: 'approval', documentId: '1' }, { file: 'SEO칼럼_만드는_절차.md', reason: 'missing', documentId: undefined }]);

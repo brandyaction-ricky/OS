@@ -42,7 +42,7 @@ const settle = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolv
 const documentRow = (id, fields = {}) => ({ id, title: `원고 ${id}`, folder: `${scripts.SCRIPT_DOCUMENT_ROOT}/영상`, source_ref: `${id}.md`, current_version: 1, status: "draft", updated_at: "2026-09-08T00:00:00Z", ...fields });
 const childrenOf = (tree) => Array.isArray(tree) ? tree.flatMap(childrenOf) : tree && typeof tree === "object" ? [tree, ...childrenOf(tree.props?.children)] : [];
 
-function setup(overrides = {}, initialSession = {}) {
+function setup(overrides = {}, initialSession = {}, workspaceProps = {}) {
   const hooks = [], effects = [], listCalls = [], readCalls = [], createCalls = [];
   let cursor = 0;
   let session = { demo: false, accessToken: "token", profile: { id: "one" }, ...initialSession };
@@ -81,6 +81,7 @@ function setup(overrides = {}, initialSession = {}) {
     "@/lib/api-client": api, "@/lib/script-documents": scripts,
     "./session-provider": { useSession: () => session },
     "./content-linked-scripts": { ContentLinkedScripts: "ContentLinkedScripts" },
+    "./content-planning-handoff": { LinkedPlanningHandoff: "LinkedPlanningHandoff" },
   };
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {
@@ -90,7 +91,7 @@ function setup(overrides = {}, initialSession = {}) {
   })((id) => { assert.ok(id in modules, id); return modules[id]; }, mod, mod.exports);
   const render = () => {
     cursor = 0;
-    const tree = mod.exports.ContentScriptsWorkspace();
+    const tree = mod.exports.ContentScriptsWorkspace(workspaceProps);
     while (effects.length) effects.shift()();
     return childrenOf(tree);
   };
@@ -119,6 +120,18 @@ test("an empty script library can create its first draft and select the saved do
   assert.equal(app.readCalls.at(-1), "new");
   assert.ok(view.some((item) => item.type === "a" && item.props.href === "/knowledge?document=new"));
   assert.equal(view.some((item) => item.type === "form" && item.props.role === "dialog"), false);
+  app.unmount();
+});
+
+test("DEV evidence-only script workspace separates this environment's library from topic-linked documents", async () => {
+  const app = setup({}, {}, { showContentEvidence: true });
+  app.render(); await settle();
+  const view = JSON.stringify(app.render());
+  assert.match(view, /현재 연결된 지식함의 원고 목록/);
+  assert.match(view, /운영 OS 문서는 자동으로 표시되거나 복제되지 않습니다/);
+  assert.match(view, /현재 환경의 영상 폴더/);
+  assert.match(view, /현재 환경의 선택 폴더에 원고가 없습니다/);
+  assert.ok(app.render().some((item) => item.type === "ContentLinkedScripts" && item.props.showPlanningHandoff === false));
   app.unmount();
 });
 

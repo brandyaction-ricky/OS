@@ -27,10 +27,18 @@ import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace"
 import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
 import { NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
+import { canUseSystemOnePreflight } from "@/lib/system-one-preflight-gate";
+import { canUseSystemOneJevShadow } from "@/lib/system-one-jev-shadow-gate";
+import { canUseSystemOneContentEvidence } from "@/lib/system-one-content-evidence-gate";
+import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gate";
 
 export default async function GenericPage({ params }: { params: Promise<{ stage: string; page: string }> }) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
+  const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
+  const systemOnePreflightEnabled = canUseSystemOnePreflight(process.env);
+  const systemOneJevShadowEnabled = canUseSystemOneJevShadow(process.env);
+  const contentEvidenceEnabled = canUseSystemOneContentEvidence(process.env);
   const stage = NAV_STAGES.find((item) => item.pages.some((page) => page.href === href));
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/members") return <MembersWorkspace />;
@@ -44,11 +52,11 @@ export default async function GenericPage({ params }: { params: Promise<{ stage:
   if (href === "/organization/leave") return <LeaveWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
-  if (href === "/content/topics") return <ContentTopicsWorkspace />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace />;
+  if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showReferenceCheck={systemOnePreflightEnabled} />;
+  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showContentEvidence={contentEvidenceEnabled} showSystemOnePreflight={systemOnePreflightEnabled} showSystemOneJevShadow={systemOneJevShadowEnabled} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/packages") return <ContentPackageWorkspace />;
+  if (href === "/content/packages") return <ContentPackageWorkspace showContentEvidence={contentEvidenceEnabled} />;
   if (href === "/content/shorts") return <ContentShortsWorkspace />;
   if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
   if (href === "/content/youtube") return <YoutubeKitWorkspace />;

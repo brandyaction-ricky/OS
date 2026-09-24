@@ -1,6 +1,133 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-22 Asia/Seoul.
+Updated: 2026-09-24 Asia/Seoul.
+
+## How to read these records
+
+This document is a chronological migration and verification record. Counts and statements inside dated sections are
+snapshots from those dates; do not treat older counts as the live database state. At the current repository revision,
+`supabase/migrations` contains one core baseline and 14 forward migration files. The four content-evidence and
+archived-document read migrations are recorded as applied to DEV only and each has `productionAuthorized: false` in
+the migration manifest. The last recorded Production inventory is historical. Any new Production candidate requires
+a fresh read-only check of live migration history, live schema prerequisites, exact migration checksums, and the
+candidate commit before a separately approved application.
+
+## 2026-09-24 archived document read boundary — DEV applied
+
+`20260924131455_archived_document_owner_read.sql` changes only
+`public.os_can_read_document`: the document owner and an administrator can
+still read a recoverable archived document, but a former team reader cannot
+read its document, versions, links, events, or chunks through the existing
+RLS policies. Ordinary same-team and company-canonical reads are unchanged.
+
+The representative approved `brandyaction-os-dev` only. A live preflight
+confirmed the previous function still allowed archived documents and the
+version was absent from DEV history. A guarded transaction applied the exact
+736-byte repository SQL and recorded version `20260924131455`; the stored
+statement MD5 `e2ddde5d888f0c390adb6b3a69073da5` matches the file.
+Nine transaction-scoped pgTAP checks completed without failure; their
+synthetic users and documents were rolled back (both remaining counts zero).
+In the existing DEV Preview, `brandybasic22` could no longer open the
+`wjdgh1346`-owned archived QA document by direct URL, while the owner still
+could. The teammate could still read a company-canonical QA document.
+
+This migration has **not** been applied to Production. Production needs a
+fresh live-function/history preflight and separate approval. Do not replay
+the whole migration chain or interpret the historical manifest `ready` /
+`apply` status as authorization for this migration.
+
+## 2026-09-23 content evidence team read — DEV applied
+
+`20260923080000_content_evidence_team_read.sql` follows the DEV-applied owner
+boundary below. It replaces only the restrictive evidence SELECT policy: an
+active owner still reads their rows, and another active user reads the three
+evidence subtypes only when the row has a nonblank team matching that user's
+active `os_profiles.team`. A blank row or viewer team fails closed. The broad
+ordinary-record policy does not bypass this restriction. The prior owner-only
+INSERT policy and append-only trigger remain unchanged. The content screen
+shows a non-owner the cards without an add control.
+
+The representative separately approved the DEV access change on 2026-09-23.
+Read-only preflight found exactly the three P03 evidence rows assigned to
+`콘텐츠`, one active owner and one active intended reader, both with blank
+profile teams, and no existing active content-team members. The 16-check
+transaction-scoped pgTAP suite passed against the candidate policy before
+application. In the isolated `brandyaction-os-dev` project, one guarded
+transaction assigned exactly those two profiles to `콘텐츠`, replaced the
+restrictive SELECT policy with the exact 816-byte repository migration, and
+recorded version `20260923080000` in migration history. Postflight found two
+expected active content-team profiles, three unchanged evidence rows, the new
+policy present, the old one absent, and one history entry. The recorded SQL
+MD5 `1ff47692a8082391655f0dbd92890a10` matches the repository file.
+
+The manifest now records DEV application only. `requiresApproval: true` and
+`productionAuthorized: false` remain in force. The migration did not modify
+evidence rows, INSERT policy, or append-only trigger. Browser QA on the new
+PR Preview still needs the two accounts to log in to that host; policy-level
+post-application checks and PR integration review remain release gates. A
+local SQL run was unavailable in this worktree because Docker/Podman was not
+on `PATH`; static and app tests do not substitute for the connected DEV gate.
+Production schema changes and deployment need separate approval.
+
+## 2026-09-23 content evidence boundary — DEV applied
+
+After merging this DEV-only migration into the newer eleven-file active chain,
+the manifest contains twelve active files. The 2026-09-22 Production approval
+ends at `20260922063605_knowledge_review_return.sql`; it does not extend to
+`20260923060000_content_evidence_owner_and_append_only.sql`. The current full
+chain therefore has `productionAuthorized: false` and the new entry retains
+`requiresApproval: true`. Integrity checks may pass, but
+`npm run db:migrations:ready` must fail until a separate Production decision is
+recorded. Do not treat the historical `ready`/`apply` fields as fresh approval.
+
+`20260923060000_content_evidence_owner_and_append_only.sql` is a forward-only
+migration for the three content-evidence `packageKind` values. It narrows
+authenticated reads and owner assignment for those rows and rejects direct
+UPDATE/archival/DELETE or relabelling through a database trigger. It leaves
+ordinary `os_records` access unchanged. The transaction-scoped pgTAP suite is
+`supabase/tests/content_evidence_boundary_test.sql`.
+
+The representative explicitly approved applying this SQL to
+`brandyaction-os-dev` only. Before application, the live DEV migration history
+(including the separate quota migration) was inspected, and the SQL plus all
+10 pgTAP checks passed inside a rolled-back DEV transaction. No local
+PostgreSQL runtime was available. The exact migration was then applied in a
+transaction and recorded as version `20260923060000`; the trigger function,
+two policies and history row were verified. The pgTAP suite passed 10/10 again
+against the applied DEV schema, and the existing owner account could still
+read its cards in Preview. Independent second-account browser QA remains open;
+the pgTAP suite did verify cross-account read denial and forged-owner INSERT
+denial using two authenticated identities. This is **not** applied to Local or
+Production. Production requires its own schema comparison, plan and explicit
+approval. Owner-entered rows remain user claims, not source-verified or
+tamper-proof audit evidence; a same-owner client can still INSERT unvalidated
+evidence directly.
+
+The DEV migration-history statement is the repository SQL without its final
+newline (2,391 versus 2,392 bytes). Its MD5 matches the repository file with
+only that final newline removed; no SQL statement differs. Do not mistake this
+byte-level formatting difference for a missing or different migration.
+
+## 2026-09-21 narrowly approved quota maintenance
+
+The historical baseline status below describes the four-migration DEV rollout;
+it does not describe later individually approved Production maintenance.
+`20260921140000_agent_update_daily_limit.sql` was approved and applied separately
+to Production: only `knowledge.update` changes from 200 to 1000 per rolling
+24 hours. All minute, create/delete and authorization checks remain unchanged.
+The application was not merged or deployed to Production by this operation.
+
+The follow-up `supabase/maintenance/record_agent_update_quota_history.sql`
+records only that already-verified version and the exact migration SQL. It
+checks the live quota, refuses mismatched existing tracking records, and does
+not execute the payload or reconcile any other migration. The checksum of the
+stored statement must match the repository file after application. This is not
+approval to replay the baseline or repair unrelated historical entries.
+
+The new quota migration has not been applied to DEV by this task. Before a
+future DEV application, review that environment's live definition separately.
+The original baseline's `applied_dev` manifest fields remain historical facts,
+not a claim that every subsequently added forward migration is deployed.
 
 ## Decision
 

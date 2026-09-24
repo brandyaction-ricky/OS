@@ -3,7 +3,6 @@ import { ZodError } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { indexDocument } from "@/lib/server/indexing";
-import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus } from "@/lib/types";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
@@ -25,7 +24,7 @@ export async function GET(request: Request) {
     if (url.searchParams.get("view") === "folders") {
       const folders = new Set<string>();
       for (let offset = 0; offset < 10_000; offset += 1_000) {
-        const { data, error } = await createServiceSupabase().from("os_documents").select("folder").neq("status", "archived").order("id").range(offset, offset + 999);
+        const { data, error } = await actor.supabase.from("os_documents").select("folder").neq("status", "archived").order("id").range(offset, offset + 999);
         if (error) throw new ApiError(400, "DOCUMENT_FOLDER_LIST_FAILED", "지식 폴더 목록을 불러오지 못했습니다.", error.message);
         for (const row of data ?? []) if (row.folder) folders.add(row.folder);
         if (!data || data.length < 1_000) break;
@@ -33,9 +32,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ folders: [...folders].sort((a, b) => a.localeCompare(b, "ko", { numeric: true })) });
     }
 
-    // Scope is a workspace filter, not an access boundary. Authentication is
-    // checked above; the server client avoids hiding another member's notes.
-    let builder = createServiceSupabase()
+    // Scope is only a workspace filter. The user's Supabase client enforces
+    // document RLS before any list or content is returned.
+    let builder = actor.supabase
       .from("os_documents")
       .select(includeContent ? "*" : "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at", { count: "exact" })
       .order("updated_at", { ascending: false })

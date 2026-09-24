@@ -219,7 +219,9 @@ function statusLabel(status: string) {
 }
 
 export function groupHomeVideos(records: OsRecord[], limit = 6): HomeVideo[] {
-  const content = records.filter((record) => CONTENT_TYPES.has(record.record_type));
+  const evidencePackageKinds = new Set(["copy_decision_evidence", "publication_copy_observation", "claim_evidence"]);
+  const content = records.filter((record) => CONTENT_TYPES.has(record.record_type)
+    && !(record.record_type === "content_package" && evidencePackageKinds.has(String(record.metadata.packageKind ?? ""))));
   const byId = new Map(content.map((record) => [record.id, record]));
   const groups = new Map<string, { root: OsRecord; items: OsRecord[] }>();
   content

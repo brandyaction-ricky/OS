@@ -1,0 +1,101 @@
+.research-brief > .planning-handoff-fields {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 12px;
+}
+
+/* Scoped to the connected workflow cards; shared OS colors and type stay intact. */
+.content-workflow-panel { margin-block: 20px; }
+.content-workflow-panel > .panel-header { padding: 20px 24px; }
+.content-workflow-panel > .panel-header p { margin-top: 6px; line-height: 1.6; }
+.content-workflow-body {
+  min-width: 0;
+  padding: 24px;
+  display: grid;
+  gap: 20px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.content-workflow-body > * { min-width: 0; margin-block: 0; }
+.content-workflow-body > p { max-width: 76ch; }
+.content-workflow-body > button { justify-self: start; }
+.content-workflow-body button[aria-pressed="true"] { border-color: var(--accent-2); background: var(--accent-soft); }
+.content-workflow-body > [role="status"] { display: grid; gap: 16px; }
+.content-workflow-body > [role="status"] > * { margin-block: 0; }
+.content-workflow-body ul { margin-block: 0; padding-left: 22px; }
+.content-workflow-body li { padding-left: 4px; }
+.content-workflow-body li + li { margin-top: 16px; }
+.content-workflow-body li p { margin: 8px 0; max-width: 76ch; }
+.content-workflow-body .planning-facts { gap: 16px; }
+.content-workflow-body .planning-facts > div { padding: 16px; }
+.content-workflow-body .planning-facts dt { margin-bottom: 8px; }
+.content-workflow-body .research-brief { padding: 20px; }
+.content-workflow-body .planning-handoff-fields { gap: 18px; }
+.content-workflow-body .drawer-actions { margin: 0; gap: 12px; flex-wrap: wrap; }
+.content-workflow-body > .content-workflow-note {
+  max-width: none;
+  padding-top: 20px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+}
+.jev-shadow { padding: 20px; display: grid; gap: 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel-2); }
+.jev-shadow > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.jev-shadow h4 { margin: 4px 0 0; font-size: 15px; }
+.jev-shadow header p { margin: 7px 0 0; max-width: 70ch; color: var(--muted); font-size: 10px; line-height: 1.65; }
+.jev-input-checks { padding: 16px; display: grid; gap: 7px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
+.jev-input-checks strong { font-size: 11px; }
+.jev-input-checks p { margin: 0; color: var(--text-2); font-size: 9px; line-height: 1.65; }
+.jev-input-checks span { color: var(--muted); font-size: 9px; }
+.jev-shadow-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.jev-shadow-grid article { min-width: 0; padding: 14px; display: flex; flex-direction: column; gap: 7px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel); }
+.jev-shadow-grid small { color: var(--text-2); font-size: 8px; }
+.jev-shadow-grid strong { font-size: 18px; overflow-wrap: anywhere; }
+.jev-shadow-grid strong i { margin-left: 2px; color: var(--muted); font-size: 9px; font-style: normal; font-weight: 500; }
+.jev-shadow-grid span { color: var(--muted); font-size: 8px; line-height: 1.5; }
+.jev-shadow-grid .risk-high strong { color: var(--danger); }
+.jev-shadow-grid .risk-medium strong { color: var(--warning); }
+.jev-shadow-grid .risk-low strong { color: var(--mint); }
+.jev-shadow .content-workflow-note { margin: 12px 0 0; color: var(--muted); font-size: 9px; line-height: 1.6; }
+.copy-lineage-body { gap: 18px; }
+.copy-lineage-status { padding: 15px 18px; display: grid; gap: 5px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel-2); }
+.copy-lineage-status.has-difference { border-color: var(--warning); }
+.copy-lineage-status strong { font-size: 11px; }
+.copy-lineage-status small { color: var(--muted); font-size: 9px; }
+.copy-lineage-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.copy-lineage-grid article { min-width: 0; padding: 17px; display: grid; align-content: start; gap: 8px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel-2); }
+.copy-lineage-grid strong { font-size: 11px; }
+.copy-lineage-grid p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; }
+.copy-lineage-grid small { color: var(--muted); font-size: 9px; }
+.copy-lineage-grid a { font-size: 9px; }
+.copy-lineage-form { padding: 18px; display: grid; gap: 14px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel-2); }
+.copy-lineage-form label { display: grid; gap: 6px; }
+.copy-lineage-form label span { font-size: 10px; }
+.copy-lineage-form p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
+.copy-lineage-form button { justify-self: start; }
+.claim-evidence-body { gap: 18px; }
+.claim-evidence-list { display: grid; gap: 12px; }
+.claim-evidence-list article { min-width: 0; padding: 17px; display: grid; gap: 7px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel-2); }
+.claim-evidence-list article > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.claim-evidence-list article strong { flex: 1 0 100%; font-size: 11px; overflow-wrap: anywhere; }
+.claim-evidence-list p { margin: 0; font-size: 9px; color: var(--text-2); overflow-wrap: anywhere; }
+.claim-evidence-list details { font-size: 9px; color: var(--text-2); }
+.claim-evidence-list details p { margin-top: 8px; white-space: pre-wrap; }
+.claim-evidence-list small,.claim-evidence-list a { font-size: 9px; color: var(--muted); }
+.claim-evidence-form { padding: 18px; display: grid; gap: 14px; border: 1px solid var(--line-soft); border-radius: 9px; background: var(--panel-2); }
+.claim-evidence-form label,.claim-source-fields { display: grid; gap: 6px; }
+.claim-evidence-form label span { font-size: 10px; }
+.claim-source-fields { gap: 14px; }
+.claim-evidence-form p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.65; }
+.claim-evidence-form button { justify-self: start; }
+@media (max-width: 640px) {
+  .content-workflow-panel > .panel-header { padding: 18px; }
+  .content-workflow-body { padding: 18px; gap: 18px; }
+  .content-workflow-body .research-brief { padding: 16px; }
+  .jev-shadow > header { align-items: stretch; flex-direction: column; }
+  .jev-shadow-grid { grid-template-columns: 1fr 1fr; }
+  .copy-lineage-grid { grid-template-columns: 1fr; }
+}
