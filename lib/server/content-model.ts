@@ -7,6 +7,8 @@ export interface ContentModelRequest {
   maxTokens: number;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   timeoutMs?: number;
+  /** Stable leading text reused across calls; sent with a cache breakpoint so repeats bill at the cache-read rate. */
+  cachedPrefix?: string;
 }
 
 export const hasClaudeKey = () => Boolean((process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY)?.trim());
@@ -20,15 +22,16 @@ function outputText(body: Record<string, unknown>) {
     .map((item) => String((item as { text?: string }).text ?? "")).join("\n").trim();
 }
 
-export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000 }: ContentModelRequest) {
-  if (model.startsWith("gpt-6-")) return generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens });
+export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000, cachedPrefix }: ContentModelRequest) {
+  if (model.startsWith("gpt-6-")) return generateOpenAiContentText({ prompt: cachedPrefix ? `${cachedPrefix}\n\n${prompt}` : prompt, model, jsonSchema, maxTokens });
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model, max_tokens: maxTokens, ...(acceptsTemperature(model) ? { temperature: 0.25 } : {}),
-      output_config: { format: { type: "json_schema", schema: jsonSchema }, ...(effort ? { effort } : {}) }, messages: [{ role: "user", content: prompt }] }),
+      output_config: { format: { type: "json_schema", schema: jsonSchema }, ...(effort ? { effort } : {}) }, messages: [{ role: "user", content: cachedPrefix
+        ? [{ type: "text", text: cachedPrefix, cache_control: { type: "ephemeral" } }, { type: "text", text: prompt }] : prompt }] }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   const body = await response.json() as Record<string, unknown>;
