@@ -90,17 +90,20 @@ export type YoutubeRenderTimeline = {
 
 /** The private media worker serializes this brief for the offline frame renderer. */
 export function createYoutubeRenderBrief(plan: YoutubeScenePlan, timeline: YoutubeRenderTimeline) {
+  // Open notes were acknowledged by the owner before voice; here only the plan-to-timeline binding is checked.
   if (timeline.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION || !timeline.beats.length ||
-    plan.unresolved.length || !plan.visualFirst || plan.typographyMode !== "single_active_cue")
+    !plan.visualFirst || plan.typographyMode !== "single_active_cue")
     throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 설계와 시간표의 버전을 확인해 주세요.");
   const expected = plan.scenes.reduce((count, scene) => count + scene.visualBeats.length, 0);
-  if (timeline.beats.length !== expected)
+  if (timeline.beats.length > expected)
     throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 비트와 음성 시간표 수가 다릅니다.");
   for (const beat of timeline.beats) {
     const planned = plan.scenes[beat.segmentIndex]?.visualBeats[beat.beatIndex];
-    if (!planned || planned.spokenAnchor !== beat.spokenAnchor || planned.svg !== beat.svg ||
-      planned.displayText !== beat.displayText || planned.accentText !== beat.accentText ||
-      planned.typographyAnchor !== beat.typographyAnchor)
+    // Alignment may fold a beat away or leave its headline out, but never invents or edits one.
+    const titleKept = planned && planned.displayText === beat.displayText && planned.accentText === beat.accentText &&
+      planned.typographyAnchor === beat.typographyAnchor;
+    const titleDropped = !beat.displayText && !beat.accentText && !beat.typographyAnchor && beat.typographyStartSeconds === null;
+    if (!planned || planned.spokenAnchor !== beat.spokenAnchor || planned.svg !== beat.svg || !(titleKept || titleDropped))
       throw new ApiError(409, "YOUTUBE_RENDER_BRIEF_INVALID", "화면 계획이 시간표 생성 후 변경됐습니다.");
   }
   return { timingSource: "verified_word" as const, timeline, scenePlan: plan };

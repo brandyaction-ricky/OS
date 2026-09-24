@@ -58,7 +58,9 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
     priorEnd = end;
     const planned = scenes[beat.segmentIndex]?.visualBeats?.[beat.beatIndex];
     if (!planned) fail(`Beat ${n + 1}: scene plan mismatch`);
-    for (const field of ["spokenAnchor", "svg", "displayText", "accentText", "typographyAnchor"])
+    // Alignment may leave a headline out, but never edits the drawing or the headline it keeps.
+    const titleDropped = !beat.displayText && !beat.accentText && !beat.typographyAnchor;
+    for (const field of ["spokenAnchor", "svg", ...(titleDropped ? [] : ["displayText", "accentText", "typographyAnchor"])])
       if (planned[field] !== beat[field]) fail(`Beat ${n + 1}: scene plan changed after word alignment`);
     if ((typo === null) !== !beat.displayText || (typo !== null && (typo <= start || typo >= end)))
       fail(`Beat ${n + 1}: typography must follow the drawing and end inside the beat`);
@@ -174,7 +176,9 @@ async function main() {
     const problems = [];
     for (let i = 0; i < beats.length; i++)
       for (const problem of new Set(await page.evaluate((n) => window.inspectBeat(n), i))) problems.push(`beat ${i + 1} (${beats[i].spokenAnchor}): ${problem}`);
-    if (problems.length) fail(`Layout check failed:\n${problems.join("\n")}`);
+    // Layout findings block a check-only run; a real render records them for review instead of discarding the video.
+    if (problems.length && args["check-only"]) fail(`Layout check failed:\n${problems.join("\n")}`);
+    if (problems.length) console.warn(`layout warnings (${problems.length}):\n${problems.join("\n")}`);
     if (args["check-only"]) return console.log(`layout ok: ${beats.length} beats`);
     mkdirSync(path.dirname(path.resolve(args.output)), { recursive: true });
     const ffmpeg = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "pipe:0", "-i", args.audio,

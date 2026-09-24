@@ -43,6 +43,7 @@ test('changed audio and script drift are rejected; a headline outside its beat i
   const withoutTitle = alignYoutubeVisualBeats(early, script, transcript, sha(finalAudio)).beats[0];
   assert.equal(withoutTitle.displayText, '');
   assert.equal(withoutTitle.typographyStartSeconds, null);
+  assert.equal(createYoutubeRenderBrief(early, alignYoutubeVisualBeats(early, script, transcript, sha(finalAudio))).timingSource, 'verified_word');
   assert.throws(() => alignYoutubeVisualBeats(plan, ['다른 원고입니다'], transcript, sha(finalAudio)), { code: 'YOUTUBE_TRANSCRIPT_MISMATCH' });
 });
 
@@ -55,4 +56,6 @@ test('a beat too short to read is folded into the previous beat', () => {
   short.scenes[0].visualBeats[1].svg = '<image data-character="ch01" x="1" y="1" width="2" height="2"/>';
   const timeline = alignYoutubeVisualBeats(short, script, transcript, sha(finalAudio));
   assert.equal(JSON.stringify(timeline.beats.map((b) => [b.beatIndex, b.visualStartSeconds, b.endSeconds])), '[[0,0,2],[2,2,4.6]]');
+  short.unresolved = ['acknowledged note'];
+  assert.equal(createYoutubeRenderBrief(short, timeline).timingSource, 'verified_word');
 });
