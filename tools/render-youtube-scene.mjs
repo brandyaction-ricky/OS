@@ -71,7 +71,7 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
 
 function pageHtml(beats, characters, faces) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
-    .r{stroke:${C.red}} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
+    .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
     text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
     .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
