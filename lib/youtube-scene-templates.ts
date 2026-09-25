@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { YOUTUBE_SCENE_PALETTE as C } from "./youtube-scene-svg";
+import { YOUTUBE_SCENE_PALETTE as C, YOUTUBE_SCENE_SAFE_AREA as SAFE } from "./youtube-scene-svg";
 
 /**
  * Fixed scene templates. The scene model only picks a template and fills its slots;
@@ -70,6 +70,7 @@ const highest = (values: number[]) => Math.max(...values, 1e-9);
 /** Dark rounded label with white text, centred on (cx, cy). */
 const pill = (cx: number, cy: number, label: string, g: number, size = 30, red = false) => {
   const w = ems(label) * size + 56, h = size + 30;
+  cx = Math.min(Math.max(cx, SAFE.x1 + w / 2), SAFE.x2 - w / 2);
   return `<rect x="${n(cx - w / 2)}" y="${n(cy - h / 2)}" width="${n(w)}" height="${h}" rx="${h / 2}" fill="${red ? C.red : C.ink}" ${m("fade", g)}/>`
     + text(cx, cy, size, label, "b8 inv", g);
 };

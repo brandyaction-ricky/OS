@@ -236,6 +236,8 @@ export function alignYoutubeVisualBeats(
         lastCue = Math.min(Math.max(spoken, lastCue), Math.max(0, end - start - 0.4));
         return Math.round(lastCue * 100) / 100;
       });
+      // The first part shows as the beat starts so the stage is never left empty while the caption runs.
+      if (cueSeconds?.length) cueSeconds[0] = 0;
       beats.push({
         segmentIndex, beatIndex: item.beatIndex, spokenAnchor: beat.spokenAnchor, svg: beat.svg,
         displayText: showTitle ? beat.displayText : "", accentText: showTitle ? beat.accentText : "", typographyAnchor: showTitle ? beat.typographyAnchor : "",

@@ -69,6 +69,8 @@ test('drawing parts start on their spoken cue, and caption words shown on screen
   cued.scenes[0].visualBeats[1].svg = '<text x="1" y="1">에너지가 생깁니다</text>';
   const timeline = alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio));
   assert.equal(JSON.stringify(timeline.beats[1].cueSeconds), '[0,1.5]');
+  cued.scenes[0].visualBeats[1].cues = ['에너지가'];
+  assert.equal(JSON.stringify(alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio)).beats[1].cueSeconds), '[0]');
   assert.ok(timeline.captions.length >= 2);
   assert.equal(timeline.captions[0].startSeconds, 0);
   assert.equal(JSON.stringify(captionKeywords('남이 성공한 모습을 보고 들어온 거예요', '남의1순위나의1순위성공')), '["성공한"]');
