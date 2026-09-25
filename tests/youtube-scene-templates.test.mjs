@@ -20,7 +20,7 @@ export const templateSamples = {
   character_labels: { character: 'ch13', labels: ['하고 싶은 것 10개', '시작한 것 0개'], accent: '0개' },
   compare: { a: '줄이기', aNote: '흔한 처방', b: '순서 정하기', bNote: '진짜 답', pick: 'b' },
   formula: { a: '남의 기준', b: '내 욕심', result: '순서 없음' },
-  list: { items: ['한 길만 파라', '욕심을 버려라', '결국 줄여라'], pick: 2 },
+  list: { title: '흔한 조언', items: ['한 길만 파라', '욕심을 버려라', '결국 줄여라'], pick: 2 },
   bar_chart: { bars: [{ label: '떠올린 것', value: 10 }, { label: '계획한 것', value: 5 }, { label: '시작한 것', value: 1 }], unit: '개', highlight: 2, source: '예시 수치' },
   capture: { heading: '선택지가 많을수록 결정은 어렵다', lines: ['선택지가 6개일 때보다 24개일 때', '고르는 비율이 낮았다'], source: '예시 캡처' },
   big_number: { value: '10명 중 7명', caption: '하고 싶은 게 너무 많다', source: '예시 수치' },
@@ -33,9 +33,11 @@ export const templateSamples = {
   funnel: { items: ['유튜브', '쇼핑몰', '블로그', '공구'], result: '내 것만 남김' },
   venn: { a: '내 것', b: '남의 것', both: '섞임' },
   ranking: { first: '내 기준', second: '남의 기준', third: '유행' },
-  character_only: { character: 'ch13' },
+  character_only: { character: 'ch13', label: '뭐부터 해야 하지?' },
   split: { left: '한 길만 파라', leftNote: '한쪽 조언', right: '욕심을 버려라', rightNote: '다른 한쪽' },
   caption_only: {},
+  cards: { items: ['유튜브', '쇼핑몰', '인스타 공구', '블로그'] },
+  phone: { screen: '월 천 버는 유튜버의 하루', sub: '조회수 120만회', side: '남의 1순위', sideAccent: '≠ 나의 1순위' },
 };
 
 test('every template draws SVG that passes the shared scene boundary', () => {

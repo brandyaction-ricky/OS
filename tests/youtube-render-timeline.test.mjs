@@ -13,7 +13,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/server/youtub
   module: compiled, exports: compiled.exports, Buffer, Number, JSON,
   require(name) { return { 'node:crypto': { createHash }, zod: { z }, '@/lib/http': { ApiError }, '@/lib/youtube-visual-template': template }[name] ?? (() => { throw Error(name); })(); },
 });
-const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionShownOnScreen, captionChunks } = compiled.exports;
+const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionKeywords, captionChunks } = compiled.exports;
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 const script = ['같은 일을 해도 누군가는 사람을 만날 때 에너지가 생깁니다'];
@@ -60,7 +60,7 @@ test('a beat too short to read is folded into the previous beat', () => {
   assert.equal(createYoutubeRenderBrief(short, timeline).timingSource, 'verified_word');
 });
 
-test('drawing parts start on their spoken cue, and captions skip words already on screen', () => {
+test('drawing parts start on their spoken cue, and caption words shown on screen turn bold', () => {
   const finalAudio = Buffer.from('final-audio');
   const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6,
     segments: [{ audio, timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] });
@@ -71,10 +71,9 @@ test('drawing parts start on their spoken cue, and captions skip words already o
   assert.equal(JSON.stringify(timeline.beats[1].cueSeconds), '[0,1.5]');
   assert.ok(timeline.captions.length >= 2);
   assert.equal(timeline.captions[0].startSeconds, 0);
-  assert.equal(captionShownOnScreen('에너지가 생깁니다', '에너지가생깁니다다른에너지'), true);
-  assert.equal(captionShownOnScreen('같은 일을 해도', '에너지가생깁니다'), false);
-  assert.equal(captionShownOnScreen('근데 이건 사실 하나만 알고 둘은 모르는', '하나만알고둘은모른다'), true);
-  assert.equal(captionShownOnScreen('하고 싶은 게 많아서 시작을 못 하는', '너무많다시작못함한두개로'), false);
+  assert.equal(JSON.stringify(captionKeywords('남이 성공한 모습을 보고 들어온 거예요', '남의1순위나의1순위성공')), '["성공한"]');
+  assert.equal(captionKeywords('에너지가 생깁니다', '에너지가생깁니다').length, 0);
+  assert.equal(captionKeywords('같은 일을 해도', '에너지가생깁니다').length, 0);
 });
 
 test('caption lines stay short without leaving a tiny tail alone', () => {

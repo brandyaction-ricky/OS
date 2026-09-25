@@ -10,7 +10,7 @@ export const YOUTUBE_SCENE_PALETTE = {
 } as const;
 // The title band above y=180 belongs to the spoken headline.
 export const YOUTUBE_SCENE_SAFE_AREA = { x1: 60, y1: 190, x2: 1220, y2: 690 } as const;
-export const youtubeSceneClasses = ["i", "r", "thin", "bold", "p", "lab", "sm", "acc", "muted", "b7", "b8", "start", "end", "ul", "ring"] as const;
+export const youtubeSceneClasses = ["i", "r", "thin", "bold", "p", "lab", "sm", "acc", "muted", "b7", "b8", "start", "end", "ul", "ring", "inv", "bleed"] as const;
 export const youtubeSceneMotions = ["draw", "fade", "grow-x", "grow-y", "character"] as const;
 
 const NUMBER = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/;

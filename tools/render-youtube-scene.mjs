@@ -72,18 +72,21 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
   return { duration, used };
 }
 
+/** Top of the area below the caption where scenes are drawn. */
+const STAGE_TOP = 120;
+
 export function pageHtml(beats, characters, faces, captions = []) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
     text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
     .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}
-    .b7{font-weight:700} .b8{font-weight:800} .start{text-anchor:start} .end{text-anchor:end}`;
+    .b7{font-weight:700} .b8{font-weight:800} .start{text-anchor:start} .end{text-anchor:end} .inv{fill:#fff}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
   html,body{margin:0;width:${W}px;height:${H}px;background:${C.paper};overflow:hidden}
-  #title{position:absolute;left:0;right:0;top:92px;text-align:center;font:800 52px "Pretendard";color:${C.ink};letter-spacing:-1px;white-space:nowrap}
-  #title b{color:${C.red};font-weight:800} svg{position:absolute;inset:0}
-  #cap{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);max-width:1100px;padding:10px 26px;border-radius:12px;
-    background:${C.ink};color:#fff;font:700 34px "Pretendard";letter-spacing:-.5px;white-space:nowrap;z-index:2;display:none}</style></head><body><div id="title"></div><div id="cap"></div>
+  svg{position:absolute;inset:0}
+  /* Spoken caption at the top like the reference: no box, regular weight, keywords in bold. */
+  #cap{position:absolute;left:0;right:0;top:48px;text-align:center;font:400 36px "Pretendard";color:#2a2d30;letter-spacing:-.5px;white-space:nowrap;z-index:2}
+  #cap b{font-weight:800;color:${C.ink}}</style></head><body><div id="cap"></div>
   ${beats.map((beat, i) => `<svg id="b${i}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:none"><style>${style}</style>
     <defs><filter id="line${i}"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0 1 1 1"/><feFuncG type="discrete" tableValues="0 1 1 1"/><feFuncB type="discrete" tableValues="0 1 1 1"/></feComponentTransfer></filter></defs>
     ${beat.svg.replace(/<image data-character="([a-z0-9_-]+)"/g, (_, id) => `<image href="${characters.get(id)}" preserveAspectRatio="xMidYMid meet" data-character="${id}"`)}</svg>`).join("")}
@@ -102,28 +105,29 @@ export function pageHtml(beats, characters, faces, captions = []) {
     line.setAttribute('filter', 'url(#line' + i + ')'); line.setAttribute('clip-path', 'url(#' + clip.id + ')');
     img.parentNode.insertBefore(line, img); img._sweep = rect;
   });
-  // After fonts load: draw emphasis from measured text and centre each scene in the safe area.
+  // After fonts load: draw emphasis from measured text, then enlarge and centre each scene below the caption.
   window.layoutBeats = () => {
     const ns = 'http://www.w3.org/2000/svg';
     const add = (svg, tag, attrs, after) => { const el = document.createElementNS(ns, tag);
       Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); after.after(el);
       if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; } return el; };
     document.querySelectorAll('svg[id^="b"]').forEach((svg, i) => {
-      // A scene without a headline is centred in the whole frame; with one, below the headline band.
-      const titled = Boolean(beats[i].displayText), top = titled ? ${SAFE.y1} : 60, mid = titled ? ${(SAFE.y1 + SAFE.y2) / 2} : 360;
       svg.style.display = '';
       svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6;
-        add(svg, 'path', { class: 'r bold', d: 'M' + b.x + ' ' + y + 'H' + (b.x + b.width), 'data-k': 'draw', 'data-g': host.dataset.g || 0, 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
+        const w = b.width;
+        add(svg, 'path', { class: 'r bold', d: 'M' + b.x + ' ' + (y + 4) + 'C' + (b.x + w * .25) + ' ' + (y - 8) + ' ' + (b.x + w * .55) + ' ' + (y + 10) + ' ' + (b.x + w) + ' ' + (y - 4), 'data-k': 'draw', 'data-g': host.dataset.g || 0, 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
       svg.querySelectorAll('text.ring').forEach(el => { const b = el.getBBox();
         add(svg, 'ellipse', { class: 'r', cx: b.x + b.width / 2, cy: b.y + b.height / 2, rx: b.width / 2 + 34, ry: b.height / 2 + 16, 'data-k': 'draw', 'data-g': el.dataset.g || 0, 'data-s': (+el.dataset.s || 0) + .4, 'data-d': .4 }, el); });
       const group = document.createElementNS(ns, 'g');
       [...svg.childNodes].filter(n => !['style', 'defs'].includes(n.nodeName)).forEach(n => group.appendChild(n));
       svg.appendChild(group);
       const b = group.getBBox();
-      if (b.width && b.height) {
-        const dx = Math.max(${SAFE.x1} - b.x, Math.min(${SAFE.x2} - b.x - b.width, 640 - (b.x + b.width / 2)));
-        const dy = Math.max(top - b.y, Math.min(${SAFE.y2 - 70} - b.y - b.height, mid - (b.y + b.height / 2)));
-        group.setAttribute('transform', 'translate(' + dx.toFixed(1) + ' ' + dy.toFixed(1) + ')');
+      // A bottom-cropped character bust is placed by its template; everything else fills the stage.
+      if (b.width && b.height && !svg.querySelector('.bleed')) {
+        const font = Math.max(1, ...[...svg.querySelectorAll('text')].map(t => +t.getAttribute('font-size') || 30));
+        const k = Math.min(1.4, 96 / font, ${SAFE.x2 - SAFE.x1} / b.width, ${SAFE.y2 - STAGE_TOP} / b.height);
+        const dx = 640 - (b.x + b.width / 2) * k, dy = ${(STAGE_TOP + SAFE.y2) / 2} - (b.y + b.height / 2) * k;
+        group.setAttribute('transform', 'translate(' + dx.toFixed(1) + ' ' + dy.toFixed(1) + ') scale(' + k.toFixed(3) + ')');
       }
       svg.style.display = 'none';
     });
@@ -131,8 +135,10 @@ export function pageHtml(beats, characters, faces, captions = []) {
   window.render = t => {
     const active = beats.findIndex(b => b.visualStartSeconds <= t && t < b.endSeconds);
     beats.forEach((b, i) => document.getElementById('b' + i).style.display = i === active ? '' : 'none');
-    const title = document.getElementById('title');
-    if (active < 0) { title.innerHTML = ''; return; }
+    const cap = document.getElementById('cap'), line = captions.find(c => c.startSeconds <= t && t < c.endSeconds);
+    const esc = v => v.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+    cap.innerHTML = line ? line.text.split(' ').map(w => (line.bold ?? []).includes(w) ? '<b>' + esc(w) + '</b>' : esc(w)).join(' ') : '';
+    if (active < 0) return;
     const b = beats[active], local = (t - b.visualStartSeconds) / b.timeScale;
     document.getElementById('b' + active).querySelectorAll('[data-k]').forEach(el => {
       const g = +(el.dataset.g || 0), cue = b.cueSeconds?.[g] ?? g * .45;
@@ -146,29 +152,19 @@ export function pageHtml(beats, characters, faces, captions = []) {
         el._sweep.setAttribute('width', +el.getAttribute('width') * ease((local - s) / (d * .8)));
         el.style.opacity = ease((local - s - d * .6) / (d * .5)); }
     });
-    if (b.typographyStartSeconds !== null && t >= b.typographyStartSeconds) {
-      const o = ease((t - b.typographyStartSeconds) / .24);
-      const esc = v => v.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-      title.innerHTML = b.accentText ? esc(b.displayText).replace(esc(b.accentText), '<b>' + esc(b.accentText) + '</b>') : esc(b.displayText);
-      title.style.opacity = o; title.style.transform = 'translateY(' + (1 - o) * 12 + 'px)';
-    } else title.innerHTML = '';
-    const cap = document.getElementById('cap'), line = captions.find(c => c.startSeconds <= t && t < c.endSeconds && !c.hidden);
-    cap.textContent = line ? line.text : ''; cap.style.display = line ? 'block' : 'none';
   };
-  // Final-state geometry: safe area, text collisions, text over artwork, title width.
+  // Final-state geometry: stage area, text collisions, text over artwork.
   window.inspectBeat = i => {
     const b = beats[i]; window.render(b.endSeconds - 0.001);
     const problems = [], box = el => el.getBoundingClientRect();
-    const svg = document.getElementById('b' + i), items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
+    const svg = document.getElementById('b' + i), items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g' && !el.classList.contains('bleed'));
     for (const el of items) { const r = box(el);
-      if (r.width && (r.left < ${SAFE.x1} - 1 || r.right > ${SAFE.x2} + 1 || r.top < (b.displayText ? ${SAFE.y1} : 60) - 1 || r.bottom > ${SAFE.y2} + 1))
+      if (r.width && (r.left < ${SAFE.x1} - 1 || r.right > ${SAFE.x2} + 1 || r.top < ${STAGE_TOP} - 1 || r.bottom > ${SAFE.y2} + 1))
         problems.push(el.tagName + ' outside safe area'); }
-    const texts = [...svg.querySelectorAll('text')].map(box), art = [...svg.querySelectorAll('image[data-k]')].map(box);
+    const texts = [...svg.querySelectorAll('text')].map(box), art = [...svg.querySelectorAll('image[data-k]:not(.bleed)')].map(box);
     const hit = (a, c, pad) => a.left < c.right + pad && c.left < a.right + pad && a.top < c.bottom + pad && c.top < a.bottom + pad;
     texts.forEach((a, m) => texts.slice(m + 1).forEach(c => { if (hit(a, c, 4)) problems.push('labels overlap'); }));
     texts.forEach(a => art.forEach(c => { if (hit(a, c, 0)) problems.push('label covers character'); }));
-    const range = document.createRange(); range.selectNodeContents(document.getElementById('title'));
-    if (range.getBoundingClientRect().width > 1040) problems.push('title too wide');
     return problems;
   };
   </script></body></html>`;
