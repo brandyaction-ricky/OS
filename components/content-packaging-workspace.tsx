@@ -19,6 +19,7 @@ import { createRecord, listAllRecordsOfType, generateContent, listRecords, searc
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentJevAssist } from "./content-jev-assist";
+import { ContentJevUsageGuide, packagingJevUsageSteps } from "./content-jev-usage-guide";
 
 type PackageTab = "search" | "title" | "thumbnail" | "saved";
 
@@ -235,7 +236,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
 
     {tab === "saved" ? <>
       <section className="studio-two packaging-two"><CandidateList title="채택한 제목" subtitle="현재 콘텐츠에 채택한 제목 후보" items={titles.filter((item) => item.picked)} copied={copied} onCopy={copy} /><CandidateList title="채택한 썸네일 카피" subtitle="현재 콘텐츠에 채택한 카피 후보" items={copies.filter((item) => item.picked)} copied={copied} onCopy={copy} /></section>
-      {showJevAssist && selectedSource && latest ? pickedTitles.length === 1 && pickedCopies.length === 1 ? <ContentJevAssist key={`${selectedSource.id}:${selectedSource.version}:${latest.id}:${latest.version}`} sourceId={selectedSource.id} sourceVersion={selectedSource.version} packageId={latest.id} packageVersion={latest.version} /> : <section className="panel content-jev-assist"><div className="panel-header"><div><h2>JEV 점수 보조 의견</h2><p>채택한 제목과 썸네일 카피를 함께 살펴봅니다.</p></div></div><p className="content-jev-assist-body">점수를 보려면 제목 후보 1개와 썸네일 카피 1개를 각각 채택해 주세요.</p></section> : null}
+      {showJevAssist && selectedSource && latest ? pickedTitles.length === 1 && pickedCopies.length === 1 ? <ContentJevAssist key={`${selectedSource.id}:${selectedSource.version}:${latest.id}:${latest.version}`} sourceId={selectedSource.id} sourceVersion={selectedSource.version} packageId={latest.id} packageVersion={latest.version} /> : <section className="panel content-jev-assist"><div className="panel-header"><div><h2>JEV 점수 보조 의견</h2><p>채택한 제목과 썸네일 카피를 바탕으로 참고 점수를 보여줍니다.</p></div></div><div className="content-jev-assist-body"><ContentJevUsageGuide steps={packagingJevUsageSteps} /></div></section> : null}
       <section className="panel saved-reference-list"><div className="panel-header"><div><h2>저장한 시장 레퍼런스</h2><p>원본 URL과 근거 수치를 유지합니다.</p></div><span>{references.length}개</span></div><div>{references.map((record) => <a href={record.source_url || "#"} target="_blank" rel="noreferrer" key={record.id}><span style={{ backgroundImage: `url(${meta(record, "thumbnail", "")})` }} /><span><strong>{record.title}</strong><small>{meta(record, "channelTitle", "")} · 조회 {Number(meta(record, "views", 0)).toLocaleString("ko-KR")}</small></span><ExternalLink size={13} /></a>)}{!references.length ? <div className="compact-empty"><Star size={24} /><strong>저장한 레퍼런스가 없습니다.</strong><span>검색 탭에서 시장 썸네일을 저장하세요.</span></div> : null}</div></section>
     </> : null}
 

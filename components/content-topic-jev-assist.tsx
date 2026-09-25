@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
+import { ContentJevUsageGuide, topicJevUsageSteps } from "./content-jev-usage-guide";
 import { useSession } from "./session-provider";
 
 type Criterion = { key: string; label: string; score: number | null; explanation: string; confidence: number; improvement: string };
@@ -44,6 +45,7 @@ export function ContentTopicJevAssist({ topicId, topicVersion, planId, planVersi
   return <section className="panel content-jev-assist topic-jev-assist" aria-label="주제 기획 JEV 점수 보조 의견">
     <div className="panel-header"><div><h2>주제·기획 점수 보조 의견</h2><p>기획 검토에 참고할 점수와 보완 아이디어입니다.</p></div><Sparkles size={17} /></div>
     <div className="content-jev-assist-body">
+      <ContentJevUsageGuide steps={topicJevUsageSteps} />
       <p className="content-jev-disclosure">버튼을 누르면 선택한 주제의 제목·설명, 타깃, 입구 언어, 위계, 근거 메모·근거 영상 URL, 리서치 출처 URL·분석 메모, 연결된 기획 요약·인계 메모가 TypeSafe JEV로 전송됩니다. 비어 있는 항목은 ‘미확인’으로 보냅니다. 주제 ID, 담당자, 팀, 브랜드명, 저장 기록, 제목·썸네일 후보는 보내지 않습니다. URL의 비공개 정보와 메모의 개인정보·비밀을 확인한 뒤 눌러 주세요.</p>
       <button className="secondary-button" type="button" disabled={busy || !accessToken} onClick={evaluate}>{busy ? "점수 확인 중…" : evaluation ? "다시 TypeSafe JEV에 보내기" : "TypeSafe JEV에 보내 점수 보기"}</button>
       {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}

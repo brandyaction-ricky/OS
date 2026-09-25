@@ -911,6 +911,7 @@ select option { background:var(--panel-2); color:var(--text); }
 .content-jev-assist{margin:12px 0;overflow:hidden}.content-jev-assist .panel-header>svg{color:var(--accent-2)}
 .content-jev-assist-body{padding:16px;display:grid;gap:12px}.content-jev-assist-body>.secondary-button{justify-self:start}
 .content-jev-disclosure,.content-jev-result-note{margin:0;color:var(--muted);font-size:12px;line-height:1.65}
+.content-jev-guide{display:grid;gap:8px}.content-jev-guide>h3{margin:0;color:var(--text-2);font-size:12px;font-weight:700}.content-jev-guide>ol{margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;list-style:none}.content-jev-guide>ol>li{min-width:0;padding:10px;display:grid;grid-template-columns:22px minmax(0,1fr);align-items:start;gap:8px;border:1px solid var(--line-soft);border-radius:9px;background:var(--panel-2)}.content-jev-guide>ol>li>span{width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:var(--accent-soft);color:var(--accent-2);font-size:10px;font-weight:800}.content-jev-guide strong{display:block;color:var(--text-2);font-size:11px;line-height:1.4}.content-jev-guide p{margin:3px 0 0;color:var(--muted);font-size:10px;line-height:1.55}
 .content-jev-score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
 .content-jev-score-grid article{min-width:0;min-height:98px;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2);display:flex;flex-direction:column;gap:5px}
 .content-jev-score-grid article>span{color:var(--muted);font-size:11px;line-height:1.4}.content-jev-score-grid article>strong{font-size:21px;line-height:1.15}.content-jev-score-grid article>strong small{font-size:12px;color:var(--muted);font-weight:500}.content-jev-score-grid article>small{color:var(--text-2);font-size:10px;line-height:1.45;overflow-wrap:anywhere}
@@ -920,3 +921,4 @@ select option { background:var(--panel-2); color:var(--text); }
 @media(max-width:900px){.content-jev-score-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:900px){.topic-jev-criteria,.topic-jev-notes{grid-template-columns:1fr}}
 @media(max-width:480px){.content-jev-score-grid{grid-template-columns:1fr 1fr}.content-jev-assist-body{padding:13px}}
+@media(max-width:640px){.content-jev-guide>ol{grid-template-columns:1fr}}
