@@ -13,7 +13,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/server/youtub
   module: compiled, exports: compiled.exports, Buffer, Number, JSON,
   require(name) { return { 'node:crypto': { createHash }, zod: { z }, '@/lib/http': { ApiError }, '@/lib/youtube-visual-template': template }[name] ?? (() => { throw Error(name); })(); },
 });
-const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionShownOnScreen } = compiled.exports;
+const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionShownOnScreen, captionChunks } = compiled.exports;
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 const script = ['같은 일을 해도 누군가는 사람을 만날 때 에너지가 생깁니다'];
@@ -73,4 +73,10 @@ test('drawing parts start on their spoken cue, and captions skip words already o
   assert.equal(timeline.captions[0].startSeconds, 0);
   assert.equal(captionShownOnScreen('에너지가 생깁니다', '에너지가생깁니다다른에너지'), true);
   assert.equal(captionShownOnScreen('같은 일을 해도', '에너지가생깁니다'), false);
+});
+
+test('caption lines stay short without leaving a tiny tail alone', () => {
+  const lines = captionChunks('글로벌 강점 교육기관 갤럽의 공식인증 강점 코치이자 사람들 강점 찾아주는 일을 하고 있습니다.');
+  assert.ok(lines.every((line) => line.length >= 6));
+  assert.ok(lines.at(-1).endsWith('있습니다.'));
 });

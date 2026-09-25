@@ -96,13 +96,15 @@ export type YoutubeRenderTimeline = {
 /** Split one narration paragraph into short caption lines at spaces, breaking after sentence or clause ends. */
 export function captionChunks(text: string, max = 22) {
   const chunks: string[] = [];
+  // A tail of a few characters ("있습니다") joins the line before it instead of flashing alone.
+  const push = (line: string) => { if (line.length < 6 && chunks.length) chunks[chunks.length - 1] += ` ${line}`; else chunks.push(line); };
   let current = "";
   for (const word of text.replace(/\s+/g, " ").trim().split(" ")) {
-    if (current && `${current} ${word}`.length > max) { chunks.push(current); current = ""; }
+    if (current && `${current} ${word}`.length > max) { push(current); current = ""; }
     current = current ? `${current} ${word}` : word;
-    if (/[.!?。,]$/.test(word) && current.length >= 8) { chunks.push(current); current = ""; }
+    if (/[.!?。,]$/.test(word) && current.length >= 8) { push(current); current = ""; }
   }
-  if (current) chunks.push(current);
+  if (current) push(current);
   return chunks;
 }
 
