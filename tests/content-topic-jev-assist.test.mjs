@@ -25,11 +25,22 @@ const { canUseContentTopicJevAssist } = loadTypeScript("../lib/content-topic-jev
 const { buildContentTopicJevState, CONTENT_TOPIC_JEV_QUESTIONS, CONTENT_TOPIC_JEV_ASSIST_CONTRACT, evaluateContentTopicJev } = loadTypeScript("../lib/server/content-topic-jev-assist.ts");
 
 const dev = "gjmqkrxhoibopmoeiwtd";
+const productionRef = "bcdefghijklmnopqrstu";
 const qa = {
   CONTENT_TOPIC_JEV_ASSIST_ENABLED: "true", CONTENT_TOPIC_JEV_DEV_SUPABASE_REF: dev,
+  SYSTEM_ONE_DEV_SUPABASE_REF: dev, SYSTEM_ONE_PRODUCTION_SUPABASE_REF: productionRef,
   OS_ENVIRONMENT: "qa", NEXT_PUBLIC_DEMO_MODE: "false", TYPESAFE_API_KEY: "synthetic",
   NEXT_PUBLIC_SUPABASE_URL: `https://${dev}.supabase.co`, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "public",
   VERCEL_ENV: "preview", VERCEL_GIT_COMMIT_REF: "codex/jev-topic-planning",
+};
+const production = {
+  ...qa,
+  CONTENT_TOPIC_JEV_ASSIST_ENABLED: undefined,
+  CONTENT_TOPIC_JEV_PRODUCTION_ASSIST_ENABLED: "true",
+  OS_ENVIRONMENT: "production",
+  NEXT_PUBLIC_SUPABASE_URL: `https://${productionRef}.supabase.co`,
+  VERCEL_ENV: "production",
+  VERCEL_GIT_COMMIT_REF: "main",
 };
 const material = {
   topic: "지금 일을 계속해야 하나?", description: "역할과 환경이 맞는지 판단이 막힌 장면",
@@ -40,7 +51,7 @@ const material = {
 };
 const response = { model: "jev-test", answers: Object.fromEntries(Object.keys(CONTENT_TOPIC_JEV_QUESTIONS).map((key) => [key, { type: "choice", choice: key === "evidence" ? "1" : key === "distinctAnswer" ? "unknown" : "3", confidence: 0.8 }])) };
 
-test("topic planning JEV has a standalone QA Preview gate bound to the DEV database", () => {
+test("topic planning JEV has separate fail-closed QA and Production gates bound to their database", () => {
   assert.equal(canUseContentTopicJevAssist(qa), true);
   assert.equal(canUseContentTopicJevAssist({ ...qa, CONTENT_TOPIC_JEV_ASSIST_ENABLED: "false" }), false);
   assert.equal(canUseContentTopicJevAssist({ ...qa, CONTENT_TOPIC_JEV_ASSIST_ENABLED: undefined }), false);
@@ -48,6 +59,13 @@ test("topic planning JEV has a standalone QA Preview gate bound to the DEV datab
   assert.equal(canUseContentTopicJevAssist({ ...qa, VERCEL_GIT_COMMIT_REF: "main" }), false);
   assert.equal(canUseContentTopicJevAssist({ ...qa, NEXT_PUBLIC_SUPABASE_URL: "https://abcdefghijklmnopqrst.supabase.co" }), false);
   assert.equal(canUseContentTopicJevAssist({ ...qa, TYPESAFE_API_KEY: "" }), false);
+  assert.equal(canUseContentTopicJevAssist(production), true);
+  assert.equal(canUseContentTopicJevAssist({ ...production, CONTENT_TOPIC_JEV_PRODUCTION_ASSIST_ENABLED: undefined }), false);
+  assert.equal(canUseContentTopicJevAssist({ ...production, CONTENT_TOPIC_JEV_PRODUCTION_ASSIST_ENABLED: "false" }), false);
+  assert.equal(canUseContentTopicJevAssist({ ...production, VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "preview" }), false);
+  assert.equal(canUseContentTopicJevAssist({ ...production, VERCEL_GIT_COMMIT_REF: "codex/jev-topic-planning" }), false);
+  assert.equal(canUseContentTopicJevAssist({ ...production, NEXT_PUBLIC_SUPABASE_URL: `https://${dev}.supabase.co` }), false);
+  assert.equal(canUseContentTopicJevAssist({ ...production, SYSTEM_ONE_DEV_SUPABASE_REF: productionRef }), false);
   assert.equal(canUseContentTopicJevAssist({ ...qa, CONTENT_JEV_ASSIST_ENABLED: "false", SYSTEM_ONE_PREFLIGHT_ENABLED: "false", CONTENT_EVIDENCE_ENABLED: "false" }), true);
 });
 

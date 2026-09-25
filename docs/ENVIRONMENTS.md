@@ -77,6 +77,12 @@ The Production Supabase project has no development branches. A separate `brandya
 
 The provider security review currently reports policy/grant/password-protection findings, and the performance review reports indexing and RLS-efficiency findings. These are assessment inputs, not authorization to change Production.
 
+## Topic Planning JEV Employee QA
+
+The topic-planning JEV adviser has separate opt-in flags for QA Preview and Production. QA Preview uses `CONTENT_TOPIC_JEV_ASSIST_ENABLED` and `CONTENT_TOPIC_JEV_DEV_SUPABASE_REF`; Production uses `CONTENT_TOPIC_JEV_PRODUCTION_ASSIST_ENABLED` and the existing `SYSTEM_ONE_PRODUCTION_SUPABASE_REF`/`SYSTEM_ONE_DEV_SUPABASE_REF` pair. The Production flag is off by default. Both gates verify the deployment scope and matching database URL before showing the panel or accepting a request.
+
+For the approved employee QA, enable the Production flag only on Vercel's Production scope after the approved `main` commit is deployed. An authenticated employee can submit one clearly marked synthetic QA topic to TypeSafe. The panel displays the provider result for that request; it does not save the result, change the topic, approve it, or move its workflow stage. Do not create or edit Production topic records for QA. Review the panel's transmission disclosure and use a topic whose content is approved for the provider before submitting.
+
 ## External Writes
 
 Build and verification commands do not register webhooks or perform database migrations.
