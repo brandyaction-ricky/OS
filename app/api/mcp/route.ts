@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "brandy-os", version: "3.3.0" },
-      instructions: "브랜디 OS의 지식·Skill·운영 기록을 검색·관리합니다. 업무 시작 전 list_skills로 적용할 회사 표준이 있는지 확인하고 get_skill로 절차와 품질 기준을 읽으세요. 프로젝트 작업 전 get_project_context로 현재 상태를 읽고, 작업 후 create_development_log로 검증·브랜치·다음 단계를 기록하세요. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.",
+      instructions: "브랜디 OS의 지식·Skill·운영 기록을 검색·관리합니다. 업무 시작 전 list_skills로 적용할 회사 표준이 있는지 확인하고 get_skill로 절차와 품질 기준을 읽으세요. 요청 분류가 필요하면 classify_request를 보조 의견으로 쓸 수 있습니다. 이 도구는 기본 서버 스위치가 꺼져 있으며, 사용자가 현재 요청에서 JEV 외부 처리를 명시적으로 허용한 경우에만 confirm_external_processing=true로 호출하세요. 비밀번호·API 키·연락처 등 민감 정보를 보내지 마세요. 결과는 실행 권한이나 사람 승인을 주지 않습니다. 프로젝트 작업 전 get_project_context로 현재 상태를 읽고, 작업 후 create_development_log로 검증·브랜치·다음 단계를 기록하세요. 새 지식은 개인 초안으로 만들고 모든 수정은 버전·감사를 남기며 삭제는 휴지통 이동만 허용합니다. 권한 변경, 외부 예약·발행, 영구 삭제는 OS에서 사람이 직접 승인해야 합니다. delete 도구는 confirm=true일 때만 호출하세요.",
     });
   }
   if (body.method === "notifications/initialized") return new NextResponse(null, { status: 202 });
