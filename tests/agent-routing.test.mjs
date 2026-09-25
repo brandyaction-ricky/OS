@@ -140,6 +140,8 @@ test("MCP requires explicit external-processing confirmation and only forwards a
 
 test("server routing gate stays closed by default and makes no registry or provider call", async () => {
   const routeSource = readFileSync(new URL("../app/api/v1/agent-routing/route.ts", import.meta.url), "utf8");
+  assert.match(routeSource, /requiredAgentScope: "knowledge\.read"/);
+  assert.match(routeSource, /reference\?\.status !== "canonical"/);
   const routeExports = {};
   let databaseReads = 0;
   let providerCalls = 0;

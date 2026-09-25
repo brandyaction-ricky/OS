@@ -17,7 +17,7 @@ const requestSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.read" });
+    const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "knowledge.read" });
     const input = requestSchema.parse(await request.json());
     await assertOrganization(actor, input.organizationId);
     if (!isAgentRequestRoutingEnabled(process.env)) {
@@ -47,15 +47,19 @@ export async function POST(request: Request) {
       throw new ApiError(503, "AGENT_ROUTE_REFERENCE_UNAVAILABLE", "담당 절차 문서의 현재 상태를 확인하지 못했습니다. 사람에게 넘겨 주세요.");
     }
     const referenceById = new Map(references.map((reference) => [String(reference.id), reference]));
-    const resolvedRoutes = routes.map((route) => {
+    const resolvedRoutes = routes.flatMap((route) => {
       const reference = referenceById.get(route.documentId);
-      return {
+      if (reference?.status !== "canonical") return [];
+      return [{
         ...route,
-        documentTitle: String(reference?.title ?? ""),
-        documentStatus: String(reference?.status ?? "unknown"),
-        documentFolder: String(reference?.folder ?? ""),
-      };
+        documentTitle: String(reference.title ?? ""),
+        documentStatus: "canonical",
+        documentFolder: String(reference.folder ?? ""),
+      }];
     });
+    if (resolvedRoutes.length === 0) {
+      throw new ApiError(503, "AGENT_ROUTE_NO_CANONICAL_REFERENCES", "현재 담당 연결에서 적용할 회사 정본을 확인하지 못했습니다. 사람에게 넘겨 주세요.");
+    }
 
     let advice;
     try {
