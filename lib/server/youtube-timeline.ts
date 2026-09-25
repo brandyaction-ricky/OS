@@ -79,14 +79,44 @@ export type YoutubeTimedVisualBeat = {
   visualStartSeconds: number;
   typographyStartSeconds: number | null;
   endSeconds: number;
+  /** Seconds after visualStartSeconds when each reveal group of the drawing starts, from its spoken cue. */
+  cueSeconds?: number[];
 };
+
+export type YoutubeCaption = { startSeconds: number; endSeconds: number; text: string; hidden: boolean };
 
 export type YoutubeRenderTimeline = {
   templateVersion: typeof YOUTUBE_VISUAL_TEMPLATE_VERSION;
   audioSha256: string;
   audioDurationSeconds: number;
   beats: YoutubeTimedVisualBeat[];
+  captions: YoutubeCaption[];
 };
+
+/** Split one narration paragraph into short caption lines at spaces, breaking after sentence or clause ends. */
+export function captionChunks(text: string, max = 22) {
+  const chunks: string[] = [];
+  let current = "";
+  for (const word of text.replace(/\s+/g, " ").trim().split(" ")) {
+    if (current && `${current} ${word}`.length > max) { chunks.push(current); current = ""; }
+    current = current ? `${current} ${word}` : word;
+    if (/[.!?。,]$/.test(word) && current.length >= 8) { chunks.push(current); current = ""; }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+const screenText = (beat: YoutubeTimedVisualBeat) => normalizedSpeech(`${beat.svg.replace(/<[^>]*>/g, " ")
+  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")} ${beat.displayText}`);
+
+/** A caption is left out while the same words are already written on screen. */
+export function captionShownOnScreen(caption: string, screen: string) {
+  const text = normalizedSpeech(caption);
+  if (!text || !screen) return false;
+  if (screen.includes(text)) return true;
+  const pairs = [...text].slice(1).map((ch, i) => text[i] + ch);
+  return pairs.length >= 3 && pairs.filter((pair) => screen.includes(pair)).length / pairs.length >= 0.6;
+}
 
 /** The private media worker serializes this brief for the offline frame renderer. */
 export function createYoutubeRenderBrief(plan: YoutubeScenePlan, timeline: YoutubeRenderTimeline) {
@@ -128,6 +158,7 @@ export function alignYoutubeVisualBeats(
     throw new ApiError(409, "YOUTUBE_TIMELINE_SEGMENTS_MISMATCH", "원고·화면·음성 단락 수가 다릅니다.");
 
   const beats: YoutubeTimedVisualBeat[] = [];
+  const captions: YoutubeCaption[] = [];
   let priorSegmentEnd = 0;
   for (let segmentIndex = 0; segmentIndex < scriptSegments.length; segmentIndex++) {
     const scene = plan.scenes[segmentIndex];
@@ -157,7 +188,7 @@ export function alignYoutubeVisualBeats(
       throw new ApiError(409, "YOUTUBE_TRANSCRIPT_MISMATCH", "음성 전사와 승인된 원고가 일치하지 않습니다. 검증된 단어 시간표가 필요합니다.");
 
     // Resolve each beat's spoken start; a beat whose anchor cannot be placed after the previous one is folded into it.
-    const placed: Array<{ beatIndex: number; start: number; typographyStart: number | null }> = [];
+    const placed: Array<{ beatIndex: number; start: number; typographyStart: number | null; at: number }> = [];
     let searchFrom = 0;
     for (const [beatIndex, beat] of scene.visualBeats.entries()) {
       const anchor = normalizedSpeech(beat.spokenAnchor);
@@ -167,7 +198,7 @@ export function alignYoutubeVisualBeats(
       if (placed.length && start <= placed[placed.length - 1].start + 0.04) continue;
       const typographyIndex = beat.typographyAnchor ? sourceText.indexOf(normalizedSpeech(beat.typographyAnchor), characterIndex + 1) : -1;
       const typographyStart = typographyIndex < 0 ? null : segment.offsetSeconds + segment.words[characterWordIndexes[typographyIndex]].startSeconds;
-      placed.push({ beatIndex, start, typographyStart });
+      placed.push({ beatIndex, start, typographyStart, at: characterIndex });
       searchFrom = characterIndex + anchor.length;
     }
     if (!placed.length) throw new ApiError(409, "YOUTUBE_ANCHOR_MISMATCH", "화면 비트의 멘트를 승인된 원고 순서에서 찾지 못했습니다.");
@@ -188,15 +219,45 @@ export function alignYoutubeVisualBeats(
       // The drawing leads the headline; a headline that cannot follow the drawing inside this beat is left out.
       const typographyStart = item.typographyStart === null ? null : Math.max(item.typographyStart, start + 0.16);
       const showTitle = typographyStart !== null && typographyStart < end - 0.12;
+      // Each reveal group of the drawing starts when its cue is spoken inside this beat; a missing cue follows the previous one.
+      const rangeEnd = kept[index + 1]?.at ?? sourceText.length;
+      let cueFrom = item.at, lastCue = 0;
+      const cueSeconds = beat.cues?.map((cue) => {
+        const at = normalizedSpeech(cue) ? sourceText.indexOf(normalizedSpeech(cue), cueFrom) : -1;
+        const spoken = at >= 0 && at < rangeEnd ? segment.offsetSeconds + segment.words[characterWordIndexes[at]].startSeconds - start : lastCue + 0.45;
+        if (at >= 0 && at < rangeEnd) cueFrom = at;
+        lastCue = Math.min(Math.max(spoken, lastCue), Math.max(0, end - start - 0.4));
+        return Math.round(lastCue * 100) / 100;
+      });
       beats.push({
         segmentIndex, beatIndex: item.beatIndex, spokenAnchor: beat.spokenAnchor, svg: beat.svg,
         displayText: showTitle ? beat.displayText : "", accentText: showTitle ? beat.accentText : "", typographyAnchor: showTitle ? beat.typographyAnchor : "",
         visualStartSeconds: start,
         typographyStartSeconds: showTitle ? typographyStart : null,
         endSeconds: end,
+        ...(cueSeconds?.length ? { cueSeconds } : {}),
       });
     }
+
+    // Captions follow the verified words; each line holds until the next one starts.
+    let offset = 0;
+    const lines = captionChunks(scriptSegments[segmentIndex]).flatMap((chunk) => {
+      const size = normalizedSpeech(chunk).length;
+      if (!size) return [];
+      const first = segment.words[characterWordIndexes[offset]], last = segment.words[characterWordIndexes[offset + size - 1]];
+      offset += size;
+      return [{ text: chunk.replace(/[.,]$/, ""), startSeconds: segment.offsetSeconds + first.startSeconds, endSeconds: segment.offsetSeconds + last.endSeconds }];
+    });
+    lines.forEach((line, i) => {
+      const next = lines[i + 1]?.startSeconds ?? segmentEnd;
+      captions.push({ ...line, endSeconds: Math.max(line.endSeconds, Math.min(next, line.endSeconds + 0.6)), hidden: false });
+    });
+  }
+  for (const caption of captions) {
+    const middle = (caption.startSeconds + caption.endSeconds) / 2;
+    const beat = beats.find((item) => item.visualStartSeconds <= middle && middle < item.endSeconds);
+    caption.hidden = Boolean(beat && captionShownOnScreen(caption.text, screenText(beat)));
   }
   return { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, audioSha256: transcript.audioSha256,
-    audioDurationSeconds: transcript.audioDurationSeconds, beats };
+    audioDurationSeconds: transcript.audioDurationSeconds, beats, captions };
 }

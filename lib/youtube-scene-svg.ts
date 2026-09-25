@@ -27,7 +27,7 @@ const common: Record<string, (value: string) => boolean> = {
   class: (value) => value.trim().split(/\s+/).every((name) => CLASSES.has(name)),
   transform: (value) => value.length <= 120 && TRANSFORM.test(value),
   opacity: number(0, 1), fill: (value) => COLORS.has(value), stroke: (value) => COLORS.has(value),
-  "stroke-width": number(1, 90), "data-k": (value) => MOTIONS.has(value), "data-s": number(0, 8), "data-d": number(0.05, 3),
+  "stroke-width": number(1, 90), "data-k": (value) => MOTIONS.has(value), "data-s": number(0, 8), "data-d": number(0.05, 3), "data-g": number(0, 9),
 };
 const geometry: Record<string, Record<string, (value: string) => boolean>> = {
   g: {},

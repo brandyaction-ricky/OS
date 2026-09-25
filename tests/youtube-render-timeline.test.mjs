@@ -13,7 +13,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/server/youtub
   module: compiled, exports: compiled.exports, Buffer, Number, JSON,
   require(name) { return { 'node:crypto': { createHash }, zod: { z }, '@/lib/http': { ApiError }, '@/lib/youtube-visual-template': template }[name] ?? (() => { throw Error(name); })(); },
 });
-const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief } = compiled.exports;
+const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionShownOnScreen } = compiled.exports;
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 const script = ['같은 일을 해도 누군가는 사람을 만날 때 에너지가 생깁니다'];
@@ -58,4 +58,19 @@ test('a beat too short to read is folded into the previous beat', () => {
   assert.equal(JSON.stringify(timeline.beats.map((b) => [b.beatIndex, b.visualStartSeconds, b.endSeconds])), '[[0,0,2],[2,2,4.6]]');
   short.unresolved = ['acknowledged note'];
   assert.equal(createYoutubeRenderBrief(short, timeline).timingSource, 'verified_word');
+});
+
+test('drawing parts start on their spoken cue, and captions skip words already on screen', () => {
+  const finalAudio = Buffer.from('final-audio');
+  const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6,
+    segments: [{ audio, timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] });
+  const cued = structuredClone(plan);
+  cued.scenes[0].visualBeats[1].cues = ['사람을 만날 때', '에너지가'];
+  cued.scenes[0].visualBeats[1].svg = '<text x="1" y="1">에너지가 생깁니다</text>';
+  const timeline = alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio));
+  assert.equal(JSON.stringify(timeline.beats[1].cueSeconds), '[0,1.5]');
+  assert.ok(timeline.captions.length >= 2);
+  assert.equal(timeline.captions[0].startSeconds, 0);
+  assert.equal(captionShownOnScreen('에너지가 생깁니다', '에너지가생깁니다다른에너지'), true);
+  assert.equal(captionShownOnScreen('같은 일을 해도', '에너지가생깁니다'), false);
 });
