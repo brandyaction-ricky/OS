@@ -3,6 +3,7 @@
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
+import { ContentJevUsageGuide, packagingJevUsageSteps } from "./content-jev-usage-guide";
 import { useSession } from "./session-provider";
 
 type ScoreAnswer = { score: number; confidence: number; probabilities: Record<string, number>; legend: Record<string, unknown> };
@@ -68,6 +69,7 @@ export function ContentJevAssist({ sourceId, sourceVersion, packageId, packageVe
   return <section className="panel content-jev-assist" aria-label="JEV 콘텐츠 점수 보조 의견">
     <div className="panel-header"><div><h2>JEV 점수 보조 의견</h2><p>채택한 제목·썸네일 카피를 바탕으로 참고 점수를 보여줍니다.</p></div><Sparkles size={17} /></div>
     <div className="content-jev-assist-body">
+      <ContentJevUsageGuide steps={packagingJevUsageSteps} />
       <p className="content-jev-disclosure">점수 보기를 누르면 주제 설명, 채택한 제목·카피, 입력된 근거 메모가 TypeSafe JEV로 전송됩니다. 결과는 저장되지 않고 승인이나 발행 여부를 결정하지 않습니다.</p>
       <button className="secondary-button" type="button" disabled={busy || !accessToken} onClick={evaluate}>{busy ? "점수 확인 중…" : evaluation ? "다시 점수 보기" : "JEV 점수 보기"}</button>
       {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
