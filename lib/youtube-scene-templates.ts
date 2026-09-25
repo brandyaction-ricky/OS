@@ -187,12 +187,12 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
     }
     case "steps": {
       const s = slots as z.infer<typeof slotSchemas.steps>;
-      const w = 200, gap = 90, total = s.steps.length * w + (s.steps.length - 1) * gap, left = 640 - total / 2;
+      const gap = 80, w = Math.min(300, (1100 - gap * (s.steps.length - 1)) / s.steps.length), total = s.steps.length * w + (s.steps.length - 1) * gap, left = 640 - total / 2;
       return s.steps.map((label, i) => {
         const x = left + i * (w + gap), hot = i === s.pick, start = 0.35 * i;
         const arrow = i ? `<path class="i thin" d="M${n(x - gap + 14)} 440H${n(x - 16)}M${n(x - 30)} 426L${n(x - 16)} 440L${n(x - 30)} 454" ${motion("draw", start - 0.1, 0.25)}/>` : "";
-        return arrow + `<rect class="${hot ? "r" : "i"}" x="${n(x)}" y="385" width="${w}" height="110" rx="18" ${motion("fade", start)}/>`
-          + text(x + w / 2, 440, fit(label, w - 30, 34), label, hot ? "acc" : "b8", start);
+        return arrow + `<rect class="${hot ? "r" : "i"}" x="${n(x)}" y="375" width="${n(w)}" height="130" rx="18" ${motion("fade", start)}/>`
+          + text(x + w / 2, 440, fit(label, w - 24, 40, 26), label, hot ? "acc" : "b8", start);
       }).join("");
     }
     case "cycle": {
@@ -235,7 +235,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
       return `<circle class="i" cx="530" cy="430" r="190" ${motion("fade", 0)}/>` + text(430, 430, fit(s.a, 150, 34), s.a, "b8", 0)
         + `<circle class="i" cx="750" cy="430" r="190" ${motion("fade", 0.4)}/>` + text(850, 430, fit(s.b, 150, 34), s.b, "b8", 0.4)
         + `<path class="r bold" d="M640 275A190 190 0 0 1 640 585A190 190 0 0 1 640 275Z" ${motion("draw", 0.9, 0.4)}/>`
-        + text(640, 430, fit(s.both, 90, 28), s.both, "acc", 1.1);
+        + text(640, 430, fit(s.both, 130, 34, 24), s.both, "acc", 1.1);
     }
     case "ranking": {
       const s = slots as z.infer<typeof slotSchemas.ranking>;
