@@ -153,7 +153,7 @@ export function pageHtml(beats, characters, faces, captions = []) {
       title.style.opacity = o; title.style.transform = 'translateY(' + (1 - o) * 12 + 'px)';
     } else title.innerHTML = '';
     const cap = document.getElementById('cap'), line = captions.find(c => c.startSeconds <= t && t < c.endSeconds && !c.hidden);
-    cap.textContent = line ? line.text : ''; cap.style.display = line ? '' : 'none';
+    cap.textContent = line ? line.text : ''; cap.style.display = line ? 'block' : 'none';
   };
   // Final-state geometry: safe area, text collisions, text over artwork, title width.
   window.inspectBeat = i => {
