@@ -248,16 +248,16 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
     }
     case "funnel": {
       const s = slots as z.infer<typeof slotSchemas.funnel>;
-      const gap = 500 / s.items.length;
-      return s.items.map((item, i) => text(390 + gap * (i + 0.5), 250, fit(item, gap - 16, 30), item, "b7", 0, undefined, false, 0.12 * i)).join("")
+      const gap = 640 / s.items.length;
+      return s.items.map((item, i) => text(320 + gap * (i + 0.5), 250, fit(item, gap - 16, 34, 26), item, "b7", 0, undefined, false, 0.12 * i)).join("")
         + `<polygon class="i" points="360,300 920,300 700,500 580,500" ${m("draw", 0, 0.4, 0.4)}/>`
         + `<path class="r bold" d="M640 510V580M622 562L640 580L658 562" ${m("draw", 1)}/>`
         + text(640, 630, fit(s.result, 520, 40), s.result, "acc", 1, undefined, false, 0.2);
     }
     case "venn": {
       const s = slots as z.infer<typeof slotSchemas.venn>;
-      return `<circle class="i" cx="530" cy="430" r="190" ${m("fade", 0)}/>` + text(430, 430, fit(s.a, 150, 34), s.a, "b8", 0)
-        + `<circle class="i" cx="750" cy="430" r="190" ${m("fade", 1)}/>` + text(850, 430, fit(s.b, 150, 34), s.b, "b8", 1)
+      return `<circle class="i" cx="530" cy="430" r="190" ${m("fade", 0)}/>` + text(420, 430, fit(s.a, 190, 36, 26), s.a, "b8", 0)
+        + `<circle class="i" cx="750" cy="430" r="190" ${m("fade", 1)}/>` + text(860, 430, fit(s.b, 190, 36, 26), s.b, "b8", 1)
         + `<path class="r bold" d="M640 275A190 190 0 0 1 640 585A190 190 0 0 1 640 275Z" ${m("draw", 2, 0, 0.4)}/>`
         + text(640, 430, fit(s.both, 130, 34, 24), s.both, "acc", 2, undefined, false, 0.2);
     }
