@@ -10,6 +10,7 @@ export const youtubeSceneTemplates = [
   "question", "statement", "character_labels", "compare", "formula", "list",
   "bar_chart", "capture", "big_number", "quote", "line_chart", "donut",
   "steps", "cycle", "balance", "funnel", "venn", "ranking",
+  "character_only", "split", "caption_only",
 ] as const;
 export type YoutubeSceneTemplate = typeof youtubeSceneTemplates[number];
 
@@ -37,6 +38,9 @@ const slotSchemas = {
   funnel: z.object({ items: z.array(short(6)).min(2).max(4), result: short(10) }),
   venn: z.object({ a: short(8), b: short(8), both: short(8) }),
   ranking: z.object({ first: short(8), second: short(8), third: z.string().trim().max(8).optional() }),
+  character_only: z.object({ character: z.string().regex(/^[a-z0-9_-]{1,40}$/) }),
+  split: z.object({ left: short(12), leftNote: z.string().trim().max(16).optional(), right: short(12), rightNote: z.string().trim().max(16).optional() }),
+  caption_only: z.object({}),
 } satisfies Record<YoutubeSceneTemplate, z.ZodType>;
 
 export type CharacterSizes = ReadonlyMap<string, { width: number; height: number }>;
@@ -66,7 +70,8 @@ const highest = (values: number[]) => Math.max(...values, 1e-9);
 export function sceneTemplateCueCount(template: YoutubeSceneTemplate, slots: Record<string, unknown>) {
   const len = (key: string) => (Array.isArray(slots[key]) ? (slots[key] as unknown[]).length : 0);
   switch (template) {
-    case "question": return 1;
+    case "question": case "character_only": case "caption_only": return 1;
+    case "split": return 2;
     case "statement": return len("lines");
     case "character_labels": return 1 + len("labels");
     case "list": return len("items");
@@ -83,10 +88,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
   switch (template) {
     case "question": {
       const s = slots as z.infer<typeof slotSchemas.question>;
-      return `<rect class="p" x="200" y="270" width="880" height="200" rx="28" stroke="${C.line}" stroke-width="3" ${m("fade", 0)}/>`
-        + `<circle cx="266" cy="328" r="24" fill="${C.line}" ${m("fade", 0, 0.1)}/>`
-        + text(304, 328, 24, "질문", "sm start", 0, undefined, false, 0.1)
-        + text(640, 405, fit(s.question, 800, 46), s.question, "b8", 0, s.accent, false, 0.2);
+      return text(640, 400, fit(s.question, 1080, 64, 36), s.question, "b8", 0, s.accent);
     }
     case "statement": {
       const s = slots as z.infer<typeof slotSchemas.statement>;
@@ -267,6 +269,21 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
         + text(x, 620 - h - 40, fit(label, 230, 34), label, rank === 1 ? "acc" : "b8", rank - 1, undefined, false, 0.3);
       return block(640, 260, s.first, 1) + block(400, 180, s.second, 2) + (s.third ? block(880, 120, s.third, 3) : "");
     }
+    case "character_only": {
+      const s = slots as z.infer<typeof slotSchemas.character_only>;
+      const size = sizes.get(s.character);
+      if (!size) throw new Error("unknown character");
+      const scale = Math.min(760 / size.width, 470 / size.height), w = size.width * scale, h = size.height * scale;
+      return `<image data-character="${s.character}" x="${n(640 - w / 2)}" y="${n(400 - h / 2)}" width="${n(w)}" height="${n(h)}" ${m("character", 0, 0, 0.7)}/>`;
+    }
+    case "split": {
+      const s = slots as z.infer<typeof slotSchemas.split>;
+      const side = (cx: number, title: string, note: string | undefined, g: number) =>
+        text(cx, note ? 380 : 410, fit(title, 440, 52, 30), title, "b8", g) + (note ? text(cx, 450, fit(note, 440, 30), note, "muted", g, undefined, false, 0.1) : "");
+      return side(340, s.left, s.leftNote, 0) + `<path class="i thin" d="M640 250V570" ${m("draw", 1, 0, 0.3)}/>` + side(940, s.right, s.rightNote, 1);
+    }
+    case "caption_only":
+      return `<g ${m("fade", 0)}/>`;
   }
 }
 
@@ -280,7 +297,10 @@ export function renderSceneTemplate(template: string, slots: unknown, sizes: Cha
 }
 
 /** Model-facing description of every template and its slots. */
-export const SCENE_TEMPLATE_GUIDE = `question: 새 이야기 덩어리를 여는 질문 카드. {"question": "30자 이내 질문", "accent"?: "질문 속 빨간 단어"}
+export const SCENE_TEMPLATE_GUIDE = `question: 질문 하나만 가운데 크게. {"question": "30자 이내 질문", "accent"?: "질문 속 빨간 단어"}
+character_only: 고민·문제·감정을 캐릭터 하나로만 가운데 크게(글자 없음, 자막이 설명). {"character": "목록의 id"}
+split: 서로 대조되는 두 가지를 좌/우로 나란히(우열 없이). {"left": "12자", "leftNote"?: "16자", "right": "12자", "rightNote"?: "16자"}
+caption_only: 화면을 비우고 자막만(자기소개·자격 소개·인사처럼 보여줄 것이 없는 말). {}
 statement: 결론·주장을 못 박는 큰 문장. {"lines": ["16자 이내", "선택 둘째 줄"], "accent"?: "빨간 밑줄 단어"}
 character_labels: 채널 캐릭터 + 라벨 1~2개로 감정·상황. {"character": "목록의 id", "labels": ["14자 이내", "선택"], "accent"?: "라벨 속 빨간 단어"}
 compare: 흔한 생각 vs 진짜 답. {"a": "10자", "aNote"?: "12자", "b": "10자", "bNote"?: "12자", "pick": "a|b"}
@@ -300,4 +320,4 @@ venn: 두 가지가 겹치거나 섞임. {"a": "8자", "b": "8자", "both": "겹
 ranking: 순서·우선순위(1등이 빨강). {"first": "8자", "second": "8자", "third"?: "8자"}
 
 [cues: 도식이 나타나는 순간]
-각 틀은 부분이 차례로 나타납니다. cues에는 각 부분이 나타나야 할 순간의 원고 표현을 그 비트의 멘트 안에서 그대로 복사해 순서대로 적습니다. 첫 cue는 보통 spokenAnchor와 같습니다. 부분 수: question 1, statement 줄 수, character_labels 1+라벨 수, list 항목 수, bar_chart 막대 수, steps 단계 수, cycle 노드 수, ranking 1등·2등·(3등), compare(A, B, 강조) 3, formula(A, B, 결과) 3, balance(받침, 왼쪽, 오른쪽) 3, venn(A, B, 겹침) 3, 나머지 2(바탕, 강조).`;
+각 틀은 부분이 차례로 나타납니다. cues에는 각 부분이 나타나야 할 순간의 원고 표현을 그 비트의 멘트 안에서 그대로 복사해 순서대로 적습니다. 첫 cue는 보통 spokenAnchor와 같습니다. 부분 수: character_only 1, caption_only 1, split 2(왼쪽, 오른쪽), question 1, statement 줄 수, character_labels 1+라벨 수, list 항목 수, bar_chart 막대 수, steps 단계 수, cycle 노드 수, ranking 1등·2등·(3등), compare(A, B, 강조) 3, formula(A, B, 결과) 3, balance(받침, 왼쪽, 오른쪽) 3, venn(A, B, 겹침) 3, 나머지 2(바탕, 강조).`;

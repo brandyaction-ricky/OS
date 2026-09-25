@@ -33,6 +33,9 @@ export const templateSamples = {
   funnel: { items: ['유튜브', '쇼핑몰', '블로그', '공구'], result: '내 것만 남김' },
   venn: { a: '내 것', b: '남의 것', both: '섞임' },
   ranking: { first: '내 기준', second: '남의 기준', third: '유행' },
+  character_only: { character: 'ch13' },
+  split: { left: '한 길만 파라', leftNote: '한쪽 조언', right: '욕심을 버려라', rightNote: '다른 한쪽' },
+  caption_only: {},
 };
 
 test('every template draws SVG that passes the shared scene boundary', () => {

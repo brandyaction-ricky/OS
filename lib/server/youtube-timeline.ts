@@ -111,13 +111,17 @@ export function captionChunks(text: string, max = 22) {
 const screenText = (beat: YoutubeTimedVisualBeat) => normalizedSpeech(`${beat.svg.replace(/<[^>]*>/g, " ")
   .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")} ${beat.displayText}`);
 
-/** A caption is left out while the same words are already written on screen. */
+const covered = (part: string, whole: string) => {
+  const pairs = [...part].slice(1).map((ch, i) => part[i] + ch);
+  return pairs.length >= 3 && pairs.filter((pair) => whole.includes(pair)).length / pairs.length >= 0.6;
+};
+
+/** A caption is left out while the same words are already written on screen, either way round. */
 export function captionShownOnScreen(caption: string, screen: string) {
   const text = normalizedSpeech(caption);
   if (!text || !screen) return false;
-  if (screen.includes(text)) return true;
-  const pairs = [...text].slice(1).map((ch, i) => text[i] + ch);
-  return pairs.length >= 3 && pairs.filter((pair) => screen.includes(pair)).length / pairs.length >= 0.6;
+  if (screen.includes(text) || covered(text, screen)) return true;
+  return screen.length >= 5 && (text.includes(screen) || covered(screen, text));
 }
 
 /** The private media worker serializes this brief for the offline frame renderer. */
