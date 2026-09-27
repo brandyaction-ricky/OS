@@ -55,8 +55,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, candidates: 3 });
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN";
+    console.error("instagram-topics research failed", /^[A-Z_]+(?::\d{3})?$/.test(code) ? code : "UNKNOWN");
     const notice = code === "CHANNEL_BRIEF_NOT_CONFIGURED" || code === "OPENAI_NOT_CONFIGURED"
       ? "기획 자료 설정이 아직 완료되지 않았습니다. 관리자에게 연결 상태를 확인해 달라고 요청해 주세요."
+      : code === "OPENAI_REQUEST_FAILED:429"
+        ? "OpenAI API 사용 한도 또는 크레딧을 확인해 주세요. 확인되지 않은 주제는 제안하지 않았습니다."
       : "자료 조사 또는 주제 생성에 실패했습니다. 확인되지 않은 주제는 제안하지 않았습니다. 잠시 뒤 다시 시도해 주세요.";
     await sendMessage(message.chat.id, message.message_id, notice);
     return NextResponse.json({ ok: true, failed: true });
