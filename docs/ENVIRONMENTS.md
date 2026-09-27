@@ -95,6 +95,14 @@ OS_ENVIRONMENT=development npm run telegram:webhook:register -- --confirm
 
 Run it only after confirming `OS_PUBLIC_URL`, bot credentials, the intended environment, and authorization for the external change. Production registration requires explicit production approval.
 
+The Instagram topic bot uses a separate token, secret, and webhook path. Set `INSTAGRAM_TOPICS_CHANNEL_BRIEF` from the current approved BRANDYACTION brand context in the secure environment, plus `INSTAGRAM_TOPICS_ALLOWED_USER_IDS` and `INSTAGRAM_TOPICS_CHANNEL_HANDLE`. Do not copy the brief or credentials into Git. After the matching deployment and environment configuration have been verified, register its webhook separately:
+
+```bash
+OS_ENVIRONMENT=qa npm run instagram-topics:webhook:register -- --confirm
+```
+
+The registration command verifies that the token belongs to `@brandyaction_ig_topics_bot` before changing its webhook. Production registration and environment-variable changes require separate approval.
+
 Database migrations, seeds, resets, environment-variable changes, Preview deployments, Production deployments, promotions, and rollbacks are separate operations. Never infer them from a successful local build.
 
 ## Release Evidence

@@ -19,6 +19,7 @@
     "db:tooling:ready": "node tools/check-supabase-tooling.mjs --require-dump",
     "env:check": "node tools/check-environment.mjs",
     "telegram:webhook:register": "node tools/register-telegram-webhook.mjs",
+    "instagram-topics:webhook:register": "node tools/register-instagram-topics-webhook.mjs",
     "import:knowledge": "node tools/import-knowledge.mjs"
   },
   "dependencies": {
