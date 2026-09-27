@@ -1,4 +1,3 @@
-import { OPENAI_ANSWER_MODEL } from "@/lib/config";
 import { citedUrls, outputText, validateCandidates, type TopicCandidate } from "@/lib/instagram-topics";
 
 type OpenAIResponse = { output?: unknown; error?: { message?: string } };
@@ -9,7 +8,7 @@ async function response(body: Record<string, unknown>): Promise<OpenAIResponse> 
   const result = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: process.env.INSTAGRAM_TOPICS_OPENAI_MODEL || OPENAI_ANSWER_MODEL, ...body }),
+    body: JSON.stringify({ model: process.env.INSTAGRAM_TOPICS_OPENAI_MODEL || "gpt-5", reasoning: { effort: "low" }, ...body }),
     signal: AbortSignal.timeout(48_000),
   });
   const data = await result.json() as OpenAIResponse;
