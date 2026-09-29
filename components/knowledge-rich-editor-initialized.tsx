@@ -29,6 +29,7 @@ import type { ForwardedRef } from "react";
 import { useMemo } from "react";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
+import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
 
 const KOREAN_LABELS: Record<string, string> = {
   "Select block type": "문단 형식",
@@ -95,6 +96,7 @@ export default function KnowledgeRichEditorInitialized({
         return (await getKnowledgeAttachmentUrl(accessToken, attachment.path)).url;
       },
     }),
+    knowledgeImageDragPlugin(),
     maxLengthPlugin(1_500_000),
     markdownShortcutPlugin(),
     toolbarPlugin({

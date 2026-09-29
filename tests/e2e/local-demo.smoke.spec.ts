@@ -59,10 +59,19 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
     return transfer;
   });
   const editor = page.locator(".document-editor");
+  const headingBox = await richEditor.getByRole("heading", { name: "큰 제목", level: 2 }).boundingBox();
+  expect(headingBox).not.toBeNull();
+  const dropPoint = {
+    clientX: headingBox!.x + headingBox!.width - 3,
+    clientY: headingBox!.y + headingBox!.height / 2,
+  };
   await editor.dispatchEvent("dragenter", { dataTransfer });
   await expect(page.getByText("여기에 놓아 자료 첨부", { exact: true })).toBeVisible();
-  await editor.dispatchEvent("drop", { dataTransfer });
+  await editor.dispatchEvent("dragover", { dataTransfer, ...dropPoint });
+  await editor.dispatchEvent("drop", { dataTransfer, ...dropPoint });
   await expect(page.getByText("데모 화면에서는 파일을 올릴 수 없습니다.", { exact: true })).toBeVisible();
+  await richEditor.pressSequentially("드롭 위치");
+  await expect(richEditor.getByRole("heading", { level: 2 })).toContainText("드롭 위치");
 
   await page.setViewportSize({ width: 390, height: 844 });
   const [editorBox, viewportWidth] = await Promise.all([
@@ -75,6 +84,45 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole("button", { name: "저장" }).click();
   await expect(page.getByRole("button", { name: "6대 욕구 정본" })).toBeVisible();
+});
+
+test("knowledge images can be dragged between document blocks", async ({ page }) => {
+  await page.goto("/knowledge");
+  await page.getByRole("button", { name: "회사 wiki 2" }).click();
+  await page.getByRole("button", { name: "정본 편집" }).click();
+  await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
+
+  const richEditor = page.getByRole("textbox", { name: "editable markdown" });
+  await richEditor.click();
+  await richEditor.press("ControlOrMeta+A");
+  await richEditor.press("Backspace");
+  await richEditor.pressSequentially("##");
+  await richEditor.press("Space");
+  await richEditor.pressSequentially("이동 기준");
+  await richEditor.press("Enter");
+  await richEditor.pressSequentially("아래 문단");
+  await richEditor.press("Enter");
+  await richEditor.evaluate((element) => {
+    const clipboard = new DataTransfer();
+    clipboard.setData("text/html", '<img src="/favicon.ico" alt="이동할 이미지">');
+    element.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: clipboard }));
+  });
+
+  const image = richEditor.getByRole("img", { name: "이동할 이미지" });
+  await expect(image).toHaveAttribute("draggable", "true");
+  await image.click();
+  await image.dragTo(richEditor.getByRole("heading", { name: "이동 기준", level: 2 }), {
+    targetPosition: { x: 40, y: 25 },
+  });
+  const blocks = await richEditor.locator(":scope > *").evaluateAll((elements) => elements.map((element) => ({
+    tag: element.tagName,
+    image: Boolean(element.querySelector("img")),
+  })));
+  expect(blocks.slice(0, 3)).toEqual([
+    { tag: "H2", image: false },
+    { tag: "P", image: true },
+    { tag: "P", image: false },
+  ]);
 });
 
 test("knowledge tree supports context actions and direct drag moves", async ({ page }) => {

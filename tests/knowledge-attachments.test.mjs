@@ -81,15 +81,24 @@ test("unused uploads are tracked, transactionally referenced and cleaned only th
 
 test("the knowledge editor applies Markdown in one rich pane and accepts dragged attachments", async () => {
   const workspace = await readFile(new URL("../components/knowledge-workspace.tsx", import.meta.url), "utf8");
+  const imageDragPlugin = await readFile(new URL("../components/knowledge-image-drag-plugin.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(workspace, /onDrop=\{dropAttachments\}/);
-  assert.match(workspace, /event\.dataTransfer\.files/);
+  assert.match(workspace, /placeAttachmentCaret\(event\)/);
+  assert.match(workspace, /document\.caretRangeFromPoint/);
+  assert.match(workspace, /Array\.from\(event\.dataTransfer\.files\)/);
+  assert.match(workspace, /requestAnimationFrame\(\(\) => void attachFiles\(files\)\)/);
   assert.match(workspace, /aria-label="문서 바로 편집 영역"/);
   assert.match(workspace, /KnowledgeRichEditor/);
   assert.match(workspace, /<code>##<\/code> 제목/);
+  assert.match(imageDragPlugin, /image\.draggable = true/);
+  assert.match(imageDragPlugin, /\$createNodeSelection\(\)/);
+  assert.match(imageDragPlugin, /root\.addEventListener\("pointerdown"/);
+  assert.match(imageDragPlugin, /MutationObserver/);
   assert.match(styles, /Single-pane, Markdown-backed rich knowledge editor/);
   assert.match(styles, /\.knowledge-live-editor\{display:block/);
   assert.match(styles, /\.knowledge-rich-content\{min-height:/);
+  assert.match(styles, /data-knowledge-draggable/);
 });
 
 test("knowledge attachment migration creates a private 100MB bucket", async () => {

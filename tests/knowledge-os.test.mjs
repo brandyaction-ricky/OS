@@ -35,9 +35,10 @@ test("knowledge workspace exposes folder selection, rename and document move con
 });
 
 test("knowledge workspace uses one Markdown-backed rich editor instead of split source and preview panes", async () => {
-  const [workspace, editor] = await Promise.all([
+  const [workspace, editor, imageDragPlugin] = await Promise.all([
     read("components/knowledge-workspace.tsx"),
     read("components/knowledge-rich-editor-initialized.tsx"),
+    read("components/knowledge-image-drag-plugin.tsx"),
   ]);
   assert.match(workspace, /문서 바로 편집 영역/);
   assert.doesNotMatch(workspace, /실시간 미리보기/);
@@ -47,6 +48,8 @@ test("knowledge workspace uses one Markdown-backed rich editor instead of split 
   assert.match(editor, /listsPlugin\(\)/);
   assert.match(editor, /quotePlugin\(\)/);
   assert.match(editor, /imagePreviewHandler/);
+  assert.match(editor, /knowledgeImageDragPlugin\(\)/);
+  assert.match(imageDragPlugin, /\$getNearestNodeFromDOMNode/);
 });
 
 test("wiki links produce automatic edges, backlinks and broken-link evidence", () => {
