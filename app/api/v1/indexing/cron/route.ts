@@ -4,6 +4,7 @@ import { safeSecretMatch } from "@/lib/server/auth";
 import { processEmbeddingQueue } from "@/lib/server/indexing";
 import { syncAdPerformance, trailingDateRange } from "@/lib/server/ad-performance";
 import { cleanupExpiredContentMedia } from "@/lib/server/content-media";
+import { cleanupPendingKnowledgeAttachments } from "@/lib/server/knowledge-attachment-lifecycle";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
     const range = trailingDateRange(7);
     const advertising = await syncAdPerformance({ ...range });
     const contentMedia = await cleanupExpiredContentMedia();
-    return NextResponse.json({ ok: true, embeddings, advertising, contentMedia });
+    const knowledgeAttachments = await cleanupPendingKnowledgeAttachments();
+    return NextResponse.json({ ok: true, embeddings, advertising, contentMedia, knowledgeAttachments });
   } catch (error) { return apiErrorResponse(error); }
 }

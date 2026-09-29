@@ -11,6 +11,7 @@ import {
   knowledgeAttachmentUploaderId,
 } from "@/lib/knowledge-attachments";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
+import { claimPendingKnowledgeAttachment, forgetKnowledgeAttachment, registerPendingKnowledgeAttachment } from "@/lib/server/knowledge-attachment-lifecycle";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -43,6 +44,7 @@ export async function POST(request: Request) {
     const path = `documents/${input.documentId}/${actor.id}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
     const { data, error } = await createServiceSupabase().storage.from(KNOWLEDGE_ATTACHMENT_BUCKET).createSignedUploadUrl(path);
     if (error || !data) throw new ApiError(400, "KNOWLEDGE_ATTACHMENT_SIGN_FAILED", "자료 업로드 경로를 만들지 못했습니다.", error?.message);
+    await registerPendingKnowledgeAttachment({ path, documentId: input.documentId, uploaderId: actor.id });
     return NextResponse.json({ path, token: data.token, name: input.fileName, size: input.fileSize, type: input.mimeType }, { status: 201, headers });
   } catch (error) { return respondError(error); }
 }
@@ -66,8 +68,10 @@ export async function DELETE(request: Request) {
     if (knowledgeAttachmentUploaderId(path) !== actor.id && actor.role !== "admin") {
       throw new ApiError(403, "KNOWLEDGE_ATTACHMENT_DELETE_FORBIDDEN", "이 첨부 자료를 삭제할 권한이 없습니다.");
     }
+    await claimPendingKnowledgeAttachment(path);
     const { error } = await createServiceSupabase().storage.from(KNOWLEDGE_ATTACHMENT_BUCKET).remove([path]);
     if (error) throw new ApiError(400, "KNOWLEDGE_ATTACHMENT_DELETE_FAILED", "첨부 자료를 삭제하지 못했습니다.", error.message);
+    await forgetKnowledgeAttachment(path);
     return NextResponse.json({ deleted: true }, { headers });
   } catch (error) { return respondError(error); }
 }

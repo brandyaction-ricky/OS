@@ -208,6 +208,9 @@ export async function PATCH(request: Request) {
         p_reason: input.reason,
       });
       document = rpcRow(data) as KnowledgeDocument | null;
+      if (error?.message?.includes("OS_ATTACHMENT_EXPIRED")) {
+        throw new ApiError(409, "KNOWLEDGE_ATTACHMENT_EXPIRED", "첨부 자료의 보관 시간이 지나 저장하지 못했습니다. 해당 자료를 다시 첨부해 주세요.");
+      }
       if (error || !document) throw writeError(error, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.");
     } else {
       const { data, error } = await actor.supabase.rpc("os_update_document", {
@@ -222,6 +225,9 @@ export async function PATCH(request: Request) {
         p_reason: input.reason,
       });
       document = rpcRow(data) as KnowledgeDocument | null;
+      if (error?.message?.includes("OS_ATTACHMENT_EXPIRED")) {
+        throw new ApiError(409, "KNOWLEDGE_ATTACHMENT_EXPIRED", "첨부 자료의 보관 시간이 지나 저장하지 못했습니다. 해당 자료를 다시 첨부해 주세요.");
+      }
       if (error || !document) throw writeError(error, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.");
     }
     const indexing = input.contentMd === undefined ? "queued" : await enqueueIndex(document.id);

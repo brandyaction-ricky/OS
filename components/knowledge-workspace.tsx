@@ -42,7 +42,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -295,6 +295,7 @@ function WorkspaceContent() {
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingAttachmentPaths = useRef(new Map<string, Set<string>>());
   const selectDocumentNow = useCallback((id: string) => {
     setMode("read");
     setSelectedId(id);
@@ -564,6 +565,22 @@ function WorkspaceContent() {
     });
   };
 
+  const rememberPendingAttachment = (documentId: string, path: string) => {
+    const paths = pendingAttachmentPaths.current.get(documentId) ?? new Set<string>();
+    paths.add(path); pendingAttachmentPaths.current.set(documentId, paths);
+  };
+
+  const cleanupPendingAttachments = async (documentId: string, only?: string[]) => {
+    const remembered = pendingAttachmentPaths.current.get(documentId) ?? new Set<string>();
+    const paths = only ?? [...remembered];
+    if (!paths.length) return true;
+    const results = await Promise.allSettled(paths.map(path => deleteKnowledgeAttachment(accessToken, path)));
+    results.forEach((result, index) => { if (result.status === "fulfilled") remembered.delete(paths[index]); });
+    if (remembered.size) pendingAttachmentPaths.current.set(documentId, remembered);
+    else pendingAttachmentPaths.current.delete(documentId);
+    return results.every(result => result.status === "fulfilled");
+  };
+
   const addExternalLink = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!draft) return;
@@ -584,17 +601,22 @@ function WorkspaceContent() {
     if (demo) { setError("데모 화면에서는 파일을 올릴 수 없습니다."); return; }
     const selectedFiles = [...files].slice(0, 10);
     setBusy(true); setError("");
+    const uploadedPaths: string[] = [];
     try {
       const markdown: string[] = [];
       for (const [index, file] of selectedFiles.entries()) {
         setAttachmentProgress(`자료 ${index + 1}/${selectedFiles.length} 올리는 중 · ${file.name}`);
         const signed = await createKnowledgeAttachmentUpload(accessToken, selected.id, file);
         await uploadKnowledgeAttachment(signed.path, signed.token, file, signed.type);
+        uploadedPaths.push(signed.path); rememberPendingAttachment(selected.id, signed.path);
         markdown.push(knowledgeAttachmentMarkdown(signed));
       }
       insertMarkdown(markdown.join("\n\n"));
       setToast(`${markdown.length}개 자료를 본문에 넣었습니다. 문서를 저장하면 다른 구성원에게도 보입니다.`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "자료를 올리지 못했습니다."); }
+    } catch (reason) {
+      const cleaned = await cleanupPendingAttachments(selected.id, uploadedPaths);
+      setError(`${reason instanceof Error ? reason.message : "자료를 올리지 못했습니다."}${cleaned ? " 먼저 올라간 자료는 정리했습니다." : " 먼저 올라간 자료는 자동 정리 대상으로 남겼습니다."}`);
+    }
     finally {
       setBusy(false); setAttachmentProgress("");
       if (attachmentInputRef.current) attachmentInputRef.current.value = "";
@@ -607,6 +629,10 @@ function WorkspaceContent() {
     try {
       const input = documentCreateSchema.parse({ ...draft, folder: draft.folder.trim() ? normalizeKnowledgeFolder(draft.folder) : "", tags: draft.tags.split(",").map(tag => tag.trim()).filter(Boolean) });
       const document = demo ? { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" })).document;
+      const pending = [...(pendingAttachmentPaths.current.get(selected.id) ?? [])];
+      const unused = pending.filter(path => !input.content.includes(encodeURIComponent(path)));
+      if (unused.length) await cleanupPendingAttachments(selected.id, unused);
+      pendingAttachmentPaths.current.delete(selected.id);
       commitDocument(document); discard(document.id);
       setMode("read"); setToast("새 버전으로 저장했습니다."); return true;
     } catch (reason) {
@@ -617,6 +643,16 @@ function WorkspaceContent() {
       return false;
     }
     finally { setBusy(false); }
+  };
+
+  const discardAndContinue = async (action: () => void) => {
+    if (!selected || busy) return;
+    setBusy(true); setError("");
+    try {
+      const cleaned = demo ? true : await cleanupPendingAttachments(selected.id);
+      discard(selected.id); setPendingAction(null); action();
+      if (!cleaned) setToast("본문 변경은 버렸습니다. 사용하지 않은 자료는 일일 자동 정리 대상에 남겼습니다.");
+    } finally { setBusy(false); }
   };
 
   const moveStatus = async (target: DocumentStatus) => {
@@ -824,7 +860,7 @@ function WorkspaceContent() {
       {pendingAction ? <KnowledgeModal title="저장하지 않은 변경" onClose={() => setPendingAction(null)} busy={busy}>
         <div className="form-modal"><header><h2>저장하지 않은 변경이 있습니다</h2></header><div className="form-fields"><p>변경을 저장한 뒤 계속하거나, 버리고 이동할 수 있습니다.</p>{error ? <p role="alert" className="inline-alert danger">{error}</p> : null}</div><footer>
           <button className="ghost-button" disabled={busy} onClick={() => setPendingAction(null)}>계속 편집</button>
-          <button className="secondary-button" disabled={busy} onClick={() => { discard(); const action = pendingAction; setPendingAction(null); action(); }}>변경 버리기</button>
+          <button className="secondary-button" disabled={busy} onClick={() => { const action = pendingAction; void discardAndContinue(action); }}>변경 버리기</button>
           <button className="primary-button" disabled={busy} onClick={async () => { const action = pendingAction; if (await save()) { setPendingAction(null); action(); } }}>저장하고 계속</button>
         </footer></div>
       </KnowledgeModal> : null}
