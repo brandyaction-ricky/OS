@@ -552,6 +552,10 @@ export async function getKnowledgeAttachmentUrl(token: string | null, path: stri
   return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}`, { token });
 }
 
+export async function deleteKnowledgeAttachment(token: string | null, path: string) {
+  return apiRequest<{ deleted: true }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
+}
+
 export interface OsMember {
   id: string;
   email: string;

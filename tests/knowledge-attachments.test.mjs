@@ -47,8 +47,36 @@ test("knowledge attachment API checks document access and keeps storage private"
   assert.match(route, /assertEditableDocument\(actor, input\.documentId\)/);
   assert.match(route, /readableDocument\(actor, knowledgeAttachmentDocumentId\(path\)\)/);
   assert.match(route, /createSignedUploadUrl\(path\)/);
+  assert.match(route, /registerPendingKnowledgeAttachment\(\{ path, documentId: input\.documentId, uploaderId: actor\.id \}\)/);
   assert.match(route, /createSignedUrl\(path, 900\)/);
+  assert.match(route, /forgetKnowledgeAttachment\(path\)/);
+  assert.match(route, /claimPendingKnowledgeAttachment\(path\)/);
   assert.doesNotMatch(route, /getPublicUrl/);
+});
+
+test("unused uploads are tracked, transactionally referenced and cleaned only through the Storage API", async () => {
+  const lifecycleMigration = await readFile(new URL("../supabase/migrations/20260929025147_knowledge_attachment_lifecycle.sql", import.meta.url), "utf8");
+  const lifecycle = await readFile(new URL("../lib/server/knowledge-attachment-lifecycle.ts", import.meta.url), "utf8");
+  const cron = await readFile(new URL("../app/api/v1/indexing/cron/route.ts", import.meta.url), "utf8");
+  const humanDocumentRoute = await readFile(new URL("../app/api/v1/documents/route.ts", import.meta.url), "utf8");
+  const documentRoute = await readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8");
+  const workspace = await readFile(new URL("../components/knowledge-workspace.tsx", import.meta.url), "utf8");
+  assert.match(lifecycleMigration, /create table if not exists public\.os_knowledge_attachment_uploads/i);
+  assert.match(lifecycleMigration, /after insert on public\.os_document_versions/i);
+  assert.match(lifecycleMigration, /os_claim_stale_knowledge_attachments/i);
+  assert.match(lifecycleMigration, /for update skip locked/i);
+  assert.match(lifecycleMigration, /status = 'deleting'/i);
+  assert.match(lifecycleMigration, /raise exception 'OS_ATTACHMENT_EXPIRED'/i);
+  assert.match(lifecycleMigration, /position\(encoded_path in new\.content_md\) > 0/i);
+  assert.match(lifecycleMigration, /revoke all on table public\.os_knowledge_attachment_uploads from public, anon, authenticated/i);
+  assert.match(lifecycle, /\.storage\.from\(KNOWLEDGE_ATTACHMENT_BUCKET\)\.remove\(paths\)/);
+  assert.match(lifecycle, /\.rpc\("os_claim_stale_knowledge_attachments"/);
+  assert.match(humanDocumentRoute, /KNOWLEDGE_ATTACHMENT_EXPIRED/);
+  assert.match(documentRoute, /KNOWLEDGE_ATTACHMENT_EXPIRED/);
+  assert.doesNotMatch(lifecycle, /from\(["']storage\.objects["']\).*delete/s);
+  assert.match(cron, /cleanupPendingKnowledgeAttachments\(\)/);
+  assert.match(workspace, /cleanupPendingAttachments\(selected\.id, uploadedPaths\)/);
+  assert.match(workspace, /discardAndContinue\(action\)/);
 });
 
 test("knowledge attachment migration creates a private 100MB bucket", async () => {
