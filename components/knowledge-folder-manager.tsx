@@ -6,13 +6,13 @@ import { executeFolderMoves, knowledgeFolderOptions, normalizeKnowledgeFolder, p
 import type { KnowledgeDocument } from "@/lib/types";
 import { KnowledgeModal } from "./knowledge-modal";
 
-export function KnowledgeFolderManager({ source: initialSource, options, documents, token, demo, onClose, onSaved, onNew, onBusy }: {
-  source: string; options: string[]; documents: KnowledgeDocument[]; token: string | null; demo: boolean;
+export function KnowledgeFolderManager({ source: initialSource, initialParent, options, documents, token, demo, onClose, onSaved, onNew, onBusy }: {
+  source: string; initialParent?: string; options: string[]; documents: KnowledgeDocument[]; token: string | null; demo: boolean;
   onClose: () => void; onSaved: (document: KnowledgeDocument, previous?: KnowledgeDocument) => void; onNew: (folder: string) => void; onBusy: (busy: boolean) => void;
 }) {
   const [source, setSource] = useState(initialSource);
   const [name, setName] = useState(initialSource.split("/").at(-1) ?? "");
-  const [parent, setParent] = useState(initialSource.split("/").slice(0, -1).join("/"));
+  const [parent, setParent] = useState(initialParent ?? initialSource.split("/").slice(0, -1).join("/"));
   const [snapshot, setSnapshot] = useState(documents);
   const [plan, setPlan] = useState<FolderMove[] | null>(null);
   const [failed, setFailed] = useState<Array<{move: FolderMove; message: string}>>([]);
