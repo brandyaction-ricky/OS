@@ -269,6 +269,7 @@ function WorkspaceContent() {
   const [externalLinkOpen, setExternalLinkOpen] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
   const [attachmentProgress, setAttachmentProgress] = useState("");
+  const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
@@ -295,6 +296,7 @@ function WorkspaceContent() {
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentDragDepth = useRef(0);
   const pendingAttachmentPaths = useRef(new Map<string, Set<string>>());
   const selectDocumentNow = useCallback((id: string) => {
     setMode("read");
@@ -623,6 +625,27 @@ function WorkspaceContent() {
     }
   };
 
+  const editorDragHasFiles = (event: React.DragEvent<HTMLElement>) => Array.from(event.dataTransfer.types).includes("Files");
+  const enterAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!editorDragHasFiles(event)) return;
+    event.preventDefault();
+    attachmentDragDepth.current += 1;
+    setAttachmentDragActive(true);
+  };
+  const leaveAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!editorDragHasFiles(event)) return;
+    event.preventDefault();
+    attachmentDragDepth.current = Math.max(0, attachmentDragDepth.current - 1);
+    if (!attachmentDragDepth.current) setAttachmentDragActive(false);
+  };
+  const dropAttachments = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!editorDragHasFiles(event)) return;
+    event.preventDefault();
+    attachmentDragDepth.current = 0;
+    setAttachmentDragActive(false);
+    if (!busy) void attachFiles(event.dataTransfer.files);
+  };
+
   const save = async () => {
     if (!selected || !draft || busy) return false;
     setBusy(true); setError("");
@@ -796,7 +819,8 @@ function WorkspaceContent() {
               </div>
               <div className="document-meta-line"><span className={`status-pill status-${selected.status}`}>{statusLabel(selected.status)}</span><span>v{selected.current_version}</span><span>마지막 수정 {formatDate(selected.updated_at)}</span>{dirty ? <strong role="status">저장하지 않은 변경 있음</strong> : null}</div>
               {mode === "edit" ? (
-                <div className="document-editor">
+                <div className={`document-editor${attachmentDragActive ? " attachment-drag-active" : ""}`} onDragEnter={enterAttachmentDrop} onDragLeave={leaveAttachmentDrop} onDragOver={(event) => { if (editorDragHasFiles(event)) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDrop={dropAttachments}>
+                  {attachmentDragActive ? <div className="knowledge-attachment-drop-overlay" role="status"><Paperclip size={28} /><strong>여기에 놓아 자료 첨부</strong><span>이미지·영상·문서·압축 파일을 한 번에 최대 10개까지 올릴 수 있습니다.</span></div> : null}
                   {selected.status === "canonical" ? <div className="canonical-edit-banner"><ShieldAlert size={18} /><span><strong>회사 정본을 편집하고 있습니다.</strong><small>저장하면 전 직원과 AI 검색에 반영되며, 이전 내용은 버전으로 보존됩니다.</small></span></div> : null}
                   <input className="title-input" maxLength={200} disabled={busy} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} aria-label="문서 제목" />
                   <div className="meta-input-grid">
@@ -807,7 +831,17 @@ function WorkspaceContent() {
                   </div>
                   <div className="markdown-toolbar" aria-label="문서 편집 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="다른 OS 문서 연결" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button><button type="button" title="웹 링크 넣기" onClick={() => { setExternalLinkError(""); setExternalLinkOpen(true); }}><Link2 size={14} /> 웹 링크</button><button type="button" title="이미지·영상·파일 올리기" disabled={busy} onClick={() => attachmentInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button><input ref={attachmentInputRef} className="knowledge-attachment-input" type="file" multiple tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => void attachFiles(event.target.files)} /></div>
                   {attachmentProgress ? <p className="knowledge-attachment-progress" role="status">{attachmentProgress}</p> : null}
-                  <textarea disabled={busy} maxLength={1500000} ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
+                  <p className="knowledge-markdown-help"><strong>입력 즉시 미리보기</strong><span><code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용 · 파일은 이 화면에 끌어다 놓기</span></p>
+                  <div className="knowledge-live-editor">
+                    <section className="knowledge-markdown-source" aria-label="마크다운 작성 영역">
+                      <header><strong>작성</strong><span>마크다운 원문</span></header>
+                      <textarea disabled={busy} maxLength={1500000} ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
+                    </section>
+                    <section className="knowledge-live-preview" aria-label="실시간 미리보기">
+                      <header><strong>미리보기</strong><span>저장 전 화면</span></header>
+                      <div>{draft.content.trim() ? <MarkdownView content={prepareReadingContent(draft.content).body} onOpenLink={openWikiLink} /> : <p className="knowledge-preview-empty">왼쪽에 내용을 입력하면 실제 문서 모양이 바로 나타납니다.</p>}</div>
+                    </section>
+                  </div>
                   {tagQuery !== null ? <div aria-label="태그 제안">{[...new Set(documents.flatMap((document) => document.tags))].filter((tag) => tag.toLowerCase().includes(tagQuery.toLowerCase())).slice(0, 8).map((tag) => <button key={tag} type="button" className="ghost-button" onClick={() => { const inserted = insertTag(draft.content, editorRef.current?.selectionStart ?? 0, tag); setDraft({ ...draft, content: inserted.content }); setTagQuery(null); requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(inserted.caret, inserted.caret); }); }}>#{tag}</button>)}</div> : null}
                 </div>
               ) : mode === "info" ? (
