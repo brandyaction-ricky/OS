@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the active chain is intact and keeps the new lifecycle migration on hold", async () => {
+test("the active chain is intact and keeps the lifecycle Production gate on hold", async () => {
   const result = await inspectMigrationBaseline();
+  const manifest = JSON.parse(await readFile(new URL("../supabase/migration-baseline.json", import.meta.url), "utf8"));
+  const lifecycle = manifest.forwardMigrations.find(entry => entry.file === "20260929025147_knowledge_attachment_lifecycle.sql");
 
   assert.equal(result.status, "ready");
   assert.equal(result.decision, "apply");
@@ -15,6 +18,8 @@ test("the active chain is intact and keeps the new lifecycle migration on hold",
   assert.equal(result.baselinePresent, true);
   assert.equal(result.activeMigrationCount, 13);
   assert.equal(result.archivedMigrationCount, 14);
+  assert.deepEqual(lifecycle.appliedEnvironments, ["development"]);
+  assert.equal(lifecycle.requiresApproval, true);
   assert.deepEqual(result.errors, []);
 });
 
