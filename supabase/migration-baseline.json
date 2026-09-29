@@ -226,6 +226,17 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20260929013627_knowledge_document_attachments.sql",
+      "sha256": "f02e600e7be5224269ef8758c916744298cd18a03f267a685bc105eb89757dc5",
+      "purpose": "add a private, size-limited Storage bucket for authenticated knowledge document attachments",
+      "requiresApproval": false,
+      "approvedAt": "2026-09-29",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ]
     }
   ],
   "legacyMigrations": [

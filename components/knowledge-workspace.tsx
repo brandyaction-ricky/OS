@@ -23,6 +23,7 @@ import {
   List,
   MoreHorizontal,
   MoveRight,
+  Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -41,7 +42,8 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
 import { documentCreateSchema } from "@/lib/validation";
@@ -264,6 +266,9 @@ function WorkspaceContent() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [canonicalGate, setCanonicalGate] = useState(false);
+  const [externalLinkOpen, setExternalLinkOpen] = useState(false);
+  const [externalLinkError, setExternalLinkError] = useState("");
+  const [attachmentProgress, setAttachmentProgress] = useState("");
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
@@ -289,6 +294,7 @@ function WorkspaceContent() {
   const epoch = useRef(0);
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const selectDocumentNow = useCallback((id: string) => {
     setMode("read");
     setSelectedId(id);
@@ -543,6 +549,58 @@ function WorkspaceContent() {
     requestAnimationFrame(() => { textarea.focus(); textarea.setSelectionRange(start + before.length, start + before.length + selectedText.length); });
   };
 
+  const insertMarkdown = (markdown: string) => {
+    if (!draft || !editorRef.current) return;
+    const textarea = editorRef.current;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const prefix = start > 0 && draft.content[start - 1] !== "\n" ? "\n\n" : "";
+    const suffix = end < draft.content.length && draft.content[end] !== "\n" ? "\n\n" : "";
+    const inserted = `${prefix}${markdown}${suffix}`;
+    setDraft({ ...draft, content: `${draft.content.slice(0, start)}${inserted}${draft.content.slice(end)}` });
+    requestAnimationFrame(() => {
+      const caret = start + inserted.length;
+      textarea.focus(); textarea.setSelectionRange(caret, caret);
+    });
+  };
+
+  const addExternalLink = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!draft) return;
+    const form = new FormData(event.currentTarget);
+    const rawUrl = String(form.get("url") ?? "").trim();
+    const label = String(form.get("label") ?? "").trim() || rawUrl;
+    try {
+      const url = new URL(rawUrl);
+      if (!(["http:", "https:"] as string[]).includes(url.protocol) || url.username || url.password) throw new Error();
+      const safeLabel = label.replace(/[\[\]\r\n]/g, " ").trim() || url.hostname;
+      insertMarkdown(`[${safeLabel}](${url.toString()})`);
+      setExternalLinkError(""); setExternalLinkOpen(false);
+    } catch { setExternalLinkError("https:// 또는 http://로 시작하는 링크를 입력해 주세요."); }
+  };
+
+  const attachFiles = async (files: FileList | null) => {
+    if (!files?.length || !selected || !draft || busy) return;
+    if (demo) { setError("데모 화면에서는 파일을 올릴 수 없습니다."); return; }
+    const selectedFiles = [...files].slice(0, 10);
+    setBusy(true); setError("");
+    try {
+      const markdown: string[] = [];
+      for (const [index, file] of selectedFiles.entries()) {
+        setAttachmentProgress(`자료 ${index + 1}/${selectedFiles.length} 올리는 중 · ${file.name}`);
+        const signed = await createKnowledgeAttachmentUpload(accessToken, selected.id, file);
+        await uploadKnowledgeAttachment(signed.path, signed.token, file, signed.type);
+        markdown.push(knowledgeAttachmentMarkdown(signed));
+      }
+      insertMarkdown(markdown.join("\n\n"));
+      setToast(`${markdown.length}개 자료를 본문에 넣었습니다. 문서를 저장하면 다른 구성원에게도 보입니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "자료를 올리지 못했습니다."); }
+    finally {
+      setBusy(false); setAttachmentProgress("");
+      if (attachmentInputRef.current) attachmentInputRef.current.value = "";
+    }
+  };
+
   const save = async () => {
     if (!selected || !draft || busy) return false;
     setBusy(true); setError("");
@@ -711,7 +769,8 @@ function WorkspaceContent() {
                     <label><span><BookCheck size={13} /> 브랜드</span><input list="knowledge-brand-options" disabled={busy} maxLength={120} value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
                     <label><span><Tag size={13} /> 태그</span><input disabled={busy} maxLength={1859} value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
-                  <div className="markdown-toolbar" aria-label="마크다운 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="위키링크" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button></div>
+                  <div className="markdown-toolbar" aria-label="문서 편집 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="다른 OS 문서 연결" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button><button type="button" title="웹 링크 넣기" onClick={() => { setExternalLinkError(""); setExternalLinkOpen(true); }}><Link2 size={14} /> 웹 링크</button><button type="button" title="이미지·영상·파일 올리기" disabled={busy} onClick={() => attachmentInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button><input ref={attachmentInputRef} className="knowledge-attachment-input" type="file" multiple tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => void attachFiles(event.target.files)} /></div>
+                  {attachmentProgress ? <p className="knowledge-attachment-progress" role="status">{attachmentProgress}</p> : null}
                   <textarea disabled={busy} maxLength={1500000} ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
                   {tagQuery !== null ? <div aria-label="태그 제안">{[...new Set(documents.flatMap((document) => document.tags))].filter((tag) => tag.toLowerCase().includes(tagQuery.toLowerCase())).slice(0, 8).map((tag) => <button key={tag} type="button" className="ghost-button" onClick={() => { const inserted = insertTag(draft.content, editorRef.current?.selectionStart ?? 0, tag); setDraft({ ...draft, content: inserted.content }); setTagQuery(null); requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(inserted.caret, inserted.caret); }); }}>#{tag}</button>)}</div> : null}
                 </div>
@@ -772,6 +831,7 @@ function WorkspaceContent() {
       {moveOpen ? <KnowledgeDocumentMover documents={documents.filter(document => moveIds.includes(document.id))} options={folderOptions} token={accessToken} demo={demo} onSaved={(document, previous) => { commitDocument(document, previous); discard(document.id); }} onBusy={setBusy} onClose={() => { setMoveOpen(false); setCheckedIds(new Set()); }} /> : null}
       {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => setFolderManagerOpen(false)} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); openNewDocument(folder); }} /> : null}
       {canonicalGate ? <KnowledgeModal title="회사 정본 편집 안내" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></KnowledgeModal> : null}
+      {externalLinkOpen ? <KnowledgeModal title="웹 링크 넣기" onClose={() => setExternalLinkOpen(false)}><form className="form-modal knowledge-link-modal" onSubmit={addExternalLink}><header><h2>웹 링크 넣기</h2></header><div className="form-fields"><label className="wide"><span>표시할 이름</span><input name="label" maxLength={200} placeholder="예: 참고 자료" /></label><label className="wide"><span>웹 주소</span><input name="url" type="url" required maxLength={2000} placeholder="https://…" autoFocus /></label>{externalLinkError ? <p role="alert" className="inline-alert danger wide">{externalLinkError}</p> : null}</div><footer><button type="button" className="secondary-button" onClick={() => setExternalLinkOpen(false)}>취소</button><button className="primary-button">본문에 넣기</button></footer></form></KnowledgeModal> : null}
       {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(false);}} /> : null}
       {importOpen ? <KnowledgeImport token={accessToken} demo={demo} ownerId={profile?.id ?? "demo-ricky"} team={profile?.team ?? ""} options={folderOptions} onSaved={commitDocument} onBusy={setBusy} onClose={() => setImportOpen(false)} /> : null}
       {compareVersion && compareBase ? <KnowledgeVersionComparison title="이전 버전 비교·복원" left={{label:`v${compareVersion.version_no} 복원할 내용`,title:compareVersion.title,content:compareVersion.content_md}} right={{label:`현재 v${compareBase.current_version}`,title:compareBase.title,content:compareBase.content_md}} action={`v${compareVersion.version_no} 내용을 새 버전으로 복원`} busy={busy} error={error} onClose={() => {setCompareVersion(null);setCompareBase(null);}} onAction={() => void restoreVersion(compareVersion)} /> : null}

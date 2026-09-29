@@ -4,7 +4,7 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the approved active chain is intact and ready for controlled application", async () => {
+test("the active chain is intact and the attachment migration is approved", async () => {
   const result = await inspectMigrationBaseline();
 
   assert.equal(result.status, "ready");
@@ -13,7 +13,7 @@ test("the approved active chain is intact and ready for controlled application",
   assert.equal(result.readyToApply, true);
   assert.deepEqual(result.pendingApprovalMigrations, []);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 11);
+  assert.equal(result.activeMigrationCount, 12);
   assert.equal(result.archivedMigrationCount, 14);
   assert.deepEqual(result.errors, []);
 });
