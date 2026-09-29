@@ -128,6 +128,9 @@ export async function PATCH(request: Request) {
       p_reason: input.reason,
     });
     if (error?.message?.startsWith("OS_VERSION_CONFLICT:")) throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 확인하고 다시 시도해 주세요.");
+    if (error?.message?.includes("OS_ATTACHMENT_EXPIRED")) {
+      throw new ApiError(409, "KNOWLEDGE_ATTACHMENT_EXPIRED", "첨부 자료의 보관 시간이 지나 저장하지 못했습니다. 해당 자료를 다시 첨부해 주세요.");
+    }
     if (error || !data) throw new ApiError(400, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.", error?.message);
     let indexing: "ready" | "queued" = "queued";
     if (input.content !== undefined) {
