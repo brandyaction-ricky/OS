@@ -242,10 +242,12 @@
       "file": "20260929025147_knowledge_attachment_lifecycle.sql",
       "sha256": "4cecfe3e5067bb167f2a998596c25f17d82af4e62d57d7a48b97e45a5996ad05",
       "purpose": "track pending knowledge uploads, mark saved references transactionally, and support Storage API cleanup of stale unused objects",
-      "requiresApproval": true,
+      "requiresApproval": false,
       "developmentApprovedAt": "2026-09-29",
+      "productionApprovedAt": "2026-09-29",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     }
   ],
