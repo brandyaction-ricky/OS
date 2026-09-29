@@ -27,6 +27,11 @@ test("knowledge workspace exposes folder selection, rename and document move con
   assert.match(workspace, /저장 위치/);
   assert.match(workspace, /폴더를 선택하세요/);
   assert.match(workspace, /이 폴더에 새 문서 만들기/);
+  assert.match(workspace, /onContextMenu=\{\(event\) => openTreeContextMenu/);
+  assert.match(workspace, /text\/folder-path/);
+  assert.match(workspace, /최상위로 이동/);
+  assert.match(workspace, /폴더 문서 휴지통으로/);
+  assert.match(workspace, /파일 트리에서 문서 이름 변경/);
 });
 
 test("wiki links produce automatic edges, backlinks and broken-link evidence", () => {

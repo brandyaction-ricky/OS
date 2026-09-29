@@ -256,6 +256,13 @@ function WorkspaceContent() {
   const [moveIds, setMoveIds] = useState<string[]>([]);
   const [folderManagerOpen, setFolderManagerOpen] = useState(searchParams.get("folders") === "1");
   const [managedFolder, setManagedFolder] = useState("");
+  const [folderManagerParent, setFolderManagerParent] = useState<string | undefined>();
+  const [draggedFolder, setDraggedFolder] = useState("");
+  const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
+  const [treeContextMenu, setTreeContextMenu] = useState<null | { x: number; y: number; target: { type: "folder"; path: string } | { type: "document"; document: KnowledgeDocument } }>(null);
+  const [renameDocument, setRenameDocument] = useState<KnowledgeDocument | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [folderDeletePath, setFolderDeletePath] = useState("");
   const [importOpen, setImportOpen] = useState(false);
   const [finderOpen, setFinderOpen] = useState(false);
   const [compareVersion, setCompareVersion] = useState<DocumentVersion | null>(null);
@@ -320,6 +327,15 @@ function WorkspaceContent() {
     setPreferencesReady(true);
     return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
   }, []);
+  useEffect(() => {
+    if (!treeContextMenu) return;
+    const close = (event?: Event) => { if (event?.target instanceof Element && event.target.closest(".knowledge-tree-context-menu")) return; setTreeContextMenu(null); };
+    const keydown = (event: KeyboardEvent) => { if (event.key === "Escape") close(); };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", keydown);
+    return () => { window.removeEventListener("pointerdown", close); window.removeEventListener("scroll", close, true); window.removeEventListener("keydown", keydown); };
+  }, [treeContextMenu]);
 
   useEffect(() => {
     if (!preferencesReady) return;
@@ -540,6 +556,57 @@ function WorkspaceContent() {
       commitDocument(document); discard(document.id); setMoveOpen(false);
       setToast(`문서를 ${destination || "분류 없음"}(으)로 이동했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더로 이동하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const openTreeContextMenu = (event: React.MouseEvent, target: NonNullable<typeof treeContextMenu>["target"]) => {
+    event.preventDefault(); event.stopPropagation();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const pointerX = Number.isFinite(event.clientX) && event.clientX > 0 ? event.clientX : bounds.right;
+    const pointerY = Number.isFinite(event.clientY) && event.clientY > 0 ? event.clientY : bounds.top;
+    setTreeContextMenu({ x: Math.max(8, Math.min(pointerX, window.innerWidth - 224)), y: Math.max(8, Math.min(pointerY, window.innerHeight - 190)), target });
+  };
+
+  const openFolderManager = (path: string, parent?: string) => guardAction(() => {
+    setError(""); setManagedFolder(path); setFolderManagerParent(parent); setFolderManagerOpen(true); setTreeContextMenu(null);
+  });
+
+  const renameContextDocument = async () => {
+    if (!renameDocument || busy) return;
+    const title = renameTitle.trim();
+    if (!title || title === renameDocument.title) { setRenameDocument(null); return; }
+    setBusy(true); setError("");
+    try {
+      const current = !demo && renameDocument.content_md === undefined ? (await getDocument(accessToken, renameDocument.id)).document : renameDocument;
+      const document = demo ? { ...current, title, current_version: current.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { id: current.id, expectedVersion: current.current_version, title, content: current.content_md, reason: "파일 트리에서 문서 이름 변경" })).document;
+      commitDocument(document, current); discard(document.id); setRenameDocument(null); setToast("문서 이름을 변경했습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 이름을 변경하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const archiveFolderDocuments = async () => {
+    if (!folderDeletePath || busy) return;
+    setBusy(true); setError("");
+    try {
+      let affected = documents.filter(item => item.status !== "archived" && (item.folder === folderDeletePath || item.folder.startsWith(`${folderDeletePath}/`)));
+      if (!demo) {
+        affected = [];
+        for (let offset = 0; ; offset += 200) {
+          const query = new URLSearchParams({ view: "summary", folder: folderDeletePath, scope: "all", limit: "200", offset: String(offset) });
+          const page = await listDocuments(accessToken, query.toString());
+          affected.push(...page.documents);
+          if (offset + page.documents.length >= page.total || !page.documents.length) break;
+        }
+      }
+      if (!affected.length) throw new Error("이 폴더에 휴지통으로 옮길 활성 문서가 없습니다.");
+      const results = await Promise.allSettled(affected.map(async item => {
+        const document = demo ? { ...item, status: "archived" as const, updated_at: new Date().toISOString() } : (await changeDocumentStatus(accessToken, item.id, "archived")).document;
+        commitDocument(document, item); return document;
+      }));
+      const failed = results.filter(result => result.status === "rejected").length;
+      if (failed) throw new Error(`${affected.length - failed}개는 휴지통으로 옮겼고 ${failed}개는 권한 또는 최신 버전을 확인해야 합니다.`);
+      setFolderDeletePath(""); setTreeContextMenu(null); setToast(`${affected.length}개 문서를 휴지통으로 옮겨 폴더를 정리했습니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더를 정리하지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -779,16 +846,17 @@ function WorkspaceContent() {
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
           <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={14} /></button><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button aria-label="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>폴더 내 {sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
           <div className="knowledge-bulk-actions"><button className="ghost-button" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}>목록 새로고침</button>{checkedIds.size ? <button className="secondary-button" disabled={busy} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>선택 {checkedIds.size}개 이동</button> : null}</div>
+          {draggedFolder ? <div className={`knowledge-root-dropzone${dropTargetFolder === "" ? " active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(""); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={() => setDropTargetFolder(null)} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/folder-path"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, ""); }}>최상위로 이동</div> : null}
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
             {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}
             {visibleRows.map((row) => row.type === "folder" ? (
-              <div className="folder-tree-item" key={`folder-${row.folder.path}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const id = event.dataTransfer.getData("text/document-id"); guardAction(() => { void moveDocument(id, row.folder.path); }); }}>
-                <button className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
+              <div className={`folder-tree-item${dropTargetFolder === row.folder.path ? " drop-target" : ""}`} key={`folder-${row.folder.path}`} onContextMenu={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(row.folder.path); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTargetFolder(null); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = event.dataTransfer.getData("text/folder-path"); const id = event.dataTransfer.getData("text/document-id"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, row.folder.path); else if (id) guardAction(() => { void moveDocument(id, row.folder.path); }); }}>
+                <button draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
                 <button className="folder-inline-action" title={`${row.folder.path}에 새 문서`} aria-label={`${row.folder.path}에 새 문서`} onClick={() => openNewDocument(row.folder.path)}><FolderPlus size={14} /></button><button className="folder-inline-action" aria-label={`${row.folder.path} 폴더 관리`} onClick={() => guardAction(() => { setManagedFolder(row.folder.path); setFolderManagerOpen(true); })}><FolderCog size={14} /></button>
               </div>
             ) : (
-              <div className="document-tree-select-row" key={row.document.id}><input type="checkbox" aria-label={`${row.document.title} 선택`} checked={checkedIds.has(row.document.id)} disabled={busy} onChange={event => { const checked = event.target.checked; setCheckedIds(current => { const next = new Set(current); if (checked) next.add(row.document.id); else next.delete(row.document.id); return next; }); }} /><button draggable className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => event.dataTransfer.setData("text/document-id", row.document.id)} onClick={() => { selectDocument(row.document.id); if (window.innerWidth < 900) setTreeOpen(false); }}>
+              <div className="document-tree-select-row" key={row.document.id} onContextMenu={(event) => openTreeContextMenu(event, { type: "document", document: row.document })}><input type="checkbox" aria-label={`${row.document.title} 선택`} checked={checkedIds.has(row.document.id)} disabled={busy} onChange={event => { const checked = event.target.checked; setCheckedIds(current => { const next = new Set(current); if (checked) next.add(row.document.id); else next.delete(row.document.id); return next; }); }} /><button draggable className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/document-id", row.document.id); }} onClick={() => { selectDocument(row.document.id); if (window.innerWidth < 900) setTreeOpen(false); }}>
                 <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
               </button></div>
             ))}
@@ -865,6 +933,20 @@ function WorkspaceContent() {
         </article>
       </section>
 
+      {treeContextMenu ? <div className="knowledge-tree-context-menu" role="menu" aria-label={treeContextMenu.target.type === "folder" ? `${treeContextMenu.target.path} 폴더 메뉴` : `${treeContextMenu.target.document.title} 문서 메뉴`} style={{ left: treeContextMenu.x, top: treeContextMenu.y }}>
+        {treeContextMenu.target.type === "folder" ? <>
+          <strong>{treeContextMenu.target.path.split("/").at(-1)}</strong>
+          <button role="menuitem" onClick={() => openFolderManager(treeContextMenu.target.type === "folder" ? treeContextMenu.target.path : "")}><Pencil size={14} /> 이름·위치 변경</button>
+          <button role="menuitem" onClick={() => { const path = treeContextMenu.target.type === "folder" ? treeContextMenu.target.path : ""; setTreeContextMenu(null); openNewDocument(path); }}><FilePlus2 size={14} /> 이 폴더에 새 문서</button>
+          <button role="menuitem" className="danger" disabled={ownerFilter === "archived"} onClick={() => { if (treeContextMenu.target.type === "folder") { setError(""); setFolderDeletePath(treeContextMenu.target.path); setTreeContextMenu(null); } }}><Trash2 size={14} /> 폴더 문서 휴지통으로</button>
+        </> : <>
+          <strong>{treeContextMenu.target.document.title}</strong>
+          <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { setError(""); setRenameDocument(document); setRenameTitle(document.title); }); }}><Pencil size={14} /> 이름 변경</button>
+          <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { setMoveIds([document.id]); setMoveOpen(true); }); }}><MoveRight size={14} /> 위치 이동</button>
+          <button role="menuitem" className={treeContextMenu.target.document.status === "archived" ? "" : "danger"} onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { selectDocumentNow(document.id); setArchiveConfirm(true); }); }}>{treeContextMenu.target.document.status === "archived" ? <RotateCcw size={14} /> : <Trash2 size={14} />} {treeContextMenu.target.document.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</button>
+        </>}
+      </div> : null}
+
       {(quickOpen || (mode === "edit" && linkQuery !== null)) ? <div className="document-quick-open" role="dialog" aria-label={quickOpen ? "문서 빠른 열기" : "문서 링크 자동완성"}>
         <button className="icon-button" aria-label="빠른 열기 닫기" onClick={() => { setQuickOpen(false); setLinkQuery(null); }}><X size={16}/></button>
         <input autoFocus aria-label="문서 찾기" value={linkQuery ?? ""} onChange={event => setLinkQuery(event.target.value)} placeholder="문서 이름 또는 원본 파일명" />
@@ -899,7 +981,9 @@ function WorkspaceContent() {
         </footer></div>
       </KnowledgeModal> : null}
       {moveOpen ? <KnowledgeDocumentMover documents={documents.filter(document => moveIds.includes(document.id))} options={folderOptions} token={accessToken} demo={demo} onSaved={(document, previous) => { commitDocument(document, previous); discard(document.id); }} onBusy={setBusy} onClose={() => { setMoveOpen(false); setCheckedIds(new Set()); }} /> : null}
-      {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => setFolderManagerOpen(false)} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); openNewDocument(folder); }} /> : null}
+      {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} initialParent={folderManagerParent} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => { setFolderManagerOpen(false); setFolderManagerParent(undefined); }} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); setFolderManagerParent(undefined); openNewDocument(folder); }} /> : null}
+      {renameDocument ? <KnowledgeModal title="문서 이름 변경" onClose={() => setRenameDocument(null)} busy={busy}><form className="form-modal knowledge-rename-modal" onSubmit={(event) => { event.preventDefault(); void renameContextDocument(); }}><header><h2>문서 이름 변경</h2></header><div className="form-fields"><label className="wide"><span>새 문서 이름</span><input autoFocus required maxLength={200} disabled={busy} value={renameTitle} onChange={event => setRenameTitle(event.target.value)} /></label>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button type="button" className="secondary-button" disabled={busy} onClick={() => setRenameDocument(null)}>취소</button><button className="primary-button" disabled={busy || !renameTitle.trim()}>{busy ? "변경 중…" : "이름 변경"}</button></footer></form></KnowledgeModal> : null}
+      {folderDeletePath ? <KnowledgeModal title="폴더 문서 휴지통 이동" onClose={() => setFolderDeletePath("")} busy={busy}><div className="form-modal folder-delete-modal"><header><h2>폴더를 정리할까요?</h2></header><div className="form-fields"><p className="wide"><strong>{folderDeletePath}</strong><br/>이 폴더와 모든 하위 폴더의 활성 문서를 휴지통으로 옮깁니다. 본문과 변경 이력은 보존되며 문서별로 복원할 수 있습니다.</p>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setFolderDeletePath("")}>취소</button><button className="primary-button danger-button" disabled={busy} onClick={() => void archiveFolderDocuments()}>{busy ? "처리 중…" : "폴더 문서 휴지통으로"}</button></footer></div></KnowledgeModal> : null}
       {canonicalGate ? <KnowledgeModal title="회사 정본 편집 안내" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></KnowledgeModal> : null}
       {externalLinkOpen ? <KnowledgeModal title="웹 링크 넣기" onClose={() => setExternalLinkOpen(false)}><form className="form-modal knowledge-link-modal" onSubmit={addExternalLink}><header><h2>웹 링크 넣기</h2></header><div className="form-fields"><label className="wide"><span>표시할 이름</span><input name="label" maxLength={200} placeholder="예: 참고 자료" /></label><label className="wide"><span>웹 주소</span><input name="url" type="url" required maxLength={2000} placeholder="https://…" autoFocus /></label>{externalLinkError ? <p role="alert" className="inline-alert danger wide">{externalLinkError}</p> : null}</div><footer><button type="button" className="secondary-button" onClick={() => setExternalLinkOpen(false)}>취소</button><button className="primary-button">본문에 넣기</button></footer></form></KnowledgeModal> : null}
       {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(false);}} /> : null}
