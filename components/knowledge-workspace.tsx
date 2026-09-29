@@ -1,10 +1,9 @@
 "use client";
 
-import { insertTag, markdownBlocks, markdownCodeBody, markdownSections, treeWidth, type MarkdownSection } from "@/lib/markdown-sections";
+import { markdownBlocks, markdownCodeBody, markdownSections, treeWidth, type MarkdownSection } from "@/lib/markdown-sections";
 
 import {
   Archive,
-  Bold,
   BookCheck,
   ChevronDown,
   ChevronRight,
@@ -20,19 +19,16 @@ import {
   FolderPlus,
   Hash,
   Link2,
-  List,
   MoreHorizontal,
   MoveRight,
   Paperclip,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
-  Quote,
   RotateCcw,
   Save,
   Send,
   ShieldAlert,
-  Table2,
   Tag,
   Trash2,
   Upload,
@@ -58,6 +54,7 @@ import { KnowledgeDocumentFinder } from "./knowledge-document-finder";
 import { KnowledgeImport } from "./knowledge-import";
 import { KnowledgeVersionComparison } from "./knowledge-version-comparison";
 import { KnowledgeModal } from "./knowledge-modal";
+import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
 import { getDemoKnowledgeDocuments, getDemoKnowledgeVersions, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
@@ -289,7 +286,6 @@ function WorkspaceContent() {
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
   const [hoverTree, setHoverTree] = useState(false);
   const [paneWidth, setPaneWidth] = useState(280);
-  const [tagQuery, setTagQuery] = useState<string | null>(null);
   const [treeScroll, setTreeScroll] = useState(0);
   const [linkQuery, setLinkQuery] = useState<string | null>(null);
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
@@ -301,7 +297,7 @@ function WorkspaceContent() {
   selectedIdRef.current = selectedId;
   const epoch = useRef(0);
   const loadedFolders = useRef(new Set<string>());
-  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<KnowledgeRichEditorMethods | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentDragDepth = useRef(0);
   const pendingAttachmentPaths = useRef(new Map<string, Set<string>>());
@@ -401,14 +397,19 @@ function WorkspaceContent() {
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   }, []);
   useEffect(() => {
-    if (linkQuery === null || demo) { setLinkChoices([]); return; }
+    if (linkQuery === null) { setLinkChoices([]); return; }
+    if (demo) {
+      const query = linkQuery.trim().toLocaleLowerCase("ko-KR");
+      setLinkChoices(documents.filter(item => !query || `${item.title} ${item.source_ref ?? ""}`.toLocaleLowerCase("ko-KR").includes(query)).slice(0, 8));
+      return;
+    }
     let active = true;
     const timer = window.setTimeout(() => {
       apiRequest<{documents: KnowledgeDocument[]}>(`/api/v1/documents/index?q=${encodeURIComponent(linkQuery)}`, {token: accessToken})
         .then(result => { if (active) setLinkChoices(result.documents); }).catch(() => { if (active) setLinkChoices([]); });
     }, 220);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [linkQuery, demo, accessToken]);
+  }, [linkQuery, demo, accessToken, documents]);
   useEffect(() => {
     if (!pendingAnchor || selected?.id !== pendingAnchor.id || selected.content_md === undefined) return;
     const frame = window.requestAnimationFrame(() => { revealHeading(`wiki-heading-${pendingAnchor.heading.normalize("NFC").trim()}`); setPendingAnchor(null); });
@@ -610,28 +611,10 @@ function WorkspaceContent() {
     finally { setBusy(false); }
   };
 
-  const applyMarkdown = (before: string, after = before, placeholder = "텍스트") => {
-    if (!draft || !editorRef.current) return;
-    const textarea = editorRef.current; const start = textarea.selectionStart; const end = textarea.selectionEnd;
-    const selectedText = draft.content.slice(start, end) || placeholder;
-    const content = `${draft.content.slice(0, start)}${before}${selectedText}${after}${draft.content.slice(end)}`;
-    setDraft({ ...draft, content });
-    requestAnimationFrame(() => { textarea.focus(); textarea.setSelectionRange(start + before.length, start + before.length + selectedText.length); });
-  };
-
   const insertMarkdown = (markdown: string) => {
     if (!draft || !editorRef.current) return;
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const prefix = start > 0 && draft.content[start - 1] !== "\n" ? "\n\n" : "";
-    const suffix = end < draft.content.length && draft.content[end] !== "\n" ? "\n\n" : "";
-    const inserted = `${prefix}${markdown}${suffix}`;
-    setDraft({ ...draft, content: `${draft.content.slice(0, start)}${inserted}${draft.content.slice(end)}` });
-    requestAnimationFrame(() => {
-      const caret = start + inserted.length;
-      textarea.focus(); textarea.setSelectionRange(caret, caret);
-    });
+    editorRef.current.focus();
+    editorRef.current.insertMarkdown(markdown);
   };
 
   const rememberPendingAttachment = (documentId: string, path: string) => {
@@ -813,11 +796,7 @@ function WorkspaceContent() {
   };
   const chooseLink = (document: KnowledgeDocument) => {
     if (quickOpen) { selectDocument(document.id); setQuickOpen(false); }
-    else if (draft && editorRef.current) {
-      const end = editorRef.current.selectionStart;
-      const start = draft.content.lastIndexOf("[[", end);
-      if (start >= 0) setDraft({...draft, content: draft.content.slice(0, start) + `[[${document.source_ref?.replace(/\\/g, "/").replace(/\.md$/i, "") || document.title}]]` + draft.content.slice(end).replace(/^\]\]/, "")});
-    }
+    else if (draft && editorRef.current) editorRef.current.insertMarkdown(`[[${document.source_ref?.replace(/\\/g, "/").replace(/\.md$/i, "") || document.title}]]`);
     setLinkQuery(null);
   };
   const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / 44) - 8, treeRows.length - 45));
@@ -897,20 +876,12 @@ function WorkspaceContent() {
                     <label><span><BookCheck size={13} /> 브랜드</span><input list="knowledge-brand-options" disabled={busy} maxLength={120} value={draft.brand} onChange={(event) => setDraft({ ...draft, brand: event.target.value })} /></label>
                     <label><span><Tag size={13} /> 태그</span><input disabled={busy} maxLength={1859} value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} placeholder="쉼표로 구분" /></label>
                   </div>
-                  <div className="markdown-toolbar" aria-label="문서 편집 도구"><button type="button" title="제목" onClick={() => applyMarkdown("## ", "", "제목")}><Hash size={14} /></button><button type="button" title="굵게" onClick={() => applyMarkdown("**", "**")}><Bold size={14} /></button><button type="button" title="목록" onClick={() => applyMarkdown("- ", "")}><List size={14} /></button><button type="button" title="인용" onClick={() => applyMarkdown("> ", "")}><Quote size={14} /></button><button type="button" title="표" onClick={() => applyMarkdown("| 항목 | 내용 |\n| --- | --- |\n| ", " |", "값")}><Table2 size={14} /></button><button type="button" title="다른 OS 문서 연결" onClick={() => applyMarkdown("[[", "]]", "문서명")}><Link2 size={14} /></button><button type="button" title="웹 링크 넣기" onClick={() => { setExternalLinkError(""); setExternalLinkOpen(true); }}><Link2 size={14} /> 웹 링크</button><button type="button" title="이미지·영상·파일 올리기" disabled={busy} onClick={() => attachmentInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button><input ref={attachmentInputRef} className="knowledge-attachment-input" type="file" multiple tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => void attachFiles(event.target.files)} /></div>
+                  <div className="markdown-toolbar knowledge-insert-toolbar" aria-label="문서 자료 도구"><button type="button" title="다른 OS 문서 연결" onClick={() => setLinkQuery("")}><Link2 size={14} /> OS 문서 연결</button><button type="button" title="웹 링크 넣기" onClick={() => { setExternalLinkError(""); setExternalLinkOpen(true); }}><Link2 size={14} /> 웹 링크</button><button type="button" title="이미지·영상·파일 올리기" disabled={busy} onClick={() => attachmentInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button><input ref={attachmentInputRef} className="knowledge-attachment-input" type="file" multiple tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => void attachFiles(event.target.files)} /></div>
                   {attachmentProgress ? <p className="knowledge-attachment-progress" role="status">{attachmentProgress}</p> : null}
-                  <p className="knowledge-markdown-help"><strong>입력 즉시 미리보기</strong><span><code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용 · 파일은 이 화면에 끌어다 놓기</span></p>
-                  <div className="knowledge-live-editor">
-                    <section className="knowledge-markdown-source" aria-label="마크다운 작성 영역">
-                      <header><strong>작성</strong><span>마크다운 원문</span></header>
-                      <textarea disabled={busy} maxLength={1500000} ref={editorRef} value={draft.content} onChange={(event) => { setDraft({ ...draft, content: event.target.value }); setLinkQuery(event.target.value.slice(0, event.target.selectionStart).match(/\[\[([^\]\n]*)$/)?.[1] ?? null); setTagQuery(event.target.value.slice(0, event.target.selectionStart).match(/(?:^|\s)#([^\s#]*)$/u)?.[1] ?? null); }} aria-label="문서 본문" spellCheck="false" />
-                    </section>
-                    <section className="knowledge-live-preview" aria-label="실시간 미리보기">
-                      <header><strong>미리보기</strong><span>저장 전 화면</span></header>
-                      <div>{draft.content.trim() ? <MarkdownView content={prepareReadingContent(draft.content).body} onOpenLink={openWikiLink} /> : <p className="knowledge-preview-empty">왼쪽에 내용을 입력하면 실제 문서 모양이 바로 나타납니다.</p>}</div>
-                    </section>
-                  </div>
-                  {tagQuery !== null ? <div aria-label="태그 제안">{[...new Set(documents.flatMap((document) => document.tags))].filter((tag) => tag.toLowerCase().includes(tagQuery.toLowerCase())).slice(0, 8).map((tag) => <button key={tag} type="button" className="ghost-button" onClick={() => { const inserted = insertTag(draft.content, editorRef.current?.selectionStart ?? 0, tag); setDraft({ ...draft, content: inserted.content }); setTagQuery(null); requestAnimationFrame(() => { editorRef.current?.focus(); editorRef.current?.setSelectionRange(inserted.caret, inserted.caret); }); }}>#{tag}</button>)}</div> : null}
+                  <p className="knowledge-markdown-help"><strong>바로 서식이 적용되는 편집기</strong><span>줄 맨 앞에서 <code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용을 입력하고 공백을 누르세요.</span></p>
+                  <section className="knowledge-live-editor" aria-label="문서 바로 편집 영역">
+                    <KnowledgeRichEditor key={selected.id} ref={editorRef} markdown={draft.content} accessToken={accessToken} disabled={busy} onChange={(content) => setDraft({ ...draft, content })} onError={setError} />
+                  </section>
                 </div>
               ) : mode === "info" ? (
                 <div className="document-info">

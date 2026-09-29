@@ -34,6 +34,21 @@ test("knowledge workspace exposes folder selection, rename and document move con
   assert.match(workspace, /파일 트리에서 문서 이름 변경/);
 });
 
+test("knowledge workspace uses one Markdown-backed rich editor instead of split source and preview panes", async () => {
+  const [workspace, editor] = await Promise.all([
+    read("components/knowledge-workspace.tsx"),
+    read("components/knowledge-rich-editor-initialized.tsx"),
+  ]);
+  assert.match(workspace, /문서 바로 편집 영역/);
+  assert.doesNotMatch(workspace, /실시간 미리보기/);
+  assert.doesNotMatch(workspace, /마크다운 작성 영역/);
+  assert.match(editor, /markdownShortcutPlugin\(\)/);
+  assert.match(editor, /headingsPlugin\(\)/);
+  assert.match(editor, /listsPlugin\(\)/);
+  assert.match(editor, /quotePlugin\(\)/);
+  assert.match(editor, /imagePreviewHandler/);
+});
+
 test("wiki links produce automatic edges, backlinks and broken-link evidence", () => {
   assert.deepEqual(extractWikiLinks("[[정본]] [[정본|별칭]] [[없는 문서#절]]"), ["정본", "없는 문서"]);
   const graph = buildKnowledgeGraph([

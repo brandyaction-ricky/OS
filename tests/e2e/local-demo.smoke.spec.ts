@@ -23,23 +23,35 @@ test("local demo renders the application shell and health contract", async ({ pa
   expect(consoleErrors).toEqual([]);
 });
 
-test("knowledge editing previews Markdown immediately and exposes file drop", async ({ page }) => {
-  await page.route("https://example.com/preview.png", async (route) => route.fulfill({
-    contentType: "image/png",
-    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
-  }));
+test("knowledge editing applies Markdown shortcuts in one pane and exposes file drop", async ({ page }) => {
   await page.goto("/knowledge");
   await page.getByRole("button", { name: "회사 wiki 2" }).click();
   await page.getByRole("button", { name: "정본 편집" }).click();
   await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
 
-  await page.getByRole("textbox", { name: "문서 본문" }).fill("## 큰 제목\n\n### 소제목\n\n- 목록\n\n> 인용문\n\n![바로 보이는 이미지](https://example.com/preview.png)");
-  const preview = page.getByRole("region", { name: "실시간 미리보기" });
-  await expect(preview.getByRole("heading", { name: "큰 제목", level: 2 })).toBeVisible();
-  await expect(preview.getByRole("heading", { name: "소제목", level: 3 })).toBeVisible();
-  await expect(preview.getByRole("list").getByText("목록", { exact: true })).toBeVisible();
-  await expect(preview.getByText("인용문", { exact: true })).toBeVisible();
-  await expect(preview.getByRole("img", { name: "바로 보이는 이미지" })).toBeVisible();
+  const richEditor = page.getByRole("textbox", { name: "editable markdown" });
+  const richToolbar = page.getByRole("toolbar");
+  await expect(richToolbar.getByRole("combobox", { name: "문단 형식" })).toBeVisible();
+  await expect(richToolbar.getByRole("radio", { name: "굵게" })).toBeVisible();
+  await expect(richToolbar.getByRole("button", { name: "표" })).toBeVisible();
+  await expect(richToolbar).toHaveCSS("display", "flex");
+  await expect(richToolbar).toHaveCSS("flex-direction", "row");
+  await richEditor.click();
+  await richEditor.press("ControlOrMeta+A");
+  await richEditor.press("Backspace");
+  await richEditor.pressSequentially("##");
+  await richEditor.press("Space");
+  await richEditor.pressSequentially("큰 제목");
+  await expect(richEditor.getByRole("heading", { name: "큰 제목", level: 2 })).toBeVisible();
+  await richEditor.press("Enter");
+  await richEditor.pressSequentially("-");
+  await richEditor.press("Space");
+  await richEditor.pressSequentially("목록");
+  await expect(richEditor.getByRole("list").getByText("목록", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "OS 문서 연결" }).click();
+  const linkDialog = page.getByRole("dialog", { name: "문서 링크 자동완성" });
+  await linkDialog.getByRole("button", { name: /6대 욕구 정본/ }).click();
+  await expect(richEditor).toContainText("6대 욕구 정본");
 
   const dataTransfer = await page.evaluateHandle(() => {
     const transfer = new DataTransfer();
@@ -53,15 +65,16 @@ test("knowledge editing previews Markdown immediately and exposes file drop", as
   await expect(page.getByText("데모 화면에서는 파일을 올릴 수 없습니다.", { exact: true })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const [sourceBox, previewBox, viewportWidth] = await Promise.all([
-    page.getByRole("region", { name: "마크다운 작성 영역" }).boundingBox(),
-    preview.boundingBox(),
+  const [editorBox, viewportWidth] = await Promise.all([
+    page.getByRole("region", { name: "문서 바로 편집 영역" }).boundingBox(),
     page.evaluate(() => document.documentElement.clientWidth),
   ]);
-  expect(sourceBox).not.toBeNull();
-  expect(previewBox).not.toBeNull();
-  expect(previewBox!.y).toBeGreaterThanOrEqual(sourceBox!.y + sourceBox!.height - 1);
+  expect(editorBox).not.toBeNull();
+  expect(editorBox!.width).toBeLessThanOrEqual(viewportWidth);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewportWidth);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.getByRole("button", { name: "저장" }).click();
+  await expect(page.getByRole("button", { name: "6대 욕구 정본" })).toBeVisible();
 });
 
 test("knowledge tree supports context actions and direct drag moves", async ({ page }) => {
