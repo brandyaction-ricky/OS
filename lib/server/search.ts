@@ -48,7 +48,7 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
     .limit(Math.min(Math.max(input.topK * 6, 24), 60));
   if (input.filters.folder) builder = builder.eq("folder", input.filters.folder);
   if (actor.type === "agent" && statuses.some((status) => status !== "canonical")) {
-    builder = builder.or(`status.eq.canonical,owner_id.eq.${actor.ownerId}`);
+    builder = builder.or(`status.eq.canonical,status.eq.team,owner_id.eq.${actor.ownerId}`);
   }
   const brand = actor.brand ?? input.filters.brand;
   if (brand) builder = builder.eq("brand", brand);
@@ -94,11 +94,11 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     } else { degraded = true; degradationReasons.push("embeddings_unconfigured"); }
   }
 
-  // The vector RPC runs through the service client for PATs. Only canonical
-  // rows may enter that query; personal agent-owned drafts are merged through
-  // the explicitly owner-filtered keyword path below.
+  // The vector RPC runs through the service client for PATs. Company-canonical
+  // and team-shared rows may enter that query; personal agent-owned drafts are
+  // merged through the explicitly owner-filtered keyword path below.
   const rpcStatuses = actor.type === "agent"
-    ? statuses.filter((status) => status === "canonical")
+    ? statuses.filter((status) => status === "canonical" || status === "team")
     : statuses;
   const { data, error } = rpcStatuses.length ? await actor.supabase.rpc("os_search_knowledge", {
     p_query: normalizedQuery,
