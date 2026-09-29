@@ -1,12 +1,14 @@
 # Supabase Migration Baseline
 
-Updated: 2026-09-22 Asia/Seoul.
+Updated: 2026-09-29 Asia/Seoul.
 
 ## Decision
 
 The reviewed eleven-file active chain contains the isolated DEV schema baseline and ten forward migrations, including Telegram team workflow and knowledge review return. Do not replay the schema baseline against Production. The newest migration adds the review-to-team return transition while preserving existing authorization, row locking, and audit events. The 14 former delta files remain unchanged in `supabase/migrations-legacy` as historical evidence.
 
 The user explicitly approved DEV and Production database application plus Production deployment on 2026-09-22 after the repository tests and first Preview passed. The manifest records `ready` / `apply`; the Telegram migration has been applied and verified in Production, while DEV remains pending. This approval does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
+
+The `20260929013627_knowledge_document_attachments.sql` migration is a new, additive private Storage bucket configuration for knowledge-document attachments. It is checksum-pinned in the manifest with `requiresApproval: true`; it has not been applied to DEV or Production, and the 2026-09-22 approval does not cover it. Application and connected upload verification remain a separate release gate.
 
 ## Knowledge review return release — 2026-09-22
 

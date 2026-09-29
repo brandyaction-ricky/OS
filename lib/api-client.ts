@@ -521,6 +521,37 @@ export async function deleteDevelopmentAttachment(token: string | null, path: st
   return apiRequest<{ deleted: true }>(`/api/v1/development-attachments?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
 }
 
+export async function createKnowledgeAttachmentUpload(token: string | null, documentId: string, file: File) {
+  const fallbackTypes: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", pdf: "application/pdf",
+    txt: "text/plain", csv: "text/csv", doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip",
+  };
+  const extension = file.name.split(".").pop()?.toLowerCase() || "";
+  const mimeType = fallbackTypes[extension] || file.type;
+  return apiRequest<{ path: string; token: string; name: string; size: number; type: string }>("/api/v1/knowledge-attachments", {
+    method: "POST", token, body: JSON.stringify({ documentId, fileName: file.name, fileSize: file.size, mimeType }),
+  });
+}
+
+export async function uploadKnowledgeAttachment(path: string, signedToken: string, file: File, contentType: string) {
+  const { getBrowserSupabase } = await import("@/lib/supabase/client");
+  const client = getBrowserSupabase();
+  if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
+  const { error } = await client.storage.from("os-knowledge-attachments").uploadToSignedUrl(path, signedToken, file, {
+    contentType,
+    cacheControl: "3600",
+  });
+  if (error) throw new Error(error.message || "첨부 자료를 업로드하지 못했습니다.");
+}
+
+export async function getKnowledgeAttachmentUrl(token: string | null, path: string) {
+  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}`, { token });
+}
+
 export interface OsMember {
   id: string;
   email: string;
