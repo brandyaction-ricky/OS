@@ -8,7 +8,7 @@ The reviewed eleven-file active chain contains the isolated DEV schema baseline 
 
 The user explicitly approved DEV and Production database application plus Production deployment on 2026-09-22 after the repository tests and first Preview passed. The manifest records `ready` / `apply`; the Telegram migration has been applied and verified in Production, while DEV remains pending. This approval does not authorize replaying the schema baseline, seeds, reset, Production data copy, or unrelated history repair.
 
-The `20260929013627_knowledge_document_attachments.sql` migration is a new, additive private Storage bucket configuration for knowledge-document attachments. It is checksum-pinned in the manifest with `requiresApproval: true`; it has not been applied to DEV or Production, and the 2026-09-22 approval does not cover it. Application and connected upload verification remain a separate release gate.
+The `20260929013627_knowledge_document_attachments.sql` migration is an additive private Storage bucket configuration for knowledge-document attachments. The user separately approved DEV and Production application on 2026-09-29. The exact checksum-pinned migration was applied to both environments and recorded in their migration histories. Postflight confirmed a private 100 MB bucket with the reviewed 17 MIME types in both environments. The immutable Preview then passed authenticated create, upload, document-reference save, signed download, byte-for-byte content, and delete checks; all synthetic DEV fixtures were removed and verified absent.
 
 ## Knowledge review return release — 2026-09-22
 
