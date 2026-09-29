@@ -50,6 +50,8 @@ test("knowledge workspace uses one Markdown-backed rich editor instead of split 
   assert.match(editor, /imagePreviewHandler/);
   assert.match(editor, /knowledgeImageDragPlugin\(\)/);
   assert.match(imageDragPlugin, /\$getNearestNodeFromDOMNode/);
+  assert.match(imageDragPlugin, /dropPlacement/);
+  assert.match(imageDragPlugin, /FILE_DROP_POSITION_EVENT/);
 });
 
 test("wiki links produce automatic edges, backlinks and broken-link evidence", () => {

@@ -84,10 +84,13 @@ test("the knowledge editor applies Markdown in one rich pane and accepts dragged
   const imageDragPlugin = await readFile(new URL("../components/knowledge-image-drag-plugin.tsx", import.meta.url), "utf8");
   const styles = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(workspace, /onDrop=\{dropAttachments\}/);
-  assert.match(workspace, /placeAttachmentCaret\(event\)/);
-  assert.match(workspace, /document\.caretRangeFromPoint/);
+  assert.match(workspace, /placeAttachmentDrop\(event, true\)/);
+  assert.match(workspace, /dispatchKnowledgeFileDropPosition/);
   assert.match(workspace, /Array\.from\(event\.dataTransfer\.files\)/);
   assert.match(workspace, /requestAnimationFrame\(\(\) => void attachFiles\(files\)\)/);
+  assert.match(workspace, /BAUPLOAD/);
+  assert.match(workspace, /replaceAttachmentPlaceholder/);
+  assert.match(workspace, /!types\.includes\("application\/x-lexical-drag"\)/);
   assert.match(workspace, /aria-label="문서 바로 편집 영역"/);
   assert.match(workspace, /KnowledgeRichEditor/);
   assert.match(workspace, /<code>##<\/code> 제목/);
@@ -95,10 +98,13 @@ test("the knowledge editor applies Markdown in one rich pane and accepts dragged
   assert.match(imageDragPlugin, /\$createNodeSelection\(\)/);
   assert.match(imageDragPlugin, /root\.addEventListener\("pointerdown"/);
   assert.match(imageDragPlugin, /MutationObserver/);
+  assert.match(imageDragPlugin, /knowledge-image-drop-indicator/);
+  assert.match(imageDragPlugin, /\$createParagraphNode\(\)/);
   assert.match(styles, /Single-pane, Markdown-backed rich knowledge editor/);
   assert.match(styles, /\.knowledge-live-editor\{display:block/);
   assert.match(styles, /\.knowledge-rich-content\{min-height:/);
   assert.match(styles, /data-knowledge-draggable/);
+  assert.match(styles, /knowledge-image-drop-indicator/);
 });
 
 test("knowledge attachment migration creates a private 100MB bucket", async () => {

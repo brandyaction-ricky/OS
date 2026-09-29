@@ -63,15 +63,25 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
   expect(headingBox).not.toBeNull();
   const dropPoint = {
     clientX: headingBox!.x + headingBox!.width - 3,
-    clientY: headingBox!.y + headingBox!.height / 2,
+    clientY: headingBox!.y + headingBox!.height + 2,
   };
   await editor.dispatchEvent("dragenter", { dataTransfer });
   await expect(page.getByText("여기에 놓아 자료 첨부", { exact: true })).toBeVisible();
   await editor.dispatchEvent("dragover", { dataTransfer, ...dropPoint });
+  await expect(page.locator(".knowledge-image-drop-indicator")).toBeVisible();
   await editor.dispatchEvent("drop", { dataTransfer, ...dropPoint });
   await expect(page.getByText("데모 화면에서는 파일을 올릴 수 없습니다.", { exact: true })).toBeVisible();
   await richEditor.pressSequentially("드롭 위치");
-  await expect(richEditor.getByRole("heading", { level: 2 })).toContainText("드롭 위치");
+  await expect(richEditor.getByRole("heading", { level: 2 })).not.toContainText("드롭 위치");
+  const dropBlocks = await richEditor.locator(":scope > *").evaluateAll((elements) => elements.slice(0, 3).map((element) => ({
+    tag: element.tagName,
+    text: element.textContent,
+  })));
+  expect(dropBlocks).toEqual([
+    { tag: "H2", text: "큰 제목" },
+    { tag: "P", text: "드롭 위치" },
+    { tag: "UL", text: "목록[[6대 욕구 정본]]" },
+  ]);
 
   await page.setViewportSize({ width: 390, height: 844 });
   const [editorBox, viewportWidth] = await Promise.all([
@@ -114,6 +124,7 @@ test("knowledge images can be dragged between document blocks", async ({ page })
   await image.dragTo(richEditor.getByRole("heading", { name: "이동 기준", level: 2 }), {
     targetPosition: { x: 40, y: 25 },
   });
+  await expect(page.getByText("여기에 놓아 자료 첨부", { exact: true })).toBeHidden();
   const blocks = await richEditor.locator(":scope > *").evaluateAll((elements) => elements.map((element) => ({
     tag: element.tagName,
     image: Boolean(element.querySelector("img")),
