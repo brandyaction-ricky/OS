@@ -254,10 +254,12 @@
       "file": "20260929062422_share_team_documents_with_all_members.sql",
       "sha256": "931710f78d58ffb2d3d2c505818c91f47b7b260cfea84557cfee3d40d8976911",
       "purpose": "allow every active company member to read team-shared documents while preserving owner-only drafts",
-      "requiresApproval": true,
+      "requiresApproval": false,
       "developmentApprovedAt": "2026-09-29",
+      "productionApprovedAt": "2026-09-29",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     }
   ],
