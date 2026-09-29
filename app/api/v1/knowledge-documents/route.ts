@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
+import { canReadKnowledgeDocument } from "@/lib/server/document-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
 import type { KnowledgeDocument } from "@/lib/types";
@@ -109,11 +110,8 @@ export async function GET(request: Request) {
     await assertOrganization(actor, parsedOrganizationId);
     const { data, error } = await createServiceSupabase().from("os_documents").select("*").eq("id", documentId).single();
     if (error || !data) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
-    if (actor.type === "agent") {
-      const ownsDocument = data.owner_id === actor.ownerId;
-      if (!actor.allowedStatuses.includes(data.status) || (data.status !== "canonical" && !ownsDocument)) {
-        throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 문서를 열 수 없습니다.");
-      }
+    if (!canReadKnowledgeDocument(actor, data)) {
+      throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 문서를 열 수 없습니다.");
     }
     return NextResponse.json({ document: data });
   } catch (error) {

@@ -94,8 +94,8 @@ SELECT is(
 
 SELECT results_eq(
   $$ SELECT count(*)::bigint FROM public.os_documents $$,
-  ARRAY[3::bigint],
-  'member sees own draft, matching team document, and canonical document'
+  ARRAY[4::bigint],
+  'member sees own draft, every team-shared document, and canonical document'
 );
 
 SELECT results_eq(

@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       : ["knowledge.read", "records.read"];
     const allowedStatuses = input.access === "write"
       ? ["draft", "team", "review", "reviewed", "canonical"]
-      : ["canonical"];
+      : ["team", "canonical"];
     const { data, error } = await service.from("os_agent_keys").insert({
       name: input.name,
       key_hash: createHash("sha256").update(raw).digest("hex"),
