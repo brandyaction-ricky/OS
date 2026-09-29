@@ -119,9 +119,21 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     voiceModel, voiceSettings, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
     segments: segments.map((text, index) => ({ index, textHash: digestVoiceValue(text), status: "pending" })), attempts: 0,
   };
+  // A new scene design over the same script and voice reuses finished narration instead of paying for it again.
+  const { data: earlier } = await actor.supabase.from("os_records").select("*").eq("record_type", "ai_job").eq("parent_id", sourceId)
+    .eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND).eq("status", "done").eq("owner_id", actor.id).is("archived_at", null)
+    .order("updated_at", { ascending: false }).limit(5);
+  const reusable = (earlier ?? []).flatMap((record) => { try { return [parseVoiceRun(record as OsRecord)]; } catch { return []; } })
+    .find((prior) => prior.voiceReferenceFingerprint === fingerprint && prior.voiceModel === voiceModel && prior.timingMode === YOUTUBE_VOICE_TIMING_MODE
+      && prior.executorModel === YOUTUBE_VOICE_EXECUTOR_MODEL && JSON.stringify(prior.voiceSettings) === JSON.stringify(voiceSettings));
+  if (reusable) {
+    metadata.segments = metadata.segments.map((segment) => reusable.segments.find((prior) => prior.status === "ready" && prior.textHash === segment.textHash)
+      ? { ...reusable.segments.find((prior) => prior.textHash === segment.textHash)!, index: segment.index } : segment);
+    if (reusable.lunaReview?.ready && metadata.segments.every((segment) => segment.status === "ready")) metadata.lunaReview = reusable.lunaReview;
+  }
   const { data, error } = await actor.supabase.from("os_records").insert({
     id, record_type: "ai_job", title: `${state.source.title} · 내레이션 제작`.slice(0, 240),
-    description: "승인된 원고를 비공개 음성 자산으로 제작하는 개발 작업입니다.", status: "backlog", stage: "luna_voice_review",
+    description: "승인된 원고를 비공개 음성 자산으로 제작하는 개발 작업입니다.", status: "backlog", stage: metadata.lunaReview ? "voice_pending" : "luna_voice_review",
     priority: "normal", brand: state.source.brand, team: state.source.team, owner_id: actor.id,
     parent_id: sourceId, created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "음성제작"], metadata,
   }).select("*").maybeSingle();

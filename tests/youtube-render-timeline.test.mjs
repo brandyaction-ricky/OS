@@ -13,7 +13,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../lib/server/youtub
   module: compiled, exports: compiled.exports, Buffer, Number, JSON,
   require(name) { return { 'node:crypto': { createHash }, zod: { z }, '@/lib/http': { ApiError }, '@/lib/youtube-visual-template': template }[name] ?? (() => { throw Error(name); })(); },
 });
-const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionKeywords, captionChunks } = compiled.exports;
+const { createYoutubeTimedTranscriptFromFish, alignYoutubeVisualBeats, createYoutubeRenderBrief, captionBold, captionChunks } = compiled.exports;
 const sha = (value) => createHash('sha256').update(value).digest('hex');
 
 const script = ['같은 일을 해도 누군가는 사람을 만날 때 에너지가 생깁니다'];
@@ -60,22 +60,24 @@ test('a beat too short to read is folded into the previous beat', () => {
   assert.equal(createYoutubeRenderBrief(short, timeline).timingSource, 'verified_word');
 });
 
-test('drawing parts start on their spoken cue, and caption words shown on screen turn bold', () => {
+test('drawing parts start on their spoken cue, and each caption line bolds one chosen phrase', () => {
   const finalAudio = Buffer.from('final-audio');
   const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments: script, finalAudio, finalDurationSeconds: 4.6,
     segments: [{ audio, timing, offsetSeconds: 0, measuredDurationSeconds: 4.6 }] });
   const cued = structuredClone(plan);
   cued.scenes[0].visualBeats[1].cues = ['사람을 만날 때', '에너지가'];
   cued.scenes[0].visualBeats[1].svg = '<text x="1" y="1">에너지가 생깁니다</text>';
+  cued.scenes[0].chapter = '문제 제기';
   const timeline = alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio));
   assert.equal(JSON.stringify(timeline.beats[1].cueSeconds), '[0,1.5]');
+  assert.equal(JSON.stringify(timeline.chapters), JSON.stringify([{ startSeconds: 0, label: '문제 제기' }]));
   cued.scenes[0].visualBeats[1].cues = ['에너지가'];
   assert.equal(JSON.stringify(alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio)).beats[1].cueSeconds), '[0]');
   assert.ok(timeline.captions.length >= 2);
   assert.equal(timeline.captions[0].startSeconds, 0);
-  assert.equal(JSON.stringify(captionKeywords('남이 성공한 모습을 보고 들어온 거예요', '남의1순위나의1순위성공')), '["성공한"]');
-  assert.equal(captionKeywords('에너지가 생깁니다', '에너지가생깁니다').length, 0);
-  assert.equal(captionKeywords('같은 일을 해도', '에너지가생깁니다').length, 0);
+  // One bold phrase per caption line, each phrase only at its first appearance.
+  assert.equal(JSON.stringify(captionBold(['하고 싶은 게 많아도', '줄이지 마세요 줄이지', '많아도 괜찮아요'], ['줄이지', '많아도'])),
+    JSON.stringify([['많아도'], ['줄이지'], []]));
 });
 
 test('caption lines stay short without leaving a tiny tail alone', () => {

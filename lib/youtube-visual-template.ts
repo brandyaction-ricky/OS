@@ -1,5 +1,5 @@
 /** Versioned visual direction approved for the narrated YouTube pilot. */
-export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-scene-templates-v6";
+export const YOUTUBE_VISUAL_TEMPLATE_VERSION = "brandyaction-scene-templates-v7";
 
 export const youtubeVisualTypes = [
   "character_asset",

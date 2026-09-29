@@ -83,8 +83,10 @@ export type YoutubeTimedVisualBeat = {
   cueSeconds?: number[];
 };
 
-/** Caption words written in bold: the ones the scene also shows, like the reference channel's keywords. */
+/** `bold` holds at most one phrase of the line, chosen by the scene design from the script's meaning. */
 export type YoutubeCaption = { startSeconds: number; endSeconds: number; text: string; bold: string[] };
+/** Chapter bar: where each named part of the video starts. */
+export type YoutubeChapter = { startSeconds: number; label: string };
 
 export type YoutubeRenderTimeline = {
   templateVersion: typeof YOUTUBE_VISUAL_TEMPLATE_VERSION;
@@ -92,6 +94,7 @@ export type YoutubeRenderTimeline = {
   audioDurationSeconds: number;
   beats: YoutubeTimedVisualBeat[];
   captions: YoutubeCaption[];
+  chapters: YoutubeChapter[];
 };
 
 /** Split one narration paragraph into short caption lines at spaces, breaking after sentence or clause ends. */
@@ -109,20 +112,15 @@ export function captionChunks(text: string, max = 22) {
   return chunks;
 }
 
-const screenText = (beat: YoutubeTimedVisualBeat) => normalizedSpeech(`${beat.svg.replace(/<[^>]*>/g, " ")
-  .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")} ${beat.displayText}`);
-
-/**
- * Caption words that also appear on screen become the bold keywords. A word matches with or without a
- * one-letter ending ("성공한" ~ "성공"). When most of the line is on screen nothing is bolded.
- */
-export function captionKeywords(caption: string, screen: string) {
-  const words = caption.split(" ");
-  const bold = words.filter((word) => {
-    const w = normalizedSpeech(word);
-    return w.length >= 2 && (screen.includes(w) || (w.length >= 3 && screen.includes(w.slice(0, -1))));
+/** Bold the first not-yet-used emphasis phrase found in each caption line; one per line, first appearance only. */
+export function captionBold(lines: string[], emphasis: string[]) {
+  const used = new Set<string>();
+  return lines.map((line) => {
+    const phrase = emphasis.find((word) => !used.has(word) && line.includes(word));
+    if (!phrase) return [];
+    used.add(phrase);
+    return [phrase];
   });
-  return bold.length * 2 > words.length ? [] : bold;
 }
 
 /** The private media worker serializes this brief for the offline frame renderer. */
@@ -166,6 +164,7 @@ export function alignYoutubeVisualBeats(
 
   const beats: YoutubeTimedVisualBeat[] = [];
   const captions: YoutubeCaption[] = [];
+  const chapters: YoutubeChapter[] = [];
   let priorSegmentEnd = 0;
   for (let segmentIndex = 0; segmentIndex < scriptSegments.length; segmentIndex++) {
     const scene = plan.scenes[segmentIndex];
@@ -257,16 +256,13 @@ export function alignYoutubeVisualBeats(
       offset += size;
       return [{ text: chunk.replace(/[.,]$/, ""), startSeconds: segment.offsetSeconds + first.startSeconds, endSeconds: segment.offsetSeconds + last.endSeconds }];
     });
+    const bold = captionBold(lines.map((line) => line.text), scene.emphasis ?? []);
     lines.forEach((line, i) => {
       const next = lines[i + 1]?.startSeconds ?? segmentEnd;
-      captions.push({ ...line, endSeconds: Math.max(line.endSeconds, Math.min(next, line.endSeconds + 0.6)), bold: [] });
+      captions.push({ ...line, endSeconds: Math.max(line.endSeconds, Math.min(next, line.endSeconds + 0.6)), bold: bold[i] });
     });
-  }
-  for (const caption of captions) {
-    const middle = (caption.startSeconds + caption.endSeconds) / 2;
-    const beat = beats.find((item) => item.visualStartSeconds <= middle && middle < item.endSeconds);
-    caption.bold = beat ? captionKeywords(caption.text, screenText(beat)) : [];
+    if (scene.chapter && scene.chapter !== chapters.at(-1)?.label) chapters.push({ startSeconds: segment.offsetSeconds, label: scene.chapter });
   }
   return { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, audioSha256: transcript.audioSha256,
-    audioDurationSeconds: transcript.audioDurationSeconds, beats, captions };
+    audioDurationSeconds: transcript.audioDurationSeconds, beats, captions, chapters };
 }

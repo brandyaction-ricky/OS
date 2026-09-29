@@ -81,12 +81,12 @@ const wrap = (line: string, max: number) => {
   const cut = spaces.sort((a, b) => Math.abs(a - line.length / 2) - Math.abs(b - line.length / 2))[0];
   return cut ? [line.slice(0, cut), line.slice(cut + 1)] : [line];
 };
-/** Character art large and bottom-anchored; it bleeds past the frame edge like a bust shot. */
-const bust = (id: string, sizes: CharacterSizes, cx: number, width: number) => {
+/** Character art centred on (cx, cy) inside a width × height box, keeping its proportions. */
+const figure = (id: string, sizes: CharacterSizes, cx: number, cy: number, width: number, height: number) => {
   const size = sizes.get(id);
   if (!size) throw new Error("unknown character");
-  const w = Math.min(width, (640 * size.width) / size.height), h = (w * size.height) / size.width;
-  return `<image data-character="${id}" class="bleed" x="${n(cx - w / 2)}" y="${n(800 - h)}" width="${n(w)}" height="${n(h)}" ${m("character", 0, 0, 0.7)}/>`;
+  const w = Math.min(width, (height * size.width) / size.height), h = (w * size.height) / size.width;
+  return `<image data-character="${id}" x="${n(cx - w / 2)}" y="${n(cy - h / 2)}" width="${n(w)}" height="${n(h)}" ${m("character", 0, 0, 0.7)}/>`;
 };
 
 /** Reveal groups per template, in the order they should appear with the narration. */
@@ -131,7 +131,7 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
     }
     case "character_labels": {
       const s = slots as z.infer<typeof slotSchemas.character_labels>;
-      return bust(s.character, sizes, 440, 800) + s.labels.map((label, i) => pill(930, 280 + i * 110, label, i + 1, 34, Boolean(s.accent && label.includes(s.accent)))).join("");
+      return figure(s.character, sizes, 440, 440, 640, 480) + s.labels.map((label, i) => pill(930, 280 + i * 110, label, i + 1, 34, Boolean(s.accent && label.includes(s.accent)))).join("");
     }
     case "compare": {
       const s = slots as z.infer<typeof slotSchemas.compare>;
@@ -309,13 +309,13 @@ function draw(template: YoutubeSceneTemplate, slots: never, sizes: CharacterSize
     }
     case "character_only": {
       const s = slots as z.infer<typeof slotSchemas.character_only>;
-      return bust(s.character, sizes, 640, 960) + (s.label ? pill(1040, 200, s.label, 1, 32) : "");
+      return figure(s.character, sizes, 640, s.label ? 470 : 440, 800, 480) + (s.label ? pill(640, 190, s.label, 1, 32) : "");
     }
     case "split": {
       const s = slots as z.infer<typeof slotSchemas.split>;
       const side = (cx: number, title: string, note: string | undefined, g: number) =>
         text(cx, note ? 380 : 410, fit(title, 440, 52, 30), title, "b8", g) + (note ? text(cx, 450, fit(note, 440, 30), note, "muted", g, undefined, false, 0.1) : "");
-      return side(340, s.left, s.leftNote, 0) + `<path class="i thin" d="M640 250V570" ${m("draw", 1, 0, 0.3)}/>` + side(940, s.right, s.rightNote, 1);
+      return side(340, s.left, s.leftNote, 0) + `<path class="i thin fixed" d="M640 250V570" ${m("draw", 1, 0, 0.3)}/>` + side(940, s.right, s.rightNote, 1);
     }
     case "cards": {
       const s = slots as z.infer<typeof slotSchemas.cards>;
@@ -355,13 +355,13 @@ export function renderSceneTemplate(template: string, slots: unknown, sizes: Cha
 
 /** Model-facing description of every template and its slots. */
 export const SCENE_TEMPLATE_GUIDE = `question: 시청자 질문 카드(이름·숫자 없음). 질문으로 이야기를 열 때. {"question": "30자 이내 질문", "accent"?: "질문 속 빨간 단어"}
-character_only: 고민·문제·감정을 캐릭터 상반신 하나로 가운데 크게(자막이 설명). {"character": "목록의 id", "label"?: "검은 알약 한마디 16자"}
+character_only: 고민·문제·감정을 캐릭터 하나로 가운데 크게(자막이 설명). {"character": "목록의 id", "label"?: "검은 알약 한마디 16자"}
 cards: 같은 맥락의 예시를 카드 격자로 한 칸씩 채움(2~6개). {"items": ["8자", ...]}
 phone: 휴대폰 화면 속 모습(SNS·유튜브에서 본 남의 성공, 비교). {"screen": "화면 속 제목 14자", "sub"?: "14자", "side"?: "옆 문장 12자", "sideAccent"?: "옆 빨간 문장 14자"}
 split: 서로 대조되는 두 가지를 좌/우로 나란히(우열 없이). {"left": "12자", "leftNote"?: "16자", "right": "12자", "rightNote"?: "16자"}
 caption_only: 화면을 비우고 자막만(자기소개·자격 소개·인사처럼 보여줄 것이 없는 말). {}
 statement: 결론을 못 박는 큰 문장. 두 줄이면 둘째 줄 전체가 빨강+밑줄. {"lines": ["16자 이내", "둘째 줄(핵심)"], "accent"?: "한 줄일 때 빨간 밑줄 단어"}
-character_labels: 캐릭터 상반신 + 옆에 검은 알약 라벨 1~2개(짧은 요약·공식, 예 "책 < 실패"). {"character": "목록의 id", "labels": ["14자 이내", "선택"], "accent"?: "빨간 알약으로 만들 라벨 속 단어"}
+character_labels: 캐릭터 + 옆에 검은 알약 라벨 1~2개(짧은 요약·공식, 예 "책 < 실패"). {"character": "목록의 id", "labels": ["14자 이내", "선택"], "accent"?: "빨간 알약으로 만들 라벨 속 단어"}
 compare: 흔한 생각 vs 진짜 답. {"a": "10자", "aNote"?: "12자", "b": "10자", "bNote"?: "12자", "pick": "a|b"}
 formula: 원인을 A + B = C 한 줄로. {"a": "8자", "b": "8자", "result": "8자"}
 list: 메모 앱 창 속 체크리스트. 조언·목록을 하나씩 추가하고 하나를 짚음. {"title"?: "메모 제목 20자", "items": ["16자 이내", 2~5개], "pick"?: 0부터 시작하는 번호}

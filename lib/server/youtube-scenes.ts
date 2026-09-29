@@ -39,6 +39,8 @@ const sceneSchema = z.object({
   segmentIndex: z.number().int().nonnegative(),
   visualType: z.enum(youtubeVisualTypes),
   visualBeats: z.array(visualBeatSchema).min(1).max(16),
+  chapter: z.string().trim().max(12).optional(),
+  emphasis: z.array(z.string().trim().min(2).max(10)).max(12).optional(),
   visualPrompt: z.string().trim().min(10).max(1_000),
   evidenceNote: z.string().trim().max(500),
 }).strict();
@@ -75,8 +77,9 @@ const outputSchema = {
         properties: { spokenAnchor: { type: "string" }, idea: { type: "string" }, template: { type: "string", enum: [...youtubeSceneTemplates] }, slots: { type: "string" }, cues: { type: "array", items: { type: "string" } },
           displayText: { type: "string" }, accentText: { type: "string" }, typographyAnchor: { type: "string" } },
         required: ["spokenAnchor", "idea", "template", "slots", "cues", "displayText", "accentText", "typographyAnchor"] } },
+      chapter: { type: "string" }, emphasis: { type: "array", items: { type: "string" } },
       visualPrompt: { type: "string" }, evidenceNote: { type: "string" },
-    }, required: ["segmentIndex", "visualType", "visualBeats", "visualPrompt", "evidenceNote"] } },
+    }, required: ["segmentIndex", "visualType", "visualBeats", "chapter", "emphasis", "visualPrompt", "evidenceNote"] } },
     thumbnailDirection: { type: "string" }, unresolved: { type: "array", items: { type: "string" } },
   }, required: ["visualDirection", "visualFirst", "typographyMode", "scenes", "thumbnailDirection", "unresolved"],
 };
@@ -97,6 +100,7 @@ ${SCENE_TEMPLATE_GUIDE}
 - 자기소개·인사·자격 소개처럼 보여줄 내용이 없는 말: caption_only. 화자의 권위를 내세우는 화면은 만들지 않습니다.
 - 질문은 question, 꼭 못 박아야 할 핵심 결론만 statement입니다. statement와 question은 합쳐서 전체 비트의 5분의 1을 넘지 않게 합니다.
 - 내용의 객관성은 근거로 보여줍니다. 원고나 [자료·출처]에 실제 수치·연구·인용이 있으면 bar_chart, line_chart, donut, big_number, capture, quote를 우선 쓰고 source·attribution에 출처를 적습니다. 비교는 bar_chart, 시간에 따른 변화는 line_chart, 비율은 donut입니다. 없는 수치·출처는 만들지 않습니다.
+- 둘로 갈리는 내용("한쪽은 A, 다른 한쪽은 B")은 funnel·cycle처럼 한 덩어리 도식에 담지 말고 split 또는 compare로 좌우에 나눠 보여줍니다.
 - 억지 도식은 금지입니다. 같은 틀을 연달아 두 번 쓰지 않습니다(같은 맥락의 list를 이어 쌓는 경우는 한 비트로 합칩니다).
 - slots의 글자는 원고의 말을 짧게 줄인 것이어야 하고, 원고에 없는 사실을 만들지 않습니다. 틀 설명의 글자 수를 지킵니다.
 
@@ -106,7 +110,13 @@ ${SCENE_TEMPLATE_GUIDE}
 spokenAnchor는 그 비트가 시작되는 원고 표현을 그대로 복사하고 원고 순서대로 둡니다. idea에는 이 장면이 전하는 메시지를 한 문장으로 적습니다.
 
 [타이포]
-화면 위쪽은 말 자막 자리라 제목을 두지 않습니다. displayText·accentText·typographyAnchor는 모두 빈 문자열로 둡니다. 자막 속 핵심어는 화면 글자와 겹치는 단어가 자동으로 굵게 표시되므로, slots에는 멘트의 핵심 단어를 그대로 살려 적습니다.
+화면 위쪽에는 진행 막대, 아래쪽에는 말 자막이 있어 제목을 두지 않습니다. displayText·accentText·typographyAnchor는 모두 빈 문자열로 둡니다.
+
+[진행 구간과 자막 강조]
+chapter: 이 단락이 영상 흐름에서 어떤 구간인지 6자 안팎의 짧은 이름(예: 문제 제기, 흔한 조언, 진짜 원인, 비교, 결론). 같은 구간이 이어지면 같은 이름을 그대로 반복합니다. 영상 전체가 3~6개 구간으로 나뉘게 합니다.
+emphasis: 자막에서 굵게 보여줄 핵심 어구를 원고 단락에서 글자 그대로 복사합니다(2~6자, 조사 제외). 자막 한 줄은 약 2초이며 한 줄에 굵게는 한 곳만 나오므로, 대략 20자당 하나를 넘지 않게 고릅니다.
+- 우선순위: ① 단락의 핵심 주장·결론 단어 ② 대비되는 두 개념(A vs B) ③ 숫자·기간·횟수 ④ 공감 구간의 감정 단어. 장면(slots)에 나오는 단어와 겹치면 그 단어를 우선합니다.
+- 고르지 않음: 조사·접속어, 자기소개·자격 표현, 같은 단락에서 이미 고른 단어(첫 등장만).
 
 [slots 형식]
 slots에는 틀 설명의 JSON 객체를 문자열로 적습니다. 예: {"lines":["줄여서 될 문제가","아닙니다"],"accent":"아닙니다"}`;
@@ -137,8 +147,14 @@ function drawTemplates(value: unknown, segments: string[], sizes: CharacterSizes
         return [];
       }
     });
-    return { ...scene, visualBeats: beats };
+    // Caption emphasis must be copied from the paragraph; anything else is dropped.
+    const emphasis = (Array.isArray(scene.emphasis) ? scene.emphasis : [])
+      .filter((word): word is string => typeof word === "string" && word.trim().length >= 2 && source.includes(normalizeSpeech(word)))
+      .map((word) => word.trim().slice(0, 10)).slice(0, 12);
+    return { ...scene, visualBeats: beats, chapter: typeof scene.chapter === "string" ? scene.chapter.trim().slice(0, 12) : undefined, emphasis };
   });
+  const emphasized = scenes.filter((scene) => scene.emphasis.length).map((scene) => `${Number((scene as Record<string, unknown>).segmentIndex) + 1}단락 ${scene.emphasis.join("·")}`);
+  if (emphasized.length) notes.push(`자막 강조 확인: ${emphasized.join(" / ")}`.slice(0, 500));
   return { ...plan, scenes, unresolved: [...(Array.isArray(plan.unresolved) ? plan.unresolved : []), ...notes] };
 }
 
