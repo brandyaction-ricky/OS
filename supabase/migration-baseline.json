@@ -255,7 +255,10 @@
       "sha256": "931710f78d58ffb2d3d2c505818c91f47b7b260cfea84557cfee3d40d8976911",
       "purpose": "allow every active company member to read team-shared documents while preserving owner-only drafts",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-09-29",
+      "appliedEnvironments": [
+        "development"
+      ]
     }
   ],
   "legacyMigrations": [
