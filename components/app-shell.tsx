@@ -201,7 +201,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="page-nav">
           {stage.pages.map((item, index) => {
             const Icon = item.icon;
-            const active = item.href === page.href;
+            const active = item.href === (page.navHref ?? page.href);
             const previousGroup = index > 0 ? stage.pages[index - 1].group : undefined;
             return (
               <div key={item.href}>

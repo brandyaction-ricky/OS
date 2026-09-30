@@ -4,7 +4,7 @@ import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
-import type { WorkspaceConfig } from "@/lib/workspace-config";
+import { normalizedWorkspaceStatus, workspaceStatusLabel, type WorkspaceConfig } from "@/lib/workspace-config";
 import { useSession } from "./session-provider";
 
 const priorityLabel = { low: "낮음", normal: "보통", high: "높음", urgent: "긴급" };
@@ -49,11 +49,11 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
 
   const filtered = useMemo(() => records.filter((record) => {
     const matchesQuery = !query || `${record.title} ${record.description} ${record.brand} ${record.team}`.toLowerCase().includes(query.toLowerCase());
-    return matchesQuery && (statusFilter === "all" || record.status === statusFilter);
-  }), [query, records, statusFilter]);
+    return matchesQuery && (statusFilter === "all" || normalizedWorkspaceStatus(config, record.status) === statusFilter);
+  }), [config, query, records, statusFilter]);
 
-  const completed = records.filter((record) => ["done", "published", "decided", "healthy", "loyal"].includes(record.status)).length;
-  const blocked = records.filter((record) => ["blocked", "warning", "churned", "disconnected"].includes(record.status)).length;
+  const completed = records.filter((record) => ["done", "published", "decided", "healthy", "loyal"].includes(normalizedWorkspaceStatus(config, record.status))).length;
+  const blocked = records.filter((record) => ["blocked", "warning", "churned", "disconnected"].includes(normalizedWorkspaceStatus(config, record.status))).length;
   const dueSoon = records.filter((record) => record.due_date && new Date(record.due_date).getTime() <= Date.now() + 7 * 86_400_000).length;
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -119,10 +119,10 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       </div>
       {loading ? <div className="loading-state">운영 기록을 불러오는 중입니다.</div> : filtered.length ? <div className="record-list">
         {filtered.map((record) => {
-          const status = config.statuses.find((item) => item.value === record.status)?.label ?? record.status;
+          const status = normalizedWorkspaceStatus(config, record.status);
           return <article className="record-row" key={record.id} onClick={() => openEdit(record)}>
             <span className={`priority-mark priority-${record.priority}`} />
-            <div className="record-main"><div><strong>{record.title}</strong><span className={`status-pill status-${record.status}`}>{status}</span></div><p>{record.description || config.helper}</p><div className="record-meta"><span>{record.brand || "전체 브랜드"}</span><span>{record.team || profile?.team || "전체 팀"}</span><span>{dateLabel(record.due_date)}</span>{record.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div></div>
+            <div className="record-main"><div><strong>{record.title}</strong><span className={`status-pill status-${status}`}>{workspaceStatusLabel(config, record.status)}</span></div><p>{record.description || config.helper}</p><div className="record-meta"><span>{record.brand || "전체 브랜드"}</span><span>{record.team || profile?.team || "전체 팀"}</span><span>{dateLabel(record.due_date)}</span>{record.tags.slice(0, 3).map((tag) => <span key={tag}>#{tag}</span>)}</div></div>
             <div className="record-measure"><strong>{metricValue(record, config.metricMode)}</strong><small>{priorityLabel[record.priority]}</small></div>
             <button className="icon-button" onClick={(event) => { event.stopPropagation(); openHistory(record); }} aria-label="변경 이력"><History size={16} /></button>
             <button className="icon-button" onClick={(event) => { event.stopPropagation(); archive(record); }} aria-label="보관"><Archive size={16} /></button>
@@ -136,7 +136,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       <div className="drawer-head"><div><span className="eyebrow">{editing ? "수정" : "새 항목"}</span><h2>{editing ? config.singular + " 수정" : "새 " + config.singular}</h2></div><button type="button" className="icon-button" onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
       <label><span>제목</span><input name="title" required maxLength={240} defaultValue={editing?.title} placeholder={`${config.singular} 제목`} /></label>
       <label><span>설명·완료 기준</span><textarea name="description" rows={6} defaultValue={editing?.description} placeholder={config.helper} /></label>
-      <div className="form-grid"><label><span>상태</span><select name="status" defaultValue={editing?.status ?? config.defaultStatus}>{config.statuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><label><span>우선순위</span><select name="priority" defaultValue={editing?.priority ?? "normal"}><option value="low">낮음</option><option value="normal">보통</option><option value="high">높음</option><option value="urgent">긴급</option></select></label></div>
+      <div className="form-grid"><label><span>상태</span><select name="status" defaultValue={editing ? normalizedWorkspaceStatus(config, editing.status) : config.defaultStatus}>{config.statuses.map((status) => <option value={status.value} key={status.value}>{status.label}</option>)}</select></label><label><span>우선순위</span><select name="priority" defaultValue={editing?.priority ?? "normal"}><option value="low">낮음</option><option value="normal">보통</option><option value="high">높음</option><option value="urgent">긴급</option></select></label></div>
       <div className="form-grid"><label><span>브랜드</span><input name="brand" defaultValue={editing?.brand} placeholder="예: 마이인" /></label><label><span>담당 팀</span><input name="team" defaultValue={editing?.team ?? profile?.team} placeholder="예: 콘텐츠" /></label></div>
       <div className="form-grid"><label><span>기한</span><input type="date" name="dueDate" defaultValue={editing?.due_date ?? ""} /></label><label><span>예정 시각</span><input type="datetime-local" name="startsAt" defaultValue={editing?.starts_at?.slice(0, 16) ?? ""} /></label></div>
       <div className="form-grid three"><label><span>진행률</span><input type="number" min="0" max="100" name="progress" defaultValue={editing?.progress ?? 0} /></label><label><span>목표값</span><input type="number" step="any" name="metricTarget" defaultValue={editing?.metric_target ?? ""} /></label><label><span>현재값</span><input type="number" step="any" name="metricCurrent" defaultValue={editing?.metric_current ?? ""} /></label></div>

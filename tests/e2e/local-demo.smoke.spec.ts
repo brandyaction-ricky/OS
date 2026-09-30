@@ -23,6 +23,20 @@ test("local demo renders the application shell and health contract", async ({ pa
   expect(consoleErrors).toEqual([]);
 });
 
+test("secondary publishing pages keep the content navigation context", async ({ page }) => {
+  for (const [pathname, label] of [
+    ["/content/automation", "멀티채널 자동화"],
+    ["/content/review", "검토·발행 대기목록"],
+    ["/content/calendar", "발행 캘린더"],
+  ]) {
+    await page.goto(pathname);
+    await expect(page.locator(".sidebar-head h2")).toHaveText("콘텐츠");
+    await expect(page.locator(".breadcrumbs")).toContainText(label);
+    await expect(page.getByRole("link", { name: "발행·업로드", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveTitle(`${label} | 브랜디 OS`);
+  }
+});
+
 test("knowledge editing applies Markdown shortcuts in one pane and exposes file drop", async ({ page }) => {
   await page.goto("/knowledge");
   await page.getByRole("button", { name: "회사 wiki 2" }).click();

@@ -40,3 +40,12 @@ test("home and organization expose the third handoff operating flow", async () =
   assert.match(meeting, /원본 폐기됨/);
   assert.match(tasks, /sourceFilter/);
 });
+
+test("AI job rows open details and route back to their source or connection settings", async () => {
+  const workspace = await read("components/organization-v3-workspaces.tsx");
+  assert.match(workspace, /className="ai-job-item"/);
+  assert.match(workspace, /aria-label="AI 작업 상세"/);
+  assert.match(workspace, /원본 콘텐츠 열기/);
+  assert.match(workspace, /연결 상태 확인/);
+  assert.match(workspace, /기존 막힘 작업은 자동 재실행되지 않으므로/);
+});

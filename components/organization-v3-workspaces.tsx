@@ -6,11 +6,13 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock3,
+  ExternalLink,
   Plane,
   Plus,
   Sparkles,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createRecord,
@@ -25,6 +27,7 @@ import {
   BRANDYACTION_ROSTER,
   memberMatchesRoster,
 } from "@/lib/company-roster";
+import { safeWebUrl } from "@/lib/development-handoff";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
@@ -206,6 +209,7 @@ export function AiOperationsWorkspace() {
     ReturnType<typeof getHealth>
   > | null>(null);
   const [error, setError] = useState("");
+  const [selectedJob, setSelectedJob] = useState<OsRecord | null>(null);
   useEffect(() => {
     if (demo) return;
     Promise.all([listRecords(accessToken, "ai_job", "limit=100&excludeKind=development_request"), getHealth()])
@@ -247,6 +251,7 @@ export function AiOperationsWorkspace() {
     done: "완료",
     failed: "실패",
   };
+  const selectedJobSourceUrl = safeWebUrl(selectedJob?.source_url);
   return (
     <>
       <header className="page-header">
@@ -290,7 +295,7 @@ export function AiOperationsWorkspace() {
         </div>
         <div className="activity-list">
           {jobs.map((job) => (
-            <div key={job.id}>
+            <button type="button" className="ai-job-item" key={job.id} onClick={() => setSelectedJob(job)} aria-label={`${job.title} 상세 열기`}>
               <span className="document-symbol">
                 <Sparkles size={15} />
               </span>
@@ -305,7 +310,7 @@ export function AiOperationsWorkspace() {
               >
                 {jobStatusLabel[job.status] ?? job.status}
               </span>
-            </div>
+            </button>
           ))}
           {!jobs.length ? (
             <div className="quiet-state">
@@ -316,6 +321,23 @@ export function AiOperationsWorkspace() {
           ) : null}
         </div>
       </section>
+      {selectedJob ? <div className="drawer-backdrop" onMouseDown={() => setSelectedJob(null)}>
+        <aside className="record-drawer" role="dialog" aria-label="AI 작업 상세" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="drawer-head"><div><span className="eyebrow">AI 작업 상세</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
+          <div className="ai-job-detail">
+            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{jobStatusLabel[selectedJob.status] ?? selectedJob.status}</span></div>
+            <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
+            {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
+            <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
+            <div className="drawer-actions">
+              {selectedJobSourceUrl ? <a className="secondary-button" href={selectedJobSourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> 결과·원본 링크</a> : null}
+              {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`/content/automation${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
+              {selectedJob.status === "blocked" ? <Link className="secondary-button" href="/settings/connections">연결 상태 확인</Link> : null}
+            </div>
+            {!selectedJobSourceUrl && !meta(selectedJob, "contentAction") && !meta(selectedJob, "sourceId") && !meta(selectedJob, "contentId") ? <p className="inline-alert">연결된 원본이나 결과 링크가 없습니다. 요청 등록 화면에서 출처 링크를 추가해 주세요.</p> : null}
+          </div>
+        </aside>
+      </div> : null}
     </>
   );
 }
