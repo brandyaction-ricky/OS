@@ -21,7 +21,12 @@ function harness() {
   } };
   const generation = { generationSchema: {}, generationProcedureRevision: async () => "rules-v3", executeGeneration: async (_actor, input, key) => {
     calls++; if (pause) await pause; if (fail) throw new ApiError(502, 'FAILED', 'Temporary failure');
-    const row = base(`generated-${calls}`, { record_type: input.action === 'script_draft' ? 'content_script' : 'content_package', parent_id: 'source', description: 'Actual generated content', created_at: `2026-09-08T00:00:${String(calls).padStart(2, '0')}Z`, metadata: { packageKind: input.action, generationRequestKey: key } }); rows.push(row); return { queued: false, configured: true, records: [structuredClone(row)] };
+    const result = input.action === 'topic_plan'
+      ? { candidates: [{ title: 'Selected direction', narrative: 'Promise', picked: false }] }
+      : input.action === 'title_package'
+        ? { titles: [{ text: 'Final title', picked: true }], copies: [{ text: 'Final copy', picked: true }] }
+        : {};
+    const row = base(`generated-${calls}`, { record_type: input.action === 'script_draft' ? 'content_script' : 'content_package', parent_id: 'source', description: 'Actual generated content', created_at: `2026-09-08T00:00:${String(calls).padStart(2, '0')}Z`, metadata: { packageKind: input.action, generationRequestKey: key, result } }); rows.push(row); return { queued: false, configured: true, records: [structuredClone(row)] };
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
@@ -29,20 +34,33 @@ function harness() {
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
+function choosePlan(h) {
+  const plan = h.rows.findLast((row) => row.metadata.packageKind === 'topic_plan');
+  plan.metadata.result.candidates[0].picked = true; plan.version++;
+  h.rows[0].metadata.pickedCandidate = structuredClone(plan.metadata.result.candidates[0]);
+  h.rows[0].metadata.planningPackageId = plan.id; h.rows[0].metadata.planningPackageVersion = plan.version;
+  return plan;
+}
 test('pipeline stops at each gate and reuses successful generation', async () => {
   const h = harness();
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
   await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  choosePlan(h);
   let state = await h.api.readPipeline(h.actor, 'source');
   await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Checked reference');
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_NEEDS_INPUT');
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
   await h.api.runPipelineGeneration(h.actor, input('script_draft'));
   const repeated = await h.api.runPipelineGeneration(h.actor, input('script_draft'));
-  assert.equal(repeated.reused, true); assert.equal(h.calls(), 2);
+  assert.equal(repeated.reused, true); assert.equal(h.calls(), 3);
+  const packaging = h.rows.find((row) => row.metadata.packageKind === 'title_package');
+  packaging.metadata.result.titles[0].text = 'Changed final title'; packaging.version++;
+  const regenerated = await h.api.runPipelineGeneration(h.actor, input('script_draft'));
+  assert.equal(regenerated.reused, undefined); assert.equal(h.calls(), 4);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
-  await h.api.runPipelineGeneration(h.actor, input('title_package'));
   state = await h.api.readPipeline(h.actor, 'source');
   await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Checked script');
-  const script = h.rows.find((row) => row.record_type === 'content_script'); script.version++;
+  const script = h.rows.findLast((row) => row.record_type === 'content_script'); script.version++;
   state = await h.api.readPipeline(h.actor, 'source'); assert.equal(state.approved[0], true); assert.equal(state.approved[1], false);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
 });
@@ -61,17 +79,32 @@ test('pipeline retains failures, allows retry, and rejects concurrent runs', asy
 test('pipeline rejects stale reviews and missing facts without invoking AI', async () => {
   const h = harness(); h.rows[0].metadata.experience = '';
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('topic_plan')), (error) => error.code === 'PIPELINE_NEEDS_INPUT'); assert.equal(h.calls(), 0);
-  h.rows[0].metadata.experience = 'Provided example'; await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  h.rows[0].metadata.experience = 'Provided example'; await h.api.runPipelineGeneration(h.actor, input('topic_plan')); choosePlan(h);
   const state = await h.api.readPipeline(h.actor, 'source'); h.rows[0].metadata.evidence = 'Changed source';
   await assert.rejects(h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, ''), (error) => error.code === 'PIPELINE_CHANGED');
 });
 test('changing the approved appeal set invalidates the first pipeline approval', async () => {
   const h = harness();
   await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  choosePlan(h);
   let state = await h.api.readPipeline(h.actor, 'source');
   await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Appeal and references checked');
   h.rows.find((row) => row.id === 'appeal').version++;
   state = await h.api.readPipeline(h.actor, 'source');
   assert.equal(state.approved[0], false);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
+});
+
+test('planning and packaging selections require one exact current choice', () => {
+  const h = harness();
+  const plan = base('plan', { record_type: 'content_package', parent_id: 'source', version: 3, metadata: { packageKind: 'topic_plan', result: { candidates: [{ title: 'A', picked: true }, { title: 'B', picked: false }] } } });
+  const source = h.rows[0];
+  source.metadata.pickedCandidate = structuredClone(plan.metadata.result.candidates[0]);
+  source.metadata.planningPackageId = plan.id; source.metadata.planningPackageVersion = 3;
+  assert.equal(pipeline.planningSelectionReady(source, plan), true);
+  assert.equal(pipeline.planningSelectionReady(source, { ...plan, version: 4 }), false);
+  const pack = base('pack', { record_type: 'content_package', metadata: { result: { titles: [{ picked: true }], copies: [{ picked: true }] } } });
+  assert.equal(pipeline.pickedPackaging(pack).ready, true);
+  pack.metadata.result.titles.push({ picked: true });
+  assert.equal(pipeline.pickedPackaging(pack).ready, false);
 });

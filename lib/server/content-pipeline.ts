@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { hasCurrentApproval, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -10,7 +10,8 @@ function digest(value: unknown) { return createHash("sha256").update(JSON.string
 function sourceInput(source: OsRecord) {
   return { title: source.title, description: source.description, sourceUrl: source.source_url,
     audience: source.metadata.audience, evidence: source.metadata.evidence, experience: source.metadata.experience, coreMessage: source.metadata.coreMessage,
-    researchBrief: source.metadata.researchBrief };
+    researchBrief: source.metadata.researchBrief, pickedCandidate: source.metadata.pickedCandidate,
+    planningPackageId: source.metadata.planningPackageId, planningPackageVersion: source.metadata.planningPackageVersion };
 }
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
@@ -59,15 +60,19 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
   const neededGate = ({ appeal_candidates: 0, topic_plan: 0, script_draft: 1, title_package: 1, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
   if (state.approved.slice(0, neededGate).some((approved) => !approved)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "이전 단계의 현재 자료를 승인한 뒤 실행해 주세요. 수정된 자료는 재승인이 필요합니다.");
   if (input.action === "topic_plan") {
-    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => name !== "기획 브리핑");
+    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => !["기획 브리핑", "채택한 기획 방향"].includes(name));
     if (missing.length) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", `자료 보완 필요: ${missing.join(", ")}`);
   }
-  if (input.action === "title_package" && !pipelineArtifacts(state.records).script) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "원고를 먼저 작성해 주세요.");
   const artifacts = pipelineArtifacts(state.records);
+  if (input.action === "title_package" && !planningSelectionReady(state.source, artifacts.research))
+    throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "기획 방향을 한 개 채택하고 현재 기획 버전으로 연결해 주세요.");
+  if (input.action === "script_draft" && !pickedPackaging(artifacts.packaging).ready)
+    throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "제목과 썸네일 카피를 각각 한 개 채택한 뒤 원고를 작성해 주세요.");
   const procedureRevision = await generationProcedureRevision(actor, input.action);
   const key = digest([procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(["appeal_candidates", "topic_plan"].includes(input.action) ? [] : [reference(artifacts.research)]),
-    ...(["title_package", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script)] : []),
+    ...(["script_draft", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.packaging)] : []),
+    ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script)] : []),
     ...(["shorts_proposal", "youtube_kit"].includes(input.action) ? [state.source.metadata.transcriptSrt] : [])]);
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
   const prior = runs.findLast((run) => run.key === key);

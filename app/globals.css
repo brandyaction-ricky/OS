@@ -931,6 +931,10 @@ select option { background:var(--panel-2); color:var(--text); }
 @media(max-width:480px){.content-jev-score-grid{grid-template-columns:1fr 1fr}.content-jev-assist-body{padding:13px}}
 @media(max-width:640px){.content-jev-guide>ol{grid-template-columns:1fr}}
 
+.planning-next-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.planning-next-actions a{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.packaging-handoff{margin-bottom:16px;padding:16px;display:grid;gap:12px}.packaging-handoff>.panel-header{padding:0;border:0}.packaging-handoff>.panel-header h2{margin:3px 0;font-size:16px}.packaging-handoff>.panel-header p{margin:0;color:var(--muted);font-size:11px}.packaging-plan-card{padding:13px;display:grid;gap:5px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}.packaging-plan-card small,.packaging-plan-card span{color:var(--muted);font-size:10px}.packaging-plan-card strong{font-size:13px}.packaging-plan-card p{margin:0;color:var(--text-2);font-size:11px;line-height:1.6}.packaging-handoff .inline-alert{margin:0}
+@media(max-width:760px){.planning-next-actions{justify-content:stretch}.planning-next-actions a{flex:1;justify-content:center}}
+
 /* Single-pane, Markdown-backed rich knowledge editor. */
 .knowledge-insert-toolbar{justify-content:flex-end;margin-bottom:0;border-bottom:0}.knowledge-insert-toolbar button{width:auto;padding-inline:9px;grid-auto-flow:column;gap:5px;font-size:10px}
 .knowledge-live-editor{display:block;min-height:560px;overflow:visible;border:1px solid var(--line);border-radius:12px;background:var(--panel)}

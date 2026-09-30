@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   ArrowRight,
   Check,
@@ -24,6 +25,7 @@ import { structureBorrowInput } from "@/lib/structure-borrow";
 import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
 import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
+import { planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
@@ -131,10 +133,12 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
   const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
   const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
-  const plan = plans.find((record) => record.parent_id === selected?.id) ?? null;
+  const plan = plans.filter((record) => record.parent_id === selected?.id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
   const appealSet = appealSets.find((record) => record.parent_id === selected?.id) ?? null;
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
+  const planningReady = Boolean(selected && planningSelectionReady(selected, plan));
   const appealResult = meta<Record<string, unknown>>(appealSet, "result", {});
   const appealCandidates = normalizeAppealCandidates(appealResult.candidates);
   const approvedAppealItems = approvedAppeals(appealCandidates);
@@ -425,10 +429,27 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     const next = candidates.map((candidate, itemIndex) => ({ ...candidate, picked: itemIndex === index }));
     setBusy(true); setError("");
     try {
-      await Promise.all([
-        updateRecord(accessToken, { id: plan.id, expectedVersion: plan.version, metadata: { ...plan.metadata, result: { ...planResult, candidates: next } } }),
-        updateRecord(accessToken, { id: selected.id, expectedVersion: selected.version, status: "planned", stage: "기획으로 넘기기", metadata: { ...selected.metadata, pickedCandidate: next[index], handoff: String(planResult.handoff ?? ""), decidedAt: new Date().toISOString() } }),
-      ]);
+      const selectedAt = new Date().toISOString();
+      const { record: updatedPlan } = await updateRecord(accessToken, { id: plan.id, expectedVersion: plan.version, metadata: { ...plan.metadata, result: { ...planResult, candidates: next } } });
+      const { record: updatedSource } = await updateRecord(accessToken, {
+        id: selected.id,
+        expectedVersion: selected.version,
+        status: "planned",
+        stage: "패키징 준비",
+        metadata: {
+          ...selected.metadata,
+          pipelineEnabled: true,
+          pickedCandidate: next[index],
+          planningPackageId: updatedPlan.id,
+          planningPackageVersion: updatedPlan.version,
+          planningSelectedAt: selectedAt,
+          handoff: String(planResult.handoff ?? ""),
+          decidedAt: selectedAt,
+        },
+      });
+      setRecords((current) => current.map((item) => item.id === updatedSource.id ? updatedSource : item));
+      setPackages((current) => current.map((item) => item.id === updatedPlan.id ? updatedPlan : item));
+      setNotice("기획 방향을 채택했습니다. 같은 content_id로 기획·근거를 승인한 뒤 제목·썸네일에서 이어가세요.");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "후보 채택을 저장하지 못했습니다.");
@@ -559,10 +580,10 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
             <label><span>검증 한계 · 필수</span><textarea name="limitations" required rows={3} defaultValue={String(researchBrief.limitations ?? "")} placeholder="확인하지 못한 수치, 플랫폼 차이, 해석의 한계" /></label>
             <label><span>분석 메모</span><textarea name="analystNotes" rows={3} defaultValue={String(researchBrief.analystNotes ?? "")} placeholder="구조·훅·증거에서 참고할 점" /></label>
             <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(researchBrief.brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
-            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>검증 내용 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/scripts?sourceId=${selected.id}`}>스크립트 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
+            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>검증 내용 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
           </form> : <div className="research-locked"><CircleAlert size={16} /><div><strong>레퍼런스 검증 잠김</strong><p>먼저 진행할 소구점을 한 개 이상 승인해 주세요.</p></div></div>}
           {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>소구점 승인과 레퍼런스 검증이 끝난 주제만 기획으로 넘길 수 있습니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy || !researchReady} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
-          {candidates.length ? <div className="planning-candidates"><h3>기획 방향 후보 <small>제목·썸네일은 패키징에서 최종 확정</small></h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "기획 방향 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 승인된 소구점과 레퍼런스 검증을 바탕으로 기획안을 만들면 다음 공정 HANDOFF가 표시됩니다.</div>}
+          {candidates.length ? <div className="planning-candidates"><h3>기획 방향 후보 <small>제목·썸네일은 패키징에서 최종 확정</small></h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "기획 방향 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}{planningReady ? <div className="planning-next-actions"><Link className="secondary-button" href={`/content/automation?sourceId=${selected.id}`}>기획·근거 승인하기</Link><Link className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일에서 이어하기 <ArrowRight size={14} /></Link></div> : null}</div> : <div className="list-empty"><Sparkles size={20} /> 승인된 소구점과 레퍼런스 검증을 바탕으로 기획안을 만들면 다음 공정 HANDOFF가 표시됩니다.</div>}
           {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}`} source={selected} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("인계 메모를 저장했습니다. 승인·공유는 실행되지 않았습니다."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
           {showTopicJevAssist ? <ContentTopicJevAssist key={`topic-jev:${selected.id}:${selected.version}:${plan?.id ?? "no-plan"}:${plan?.version ?? 0}`} topicId={selected.id} topicVersion={selected.version} {...(plan ? { planId: plan.id, planVersion: plan.version } : {})} /> : null}
