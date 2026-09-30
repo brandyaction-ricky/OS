@@ -80,8 +80,11 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
  */
 export function effectTrack(events, duration, rate = 48_000) {
   const out = new Float32Array(Math.ceil((duration + 1) * rate));
+  // mulberry32: 32-bit integer maths keeps the noise non-repeating. (A plain LCG in floating point repeated every
+  // 419 samples, which turned the whoosh into a ~115 Hz buzz that sounded like a laser.)
   let seed = 7;
-  const noise = () => ((seed = (seed * 1_103_515_245 + 12_345) >>> 0) / 2 ** 31) - 1;
+  const noise = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 2 ** 31 - 1; };
   // Soft, low sounds only: no pitch sweeps and no bright noise, so they sit quietly under the voice.
   const sound = {
     transition: (t) => { const p = t / 0.45; return p > 1 ? null : Math.sin(Math.PI * p) ** 2 * 0.3; }, // a dark air whoosh
