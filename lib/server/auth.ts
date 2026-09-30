@@ -3,6 +3,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ApiError, getBearerToken } from "@/lib/http";
 import { createServiceSupabase, createUserSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, OsRole } from "@/lib/types";
+import { agentReadableStatuses } from "./document-access";
 
 export interface RequestActor {
   type: "user" | "agent";
@@ -67,7 +68,9 @@ export async function authenticateRequest(
       role: "member",
       team: data.team ?? "",
       brand: data.brand,
-      allowedStatuses: data.allowed_statuses ?? ["canonical"],
+      // Every active AI key with knowledge.read mirrors an active teammate:
+      // team-shared documents are readable without granting write access.
+      allowedStatuses: agentReadableStatuses(data.allowed_statuses ?? ["canonical"]),
       scopes,
       organizationId: data.organization_id,
       ownerId: data.owner_user_id,

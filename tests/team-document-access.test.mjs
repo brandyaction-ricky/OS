@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import { agentReadableStatuses, canReadKnowledgeDocument } from "../lib/server/document-access.ts";
+
+const actor = (overrides = {}) => ({
+  type: "agent",
+  role: "member",
+  ownerId: "owner-a",
+  allowedStatuses: ["canonical", "team"],
+  ...overrides,
+});
+const document = (status, owner_id = "owner-b") => ({ status, owner_id });
+
+test("read-only AI keys always include team-shared documents", () => {
+  assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team"]);
+  assert.deepEqual(agentReadableStatuses(["team", "canonical"]), ["team", "canonical"]);
+});
+
+test("all members and AI keys can read another owner's team-shared document", () => {
+  assert.equal(canReadKnowledgeDocument(actor(), document("team")), true);
+  assert.equal(canReadKnowledgeDocument(actor({ type: "user" }), document("team")), true);
+});
+
+test("another owner's draft and archived document stay private", () => {
+  assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["draft", "team", "canonical"] }), document("draft")), false);
+  assert.equal(canReadKnowledgeDocument(actor(), document("archived")), false);
+  assert.equal(canReadKnowledgeDocument(actor(), document("draft", "owner-a")), true);
+});
+
+test("the change does not expose another owner's review drafts to AI keys", () => {
+  assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["team", "review", "reviewed", "canonical"] }), document("review")), false);
+  assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["team", "review", "reviewed", "canonical"] }), document("reviewed")), false);
+});
+
+test("routes, search, key defaults, and RLS migration share one team-read contract", async () => {
+  const [knowledgeRoute, documentRoute, search, keyRoute, migration] = await Promise.all([
+    readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/documents/[id]/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/server/search.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/v1/agent-keys/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/20260929062422_share_team_documents_with_all_members.sql", import.meta.url), "utf8"),
+  ]);
+  assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);
+  assert.match(documentRoute, /canReadKnowledgeDocument\(actor, data\)/);
+  assert.match(search, /status\.eq\.canonical,status\.eq\.team,owner_id\.eq/);
+  assert.match(search, /status === "canonical" \|\| status === "team"/);
+  assert.match(keyRoute, /\["team", "canonical"\]/);
+  assert.match(migration, /when p_status = 'team' then public\.os_is_active_member\(\)/);
+  assert.match(migration, /when p_status = 'draft' then false/);
+  assert.doesNotMatch(migration, /drop table|truncate\s/i);
+});
