@@ -82,20 +82,21 @@ export function effectTrack(events, duration, rate = 48_000) {
   const out = new Float32Array(Math.ceil((duration + 1) * rate));
   let seed = 7;
   const noise = () => ((seed = (seed * 1_103_515_245 + 12_345) >>> 0) / 2 ** 31) - 1;
+  // Soft, low sounds only: no pitch sweeps and no bright noise, so they sit quietly under the voice.
   const sound = {
-    transition: (x, t) => { const p = t / 0.4; return p > 1 ? null : Math.sin(Math.PI * p) ** 2 * 0.35; },
-    build: (x, t) => (t > 0.12 ? null : Math.sin(2 * Math.PI * (1_150 - 3_500 * t) * t) * Math.exp(-t * 38) * 0.5),
-    appear: (x, t) => (t > 0.6 ? null : (Math.sin(2 * Math.PI * 523 * t) + Math.sin(2 * Math.PI * 784 * t)) * Math.exp(-t * 7) * Math.min(1, t * 200) * 0.22),
-    accent: (x, t) => (t > 0.14 ? null : Math.exp(-t * 28) * 0.3),
+    transition: (t) => { const p = t / 0.45; return p > 1 ? null : Math.sin(Math.PI * p) ** 2 * 0.3; }, // a dark air whoosh
+    build: (t) => (t > 0.16 ? null : (Math.sin(2 * Math.PI * 440 * t) + 0.3 * Math.sin(2 * Math.PI * 880 * t)) * Math.min(1, t * 250) * Math.exp(-t * 32) * 0.28), // a muted tap
+    appear: (t) => (t > 0.7 ? null : (Math.sin(2 * Math.PI * 392 * t) + 0.6 * Math.sin(2 * Math.PI * 587 * t)) * Math.min(1, t * 60) * Math.exp(-t * 6) * 0.14), // a gentle two-note chime
+    accent: (t) => { const p = t / 0.22; return p > 1 ? null : Math.sin(Math.PI * p) * 0.22; }, // a soft paper brush
   };
   for (const { t, kind } of events) {
-    // Noise-based sounds (transition, accent) are shaped by a one-pole filter; tones are written directly.
-    let low = 0, prev = 0;
+    // Noise-based sounds (transition, accent) are low-passed so they stay dark; tones are written directly.
+    let low = 0;
     for (let i = Math.round(t * rate), n = 0; i < out.length; i++, n++) {
-      const env = sound[kind](0, n / rate);
+      const env = sound[kind](n / rate);
       if (env === null) break;
-      if (kind === "transition") { const p = n / rate / 0.4; low += (0.03 + 0.25 * Math.sin(Math.PI * p)) * (noise() - low); out[i] += low * env * 1.6; }
-      else if (kind === "accent") { const x = noise(); out[i] += (x - prev) * env; prev = x; }
+      if (kind === "transition") { low += (0.02 + 0.1 * Math.sin(Math.PI * n / rate / 0.45)) * (noise() - low); out[i] += low * env * 2; }
+      else if (kind === "accent") { low += 0.12 * (noise() - low); out[i] += low * env * 1.5; }
       else out[i] += env;
     }
   }
@@ -372,7 +373,7 @@ async function main() {
     writeFileSync(effects, effectTrack(await page.evaluate(() => window.soundCues()), duration));
     // Voice: low rumble cut and light noise reduction; effects sit well under it. The mix is measured once, then levelled
     // linearly to YouTube's -14 LUFS; a limiter first keeps enough peak headroom for that gain.
-    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]volume=0.35[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
+    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]lowpass=f=3000,volume=0.4[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
     const measured = spawnSync("ffmpeg", ["-hide_banner", "-i", args.audio, "-i", effects, "-filter_complex", `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json`, "-f", "null", "-"],
       { encoding: "utf8" }).stderr;
     const m = JSON.parse(measured.slice(measured.lastIndexOf("{"), measured.lastIndexOf("}") + 1));
