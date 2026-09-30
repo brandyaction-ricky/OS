@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { readPipeline, reviewPipeline } from "@/lib/server/content-pipeline";
+import { readPipeline, reviewPipeline, reviewWritingPreparation, saveWritingPreparation } from "@/lib/server/content-pipeline";
+import { WRITING_WORKFLOW_STEPS } from "@/lib/content-writing-workflow";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,17 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    const input = z.object({ sourceId: z.string().uuid(), gate: z.number().int().min(1).max(3), signature: z.string().length(64), approved: z.boolean(), note: z.string().trim().max(2000).default("") }).parse(await parseJson(request));
+    const body = await parseJson(request);
+    const operation = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>).operation : undefined;
+    if (operation === "writing_save") {
+      const input = z.object({ operation: z.literal("writing_save"), sourceId: z.string().uuid(), expectedVersion: z.number().int().positive(), step: z.enum(["materials", "axis", "design"]), content: z.string().trim().min(1).max(30_000) }).parse(body);
+      return NextResponse.json({ record: await saveWritingPreparation(actor, input.sourceId, input.expectedVersion, input.step, input.content) });
+    }
+    if (operation === "writing_review") {
+      const input = z.object({ operation: z.literal("writing_review"), sourceId: z.string().uuid(), expectedVersion: z.number().int().positive(), step: z.enum(WRITING_WORKFLOW_STEPS), approved: z.boolean(), note: z.string().trim().max(2000).default("") }).parse(body);
+      return NextResponse.json({ record: await reviewWritingPreparation(actor, input.sourceId, input.expectedVersion, input.step, input.approved, input.note) });
+    }
+    const input = z.object({ sourceId: z.string().uuid(), gate: z.number().int().min(1).max(3), signature: z.string().length(64), approved: z.boolean(), note: z.string().trim().max(2000).default("") }).parse(body);
     return NextResponse.json({ record: await reviewPipeline(actor, input.sourceId, input.gate, input.signature, input.approved, input.note) });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_REVIEW", "승인 내용을 확인해 주세요."));

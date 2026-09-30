@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -14,9 +15,74 @@ function sourceInput(source: OsRecord) {
     planningPackageId: source.metadata.planningPackageId, planningPackageVersion: source.metadata.planningPackageVersion };
 }
 function reference(record: OsRecord | null) { return record ? [record.id, record.version] : null; }
+function candidateText(candidate: Record<string, unknown> | null) {
+  return String(candidate?.text ?? candidate?.title ?? "").trim();
+}
+
+export function writingWorkflowState(source: OsRecord, packaging: OsRecord | null, planningApproved: boolean): WritingWorkflowState {
+  const workflow = writingWorkflowOf(source.metadata.writingWorkflow);
+  const picked = pickedPackaging(packaging);
+  const packageTitle = candidateText(picked.title);
+  const packageCopy = candidateText(picked.copy);
+  const packageReady = Boolean(packaging && picked.ready && packageTitle && packageCopy);
+  const currentPackage = Boolean(packaging && workflow.packageId === packaging.id && workflow.packageVersion === packaging.version);
+  const signatures: Record<WritingWorkflowStep, string> = {
+    package: digest(["writing-package-v1", reference(packaging), picked.title, picked.copy]),
+    materials: "",
+    axis: "",
+    design: "",
+  };
+  signatures.materials = digest(["writing-materials-v1", signatures.package, workflow.materials]);
+  signatures.axis = digest(["writing-axis-v1", signatures.materials, workflow.axis]);
+  signatures.design = digest(["writing-design-v1", signatures.axis, workflow.design]);
+  const lastReview = (step: WritingWorkflowStep) => workflow.reviews.filter((review) => review.step === step).at(-1) ?? null;
+  const approved: Record<WritingWorkflowStep, boolean> = { package: false, materials: false, axis: false, design: false };
+  for (const step of WRITING_WORKFLOW_STEPS) {
+    const priorApproved = step === "package" ? planningApproved : approved[WRITING_WORKFLOW_STEPS[WRITING_WORKFLOW_STEPS.indexOf(step) - 1]];
+    const latest = lastReview(step);
+    approved[step] = Boolean(priorApproved && currentPackage && latest?.approved === true && latest.signature === signatures[step]);
+  }
+  const contents: Record<WritingWorkflowStep, string> = {
+    package: [packageTitle, packageCopy].filter(Boolean).join("\n"),
+    materials: workflow.materials,
+    axis: workflow.axis,
+    design: workflow.design,
+  };
+  const blockers: Record<WritingWorkflowStep, string> = {
+    package: !packageReady ? "제목과 썸네일 카피를 각각 한 개 채택해 주세요." : !planningApproved ? "현재 기획·근거를 먼저 승인해 주세요." : "",
+    materials: !approved.package ? "현재 패키징을 먼저 확정해 주세요." : !workflow.materials ? "출처·핵심 사실·한계를 적어 주세요." : "",
+    axis: !approved.materials ? "자료 탐색 결과를 먼저 승인해 주세요." : !workflow.axis ? "한 문장 핵심 메시지와 포함·제외 범위를 적어 주세요." : "",
+    design: !approved.axis ? "핵심 축을 먼저 승인해 주세요." : !workflow.design ? "도입·본문·마무리 순서와 표현 방식을 적어 주세요." : "",
+  };
+  const steps = WRITING_WORKFLOW_STEPS.map((step, index) => {
+    const priorApproved = index === 0 || approved[WRITING_WORKFLOW_STEPS[index - 1]];
+    const canEdit = step !== "package" && currentPackage && priorApproved;
+    const canApprove = !blockers[step] && (step === "package" ? planningApproved && packageReady : canEdit && Boolean(contents[step]));
+    return { key: step, label: writingStepLabel(step), content: contents[step], signature: signatures[step], approved: approved[step], canEdit, canApprove, blocker: blockers[step], lastReview: lastReview(step) };
+  });
+  const next = steps.find((step) => !step.approved);
+  const nextAction = !next ? "원고 생성 또는 직접 작성"
+    : next.canApprove ? `${next.label} 승인`
+      : next.key === "package" ? `${next.label} 준비`
+        : !next.content ? `${next.label} 작성` : `${next.label} 확인`;
+  return {
+    packageId: packaging?.id ?? null,
+    packageVersion: packaging?.version ?? null,
+    packageTitle,
+    packageCopy,
+    packageReady,
+    currentPackage,
+    steps,
+    ready: approved.design,
+    nextAction,
+    blocker: next?.blocker ?? "",
+  };
+}
+
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
   return digest([sourceInput(source), reference(artifacts.appeals), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
+    ...(gate >= 2 ? [source.metadata.writingWorkflow] : []),
     ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
@@ -33,7 +99,9 @@ export async function readPipeline(actor: RequestActor, id: string) {
   const signatures = [1, 2, 3].map((gate) => gateSignature(source, records, gate));
   const matches = signatures.map((signature, index) => hasCurrentApproval(reviews, index + 1, signature));
   const approved = matches.map((_, index) => matches.slice(0, index + 1).every(Boolean));
-  return { source: source as OsRecord, records, reviews, signatures, approved, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate)) };
+  const artifacts = pipelineArtifacts(records);
+  const writing = writingWorkflowState(source as OsRecord, artifacts.packaging, approved[0]);
+  return { source: source as OsRecord, records, reviews, signatures, approved, writing, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing)) };
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
@@ -42,6 +110,46 @@ async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Reco
   if (error) throw new ApiError(500, "PIPELINE_SAVE_FAILED", "공정 이력을 저장하지 못했습니다.");
   if (!data) throw new ApiError(409, "PIPELINE_CHANGED", "다른 작업이 먼저 변경했습니다. 새로 불러와 주세요.");
   return data as OsRecord;
+}
+
+function assertExpectedVersion(source: OsRecord, expectedVersion: number) {
+  if (source.version !== expectedVersion) throw new ApiError(409, "PIPELINE_CHANGED", "다른 작업이 먼저 변경했습니다. 새로 불러와 주세요.");
+}
+
+export async function saveWritingPreparation(actor: RequestActor, id: string, expectedVersion: number, step: WritingPreparationStep, content: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  const stepState = state.writing.steps.find((item) => item.key === step);
+  if (!stepState?.canEdit) throw new ApiError(409, "WRITING_STEP_BLOCKED", stepState?.blocker || "이전 단계를 먼저 완료해 주세요.");
+  const cleaned = content.trim();
+  if (!cleaned) throw new ApiError(400, "WRITING_CONTENT_REQUIRED", `${stepState.label} 내용을 입력해 주세요.`);
+  const workflow = writingWorkflowOf(state.source.metadata.writingWorkflow);
+  return saveMetadata(actor, state.source, { writingWorkflow: {
+    ...workflow,
+    schemaVersion: WRITING_WORKFLOW_SCHEMA_VERSION,
+    packageId: state.writing.packageId,
+    packageVersion: state.writing.packageVersion,
+    [step]: cleaned,
+  } });
+}
+
+export async function reviewWritingPreparation(actor: RequestActor, id: string, expectedVersion: number, step: WritingWorkflowStep, approved: boolean, note: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  const stepState = state.writing.steps.find((item) => item.key === step);
+  if (!stepState) throw new ApiError(400, "WRITING_STEP_INVALID", "작업 단계를 확인해 주세요.");
+  if (approved && !stepState.canApprove) throw new ApiError(409, "WRITING_STEP_BLOCKED", stepState.blocker || "승인 전 내용을 저장해 주세요.");
+  if (!approved && !note.trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
+  if (!approved && step !== "package" && !stepState.content) throw new ApiError(409, "WRITING_CONTENT_REQUIRED", "수정할 내용을 먼저 저장해 주세요.");
+  const workflow = writingWorkflowOf(state.source.metadata.writingWorkflow);
+  const review: WritingWorkflowReview = { step, signature: stepState.signature, approved, actorId: actor.id, at: new Date().toISOString(), note: note.trim() };
+  return saveMetadata(actor, state.source, { writingWorkflow: {
+    ...workflow,
+    schemaVersion: WRITING_WORKFLOW_SCHEMA_VERSION,
+    packageId: state.writing.packageId,
+    packageVersion: state.writing.packageVersion,
+    reviews: [...workflow.reviews, review],
+  } });
 }
 
 export async function reviewPipeline(actor: RequestActor, id: string, gate: number, signature: string, approved: boolean, note: string) {
@@ -68,10 +176,13 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
     throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "기획 방향을 한 개 채택하고 현재 기획 버전으로 연결해 주세요.");
   if (input.action === "script_draft" && !pickedPackaging(artifacts.packaging).ready)
     throw new ApiError(409, "PIPELINE_NEEDS_INPUT", "제목과 썸네일 카피를 각각 한 개 채택한 뒤 원고를 작성해 주세요.");
+  if (input.action === "script_draft" && !state.writing.ready)
+    throw new ApiError(409, "WRITING_WORKFLOW_REQUIRED", `원고 전 작업을 순서대로 완료해 주세요: ${state.writing.nextAction}${state.writing.blocker ? ` · ${state.writing.blocker}` : ""}`);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
   const key = digest([procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(["appeal_candidates", "topic_plan"].includes(input.action) ? [] : [reference(artifacts.research)]),
     ...(["script_draft", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.packaging)] : []),
+    ...(input.action === "script_draft" ? [state.source.metadata.writingWorkflow] : []),
     ...(["shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.script)] : []),
     ...(["shorts_proposal", "youtube_kit"].includes(input.action) ? [state.source.metadata.transcriptSrt] : [])]);
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
