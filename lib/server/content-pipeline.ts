@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { SCRIPT_REVIEW_SCHEMA_VERSION, SCRIPT_REVIEW_STEPS, scriptReviewStepLabel, scriptReviewWorkflowOf, type ScriptReviewDecision, type ScriptReviewState, type ScriptReviewStep } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
@@ -79,10 +80,45 @@ export function writingWorkflowState(source: OsRecord, packaging: OsRecord | nul
   };
 }
 
+export function scriptReviewWorkflowState(source: OsRecord, script: OsRecord | null, writingReady: boolean): ScriptReviewState {
+  const workflow = scriptReviewWorkflowOf(source.metadata.scriptReviewWorkflow);
+  const currentScript = Boolean(script && workflow.scriptId === script.id && workflow.scriptVersion === script.version);
+  const contents = Object.fromEntries(SCRIPT_REVIEW_STEPS.map((step) => [step, workflow[step]])) as Record<ScriptReviewStep, string>;
+  const lastReview = (step: ScriptReviewStep) => workflow.reviews.filter((review) => review.step === step).at(-1) ?? null;
+  const steps = SCRIPT_REVIEW_STEPS.map((step) => {
+    const signature = digest(["script-review-v1", reference(script), source.metadata.writingWorkflow, step, contents[step]]);
+    const latest = lastReview(step);
+    const blocker = !script?.description.trim() ? "검수할 원고를 먼저 작성해 주세요."
+      : !writingReady ? "현재 패키징·자료·축·영상 설계를 먼저 승인해 주세요."
+        : !contents[step] ? `${scriptReviewStepLabel(step)} 검수 결과와 수정 내용을 적어 주세요.`
+          : !currentScript ? "원고가 변경되었습니다. 현재 버전으로 검수 메모를 다시 저장해 주세요." : "";
+    const canEdit = Boolean(script?.description.trim() && writingReady);
+    const canApprove = canEdit && currentScript && Boolean(contents[step]);
+    const approved = Boolean(canApprove && latest?.approved === true && latest.signature === signature);
+    return { key: step, label: scriptReviewStepLabel(step), content: contents[step], signature, approved, canEdit, canApprove, blocker, lastReview: latest };
+  });
+  const next = steps.find((step) => !step.approved);
+  const changed = Boolean(script && workflow.scriptId && !currentScript);
+  const blocker = !script?.description.trim() ? "검수할 원고가 없습니다."
+    : !writingReady ? "원고 전 작업의 현재 승인이 필요합니다."
+      : changed ? "원고가 변경되어 네 검수 항목을 다시 확인해야 합니다."
+        : next?.blocker ?? "";
+  return {
+    scriptId: script?.id ?? null,
+    scriptVersion: script?.version ?? null,
+    scriptTitle: script?.title ?? "",
+    currentScript,
+    steps,
+    ready: steps.length > 0 && steps.every((step) => step.approved),
+    nextAction: next ? (!next.content || !currentScript ? `${next.label} 검수 메모 저장` : `${next.label} 검수 승인`) : "콘텐츠 제작·편집 준비",
+    blocker,
+  };
+}
+
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
   return digest([sourceInput(source), reference(artifacts.appeals), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
-    ...(gate >= 2 ? [source.metadata.writingWorkflow] : []),
+    ...(gate >= 2 ? [source.metadata.writingWorkflow, source.metadata.scriptReviewWorkflow] : []),
     ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
@@ -101,7 +137,8 @@ export async function readPipeline(actor: RequestActor, id: string) {
   const approved = matches.map((_, index) => matches.slice(0, index + 1).every(Boolean));
   const artifacts = pipelineArtifacts(records);
   const writing = writingWorkflowState(source as OsRecord, artifacts.packaging, approved[0]);
-  return { source: source as OsRecord, records, reviews, signatures, approved, writing, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing)) };
+  const scriptReview = scriptReviewWorkflowState(source as OsRecord, artifacts.script, writing.ready);
+  return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing, scriptReview)) };
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
@@ -148,6 +185,42 @@ export async function reviewWritingPreparation(actor: RequestActor, id: string, 
     schemaVersion: WRITING_WORKFLOW_SCHEMA_VERSION,
     packageId: state.writing.packageId,
     packageVersion: state.writing.packageVersion,
+    reviews: [...workflow.reviews, review],
+  } });
+}
+
+export async function saveScriptReview(actor: RequestActor, id: string, expectedVersion: number, step: ScriptReviewStep, content: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  const stepState = state.scriptReview.steps.find((item) => item.key === step);
+  if (!stepState?.canEdit) throw new ApiError(409, "SCRIPT_REVIEW_BLOCKED", stepState?.blocker || "검수할 원고를 먼저 준비해 주세요.");
+  const cleaned = content.trim();
+  if (!cleaned) throw new ApiError(400, "SCRIPT_REVIEW_CONTENT_REQUIRED", `${stepState.label} 검수 내용을 입력해 주세요.`);
+  const workflow = scriptReviewWorkflowOf(state.source.metadata.scriptReviewWorkflow);
+  return saveMetadata(actor, state.source, { scriptReviewWorkflow: {
+    ...workflow,
+    schemaVersion: SCRIPT_REVIEW_SCHEMA_VERSION,
+    scriptId: state.scriptReview.scriptId,
+    scriptVersion: state.scriptReview.scriptVersion,
+    [step]: cleaned,
+  } });
+}
+
+export async function reviewScript(actor: RequestActor, id: string, expectedVersion: number, step: ScriptReviewStep, approved: boolean, note: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  const stepState = state.scriptReview.steps.find((item) => item.key === step);
+  if (!stepState) throw new ApiError(400, "SCRIPT_REVIEW_STEP_INVALID", "검수 항목을 확인해 주세요.");
+  if (approved && !stepState.canApprove) throw new ApiError(409, "SCRIPT_REVIEW_BLOCKED", stepState.blocker || "검수 내용을 먼저 저장해 주세요.");
+  if (!approved && !note.trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
+  if (!approved && !stepState.content) throw new ApiError(409, "SCRIPT_REVIEW_CONTENT_REQUIRED", "수정할 검수 내용을 먼저 저장해 주세요.");
+  const workflow = scriptReviewWorkflowOf(state.source.metadata.scriptReviewWorkflow);
+  const review: ScriptReviewDecision = { step, signature: stepState.signature, approved, actorId: actor.id, at: new Date().toISOString(), note: note.trim() };
+  return saveMetadata(actor, state.source, { scriptReviewWorkflow: {
+    ...workflow,
+    schemaVersion: SCRIPT_REVIEW_SCHEMA_VERSION,
+    scriptId: state.scriptReview.scriptId,
+    scriptVersion: state.scriptReview.scriptVersion,
     reviews: [...workflow.reviews, review],
   } });
 }
