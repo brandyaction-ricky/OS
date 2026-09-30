@@ -69,6 +69,8 @@ test("edits preserve existing request context and resolution without accepting a
 test("request attachments accept controlled private paths and reject arbitrary object paths", () => {
   const validPath = "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.pdf";
   assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: validPath, attachmentName: "요청서.pdf", attachmentSize: "2048", attachmentType: "application/pdf" }).success, true);
+  const markdownPath = "requests/00000000-0000-4000-8000-000000000001/2026-09-08/00000000-0000-4000-8000-000000000002.txt";
+  assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: markdownPath, attachmentName: "개발요청.md", attachmentSize: "2048", attachmentType: "text/markdown" }).success, true);
   for (const path of ["finance/private.pdf", "../private.pdf", "requests/user/file.pdf", "requests/00000000-0000-4000-8000-000000000001/2026-09-08/not-uuid.pdf"]) {
     assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: path }).success, false);
   }

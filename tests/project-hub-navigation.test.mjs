@@ -56,6 +56,7 @@ function setup(initialQuery = "", { delayProjects = false } = {}) {
       listRecords: async (_token, type) => type === "project" ? projectPromise : { records: [], total: 0 },
       listMembers: async () => ({ members: [{ id: "reporter", email: "reporter@example.com", display_name: "정호", role: "admin", team: "", is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: false, account_connected: true }] }),
       createRecord: async () => { throw new Error("Unexpected write"); },
+      developmentAttachmentMimeType: (file) => file.name.endsWith(".md") ? "text/markdown" : file.type,
     },
     "@/lib/development-handoff": {
       recordText: (record, key) => record?.metadata?.[key] ?? "",
@@ -200,7 +201,13 @@ test("employees can open a dedicated feature request with a file attachment", as
   button.props.onClick();
   await app.flush();
   assert.equal(app.find((node) => node.type === "select" && node.props.name === "category").props.defaultValue, "feature");
-  assert.equal(app.find((node) => node.type === "input" && node.props.name === "attachment").props.type, "file");
+  const attachment = app.find((node) => node.type === "input" && node.props.name === "attachment");
+  assert.equal(attachment.props.type, "file");
+  assert.match(attachment.props.accept, /text\/markdown/);
+  assert.match(attachment.props.accept, /\.md/);
+  assert.equal(typeof app.find((node) => typeof node.props.onDrop === "function").props.onDrop, "function");
+  assert.match(source, /Markdown 원문 미리보기/);
+  assert.match(source, /HTML·스크립트를 실행하지 않습니다/);
   assert.doesNotMatch(source, /name="steps"|스크린샷·영상 링크|재현 순서/);
   app.unmount();
 });

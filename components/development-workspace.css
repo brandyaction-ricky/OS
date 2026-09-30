@@ -99,6 +99,21 @@
 .dev-detail-links { display: flex; gap: 10px; flex-direction: column; margin: 12px 0 18px; }
 .dev-detail-links a, .dev-history a, .dev-attachment-link { display: inline-flex; gap: 4px; align-items: center; width: fit-content; padding: 0; border: 0; background: transparent; color: var(--accent-2); font-size: 11px; }
 .dev-attachment-link small { margin-left: 4px; color: var(--muted); font-size: 9px; }
+.dev-attachment-card { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 9px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); }
+.dev-attachment-card>svg { color: var(--muted); }
+.dev-attachment-card>span { min-width: 0; display: grid; gap: 3px; }
+.dev-attachment-card strong,.dev-attachment-card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dev-attachment-card strong { color: var(--text-2); font-size: 11px; font-weight: 600; }
+.dev-attachment-card small { color: var(--muted); font-size: 9px; }
+.dev-attachment-card>div { grid-column: 1/-1; display: flex; flex-wrap: wrap; gap: 6px; }
+.dev-attachment-card button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--accent-2); font-size: 10px; }
+.dev-attachment-preview { margin: -4px 0 18px!important; padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); }
+.dev-attachment-preview>header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.dev-attachment-preview>header span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 10px; font-weight: 600; }
+.dev-attachment-preview>header button { padding: 0; border: 0; background: transparent; color: var(--accent-2); font-size: 10px; }
+.dev-attachment-preview pre { max-height: 360px; margin: 0; padding: 12px; overflow: auto; border: 1px solid var(--line-soft); border-radius: 5px; background: var(--panel); color: var(--text-2); font: 11px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.dev-attachment-preview>small { display: block; margin-top: 8px; color: var(--muted); font-size: 9px; }
+.dev-attachment-preview-error { color: var(--danger)!important; }
 .dev-resolution { border-top: 1px solid var(--line-soft); padding-top: 20px; }
 .dev-resolution>small { font-size: 10px; color: var(--muted); }
 .dev-linked-history { border-top: 1px solid var(--line-soft); padding-top: 20px; }
@@ -186,6 +201,7 @@
 .dev-modal-fields label small { color: var(--muted); font-size: 10px; }
 .dev-file-picker { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; min-height: 64px; padding: 12px 14px; border: 1px dashed var(--line); border-radius: 6px; background: var(--panel-2); color: var(--muted); overflow: hidden; }
 .dev-file-picker:hover, .dev-file-picker:focus-within { border-color: var(--accent-2); background: var(--accent-soft); color: var(--text-2); }
+.dev-file-picker.drag-active { border-color: var(--accent-2); background: var(--accent-soft); color: var(--accent-2); box-shadow: inset 0 0 0 1px var(--accent-2); }
 .dev-file-picker>span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dev-file-picker input[type=file] { grid-column: 1 / -1; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 10px; }
 .dev-file-picker input[type=file]::file-selector-button { margin-right: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text-2); cursor: pointer; }

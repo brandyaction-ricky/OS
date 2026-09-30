@@ -485,19 +485,28 @@ export async function getCompanyFileUrl(token: string | null, path: string) {
   return apiRequest<{ url: string }>(`/api/v1/company-files?path=${encodeURIComponent(path)}`, { token });
 }
 
-export async function createDevelopmentAttachmentUpload(token: string | null, file: File) {
-  if (file.size > 25 * 1024 * 1024) throw new Error("첨부 자료는 25MB 이하여야 합니다.");
-  const fallbackTypes: Record<string, string> = {
-    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
-    mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", pdf: "application/pdf",
-    txt: "text/plain", csv: "text/csv", doc: "application/msword",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip",
-  };
+const DEVELOPMENT_ATTACHMENT_FALLBACK_TYPES: Record<string, string> = {
+  jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
+  mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", pdf: "application/pdf",
+  txt: "text/plain", md: "text/markdown", csv: "text/csv", doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", zip: "application/zip",
+};
+const DEVELOPMENT_ATTACHMENT_MIME_TYPES = new Set(Object.values(DEVELOPMENT_ATTACHMENT_FALLBACK_TYPES));
+
+export function developmentAttachmentMimeType(file: Pick<File, "name" | "type">) {
   const extension = file.name.split(".").pop()?.toLowerCase() || "";
-  const mimeType = fallbackTypes[extension] || file.type;
-  return apiRequest<{ path: string; token: string; name: string; size: number; type: string }>("/api/v1/development-attachments", {
+  const mimeType = DEVELOPMENT_ATTACHMENT_FALLBACK_TYPES[extension] || file.type;
+  if (!DEVELOPMENT_ATTACHMENT_MIME_TYPES.has(mimeType)) throw new Error("지원하는 파일 형식을 선택해 주세요. Markdown은 .md 파일로 올릴 수 있습니다.");
+  return mimeType;
+}
+
+export async function createDevelopmentAttachmentUpload(token: string | null, file: File) {
+  if (file.size <= 0) throw new Error("빈 파일은 첨부할 수 없습니다.");
+  if (file.size > 25 * 1024 * 1024) throw new Error("첨부 자료는 25MB 이하여야 합니다.");
+  const mimeType = developmentAttachmentMimeType(file);
+  return apiRequest<{ path: string; token: string; name: string; size: number; type: string; uploadType: string }>("/api/v1/development-attachments", {
     method: "POST", token, body: JSON.stringify({ fileName: file.name, fileSize: file.size, mimeType }),
   });
 }
@@ -513,8 +522,10 @@ export async function uploadDevelopmentAttachment(path: string, signedToken: str
   if (error) throw new Error(error.message || "첨부 자료를 업로드하지 못했습니다.");
 }
 
-export async function getDevelopmentAttachmentUrl(token: string | null, path: string) {
-  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/development-attachments?path=${encodeURIComponent(path)}`, { token });
+export async function getDevelopmentAttachmentUrl(token: string | null, path: string, downloadName = "") {
+  const params = new URLSearchParams({ path });
+  if (downloadName) { params.set("download", "1"); params.set("name", downloadName); }
+  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/development-attachments?${params}`, { token });
 }
 
 export async function deleteDevelopmentAttachment(token: string | null, path: string) {
