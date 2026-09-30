@@ -20,6 +20,10 @@ export function developmentAttachmentStorageType(mimeType: keyof typeof DEVELOPM
   return mimeType === "text/markdown" ? "text/plain" : mimeType;
 }
 
+export function developmentAttachmentUploadBody(file: Blob, contentType: string) {
+  return file.type === contentType ? file : file.slice(0, file.size, contentType);
+}
+
 export const developmentAttachmentCreateSchema = z.object({
   fileName: z.string().trim().min(1).max(240),
   fileSize: z.number().int().positive().max(DEVELOPMENT_ATTACHMENT_MAX_BYTES),
