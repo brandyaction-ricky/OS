@@ -82,9 +82,10 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showP
         if (loaded.length >= result.total || !result.documents.length) break;
       }
       const active = loaded.filter(isVisibleScript).sort(compareScriptDocuments);
+      const grouped = active.filter((document) => document.folder !== root);
       setDocuments(active);
-      setFolder((current) => active.some((document) => document.folder === current) ? current : active[0]?.folder ?? "");
-      setSelectedId((current) => active.some((document) => document.id === current) ? current : active[0]?.id ?? "");
+      setFolder((current) => grouped.some((document) => document.folder === current) ? current : grouped[0]?.folder ?? "");
+      setSelectedId((current) => grouped.some((document) => document.id === current) ? current : grouped[0]?.id ?? "");
     } catch (reason) {
       if (generation === listGeneration.current) setError(reason instanceof Error ? reason.message : "원고 문서를 불러오지 못했습니다.");
     } finally {
@@ -111,17 +112,19 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showP
     return () => { listGeneration.current += 1; };
   }, [load]);
 
+  const rootDocuments = useMemo(() => documents.filter((document) => document.folder === root), [documents, root]);
+  const groupedDocuments = useMemo(() => documents.filter((document) => document.folder !== root), [documents, root]);
   const folders = useMemo(() => {
     const grouped = new Map<string, { name: string; count: number; updatedAt: string }>();
-    for (const document of documents) {
+    for (const document of groupedDocuments) {
       const group = grouped.get(document.folder) ?? { name: document.folder, count: 0, updatedAt: "" };
       group.count += 1;
       if (document.updated_at > group.updatedAt) group.updatedAt = document.updated_at;
       grouped.set(document.folder, group);
     }
-    return [...grouped.values()].map((group) => ({ ...group, progress: scriptProgress(documents.filter((doc) => doc.folder === group.name)) })).sort((a, b) => Number(a.progress.published) - Number(b.progress.published) || b.name.localeCompare(a.name, "ko", { numeric: true }));
-  }, [documents]);
-  const folderDocuments = useMemo(() => documents.filter((document) => document.folder === folder).sort(compareScriptDocuments), [documents, folder]);
+    return [...grouped.values()].map((group) => ({ ...group, progress: scriptProgress(groupedDocuments.filter((doc) => doc.folder === group.name)) })).sort((a, b) => Number(a.progress.published) - Number(b.progress.published) || b.name.localeCompare(a.name, "ko", { numeric: true }));
+  }, [groupedDocuments]);
+  const folderDocuments = useMemo(() => groupedDocuments.filter((document) => document.folder === folder).sort(compareScriptDocuments), [groupedDocuments, folder]);
   const selected = folderDocuments.find((document) => document.id === selectedId) ?? folderDocuments[0] ?? null;
   const readerId = selected?.id ?? "";
   const readerVersion = selected?.current_version;
@@ -190,12 +193,13 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showP
     <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} />
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
-      <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 문서 {documents.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
+      <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 묶음 안 문서 {groupedDocuments.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>
         <form className="script-root-picker" onSubmit={(event) => { event.preventDefault(); try { const next = normalizeScriptRoot(String(new FormData(event.currentTarget).get("root") ?? "")); window.localStorage.setItem("os-script-document-root", next); setError(""); setRoot(next); } catch (cause) { setError(cause instanceof Error ? cause.message : "기준 폴더를 확인해 주세요."); } }}>
           <label><span>기준 폴더</span><input name="root" list="script-root-options" defaultValue={root} key={root} maxLength={160} aria-label="원고 기준 폴더" /></label>
           <datalist id="script-root-options">{folderOptions.map((option) => <option key={option} value={option} />)}</datalist>
           <button className="secondary-button">적용</button>
         </form>
+        {rootDocuments.length ? <p className="p2-caption">기준 폴더 바로 아래 문서 {rootDocuments.length}개는 영상 작업 묶음에서 제외됩니다. 해당 문서는 지식 작업공간에서 관리합니다.</p> : null}
         {folders.map((item) => <button key={item.name} className={folder === item.name ? "active" : ""} aria-current={folder === item.name ? "true" : undefined} onClick={() => { setFolder(item.name); setSelectedId(""); }}><span><strong>{item.name.replace(`${root}/`, "") || "원고"}</strong><small>{item.progress.published ? "발행 자료 있음" : "진행 중"} · 문서 {item.count}개 · 최근 {new Date(item.updatedAt).toLocaleString("ko-KR")}</small><small>{SCRIPT_STEPS.map((stage, index) => `${item.progress.completed[index] ? "●" : "○"} ${stage}`).join(" · ")}</small></span></button>)}
         {!folders.length ? <div className="list-empty" role="status">{loading ? "원고 목록을 불러오는 중입니다." : error ? "목록을 다시 불러와 주세요." : "아직 작성한 원고가 없습니다."}</div> : null}
       </aside>

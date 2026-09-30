@@ -895,6 +895,7 @@ select option { background:var(--panel-2); color:var(--text); }
 .p2-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 16px}
 .p2-toolbar label{display:grid;gap:6px;min-width:0;font-size:13px}.p2-toolbar input{min-height:36px;padding:8px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2);color:var(--text);max-width:100%}
 .p2-caption{padding:0 16px;color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.knowledge-tree-scope{margin:0;padding:7px 12px;border-bottom:1px solid var(--line-soft);color:var(--muted);font-size:9px;line-height:1.4}
 .p2-document-list{display:grid;gap:6px;padding:12px 16px;min-width:0}.p2-document-list>button,.p2-document-list>div{display:grid;gap:6px;padding:13px;border:1px solid var(--line);border-radius:8px;background:var(--panel-2);color:var(--text);text-align:left;overflow-wrap:anywhere;min-width:0}
 .p2-document-list small,.p2-document-list a{display:block;overflow-wrap:anywhere}.p2-document-list small{color:var(--muted);font-size:12px}.p2-document-list button[aria-pressed=true]{border-color:var(--accent)}
 .p2-broken-links{margin-top:20px;padding:18px;min-width:0}.p2-broken-links>p{color:var(--muted);font-size:13px;line-height:1.6}.p2-broken-links a{color:var(--text)}

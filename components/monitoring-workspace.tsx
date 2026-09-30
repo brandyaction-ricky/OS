@@ -196,7 +196,7 @@ export function MonitoringWorkspace() {
           </p>
         </div>
         <small>
-          지식 문서 {documents.toLocaleString("ko-KR")}개 · 비즈니스 연결 기록{" "}
+          저장된 지식 문서 {documents.toLocaleString("ko-KR")}개(휴지통 포함) · 비즈니스 연결 기록{" "}
           {connections.length}개
         </small>
       </section>
