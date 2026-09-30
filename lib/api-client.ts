@@ -1,6 +1,7 @@
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
+import { developmentAttachmentUploadBody } from "./development-attachments";
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -515,7 +516,10 @@ export async function uploadDevelopmentAttachment(path: string, signedToken: str
   const { getBrowserSupabase } = await import("@/lib/supabase/client");
   const client = getBrowserSupabase();
   if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
-  const { error } = await client.storage.from("os-development-attachments").uploadToSignedUrl(path, signedToken, file, {
+  // storage-js wraps Blob/File bodies in FormData and uses the body's MIME type.
+  // Normalize the Blob itself so Markdown is accepted by the private bucket's text/plain allow-list.
+  const uploadBody = developmentAttachmentUploadBody(file, contentType);
+  const { error } = await client.storage.from("os-development-attachments").uploadToSignedUrl(path, signedToken, uploadBody, {
     contentType,
     cacheControl: "3600",
   });

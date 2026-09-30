@@ -7,6 +7,7 @@ import {
   developmentAttachmentDownloadNameSchema,
   developmentAttachmentPathSchema,
   developmentAttachmentStorageType,
+  developmentAttachmentUploadBody,
 } from "../lib/development-attachments.ts";
 
 const owner = "00000000-0000-4000-8000-000000000001";
@@ -24,6 +25,14 @@ test("development attachments restrict type, size and private object path", () =
   assert.equal(developmentAttachmentPathSchema.safeParse("../" + object + ".png").success, false);
   assert.equal(developmentAttachmentDownloadNameSchema.safeParse("한글 기획안.md").success, true);
   assert.equal(developmentAttachmentDownloadNameSchema.safeParse("../기획안.md").success, false);
+});
+
+test("markdown upload body uses the bucket-compatible MIME type without changing content", async () => {
+  const source = new Blob(["# 운영 검수\n<script>alert(1)</script>"], { type: "text/markdown" });
+  const upload = developmentAttachmentUploadBody(source, "text/plain");
+  assert.equal(upload.type, "text/plain");
+  assert.equal(await upload.text(), await source.text());
+  assert.equal(developmentAttachmentUploadBody(upload, "text/plain"), upload);
 });
 
 test("attachment API authenticates every operation and never creates public URLs", async () => {
