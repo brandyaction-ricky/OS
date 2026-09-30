@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   DEVELOPMENT_ATTACHMENT_MAX_BYTES,
   developmentAttachmentCreateSchema,
+  developmentAttachmentDownloadNameSchema,
   developmentAttachmentPathSchema,
+  developmentAttachmentStorageType,
 } from "../lib/development-attachments.ts";
 
 const owner = "00000000-0000-4000-8000-000000000001";
@@ -13,10 +15,15 @@ const object = "00000000-0000-4000-8000-000000000002";
 test("development attachments restrict type, size and private object path", () => {
   const valid = { fileName: "화면.png", fileSize: 2048, mimeType: "image/png" };
   assert.equal(developmentAttachmentCreateSchema.safeParse(valid).success, true);
+  assert.equal(developmentAttachmentCreateSchema.safeParse({ ...valid, fileName: "기획안.md", mimeType: "text/markdown" }).success, true);
+  assert.equal(developmentAttachmentStorageType("text/markdown"), "text/plain");
   assert.equal(developmentAttachmentCreateSchema.safeParse({ ...valid, mimeType: "text/html" }).success, false);
   assert.equal(developmentAttachmentCreateSchema.safeParse({ ...valid, fileSize: DEVELOPMENT_ATTACHMENT_MAX_BYTES + 1 }).success, false);
   assert.equal(developmentAttachmentPathSchema.safeParse("requests/" + owner + "/2026-09-08/" + object + ".png").success, true);
+  assert.equal(developmentAttachmentPathSchema.safeParse("requests/" + owner + "/2026-09-08/" + object + ".txt").success, true);
   assert.equal(developmentAttachmentPathSchema.safeParse("../" + object + ".png").success, false);
+  assert.equal(developmentAttachmentDownloadNameSchema.safeParse("한글 기획안.md").success, true);
+  assert.equal(developmentAttachmentDownloadNameSchema.safeParse("../기획안.md").success, false);
 });
 
 test("attachment API authenticates every operation and never creates public URLs", async () => {
@@ -28,7 +35,9 @@ test("attachment API authenticates every operation and never creates public URLs
     assert.match(body, /authenticateRequest\(request\)/, handler);
   }
   assert.match(route, /createSignedUploadUrl\(path\)/);
-  assert.match(route, /createSignedUrl\(path, 900\)/);
+  assert.match(route, /createSignedUrl\(/);
+  assert.match(route, /download: downloadName/);
+  assert.match(route, /developmentAttachmentStorageType\(input\.mimeType\)/);
   assert.match(route, /assertOwner\(actor, path\)/);
   assert.doesNotMatch(route, /getPublicUrl/);
 });

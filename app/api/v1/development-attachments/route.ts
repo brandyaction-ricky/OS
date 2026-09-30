@@ -6,7 +6,9 @@ import {
   DEVELOPMENT_ATTACHMENT_BUCKET,
   DEVELOPMENT_ATTACHMENT_TYPES,
   developmentAttachmentCreateSchema,
+  developmentAttachmentDownloadNameSchema,
   developmentAttachmentPathSchema,
+  developmentAttachmentStorageType,
 } from "@/lib/development-attachments";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -31,18 +33,27 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request);
     const input = developmentAttachmentCreateSchema.parse(await parseJson(request, 4_000));
     const extension = DEVELOPMENT_ATTACHMENT_TYPES[input.mimeType];
+    const uploadType = developmentAttachmentStorageType(input.mimeType);
     const path = `requests/${actor.id}/${new Date().toISOString().slice(0, 10)}/${randomUUID()}.${extension}`;
     const { data, error } = await createServiceSupabase().storage.from(DEVELOPMENT_ATTACHMENT_BUCKET).createSignedUploadUrl(path);
     if (error || !data) throw new ApiError(400, "DEVELOPMENT_ATTACHMENT_SIGN_FAILED", "자료 업로드 경로를 만들지 못했습니다.", error?.message);
-    return NextResponse.json({ path, token: data.token, name: input.fileName, size: input.fileSize, type: input.mimeType }, { status: 201, headers });
+    return NextResponse.json({ path, token: data.token, name: input.fileName, size: input.fileSize, type: input.mimeType, uploadType }, { status: 201, headers });
   } catch (error) { return respondError(error); }
 }
 
 export async function GET(request: Request) {
   try {
     await authenticateRequest(request);
-    const path = developmentAttachmentPathSchema.parse(new URL(request.url).searchParams.get("path") ?? "");
-    const { data, error } = await createServiceSupabase().storage.from(DEVELOPMENT_ATTACHMENT_BUCKET).createSignedUrl(path, 900);
+    const params = new URL(request.url).searchParams;
+    const path = developmentAttachmentPathSchema.parse(params.get("path") ?? "");
+    const downloadName = params.get("download") === "1"
+      ? developmentAttachmentDownloadNameSchema.parse(params.get("name") ?? "")
+      : "";
+    const { data, error } = await createServiceSupabase().storage.from(DEVELOPMENT_ATTACHMENT_BUCKET).createSignedUrl(
+      path,
+      900,
+      downloadName ? { download: downloadName } : undefined,
+    );
     if (error || !data) throw new ApiError(404, "DEVELOPMENT_ATTACHMENT_NOT_FOUND", "첨부 자료를 찾지 못했습니다.");
     return NextResponse.json({ url: data.signedUrl, expiresIn: 900 }, { headers });
   } catch (error) { return respondError(error); }
@@ -58,4 +69,3 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ deleted: true }, { headers });
   } catch (error) { return respondError(error); }
 }
-
