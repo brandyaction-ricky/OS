@@ -51,6 +51,17 @@ test("attachment API authenticates every operation and never creates public URLs
   assert.doesNotMatch(route, /getPublicUrl/);
 });
 
+test("attachment download preserves the original filename through a same-origin blob URL", async () => {
+  const workspace = await readFile(new URL("../components/project-hub-workspace.tsx", import.meta.url), "utf8");
+  const start = workspace.indexOf("const downloadAttachment");
+  const end = workspace.indexOf("const chooseRequestAttachment", start);
+  const body = workspace.slice(start, end);
+  assert.match(body, /await fetch\(url, \{ cache: "no-store" \}\)/);
+  assert.match(body, /URL\.createObjectURL\(await response\.blob\(\)\)/);
+  assert.match(body, /anchor\.download = name/);
+  assert.match(body, /URL\.revokeObjectURL\(objectUrl\)/);
+});
+
 test("attachment migration keeps the bucket private and extends the request guard", async () => {
   const migration = await readFile(new URL("../supabase/migrations-legacy/202609080014_development_request_attachments.sql", import.meta.url), "utf8");
   assert.match(migration, /'os-development-attachments'.*false, 26214400/s);
