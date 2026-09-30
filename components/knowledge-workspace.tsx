@@ -55,6 +55,7 @@ import { KnowledgeImport } from "./knowledge-import";
 import { KnowledgeVersionComparison } from "./knowledge-version-comparison";
 import { KnowledgeModal } from "./knowledge-modal";
 import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
+import { dispatchKnowledgeFileDropPosition } from "./knowledge-image-drag-plugin";
 import { getDemoKnowledgeDocuments, getDemoKnowledgeVersions, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
@@ -648,10 +649,22 @@ function WorkspaceContent() {
     } catch { setExternalLinkError("https:// 또는 http://로 시작하는 링크를 입력해 주세요."); }
   };
 
-  const attachFiles = async (files: FileList | null) => {
+  const replaceAttachmentPlaceholder = (placeholder: string, replacement: string) => {
+    if (!draft || !editorRef.current) return false;
+    const current = editorRef.current.getMarkdown();
+    if (!current.includes(placeholder)) return false;
+    const content = current.replace(placeholder, replacement);
+    editorRef.current.setMarkdown(content);
+    setDraft({ ...draft, content });
+    return true;
+  };
+
+  const attachFiles = async (files: FileList | File[] | null) => {
     if (!files?.length || !selected || !draft || busy) return;
     if (demo) { setError("데모 화면에서는 파일을 올릴 수 없습니다."); return; }
     const selectedFiles = [...files].slice(0, 10);
+    const placeholder = `자료 올리는 중… BAUPLOAD${crypto.randomUUID().replaceAll("-", "")}`;
+    insertMarkdown(`\n\n${placeholder}\n\n`);
     setBusy(true); setError("");
     const uploadedPaths: string[] = [];
     try {
@@ -663,9 +676,10 @@ function WorkspaceContent() {
         uploadedPaths.push(signed.path); rememberPendingAttachment(selected.id, signed.path);
         markdown.push(knowledgeAttachmentMarkdown(signed));
       }
-      insertMarkdown(markdown.join("\n\n"));
+      if (!replaceAttachmentPlaceholder(placeholder, markdown.join("\n\n"))) insertMarkdown(markdown.join("\n\n"));
       setToast(`${markdown.length}개 자료를 본문에 넣었습니다. 문서를 저장하면 다른 구성원에게도 보입니다.`);
     } catch (reason) {
+      replaceAttachmentPlaceholder(placeholder, "");
       const cleaned = await cleanupPendingAttachments(selected.id, uploadedPaths);
       setError(`${reason instanceof Error ? reason.message : "자료를 올리지 못했습니다."}${cleaned ? " 먼저 올라간 자료는 정리했습니다." : " 먼저 올라간 자료는 자동 정리 대상으로 남겼습니다."}`);
     }
@@ -675,7 +689,16 @@ function WorkspaceContent() {
     }
   };
 
-  const editorDragHasFiles = (event: React.DragEvent<HTMLElement>) => Array.from(event.dataTransfer.types).includes("Files");
+  const editorDragHasFiles = (event: React.DragEvent<HTMLElement>) => {
+    const types = Array.from(event.dataTransfer.types);
+    return types.includes("Files") && !types.includes("application/x-lexical-drag");
+  };
+  const placeAttachmentDrop = (event: React.DragEvent<HTMLDivElement>, commit = false) => {
+    const editable = event.currentTarget.querySelector<HTMLElement>('.knowledge-rich-content[contenteditable="true"]');
+    if (!editable) return;
+    editable.focus({ preventScroll: true });
+    dispatchKnowledgeFileDropPosition(editable, { clientY: event.clientY, commit });
+  };
   const enterAttachmentDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (!editorDragHasFiles(event)) return;
     event.preventDefault();
@@ -686,14 +709,20 @@ function WorkspaceContent() {
     if (!editorDragHasFiles(event)) return;
     event.preventDefault();
     attachmentDragDepth.current = Math.max(0, attachmentDragDepth.current - 1);
-    if (!attachmentDragDepth.current) setAttachmentDragActive(false);
+    if (!attachmentDragDepth.current) {
+      setAttachmentDragActive(false);
+      const editable = event.currentTarget.querySelector<HTMLElement>('.knowledge-rich-content[contenteditable="true"]');
+      if (editable) dispatchKnowledgeFileDropPosition(editable, { clear: true });
+    }
   };
   const dropAttachments = (event: React.DragEvent<HTMLDivElement>) => {
     if (!editorDragHasFiles(event)) return;
     event.preventDefault();
+    const files = Array.from(event.dataTransfer.files);
+    placeAttachmentDrop(event, true);
     attachmentDragDepth.current = 0;
     setAttachmentDragActive(false);
-    if (!busy) void attachFiles(event.dataTransfer.files);
+    if (!busy) window.requestAnimationFrame(() => void attachFiles(files));
   };
 
   const save = async () => {
@@ -866,7 +895,7 @@ function WorkspaceContent() {
               </div>
               <div className="document-meta-line"><span className={`status-pill status-${selected.status}`}>{statusLabel(selected.status)}</span><span>v{selected.current_version}</span><span>마지막 수정 {formatDate(selected.updated_at)}</span>{dirty ? <strong role="status">저장하지 않은 변경 있음</strong> : null}</div>
               {mode === "edit" ? (
-                <div className={`document-editor${attachmentDragActive ? " attachment-drag-active" : ""}`} onDragEnter={enterAttachmentDrop} onDragLeave={leaveAttachmentDrop} onDragOver={(event) => { if (editorDragHasFiles(event)) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDrop={dropAttachments}>
+                <div className={`document-editor${attachmentDragActive ? " attachment-drag-active" : ""}`} onDragEnter={enterAttachmentDrop} onDragLeave={leaveAttachmentDrop} onDragOver={(event) => { if (editorDragHasFiles(event)) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; placeAttachmentDrop(event); } }} onDrop={dropAttachments}>
                   {attachmentDragActive ? <div className="knowledge-attachment-drop-overlay" role="status"><Paperclip size={28} /><strong>여기에 놓아 자료 첨부</strong><span>이미지·영상·문서·압축 파일을 한 번에 최대 10개까지 올릴 수 있습니다.</span></div> : null}
                   {selected.status === "canonical" ? <div className="canonical-edit-banner"><ShieldAlert size={18} /><span><strong>회사 정본을 편집하고 있습니다.</strong><small>저장하면 전 직원과 AI 검색에 반영되며, 이전 내용은 버전으로 보존됩니다.</small></span></div> : null}
                   <input className="title-input" maxLength={200} disabled={busy} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} aria-label="문서 제목" />
@@ -878,7 +907,7 @@ function WorkspaceContent() {
                   </div>
                   <div className="markdown-toolbar knowledge-insert-toolbar" aria-label="문서 자료 도구"><button type="button" title="다른 OS 문서 연결" onClick={() => setLinkQuery("")}><Link2 size={14} /> OS 문서 연결</button><button type="button" title="웹 링크 넣기" onClick={() => { setExternalLinkError(""); setExternalLinkOpen(true); }}><Link2 size={14} /> 웹 링크</button><button type="button" title="이미지·영상·파일 올리기" disabled={busy} onClick={() => attachmentInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button><input ref={attachmentInputRef} className="knowledge-attachment-input" type="file" multiple tabIndex={-1} aria-hidden="true" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime,video/webm,application/pdf,text/plain,text/csv,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => void attachFiles(event.target.files)} /></div>
                   {attachmentProgress ? <p className="knowledge-attachment-progress" role="status">{attachmentProgress}</p> : null}
-                  <p className="knowledge-markdown-help"><strong>바로 서식이 적용되는 편집기</strong><span>줄 맨 앞에서 <code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용을 입력하고 공백을 누르세요.</span></p>
+                  <p className="knowledge-markdown-help"><strong>바로 서식이 적용되는 편집기</strong><span>줄 맨 앞에서 <code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용을 입력하고 공백을 누르세요. 이미지는 원하는 줄에 놓거나, 첨부 뒤 이미지를 끌어 문단 사이로 옮길 수 있습니다.</span></p>
                   <section className="knowledge-live-editor" aria-label="문서 바로 편집 영역">
                     <KnowledgeRichEditor key={selected.id} ref={editorRef} markdown={draft.content} accessToken={accessToken} disabled={busy} onChange={(content) => setDraft({ ...draft, content })} onError={setError} />
                   </section>
