@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { effectTrack } from "../tools/render-youtube-scene.mjs";
 
-test("the scene-change whoosh is noise, not a repeating buzz", () => {
-  const wav = effectTrack([{ t: 0, kind: "transition" }], 1);
-  const samples = Array.from({ length: 20_000 }, (_, i) => wav.readInt16LE(44 + (1_000 + i) * 2));
-  const corr = (lag) => samples.slice(lag).reduce((sum, v, i) => sum + v * samples[i], 0);
-  // A pitched sound repeats itself; the old generator repeated every 419 samples.
-  for (const lag of [419, 838]) assert.ok(Math.abs(corr(lag) / corr(0)) < 0.5, `repeats at lag ${lag}`);
+test("scene-change sounds play at most once every 4 seconds", () => {
+  const wav = effectTrack([{ t: 0, kind: "transition" }, { t: 1, kind: "transition" }, { t: 5, kind: "transition" }], 6);
+  const loudness = (from) => Array.from({ length: 4_800 }, (_, i) => Math.abs(wav.readInt16LE(44 + (Math.round(from * 48_000) + i) * 2))).reduce((a, b) => Math.max(a, b));
+  assert.ok(loudness(0) > 1_000, "first change sounds");
+  assert.ok(loudness(1.35) < 50, "a change 1 s later stays silent");
+  assert.ok(loudness(5) > 1_000, "a change 5 s later sounds again");
 });

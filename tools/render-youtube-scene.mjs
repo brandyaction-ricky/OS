@@ -74,34 +74,25 @@ export function checkBrief(brief, audioBytes, audioSeconds, catalog, allowProvis
 }
 
 /**
- * Effect sounds are synthesized here, so no audio files or licences are involved. Four kinds, used the same way everywhere:
- * transition (scene change), build (a part is drawn), appear (a character enters), accent (a red underline or ring).
- * Returns a 16-bit mono WAV with each sound placed at its time.
+ * Effect sounds are synthesized here, so no audio files or licences are involved. Soft pops (chosen by the owner on
+ * 2026-09-30): a low round thump on a scene change, a small pop when a part is drawn, a soft note when a character
+ * enters, a faint tick on a red accent. Returns a 16-bit mono WAV with each sound placed at its time.
  */
 export function effectTrack(events, duration, rate = 48_000) {
   const out = new Float32Array(Math.ceil((duration + 1) * rate));
-  // mulberry32: 32-bit integer maths keeps the noise non-repeating. (A plain LCG in floating point repeated every
-  // 419 samples, which turned the whoosh into a ~115 Hz buzz that sounded like a laser.)
+  // mulberry32: deterministic, so the same video renders the same sound.
   let seed = 7;
-  const noise = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 2 ** 31 - 1; };
-  // Soft, low sounds only: no pitch sweeps and no bright noise, so they sit quietly under the voice.
-  const sound = {
-    transition: (t) => { const p = t / 0.45; return p > 1 ? null : Math.sin(Math.PI * p) ** 2 * 0.3; }, // a dark air whoosh
-    build: (t) => (t > 0.16 ? null : (Math.sin(2 * Math.PI * 440 * t) + 0.3 * Math.sin(2 * Math.PI * 880 * t)) * Math.min(1, t * 250) * Math.exp(-t * 32) * 0.28), // a muted tap
-    appear: (t) => (t > 0.7 ? null : (Math.sin(2 * Math.PI * 392 * t) + 0.6 * Math.sin(2 * Math.PI * 587 * t)) * Math.min(1, t * 60) * Math.exp(-t * 6) * 0.14), // a gentle two-note chime
-    accent: (t) => { const p = t / 0.22; return p > 1 ? null : Math.sin(Math.PI * p) * 0.22; }, // a soft paper brush
-  };
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 2 ** 32; };
+  const tone = (f, decay, amp, attack = 0.003) => (t) => (t > 6 / decay ? null : Math.sin(2 * Math.PI * f * t) * Math.min(1, t / attack) * Math.exp(-t * decay) * amp);
+  const sound = { transition: (v) => tone(140 * v, 22, 0.28, 0.006), build: (v) => tone(720 * v, 70, 0.11), appear: (v) => tone(660 * v, 10, 0.08), accent: (v) => tone(1300 * v, 120, 0.05) };
+  let lastTransition = -Infinity;
   for (const { t, kind } of events) {
-    // Noise-based sounds (transition, accent) are low-passed so they stay dark; tones are written directly.
-    let low = 0;
-    for (let i = Math.round(t * rate), n = 0; i < out.length; i++, n++) {
-      const env = sound[kind](n / rate);
-      if (env === null) break;
-      if (kind === "transition") { low += (0.02 + 0.1 * Math.sin(Math.PI * n / rate / 0.45)) * (noise() - low); out[i] += low * env * 2; }
-      else if (kind === "accent") { low += 0.12 * (noise() - low); out[i] += low * env * 1.5; }
-      else out[i] += env;
-    }
+    // Scenes change every few seconds; a scene-change sound plays at most once every 4 s.
+    if (kind === "transition") { if (t - lastTransition < 4) continue; lastTransition = t; }
+    // Slightly different pitch and level each time, so repeats do not sound mechanical.
+    const f = sound[kind](0.94 + rnd() * 0.12), gain = 0.8 + rnd() * 0.2;
+    for (let i = Math.round(t * rate), n = 0; i < out.length; i++, n++) { const v = f(n / rate); if (v === null) break; out[i] += v * gain; }
   }
   const wav = Buffer.alloc(44 + out.length * 2);
   wav.write("RIFF", 0); wav.writeUInt32LE(36 + out.length * 2, 4); wav.write("WAVEfmt ", 8);
@@ -376,7 +367,7 @@ async function main() {
     writeFileSync(effects, effectTrack(await page.evaluate(() => window.soundCues()), duration));
     // Voice: low rumble cut and light noise reduction; effects sit well under it. The mix is measured once, then levelled
     // linearly to YouTube's -14 LUFS; a limiter first keeps enough peak headroom for that gain.
-    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]lowpass=f=3000,volume=0.4[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
+    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]lowpass=f=6000,volume=0.5[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
     const measured = spawnSync("ffmpeg", ["-hide_banner", "-i", args.audio, "-i", effects, "-filter_complex", `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json`, "-f", "null", "-"],
       { encoding: "utf8" }).stderr;
     const m = JSON.parse(measured.slice(measured.lastIndexOf("{"), measured.lastIndexOf("}") + 1));
