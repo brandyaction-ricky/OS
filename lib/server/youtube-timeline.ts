@@ -254,7 +254,7 @@ export function alignYoutubeVisualBeats(
       if (!size) return [];
       const first = segment.words[characterWordIndexes[offset]], last = segment.words[characterWordIndexes[offset + size - 1]];
       offset += size;
-      return [{ text: chunk.replace(/[.,]$/, ""), startSeconds: segment.offsetSeconds + first.startSeconds, endSeconds: segment.offsetSeconds + last.endSeconds }];
+      return [{ text: chunk.replace(/["“”‘’]/g, "").replace(/[.,]$/, ""), startSeconds: segment.offsetSeconds + first.startSeconds, endSeconds: segment.offsetSeconds + last.endSeconds }];
     });
     const bold = captionBold(lines.map((line) => line.text), scene.emphasis ?? []);
     lines.forEach((line, i) => {

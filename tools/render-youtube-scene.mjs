@@ -8,7 +8,7 @@
  *   [--allow-provisional-study] [--check-only] [--fps 24]
  */
 import { createHash } from "node:crypto";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -22,20 +22,21 @@ const VERSION = YOUTUBE_VISUAL_TEMPLATE_VERSION;
 const W = 1280, H = 720;
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fail = (message) => { throw new Error(message); };
-// Pretendard (OFL-1.1) renders identically on macOS and the Linux media worker.
-const FONTS = {
-  600: ["https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-SemiBold.woff2", "c863f76a7de5c1ddc1ed8b2fa794964530774592c4f31407a84e2a2ae93f17f0"],
-  800: ["https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-ExtraBold.woff2", "dd7c1e156f508eb962acc7a33a7a1896d1e0b71e11156fad96e731689ceb6dc3"],
-};
+// Pretendard (captions, chapter bar) and Gaegu (hand-written scene text), both OFL-1.1, render identically on every worker.
+const FONTS = [
+  ["Pretendard", 600, "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-SemiBold.woff2", "c863f76a7de5c1ddc1ed8b2fa794964530774592c4f31407a84e2a2ae93f17f0", "woff2"],
+  ["Pretendard", 800, "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-ExtraBold.woff2", "dd7c1e156f508eb962acc7a33a7a1896d1e0b71e11156fad96e731689ceb6dc3", "woff2"],
+  ["Gaegu", 700, "https://cdn.jsdelivr.net/gh/google/fonts@16680f8688ffcd467d2eb2146a9ce0343404581d/ofl/gaegu/Gaegu-Bold.ttf", "cc38a4af9506a45254d1ce07c589ec473d9e5f0be319e5a77b17c214903f8c1c", "truetype"],
+];
 
 async function fontFaces() {
   const faces = [];
-  for (const [weight, [url, digest]] of Object.entries(FONTS)) {
-    const cached = path.join(os.tmpdir(), `brandyaction-${digest}.woff2`);
+  for (const [family, weight, url, digest, format] of FONTS) {
+    const cached = path.join(os.tmpdir(), `brandyaction-${digest}.font`);
     let bytes = existsSync(cached) ? readFileSync(cached) : Buffer.from(await (await fetch(url)).arrayBuffer());
     if (sha256(bytes) !== digest) fail(`Font checksum changed: ${url}`);
     writeFileSync(cached, bytes);
-    faces.push(`@font-face{font-family:"Pretendard";font-weight:${weight};src:url(data:font/woff2;base64,${bytes.toString("base64")}) format("woff2")}`);
+    faces.push(`@font-face{font-family:"${family}";font-weight:${weight};src:url(data:font/${format === "woff2" ? "woff2" : "ttf"};base64,${bytes.toString("base64")}) format("${format}")}`);
   }
   return faces.join("");
 }
@@ -108,17 +109,20 @@ export function effectTrack(events, duration, rate = 48_000) {
 
 /** Scenes are drawn between the chapter bar at the top and the spoken caption at the bottom. */
 const STAGE_TOP = 90, STAGE_BOTTOM = 590;
+/** Scene frames on the continuous sheet: columns per row and the distance between frames. */
+const SHEET_COLUMNS = 3, SHEET_STEP_X = 1350, SHEET_STEP_Y = 660;
+/** Gaegu draws Hangul smaller than Pretendard at the same size; template sizes are scaled by this. */
+const GAEGU_SCALE = 1.15;
 
 export function pageHtml(beats, characters, faces, captions = [], chapters = [], duration = 0) {
   const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
-    text{font-family:"Pretendard";font-weight:600;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
+    text{font-family:"Gaegu";font-weight:700;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
     .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}
-    .b7{font-weight:700} .b8{font-weight:800} .start{text-anchor:start} .end{text-anchor:end} .inv{fill:#fff}`;
+    .b7,.b8,.acc,.sm{font-weight:700} .start{text-anchor:start} .end{text-anchor:end} .inv{fill:#fff}`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
   html,body{margin:0;width:${W}px;height:${H}px;background:${C.paper};overflow:hidden}
-  svg{position:absolute;inset:0}
-  /* Spoken caption at the top like the reference: no box, regular weight, keywords in bold. */
+  #sheet{position:absolute;left:0;top:0;transform-origin:0 0} #sheet>svg{position:absolute;overflow:visible}
   /* Spoken caption in the bottom safe area; one phrase in bold. */
   #cap{position:absolute;left:0;right:0;bottom:56px;text-align:center;font:500 36px "Pretendard";color:#2a2d30;letter-spacing:-.5px;white-space:nowrap;z-index:2}
   #cap b{font-weight:800;color:${C.ink}}
@@ -128,9 +132,10 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
   #bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:${C.red}}
   #bar span{position:absolute;left:0;top:13px;font:500 19px "Pretendard";color:${C.muted};white-space:nowrap}
   #bar div.on span{font-weight:800;color:${C.ink}}</style></head><body><div id="bar"></div><div id="cap"></div>
-  ${beats.map((beat, i) => `<svg id="b${i}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:none"><style>${style}</style>
+  <svg width="0" height="0" style="position:absolute">${[1, 2, 3].map((n) => `<filter id="pencil${n}" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="9000" height="9000"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${n * 7}"/><feDisplacementMap in="SourceGraphic" scale="4"/></filter>`).join("")}</svg>
+  <div id="sheet">${beats.map((beat, i) => `<svg id="b${i}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:none"><style>${style}</style>
     <defs><filter id="line${i}"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0 1 1 1"/><feFuncG type="discrete" tableValues="0 1 1 1"/><feFuncB type="discrete" tableValues="0 1 1 1"/></feComponentTransfer></filter></defs>
-    ${beat.svg.replace(/<image data-character="([a-z0-9_-]+)"/g, (_, id) => `<image href="${characters.get(id)}" preserveAspectRatio="xMidYMid meet" data-character="${id}"`)}</svg>`).join("")}
+    ${beat.svg.replace(/<image data-character="([a-z0-9_-]+)"/g, (_, id) => `<image href="${characters.get(id)}" preserveAspectRatio="xMidYMid meet" data-character="${id}"`)}</svg>`).join("")}</div>
   <script>
   const beats = ${JSON.stringify(beats.map((beat) => ({ ...beat, svg: undefined })))};
   const captions = ${JSON.stringify(captions)};
@@ -158,6 +163,8 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
     const add = (svg, tag, attrs, after) => { const el = document.createElementNS(ns, tag);
       Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); after.after(el);
       if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; } return el; };
+    // Gaegu's Hangul sits small in its em box; enlarge it to read like the template size.
+    document.querySelectorAll('#sheet text').forEach(el => el.setAttribute('font-size', (+el.getAttribute('font-size') || 30) * ${GAEGU_SCALE}));
     document.querySelectorAll('svg[id^="b"]').forEach((svg, i) => {
       svg.style.display = '';
       svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6;
@@ -179,10 +186,88 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
       }
       svg.style.display = 'none';
     });
+    layoutSheet();
   };
+  // One continuous sheet: scenes run left→right, then right→left on the next row, so each move is short. The camera follows
+  // what has just been drawn, whips with a slight settle to each new scene, and pulls back over a part's last scenes at its end.
+  const svgs = [...document.querySelectorAll('#sheet > svg')], sheet = document.getElementById('sheet');
+  let keys = [], links = [], pulls = [];
+  const easeBack = x => { x = Math.max(0, Math.min(1, x)); return 1 + 2.3 * (x - 1) ** 3 + 1.3 * (x - 1) ** 2; };
+  const lerp = (a, b, e) => ({ x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, k: a.k + (b.k - a.k) * e });
+  const union = boxes => boxes.reduce((a, b) => ({ x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1), x2: Math.max(a.x2, b.x2), y2: Math.max(a.y2, b.y2) }));
+  const camAt = (key, t) => lerp(key.from, key.to, (key.whip ? easeBack : ease)((t - key.t) / key.dur));
+  function layoutSheet() {
+    const ns = 'http://www.w3.org/2000/svg';
+    const spot = i => { const row = Math.floor(i / ${SHEET_COLUMNS}), col = i % ${SHEET_COLUMNS}; return { x: (row % 2 ? ${SHEET_COLUMNS} - 1 - col : col) * ${SHEET_STEP_X}, y: row * ${SHEET_STEP_Y} }; };
+    svgs.forEach((svg, i) => { const p = spot(i); svg.style.left = p.x + 'px'; svg.style.top = p.y + 'px'; svg.style.display = ''; svg.style.visibility = 'visible';
+      svg.querySelectorAll('.i,.r,rect,circle,ellipse,line,path,polyline').forEach(el => el.classList.add('pen')); });
+    // Where each scene's parts land on the sheet, accumulated per reveal group.
+    const extents = svgs.map((svg, i) => {
+      const groups = new Map();
+      svg.querySelectorAll('[data-k]').forEach(el => {
+        if (el.tagName === 'g') return;
+        const r = el.getBoundingClientRect(), g = +(el.dataset.g || 0);
+        if (!r.width && !r.height) return;
+        const box = { x1: r.left, y1: r.top, x2: r.right, y2: r.bottom };
+        groups.set(g, groups.has(g) ? union([groups.get(g), box]) : box);
+      });
+      let acc = null;
+      return [...groups.keys()].sort((a, b) => a - b).map(g => {
+        acc = acc ? union([acc, groups.get(g)]) : groups.get(g);
+        return { t: beats[i].visualStartSeconds + (g ? (beats[i].cueSeconds?.[g] ?? g * .45) : 0), box: acc };
+      });
+    });
+    svgs.forEach(svg => { svg.style.display = 'none'; svg.style.visibility = ''; });
+    const view = (box, fill = 1) => { const w = box.x2 - box.x1 + 160, h = box.y2 - box.y1 + 120;
+      return { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2, k: fill < 1 ? Math.min(1120 / w, 470 / h) : Math.max(.8, Math.min(1.2, 1120 / w, 470 / h)) }; };
+    keys = extents.flatMap((list, i) => list.map((e, n) => ({ t: e.t, to: view(e.box), dur: n || !i ? .8 : .6, whip: !n && i > 0 })));
+    // At the end of each named part, pull back over its last scenes (up to six) before the next part begins.
+    pulls = chapters.length > 1 ? chapters.map((c, n) => {
+      const end = chapters[n + 1]?.startSeconds ?? total, own = extents.filter((list, i) => list.length && beats[i].visualStartSeconds >= c.startSeconds - .01 && beats[i].visualStartSeconds < end);
+      return own.length > 1 && end - c.startSeconds > 8 ? { t: end - 2.4, to: view(union(own.slice(-6).map(list => list.at(-1).box)), 0), dur: 1.2, pull: true, end } : null;
+    }).filter(Boolean) : [];
+    keys = keys.filter(key => !pulls.some(p => key.t >= p.t && key.t < p.end)).concat(pulls).sort((a, b) => a.t - b.t);
+    keys.forEach((key, n) => { key.from = n ? camAt(keys[n - 1], key.t) : key.to; });
+    // A pencil line from the last drawing of one scene to the first of the next, drawn during the move.
+    const link = document.createElementNS(ns, 'svg');
+    link.setAttribute('width', 1); link.setAttribute('height', 1); link.style.cssText = 'position:absolute;left:0;top:0;overflow:visible';
+    sheet.insertBefore(link, sheet.firstChild);
+    links = extents.slice(1).map((next, k) => {
+      if (!extents[k].length || !next.length) return null;
+      const a = extents[k].at(-1).box, b = next[0].box, ac = { x: (a.x1 + a.x2) / 2, y: (a.y1 + a.y2) / 2 }, bc = { x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2 };
+      const across = Math.abs(bc.x - ac.x) > Math.abs(bc.y - ac.y), right = bc.x > ac.x;
+      const from = across ? { x: right ? a.x2 + 30 : a.x1 - 30, y: ac.y + 40 } : { x: ac.x - 80, y: a.y2 + 30 };
+      const to = across ? { x: right ? b.x1 - 30 : b.x2 + 30, y: bc.y + 40 } : { x: bc.x - 80, y: b.y1 - 30 };
+      const bend = across ? { x: (from.x + to.x) / 2, y: Math.max(from.y, to.y) + 160 } : { x: Math.min(from.x, to.x) - 220, y: (from.y + to.y) / 2 };
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', 'M' + from.x + ' ' + from.y + 'Q' + bend.x + ' ' + bend.y + ' ' + to.x + ' ' + to.y);
+      path.setAttribute('class', 'pen'); path.setAttribute('pathLength', 1);
+      path.style.cssText = 'stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1';
+      link.appendChild(path);
+      return { path, t: beats[k + 1].visualStartSeconds };
+    }).filter(Boolean);
+  }
+  let boiled = 0;
   window.render = t => {
     const active = beats.findIndex(b => b.visualStartSeconds <= t && t < b.endSeconds);
-    beats.forEach((b, i) => document.getElementById('b' + i).style.display = i === active ? '' : 'none');
+    const reached = beats.reduce((last, b, i) => (b.visualStartSeconds <= t ? i : last), -1);
+    // Scenes stay on the sheet once drawn; only the few near the camera are painted.
+    beats.forEach((b, i) => { const svg = svgs[i], near = i <= reached && i > reached - 7;
+      svg.style.display = near ? '' : 'none';
+      if (near && i !== active) svg.querySelectorAll('[data-k]').forEach(el => { const k = el.dataset.k;
+        if (k === 'draw') { el.style.strokeDashoffset = 0; el.style.opacity = 1; el.style.fillOpacity = 1; }
+        else if (k === 'fade') { el.style.opacity = 1; el.style.transform = 'none'; }
+        else if (k === 'grow-x' || k === 'grow-y') el.style.transform = 'none';
+        else if (k === 'character') { el._sweep.setAttribute('width', el.getAttribute('width')); el.style.opacity = 1; } }); });
+    const boil = Math.floor(t * 12) % 3 + 1;
+    if (boil !== boiled) { boiled = boil; sheet.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
+    // A connector is drawn during the move, fades once the camera arrives, and shows again during a pull back.
+    const pulling = pulls.some(p => t >= p.t && t < p.end);
+    links.forEach(l => { l.path.style.strokeDashoffset = 1 - ease((t - l.t + .1) / .6); l.path.style.opacity = pulling ? .6 : 1 - ease((t - l.t - .7) / .4); });
+    const key = [...keys].reverse().find(k => k.t <= t) ?? keys[0];
+    if (key) { const cam = camAt(key, t), p = (t - key.t) / key.dur, blur = (key.whip || key.pull) && p < 1 ? Math.sin(Math.PI * p) * 2 : 0;
+      sheet.style.transform = 'translate(' + (640 - cam.x * cam.k) + 'px,' + (${(STAGE_TOP + STAGE_BOTTOM) / 2} - cam.y * cam.k) + 'px) scale(' + cam.k + ')';
+      svgs.forEach(svg => { svg.style.filter = blur > .4 ? 'blur(' + blur.toFixed(2) + 'px)' : ''; }); }
     const cap = document.getElementById('cap'), line = captions.find(c => c.startSeconds <= t && t < c.endSeconds);
     const esc = v => v.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
     const bold = line?.bold?.[0], at = bold ? line.text.indexOf(bold) : -1;
@@ -190,6 +275,7 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
     [...bar.children].forEach((d, i) => { const p = parts[i], f = Math.max(0, Math.min(1, (t - p.startSeconds) / (p.end - p.startSeconds)));
       d.querySelector('i').style.width = (f * 100) + '%'; d.classList.toggle('on', p.startSeconds <= t && t < p.end); });
     if (active < 0) return;
+    svgs[active].style.display = '';
     const b = beats[active], local = (t - b.visualStartSeconds) / b.timeScale;
     document.getElementById('b' + active).querySelectorAll('[data-k]').forEach(el => {
       const g = +(el.dataset.g || 0), cue = b.cueSeconds?.[g] ?? g * .45;
@@ -217,6 +303,7 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
       });
       groups.forEach((kind, g) => events.push({ t: b.visualStartSeconds + (b.cueSeconds?.[g] ?? g * .45) + (g ? 0 : .12), kind }));
     });
+    pulls.forEach(p => events.push({ t: p.t, kind: 'transition' }));
     events.sort((a, b) => a.t - b.t);
     return events.filter((e, i) => !i || e.t - events[i - 1].t >= .25);
   };
@@ -281,12 +368,18 @@ async function main() {
     if (problems.length) console.warn(`layout warnings (${problems.length}):\n${problems.join("\n")}`);
     if (args["check-only"]) return console.log(`layout ok: ${beats.length} beats`);
     mkdirSync(path.dirname(path.resolve(args.output)), { recursive: true });
-    const effects = path.join(os.tmpdir(), `brandyaction-effects-${process.pid}.wav`);
+    const effects = path.join(os.tmpdir(), `brandyaction-effects-${process.pid}.wav`), mixed = path.join(os.tmpdir(), `brandyaction-mix-${process.pid}.wav`);
     writeFileSync(effects, effectTrack(await page.evaluate(() => window.soundCues()), duration));
-    // Voice: low rumble cut and light noise reduction; effects sit well under it; the mix is levelled to YouTube's -14 LUFS.
-    const mix = "[1:a]highpass=f=70,afftdn=nf=-30[v];[2:a]volume=0.35[e];[v][e]amix=inputs=2:duration=first:normalize=0,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]";
-    const ffmpeg = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "pipe:0", "-i", args.audio, "-i", effects,
-      "-filter_complex", mix, "-map", "0:v", "-map", "[a]",
+    // Voice: low rumble cut and light noise reduction; effects sit well under it. The mix is measured once, then levelled
+    // linearly to YouTube's -14 LUFS; a limiter first keeps enough peak headroom for that gain.
+    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]volume=0.35[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
+    const measured = spawnSync("ffmpeg", ["-hide_banner", "-i", args.audio, "-i", effects, "-filter_complex", `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json`, "-f", "null", "-"],
+      { encoding: "utf8" }).stderr;
+    const m = JSON.parse(measured.slice(measured.lastIndexOf("{"), measured.lastIndexOf("}") + 1));
+    execFileSync("ffmpeg", ["-v", "error", "-y", "-i", args.audio, "-i", effects, "-filter_complex",
+      `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`, mixed]);
+    const ffmpeg = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "pipe:0", "-i", mixed,
+      "-map", "0:v", "-map", "1:a",
       "-t", String(duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
       "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", args.output], { stdio: ["pipe", "inherit", "inherit"] });
     const done = new Promise((resolve, reject) => ffmpeg.on("close", (code) => code ? reject(new Error("Video encoder failed")) : resolve()));
