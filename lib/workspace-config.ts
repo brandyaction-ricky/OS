@@ -9,6 +9,7 @@ export interface WorkspaceConfig {
   singular: string;
   empty: string;
   statuses: { value: string; label: string }[];
+  statusAliases?: Record<string, string>;
   defaultStatus: string;
   metricMode?: "progress" | "target" | "amount" | "schedule";
   defaultUnit?: string;
@@ -24,7 +25,7 @@ const flow = (...values: string[]) => values.map((value) => ({ value, label: ({
 
 export const WORKSPACE_CONFIGS: Record<string, WorkspaceConfig> = {
   "/home/goals": { href: "/home/goals", recordType: "goal", eyebrow: "목표 관리", title: "목표·KPI", description: "회사 목표를 수치와 실행 업무로 연결합니다.", singular: "목표", empty: "첫 목표와 측정 지표를 등록하세요.", statuses: flow("planned", "active", "blocked", "done"), defaultStatus: "active", metricMode: "target", defaultUnit: "%", helper: "목표값과 현재값을 입력하면 달성률이 자동으로 보입니다." },
-  "/home/decisions": { href: "/home/decisions", recordType: "decision", eyebrow: "결정 기록", title: "의사결정", description: "무엇을 왜 결정했는지 남기고 후속 실행을 추적합니다.", singular: "결정", empty: "첫 의사결정을 기록하세요.", statuses: flow("open", "review", "decided", "cancelled"), defaultStatus: "open", helper: "배경·선택지·결정 근거·후속 행동을 설명에 남겨두세요." },
+  "/home/decisions": { href: "/home/decisions", recordType: "decision", eyebrow: "결정 기록", title: "의사결정", description: "무엇을 왜 결정했는지 남기고 후속 실행을 추적합니다.", singular: "결정", empty: "첫 의사결정을 기록하세요.", statuses: flow("open", "review", "decided", "cancelled"), statusAliases: { completed: "decided", superseded: "cancelled" }, defaultStatus: "open", helper: "배경·선택지·결정 근거·후속 행동을 설명에 남겨두세요." },
   "/content/topics": { href: "/content/topics", recordType: "content_topic", eyebrow: "콘텐츠 제작 공정", title: "주제·기획", description: "콘텐츠 아이디어를 우선순위와 제작 단계로 관리합니다.", singular: "콘텐츠 주제", empty: "제작할 첫 콘텐츠 주제를 등록하세요.", statuses: flow("backlog", "planned", "active", "review", "done"), defaultStatus: "backlog", helper: "타깃·문제·핵심 메시지와 참고 링크를 함께 기록하세요." },
   "/content/scripts": { href: "/content/scripts", recordType: "content_script", eyebrow: "원고 작업공간", title: "원고·스크립트", description: "원고 작성과 검토 상태를 한곳에서 관리합니다.", singular: "원고", empty: "작성할 원고를 등록하세요.", statuses: flow("draft", "active", "review", "done"), defaultStatus: "draft", metricMode: "progress", helper: "관련 주제와 원고 문서를 연결할 수 있도록 출처 링크를 남겨두세요." },
   "/content/packages": { href: "/content/packages", recordType: "content_package", eyebrow: "제목·썸네일 작업", title: "제목·썸네일", description: "제목과 썸네일 후보의 검토·승인을 관리합니다.", singular: "제목·썸네일 안", empty: "검토할 제목 또는 썸네일 안을 등록하세요.", statuses: flow("draft", "review", "ready", "done"), defaultStatus: "draft", helper: "ThumbnailPeak 결과나 시안 링크를 출처 링크에 붙일 수 있습니다." },
@@ -47,3 +48,12 @@ export const WORKSPACE_CONFIGS: Record<string, WorkspaceConfig> = {
   "/settings/company": { href: "/settings/company", recordType: "company_setting", eyebrow: "회사 공통 설정", title: "회사 설정", description: "회사 공통 운영 기준과 기본값을 관리합니다.", singular: "회사 설정", empty: "회사 기본 운영 기준을 등록하세요.", statuses: flow("draft", "active", "done"), defaultStatus: "active", helper: "회사명·업무시간·기본 팀·승인 원칙을 기록하세요." },
   "/settings/channels": { href: "/settings/channels", recordType: "channel", eyebrow: "메시지 창구", title: "메시지 창구", description: "Telegram·Slack 등 질문과 알림 통로를 관리합니다.", singular: "메시지 창구", empty: "연결할 메시지 창구를 등록하세요.", statuses: flow("disconnected", "warning", "healthy"), defaultStatus: "disconnected", helper: "토큰은 기록하지 말고 채널명·목적·허용 사용자 정책만 남기세요." },
 };
+
+export function normalizedWorkspaceStatus(config: WorkspaceConfig, status: string) {
+  return config.statusAliases?.[status] ?? status;
+}
+
+export function workspaceStatusLabel(config: WorkspaceConfig, status: string) {
+  const normalized = normalizedWorkspaceStatus(config, status);
+  return config.statuses.find((item) => item.value === normalized)?.label ?? normalized;
+}

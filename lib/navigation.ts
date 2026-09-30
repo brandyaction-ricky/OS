@@ -38,6 +38,7 @@ export interface NavPage {
   label: string;
   href: string;
   icon: typeof Home;
+  navHref?: string;
   group?: string;
   description?: string;
   ready?: boolean;
@@ -138,7 +139,21 @@ export const NAV_STAGES: NavStage[] = [
   },
 ];
 
+const NAV_ALIASES = [
+  { href: "/content/automation", stageId: "content", pageHref: "/content/publishing", label: "멀티채널 자동화" },
+  { href: "/content/review", stageId: "content", pageHref: "/content/publishing", label: "검토·발행 대기목록" },
+  { href: "/content/calendar", stageId: "content", pageHref: "/content/publishing", label: "발행 캘린더" },
+] as const;
+
+function matchingAlias(pathname: string) {
+  return [...NAV_ALIASES]
+    .sort((a, b) => b.href.length - a.href.length)
+    .find((alias) => pathname === alias.href || pathname.startsWith(`${alias.href}/`));
+}
+
 export function findStage(pathname: string) {
+  const alias = matchingAlias(pathname);
+  if (alias) return NAV_STAGES.find((stage) => stage.id === alias.stageId) ?? NAV_STAGES[0];
   return (
     NAV_STAGES.find((stage) =>
       stage.pages.some((page) =>
@@ -150,6 +165,11 @@ export function findStage(pathname: string) {
 
 export function findPage(pathname: string) {
   const pages = NAV_STAGES.flatMap((stage) => stage.pages);
+  const alias = matchingAlias(pathname);
+  if (alias) {
+    const page = pages.find((item) => item.href === alias.pageHref) ?? pages[0];
+    return { ...page, href: alias.href, label: alias.label, navHref: alias.pageHref };
+  }
   return (
     [...pages]
       .sort((a, b) => b.href.length - a.href.length)

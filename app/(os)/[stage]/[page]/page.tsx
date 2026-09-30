@@ -1,4 +1,5 @@
 import { OperationsWorkspace } from "@/components/operations-workspace";
+import type { Metadata } from "next";
 import { PlaceholderPage } from "@/components/placeholder-page";
 import { MembersWorkspace } from "@/components/members-workspace";
 import { AuditWorkspace } from "@/components/audit-workspace";
@@ -25,13 +26,21 @@ import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/co
 import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
 import { ProjectHubWorkspace } from "@/components/project-hub-workspace";
-import { NAV_STAGES } from "@/lib/navigation";
+import { findPage, NAV_STAGES } from "@/lib/navigation";
 import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gate";
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 
-export default async function GenericPage({ params }: { params: Promise<{ stage: string; page: string }> }) {
+type GenericPageProps = { params: Promise<{ stage: string; page: string }> };
+
+export async function generateMetadata({ params }: GenericPageProps): Promise<Metadata> {
+  const resolved = await params;
+  const page = findPage(`/${resolved.stage}/${resolved.page}`);
+  return { title: `${page.label} | 브랜디 OS` };
+}
+
+export default async function GenericPage({ params }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
