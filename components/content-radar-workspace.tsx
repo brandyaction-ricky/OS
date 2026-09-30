@@ -23,6 +23,7 @@ import { apiRequest, createRecord, generateContent, listAllRecordsOfType, resolv
 import { structureBorrowInput } from "@/lib/structure-borrow";
 import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
+import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
@@ -124,12 +125,25 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const nicheTopics = useMemo(() => nicheQueue.filter((topic) => topic.status !== "planned"), [nicheQueue]);
   const plannedTopics = useMemo(() => nicheQueue.filter((topic) => topic.status === "planned"), [nicheQueue]);
   const plans = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "topic_plan"), [packages]);
+  const appealSets = useMemo(() => packages
+    .filter((record) => meta<string>(record, "packageKind", "") === "appeal_candidates")
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
   const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
   const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
   const plan = plans.find((record) => record.parent_id === selected?.id) ?? null;
+  const appealSet = appealSets.find((record) => record.parent_id === selected?.id) ?? null;
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
+  const appealResult = meta<Record<string, unknown>>(appealSet, "result", {});
+  const appealCandidates = normalizeAppealCandidates(appealResult.candidates);
+  const approvedAppealItems = approvedAppeals(appealCandidates);
+  const researchBrief = meta<Record<string, unknown>>(selected, "researchBrief", {});
+  const researchMatchesAppeals = Boolean(appealSet
+    && researchBrief.appealPackageId === appealSet.id
+    && Number(researchBrief.appealPackageVersion) === appealSet.version);
+  const researchReady = researchMatchesAppeals && researchBriefReady(researchBrief);
+  const workflowState = appealWorkflowState(appealCandidates, researchReady);
 
   useEffect(() => {
     if ((tab === "niches" || tab === "planning") && !visibleTopics.some((topic) => topic.id === selectedId)) {
@@ -334,6 +348,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const makePlan = async () => {
     if (!selected) return;
+    if (!researchReady) return setError("승인된 소구점의 레퍼런스 검증을 먼저 완료해 주세요.");
     setBusy(true); setError("");
     try {
       const response = await generateContent(accessToken, { action: "topic_plan", sourceId: selected.id });
@@ -344,8 +359,47 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     } finally { setBusy(false); }
   };
 
+  const makeAppeals = async () => {
+    if (!selected) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await generateContent(accessToken, { action: "appeal_candidates", sourceId: selected.id, count: 10 });
+      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      else setNotice("설명과 레퍼런스 없이 소구점 후보 10개를 만들었습니다. 진행할 후보를 사람이 승인해 주세요.");
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "소구점 후보를 만들지 못했습니다.");
+    } finally { setBusy(false); }
+  };
+
+  const decideAppeal = async (index: number, decision: AppealDecision) => {
+    if (!appealSet) return;
+    const decidedAt = new Date().toISOString();
+    const next = decideAppealCandidate(appealCandidates, index, decision, decidedAt);
+    const nextState = appealWorkflowState(next, false);
+    const history = Array.isArray(appealSet.metadata?.decisionHistory) ? appealSet.metadata.decisionHistory : [];
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const { record } = await updateRecord(accessToken, {
+        id: appealSet.id,
+        expectedVersion: appealSet.version,
+        metadata: {
+          ...appealSet.metadata,
+          workflowStage: nextState.stage,
+          result: { ...appealResult, candidates: next },
+          decisionHistory: [...history, { candidateIndex: index, text: next[index]?.text ?? "", decision, decidedAt }].slice(-100),
+        },
+      });
+      setPackages((current) => current.map((item) => item.id === record.id ? record : item));
+      setNotice("소구점 판정을 저장했습니다. 승인 구성이 바뀌면 레퍼런스를 다시 검증해야 합니다.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "소구점 판정을 저장하지 못했습니다.");
+    } finally { setBusy(false); }
+  };
+
   const decideTopic = async (status: "planned" | "review" | "blocked") => {
     if (!selected) return;
+    if (status === "planned" && !researchReady) return setError("승인된 소구점과 레퍼런스 검증을 완료한 뒤 기획으로 넘길 수 있습니다.");
     setBusy(true); setError("");
     try {
       const { record } = await updateRecord(accessToken, {
@@ -383,9 +437,27 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const saveResearchBrief = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || !appealSet || !approvedAppealItems.length) return setError("먼저 진행할 소구점을 한 개 이상 승인해 주세요.");
     const form = new FormData(event.currentTarget);
-    const sourceUrls = formText(form, "researchSources").split("\n").map((value) => value.trim()).filter(Boolean).slice(0, 20);
+    const youtubeUrls = formText(form, "youtubeSources").split("\n").map((value) => value.trim()).filter(Boolean).slice(0, 10);
+    const instagramUrls = formText(form, "instagramSources").split("\n").map((value) => value.trim()).filter(Boolean).slice(0, 10);
+    const sourceUrls = [...youtubeUrls, ...instagramUrls];
+    const nextBrief: AppealResearchBrief & Record<string, unknown> = {
+      sourceUrls,
+      youtubeUrls,
+      instagramUrls,
+      topicFit: formText(form, "topicFit"),
+      audienceFit: formText(form, "audienceFit"),
+      queryIntentFit: formText(form, "queryIntentFit"),
+      verifiedMetrics: formText(form, "verifiedMetrics"),
+      limitations: formText(form, "limitations"),
+      analystNotes: formText(form, "analystNotes"),
+      brandContext: formText(form, "brandContext"),
+      verifiedAt: new Date().toISOString(),
+      appealPackageId: appealSet.id,
+      appealPackageVersion: appealSet.version,
+      approvedAppeals: approvedAppealItems.map((item) => ({ text: item.text, decidedAt: item.decidedAt ?? null })),
+    };
     setBusy(true); setError("");
     try {
       const { record } = await updateRecord(accessToken, {
@@ -393,16 +465,11 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         expectedVersion: selected.version,
         metadata: {
           ...selected.metadata,
-          researchBrief: {
-            brandContext: formText(form, "brandContext"),
-            analystNotes: formText(form, "analystNotes"),
-            sourceUrls,
-            updatedAt: new Date().toISOString(),
-          },
+          researchBrief: nextBrief,
         },
       });
       setRecords((current) => current.map((item) => item.id === record.id ? record : item));
-      setNotice("리서치 근거와 브랜드 메모를 저장했습니다.");
+      setNotice(researchBriefReady(nextBrief) ? "레퍼런스 검증을 완료했습니다. 이제 기획안을 만들 수 있습니다." : "리서치 초안을 저장했습니다. URL·세 가지 적합성·검증 한계를 모두 채우면 다음 단계가 열립니다.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "리서치 메모를 저장하지 못했습니다.");
     } finally { setBusy(false); }
@@ -470,20 +537,32 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         <div className="panel"><Target size={17} /><span><strong>{outliers.length}</strong><small>단일 근거 영상</small></span></div>
         <div className="panel"><FileText size={17} /><span><strong>{plans.length}</strong><small>완성 기획안</small></span></div>
       </section>
+      {notice ? <p className="inline-alert" role="status">{notice}</p> : null}
       <section className="content-planning-layout">
         <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "미정이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "미정"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
-          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy} onClick={makePlan}><Sparkles size={14} /> 제목·썸네일 후보 뽑기</button></header>
+          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy || !researchReady} title={researchReady ? "검증된 소구점으로 기획안을 만듭니다." : workflowState.blocker} onClick={makePlan}><Sparkles size={14} /> 기획안 만들기</button></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
-          <form className="research-brief" key={`${selected.id}-${selected.version}`} onSubmit={saveResearchBrief}>
-            <div><h3>리서치 브리프</h3><p>별도 앱으로 옮기지 않고, 이 주제에 근거 출처·분석 메모·브랜드 맥락을 함께 남깁니다.</p></div>
-            <label><span>추적 출처 URL · 한 줄에 하나</span><textarea name="researchSources" rows={3} defaultValue={(meta<Record<string, unknown>>(selected, "researchBrief", {}).sourceUrls as string[] | undefined ?? [selected.source_url].filter(Boolean)).join("\n")} placeholder="https://…" /></label>
-            <label><span>분석 메모</span><textarea name="analystNotes" rows={4} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).analystNotes ?? "")} placeholder="왜 반응했는지, 구조·훅·증거·주의할 점" /></label>
-            <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(meta<Record<string, unknown>>(selected, "researchBrief", {}).brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
-            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>리서치 메모 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/scripts?sourceId=${selected.id}`}>스크립트 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
-          </form>
-          {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>AI는 근거와 후보를 제안하고, 이 결정은 사람이 저장합니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
-          {candidates.length ? <div className="planning-candidates"><h3>제목·썸네일 출발 후보</h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "제목 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 정본 실행 후 제목·썸네일 후보와 다음 공정 HANDOFF가 표시됩니다.</div>}
+          <section className="appeal-workflow">
+            <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><button type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onClick={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</button></div>
+            <dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selected.id}</dd></div><div><dt>후보 세트 버전</dt><dd>{appealSet ? String(meta(appealSet, "candidateSetVersion", appealSet.created_at)) : "없음"}</dd></div><div><dt>승인</dt><dd>{approvedAppealItems.length}개</dd></div><div><dt>막힌 이유</dt><dd>{workflowState.blocker || "없음"}</dd></div></dl>
+            {appealCandidates.length ? <div className="appeal-candidate-list">{appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><span>{index + 1}</span><strong>{candidate.text}</strong><div><button type="button" className={candidate.decision === "approved" ? "active" : ""} aria-pressed={candidate.decision === "approved"} disabled={busy} onClick={() => decideAppeal(index, "approved")}>승인</button><button type="button" className={candidate.decision === "revision" ? "active" : ""} aria-pressed={candidate.decision === "revision"} disabled={busy} onClick={() => decideAppeal(index, "revision")}>수정 요청</button><button type="button" className={candidate.decision === "held" ? "active" : ""} aria-pressed={candidate.decision === "held"} disabled={busy} onClick={() => decideAppeal(index, "held")}>보류</button></div></article>)}</div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
+          </section>
+          {approvedAppealItems.length ? <form className="research-brief" key={`${selected.id}-${selected.version}-${appealSet?.version ?? 0}`} onSubmit={saveResearchBrief}>
+            <div><h3>승인 소구점 레퍼런스 검증</h3><p>YouTube와 Instagram Reels 출처를 남기고, 세 가지 적합성과 확인 한계를 각각 기록합니다. 확인하지 못한 수치는 비워 두세요.</p></div>
+            <label><span>YouTube 출처 · 한 줄에 하나</span><textarea name="youtubeSources" rows={3} defaultValue={(researchBrief.youtubeUrls as string[] | undefined ?? (selected.source_url && !selected.source_url.includes("instagram.com") ? [selected.source_url] : [])).join("\n")} placeholder="https://youtube.com/…" /></label>
+            <label><span>Instagram Reels 출처 · 한 줄에 하나</span><textarea name="instagramSources" rows={3} defaultValue={(researchBrief.instagramUrls as string[] | undefined ?? (selected.source_url?.includes("instagram.com") ? [selected.source_url] : [])).join("\n")} placeholder="https://instagram.com/reel/…" /></label>
+            <label><span>주제 적합성</span><textarea name="topicFit" required rows={3} defaultValue={String(researchBrief.topicFit ?? "")} placeholder="이 레퍼런스가 승인 소구점의 주제를 얼마나 직접 다루는지" /></label>
+            <label><span>핵심 대상 적합성</span><textarea name="audienceFit" required rows={3} defaultValue={String(researchBrief.audienceFit ?? "")} placeholder="우리 핵심 대상과 레퍼런스 시청자가 어떻게 맞는지" /></label>
+            <label><span>검색 의도 적합성</span><textarea name="queryIntentFit" required rows={3} defaultValue={String(researchBrief.queryIntentFit ?? "")} placeholder="사람이 실제로 찾는 질문·검색 의도와 어떻게 맞는지" /></label>
+            <label><span>검증된 수치 · 선택</span><textarea name="verifiedMetrics" rows={3} defaultValue={String(researchBrief.verifiedMetrics ?? "")} placeholder="직접 확인한 조회·반응 수치와 확인 시각만 기록" /></label>
+            <label><span>검증 한계 · 필수</span><textarea name="limitations" required rows={3} defaultValue={String(researchBrief.limitations ?? "")} placeholder="확인하지 못한 수치, 플랫폼 차이, 해석의 한계" /></label>
+            <label><span>분석 메모</span><textarea name="analystNotes" rows={3} defaultValue={String(researchBrief.analystNotes ?? "")} placeholder="구조·훅·증거에서 참고할 점" /></label>
+            <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(researchBrief.brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
+            <div className="drawer-actions"><button className="secondary-button" disabled={busy}>검증 내용 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/scripts?sourceId=${selected.id}`}>스크립트 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
+          </form> : <div className="research-locked"><CircleAlert size={16} /><div><strong>레퍼런스 검증 잠김</strong><p>먼저 진행할 소구점을 한 개 이상 승인해 주세요.</p></div></div>}
+          {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>소구점 승인과 레퍼런스 검증이 끝난 주제만 기획으로 넘길 수 있습니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy || !researchReady} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
+          {candidates.length ? <div className="planning-candidates"><h3>기획 방향 후보 <small>제목·썸네일은 패키징에서 최종 확정</small></h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "기획 방향 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}</div> : <div className="list-empty"><Sparkles size={20} /> 승인된 소구점과 레퍼런스 검증을 바탕으로 기획안을 만들면 다음 공정 HANDOFF가 표시됩니다.</div>}
           {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}`} source={selected} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("인계 메모를 저장했습니다. 승인·공유는 실행되지 않았습니다."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
           {showTopicJevAssist ? <ContentTopicJevAssist key={`topic-jev:${selected.id}:${selected.version}:${plan?.id ?? "no-plan"}:${plan?.version ?? 0}`} topicId={selected.id} topicVersion={selected.version} {...(plan ? { planId: plan.id, planVersion: plan.version } : {})} /> : null}

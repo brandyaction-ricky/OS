@@ -350,7 +350,7 @@ export async function revokeAgentKey(token: string | null, id: string) {
 }
 
 export async function generateContent(token: string | null, input: {
-  action: "topic_plan" | "script_draft" | "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
+  action: "appeal_candidates" | "topic_plan" | "script_draft" | "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
   sourceId: string;
   platforms?: Array<"shorts" | "threads" | "column" | "instagram" | "essay">;
   count?: number;

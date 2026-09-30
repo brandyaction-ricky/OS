@@ -9,7 +9,8 @@ import * as pipeline from '../lib/content-pipeline.ts';
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const base = (id, extra = {}) => ({ id, record_type: 'content_topic', title: 'Example', description: 'Brief', source_url: null, parent_id: null, version: 1, metadata: {}, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', archived_at: null, ...extra });
 function harness() {
-  const rows = [base('source', { metadata: { pipelineEnabled: true, audience: 'Readers', evidence: 'Verified reference', experience: 'Provided example' } })];
+  const appeal = base('appeal', { record_type: 'content_package', parent_id: 'source', metadata: { packageKind: 'appeal_candidates', result: { candidates: [{ text: 'Approved appeal', decision: 'approved', decidedAt: '2026-09-01T00:00:00Z' }] } } });
+  const rows = [base('source', { metadata: { pipelineEnabled: true, audience: 'Readers', evidence: 'Verified reference', experience: 'Provided example', researchBrief: { youtubeUrls: ['https://youtube.com/watch?v=verified'], topicFit: 'Direct topic fit', audienceFit: 'Core audience fit', queryIntentFit: 'Query intent fit', limitations: 'Instagram metrics unavailable', verifiedAt: '2026-09-01T00:00:00Z', approvedAppeals: [{ text: 'Approved appeal' }], appealPackageId: appeal.id, appealPackageVersion: appeal.version } } }), appeal];
   let calls = 0; let fail = false; let pause = null;
   const client = { from() {
     const filters = []; let changes; let start = 0; let end = Infinity;
@@ -63,4 +64,14 @@ test('pipeline rejects stale reviews and missing facts without invoking AI', asy
   h.rows[0].metadata.experience = 'Provided example'; await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
   const state = await h.api.readPipeline(h.actor, 'source'); h.rows[0].metadata.evidence = 'Changed source';
   await assert.rejects(h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, ''), (error) => error.code === 'PIPELINE_CHANGED');
+});
+test('changing the approved appeal set invalidates the first pipeline approval', async () => {
+  const h = harness();
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan'));
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Appeal and references checked');
+  h.rows.find((row) => row.id === 'appeal').version++;
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.approved[0], false);
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
 });

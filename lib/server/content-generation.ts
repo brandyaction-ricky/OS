@@ -3,11 +3,12 @@ import { structureBorrowGuidance } from "@/lib/structure-borrow";
 import { ApiError } from "@/lib/http";
 import { assembleYoutubeKit, BUNDLED_CHANNEL_PROCEDURE_VERSION, contentSourceText, parseTimedTranscript, resolveChannelProcedures, validateClipRanges } from "@/lib/content-input";
 import { PUBLIC_COPY_GUIDANCE, sanitizePublicCopyValue } from "@/lib/content-safety";
+import { appealApprovalMatches, researchBriefReady } from "@/lib/content-appeals";
 import { type RequestActor } from "@/lib/server/auth";
 
 
 export const generationSchema = z.object({
-  action: z.enum(["topic_plan", "script_draft", "derivatives", "title_package", "shorts_proposal", "youtube_kit"]),
+  action: z.enum(["appeal_candidates", "topic_plan", "script_draft", "derivatives", "title_package", "shorts_proposal", "youtube_kit"]),
   sourceId: z.string().uuid(),
   platforms: z.array(z.enum(["shorts", "threads", "column", "instagram", "essay"])).max(5).optional(),
   count: z.number().int().min(1).max(12).default(5),
@@ -15,6 +16,7 @@ export const generationSchema = z.object({
 });
 
 const PROCEDURE_TERMS = {
+  appeal_candidates: ["기획", "소구점", "욕구"],
   topic_plan: ["기획", "현재기준", "분석"],
   script_draft: ["원고", "다듬는", "현재기준"],
   derivatives: ["숏폼", "쓰레드", "SEO칼럼", "카드뉴스", "에세이"],
@@ -47,6 +49,7 @@ const reviewSchema: JsonSchema = {
 function outputSchema(action: z.infer<typeof generationSchema>["action"]): JsonSchema {
   const textList = { type: "array", items: { type: "string" } };
   const baseReview = { score: { type: "number", description: "1~5점" }, review: reviewSchema };
+  if (action === "appeal_candidates") return { type: "object", additionalProperties: false, properties: { candidates: { type: "array", minItems: 10, maxItems: 10, items: { type: "object", additionalProperties: false, properties: { text: { type: "string", maxLength: 120 } }, required: ["text"] } }, ...baseReview }, required: ["candidates", "score", "review"] };
   if (action === "topic_plan") return { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, audience: { type: "string" }, entryLanguage: { type: "string" }, hierarchy: { type: "string" }, candidates: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, thumbnailCopy: { type: "string" }, narrative: { type: "string" }, cta: { type: "string" }, evidence: { type: "string" } }, required: ["title", "thumbnailCopy", "narrative", "cta", "evidence"] } }, handoff: { type: "string" }, ...baseReview }, required: ["summary", "audience", "entryLanguage", "hierarchy", "candidates", "handoff", "score", "review"] };
   if (action === "script_draft") return { type: "object", additionalProperties: false, properties: { title: { type: "string" }, outline: textList, script: { type: "string" }, handoff: { type: "string" }, checks: textList, ...baseReview }, required: ["title", "outline", "script", "handoff", "checks", "score", "review"] };
   if (action === "shorts_proposal") return { type: "object", additionalProperties: false, properties: { clips: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, hook: { type: "string" }, start: { type: "number", description: "0 이상의 시작 초" }, end: { type: "number", description: "시작보다 큰 종료 초" }, reason: { type: "string" } }, required: ["title", "hook", "start", "end", "reason"] } }, ...baseReview }, required: ["clips", "score", "review"] };
@@ -133,6 +136,7 @@ function scheduleDate(index: number) {
 }
 
 async function insertGenerated(actor: RequestActor, source: Record<string, unknown>, action: z.infer<typeof generationSchema>["action"], result: Record<string, unknown>, requestKey?: string) {
+  const generatedAt = new Date().toISOString();
   const generationMetadata = { generationRequestKey: requestKey ?? null, contentId: source.id };
   const base = { parent_id: source.id, brand: source.brand ?? "", team: source.team ?? actor.team, owner_id: actor.id, created_by: actor.id, updated_by: actor.id, source_url: source.source_url ?? null };
   if (action === "derivatives") {
@@ -171,15 +175,16 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
     return [data];
   }
   const recordType = "content_package";
-  const title = action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : action === "topic_plan" ? `${source.title} · 기획 브리핑` : `${source.title} · 제목·썸네일 후보`;
+  const title = action === "appeal_candidates" ? `${source.title} · 소구점 후보` : action === "youtube_kit" ? `${source.title} · 유튜브 발행 키트` : action === "topic_plan" ? `${source.title} · 기획 브리핑` : `${source.title} · 제목·썸네일 후보`;
   const { data, error } = await actor.supabase.from("os_records").insert({
     ...base, record_type: recordType, title, description: String(result.summary ?? "정본 기준으로 생성된 패키지입니다."), status: "review", priority: "normal",
-    stage: action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { ...generationMetadata, packageKind: action, result, finalApprovalRequired: true, ...(action === "youtube_kit" ? { rulesVersion: 4, generatedAt: new Date().toISOString() } : {}) }, tags: action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
+    stage: action === "appeal_candidates" ? "소구점 후보" : action === "youtube_kit" ? "발행키트" : action === "topic_plan" ? "기획확정" : "패키징", metadata: { ...generationMetadata, packageKind: action, result, finalApprovalRequired: true, ...(action === "appeal_candidates" ? { candidateSetVersion: generatedAt, workflowStage: "대표 승인 대기", generatedAt } : {}), ...(action === "youtube_kit" ? { rulesVersion: 4, generatedAt } : {}) }, tags: action === "appeal_candidates" ? ["소구점", "대표승인"] : action === "youtube_kit" ? ["유튜브", "발행키트"] : action === "topic_plan" ? ["기획", "브리핑"] : ["제목", "썸네일"],
   }).select("*").single();
   if (error) throw new ApiError(400, "CONTENT_SAVE_FAILED", "콘텐츠 패키지를 저장하지 못했습니다.", error.message); return [data];
 }
 
 function requestedShape(action: z.infer<typeof generationSchema>["action"], count: number, platforms: string[]) {
+  if (action === "appeal_candidates") return `{"candidates":[{"text":""}]} 후보는 정확히 10개. 각 후보는 독립적으로 이해되는 짧은 한국어 한 문장만 쓴다. 설명·이유·근거·레퍼런스·제목·썸네일 문구를 붙이지 않는다. 공포나 돈을 과장하지 않고, 서로 다른 욕구와 문제 인식을 담는다.`;
   if (action === "topic_plan") return `{"summary":"","audience":"","entryLanguage":"","hierarchy":"유입형|전환형|판매형","candidates":[{"title":"","thumbnailCopy":"","narrative":"","cta":"","evidence":""}],"handoff":""} 후보 3개. 현재기준과 기획 절차의 채택 게이트를 적용.`;
   if (action === "script_draft") return `{"title":"","outline":[""],"script":"","handoff":"","checks":[""]} 원고 절차의 결재 지점과 사실 확인 항목을 지키는 낭독용 초안.`;
   if (action === "shorts_proposal") return `{"clips":[{"title":"","hook":"","start":0,"end":40,"reason":""}]} 배열은 ${count}개. 렌더링하지 말고 구간만 제안.`;
@@ -196,6 +201,23 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
     if (scriptError) throw new ApiError(500, "SCRIPT_READ_FAILED", "연결된 원고를 읽지 못했습니다.");
     const sourceText = contentSourceText(source, scripts ?? []);
     if (["derivatives", "youtube_kit", "shorts_proposal"].includes(input.action) && !sourceText) throw new ApiError(409, "CONTENT_SCRIPT_REQUIRED", "최종 원고·자막이 없습니다. 원고를 연결하거나 원본의 스크립트·자막을 저장해 주세요.");
+    if (input.action === "topic_plan") {
+      const brief = source.metadata?.researchBrief;
+      const { data: latestAppeal, error: appealError } = await actor.supabase.from("os_records")
+        .select("id,version,metadata").eq("parent_id", source.id).eq("record_type", "content_package")
+        .eq("metadata->>packageKind", "appeal_candidates").is("archived_at", null)
+        .order("updated_at", { ascending: false }).limit(1).maybeSingle();
+      if (appealError) throw new ApiError(500, "CONTENT_APPEAL_READ_FAILED", "소구점 승인 상태를 확인하지 못했습니다.");
+      const briefRecord = brief && typeof brief === "object" ? brief as Record<string, unknown> : {};
+      const appealResult = latestAppeal?.metadata?.result && typeof latestAppeal.metadata.result === "object" ? latestAppeal.metadata.result as Record<string, unknown> : {};
+      const hasApprovedAppeal = appealApprovalMatches(appealResult.candidates, briefRecord);
+      const matchesLatestDecision = Boolean(latestAppeal
+        && briefRecord.appealPackageId === latestAppeal.id
+        && Number(briefRecord.appealPackageVersion) === latestAppeal.version);
+      if (!hasApprovedAppeal || !matchesLatestDecision || !researchBriefReady(briefRecord)) {
+        throw new ApiError(409, "CONTENT_APPEAL_RESEARCH_REQUIRED", "현재 소구점 승인과 레퍼런스 검증을 완료한 뒤 기획안을 만들 수 있습니다.");
+      }
+    }
     const cues = parseTimedTranscript(sourceText);
     if (input.action === "shorts_proposal" && !cues.length) throw new ApiError(409, "CONTENT_TIMING_REQUIRED", "실제 구간 제안에는 시간 정보가 있는 SRT 또는 VTT 자막이 필요합니다. 숏폼 편집의 원본·자막에서 저장해 주세요.");
     const procedure = await procedures(actor, input.action, platforms);
@@ -205,8 +227,25 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
       ? process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929"
       : process.env.CLAUDE_HAIKU_MODEL || "claude-haiku-4-5-20251001";
     const marketEvidence = input.marketEvidence?.length ? `\n\n[YouTube 시장 근거]\n${input.marketEvidence.map((item, index) => `${index + 1}. ${item.title} · ${item.channelTitle} · 조회 ${item.viewCount} · ${item.url}`).join("\n")}` : "";
-    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n시청자: ${String(source.metadata?.audience ?? "")}\n확인한 자료: ${String(source.metadata?.evidence ?? "").slice(0, 12000)}\n실제 경험: ${String(source.metadata?.experience ?? "").slice(0, 12000)}\n설명/원고:\n${(sourceText || String(source.description ?? "")).slice(0, 80_000)}${marketEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\n\n[시청자 표현 규칙]\n${PUBLIC_COPY_GUIDANCE}\n\n${input.action === "topic_plan" ? structureBorrowGuidance(source.metadata?.structureBorrow) : ""}`;
+    const researchBrief = source.metadata?.researchBrief && typeof source.metadata.researchBrief === "object"
+      ? source.metadata.researchBrief as Record<string, unknown>
+      : {};
+    const approvedAppealLines = Array.isArray(researchBrief.approvedAppeals)
+      ? researchBrief.approvedAppeals.map((item) => typeof item === "object" && item ? String((item as Record<string, unknown>).text ?? "") : String(item)).filter(Boolean)
+      : [];
+    const hasPlatformSources = Array.isArray(researchBrief.youtubeUrls) || Array.isArray(researchBrief.instagramUrls);
+    const legacySourceUrls = !hasPlatformSources && Array.isArray(researchBrief.sourceUrls) ? researchBrief.sourceUrls : [];
+    const planningEvidence = input.action === "topic_plan"
+      ? `\n\n[사람이 승인한 소구점]\n${approvedAppealLines.join("\n")}\n\n[검증한 레퍼런스]\nYouTube: ${Array.isArray(researchBrief.youtubeUrls) ? researchBrief.youtubeUrls.join("\n") : ""}\nInstagram Reels: ${Array.isArray(researchBrief.instagramUrls) ? researchBrief.instagramUrls.join("\n") : ""}\n기타·이전 형식 출처: ${legacySourceUrls.join("\n")}\n주제 적합성: ${String(researchBrief.topicFit ?? "")}\n핵심 대상 적합성: ${String(researchBrief.audienceFit ?? "")}\n검색 의도 적합성: ${String(researchBrief.queryIntentFit ?? "")}\n검증된 수치: ${String(researchBrief.verifiedMetrics ?? "")}\n한계: ${String(researchBrief.limitations ?? "")}`
+      : "";
+    const context = `당신은 브랜디액션 콘텐츠 기획실입니다. 아래 회사 절차 정본을 최우선으로 지키고, 근거 없는 내용은 만들지 마세요. 외부 발행은 하지 않습니다. 결과를 제출하기 전에 같은 절차로 자가검수하고, 문제를 직접 고친 최종본과 1~5점 score·review를 함께 반환하세요.\n\n[절차 정본]\n${procedure}\n\n[원본]\n제목: ${source.title}\n시청자: ${String(source.metadata?.audience ?? "")}\n확인한 자료: ${String(source.metadata?.evidence ?? "").slice(0, 12000)}\n실제 경험: ${String(source.metadata?.experience ?? "").slice(0, 12000)}\n설명/원고:\n${(sourceText || String(source.description ?? "")).slice(0, 80_000)}${marketEvidence}${planningEvidence}\n\n[출력]\n${requestedShape(input.action, input.count, platforms)}\n\n[시청자 표현 규칙]\n${PUBLIC_COPY_GUIDANCE}\n\n${input.action === "topic_plan" ? structureBorrowGuidance(source.metadata?.structureBorrow) : ""}`;
     const rawResult = extractJson(await claude(context, model, outputSchema(input.action), tokenBudget(input.action)));
+    if (input.action === "appeal_candidates") {
+      const candidates = Array.isArray(rawResult.candidates) ? rawResult.candidates : [];
+      const texts = candidates.map((item) => item && typeof item === "object" ? String((item as Record<string, unknown>).text ?? "").trim() : "");
+      const valid = texts.length === 10 && texts.every((text) => text.length > 0 && text.length <= 120) && new Set(texts).size === 10;
+      if (!valid) throw new ApiError(502, "CONTENT_APPEAL_COUNT_INVALID", "소구점 후보 10개가 완전하게 생성되지 않았습니다. 결과를 저장하지 않았습니다.");
+    }
     if (input.action === "shorts_proposal" && !validateClipRanges(rawResult.clips, cues)) throw new ApiError(502, "CONTENT_CLIP_TIMING_INVALID", "제안된 구간이 실제 자막 범위를 벗어났습니다. 결과를 저장하지 않았습니다.");
     const publicResult = sanitizePublicCopyValue(rawResult) as Record<string, unknown>;
     const result: Record<string, unknown> = input.action === "youtube_kit" ? assembleYoutubeKit(publicResult, cues) : publicResult;
