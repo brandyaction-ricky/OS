@@ -1,6 +1,7 @@
 import type { OsRecord } from "./record-types";
 import { appealApprovalMatches, researchBriefReady } from "./content-appeals.ts";
 import type { ScriptReviewState } from "./content-script-review.ts";
+import type { ProductionWorkflowState } from "./content-production-workflow.ts";
 import type { WritingWorkflowState } from "./content-writing-workflow.ts";
 
 export const PIPELINE_GATES = ["기획·근거 승인", "패키징·자료·설계·원고 승인", "최종 영상·발행키트 승인"] as const;
@@ -51,7 +52,7 @@ export function pickedPackaging(record: OsRecord | null) {
   return { title: titles.length === 1 ? titles[0] : null, copy: copies.length === 1 ? copies[0] : null, ready: titles.length === 1 && copies.length === 1 };
 }
 
-export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: number, writing?: WritingWorkflowState, scriptReview?: ScriptReviewState) {
+export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: number, writing?: WritingWorkflowState, scriptReview?: ScriptReviewState, production?: ProductionWorkflowState) {
   const artifacts = pipelineArtifacts(records); const missing: string[] = [];
   const brief = source.metadata.researchBrief;
   const briefRecord = brief && typeof brief === "object" ? brief as Record<string, unknown> : {};
@@ -73,6 +74,9 @@ export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: num
     for (const step of scriptReview.steps) if (!step.approved) missing.push(`${step.label} 검수`);
   }
   if (gate >= 3 && !artifacts.kit) missing.push("발행키트");
+  if (gate >= 3 && production) {
+    for (const step of production.steps) if (!step.approved) missing.push(step.label);
+  }
   if (gate >= 3 && !/^https:\/\//.test(String(source.metadata.finalVideoUrl ?? ""))) missing.push("검토할 최종 영상 HTTPS URL");
   return missing;
 }
@@ -82,7 +86,7 @@ export function hasCurrentApproval(reviews: PipelineReview[], gate: number, sign
   return latest?.approved === true && latest.signature === signature;
 }
 
-export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow"];
+export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow"];
 export function protectedPipelineChange(current: Record<string, unknown>, proposed?: Record<string, unknown>) {
   return !!proposed && ((current.pipelineEnabled === true && proposed.pipelineEnabled !== true) || PIPELINE_PROTECTED_KEYS.some((key) => JSON.stringify(current[key]) !== JSON.stringify(proposed[key])));
 }

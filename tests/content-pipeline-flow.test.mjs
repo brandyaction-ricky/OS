@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import ts from 'typescript';
 import * as pipeline from '../lib/content-pipeline.ts';
+import * as productionWorkflow from '../lib/content-production-workflow.ts';
 import * as scriptReview from '../lib/content-script-review.ts';
 import * as writingWorkflow from '../lib/content-writing-workflow.ts';
 
@@ -32,7 +33,7 @@ function harness() {
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-script-review') return scriptReview; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-production-workflow') return productionWorkflow; if (name === '@/lib/content-script-review') return scriptReview; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
@@ -60,6 +61,17 @@ async function approveScriptReview(h) {
     state = await h.api.readPipeline(h.actor, 'source');
     await h.api.reviewScript(h.actor, 'source', state.source.version, step, true, `${step} checked`);
   }
+}
+async function prepareApprovedScript(h) {
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan')); choosePlan(h);
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Planning checked');
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  await approveWritingWorkflow(h);
+  await h.api.runPipelineGeneration(h.actor, input('script_draft'));
+  await approveScriptReview(h);
+  state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Script checked');
 }
 test('pipeline stops at each gate and reuses successful generation', async () => {
   const h = harness();
@@ -141,6 +153,35 @@ test('script review keeps notes but invalidates approvals when the script change
   state = await h.api.readPipeline(h.actor, 'source');
   assert.equal(state.scriptReview.currentScript, true);
   assert.equal(state.scriptReview.steps.every((step) => !step.approved), true);
+});
+test('production assets are approved in order and upstream changes invalidate downstream approvals', async () => {
+  const h = harness();
+  await prepareApprovedScript(h);
+  let state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.production.ready, false);
+  assert.equal(state.production.steps[0].blocker, '보이스 MP3의 HTTPS 주소를 저장해 주세요.');
+  await assert.rejects(h.api.reviewProductionStep(h.actor, 'source', state.source.version, 'visuals', true, ''), (error) => error.code === 'PRODUCTION_STEP_BLOCKED');
+  Object.assign(h.rows[0].metadata, {
+    voiceUrl: 'https://assets.example.com/voice.mp3',
+    imageFolderUrl: 'https://assets.example.com/images',
+    characterUrl: '',
+    editSpecUrl: 'https://assets.example.com/edit-spec',
+    roughCutUrl: 'https://assets.example.com/rough-cut.mp4',
+  });
+  h.rows[0].version++;
+  for (const step of productionWorkflow.PRODUCTION_WORKFLOW_STEPS) {
+    state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.reviewProductionStep(h.actor, 'source', state.source.version, step, true, `${step} checked`);
+  }
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.production.ready, true);
+  assert.deepEqual(state.production.steps.map((step) => step.approved), [true, true, true, true]);
+  h.rows[0].metadata.voiceUrl = 'https://assets.example.com/revised-voice.mp3';
+  h.rows[0].version++;
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.production.ready, false);
+  assert.deepEqual(state.production.steps.map((step) => step.approved), [false, false, false, false]);
+  assert.equal(state.source.metadata.productionWorkflow.reviews.length, 4);
 });
 test('pipeline retains failures, allows retry, and rejects concurrent runs', async () => {
   const h = harness(); h.fail(true);

@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import type { ProductionWorkflowState, ProductionWorkflowStep } from "@/lib/content-production-workflow";
 import type { ScriptReviewState } from "@/lib/content-script-review";
 import type { WritingWorkflowState } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState; scriptReview: ScriptReviewState }
+interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState; scriptReview: ScriptReviewState; production: ProductionWorkflowState }
 const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = [
   { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "title_package", label: "제목·썸네일 생성", gate: 1 },
   { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
@@ -27,6 +28,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [state, setState] = useState<PipelineState | null>(null);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [notes, setNotes] = useState<Record<number, string>>({});
+  const [productionNotes, setProductionNotes] = useState<Partial<Record<ProductionWorkflowStep, string>>>({});
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
   }, [accessToken, sourceId]);
@@ -41,7 +43,11 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     const form = new FormData(event.currentTarget);
     void perform(() => updateRecord(accessToken, { id: sourceId, expectedVersion: state.source.version, metadata: { ...state.source.metadata, pipelineEnabled: true,
       productionLine: String(form.get("productionLine") ?? "A").trim(), sourceType: String(form.get("sourceType") ?? "longform").trim(), packageId: String(form.get("packageId") ?? sourceId).trim(), rulesVersion: String(form.get("rulesVersion") ?? "v1").trim(),
-      audience: String(form.get("audience") ?? "").trim(), evidence: String(form.get("evidence") ?? "").trim(), experience: String(form.get("experience") ?? "").trim(), voiceUrl: String(form.get("voiceUrl") ?? "").trim(), imageFolderUrl: String(form.get("imageFolderUrl") ?? "").trim(), characterUrl: String(form.get("characterUrl") ?? "").trim(), editSpecUrl: String(form.get("editSpecUrl") ?? "").trim(), finalVideoUrl: String(form.get("finalVideoUrl") ?? "").trim() } }));
+      audience: String(form.get("audience") ?? "").trim(), evidence: String(form.get("evidence") ?? "").trim(), experience: String(form.get("experience") ?? "").trim(), voiceUrl: String(form.get("voiceUrl") ?? "").trim(), imageFolderUrl: String(form.get("imageFolderUrl") ?? "").trim(), characterUrl: String(form.get("characterUrl") ?? "").trim(), editSpecUrl: String(form.get("editSpecUrl") ?? "").trim(), roughCutUrl: String(form.get("roughCutUrl") ?? "").trim(), finalVideoUrl: String(form.get("finalVideoUrl") ?? "").trim() } }));
+  };
+  const decideProduction = (step: ProductionWorkflowStep, approved: boolean) => {
+    if (!state) return;
+    void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ operation: "production_review", sourceId, expectedVersion: state.source.version, step, approved, note: productionNotes[step] ?? "" }) }));
   };
   if (!state || state.source.id !== sourceId) return <section className="panel pipeline-panel"><p>{error || "공정 불러오는 중…"}</p></section>;
   const artifacts = pipelineArtifacts(state.records);
@@ -58,9 +64,20 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       <label>실제 경험·사례<textarea required name="experience" rows={3} defaultValue={String(state.source.metadata.experience ?? "")} placeholder="제공할 사례 또는 해당 없는 사유" /></label>
       <div className="form-grid"><label>보이스 MP3 URL<input type="url" name="voiceUrl" defaultValue={String(state.source.metadata.voiceUrl ?? "")} /></label><label>이미지 폴더 URL<input type="url" name="imageFolderUrl" defaultValue={String(state.source.metadata.imageFolderUrl ?? "")} /></label></div>
       <div className="form-grid"><label>캐릭터 자산 URL<input type="url" name="characterUrl" defaultValue={String(state.source.metadata.characterUrl ?? "")} /></label><label>편집 사양 URL<input type="url" name="editSpecUrl" defaultValue={String(state.source.metadata.editSpecUrl ?? "")} /></label></div>
+      <label>초벌 렌더 URL<input type="url" pattern="https://.*" name="roughCutUrl" defaultValue={String(state.source.metadata.roughCutUrl ?? "")} placeholder="편집 단계에서 확인할 초벌 영상 주소" /></label>
       <label>최종 영상 URL<input type="url" pattern="https://.*" name="finalVideoUrl" defaultValue={String(state.source.metadata.finalVideoUrl ?? "")} placeholder="편집 완료 후 검토할 영상 주소" /></label>
       <button className="primary-button" disabled={busy}>{enabled ? "입력 자료 저장" : "자료 저장·공정 시작"}</button>
     </form>
+    <section className="panel writing-workflow production-workflow" aria-label="콘텐츠 제작과 편집">
+      <header className="panel-header"><div><span className="eyebrow">승인된 원고 다음 공정</span><h2>콘텐츠 제작 · 편집</h2><p>보이스부터 초벌 렌더까지 실제 산출물 주소를 저장하고 순서대로 확인합니다. 상위 원고나 앞 단계 자산이 바뀌면 해당 단계부터 다시 승인해야 합니다.</p></div><Link className="secondary-button" href={`/content/scripts?sourceId=${sourceId}`}>원고 검수 확인</Link></header>
+      <dl className="writing-workflow-summary"><div><dt>현재 산출물</dt><dd>{state.production.steps.findLast((step) => step.approved)?.label ?? "제작 자산 없음"}<small>{state.production.ready ? "초벌 렌더까지 승인 완료" : "저장한 HTTPS 자산을 단계별로 확인"}</small></dd></div><div><dt>다음 행동</dt><dd>{state.production.nextAction}</dd></div><div><dt>막힌 이유</dt><dd>{state.production.blocker || "없음"}</dd></div></dl>
+      <div className="writing-workflow-steps">{state.production.steps.map((step, index) => <article className={step.approved ? "approved" : ""} key={step.key}><header><span>{index + 1}</span><div><strong>{step.label}</strong><small>{step.approved ? "현재 자산 승인 완료" : step.lastReview && !step.lastReview.approved ? `수정 요청 · ${step.lastReview.note}` : step.blocker || "검토 가능"}</small></div><em>{step.approved ? "승인" : "제작"}</em></header>
+        <div className="writing-package-choice">{step.artifactUrls.filter((url) => /^https:\/\//.test(url)).length ? step.artifactUrls.filter((url) => /^https:\/\//.test(url)).map((url, urlIndex) => <a href={url} target="_blank" rel="noreferrer" key={url}>{urlIndex === 0 ? `${step.label} 열기` : "추가 자산 열기"}</a>) : <span>위 입력란에 현재 산출물의 HTTPS 주소를 저장해 주세요.</span>}</div>
+        <div className="writing-step-actions"><button className="primary-button" disabled={busy || step.approved || !step.canApprove} title={step.blocker} onClick={() => decideProduction(step.key, true)}>현재 자산 승인</button></div>
+        <div className="writing-revision"><input aria-label={`${step.label} 수정 요청 사유`} value={productionNotes[step.key] ?? ""} onChange={(event) => setProductionNotes((current) => ({ ...current, [step.key]: event.target.value }))} placeholder="수정 요청 사유" /><button className="ghost-button" disabled={busy || !(productionNotes[step.key] ?? "").trim()} onClick={() => decideProduction(step.key, false)}>수정 요청</button></div>
+      </article>)}</div>
+      <footer><span>{state.production.ready ? "현재 초벌 렌더까지 제작·편집 확인이 끝났습니다." : `다음: ${state.production.nextAction}`}</span><span>최종 영상 검토와 발행 승인은 다음 단계에서 진행합니다.</span></footer>
+    </section>
     <section className="factory-route" aria-label="숏폼 팩토리 22단계"><header><strong>22단계 제작 경로</strong><span>라인 {String(state.source.metadata.productionLine ?? "A")} · 규칙 {String(state.source.metadata.rulesVersion ?? "v1")}</span></header><div>{FACTORY_PHASES.map((phase) => <article key={phase.title}><h3>{phase.title}</h3><ol>{phase.steps.map((step) => <li key={step}>{step}</li>)}</ol></article>)}</div><p>승인 1 · 기획/근거, 승인 2 · 원고, 승인 3 · 최종 영상. 상위 자료나 규칙 버전이 바뀌면 기존 서명이 달라져 해당 단계부터 재검토합니다.</p></section>
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
       const gate = index + 1; const prior = state.reviews.filter((review) => review.gate === gate).at(-1);
