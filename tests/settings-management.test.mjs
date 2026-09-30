@@ -43,6 +43,8 @@ test("connection status uses automatic health values and distinct dot colors", a
   assert.match(css, /\.state-dot\.waiting/);
   assert.match(css, /\.state-dot\.warning/);
   assert.match(settings, /settings-connection-metrics/);
+  assert.match(settings, /getYoutubeOAuthStatus/);
+  assert.match(settings, /OAuth 설정 완료 · Google 채널 동의 대기/);
   assert.doesNotMatch(settings, /compact-metrics connection-summary/);
 });
 
@@ -85,14 +87,33 @@ test("production QA fixes label key controls and keep the weekly board in view",
 });
 
 test("audit events and statuses are rendered in plain Korean", async () => {
-  const labels = await import("../lib/audit-labels.ts");
+  const [labels, route] = await Promise.all([
+    import("../lib/audit-labels.ts"),
+    read("app/api/v1/audit/route.ts"),
+  ]);
   assert.equal(labels.auditEventLabel("created"), "생성");
   assert.equal(labels.auditRecordLabel("title_package"), "제목·썸네일");
   assert.equal(labels.auditRecordLabel("shorts_proposal"), "숏폼 기획안");
   assert.equal(labels.auditRecordLabel("derivatives"), "파생물");
+  assert.equal(labels.auditRecordLabel("development_request"), "개발 요청");
   assert.equal(labels.auditStatusLabel("blocked", "content_package"), "비공개");
   assert.equal(labels.auditStatusLabel("review", "content_package"), "검토 중");
+  assert.equal(labels.auditStatusLabel("review", "development_request"), "검수 요청");
+  assert.equal(labels.auditStatusLabel("done", "development_request"), "해결");
   assert.equal(labels.auditStatusLabel("unknown", "task"), "기타 상태");
+  assert.match(route, /record\.metadata\?\.kind === "development_request"/);
+  assert.match(route, /subject_type: auditSubjectType\(record\)/);
+});
+
+test("knowledge counts state the scope that each page actually uses", async () => {
+  const [knowledge, graph, monitoring] = await Promise.all([
+    read("components/knowledge-workspace.tsx"),
+    read("components/knowledge-graph-workspace.tsx"),
+    read("components/monitoring-workspace.tsx"),
+  ]);
+  assert.match(knowledge, /내 문서 \+ 회사 정본 · 휴지통 제외/);
+  assert.match(graph, /휴지통 제외 전체 문서/);
+  assert.match(monitoring, /휴지통 포함/);
 });
 
 test("settings pages no longer expose requested English and code labels", async () => {

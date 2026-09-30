@@ -196,3 +196,9 @@ test("archived script summaries are excluded and a selected-body failure can be 
   assert.ok(app.render().some((item) => item.type === "pre" && item.props.children === "복구된 본문"));
   app.unmount();
 });
+
+test("documents directly under the script root are not presented as video folders", async () => {
+  assert.match(source, /document\.folder !== root/);
+  assert.match(source, /기준 폴더 바로 아래 문서/);
+  assert.match(source, /지식 작업공간에서 관리합니다/);
+});

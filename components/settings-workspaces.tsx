@@ -23,10 +23,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getHealth,
   getTelegramStatus,
+  getYoutubeOAuthStatus,
   listMembers,
   listRecords,
   type OsMember,
   type TelegramConnectionStatus,
+  type YoutubeOAuthStatus,
 } from "@/lib/api-client";
 import {
   operatingStatusLabel,
@@ -126,6 +128,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
   const { accessToken, demo, profile } = useSession();
   const [health, setHealth] = useState<Awaited<ReturnType<typeof getHealth>> | null>(null);
   const [telegram, setTelegram] = useState<TelegramConnectionStatus | null>(null);
+  const [youtubeOAuth, setYoutubeOAuth] = useState<YoutubeOAuthStatus | null>(null);
   const [members, setMembers] = useState<OsMember[]>([]);
   const [brands, setBrands] = useState<OsRecord[]>([]);
   const [goals, setGoals] = useState<OsRecord[]>([]);
@@ -139,7 +142,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
     }
     setLoaded(false);
     try {
-      const [status, memberResult, brandResult, goalResult, telegramResult] =
+      const [status, memberResult, brandResult, goalResult, telegramResult, youtubeOAuthResult] =
         await Promise.all([
           getHealth(),
           listMembers(accessToken),
@@ -148,12 +151,16 @@ export function SettingsWorkspace({ page }: { page: Page }) {
           (page === "channels" || page === "company") && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
+          page === "connections"
+            ? getYoutubeOAuthStatus(accessToken).catch(() => null)
+            : Promise.resolve(null),
         ]);
       setHealth(status);
       setMembers(memberResult.members);
       setBrands(brandResult.records);
       setGoals(goalResult.records);
       setTelegram(telegramResult);
+      setYoutubeOAuth(youtubeOAuthResult);
       setError("");
     } catch (reason) {
       setError(
@@ -230,9 +237,17 @@ export function SettingsWorkspace({ page }: { page: Page }) {
       },
       {
         system: "YouTube 업로드 OAuth",
-        purpose: "채널 동의·비공개/일부공개 업로드",
+        purpose: youtubeOAuth?.connected
+          ? `${youtubeOAuth.channelTitle || "YouTube 채널"} · 업로드 권한 연결됨`
+          : youtubeOAuth?.configured || health?.youtubeOAuth === "ready"
+            ? "OAuth 설정 완료 · Google 채널 동의 대기"
+            : "OAuth 환경변수 등록 필요",
         owner: "리키",
-        status: health?.youtubeOAuth === "ready" ? "ready" : "waiting",
+        status: youtubeOAuth?.connected
+          ? "ready"
+          : youtubeOAuth?.configured || health?.youtubeOAuth === "ready"
+            ? "warning"
+            : "waiting",
         location: "유튜브 관리에서 채널 연결",
       },
       {
@@ -262,7 +277,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
         location: "카드 관리자·CSV",
       },
     ],
-    [health],
+    [health, youtubeOAuth],
   );
   const title =
     page === "connections"

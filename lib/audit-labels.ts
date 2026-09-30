@@ -19,6 +19,7 @@ const RECORD_LABELS: Record<string, string> = {
   decision: "결정사항",
   meeting: "회의",
   ai_job: "AI 작업",
+  development_request: "개발 요청",
   development_comment: "개발 요청 대화",
   development_notification: "개발 요청 알림",
   content_topic: "콘텐츠 주제",
@@ -120,6 +121,15 @@ export function auditStatusLabel(
   recordType?: string | null,
 ) {
   if (!value) return "없음";
+  if (recordType === "development_request") {
+    return ({
+      backlog: "접수",
+      active: "수정 중",
+      review: "검수 요청",
+      done: "해결",
+      blocked: "보류",
+    } as Record<string, string>)[value] ?? "기타 상태";
+  }
   if (
     value === "blocked" &&
     (recordType?.startsWith("content_") ||
