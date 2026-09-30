@@ -304,7 +304,14 @@ function ProjectHubContent() {
     if (!path) return;
     try {
       const { url } = await getDevelopmentAttachmentUrl(accessToken, path, name);
-      const anchor = document.createElement("a"); anchor.href = url; anchor.rel = "noreferrer"; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      // A cross-origin signed URL can make Chrome ignore Content-Disposition's UTF-8
+      // filename and save its percent-encoded URL segment instead. Download the
+      // private object first, then use a same-origin blob URL with the original name.
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error("첨부 자료를 내려받지 못했습니다.");
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a"); anchor.href = objectUrl; anchor.download = name; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "첨부 자료를 내려받지 못했습니다."); }
   };
   const chooseRequestAttachment = (file?: File) => {
