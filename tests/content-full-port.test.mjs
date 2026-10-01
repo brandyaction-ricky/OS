@@ -85,6 +85,8 @@ test("production media extends the private bucket without exposing local files",
   assert.match(route, /assertProductionAccess/);
   assert.match(client, /new Blob\(\[file\], \{ type: contentType \}\)/);
   assert.match(client, /tus-js-client/);
+  assert.match(client, /storage\/v1\/upload\/resumable\/sign/);
+  assert.match(client, /"x-signature": signedToken/);
   assert.equal(JSON.parse(packageFile).dependencies["tus-js-client"], "4.3.1");
   assert.match(panel, /파일 선택 또는 끌어놓기/);
   assert.match(panel, /productionAssets/);

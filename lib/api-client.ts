@@ -392,7 +392,7 @@ export async function uploadContentMedia(path: string, signedToken: string, file
     const { Upload } = await import("tus-js-client");
     await new Promise<void>((resolve, reject) => {
       const upload = new Upload(body, {
-        endpoint: `${parsed.protocol}//${directHost}/storage/v1/upload/resumable`,
+        endpoint: `${parsed.protocol}//${directHost}/storage/v1/upload/resumable/sign`,
         retryDelays: [0, 3_000, 5_000, 10_000, 20_000],
         chunkSize: 6 * 1024 * 1024,
         uploadDataDuringCreation: true,
