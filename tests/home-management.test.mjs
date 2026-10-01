@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { attainmentPercent, averageAttainment, buildHomeRevenueView, groupHomeVideos } from "../lib/home-dashboard.ts";
+import {
+  attainmentPercent,
+  averageAttainment,
+  buildDailyBrief,
+  buildDailyBriefWorkContext,
+  buildHomeRevenueView,
+  dailyBriefWorkDescription,
+  groupHomeVideos,
+} from "../lib/home-dashboard.ts";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 const record = (input = {}) => ({
@@ -59,6 +67,45 @@ test("home video grouping returns one row per content lineage", () => {
   assert.equal(videos.find((item) => item.title === "같은 영상")?.stage, "발행 키트");
 });
 
+test("daily brief ranks three tasks and keeps today's schedule in Seoul time", () => {
+  const profileId = crypto.randomUUID();
+  const blocked = record({ record_type: "task", title: "결제 막힘 해결", description: "담당자에게 오류 화면 전달", status: "blocked", priority: "high", assignee_id: profileId, due_date: "2026-10-03" });
+  const overdue = record({ record_type: "task", title: "지난 업무", status: "planned", priority: "urgent", due_date: "2026-09-30" });
+  const today = record({ record_type: "task", title: "오늘 업무", status: "active", due_date: "2026-10-01" });
+  const later = record({ record_type: "task", title: "나중 업무", status: "planned", due_date: "2026-10-08" });
+  const meeting = record({ record_type: "meeting", title: "오전 회의", status: "planned", starts_at: "2026-09-30T23:30:00.000Z" });
+  const decisions = Array.from({ length: 3 }, (_, index) => record({ record_type: "decision", title: `결정 ${index}`, status: "open", updated_at: `2026-10-01T0${index}:00:00.000Z` }));
+  const brief = buildDailyBrief([blocked, overdue, today, later, meeting, ...decisions], new Date("2026-10-01T00:30:00.000Z"), profileId);
+  assert.equal(brief.date, "2026-10-01");
+  assert.equal(brief.priorities.length, 3);
+  assert.equal(brief.primary?.id, blocked.id);
+  assert.equal(brief.firstAction, "담당자에게 오류 화면 전달");
+  assert.equal(brief.delayed.some((item) => item.id === overdue.id), true);
+  assert.equal(brief.schedule[0]?.id, meeting.id);
+  assert.equal(brief.decisions.length, 2);
+});
+
+test("daily brief work context is related, bounded, and resumable", () => {
+  const project = record({ record_type: "project", title: "신규 교육", brand: "에듀" });
+  const task = record({ record_type: "task", title: "온보딩 작성", parent_id: project.id, brand: "에듀", team: "콘텐츠", tags: ["온보딩"] });
+  const meetings = Array.from({ length: 5 }, (_, index) => record({ record_type: "meeting", title: `관련 회의 ${index}`, parent_id: project.id, brand: "에듀", updated_at: `2026-10-01T0${index}:00:00.000Z` }));
+  const decision = record({ record_type: "decision", title: "범위 결정", metadata: { sourceTaskId: task.id } });
+  const job = record({ record_type: "ai_job", title: "기존 작업", status: "active", metadata: { sourceTaskId: task.id } });
+  const documents = Array.from({ length: 7 }, (_, index) => ({
+    id: crypto.randomUUID(), title: `관련 문서 ${index}`, content_md: "", folder: "교육", status: "team", brand: "에듀", team: "콘텐츠", tags: ["온보딩"], source: "manual", source_ref: index === 0 ? task.id : null,
+    owner_id: "", created_by: "", current_version: 1, created_at: "2026-09-01T00:00:00.000Z", updated_at: `2026-10-01T0${index}:00:00.000Z`,
+  }));
+  const context = buildDailyBriefWorkContext(task, [project, task, ...meetings, decision, job], documents);
+  assert.equal(context.project?.id, project.id);
+  assert.equal(context.meetings.length, 3);
+  assert.equal(context.decisions[0]?.id, decision.id);
+  assert.equal(context.documents.length, 5);
+  assert.equal(context.activeJobs[0]?.id, job.id);
+  const description = dailyBriefWorkDescription(task, context, "첫 문단을 작성한다");
+  assert.match(description, /\[첫 행동\]\n첫 문단을 작성한다/);
+  assert.match(description, /\[관련 지식\]/);
+});
+
 test("goals and monthly reports share measured-only attainment", async () => {
   const [metrics, goals, reports] = await Promise.all([
     read("lib/home-dashboard.ts"),
@@ -110,6 +157,26 @@ test("home revenue uses performance records, targets and honest comparisons", as
   assert.match(dashboard, /목표 설정하기/);
   assert.match(dashboard, /basisTime/);
   assert.match(dashboard, /statuses=canonical,reviewed,team/);
+});
+
+test("daily brief saves decisions, creates bounded AI jobs, and deep-links source records", async () => {
+  const [dashboard, tasks, decisions, meetings, agents] = await Promise.all([
+    read("components/dashboard.tsx"),
+    read("components/tasks-workspace.tsx"),
+    read("components/operations-workspace.tsx"),
+    read("components/meeting-workspace.tsx"),
+    read("components/organization-v3-workspaces.tsx"),
+  ]);
+  assert.match(dashboard, /buildDailyBrief\(records/);
+  assert.match(dashboard, /status: "decided"/);
+  assert.match(dashboard, /kind: "daily_brief_work"/);
+  assert.match(dashboard, /contextScope/);
+  assert.match(dashboard, /업무 시작/);
+  assert.match(tasks, /searchParams\.get\("task"\)/);
+  assert.match(decisions, /searchParams\.get\("record"\)/);
+  assert.match(meetings, /searchParams\.get\("meeting"\)/);
+  assert.match(agents, /searchParams\.get\("job"\)/);
+  assert.match(agents, /전체 지식창고를 한꺼번에 불러오지 않습니다/);
 });
 
 test("login entry wording remains Korean", async () => {

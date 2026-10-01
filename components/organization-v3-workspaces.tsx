@@ -7,13 +7,15 @@ import {
   CircleAlert,
   Clock3,
   ExternalLink,
+  ListChecks,
   Plane,
   Plus,
   Sparkles,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createRecord,
   getHealth,
@@ -204,6 +206,8 @@ export function WeeklyScheduleWorkspace() {
 
 export function AiOperationsWorkspace() {
   const { accessToken, demo } = useSession();
+  const searchParams = useSearchParams();
+  const openedDeepLinkRef = useRef("");
   const [jobs, setJobs] = useState<OsRecord[]>([]);
   const [health, setHealth] = useState<Awaited<
     ReturnType<typeof getHealth>
@@ -219,6 +223,14 @@ export function AiOperationsWorkspace() {
       })
       .catch((reason) => setError(reason.message));
   }, [accessToken, demo]);
+  useEffect(() => {
+    const requestedId = searchParams.get("job");
+    const requested = jobs.find((job) => job.id === requestedId);
+    if (requested && openedDeepLinkRef.current !== requested.id) {
+      openedDeepLinkRef.current = requested.id;
+      setSelectedJob(requested);
+    }
+  }, [jobs, searchParams]);
   const systems = [
     [
       "회의 녹음→전사·요약",
@@ -329,12 +341,13 @@ export function AiOperationsWorkspace() {
             <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
             {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
+            {meta(selectedJob, "kind") === "daily_brief_work" ? <section className="daily-brief-job-context"><h3>Daily Brief에서 모은 맥락</h3><p>선택한 업무에 연결된 프로젝트·최근 회의·결정·지식만 제한해서 담았습니다. 전체 지식창고를 한꺼번에 불러오지 않습니다.</p><Link className="secondary-button" href={`/organization/tasks?task=${encodeURIComponent(String(meta(selectedJob, "sourceTaskId")))}`}><ListChecks size={14} /> 원본 업무 열기</Link></section> : null}
             <div className="drawer-actions">
               {selectedJobSourceUrl ? <a className="secondary-button" href={selectedJobSourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> 결과·원본 링크</a> : null}
               {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`/content/automation${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
               {selectedJob.status === "blocked" ? <Link className="secondary-button" href="/settings/connections">연결 상태 확인</Link> : null}
             </div>
-            {!selectedJobSourceUrl && !meta(selectedJob, "contentAction") && !meta(selectedJob, "sourceId") && !meta(selectedJob, "contentId") ? <p className="inline-alert">연결된 원본이나 결과 링크가 없습니다. 요청 등록 화면에서 출처 링크를 추가해 주세요.</p> : null}
+            {!selectedJobSourceUrl && !meta(selectedJob, "contentAction") && !meta(selectedJob, "sourceId") && !meta(selectedJob, "contentId") && meta(selectedJob, "kind") !== "daily_brief_work" ? <p className="inline-alert">연결된 원본이나 결과 링크가 없습니다. 요청 등록 화면에서 출처 링크를 추가해 주세요.</p> : null}
           </div>
         </aside>
       </div> : null}

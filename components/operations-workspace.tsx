@@ -1,7 +1,8 @@
 "use client";
 
 import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { normalizedWorkspaceStatus, workspaceStatusLabel, type WorkspaceConfig } from "@/lib/workspace-config";
@@ -23,6 +24,8 @@ function metricValue(record: OsRecord, mode?: WorkspaceConfig["metricMode"]) {
 
 export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   const { demo, accessToken, profile } = useSession();
+  const searchParams = useSearchParams();
+  const openedDeepLinkRef = useRef("");
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
@@ -46,6 +49,15 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   };
 
   useEffect(() => { load(); }, [accessToken, config.recordType, demo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const requestedId = searchParams.get("record");
+    const requested = records.find((record) => record.id === requestedId);
+    if (requested && openedDeepLinkRef.current !== requested.id) {
+      openedDeepLinkRef.current = requested.id;
+      setEditing(requested);
+      setEditorOpen(true);
+    }
+  }, [records, searchParams]);
 
   const filtered = useMemo(() => records.filter((record) => {
     const matchesQuery = !query || `${record.title} ${record.description} ${record.brand} ${record.team}`.toLowerCase().includes(query.toLowerCase());
