@@ -49,7 +49,9 @@ const reviewSchema: JsonSchema = {
 function outputSchema(action: z.infer<typeof generationSchema>["action"]): JsonSchema {
   const textList = { type: "array", items: { type: "string" } };
   const baseReview = { score: { type: "number", description: "1~5점" }, review: reviewSchema };
-  if (action === "appeal_candidates") return { type: "object", additionalProperties: false, properties: { candidates: { type: "array", minItems: 10, maxItems: 10, items: { type: "object", additionalProperties: false, properties: { text: { type: "string", maxLength: 120 } }, required: ["text"] } }, ...baseReview }, required: ["candidates", "score", "review"] };
+  // Claude's structured-output API cannot compile minItems > 1, maxItems, or maxLength.
+  // Keep the 10-candidate/120-character checks after generation, before any record is saved.
+  if (action === "appeal_candidates") return { type: "object", additionalProperties: false, properties: { candidates: { type: "array", items: { type: "object", additionalProperties: false, properties: { text: { type: "string", description: "120자 이하의 소구점 한 문장" } }, required: ["text"] } }, ...baseReview }, required: ["candidates", "score", "review"] };
   if (action === "topic_plan") return { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, audience: { type: "string" }, entryLanguage: { type: "string" }, hierarchy: { type: "string" }, candidates: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, thumbnailCopy: { type: "string" }, narrative: { type: "string" }, cta: { type: "string" }, evidence: { type: "string" } }, required: ["title", "thumbnailCopy", "narrative", "cta", "evidence"] } }, handoff: { type: "string" }, ...baseReview }, required: ["summary", "audience", "entryLanguage", "hierarchy", "candidates", "handoff", "score", "review"] };
   if (action === "script_draft") return { type: "object", additionalProperties: false, properties: { title: { type: "string" }, outline: textList, script: { type: "string" }, handoff: { type: "string" }, checks: textList, ...baseReview }, required: ["title", "outline", "script", "handoff", "checks", "score", "review"] };
   if (action === "shorts_proposal") return { type: "object", additionalProperties: false, properties: { clips: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, hook: { type: "string" }, start: { type: "number", description: "0 이상의 시작 초" }, end: { type: "number", description: "시작보다 큰 종료 초" }, reason: { type: "string" } }, required: ["title", "hook", "start", "end", "reason"] } }, ...baseReview }, required: ["clips", "score", "review"] };
@@ -77,7 +79,12 @@ async function claude(prompt: string, model: string, jsonSchema: JsonSchema, max
     signal: AbortSignal.timeout(90_000),
   });
   const body = await response.json() as Record<string, unknown>;
-  if (!response.ok) throw new ApiError(502, "CLAUDE_GENERATION_FAILED", "콘텐츠 생성 요청에 실패했습니다.");
+  if (!response.ok) {
+    if (response.status === 400) throw new ApiError(502, "CLAUDE_REQUEST_INVALID", "AI 생성 설정에 문제가 있습니다. 개발팀에 알려 주세요.");
+    if (response.status === 401 || response.status === 403) throw new ApiError(503, "CLAUDE_AUTH_FAILED", "AI 연결을 확인할 수 없습니다. 관리자에게 알려 주세요.");
+    if (response.status === 429 || response.status === 529) throw new ApiError(503, "CLAUDE_TEMPORARILY_UNAVAILABLE", "AI 서비스가 잠시 바쁩니다. 잠시 후 다시 시도해 주세요.");
+    throw new ApiError(502, "CLAUDE_GENERATION_FAILED", "AI 서비스에서 응답하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
   if (body.stop_reason === "max_tokens") throw new ApiError(502, "CLAUDE_OUTPUT_TRUNCATED", "AI 결과가 길이 제한에 걸렸습니다. 원문을 줄이거나 생성 범위를 나눠 주세요.");
   return outputText(body);
 }
