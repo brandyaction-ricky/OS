@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
-import { getYoutubeAccessToken } from "@/lib/server/youtube-oauth";
+import { getYoutubeAccessToken, youtubeConnectionStatus } from "@/lib/server/youtube-oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,12 +27,16 @@ export async function POST(request: Request) {
     const { data: kit, error } = await actor.supabase.from("os_records").select("id,title,record_type,metadata,parent_id").eq("id", input.kitId).is("archived_at", null).maybeSingle();
     if (error) throw new ApiError(400, "YOUTUBE_KIT_READ_FAILED", "유튜브 발행 키트를 불러오지 못했습니다.", error.message);
     if (!kit || kit.record_type !== "content_package" || kit.metadata?.packageKind !== "youtube_kit") throw new ApiError(404, "YOUTUBE_KIT_NOT_FOUND", "유튜브 발행 키트를 찾지 못했습니다.");
+    const connection = await youtubeConnectionStatus(actor.id);
     if (kit.parent_id) {
       const { data: source, error: sourceError } = await actor.supabase.from("os_records").select("metadata").eq("id", kit.parent_id).is("archived_at", null).maybeSingle();
       if (sourceError) throw new ApiError(500, "PIPELINE_READ_FAILED", "공정 승인 상태를 확인하지 못했습니다.");
       if (source?.metadata?.pipelineEnabled === true) {
         const state = await readPipeline(actor, kit.parent_id);
         if (!state.approved.every(Boolean)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "제작 공정에서 최종 영상과 발행키트를 승인한 뒤 업로드해 주세요.");
+        if (!state.release.approved) throw new ApiError(409, "RELEASE_APPROVAL_REQUIRED", "현재 채널과 공개 범위로 발행 승인을 저장한 뒤 업로드해 주세요.");
+        if (state.release.plan?.channelId !== connection.channelId) throw new ApiError(409, "RELEASE_CHANNEL_CHANGED", "승인한 채널과 현재 연결 채널이 다릅니다. 발행 조건을 다시 승인해 주세요.");
+        if (state.release.plan?.privacyStatus !== input.privacyStatus) throw new ApiError(409, "RELEASE_PRIVACY_CHANGED", "승인한 공개 범위와 업로드 설정이 다릅니다. 발행 조건을 다시 승인해 주세요.");
       }
     }
     const result = (kit.metadata?.result ?? {}) as Record<string, unknown>;
@@ -54,7 +58,7 @@ export async function POST(request: Request) {
     const uploadUrl = google.headers.get("location");
     const body = uploadUrl ? null : await google.json().catch(() => ({})) as { error?: { message?: string } };
     if (!google.ok || !uploadUrl) throw new ApiError(502, "YOUTUBE_UPLOAD_SESSION_FAILED", "YouTube 업로드 세션을 만들지 못했습니다.", body?.error?.message);
-    return NextResponse.json({ uploadUrl, kitId: kit.id, privacyStatus: input.privacyStatus, fileName: input.fileName });
+    return NextResponse.json({ uploadUrl, kitId: kit.id, privacyStatus: input.privacyStatus, fileName: input.fileName, channelId: connection.channelId });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_YOUTUBE_UPLOAD", "업로드 파일과 승인 내용을 확인해 주세요.", error.flatten()));
     return apiErrorResponse(error);

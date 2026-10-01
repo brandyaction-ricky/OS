@@ -11,7 +11,7 @@ import type { WritingWorkflowState } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState; scriptReview: ScriptReviewState; production: ProductionWorkflowState }
+interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState; scriptReview: ScriptReviewState; production: ProductionWorkflowState; verifiedLearning: OsRecord[] }
 const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = [
   { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "title_package", label: "제목·썸네일 생성", gate: 1 },
   { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
@@ -145,6 +145,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       </article>;
     })}</div>
     <div className="pipeline-artifacts">{[artifacts.appeals, artifacts.research, artifacts.script, artifacts.packaging, artifacts.kit].filter((item): item is OsRecord => !!item).map((item) => <details key={item.id}><summary>{item.title} · v{item.version}</summary><pre>{item.record_type === "content_script" ? item.description : JSON.stringify(item.metadata.result ?? item.description, null, 2)}</pre></details>)}</div>
+    <section className="writing-workflow"><header><div><h3>검증된 이전 학습</h3><p>성과 표본과 함께 사람이 채택한 학습만 다음 기획 근거로 표시합니다.</p></div><span>{state.verifiedLearning.length}건</span></header>{state.verifiedLearning.length ? state.verifiedLearning.map((item) => <article className="writing-step" key={item.id}><strong>{item.title}</strong><p>{item.description}</p><small>표본 {String(item.metadata.sampleCount ?? "미정")}건 · 검증 {String(item.metadata.verifiedAt ?? "")}</small></article>) : <p>이 기획에 연결된 검증 학습이 없습니다.</p>}</section>
     <nav className="pipeline-actions"><Link href={`/content/packages?sourceId=${sourceId}`}>제목·썸네일</Link><Link href={`/content/scripts?sourceId=${sourceId}`}>원고</Link><Link href={`/content/shorts?sourceId=${sourceId}`}>자막·영상 편집</Link><Link href={`/content/youtube?sourceId=${sourceId}`}>유튜브 업로드</Link><Link href="/content/performance">영상 성과</Link></nav>
     <p>영상 렌더링과 외부 채널 발행은 연결 상태와 최종 결과를 별도로 확인합니다. 승인만으로 영상이 생성되거나 발행되지는 않습니다.</p>
     <details><summary>실행 이력 {runs.length}건 · 승인 이력 {state.reviews.length}건</summary>{runs.toReversed().map((run) => <p key={`${run.key}-${run.at}`}>{ACTIONS.find((item) => item.action === run.action)?.label ?? run.action} · {({ running: "실행 중", succeeded: "완료", failed: "실패", needs_input: "입력 필요" })[run.state]} · {new Date(run.at).toLocaleString("ko-KR")}{run.error ? ` · ${run.error}` : ""}</p>)}{state.reviews.toReversed().map((review, index) => <p key={`${review.at}-${index}`}>{PIPELINE_GATES[review.gate - 1]} · {review.approved ? "승인" : "수정 요청"} · {new Date(review.at).toLocaleString("ko-KR")} · {review.note}</p>)}</details>

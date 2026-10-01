@@ -74,6 +74,11 @@ export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: num
     for (const step of scriptReview.steps) if (!step.approved) missing.push(`${step.label} 검수`);
   }
   if (gate >= 3 && !artifacts.kit) missing.push("발행키트");
+  if (gate >= 3 && artifacts.kit) {
+    const checklist = resultOf(artifacts.kit).checklist;
+    const checked = Array.isArray(artifacts.kit.metadata.checkedItems) ? artifacts.kit.metadata.checkedItems : [];
+    if (Array.isArray(checklist) && checklist.length > 0 && checklist.some((_, index) => !checked.includes(index))) missing.push("발행키트 업로드 체크리스트");
+  }
   if (gate >= 3 && production) {
     for (const step of production.steps) if (!step.approved) missing.push(step.label);
   }
@@ -86,7 +91,7 @@ export function hasCurrentApproval(reviews: PipelineReview[], gate: number, sign
   return latest?.approved === true && latest.signature === signature;
 }
 
-export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow"];
+export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow", "releaseWorkflow"];
 export function protectedPipelineChange(current: Record<string, unknown>, proposed?: Record<string, unknown>) {
   return !!proposed && ((current.pipelineEnabled === true && proposed.pipelineEnabled !== true) || PIPELINE_PROTECTED_KEYS.some((key) => JSON.stringify(current[key]) !== JSON.stringify(proposed[key])));
 }

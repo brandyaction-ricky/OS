@@ -87,6 +87,7 @@ test("private and unlisted uploads stay ready; only verified public videos count
     const publish = state.rows.find((row) => row.record_type === "content_publish");
     assert.equal(publish.status, privacyStatus === "public" ? "published" : "ready");
     assert.equal(publish.metadata.privacyStatus, privacyStatus);
+    assert.equal(publish.metadata.utmContent, videoId);
   }
 });
 
