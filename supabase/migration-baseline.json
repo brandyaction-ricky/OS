@@ -267,8 +267,11 @@
       "sha256": "7aafebd265008ab1245e424f3037203a1284ebd01f6b739e3df7c669d8c9e544",
       "purpose": "create or extend the private content bucket to accept production audio, image, editing-document, and rough-cut formats",
       "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-01",
+      "productionApprovedAt": "2026-10-01",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     }
   ],
