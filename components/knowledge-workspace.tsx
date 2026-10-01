@@ -16,7 +16,6 @@ import {
   Folder,
   FolderCog,
   FolderOpen,
-  FolderPlus,
   Hash,
   Images,
   Link2,
@@ -26,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  RefreshCw,
   RotateCcw,
   Save,
   Send,
@@ -66,6 +66,7 @@ import { DevelopmentDocumentLiveLog } from "./development-document-live-log";
 import { useSession } from "./session-provider";
 
 const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "review", "reviewed", "canonical"];
+const TREE_ROW_HEIGHT = 38;
 
 const OWNER_FILTERS = [
   { id: "mine_company", label: "내 문서 + 회사 정본" },
@@ -868,8 +869,10 @@ function WorkspaceContent() {
     setRelinkReference(reference);
     window.requestAnimationFrame(() => relinkInputRef.current?.click());
   };
-  const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / 44) - 8, treeRows.length - 45));
+  const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / TREE_ROW_HEIGHT) - 8, treeRows.length - 45));
   const visibleRows = treeRows.slice(treeStart, treeStart + 45);
+  const treeScopeLabel = ownerFilter === "mine_company" ? "내 문서 + 회사 정본" : ownerFilter === "mine" ? "내 문서" : ownerFilter === "canonical" ? "회사 정본" : ownerFilter === "team" ? "팀 공유" : ownerFilter === "review" ? "검토 문서" : ownerFilter === "archived" ? "휴지통 문서" : ownerFilter.startsWith("member:") ? `${ownerNames.get(ownerFilter.slice(7)) || "선택한 소유자"} 문서` : "전체 문서";
+  const treeScopeDetail = ownerFilter === "mine_company" ? "내 문서 + 회사 정본 · 휴지통 제외" : ownerFilter === "all" ? "모든 활성 문서 · 휴지통 제외" : ownerFilter === "archived" ? treeScopeLabel : `${treeScopeLabel} · 휴지통 제외`;
 
   return (
     <>
@@ -892,24 +895,24 @@ function WorkspaceContent() {
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
-          <div className="pane-title"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span>{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={14} /></button><button aria-label="트리 안에서 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={14} /></button><button aria-label="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>폴더 내 {sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button></div>
-          <p className="knowledge-tree-scope">{ownerFilter === "mine_company" ? "내 문서 + 회사 정본 · 휴지통 제외" : ownerFilter === "mine" ? "내 문서 · 휴지통 제외" : ownerFilter === "canonical" ? "회사 정본" : ownerFilter === "team" ? "팀 공유" : ownerFilter === "review" ? "검토 문서" : ownerFilter === "archived" ? "휴지통 문서" : ownerFilter.startsWith("member:") ? `${ownerNames.get(ownerFilter.slice(7)) || "선택한 소유자"} 문서 · 휴지통 제외` : "모든 활성 문서 · 휴지통 제외"}</p>
-          <div className="knowledge-bulk-actions"><button className="ghost-button" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}>목록 새로고침</button>{checkedIds.size ? <button className="secondary-button" disabled={busy} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>선택 {checkedIds.size}개 이동</button> : null}</div>
+          <div className="pane-title knowledge-tree-heading"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span><div className="knowledge-tree-heading-actions">{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={15} /></button><button aria-label="트리 안에서 접기" title="파일 트리 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={15} /></button></div></div>
+          <div className="knowledge-tree-controls"><span className="knowledge-tree-scope" title={treeScopeDetail}>{treeScopeLabel}</span><div className="knowledge-tree-control-actions"><button aria-label="폴더 안 문서 정렬" title="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button><button aria-label="목록 새로고침" title="목록 새로고침" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}><RefreshCw size={15} /></button></div></div>
+          {checkedIds.size ? <div className="knowledge-bulk-actions"><button className="secondary-button" disabled={busy} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>선택 {checkedIds.size}개 이동</button></div> : null}
           {draggedFolder ? <div className={`knowledge-root-dropzone${dropTargetFolder === "" ? " active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(""); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={() => setDropTargetFolder(null)} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/folder-path"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, ""); }}>최상위로 이동</div> : null}
           <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
-            {treeStart > 0 ? <div style={{height: treeStart * 44}} /> : null}
+            {treeStart > 0 ? <div style={{height: treeStart * TREE_ROW_HEIGHT}} /> : null}
             {visibleRows.map((row) => row.type === "folder" ? (
               <div className={`folder-tree-item${dropTargetFolder === row.folder.path ? " drop-target" : ""}`} key={`folder-${row.folder.path}`} onContextMenu={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(row.folder.path); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTargetFolder(null); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = event.dataTransfer.getData("text/folder-path"); const id = event.dataTransfer.getData("text/document-id"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, row.folder.path); else if (id) guardAction(() => { void moveDocument(id, row.folder.path); }); }}>
                 <button draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
-                <button className="folder-inline-action" title={`${row.folder.path}에 새 문서`} aria-label={`${row.folder.path}에 새 문서`} onClick={() => openNewDocument(row.folder.path)}><FolderPlus size={14} /></button><button className="folder-inline-action" aria-label={`${row.folder.path} 폴더 관리`} onClick={() => guardAction(() => { setManagedFolder(row.folder.path); setFolderManagerOpen(true); })}><FolderCog size={14} /></button>
+                <button className="folder-inline-action" title={`${row.folder.name} 폴더 작업`} aria-label={`${row.folder.path} 폴더 작업`} aria-haspopup="menu" onClick={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })}><MoreHorizontal size={16} /></button>
               </div>
             ) : (
               <div className="document-tree-select-row" key={row.document.id} onContextMenu={(event) => openTreeContextMenu(event, { type: "document", document: row.document })}><input type="checkbox" aria-label={`${row.document.title} 선택`} checked={checkedIds.has(row.document.id)} disabled={busy} onChange={event => { const checked = event.target.checked; setCheckedIds(current => { const next = new Set(current); if (checked) next.add(row.document.id); else next.delete(row.document.id); return next; }); }} /><button draggable className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/document-id", row.document.id); }} onClick={() => { selectDocument(row.document.id); if (window.innerWidth < 900) setTreeOpen(false); }}>
                 <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
               </button></div>
             ))}
-            <div style={{height: Math.max(0, treeRows.length - treeStart - visibleRows.length) * 44}} />
+            <div style={{height: Math.max(0, treeRows.length - treeStart - visibleRows.length) * TREE_ROW_HEIGHT}} />
             {!treeRows.length && !listLoading ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
           </div>
           <div className="folder-divider" />

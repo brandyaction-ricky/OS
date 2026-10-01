@@ -173,6 +173,31 @@ test("knowledge gallery browses local demo documents and stops image recovery be
   await expect(recovery.getByRole("button", { name: "0개 이미지 연결" })).toBeDisabled();
 });
 
+test("knowledge tree keeps controls compact and mobile actions readable", async ({ page }) => {
+  await page.goto("/knowledge");
+
+  await expect(page.getByRole("button", { name: "폴더 안 문서 정렬" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "목록 새로고침" })).toBeVisible();
+  const folder = page.getByRole("button", { name: "회사 wiki 2" });
+  const actions = page.getByRole("button", { name: "회사 wiki 폴더 작업" });
+  await expect(folder).toHaveCSS("height", "34px");
+  await expect(actions).toHaveCSS("opacity", "0");
+  await folder.hover();
+  await expect(actions).toHaveCSS("opacity", "1");
+  await actions.click();
+  await expect(page.getByRole("menu", { name: "회사 wiki 폴더 메뉴" }).getByRole("menuitem", { name: "이 폴더에 새 문서" })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".workspace-page-header .header-actions")).toHaveCSS("display", "grid");
+  const treeWidth = await page.locator(".knowledge-tree-pane").evaluate((pane) => pane.getBoundingClientRect().width);
+  expect(treeWidth).toBeGreaterThan(340);
+  const importButton = page.getByRole("button", { name: "Markdown 가져오기" });
+  await expect(importButton).toBeVisible();
+  const layout = await importButton.evaluate((button) => ({ width: button.getBoundingClientRect().width, overflow: button.scrollWidth > button.clientWidth }));
+  expect(layout.width).toBeGreaterThan(150);
+  expect(layout.overflow).toBe(false);
+});
+
 test("knowledge tree supports context actions and direct drag moves", async ({ page }) => {
   await page.goto("/knowledge");
 
