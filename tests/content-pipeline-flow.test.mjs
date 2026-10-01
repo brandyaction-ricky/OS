@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import ts from 'typescript';
 import * as pipeline from '../lib/content-pipeline.ts';
+import * as scriptReview from '../lib/content-script-review.ts';
 import * as writingWorkflow from '../lib/content-writing-workflow.ts';
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
@@ -31,7 +32,7 @@ function harness() {
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-script-review') return scriptReview; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
@@ -50,6 +51,14 @@ async function approveWritingWorkflow(h) {
     await h.api.saveWritingPreparation(h.actor, 'source', state.source.version, step, content);
     state = await h.api.readPipeline(h.actor, 'source');
     await h.api.reviewWritingPreparation(h.actor, 'source', state.source.version, step, true, `${step} checked`);
+  }
+}
+async function approveScriptReview(h) {
+  for (const [step, content] of [['claim', 'One clear claim without overstatement'], ['evidence', 'Every claim is tied to a checked source or case'], ['audience', 'The script answers the selected audience scene'], ['expression', 'Plain language, no repetition, brand-safe wording']]) {
+    let state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.saveScriptReview(h.actor, 'source', state.source.version, step, content);
+    state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.reviewScript(h.actor, 'source', state.source.version, step, true, `${step} checked`);
   }
 }
 test('pipeline stops at each gate and reuses successful generation', async () => {
@@ -74,9 +83,14 @@ test('pipeline stops at each gate and reuses successful generation', async () =>
   assert.equal(regenerated.reused, undefined); assert.equal(h.calls(), 4);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
   state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.scriptReview.ready, false);
+  assert.ok(state.missing[1].includes('주장 검수'));
+  await approveScriptReview(h);
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.scriptReview.ready, true);
   await h.api.reviewPipeline(h.actor, 'source', 2, state.signatures[1], true, 'Checked script');
   const script = h.rows.findLast((row) => row.record_type === 'content_script'); script.version++;
-  state = await h.api.readPipeline(h.actor, 'source'); assert.equal(state.approved[0], true); assert.equal(state.approved[1], false);
+  state = await h.api.readPipeline(h.actor, 'source'); assert.equal(state.approved[0], true); assert.equal(state.approved[1], false); assert.equal(state.scriptReview.ready, false);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
 });
 
@@ -105,6 +119,28 @@ test('writing preparation is sequential and a package change invalidates downstr
   assert.equal(state.writing.steps[0].approved, false);
   assert.equal(state.writing.steps[1].content, 'Verified sources, facts, and limitations');
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'WRITING_WORKFLOW_REQUIRED');
+});
+test('script review keeps notes but invalidates approvals when the script changes', async () => {
+  const h = harness();
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan')); choosePlan(h);
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Planning checked');
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  await approveWritingWorkflow(h);
+  await h.api.runPipelineGeneration(h.actor, input('script_draft'));
+  await assert.rejects(h.api.reviewScript(h.actor, 'source', h.rows[0].version, 'claim', true, ''), (error) => error.code === 'SCRIPT_REVIEW_BLOCKED');
+  await approveScriptReview(h);
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.scriptReview.ready, true);
+  const script = h.rows.findLast((row) => row.record_type === 'content_script'); script.description = 'Revised actual script'; script.version++;
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.scriptReview.ready, false);
+  assert.equal(state.scriptReview.steps[0].content, 'One clear claim without overstatement');
+  assert.match(state.scriptReview.blocker, /원고가 변경/);
+  await h.api.saveScriptReview(h.actor, 'source', state.source.version, 'claim', state.scriptReview.steps[0].content);
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.scriptReview.currentScript, true);
+  assert.equal(state.scriptReview.steps.every((step) => !step.approved), true);
 });
 test('pipeline retains failures, allows retry, and rejects concurrent runs', async () => {
   const h = harness(); h.fail(true);

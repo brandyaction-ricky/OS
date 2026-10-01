@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import type { ScriptReviewState } from "@/lib/content-script-review";
 import type { WritingWorkflowState } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState }
+interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][]; writing: WritingWorkflowState; scriptReview: ScriptReviewState }
 const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = [
   { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "title_package", label: "제목·썸네일 생성", gate: 1 },
   { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
@@ -64,7 +65,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
       const gate = index + 1; const prior = state.reviews.filter((review) => review.gate === gate).at(-1);
       return <article key={title}><header><strong>{gate}. {title}</strong><span className={`status-pill status-${state.approved[index] ? "ready" : "review"}`}>{state.approved[index] ? "승인 완료" : prior?.signature !== undefined && prior.signature !== state.signatures[index] ? "자료 변경 · 재검토" : prior && !prior.approved ? "수정 요청" : "검토 대기"}</span></header>
-        <div className="pipeline-actions">{ACTIONS.filter((item) => item.gate === index).map((item) => <button className="secondary-button" key={item.action} disabled={busy || !enabled || state.approved.slice(0, item.gate).some((approved) => !approved)} onClick={() => void perform(async () => { const result = await generateContent(accessToken, { sourceId, action: item.action, count: 5 }); if (result.queued) throw new Error("Claude 연결이 필요합니다. 입력 자료와 작업 이력은 저장되어 있습니다."); })}>{item.label}</button>)}{index === 1 ? <Link className="secondary-button" href={`/content/scripts?sourceId=${sourceId}`}>{state.writing.ready ? "원고 작업으로" : `${state.writing.nextAction} 하기`}</Link> : null}</div>
+        <div className="pipeline-actions">{ACTIONS.filter((item) => item.gate === index).map((item) => <button className="secondary-button" key={item.action} disabled={busy || !enabled || state.approved.slice(0, item.gate).some((approved) => !approved)} onClick={() => void perform(async () => { const result = await generateContent(accessToken, { sourceId, action: item.action, count: 5 }); if (result.queued) throw new Error("Claude 연결이 필요합니다. 입력 자료와 작업 이력은 저장되어 있습니다."); })}>{item.label}</button>)}{index === 1 ? <Link className="secondary-button" href={`/content/scripts?sourceId=${sourceId}`}>{!state.writing.ready ? `${state.writing.nextAction} 하기` : !artifacts.script ? "원고 작업으로" : state.scriptReview.ready ? "원고 검수 완료" : `${state.scriptReview.nextAction} 하기`}</Link> : null}</div>
         {state.missing[index].length ? <p>보완할 자료: {state.missing[index].join(" · ")}</p> : null}
         <label>검토 메모<textarea rows={2} value={notes[gate] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [gate]: event.target.value }))} /></label>
         <div className="pipeline-actions"><button className="primary-button" disabled={busy || !enabled || state.approved[index] || state.missing[index].length > 0 || state.approved.slice(0, index).some((value) => !value)} onClick={() => void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ sourceId, gate, signature: state.signatures[index], approved: true, note: notes[gate] ?? "" }) }))}>검토한 자료 승인</button><button className="secondary-button" disabled={busy || !enabled || !notes[gate]?.trim()} onClick={() => void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ sourceId, gate, signature: state.signatures[index], approved: false, note: notes[gate] }) }))}>수정 요청</button></div>
