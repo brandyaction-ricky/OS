@@ -1,4 +1,5 @@
 import type { OsRecord } from "./record-types";
+import { appealApprovalMatches, researchBriefReady } from "./content-appeals.ts";
 
 export const PIPELINE_GATES = ["소재·근거 승인", "원고·패키징 승인", "최종 영상·발행키트 승인"] as const;
 export type PipelineAction = "topic_plan" | "script_draft" | "title_package" | "shorts_proposal" | "youtube_kit";
@@ -8,6 +9,7 @@ export interface PipelineRun { key: string; action: string; state: "running" | "
 export function pipelineArtifacts(records: OsRecord[]) {
   const latest = (match: (record: OsRecord) => boolean) => records.filter((record) => !record.archived_at && match(record)).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
   return {
+    appeals: latest((record) => record.metadata.packageKind === "appeal_candidates"),
     research: latest((record) => record.metadata.packageKind === "topic_plan"),
     script: latest((record) => record.record_type === "content_script"),
     packaging: latest((record) => record.metadata.packageKind === "title_package"),
@@ -18,9 +20,14 @@ export function pipelineArtifacts(records: OsRecord[]) {
 
 export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records); const missing: string[] = [];
+  const brief = source.metadata.researchBrief;
+  const briefRecord = brief && typeof brief === "object" ? brief as Record<string, unknown> : {};
+  const hasApprovedAppeal = appealApprovalMatches(artifacts.appeals?.metadata.result && typeof artifacts.appeals.metadata.result === "object" ? (artifacts.appeals.metadata.result as Record<string, unknown>).candidates : null, briefRecord);
+  const matchesCurrentAppeal = Boolean(artifacts.appeals && briefRecord.appealPackageId === artifacts.appeals.id && Number(briefRecord.appealPackageVersion) === artifacts.appeals.version);
   if (!String(source.metadata.audience ?? "").trim()) missing.push("타깃 시청자");
   if (!String(source.metadata.evidence ?? "").trim()) missing.push("확인한 자료·출처");
   if (!String(source.metadata.experience ?? "").trim()) missing.push("실제 경험·사례 (해당 없으면 사유)");
+  if (!hasApprovedAppeal || !matchesCurrentAppeal || !researchBriefReady(briefRecord)) missing.push("소구점 승인·레퍼런스 검증");
   if (!artifacts.research) missing.push("기획 브리핑");
   if (gate >= 2 && !artifacts.script?.description.trim()) missing.push("원고");
   if (gate >= 2 && !artifacts.packaging) missing.push("제목·썸네일 패키지");
