@@ -24,7 +24,7 @@ test("the active chain is intact and isolates the pending production-assets migr
   assert.equal(lifecycle.requiresApproval, false);
   assert.deepEqual(teamSharing.appliedEnvironments, ["development", "production"]);
   assert.equal(teamSharing.requiresApproval, false);
-  assert.deepEqual(productionAssets.appliedEnvironments, []);
+  assert.deepEqual(productionAssets.appliedEnvironments, ["development"]);
   assert.equal(productionAssets.requiresApproval, true);
   assert.deepEqual(result.errors, []);
 });
