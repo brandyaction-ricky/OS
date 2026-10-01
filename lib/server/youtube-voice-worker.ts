@@ -172,11 +172,13 @@ async function processClaimedRun(service: ReturnType<typeof createServiceSupabas
 }
 
 /** Process one bounded step. A DEV scheduler may call this repeatedly; it never uploads to YouTube. */
-export async function processYoutubeVoiceQueue() {
+export async function processYoutubeVoiceQueue(runId?: string) {
   const service = createServiceSupabase();
-  const { data: candidates, error } = await service.from("os_records").select("*")
+  let query = service.from("os_records").select("*")
     .eq("record_type", "ai_job").eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND)
-    .in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(20);
+    .in("status", ["backlog", "in_progress"]).is("archived_at", null);
+  if (runId) query = query.eq("id", runId);
+  const { data: candidates, error } = await query.order("created_at").limit(20);
   if (error) throw new ApiError(500, "VOICE_RUN_READ_FAILED", "음성 제작 대기열을 읽지 못했습니다.");
   for (const candidate of candidates ?? []) {
     const record = candidate as OsRecord;

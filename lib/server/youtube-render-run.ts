@@ -66,9 +66,11 @@ async function leased(service: Service, renderId: string, token: string) {
 }
 
 /** Create or claim the render run for one finished voice run, and hand the worker its inputs. */
-export async function claimYoutubeRender(service: Service = createServiceSupabase()) {
-  const { data: voiceRuns, error } = await service.from("os_records").select("*").eq("record_type", "ai_job")
-    .eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND).eq("status", "done").eq("stage", "voice_ready").is("archived_at", null).order("updated_at").limit(20);
+export async function claimYoutubeRender(service: Service = createServiceSupabase(), targetVoiceRunId?: string) {
+  let query = service.from("os_records").select("*").eq("record_type", "ai_job")
+    .eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND).eq("status", "done").eq("stage", "voice_ready").is("archived_at", null);
+  if (targetVoiceRunId) query = query.eq("id", targetVoiceRunId);
+  const { data: voiceRuns, error } = await query.order("updated_at").limit(20);
   if (error) throw new ApiError(500, "RENDER_QUEUE_READ_FAILED", "영상 제작 대기열을 읽지 못했습니다.");
   for (const candidate of voiceRuns ?? []) {
     const voiceRecord = candidate as OsRecord;
