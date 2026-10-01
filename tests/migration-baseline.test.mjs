@@ -5,7 +5,7 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the active chain records production assets and pending knowledge image links with separate approval gates", async () => {
+test("the active chain records production assets and DEV-only knowledge image links with separate approval gates", async () => {
   const result = await inspectMigrationBaseline();
   const manifest = JSON.parse(await readFile(new URL("../supabase/migration-baseline.json", import.meta.url), "utf8"));
   const lifecycle = manifest.forwardMigrations.find(entry => entry.file === "20260929025147_knowledge_attachment_lifecycle.sql");
@@ -30,7 +30,9 @@ test("the active chain records production assets and pending knowledge image lin
   assert.equal(productionAssets.productionApprovedAt, "2026-10-01");
   assert.equal(productionAssets.requiresApproval, true);
   assert.equal(knowledgeAssets.requiresApproval, true);
-  assert.deepEqual(knowledgeAssets.appliedEnvironments, []);
+  assert.equal(knowledgeAssets.developmentApprovedAt, "2026-10-01");
+  assert.equal(knowledgeAssets.productionApprovedAt, undefined);
+  assert.deepEqual(knowledgeAssets.appliedEnvironments, ["development"]);
   assert.deepEqual(result.errors, []);
 });
 

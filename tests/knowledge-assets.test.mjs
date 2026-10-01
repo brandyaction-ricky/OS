@@ -43,11 +43,13 @@ test("knowledge asset migration is additive, indexed, RLS protected and reuses a
   assert.match(migration, /os_knowledge_assets_document_id_idx/i);
   assert.match(migration, /os_knowledge_assets_document_sha256_idx/i);
   assert.match(migration, /enable row level security/i);
-  assert.match(migration, /using \(\(select public\.os_can_read_document\(document_id\)\)\)/i);
+  assert.match(migration, /using \(exists \([\s\S]*?from public\.os_documents document[\s\S]*?document\.id = os_knowledge_assets\.document_id/i);
+  assert.doesNotMatch(migration, /os_can_read_document\(document_id\)/i);
   assert.match(migration, /revoke all on table public\.os_knowledge_assets from public, anon, authenticated/i);
   assert.match(migration, /grant select on table public\.os_knowledge_assets to authenticated/i);
   assert.match(migration, /status = 'referenced'/i);
   assert.match(migration, /raise exception 'OS_ATTACHMENT_EXPIRED'/i);
+  assert.match(migration, /select status into upload_status[\s\S]*?for update;[\s\S]*?if not found or upload_status = 'deleting'/i);
   assert.doesNotMatch(migration, /create table.*storage\.objects/is);
 });
 

@@ -42,7 +42,10 @@ grant select, insert, update, delete on table public.os_knowledge_assets to serv
 drop policy if exists os_knowledge_assets_select on public.os_knowledge_assets;
 create policy os_knowledge_assets_select on public.os_knowledge_assets
   for select to authenticated
-  using ((select public.os_can_read_document(document_id)));
+  using (exists (
+    select 1 from public.os_documents document
+    where document.id = os_knowledge_assets.document_id
+  ));
 
 create or replace function public.os_mark_knowledge_asset_attachment_referenced()
 returns trigger
@@ -50,14 +53,17 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  upload_status text;
 begin
-  if exists (
-    select 1
-    from public.os_knowledge_attachment_uploads
-    where path = new.storage_path
-      and document_id = new.document_id
-      and status = 'deleting'
-  ) then
+  -- Serialize adoption with cleanup before checking the current state.
+  select status into upload_status
+  from public.os_knowledge_attachment_uploads
+  where path = new.storage_path
+    and document_id = new.document_id
+  for update;
+
+  if not found or upload_status = 'deleting' then
     raise exception 'OS_ATTACHMENT_EXPIRED';
   end if;
 
