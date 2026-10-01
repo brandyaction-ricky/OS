@@ -10,7 +10,8 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   createRecord,
   listMembers,
@@ -52,6 +53,8 @@ function dueSignal(task: OsRecord) {
 
 export function TasksWorkspace() {
   const { accessToken, demo, profile } = useSession();
+  const searchParams = useSearchParams();
+  const openedDeepLinkRef = useRef("");
   const [tasks, setTasks] = useState<OsRecord[]>([]);
   const [projects, setProjects] = useState<OsRecord[]>([]);
   const [meetings, setMeetings] = useState<OsRecord[]>([]);
@@ -87,6 +90,15 @@ export function TasksWorkspace() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    const requestedId = searchParams.get("task");
+    const requested = tasks.find((task) => task.id === requestedId);
+    if (requested && openedDeepLinkRef.current !== requested.id) {
+      openedDeepLinkRef.current = requested.id;
+      setEditing(requested);
+      setDrawer(true);
+    }
+  }, [searchParams, tasks]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);

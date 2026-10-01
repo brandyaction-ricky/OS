@@ -1,4 +1,5 @@
 import type { OsRecord } from "./record-types";
+import type { KnowledgeDocument } from "./types";
 
 const CONTENT_TYPES = new Set<OsRecord["record_type"]>([
   "content_topic",
@@ -32,6 +33,193 @@ export interface HomeVideo {
   status: string;
   dueDate: string | null;
   updatedAt: string;
+}
+
+export interface DailyBriefItem {
+  id: string;
+  title: string;
+  reason: string;
+  href: string;
+  record: OsRecord;
+}
+
+export interface DailyBriefView {
+  date: string;
+  priorities: DailyBriefItem[];
+  primary: DailyBriefItem | null;
+  firstAction: string;
+  delayed: DailyBriefItem[];
+  decisions: OsRecord[];
+  schedule: OsRecord[];
+}
+
+export interface DailyBriefWorkContext {
+  project: OsRecord | null;
+  meetings: OsRecord[];
+  decisions: OsRecord[];
+  documents: KnowledgeDocument[];
+  activeJobs: OsRecord[];
+}
+
+function seoulDate(now: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+function seoulDateFromIso(value: string | null) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : seoulDate(parsed);
+}
+
+function dailyBriefHref(record: OsRecord) {
+  if (record.record_type === "decision") return `/home/decisions?record=${encodeURIComponent(record.id)}`;
+  if (record.record_type === "meeting") return `/organization/meetings?meeting=${encodeURIComponent(record.id)}`;
+  if (record.record_type === "ai_job") return `/organization/agents?job=${encodeURIComponent(record.id)}`;
+  return `/organization/tasks?task=${encodeURIComponent(record.id)}`;
+}
+
+function firstMeaningfulLine(value: string) {
+  return value.split("\n").map((line) => line.replace(/^[-*]\s*/, "").trim()).find(Boolean) ?? "";
+}
+
+export function buildDailyBrief(records: OsRecord[], now = new Date(), profileId = ""): DailyBriefView {
+  const today = seoulDate(now);
+  const priorities = records
+    .filter((record) => record.record_type === "task" && !record.archived_at && !["done", "cancelled"].includes(record.status))
+    .map((record) => {
+      const overdue = Boolean(record.due_date && record.due_date < today);
+      const dueToday = record.due_date === today;
+      const scheduledToday = seoulDateFromIso(record.starts_at) === today;
+      const score = (record.status === "blocked" ? 140 : 0)
+        + (overdue ? 110 : 0)
+        + (dueToday ? 90 : 0)
+        + (scheduledToday ? 70 : 0)
+        + ({ urgent: 40, high: 25, normal: 10, low: 0 }[record.priority] ?? 0)
+        + (record.assignee_id && record.assignee_id === profileId ? 20 : 0)
+        + (record.status === "active" ? 15 : record.status === "review" ? 8 : 0)
+        + Math.min(record.progress, 99) / 100;
+      const reason = record.status === "blocked"
+        ? `막힘 · ${firstMeaningfulLine(record.description) || "해결 조건 확인 필요"}`
+        : overdue
+          ? `${record.due_date} 기한 경과`
+          : dueToday
+            ? "오늘 마감"
+            : scheduledToday
+              ? "오늘 시작 예정"
+              : record.priority === "urgent"
+                ? "긴급 우선순위"
+                : record.status === "active"
+                  ? "진행 중"
+                  : "다음 실행 후보";
+      return { id: record.id, title: record.title, reason, href: dailyBriefHref(record), record, score };
+    })
+    .sort((left, right) => right.score - left.score || (left.record.due_date || "9999").localeCompare(right.record.due_date || "9999"));
+  const asBriefItem = (item: (typeof priorities)[number]): DailyBriefItem => ({
+    id: item.id,
+    title: item.title,
+    reason: item.reason,
+    href: item.href,
+    record: item.record,
+  });
+  const top = priorities.slice(0, 3).map(asBriefItem);
+  const primary = top[0] ?? null;
+  const metadataFirstAction = primary?.record.metadata.firstAction;
+  const firstAction = primary
+    ? (typeof metadataFirstAction === "string" && metadataFirstAction.trim())
+      || firstMeaningfulLine(primary.record.description)
+      || "업무 상세를 열어 다음 행동을 확인하세요."
+    : "등록된 진행 업무가 없습니다.";
+  return {
+    date: today,
+    priorities: top,
+    primary,
+    firstAction,
+    delayed: priorities
+      .filter((item) => item.record.status === "blocked" || Boolean(item.record.due_date && item.record.due_date < today))
+      .slice(0, 4)
+      .map(asBriefItem),
+    decisions: records
+      .filter((record) => record.record_type === "decision" && !record.archived_at && ["open", "review"].includes(record.status))
+      .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+      .slice(0, 2),
+    schedule: records
+      .filter((record) => record.record_type === "meeting" && !record.archived_at && record.status !== "cancelled" && seoulDateFromIso(record.starts_at) === today)
+      .sort((left, right) => (left.starts_at || "").localeCompare(right.starts_at || ""))
+      .slice(0, 4),
+  };
+}
+
+function metadataIds(record: OsRecord) {
+  return ["taskId", "sourceTaskId", "projectId", "meetingId", "sourceId"]
+    .map((key) => record.metadata[key])
+    .filter((value): value is string => typeof value === "string" && Boolean(value));
+}
+
+function recordContextScore(record: OsRecord, task: OsRecord, project: OsRecord | null) {
+  const strongIds = new Set([task.id, task.parent_id, project?.id, ...metadataIds(task)].filter((value): value is string => Boolean(value)));
+  let score = record.parent_id && strongIds.has(record.parent_id) ? 100 : 0;
+  if (metadataIds(record).some((id) => strongIds.has(id))) score += 100;
+  if (task.brand && record.brand === task.brand) score += 20;
+  if (task.team && record.team === task.team) score += 10;
+  if (task.tags.some((tag) => record.tags.includes(tag))) score += 5;
+  return score;
+}
+
+export function buildDailyBriefWorkContext(task: OsRecord, records: OsRecord[], documents: KnowledgeDocument[]): DailyBriefWorkContext {
+  const projectId = [task.parent_id, task.metadata.projectId].find((value): value is string => typeof value === "string" && Boolean(value));
+  const project = records.find((record) => record.record_type === "project" && record.id === projectId) ?? null;
+  const ranked = (type: OsRecord["record_type"], limit: number) => records
+    .filter((record) => record.record_type === type && record.id !== task.id && !record.archived_at)
+    .map((record) => ({ record, score: recordContextScore(record, task, project) }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || right.record.updated_at.localeCompare(left.record.updated_at))
+    .slice(0, limit)
+    .map((item) => item.record);
+  const meetings = ranked("meeting", 3);
+  const decisions = ranked("decision", 3);
+  const relatedIds = new Set([task.id, project?.id, ...meetings.map((item) => item.id), ...decisions.map((item) => item.id)].filter((value): value is string => Boolean(value)));
+  const rankedDocuments = documents
+    .map((document) => {
+      let score = document.source_ref && relatedIds.has(document.source_ref) ? 100 : 0;
+      if (task.brand && document.brand === task.brand) score += 20;
+      if (task.team && document.team === task.team) score += 10;
+      if (task.tags.some((tag) => document.tags.includes(tag))) score += 5;
+      return { document, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || right.document.updated_at.localeCompare(left.document.updated_at))
+    .slice(0, 5)
+    .map((item) => item.document);
+  const activeJobs = records
+    .filter((record) => record.record_type === "ai_job" && record.metadata.sourceTaskId === task.id && !["done", "cancelled", "failed"].includes(record.status))
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+  return { project, meetings, decisions, documents: rankedDocuments, activeJobs };
+}
+
+function bounded(value: string, max = 500) {
+  const clean = value.trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+export function dailyBriefWorkDescription(task: OsRecord, context: DailyBriefWorkContext, firstAction: string) {
+  const section = (title: string, rows: string[]) => rows.length ? [``, `[${title}]`, ...rows.map((row) => `- ${row}`)] : [];
+  return [
+    `[Daily Brief · ${task.title}]`,
+    bounded(task.description || "업무 설명 없음", 800),
+    "",
+    `[첫 행동]`,
+    bounded(firstAction, 300),
+    ...section("프로젝트", context.project ? [context.project.title] : []),
+    ...section("최근 회의", context.meetings.map((item) => item.title)),
+    ...section("관련 결정", context.decisions.map((item) => `${item.title} · ${item.status}`)),
+    ...section("관련 지식", context.documents.map((item) => item.title)),
+    ...section("진행 중 AI 작업", context.activeJobs.map((item) => `${item.title} · ${item.status}`)),
+  ].join("\n");
 }
 
 export function attainmentPercent(record: OsRecord): number | null {

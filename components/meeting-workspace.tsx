@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   createDocument,
@@ -67,6 +68,8 @@ function suggestMeetingTitle(brand: string) {
 
 export function MeetingWorkspace() {
   const { accessToken, demo, profile } = useSession();
+  const searchParams = useSearchParams();
+  const openedDeepLinkRef = useRef("");
   const [meetings, setMeetings] = useState<OsRecord[]>([]);
   const [decisions, setDecisions] = useState<OsRecord[]>([]);
   const [tasks, setTasks] = useState<OsRecord[]>([]);
@@ -159,6 +162,15 @@ export function MeetingWorkspace() {
     setRecordedBlob(null);
     setDrawerOpen(true);
   };
+
+  useEffect(() => {
+    const requestedId = searchParams.get("meeting");
+    const requested = meetings.find((meeting) => meeting.id === requestedId);
+    if (requested && openedDeepLinkRef.current !== requested.id) {
+      openedDeepLinkRef.current = requested.id;
+      openEdit(requested);
+    }
+  }, [meetings, searchParams]);
 
   const startRecording = async () => {
     setError("");
