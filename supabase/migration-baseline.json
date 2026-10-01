@@ -273,6 +273,18 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20261001060319_knowledge_asset_links.sql",
+      "sha256": "88ef5eff7f6dda63f43d9127595001511ad7a33f47b6b9d03f5077f7f0084842",
+      "purpose": "link imported Obsidian and Markdown image references to the existing private knowledge attachment lifecycle without rewriting document bodies",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-01",
+      "productionApprovedAt": "2026-10-01",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ]
     }
   ],
   "legacyMigrations": [
