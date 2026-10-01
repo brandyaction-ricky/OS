@@ -18,6 +18,7 @@ import {
   FolderOpen,
   FolderPlus,
   Hash,
+  Images,
   Link2,
   MoreHorizontal,
   MoveRight,
@@ -38,7 +39,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, getDocument, listDocuments, listDocumentVersions, listMembers, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, prepareKnowledgeAssetUpload, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -46,7 +47,7 @@ import { documentCreateSchema } from "@/lib/validation";
 import { updateFolderInventory, inKnowledgeScope } from "@/lib/knowledge-workspace-state";
 import { useKnowledgeDraft } from "@/hooks/use-knowledge-draft";
 import { KnowledgeFolderPicker } from "./knowledge-folder-picker";
-import { WikiInline } from "./knowledge-inline";
+import { KnowledgeInlineProvider, WikiInline } from "./knowledge-inline";
 import { KnowledgeReviewHistory } from "./knowledge-review-history";
 import { KnowledgeDocumentMover } from "./knowledge-document-mover";
 import { KnowledgeFolderManager } from "./knowledge-folder-manager";
@@ -55,6 +56,8 @@ import { KnowledgeImport } from "./knowledge-import";
 import { KnowledgeVersionComparison } from "./knowledge-version-comparison";
 import { KnowledgeModal } from "./knowledge-modal";
 import { KnowledgeRichEditor, type KnowledgeRichEditorMethods } from "./knowledge-rich-editor";
+import { KnowledgeGallery } from "./knowledge-gallery";
+import { KnowledgeImageRecovery } from "./knowledge-image-recovery";
 import { dispatchKnowledgeFileDropPosition } from "./knowledge-image-drag-plugin";
 import { getDemoKnowledgeDocuments, getDemoKnowledgeVersions, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
@@ -234,6 +237,7 @@ function WorkspaceContent() {
   const [ownerFilter, setOwnerFilter] = useState(searchParams.get("document") ? "all" : "mine_company");
   const [members, setMembers] = useState<OsMember[]>([]);
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
+  const [workspaceView, setWorkspaceView] = useState<"document" | "gallery">("document");
   const selected = documents.find((document) => document.id === selectedId) ?? null;
   const { draft, setDraft, dirty, discard, rebase, expectedVersion } = useKnowledgeDraft(selected);
   const documentsRef = useRef(documents);
@@ -274,6 +278,8 @@ function WorkspaceContent() {
   const [externalLinkOpen, setExternalLinkOpen] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState("");
   const [attachmentProgress, setAttachmentProgress] = useState("");
+  const [imageRecoveryOpen, setImageRecoveryOpen] = useState(false);
+  const [relinkReference, setRelinkReference] = useState("");
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
@@ -300,9 +306,13 @@ function WorkspaceContent() {
   const loadedFolders = useRef(new Set<string>());
   const editorRef = useRef<KnowledgeRichEditorMethods | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const relinkInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentDragDepth = useRef(0);
   const pendingAttachmentPaths = useRef(new Map<string, Set<string>>());
   const selectDocumentNow = useCallback((id: string) => {
+    setWorkspaceView("document");
+    const target = documentsRef.current.find((document) => document.id === id);
+    if (target) setManagedFolder(target.folder);
     setMode("read");
     setSelectedId(id);
     const params = new URLSearchParams(window.location.search);
@@ -447,6 +457,14 @@ function WorkspaceContent() {
   }, [accessToken, demo, selected]);
 
   const filtered = useMemo(() => documents.filter(document => inKnowledgeScope(document, ownerFilter, profile?.id)), [documents, ownerFilter, profile?.id]);
+  const galleryFolder = managedFolder || selected?.folder || "";
+  const galleryDocuments = useMemo(() => filtered.filter((document) => documentFolder(document) === galleryFolder), [filtered, galleryFolder]);
+  const openGallery = () => guardAction(() => {
+    const folder = managedFolder || selected?.folder || "";
+    setManagedFolder(folder);
+    setWorkspaceView((value) => value === "gallery" ? "document" : "gallery");
+    void loadFolder(folder);
+  });
 
   const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending, demo ? [] : inventory), [filtered, sortAscending, inventory, demo]);
   const treeRows = useMemo(() => {
@@ -828,6 +846,28 @@ function WorkspaceContent() {
     else if (draft && editorRef.current) editorRef.current.insertMarkdown(`[[${document.source_ref?.replace(/\\/g, "/").replace(/\.md$/i, "") || document.title}]]`);
     setLinkQuery(null);
   };
+
+  const connectOriginalImage = async (file: File | undefined) => {
+    if (!file || !selected || !relinkReference || busy) return;
+    const mimeType = file.type || ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[file.name.split(".").pop()?.toLowerCase() ?? ""] || "";
+    setBusy(true); setError(""); setAttachmentProgress(`원본 이미지 연결 중 · ${file.name}`);
+    try {
+      const input = { documentId: selected.id, reference: relinkReference, fileName: file.name, fileSize: file.size, mimeType, sha256: await knowledgeAssetSha256(file), sourceDocument: selected.source_ref ?? "", fileCreatedAt: null };
+      const prepared = await prepareKnowledgeAssetUpload(accessToken, input);
+      if (!prepared.duplicate) {
+        if (!prepared.upload) throw new Error("이미지 업로드 경로를 만들지 못했습니다.");
+        await uploadKnowledgeAttachment(prepared.upload.path, prepared.upload.token, file, prepared.upload.type);
+        await finalizeKnowledgeAssetUpload(accessToken, { ...input, path: prepared.upload.path });
+      }
+      setRevision((value) => value + 1); setToast(`${file.name} 원본 이미지를 연결했습니다.`); setRelinkReference("");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "원본 이미지를 연결하지 못했습니다."); }
+    finally { setBusy(false); setAttachmentProgress(""); if (relinkInputRef.current) relinkInputRef.current.value = ""; }
+  };
+
+  const requestImageRelink = (reference: string) => {
+    setRelinkReference(reference);
+    window.requestAnimationFrame(() => relinkInputRef.current?.click());
+  };
   const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / 44) - 8, treeRows.length - 45));
   const visibleRows = treeRows.slice(treeStart, treeStart + 45);
 
@@ -835,7 +875,7 @@ function WorkspaceContent() {
     <>
       <header className="page-header workspace-page-header">
         <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
 
 
@@ -877,7 +917,7 @@ function WorkspaceContent() {
         </aside>
 
         <article className="editor-pane">
-          {selected && draft ? (
+          {workspaceView === "gallery" ? <KnowledgeGallery documents={galleryDocuments} folder={galleryFolder} token={accessToken} ownerNames={ownerNames} revision={revision} onOpen={selectDocumentNow} onRestore={() => setImageRecoveryOpen(true)} /> : selected && draft ? (
             <>
               <div className="editor-toolbar">
                 <div className="editor-tabs">
@@ -925,7 +965,7 @@ function WorkspaceContent() {
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><Archive size={15} /> 휴지통으로 이동</button> : <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
-                <div className="document-reader">{dirty ? <p className="inline-alert">미저장 내용 미리보기 · 저장해야 다른 사람에게 반영됩니다.</p> : null}<h1>{dirty ? draft.title : selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /><DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div>
+                <KnowledgeInlineProvider documentId={selected.id} revision={revision} onRelink={requestImageRelink}><div className="document-reader">{dirty ? <p className="inline-alert">미저장 내용 미리보기 · 저장해야 다른 사람에게 반영됩니다.</p> : null}<h1>{dirty ? draft.title : selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /><DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div></KnowledgeInlineProvider>
               )}
             </>
           ) : (
@@ -933,6 +973,8 @@ function WorkspaceContent() {
           )}
         </article>
       </section>
+      <input ref={relinkInputRef} className="knowledge-attachment-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" tabIndex={-1} aria-hidden="true" onChange={(event) => void connectOriginalImage(event.target.files?.[0])} />
+      {imageRecoveryOpen ? <KnowledgeImageRecovery token={accessToken} folder={galleryFolder} onClose={() => setImageRecoveryOpen(false)} onChanged={() => setRevision((value) => value + 1)} /> : null}
 
       {treeContextMenu ? <div className="knowledge-tree-context-menu" role="menu" aria-label={treeContextMenu.target.type === "folder" ? `${treeContextMenu.target.path} 폴더 메뉴` : `${treeContextMenu.target.document.title} 문서 메뉴`} style={{ left: treeContextMenu.x, top: treeContextMenu.y }}>
         {treeContextMenu.target.type === "folder" ? <>

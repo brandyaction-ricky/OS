@@ -3,6 +3,7 @@ import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
 import type { ProductionWorkflowStep } from "./content-production-workflow";
 import { developmentAttachmentUploadBody } from "./development-attachments";
+import type { KnowledgeAsset, MissingKnowledgeAssetReference } from "./knowledge-assets";
 
 interface RequestOptions extends RequestInit {
   token?: string | null;
@@ -599,6 +600,47 @@ export async function getKnowledgeAttachmentUrl(token: string | null, path: stri
 
 export async function deleteKnowledgeAttachment(token: string | null, path: string) {
   return apiRequest<{ deleted: true }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
+}
+
+export async function knowledgeAssetSha256(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+export async function listKnowledgeAssets(token: string | null, input: { documentIds: string[]; reference?: string; covers?: boolean }) {
+  const params = new URLSearchParams({ documentIds: input.documentIds.join(",") });
+  if (input.reference) params.set("reference", input.reference);
+  if (input.covers) params.set("covers", "true");
+  return apiRequest<{ assets: KnowledgeAsset[] }>(`/api/v1/knowledge-assets?${params}`, { token });
+}
+
+export async function listMissingKnowledgeAssets(token: string | null, folder = "") {
+  const params = new URLSearchParams({ missing: "true", folder });
+  return apiRequest<{ references: MissingKnowledgeAssetReference[] }>(`/api/v1/knowledge-assets?${params}`, { token });
+}
+
+export interface KnowledgeAssetUploadInput {
+  documentId: string;
+  reference: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  sha256: string;
+  sourceDocument?: string;
+  fileCreatedAt?: string | null;
+}
+
+export async function prepareKnowledgeAssetUpload(token: string | null, input: KnowledgeAssetUploadInput) {
+  return apiRequest<{ asset?: KnowledgeAsset; upload?: { path: string; token: string; type: string }; duplicate: boolean }>("/api/v1/knowledge-assets", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
+}
+
+export async function finalizeKnowledgeAssetUpload(token: string | null, input: KnowledgeAssetUploadInput & { path: string }) {
+  return apiRequest<{ asset: KnowledgeAsset; duplicate: boolean }>("/api/v1/knowledge-assets", {
+    method: "PATCH", token, body: JSON.stringify(input),
+  });
 }
 
 export interface OsMember {

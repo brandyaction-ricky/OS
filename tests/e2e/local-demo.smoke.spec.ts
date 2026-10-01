@@ -150,6 +150,26 @@ test("knowledge images can be dragged between document blocks", async ({ page })
   ]);
 });
 
+test("knowledge gallery browses local demo documents and stops image recovery before upload", async ({ page }) => {
+  await page.goto("/knowledge");
+  await page.getByRole("button", { name: "회사 wiki 2" }).click();
+  await page.getByRole("checkbox", { name: "갤러리 보기" }).click();
+
+  await expect(page.getByRole("heading", { name: "회사 wiki/채널 운영" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /패키징 원칙/ })).toBeVisible();
+  await page.getByRole("button", { name: "표", exact: true }).click();
+  await expect(page.getByRole("table").getByText("패키징 원칙")).toBeVisible();
+  await page.getByRole("textbox", { name: "갤러리 문서 검색" }).fill("없는 문서");
+  await expect(page.getByText("조건에 맞는 문서가 없습니다.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "초기화" }).click();
+
+  await page.getByRole("button", { name: "원본 이미지 복원" }).click();
+  const recovery = page.locator(".knowledge-image-recovery");
+  await expect(recovery.getByRole("heading", { name: "원본 이미지 복원" })).toBeVisible();
+  await expect(recovery.getByText("현재 범위에 연결이 필요한 로컬 이미지가 없습니다.", { exact: true })).toBeVisible();
+  await expect(recovery.getByRole("button", { name: "0개 이미지 연결" })).toBeDisabled();
+});
+
 test("knowledge tree supports context actions and direct drag moves", async ({ page }) => {
   await page.goto("/knowledge");
 
