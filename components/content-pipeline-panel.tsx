@@ -38,6 +38,8 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [imagePreviewKey, setImagePreviewKey] = useState("");
   const [voiceRuns, setVoiceRuns] = useState<VoiceRun[]>([]);
   const [voiceRunAudioUrl, setVoiceRunAudioUrl] = useState("");
+  const [sceneProgress, setSceneProgress] = useState<{ inputKey: string; scenes: number; total: number } | null>(null);
+  const [sceneNotesRead, setSceneNotesRead] = useState(false);
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
     try {
@@ -49,7 +51,8 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       } catch { setVoiceRuns([]); }
     } catch { setVoicePlan(null); setVoicePreviewConfigured(false); setPilotAvailable(false); setVoiceRuns([]); }
   }, [accessToken, sourceId]);
-  useEffect(() => { setState(null); load().catch((reason) => setError(String(reason.message))); }, [load]);
+  useEffect(() => { setState(null); setSceneProgress(null); setSceneNotesRead(false); setVoiceRunAudioUrl(""); load().catch((reason) => setError(String(reason.message))); }, [load]);
+  useEffect(() => { setSceneNotesRead(false); }, [voicePlan?.inputKey, state?.source.metadata.narratedScenePlan]);
   useEffect(() => () => { if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl); }, [voicePreviewUrl]);
   useEffect(() => () => { if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl); }, [imagePreviewUrl]);
   const perform = async (action: () => Promise<unknown>) => {
@@ -85,8 +88,19 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const generateScenes = async () => {
     if (!voicePlan?.inputKey) return;
     setImagePreviewUrl(""); setImagePreviewKey("");
+    const inputKey = voicePlan.inputKey;
+    setSceneNotesRead(false);
+    await perform(async () => {
+      const result = await apiRequest<{ done?: boolean; progress?: { scenes: number; total: number } }>("/api/v1/content/youtube-automation/scenes", {
+        method: "POST", token: accessToken, body: JSON.stringify({ sourceId, inputKey }),
+      });
+      setSceneProgress(result.done === false && result.progress ? { inputKey, ...result.progress } : null);
+    });
+  };
+  const acknowledgeScenes = async () => {
+    if (!voicePlan?.inputKey || !sceneNotesRead) return;
     await perform(() => apiRequest("/api/v1/content/youtube-automation/scenes", {
-      method: "POST", token: accessToken, body: JSON.stringify({ sourceId, inputKey: voicePlan.inputKey }),
+      method: "PATCH", token: accessToken, body: JSON.stringify({ sourceId, inputKey: voicePlan.inputKey, acknowledgeUnresolved: true }),
     }));
   };
   const previewImage = async (segmentIndex: number) => {
@@ -126,9 +140,14 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const enabled = state.source.metadata.pipelineEnabled === true;
   const planMode = usesShootingPlan(state.source);
   const preparation = (state.source.metadata.productionPreparation ?? {}) as Record<string, unknown>;
-  const scenePlan = (state.source.metadata.narratedScenePlan ?? null) as { inputKey?: string; templateVersion?: string; plan?: { visualDirection?: string; scenes?: Array<{ segmentIndex: number; visualType: string; visualBeats?: Array<{ spokenAnchor: string; idea: string; displayText: string; accentText: string; typographyAnchor: string }>; visualPrompt: string; evidenceNote: string }>; unresolved?: string[] } } | null;
+  const scenePlan = (state.source.metadata.narratedScenePlan ?? null) as { inputKey?: string; templateVersion?: string; unresolvedAcknowledged?: { by?: string; count?: number }; plan?: { visualDirection?: string; scenes?: Array<{ segmentIndex: number; visualType: string; visualBeats?: Array<{ spokenAnchor: string; idea: string; displayText: string; accentText: string; typographyAnchor: string }>; visualPrompt: string; evidenceNote: string }>; unresolved?: string[] } } | null;
   const currentScenePlan = scenePlan && voicePlan?.inputKey && scenePlan.inputKey === voicePlan.inputKey &&
     scenePlan.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION ? scenePlan.plan : null;
+  const sceneDraft = state.source.metadata.narratedScenePlanDraft as { inputKey?: string; templateVersion?: string; plan?: { scenes?: unknown[] } } | undefined;
+  const savedSceneCount = sceneDraft?.inputKey === voicePlan?.inputKey && sceneDraft?.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION ? sceneDraft.plan?.scenes?.length ?? 0 : 0;
+  const activeProgress = sceneProgress?.inputKey === voicePlan?.inputKey ? sceneProgress : null;
+  const sceneNotesAcknowledged = Boolean(currentScenePlan && scenePlan?.unresolvedAcknowledged?.by === profile?.id &&
+    scenePlan?.unresolvedAcknowledged?.count === currentScenePlan.unresolved?.length);
   const firstGeneratedScene = currentScenePlan?.scenes?.find((scene) => scene.visualType === "generated_still");
   const actions = ACTIONS.filter((item) => !planMode || item.action !== "script_draft");
   const runs = (Array.isArray(state.source.metadata.pipelineRuns) ? state.source.metadata.pipelineRuns : []) as PipelineRun[];
@@ -158,12 +177,20 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {voicePlan?.missing.length ? <p>준비할 항목: {voicePlan.missing.join(" · ")}</p> : <p>현재 원고와 패키징 버전이 연결됐습니다. 음성은 첫 단락만 미리듣기할 수 있습니다.</p>}
       {!voicePreviewConfigured ? <p>Fish Audio 서버 설정이 필요합니다.</p> : null}
       {profile?.role === "admin" ? <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey || !voicePreviewConfigured} onClick={() => void previewVoice()}>내 목소리 첫 단락 미리듣기</button> : null}
-      <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey} onClick={() => void generateScenes()}>Opus로 화면 설계 만들기</button>
-      {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /> : null}
+      <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey} onClick={() => void generateScenes()}>{!currentScenePlan && savedSceneCount ? "남은 화면 설계 이어 만들기" : "Opus로 화면 설계 만들기"}</button>
+      {!currentScenePlan && savedSceneCount ? <p role="status">{activeProgress ? `${activeProgress.scenes}/${activeProgress.total}단락` : `${savedSceneCount}단락`} 화면 설계가 저장됐습니다. 이어 만들면 남은 단락부터 진행합니다.</p> : null}
+      {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <div><audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /><a className="ghost-button" href={voicePreviewUrl} download={`${sourceId}-first-paragraph.mp3`}>첫 단락 음성 다운로드</a></div> : null}
       {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}장면</summary><p>{currentScenePlan.visualDirection}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.visualType}</strong> · {scene.visualPrompt}{scene.visualBeats?.length ? ` · 멘트별 화면: ${scene.visualBeats.map((beat) => `${beat.spokenAnchor} → ${beat.idea}${beat.displayText ? ` / ${beat.displayText} (발화 기준: ${beat.typographyAnchor})` : ""}`).join(" / ")}` : ""}{scene.evidenceNote ? ` · 근거: ${scene.evidenceNote}` : ""}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
+      {profile?.role === "admin" && currentScenePlan?.unresolved?.length ? <div key={`${voicePlan?.inputKey}-${JSON.stringify(currentScenePlan.unresolved)}`}>
+        {sceneNotesAcknowledged ? <p role="status">화면 설계의 확인할 항목을 읽은 기록이 저장됐습니다. 영상 수정 사항은 최종 검수까지 유지합니다.</p> : <>
+          <label><input type="checkbox" checked={sceneNotesRead} onChange={(event) => setSceneNotesRead(event.target.checked)} />위 항목을 읽고 음성 제작에 미치는 영향을 검토했습니다.</label>
+          <button type="button" className="secondary-button" disabled={busy || !sceneNotesRead} onClick={() => void acknowledgeScenes()}>검토 기록 저장</button>
+          <p>이 기록은 음성 제작을 위한 확인이며, 화면 수정 완료나 최종 영상 승인이 아닙니다.</p>
+        </>}
+      </div> : null}
       {profile?.role === "admin" && firstGeneratedScene ? <button type="button" className="secondary-button" disabled={busy} onClick={() => void previewImage(firstGeneratedScene.segmentIndex)}>보조 실사 장면 미리보기</button> : null}
       {imagePreviewUrl && imagePreviewKey === voicePlan?.inputKey ? <img src={imagePreviewUrl} alt="AI로 만든 장면 미리보기" width={640} height={360} style={{ width: "100%", maxWidth: 640, height: "auto" }} /> : null}
-      {profile?.role === "admin" && currentScenePlan && !currentScenePlan.unresolved?.length ? <button type="button" className="secondary-button" disabled={busy || !voicePreviewConfigured} onClick={() => void queueVoice()}>현재 원고 전체 음성 제작 작업 등록</button> : null}
+      {profile?.role === "admin" && currentScenePlan && (!currentScenePlan.unresolved?.length || sceneNotesAcknowledged) ? <button type="button" className="secondary-button" disabled={busy || !voicePreviewConfigured} onClick={() => void queueVoice()}>현재 원고 전체 음성 제작 작업 등록</button> : null}
       {voiceRuns.length ? <details open><summary>음성 제작 작업 {voiceRuns.length}건</summary>{voiceRuns.map((run) => <div key={run.id}><p>{run.status === "done" ? "음성 준비 완료" : run.status === "blocked" ? "확인 필요" : run.status === "in_progress" ? "제작 중" : "제작 대기"} · {run.segmentsReady}/{run.segmentCount}단락 · {run.stage}{run.lastErrorCode ? ` · ${run.lastErrorCode}` : ""}</p>{run.needsAttention.map((issue) => <p key={issue}>{issue}</p>)}{run.readyIndexes.map((index) => <button type="button" className="ghost-button" disabled={busy} key={index} onClick={() => void listenVoiceSegment(run.id, index)}>{index + 1}단락 듣기</button>)}</div>)}</details> : null}
       {voiceRunAudioUrl ? <audio key={voiceRunAudioUrl} controls src={voiceRunAudioUrl} aria-label="음성 제작 결과 듣기" /> : null}
       <p>음성 작업은 개발용 워커가 연결된 뒤 단락별로 진행됩니다. 화면 자산 전체 제작, 렌더링, 비공개 업로드는 아직 연결 전입니다.</p>
