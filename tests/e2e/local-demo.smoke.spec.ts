@@ -157,7 +157,7 @@ test("knowledge gallery browses local demo documents and stops image recovery be
   await page.getByRole("button", { name: "갤러리 보기" }).click();
 
   await expect(page.getByRole("heading", { name: "회사 wiki/채널 운영" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /패키징 원칙/ })).toBeVisible();
+  await expect(page.locator(".knowledge-gallery-grid").getByRole("button", { name: /패키징 원칙/ })).toBeVisible();
   await page.getByRole("button", { name: "표", exact: true }).click();
   await expect(page.getByRole("table").getByText("패키징 원칙")).toBeVisible();
   await page.getByRole("textbox", { name: "갤러리 문서 검색" }).fill("피하고 싶은 위험");
