@@ -107,12 +107,13 @@ test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval
   assert.match(callback, /verifyYoutubeOAuthState/);
   assert.match(session, /actor\.role !== "admin"/);
   assert.match(session, /finalApproval: z\.literal\(true\)/);
+  assert.match(session, /RELEASE_APPROVAL_REQUIRED/);
   assert.match(session, /uploadType: "resumable"/);
   assert.doesNotMatch(session, /YOUTUBE_CLIENT_SECRET/);
   assert.match(complete, /YOUTUBE_UPLOAD_OWNERSHIP_FAILED/);
   assert.match(client, /XMLHttpRequest/);
   assert.match(workspace, /Google 채널 연결/);
-  assert.match(workspace, /최종 확인.*업로드를 승인/);
+  assert.match(workspace, /발행 승인.*업로드/);
   assert.match(health, /youtubeOAuth/);
 });
 

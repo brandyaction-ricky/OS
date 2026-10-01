@@ -5,6 +5,7 @@ import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineAr
 import { PRODUCTION_WORKFLOW_SCHEMA_VERSION, PRODUCTION_WORKFLOW_STEPS, productionAssetsOf, productionStepLabel, productionWorkflowOf, type ProductionWorkflowReview, type ProductionWorkflowState, type ProductionWorkflowStep } from "@/lib/content-production-workflow";
 import { SCRIPT_REVIEW_SCHEMA_VERSION, SCRIPT_REVIEW_STEPS, scriptReviewStepLabel, scriptReviewWorkflowOf, type ScriptReviewDecision, type ScriptReviewState, type ScriptReviewStep } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
+import { RELEASE_WORKFLOW_SCHEMA_VERSION, releaseWorkflowOf, type ReleaseDecision, type ReleasePlan, type ReleaseWorkflowState } from "@/lib/content-release-workflow";
 import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
@@ -170,6 +171,21 @@ export function gateSignature(source: OsRecord, records: OsRecord[], gate: numbe
       source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionAssets, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
+export function releaseWorkflowState(source: OsRecord, kit: OsRecord | null, finalReviewApproved: boolean, finalReviewSignature: string): ReleaseWorkflowState {
+  const workflow = releaseWorkflowOf(source.metadata.releaseWorkflow);
+  const plan = workflow.plan;
+  const currentPlan = Boolean(plan && kit && plan.kitId === kit.id && plan.kitVersion === kit.version && plan.finalReviewSignature === finalReviewSignature);
+  const signature = digest(["content-release-v1", finalReviewSignature, reference(kit), plan?.channelId, plan?.privacyStatus, plan?.scheduledAt]);
+  const lastDecision = workflow.decisions.at(-1) ?? null;
+  const blocker = !finalReviewApproved ? "현재 최종 영상·발행키트를 먼저 승인해 주세요."
+    : !kit ? "현재 발행키트를 먼저 만들어 주세요."
+      : !plan?.channelId ? "발행할 YouTube 채널을 연결해 주세요."
+        : !currentPlan ? "현재 영상·발행키트 기준으로 발행 조건을 다시 저장해 주세요." : "";
+  const canApprove = !blocker;
+  const approved = Boolean(canApprove && lastDecision?.approved === true && lastDecision.signature === signature);
+  return { plan, signature, approved, canApprove, blocker, nextAction: approved ? "승인한 조건으로 YouTube 업로드" : canApprove ? "발행 승인" : "발행 조건 준비", lastDecision };
+}
+
 export async function readPipeline(actor: RequestActor, id: string) {
   const { data: source, error } = await actor.supabase.from("os_records").select("*").eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error || !source) throw new ApiError(404, "CONTENT_SOURCE_NOT_FOUND", "기준 콘텐츠를 찾지 못했습니다.");
@@ -187,8 +203,33 @@ export async function readPipeline(actor: RequestActor, id: string) {
   const writing = writingWorkflowState(source as OsRecord, artifacts.packaging, approved[0]);
   const scriptReview = scriptReviewWorkflowState(source as OsRecord, artifacts.script, writing.ready);
   const production = productionWorkflowState(source as OsRecord, approved[1], signatures[1]);
-  return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, production,
+  const release = releaseWorkflowState(source as OsRecord, artifacts.kit, approved[2], signatures[2]);
+  const verifiedLearning = records.filter((record) => record.record_type === "decision" && record.status === "adopted" && record.metadata.kind === "content_hypothesis" && record.metadata.verifiedLearning === true);
+  return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, production, release, verifiedLearning,
     missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing, scriptReview, production)) };
+}
+
+export async function saveReleasePlan(actor: RequestActor, id: string, expectedVersion: number, input: Pick<ReleasePlan, "channelId" | "channelTitle" | "privacyStatus" | "scheduledAt">) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  if (!state.approved[2]) throw new ApiError(409, "FINAL_REVIEW_REQUIRED", "현재 최종 영상·발행키트를 먼저 승인해 주세요.");
+  const kit = pipelineArtifacts(state.records).kit;
+  if (!kit) throw new ApiError(409, "YOUTUBE_KIT_REQUIRED", "현재 발행키트를 먼저 만들어 주세요.");
+  if (!input.channelId.trim()) throw new ApiError(400, "YOUTUBE_CHANNEL_REQUIRED", "발행할 YouTube 채널을 연결해 주세요.");
+  const workflow = releaseWorkflowOf(state.source.metadata.releaseWorkflow);
+  const plan: ReleasePlan = { kitId: kit.id, kitVersion: kit.version, finalReviewSignature: state.signatures[2], channelId: input.channelId.trim(), channelTitle: input.channelTitle.trim(), privacyStatus: input.privacyStatus, scheduledAt: input.scheduledAt.trim() };
+  return saveMetadata(actor, state.source, { releaseWorkflow: { ...workflow, schemaVersion: RELEASE_WORKFLOW_SCHEMA_VERSION, plan } });
+}
+
+export async function reviewRelease(actor: RequestActor, id: string, expectedVersion: number, signature: string, approved: boolean, note: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  if (signature !== state.release.signature) throw new ApiError(409, "RELEASE_CHANGED", "발행 조건이나 최종 자료가 변경되었습니다. 다시 확인해 주세요.");
+  if (approved && !state.release.canApprove) throw new ApiError(409, "RELEASE_BLOCKED", state.release.blocker);
+  if (!approved && !note.trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
+  const workflow = releaseWorkflowOf(state.source.metadata.releaseWorkflow);
+  const decision: ReleaseDecision = { signature, approved, actorId: actor.id, at: new Date().toISOString(), note: note.trim() };
+  return saveMetadata(actor, state.source, { releaseWorkflow: { ...workflow, schemaVersion: RELEASE_WORKFLOW_SCHEMA_VERSION, decisions: [...workflow.decisions, decision] } });
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
