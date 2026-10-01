@@ -45,7 +45,8 @@ test("generation and workspace contracts preserve the approval gate", () => {
   const server = readFileSync(new URL("../lib/server/content-generation.ts", import.meta.url), "utf8");
   const workspace = readFileSync(new URL("../components/content-radar-workspace.tsx", import.meta.url), "utf8");
   assert.match(server, /action === "appeal_candidates"/);
-  assert.match(server, /minItems: 10, maxItems: 10/);
+  assert.match(server, /texts.length === 10/);
+  assert.match(server, /text.length <= 120/);
   assert.match(server, /CONTENT_APPEAL_RESEARCH_REQUIRED/);
   assert.match(server, /설명·이유·근거·레퍼런스·제목·썸네일 문구를 붙이지 않는다/);
   assert.match(workspace, /decideAppeal\(index, "approved"\)/);
