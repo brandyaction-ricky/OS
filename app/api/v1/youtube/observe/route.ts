@@ -2,15 +2,22 @@ import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest, safeSecretMatch } from "@/lib/server/auth";
 import { observeYoutubeChannels } from "@/lib/server/youtube-observation";
+import { collectHotVideoBoards } from "@/lib/server/hot-video-board";
+import { seoulDate } from "@/lib/hot-video-board";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 async function observationResponse() {
-  const counts = await observeYoutubeChannels();
-  console.info(JSON.stringify({ event: "youtube_observation_completed", ...counts }));
-  return NextResponse.json({ ok: counts.failures === 0, ...counts }, { status: counts.failures === counts.channels && counts.failures > 0 ? 502 : 200 });
+  const [counts, hotVideos] = await Promise.all([
+    observeYoutubeChannels(),
+    collectHotVideoBoards().catch((error) => ({ date: seoulDate(), regions: 0, videos: 0, discovered: 0, refreshed: 0, retentionArchived: 0, failures: [{ region: "all", reason: error instanceof Error ? error.message : "핫 비디오 수집에 실패했습니다." }], quota: null })),
+  ]);
+  console.info(JSON.stringify({ event: "youtube_observation_completed", ...counts, hotVideos }));
+  const allTrackedChannelsFailed = counts.failures === counts.channels && counts.failures > 0;
+  const allHotRegionsFailed = hotVideos.regions === 0 && hotVideos.failures.some((failure) => failure.region !== "retention");
+  return NextResponse.json({ ok: counts.failures === 0 && hotVideos.failures.length === 0, ...counts, hotVideos }, { status: allTrackedChannelsFailed || allHotRegionsFailed ? 502 : 200 });
 }
 
 export async function GET(request: Request) {

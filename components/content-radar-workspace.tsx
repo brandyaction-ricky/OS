@@ -30,6 +30,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
 import { ContentTopicJevAssist } from "./content-topic-jev-assist";
+import { HotVideoBoard, type HotVideoEvidence } from "./hot-video-board";
 
 type RadarTab = "channels" | "discovery" | "niches" | "planning";
 
@@ -251,7 +252,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const visibleResults = discoveryResults(results, baselines, { format: durationFilter, days: daysFilter, sort: resultSort, outliersOnly }).filter((item) => showDiscarded || decisions.get(item.id)?.status !== "blocked");
   if (resultSort === "fit") visibleResults.sort((a, b) => Number(decisions.get(b.id)?.metadata.fitScore ?? 0) - Number(decisions.get(a.id)?.metadata.fitScore ?? 0));
   const visibleCards = singleCard ? visibleResults.slice(Math.min(cardIndex, Math.max(0, visibleResults.length - 1)), Math.min(cardIndex, Math.max(0, visibleResults.length - 1)) + 1) : visibleResults;
-  const saveOutlier = async (item: YoutubeMarketItem, navigate = true, manageBusy = true) => {
+  const saveOutlier = async (item: YoutubeMarketItem, navigate = true, manageBusy = true, discoverySource = "keyword", hotVideoEvidence: HotVideoEvidence | null = null) => {
     if (outliers.some((record) => meta(record, "youtubeId", "") === item.id)) return;
     if (manageBusy) { setBusy(true); setError(""); }
     try {
@@ -266,9 +267,17 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         sourceUrl: item.url,
         metricCurrent: item.viewCount,
         metricUnit: "조회",
-        tags: ["아웃라이어", resultQuery].filter(Boolean),
+        tags: ["아웃라이어", discoverySource === "hot_video" ? "핫비디오" : resultQuery].filter(Boolean),
         metadata: {
-          studioKind: "outlier", baseline: baselines[item.id] ?? null, discoverySource: "keyword",
+          studioKind: "outlier",
+          baseline: hotVideoEvidence ? {
+            state: hotVideoEvidence.performanceState,
+            sampleCount: hotVideoEvidence.performanceSampleCount,
+            ratio: hotVideoEvidence.performance,
+            reason: hotVideoEvidence.performanceReason,
+          } : baselines[item.id] ?? null,
+          discoverySource,
+          hotVideoEvidence,
           youtubeId: item.id,
           channelTitle: item.channelTitle,
           thumbnail: item.thumbnail,
@@ -529,6 +538,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     </> : null}
 
     {tab === "discovery" ? <>
+      <HotVideoBoard token={accessToken} savedIds={new Set(outliers.map((record) => meta(record, "youtubeId", "")))} onSave={(item, evidence) => saveOutlier(item, false, true, "hot_video", evidence)} />
       <section className="panel discovery-console">
         <div><span className="eyebrow">YouTube Data API</span><h2>터진 영상 발굴</h2><p>키워드별 조회 상위 영상을 불러오고, 사람이 근거 영상을 골라 틈새 판정에 보냅니다.</p></div>
         <div className="market-search"><Search size={17} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") runSearch(); }} placeholder="예: 직장인 강점 찾기, 퇴사 후 불안" /><button className="primary-button" disabled={busy} onClick={runSearch}>{busy ? "탐색 중…" : "영상 탐색"}</button></div>
