@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Bookmark,
   Check,
@@ -15,7 +16,8 @@ import {
   Target,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { createRecord, listAllRecordsOfType, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
+import { apiRequest, createRecord, listAllRecordsOfType, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
+import { pickedPlanningCandidate, planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentJevAssist } from "./content-jev-assist";
@@ -72,6 +74,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [quickTopicOpen, setQuickTopicOpen] = useState(false);
+  const [pipelineState, setPipelineState] = useState<{ approved: boolean[]; missing: string[][] } | null>(null);
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -92,6 +95,16 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!sourceId || demo) { setPipelineState(null); return; }
+    let active = true;
+    setPipelineState(null);
+    apiRequest<{ approved: boolean[]; missing: string[][] }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken })
+      .then((value) => { if (active) setPipelineState(value); })
+      .catch(() => { if (active) setPipelineState(null); });
+    return () => { active = false; };
+  }, [accessToken, demo, sourceId]);
+
   const titlePackages = packages.filter((record) => meta<string>(record, "packageKind", "") === "title_package");
   const references = packages.filter((record) => meta<string>(record, "packageKind", "") === "market_reference");
   const latest = titlePackages
@@ -110,6 +123,20 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   };
   const sortedOwn = [...ownResults].sort((a, b) => ownSort === "ctr" ? (measuredCtr(b.id) ?? -1) - (measuredCtr(a.id) ?? -1) : b.viewCount - a.viewCount);
   const selectedSource = sources.find((source) => source.id === sourceId) ?? null;
+  const selectedPlan = packages.filter((record) => record.parent_id === sourceId && meta<string>(record, "packageKind", "") === "topic_plan")
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
+  const pickedPlan = pickedPlanningCandidate(selectedPlan);
+  const pipelineEnabled = selectedSource?.metadata.pipelineEnabled === true;
+  const planningReady = Boolean(selectedSource && planningSelectionReady(selectedSource, selectedPlan));
+  const planningApproved = !pipelineEnabled || pipelineState?.approved?.[0] === true;
+  const canGenerate = Boolean(sourceId && (!pipelineEnabled || (planningReady && planningApproved)));
+  const researchBrief = selectedSource?.metadata.researchBrief && typeof selectedSource.metadata.researchBrief === "object"
+    ? selectedSource.metadata.researchBrief as Record<string, unknown>
+    : {};
+  const approvedAppeals = Array.isArray(researchBrief.approvedAppeals) ? researchBrief.approvedAppeals : [];
+  const referenceCount = [...(Array.isArray(researchBrief.youtubeUrls) ? researchBrief.youtubeUrls : []), ...(Array.isArray(researchBrief.instagramUrls) ? researchBrief.instagramUrls : [])].length;
+  const generationBlocker = !planningReady ? "주제·기획에서 기획 방향 한 개를 먼저 채택해 주세요."
+    : !planningApproved ? "제작 공정에서 현재 기획·근거를 사람이 승인해 주세요." : "";
   const sortedResults = useMemo(() => marketResults.filter((item) => item.viewCount >= minViews).filter((item) => format === "all" || (format === "long" ? item.durationSeconds >= 240 : item.durationSeconds < 240)).sort((a, b) => {
     if (sort === "ratio") return (b.viewSubscriberRatio ?? -1) - (a.viewSubscriberRatio ?? -1) || b.viewCount - a.viewCount;
     if (sort === "subscribers") return (b.subscribers ?? -1) - (a.subscribers ?? -1);
@@ -159,6 +186,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
 
   const generate = async () => {
     if (!sourceId) return;
+    if (pipelineEnabled && generationBlocker) return setError(generationBlocker);
     setBusy(true); setError("");
     try {
       const evidence = sortedResults.map(({ title, channelTitle, viewCount, url }) => ({ title, channelTitle, viewCount, url }));
@@ -182,7 +210,8 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   const pick = async (kind: "titles" | "copies", index: number) => {
     if (!latest) return;
     const items = kind === "titles" ? titles : copies;
-    const next = items.map((item, itemIndex) => ({ ...item, picked: itemIndex === index ? !item.picked : item.picked }));
+    const selecting = items[index]?.picked !== true;
+    const next = items.map((item, itemIndex) => ({ ...item, picked: selecting && itemIndex === index }));
     setBusy(true); setError("");
     try {
       await updateRecord(accessToken, { id: latest.id, expectedVersion: latest.version, metadata: { ...latest.metadata, result: { ...result, [kind]: next } } });
@@ -216,8 +245,9 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : "[기획 연계] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
+    {selectedSource && pipelineEnabled ? <section className="panel packaging-handoff" aria-label="기획에서 패키징으로 인계"><header className="panel-header"><div><span className="eyebrow">같은 콘텐츠에서 이어서 작업</span><h2>{selectedSource.title}</h2><p>주제·기획에서 승인한 범위를 그대로 확인하고, 최종 제목과 썸네일은 이 화면에서 결정합니다.</p></div><span className={`status-pill status-${planningApproved ? "ready" : "review"}`}>{planningApproved ? "기획·근거 승인 완료" : "기획·근거 승인 대기"}</span></header><dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selectedSource.id}</dd></div><div><dt>현재 단계</dt><dd>{selectedSource.stage || "패키징 준비"}</dd></div><div><dt>승인 소구점</dt><dd>{approvedAppeals.length}개</dd></div><div><dt>검증 레퍼런스</dt><dd>{referenceCount}개</dd></div></dl>{pickedPlan ? <article className="packaging-plan-card"><small>채택한 기획 방향 · 기획 v{selectedPlan?.version}</small><strong>{String(pickedPlan.title ?? "기획 방향")}</strong><p>{String(pickedPlan.narrative ?? pickedPlan.evidence ?? "")}</p><span>기획 단계의 제목·썸네일 문구는 방향 참고이며, 최종안은 이 화면에서 채택합니다.</span></article> : null}{generationBlocker ? <p className="inline-alert warning"><CircleAlert size={15} /> {generationBlocker}</p> : null}<nav className="planning-next-actions"><Link className="secondary-button" href={`/content/topics?sourceId=${selectedSource.id}`}>주제·기획 확인</Link><Link className="secondary-button" href={`/content/automation?sourceId=${selectedSource.id}`}>공정·승인 현황</Link></nav></section> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
     <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{PACKAGE_TABS.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>
 

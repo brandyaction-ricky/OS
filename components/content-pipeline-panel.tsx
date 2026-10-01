@@ -9,15 +9,15 @@ import { useSession } from "./session-provider";
 
 interface PipelineState { source: OsRecord; records: OsRecord[]; reviews: PipelineReview[]; signatures: string[]; approved: boolean[]; missing: string[][] }
 const ACTIONS: Array<{ action: PipelineAction; label: string; gate: number }> = [
-  { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "script_draft", label: "원고 생성", gate: 1 },
-  { action: "title_package", label: "제목·썸네일 생성", gate: 1 }, { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
+  { action: "topic_plan", label: "기획 브리핑 생성", gate: 0 }, { action: "title_package", label: "제목·썸네일 생성", gate: 1 },
+  { action: "script_draft", label: "원고 생성", gate: 1 }, { action: "shorts_proposal", label: "숏폼 구간 제안", gate: 2 }, { action: "youtube_kit", label: "발행키트 생성", gate: 2 },
 ];
 const FACTORY_PHASES = [
   { title: "1. 기획·근거", steps: ["주제 접수", "근거 확인", "타깃 정의", "핵심 약속", "기획 브리핑"] },
-  { title: "2. 원고", steps: ["원고 초안", "팩트 점검", "브랜드 언어", "원고 검토"] },
-  { title: "3. 제작 자산", steps: ["보이스 MP3", "이미지", "캐릭터", "자막", "편집 사양"] },
-  { title: "4. 영상", steps: ["초벌 렌더", "영상 검수", "수정 반영", "최종 MP4"] },
-  { title: "5. 발행·학습", steps: ["발행키트", "최종 승인", "발행", "성과 수집"] },
+  { title: "2. 패키징", steps: ["시장 근거", "제목", "썸네일 카피", "사람 채택"] },
+  { title: "3. 자료·설계·원고", steps: ["자료 탐색", "축 검토", "영상 설계", "원고", "퇴고"] },
+  { title: "4. 제작 자산", steps: ["보이스 MP3", "이미지·캐릭터", "자막·편집 사양", "초벌 렌더"] },
+  { title: "5. 영상·발행·학습", steps: ["영상 검수", "최종 승인", "발행", "성과 수집"] },
 ] as const;
 
 export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string; onChange: () => Promise<void> }) {
@@ -71,7 +71,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       </article>;
     })}</div>
     <div className="pipeline-artifacts">{[artifacts.appeals, artifacts.research, artifacts.script, artifacts.packaging, artifacts.kit].filter((item): item is OsRecord => !!item).map((item) => <details key={item.id}><summary>{item.title} · v{item.version}</summary><pre>{item.record_type === "content_script" ? item.description : JSON.stringify(item.metadata.result ?? item.description, null, 2)}</pre></details>)}</div>
-    <nav className="pipeline-actions"><Link href={`/content/scripts?sourceId=${sourceId}`}>원고</Link><Link href={`/content/shorts?sourceId=${sourceId}`}>자막·영상 편집</Link><Link href={`/content/youtube?sourceId=${sourceId}`}>유튜브 업로드</Link><Link href="/content/performance">영상 성과</Link></nav>
+    <nav className="pipeline-actions"><Link href={`/content/packages?sourceId=${sourceId}`}>제목·썸네일</Link><Link href={`/content/scripts?sourceId=${sourceId}`}>원고</Link><Link href={`/content/shorts?sourceId=${sourceId}`}>자막·영상 편집</Link><Link href={`/content/youtube?sourceId=${sourceId}`}>유튜브 업로드</Link><Link href="/content/performance">영상 성과</Link></nav>
     <p>영상 렌더링과 외부 채널 발행은 연결 상태와 최종 결과를 별도로 확인합니다. 승인만으로 영상이 생성되거나 발행되지는 않습니다.</p>
     <details><summary>실행 이력 {runs.length}건 · 승인 이력 {state.reviews.length}건</summary>{runs.toReversed().map((run) => <p key={`${run.key}-${run.at}`}>{ACTIONS.find((item) => item.action === run.action)?.label ?? run.action} · {({ running: "실행 중", succeeded: "완료", failed: "실패", needs_input: "입력 필요" })[run.state]} · {new Date(run.at).toLocaleString("ko-KR")}{run.error ? ` · ${run.error}` : ""}</p>)}{state.reviews.toReversed().map((review, index) => <p key={`${review.at}-${index}`}>{PIPELINE_GATES[review.gate - 1]} · {review.approved ? "승인" : "수정 요청"} · {new Date(review.at).toLocaleString("ko-KR")} · {review.note}</p>)}</details>
   </section>;

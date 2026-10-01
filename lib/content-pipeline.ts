@@ -1,7 +1,7 @@
 import type { OsRecord } from "./record-types";
 import { appealApprovalMatches, researchBriefReady } from "./content-appeals.ts";
 
-export const PIPELINE_GATES = ["소재·근거 승인", "원고·패키징 승인", "최종 영상·발행키트 승인"] as const;
+export const PIPELINE_GATES = ["기획·근거 승인", "패키징·원고 승인", "최종 영상·발행키트 승인"] as const;
 export type PipelineAction = "topic_plan" | "script_draft" | "title_package" | "shorts_proposal" | "youtube_kit";
 export interface PipelineReview { gate: number; signature: string; approved: boolean; actorId: string; at: string; note: string }
 export interface PipelineRun { key: string; action: string; state: "running" | "succeeded" | "failed" | "needs_input"; at: string; finishedAt?: string; error?: string; recordIds?: string[] }
@@ -18,6 +18,37 @@ export function pipelineArtifacts(records: OsRecord[]) {
   };
 }
 
+function resultOf(record: OsRecord | null) {
+  const result = record?.metadata.result;
+  return result && typeof result === "object" ? result as Record<string, unknown> : {};
+}
+
+export function pickedPlanningCandidate(record: OsRecord | null) {
+  const candidates = resultOf(record).candidates;
+  if (!Array.isArray(candidates)) return null;
+  const picked = candidates.filter((candidate) => candidate && typeof candidate === "object" && (candidate as Record<string, unknown>).picked === true);
+  return picked.length === 1 ? picked[0] as Record<string, unknown> : null;
+}
+
+export function planningSelectionReady(source: OsRecord, plan: OsRecord | null) {
+  const picked = pickedPlanningCandidate(plan);
+  const sourcePicked = source.metadata.pickedCandidate;
+  return Boolean(plan && picked && sourcePicked && typeof sourcePicked === "object"
+    && source.metadata.planningPackageId === plan.id
+    && Number(source.metadata.planningPackageVersion) === plan.version
+    && JSON.stringify(sourcePicked) === JSON.stringify(picked));
+}
+
+export function pickedPackaging(record: OsRecord | null) {
+  const result = resultOf(record);
+  const picked = (key: "titles" | "copies") => Array.isArray(result[key])
+    ? (result[key] as Array<Record<string, unknown>>).filter((candidate) => candidate?.picked === true)
+    : [];
+  const titles = picked("titles");
+  const copies = picked("copies");
+  return { title: titles.length === 1 ? titles[0] : null, copy: copies.length === 1 ? copies[0] : null, ready: titles.length === 1 && copies.length === 1 };
+}
+
 export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records); const missing: string[] = [];
   const brief = source.metadata.researchBrief;
@@ -29,8 +60,10 @@ export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: num
   if (!String(source.metadata.experience ?? "").trim()) missing.push("실제 경험·사례 (해당 없으면 사유)");
   if (!hasApprovedAppeal || !matchesCurrentAppeal || !researchBriefReady(briefRecord)) missing.push("소구점 승인·레퍼런스 검증");
   if (!artifacts.research) missing.push("기획 브리핑");
-  if (gate >= 2 && !artifacts.script?.description.trim()) missing.push("원고");
+  if (artifacts.research && !planningSelectionReady(source, artifacts.research)) missing.push("채택한 기획 방향");
   if (gate >= 2 && !artifacts.packaging) missing.push("제목·썸네일 패키지");
+  if (gate >= 2 && artifacts.packaging && !pickedPackaging(artifacts.packaging).ready) missing.push("채택한 제목·썸네일 카피");
+  if (gate >= 2 && !artifacts.script?.description.trim()) missing.push("원고");
   if (gate >= 3 && !artifacts.kit) missing.push("발행키트");
   if (gate >= 3 && !/^https:\/\//.test(String(source.metadata.finalVideoUrl ?? ""))) missing.push("검토할 최종 영상 HTTPS URL");
   return missing;

@@ -4,7 +4,7 @@ import test from "node:test";
 
 const workspace = readFileSync(new URL("../components/content-radar-workspace.tsx", import.meta.url), "utf8");
 
-test("content topics retain research evidence, decisions and script handoff in one workspace", () => {
+test("content topics retain research evidence, decisions and packaging handoff in one workspace", () => {
   assert.match(workspace, /name="youtubeSources"/);
   assert.match(workspace, /name="instagramSources"/);
   assert.match(workspace, /name="analystNotes"/);
@@ -15,5 +15,5 @@ test("content topics retain research evidence, decisions and script handoff in o
   assert.match(workspace, /name="limitations"/);
   assert.match(workspace, /status: "review" \| "blocked"/);
   assert.match(workspace, /decideTopic\("planned"\)/);
-  assert.match(workspace, /\/content\/scripts\?sourceId=/);
+  assert.match(workspace, /\/content\/packages\?sourceId=/);
 });
