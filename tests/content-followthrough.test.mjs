@@ -104,6 +104,7 @@ test('generic edits cannot forge approval history or disable an enabled pipeline
   assert.equal(protectedPipelineChange({}, { pipelineReviews: [{ approved: true }] }), true);
   assert.equal(protectedPipelineChange({}, { writingWorkflow: { reviews: [{ approved: true }] } }), true);
   assert.equal(protectedPipelineChange({}, { scriptReviewWorkflow: { reviews: [{ approved: true }] } }), true);
+  assert.equal(protectedPipelineChange({}, { productionWorkflow: { reviews: [{ approved: true }] } }), true);
   assert.equal(protectedPipelineChange({ pipelineEnabled: true }, { pipelineEnabled: false }), true);
   assert.equal(protectedPipelineChange({}, { pipelineEnabled: true, evidence: 'source' }), false);
 });

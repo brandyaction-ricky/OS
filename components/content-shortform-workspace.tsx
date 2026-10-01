@@ -159,7 +159,7 @@ export function ContentShortformWorkspace() {
         const signed = await createContentMediaUpload(accessToken, { sourceId: selectedSource.id, fileName: localFile.name, fileSize: localFile.size, mimeType });
         await uploadContentMedia(signed.path, signed.token, localFile);
         mediaPath = signed.path;
-        retentionUntil = new Date(Date.now() + signed.retentionHours * 3_600_000).toISOString();
+        retentionUntil = new Date(Date.now() + (signed.retentionHours ?? 24) * 3_600_000).toISOString();
       }
       await updateRecord(accessToken, {
         id: selectedSource.id,

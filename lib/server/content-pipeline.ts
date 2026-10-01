@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
+import { PRODUCTION_WORKFLOW_SCHEMA_VERSION, PRODUCTION_WORKFLOW_STEPS, productionAssetsOf, productionStepLabel, productionWorkflowOf, type ProductionWorkflowReview, type ProductionWorkflowState, type ProductionWorkflowStep } from "@/lib/content-production-workflow";
 import { SCRIPT_REVIEW_SCHEMA_VERSION, SCRIPT_REVIEW_STEPS, scriptReviewStepLabel, scriptReviewWorkflowOf, type ScriptReviewDecision, type ScriptReviewState, type ScriptReviewStep } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
@@ -115,11 +116,58 @@ export function scriptReviewWorkflowState(source: OsRecord, script: OsRecord | n
   };
 }
 
+export function productionWorkflowState(source: OsRecord, scriptApproved: boolean, scriptGateSignature: string): ProductionWorkflowState {
+  const workflow = productionWorkflowOf(source.metadata.productionWorkflow);
+  const parsedAssets = productionAssetsOf(source.metadata.productionAssets);
+  const assets = Object.fromEntries(PRODUCTION_WORKFLOW_STEPS.map((step) => [step, parsedAssets[step].filter((asset) => asset.path.split("/")[2] === source.id)])) as typeof parsedAssets;
+  const urls: Record<ProductionWorkflowStep, string[]> = {
+    voice: [String(source.metadata.voiceUrl ?? "").trim()].filter(Boolean),
+    visuals: [String(source.metadata.imageFolderUrl ?? "").trim(), String(source.metadata.characterUrl ?? "").trim()].filter(Boolean),
+    editSpec: [String(source.metadata.editSpecUrl ?? "").trim()].filter(Boolean),
+    roughCut: [String(source.metadata.roughCutUrl ?? "").trim()].filter(Boolean),
+  };
+  const requiredReady: Record<ProductionWorkflowStep, boolean> = {
+    voice: assets.voice.length > 0 || (urls.voice.length === 1 && urls.voice.every((url) => /^https:\/\//.test(url))),
+    visuals: assets.visuals.length > 0 || (/^https:\/\//.test(String(source.metadata.imageFolderUrl ?? "").trim()) && urls.visuals.every((url) => /^https:\/\//.test(url))),
+    editSpec: assets.editSpec.length > 0 || (urls.editSpec.length === 1 && urls.editSpec.every((url) => /^https:\/\//.test(url))),
+    roughCut: assets.roughCut.length > 0 || (urls.roughCut.length === 1 && urls.roughCut.every((url) => /^https:\/\//.test(url))),
+  };
+  const signatures = {} as Record<ProductionWorkflowStep, string>;
+  for (const [index, step] of PRODUCTION_WORKFLOW_STEPS.entries()) {
+    const priorSignature = index === 0 ? scriptGateSignature : signatures[PRODUCTION_WORKFLOW_STEPS[index - 1]];
+    signatures[step] = digest([`production-${step}-v2`, priorSignature, urls[step], assets[step]]);
+  }
+  const lastReview = (step: ProductionWorkflowStep) => workflow.reviews.filter((review) => review.step === step).at(-1) ?? null;
+  const approved = {} as Record<ProductionWorkflowStep, boolean>;
+  const steps = PRODUCTION_WORKFLOW_STEPS.map((step, index) => {
+    const priorApproved = index === 0 ? scriptApproved : approved[PRODUCTION_WORKFLOW_STEPS[index - 1]];
+    const missingMessage = step === "voice" ? "보이스 MP3의 HTTPS 주소를 저장해 주세요."
+      : step === "visuals" ? "이미지 폴더의 HTTPS 주소를 저장해 주세요. 캐릭터 자산은 선택입니다."
+        : step === "editSpec" ? "자막·편집 사양의 HTTPS 주소를 저장해 주세요."
+          : "검토할 초벌 렌더의 HTTPS 주소를 저장해 주세요.";
+    const blocker = !scriptApproved ? "현재 패키징·원고 승인을 먼저 완료해 주세요."
+      : !priorApproved ? `${productionStepLabel(PRODUCTION_WORKFLOW_STEPS[index - 1])}를 먼저 승인해 주세요.`
+        : !requiredReady[step] ? missingMessage : "";
+    const canApprove = !blocker;
+    const latest = lastReview(step);
+    approved[step] = Boolean(canApprove && latest?.approved === true && latest.signature === signatures[step]);
+    return { key: step, label: productionStepLabel(step), artifactUrls: urls[step], assets: assets[step], signature: signatures[step], approved: approved[step], canApprove, blocker, lastReview: latest };
+  });
+  const next = steps.find((step) => !step.approved);
+  return {
+    steps,
+    ready: steps.length > 0 && steps.every((step) => step.approved),
+    nextAction: next ? (next.canApprove ? `${next.label} 승인` : `${next.label} 준비`) : "사람 검토·발행 승인 준비",
+    blocker: next?.blocker ?? "",
+  };
+}
+
 export function gateSignature(source: OsRecord, records: OsRecord[], gate: number) {
   const artifacts = pipelineArtifacts(records);
   return digest([sourceInput(source), reference(artifacts.appeals), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
     ...(gate >= 2 ? [source.metadata.writingWorkflow, source.metadata.scriptReviewWorkflow] : []),
-    ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
+    ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.voiceUrl, source.metadata.imageFolderUrl, source.metadata.characterUrl,
+      source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionAssets, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
 export async function readPipeline(actor: RequestActor, id: string) {
@@ -138,7 +186,9 @@ export async function readPipeline(actor: RequestActor, id: string) {
   const artifacts = pipelineArtifacts(records);
   const writing = writingWorkflowState(source as OsRecord, artifacts.packaging, approved[0]);
   const scriptReview = scriptReviewWorkflowState(source as OsRecord, artifacts.script, writing.ready);
-  return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing, scriptReview)) };
+  const production = productionWorkflowState(source as OsRecord, approved[1], signatures[1]);
+  return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, production,
+    missing: [1, 2, 3].map((gate) => pipelineMissing(source, records, gate, writing, scriptReview, production)) };
 }
 
 async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
@@ -221,6 +271,22 @@ export async function reviewScript(actor: RequestActor, id: string, expectedVers
     schemaVersion: SCRIPT_REVIEW_SCHEMA_VERSION,
     scriptId: state.scriptReview.scriptId,
     scriptVersion: state.scriptReview.scriptVersion,
+    reviews: [...workflow.reviews, review],
+  } });
+}
+
+export async function reviewProductionStep(actor: RequestActor, id: string, expectedVersion: number, step: ProductionWorkflowStep, approved: boolean, note: string) {
+  const state = await readPipeline(actor, id);
+  assertExpectedVersion(state.source, expectedVersion);
+  const stepState = state.production.steps.find((item) => item.key === step);
+  if (!stepState) throw new ApiError(400, "PRODUCTION_STEP_INVALID", "제작·편집 단계를 확인해 주세요.");
+  if (approved && !stepState.canApprove) throw new ApiError(409, "PRODUCTION_STEP_BLOCKED", stepState.blocker || "현재 제작 자산을 먼저 저장해 주세요.");
+  if (!approved && !note.trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
+  const workflow = productionWorkflowOf(state.source.metadata.productionWorkflow);
+  const review: ProductionWorkflowReview = { step, signature: stepState.signature, approved, actorId: actor.id, at: new Date().toISOString(), note: note.trim() };
+  return saveMetadata(actor, state.source, { productionWorkflow: {
+    ...workflow,
+    schemaVersion: PRODUCTION_WORKFLOW_SCHEMA_VERSION,
     reviews: [...workflow.reviews, review],
   } });
 }
