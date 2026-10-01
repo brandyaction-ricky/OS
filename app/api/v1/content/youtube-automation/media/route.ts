@@ -11,7 +11,7 @@ export const maxDuration = 180;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const inputSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("claim") }).strict(),
+  z.object({ action: z.literal("claim"), voiceRunId: z.string().uuid().optional() }).strict(),
   z.object({ action: z.literal("brief"), ...lease, segmentDurations: z.array(z.number().positive().max(3_600)).min(1).max(80), durationSeconds: z.number().positive().max(14_400) }).strict(),
   z.object({ action: z.literal("complete"), ...lease, videoBytes: z.number().int().positive(), videoSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ action: z.literal("fail"), ...lease, code: z.string().max(80) }).strict(),
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const received = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
     if (expected.length < 32 || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WORKER_SECRET", "미디어 워커 인증에 실패했습니다.");
     const input = inputSchema.parse(await parseJson(request, 20_000));
-    const result = input.action === "claim" ? await claimYoutubeRender()
+    const result = input.action === "claim" ? await claimYoutubeRender(undefined, input.voiceRunId)
       : input.action === "brief" ? await buildYoutubeRenderBrief(input)
       : input.action === "complete" ? await completeYoutubeRender(input)
       : await failYoutubeRender(input);
