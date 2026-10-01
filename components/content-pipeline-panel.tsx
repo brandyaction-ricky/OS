@@ -1,10 +1,11 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 
 import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { apiRequest, generateContent, updateRecord } from "@/lib/api-client";
+import { apiRequest, createContentMediaUpload, deleteContentMedia, generateContent, getContentMediaUrl, updateRecord, uploadContentMedia } from "@/lib/api-client";
 import { PIPELINE_GATES, pipelineArtifacts, type PipelineAction, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
-import type { ProductionWorkflowState, ProductionWorkflowStep } from "@/lib/content-production-workflow";
+import { PRODUCTION_ASSET_ACCEPT, productionAssetMimeType, productionAssetsOf, type ProductionAsset, type ProductionWorkflowState, type ProductionWorkflowStep } from "@/lib/content-production-workflow";
 import type { ScriptReviewState } from "@/lib/content-script-review";
 import type { WritingWorkflowState } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
@@ -29,10 +30,22 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const [notes, setNotes] = useState<Record<number, string>>({});
   const [productionNotes, setProductionNotes] = useState<Partial<Record<ProductionWorkflowStep, string>>>({});
+  const [assetUrls, setAssetUrls] = useState<Record<string, string>>({});
+  const [assetBusy, setAssetBusy] = useState<ProductionWorkflowStep | null>(null);
+  const [assetProgress, setAssetProgress] = useState<Partial<Record<ProductionWorkflowStep, number>>>({});
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
   }, [accessToken, sourceId]);
   useEffect(() => { setState(null); load().catch((reason) => setError(String(reason.message))); }, [load]);
+  useEffect(() => {
+    let active = true;
+    const assets = state?.production.steps.flatMap((step) => step.assets) ?? [];
+    if (!assets.length) { setAssetUrls({}); return () => { active = false; }; }
+    Promise.all(assets.map(async (asset) => [asset.path, (await getContentMediaUrl(accessToken, asset.path)).url] as const))
+      .then((entries) => { if (active) setAssetUrls(Object.fromEntries(entries)); })
+      .catch(() => { if (active) setError("제작 파일 미리보기를 불러오지 못했습니다. 권한과 저장 상태를 확인해 주세요."); });
+    return () => { active = false; };
+  }, [accessToken, state]);
   const perform = async (action: () => Promise<unknown>) => {
     setBusy(true); setError("");
     try { await action(); await load(); await onChange(); } catch (reason) { setError(reason instanceof Error ? reason.message : "공정을 처리하지 못했습니다."); await load().catch(() => {}); }
@@ -48,6 +61,46 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const decideProduction = (step: ProductionWorkflowStep, approved: boolean) => {
     if (!state) return;
     void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ operation: "production_review", sourceId, expectedVersion: state.source.version, step, approved, note: productionNotes[step] ?? "" }) }));
+  };
+  const addProductionFiles = (step: ProductionWorkflowStep, selected: FileList | File[]) => {
+    if (!state) return;
+    const files = Array.from(selected);
+    if (!files.length) return;
+    if (step !== "visuals" && files.length > 1) { setError(`${state.production.steps.find((item) => item.key === step)?.label ?? "이 단계"}에는 현재 파일 한 개만 올릴 수 있습니다.`); return; }
+    const existing = productionAssetsOf(state.source.metadata.productionAssets);
+    if (step === "visuals" && existing.visuals.length + files.length > 100) { setError("이미지·캐릭터 자산은 한 콘텐츠에 최대 100개까지 올릴 수 있습니다."); return; }
+    setAssetBusy(step);
+    void perform(async () => {
+      const uploaded: ProductionAsset[] = [];
+      try {
+        for (const [fileIndex, file] of files.entries()) {
+          const mimeType = productionAssetMimeType(step, file);
+          if (!mimeType) throw new Error(`${file.name}: 지원하지 않는 파일 형식입니다.`);
+          const signed = await createContentMediaUpload(accessToken, { sourceId, fileName: file.name, fileSize: file.size, mimeType, assetKind: step });
+          await uploadContentMedia(signed.path, signed.token, file, signed.mimeType, (percent) => setAssetProgress((current) => ({ ...current, [step]: Math.round((fileIndex + percent / 100) / files.length * 100) })));
+          uploaded.push({ kind: step, path: signed.path, name: file.name, size: file.size, type: signed.mimeType, uploadedAt: new Date().toISOString(), uploadedBy: signed.uploadedBy });
+        }
+        const prior = existing[step];
+        const next = { ...existing, [step]: step === "visuals" ? [...prior, ...uploaded] : uploaded };
+        await updateRecord(accessToken, { id: sourceId, expectedVersion: state.source.version, metadata: { ...state.source.metadata, productionAssets: next } });
+        if (step !== "visuals") await Promise.all(prior.map((asset) => deleteContentMedia(accessToken, asset.path).catch(() => undefined)));
+      } catch (reason) {
+        await Promise.all(uploaded.map((asset) => deleteContentMedia(accessToken, asset.path).catch(() => undefined)));
+        throw reason;
+      } finally { setAssetBusy(null); setAssetProgress((current) => ({ ...current, [step]: undefined })); }
+    });
+  };
+  const removeProductionAsset = (step: ProductionWorkflowStep, asset: ProductionAsset) => {
+    if (!state) return;
+    const existing = productionAssetsOf(state.source.metadata.productionAssets);
+    const next = { ...existing, [step]: existing[step].filter((item) => item.path !== asset.path) };
+    setAssetBusy(step);
+    void perform(async () => {
+      try {
+        await updateRecord(accessToken, { id: sourceId, expectedVersion: state.source.version, metadata: { ...state.source.metadata, productionAssets: next } });
+        await deleteContentMedia(accessToken, asset.path).catch(() => undefined);
+      } finally { setAssetBusy(null); }
+    });
   };
   if (!state || state.source.id !== sourceId) return <section className="panel pipeline-panel"><p>{error || "공정 불러오는 중…"}</p></section>;
   const artifacts = pipelineArtifacts(state.records);
@@ -72,7 +125,9 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       <header className="panel-header"><div><span className="eyebrow">승인된 원고 다음 공정</span><h2>콘텐츠 제작 · 편집</h2><p>보이스부터 초벌 렌더까지 실제 산출물 주소를 저장하고 순서대로 확인합니다. 상위 원고나 앞 단계 자산이 바뀌면 해당 단계부터 다시 승인해야 합니다.</p></div><Link className="secondary-button" href={`/content/scripts?sourceId=${sourceId}`}>원고 검수 확인</Link></header>
       <dl className="writing-workflow-summary"><div><dt>현재 산출물</dt><dd>{state.production.steps.findLast((step) => step.approved)?.label ?? "제작 자산 없음"}<small>{state.production.ready ? "초벌 렌더까지 승인 완료" : "저장한 HTTPS 자산을 단계별로 확인"}</small></dd></div><div><dt>다음 행동</dt><dd>{state.production.nextAction}</dd></div><div><dt>막힌 이유</dt><dd>{state.production.blocker || "없음"}</dd></div></dl>
       <div className="writing-workflow-steps">{state.production.steps.map((step, index) => <article className={step.approved ? "approved" : ""} key={step.key}><header><span>{index + 1}</span><div><strong>{step.label}</strong><small>{step.approved ? "현재 자산 승인 완료" : step.lastReview && !step.lastReview.approved ? `수정 요청 · ${step.lastReview.note}` : step.blocker || "검토 가능"}</small></div><em>{step.approved ? "승인" : "제작"}</em></header>
-        <div className="writing-package-choice">{step.artifactUrls.filter((url) => /^https:\/\//.test(url)).length ? step.artifactUrls.filter((url) => /^https:\/\//.test(url)).map((url, urlIndex) => <a href={url} target="_blank" rel="noreferrer" key={url}>{urlIndex === 0 ? `${step.label} 열기` : "추가 자산 열기"}</a>) : <span>위 입력란에 현재 산출물의 HTTPS 주소를 저장해 주세요.</span>}</div>
+        <label className={`production-dropzone ${assetBusy === step.key ? "busy" : ""}`} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); addProductionFiles(step.key, event.dataTransfer.files); }}><input type="file" accept={PRODUCTION_ASSET_ACCEPT[step.key]} multiple={step.key === "visuals"} disabled={busy || assetBusy !== null} onChange={(event) => { if (event.target.files) addProductionFiles(step.key, event.target.files); event.currentTarget.value = ""; }} /><strong>{assetBusy === step.key ? `파일 올리는 중… ${assetProgress[step.key] ?? 0}%` : "파일 선택 또는 끌어놓기"}</strong><small>{step.key === "voice" ? "MP3·WAV·M4A·AAC" : step.key === "visuals" ? "JPG·PNG·WebP·GIF 여러 개" : step.key === "editSpec" ? "TXT·MD·SRT·VTT·JSON·PDF" : "MP4·MOV·M4V·WebM·MKV"}</small>{assetBusy === step.key ? <progress max="100" value={assetProgress[step.key] ?? 0}>{assetProgress[step.key] ?? 0}%</progress> : null}</label>
+        {step.assets.length ? <div className={`production-assets production-assets-${step.key}`}>{step.assets.map((asset) => <figure key={asset.path}>{assetUrls[asset.path] && asset.type.startsWith("image/") ? <img src={assetUrls[asset.path]} alt={asset.name} /> : null}{assetUrls[asset.path] && asset.type.startsWith("audio/") ? <audio controls preload="metadata" src={assetUrls[asset.path]} /> : null}{assetUrls[asset.path] && asset.type.startsWith("video/") ? <video controls preload="metadata" src={assetUrls[asset.path]} /> : null}<figcaption><span><strong>{asset.name}</strong><small>{Math.max(1, Math.round(asset.size / 1024)).toLocaleString("ko-KR")}KB</small></span>{assetUrls[asset.path] ? <a href={assetUrls[asset.path]} target="_blank" rel="noreferrer">열기</a> : null}<button type="button" className="ghost-button" disabled={busy || assetBusy !== null} onClick={() => removeProductionAsset(step.key, asset)}>삭제</button></figcaption></figure>)}</div> : null}
+        <div className="writing-package-choice">{step.artifactUrls.filter((url) => /^https:\/\//.test(url)).length ? step.artifactUrls.filter((url) => /^https:\/\//.test(url)).map((url, urlIndex) => <a href={url} target="_blank" rel="noreferrer" key={url}>{urlIndex === 0 ? `외부 ${step.label} 열기` : "추가 외부 자산 열기"}</a>) : <span>로컬 파일이 없을 때는 위 입력란에 외부 HTTPS 주소를 저장할 수 있습니다.</span>}</div>
         <div className="writing-step-actions"><button className="primary-button" disabled={busy || step.approved || !step.canApprove} title={step.blocker} onClick={() => decideProduction(step.key, true)}>현재 자산 승인</button></div>
         <div className="writing-revision"><input aria-label={`${step.label} 수정 요청 사유`} value={productionNotes[step.key] ?? ""} onChange={(event) => setProductionNotes((current) => ({ ...current, [step.key]: event.target.value }))} placeholder="수정 요청 사유" /><button className="ghost-button" disabled={busy || !(productionNotes[step.key] ?? "").trim()} onClick={() => decideProduction(step.key, false)}>수정 요청</button></div>
       </article>)}</div>

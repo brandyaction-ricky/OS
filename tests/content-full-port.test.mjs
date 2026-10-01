@@ -69,6 +69,26 @@ test("content media uses private signed uploads and expires original files", asy
   assert.match(shorts, /retentionHours/);
 });
 
+test("production media extends the private bucket without exposing local files", async () => {
+  const [migration, route, client, panel, packageFile] = await Promise.all([
+    read("supabase/migrations/20260930234912_content_production_assets.sql"),
+    read("app/api/v1/content/media/route.ts"),
+    read("lib/api-client.ts"),
+    read("components/content-pipeline-panel.tsx"),
+    read("package.json"),
+  ]);
+  assert.match(migration, /update storage\.buckets/);
+  assert.match(migration, /public\s*=\s*false/);
+  for (const type of ["audio/mpeg", "image/png", "text/markdown", "application/pdf"]) assert.match(migration, new RegExp(type.replace("/", "\\/")));
+  assert.match(route, /production\/\$\{actor\.id\}\/\$\{input\.sourceId\}\/\$\{input\.assetKind\}/);
+  assert.match(route, /assertProductionAccess/);
+  assert.match(client, /new Blob\(\[file\], \{ type: contentType \}\)/);
+  assert.match(client, /tus-js-client/);
+  assert.equal(JSON.parse(packageFile).dependencies["tus-js-client"], "4.3.1");
+  assert.match(panel, /파일 선택 또는 끌어놓기/);
+  assert.match(panel, /productionAssets/);
+});
+
 test("publishing keeps review, calendar and SEO editing in one operating flow", async () => {
   const [automation, calendar] = await Promise.all([
     read("components/content-automation-workspace.tsx"),

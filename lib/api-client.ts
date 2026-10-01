@@ -1,6 +1,7 @@
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
+import type { ProductionWorkflowStep } from "./content-production-workflow";
 import { developmentAttachmentUploadBody } from "./development-attachments";
 
 interface RequestOptions extends RequestInit {
@@ -372,26 +373,55 @@ export async function importContentSnapshot(token: string | null, snapshot: unkn
   });
 }
 
-export async function createContentMediaUpload(token: string | null, input: { sourceId: string; fileName: string; fileSize: number; mimeType: string }) {
-  return apiRequest<{ path: string; token: string; fileName: string; fileSize: number; mimeType: string; retentionHours: number }>("/api/v1/content/media", {
+export async function createContentMediaUpload(token: string | null, input: { sourceId: string; fileName: string; fileSize: number; mimeType: string; assetKind?: ProductionWorkflowStep | "sourceVideo" }) {
+  return apiRequest<{ path: string; token: string; fileName: string; fileSize: number; mimeType: string; assetKind: ProductionWorkflowStep | "sourceVideo"; uploadedBy: string; retentionHours: number | null }>("/api/v1/content/media", {
     method: "POST", token, body: JSON.stringify(input),
   });
 }
 
-export async function uploadContentMedia(path: string, signedToken: string, file: File) {
+export async function uploadContentMedia(path: string, signedToken: string, file: File, contentType = file.type || "video/mp4", onProgress?: (percent: number) => void) {
   const { getBrowserSupabase } = await import("@/lib/supabase/client");
   const client = getBrowserSupabase();
   if (!client) throw new Error("파일 저장소 연결 정보가 없습니다.");
-  const { error } = await client.storage.from("os-content-media").uploadToSignedUrl(path, signedToken, file, {
-    contentType: file.type || "video/mp4",
+  const body = file.type === contentType ? file : new Blob([file], { type: contentType });
+  if (file.size > 6 * 1024 * 1024) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!supabaseUrl) throw new Error("파일 저장소 연결 정보가 없습니다.");
+    const parsed = new URL(supabaseUrl);
+    const directHost = parsed.hostname.endsWith(".supabase.co") ? parsed.hostname.replace(/\.supabase\.co$/, ".storage.supabase.co") : parsed.hostname;
+    const { Upload } = await import("tus-js-client");
+    await new Promise<void>((resolve, reject) => {
+      const upload = new Upload(body, {
+        endpoint: `${parsed.protocol}//${directHost}/storage/v1/upload/resumable`,
+        retryDelays: [0, 3_000, 5_000, 10_000, 20_000],
+        chunkSize: 6 * 1024 * 1024,
+        uploadDataDuringCreation: true,
+        removeFingerprintOnSuccess: true,
+        headers: { "x-signature": signedToken },
+        metadata: { bucketName: "os-content-media", objectName: path, contentType, cacheControl: "3600" },
+        onError: reject,
+        onProgress: (uploaded, total) => onProgress?.(total ? Math.round(uploaded / total * 100) : 0),
+        onSuccess: () => resolve(),
+      });
+      upload.start();
+    });
+    return { path };
+  }
+  const { error } = await client.storage.from("os-content-media").uploadToSignedUrl(path, signedToken, body, {
+    contentType,
     cacheControl: "3600",
   });
   if (error) throw new Error(error.message || "영상 원본을 저장하지 못했습니다.");
+  onProgress?.(100);
   return { path };
 }
 
 export async function getContentMediaUrl(token: string | null, path: string) {
   return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/content/media?path=${encodeURIComponent(path)}`, { token });
+}
+
+export async function deleteContentMedia(token: string | null, path: string) {
+  return apiRequest<{ deleted: true }>(`/api/v1/content/media?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
 }
 
 export interface YoutubeMarketItem {

@@ -183,6 +183,23 @@ test('production assets are approved in order and upstream changes invalidate do
   assert.deepEqual(state.production.steps.map((step) => step.approved), [false, false, false, false]);
   assert.equal(state.source.metadata.productionWorkflow.reviews.length, 4);
 });
+test('private local production assets satisfy the same approval flow without public URLs', () => {
+  const sourceId = '00000000-0000-4000-8000-000000000010';
+  const actorId = '00000000-0000-4000-8000-000000000020';
+  const asset = (kind, name, type) => ({ kind, path: `production/${actorId}/${sourceId}/${kind}/1790812800000-00000000-0000-4000-8000-000000000030.${name.split('.').pop()}`, name, size: 1024, type, uploadedAt: '2026-10-01T00:00:00Z', uploadedBy: actorId });
+  const source = base(sourceId, { metadata: { productionAssets: {
+    voice: [asset('voice', 'voice.mp3', 'audio/mpeg')],
+    visuals: [asset('visuals', 'scene.png', 'image/png')],
+    editSpec: [asset('editSpec', 'edit.md', 'text/markdown')],
+    roughCut: [asset('roughCut', 'rough.mp4', 'video/mp4')],
+  } } });
+  const initial = harness().api.productionWorkflowState(source, true, 'script-gate-signature');
+  assert.equal(initial.steps[0].canApprove, true);
+  source.metadata.productionWorkflow = { schemaVersion: 1, reviews: initial.steps.map((step) => ({ step: step.key, signature: step.signature, approved: true, actorId, at: '2026-10-01T00:00:00Z', note: 'checked' })) };
+  const approved = harness().api.productionWorkflowState(source, true, 'script-gate-signature');
+  assert.equal(approved.ready, true);
+  assert.deepEqual(approved.steps.map((step) => step.assets[0].name), ['voice.mp3', 'scene.png', 'edit.md', 'rough.mp4']);
+});
 test('pipeline retains failures, allows retry, and rejects concurrent runs', async () => {
   const h = harness(); h.fail(true);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('topic_plan')));

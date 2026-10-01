@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { hasCurrentApproval, pickedPackaging, planningSelectionReady, pipelineArtifacts, pipelineMissing, type PipelineReview, type PipelineRun } from "@/lib/content-pipeline";
-import { PRODUCTION_WORKFLOW_SCHEMA_VERSION, PRODUCTION_WORKFLOW_STEPS, productionStepLabel, productionWorkflowOf, type ProductionWorkflowReview, type ProductionWorkflowState, type ProductionWorkflowStep } from "@/lib/content-production-workflow";
+import { PRODUCTION_WORKFLOW_SCHEMA_VERSION, PRODUCTION_WORKFLOW_STEPS, productionAssetsOf, productionStepLabel, productionWorkflowOf, type ProductionWorkflowReview, type ProductionWorkflowState, type ProductionWorkflowStep } from "@/lib/content-production-workflow";
 import { SCRIPT_REVIEW_SCHEMA_VERSION, SCRIPT_REVIEW_STEPS, scriptReviewStepLabel, scriptReviewWorkflowOf, type ScriptReviewDecision, type ScriptReviewState, type ScriptReviewStep } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
 import type { OsRecord } from "@/lib/record-types";
@@ -118,6 +118,8 @@ export function scriptReviewWorkflowState(source: OsRecord, script: OsRecord | n
 
 export function productionWorkflowState(source: OsRecord, scriptApproved: boolean, scriptGateSignature: string): ProductionWorkflowState {
   const workflow = productionWorkflowOf(source.metadata.productionWorkflow);
+  const parsedAssets = productionAssetsOf(source.metadata.productionAssets);
+  const assets = Object.fromEntries(PRODUCTION_WORKFLOW_STEPS.map((step) => [step, parsedAssets[step].filter((asset) => asset.path.split("/")[2] === source.id)])) as typeof parsedAssets;
   const urls: Record<ProductionWorkflowStep, string[]> = {
     voice: [String(source.metadata.voiceUrl ?? "").trim()].filter(Boolean),
     visuals: [String(source.metadata.imageFolderUrl ?? "").trim(), String(source.metadata.characterUrl ?? "").trim()].filter(Boolean),
@@ -125,15 +127,15 @@ export function productionWorkflowState(source: OsRecord, scriptApproved: boolea
     roughCut: [String(source.metadata.roughCutUrl ?? "").trim()].filter(Boolean),
   };
   const requiredReady: Record<ProductionWorkflowStep, boolean> = {
-    voice: urls.voice.length === 1 && urls.voice.every((url) => /^https:\/\//.test(url)),
-    visuals: /^https:\/\//.test(String(source.metadata.imageFolderUrl ?? "").trim()) && urls.visuals.every((url) => /^https:\/\//.test(url)),
-    editSpec: urls.editSpec.length === 1 && urls.editSpec.every((url) => /^https:\/\//.test(url)),
-    roughCut: urls.roughCut.length === 1 && urls.roughCut.every((url) => /^https:\/\//.test(url)),
+    voice: assets.voice.length > 0 || (urls.voice.length === 1 && urls.voice.every((url) => /^https:\/\//.test(url))),
+    visuals: assets.visuals.length > 0 || (/^https:\/\//.test(String(source.metadata.imageFolderUrl ?? "").trim()) && urls.visuals.every((url) => /^https:\/\//.test(url))),
+    editSpec: assets.editSpec.length > 0 || (urls.editSpec.length === 1 && urls.editSpec.every((url) => /^https:\/\//.test(url))),
+    roughCut: assets.roughCut.length > 0 || (urls.roughCut.length === 1 && urls.roughCut.every((url) => /^https:\/\//.test(url))),
   };
   const signatures = {} as Record<ProductionWorkflowStep, string>;
   for (const [index, step] of PRODUCTION_WORKFLOW_STEPS.entries()) {
     const priorSignature = index === 0 ? scriptGateSignature : signatures[PRODUCTION_WORKFLOW_STEPS[index - 1]];
-    signatures[step] = digest([`production-${step}-v1`, priorSignature, urls[step]]);
+    signatures[step] = digest([`production-${step}-v2`, priorSignature, urls[step], assets[step]]);
   }
   const lastReview = (step: ProductionWorkflowStep) => workflow.reviews.filter((review) => review.step === step).at(-1) ?? null;
   const approved = {} as Record<ProductionWorkflowStep, boolean>;
@@ -149,7 +151,7 @@ export function productionWorkflowState(source: OsRecord, scriptApproved: boolea
     const canApprove = !blocker;
     const latest = lastReview(step);
     approved[step] = Boolean(canApprove && latest?.approved === true && latest.signature === signatures[step]);
-    return { key: step, label: productionStepLabel(step), artifactUrls: urls[step], signature: signatures[step], approved: approved[step], canApprove, blocker, lastReview: latest };
+    return { key: step, label: productionStepLabel(step), artifactUrls: urls[step], assets: assets[step], signature: signatures[step], approved: approved[step], canApprove, blocker, lastReview: latest };
   });
   const next = steps.find((step) => !step.approved);
   return {
@@ -165,7 +167,7 @@ export function gateSignature(source: OsRecord, records: OsRecord[], gate: numbe
   return digest([sourceInput(source), reference(artifacts.appeals), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
     ...(gate >= 2 ? [source.metadata.writingWorkflow, source.metadata.scriptReviewWorkflow] : []),
     ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.voiceUrl, source.metadata.imageFolderUrl, source.metadata.characterUrl,
-      source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
+      source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionAssets, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
 }
 
 export async function readPipeline(actor: RequestActor, id: string) {
