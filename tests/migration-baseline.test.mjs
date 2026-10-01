@@ -5,7 +5,7 @@ import test from "node:test";
 import { inspectMigrationBaseline } from "../tools/check-migration-baseline.mjs";
 import { inspectSupabaseTooling } from "../tools/check-supabase-tooling.mjs";
 
-test("the active chain is intact and isolates the pending production-assets migration", async () => {
+test("the active chain records the production-assets migration while preserving its approval gate", async () => {
   const result = await inspectMigrationBaseline();
   const manifest = JSON.parse(await readFile(new URL("../supabase/migration-baseline.json", import.meta.url), "utf8"));
   const lifecycle = manifest.forwardMigrations.find(entry => entry.file === "20260929025147_knowledge_attachment_lifecycle.sql");
@@ -24,7 +24,9 @@ test("the active chain is intact and isolates the pending production-assets migr
   assert.equal(lifecycle.requiresApproval, false);
   assert.deepEqual(teamSharing.appliedEnvironments, ["development", "production"]);
   assert.equal(teamSharing.requiresApproval, false);
-  assert.deepEqual(productionAssets.appliedEnvironments, ["development"]);
+  assert.deepEqual(productionAssets.appliedEnvironments, ["development", "production"]);
+  assert.equal(productionAssets.developmentApprovedAt, "2026-10-01");
+  assert.equal(productionAssets.productionApprovedAt, "2026-10-01");
   assert.equal(productionAssets.requiresApproval, true);
   assert.deepEqual(result.errors, []);
 });
