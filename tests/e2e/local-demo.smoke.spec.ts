@@ -160,6 +160,8 @@ test("knowledge gallery browses local demo documents and stops image recovery be
   await expect(page.getByRole("button", { name: /패키징 원칙/ })).toBeVisible();
   await page.getByRole("button", { name: "표", exact: true }).click();
   await expect(page.getByRole("table").getByText("패키징 원칙")).toBeVisible();
+  await page.getByRole("textbox", { name: "갤러리 문서 검색" }).fill("피하고 싶은 위험");
+  await expect(page.getByRole("table").getByText("패키징 원칙")).toBeVisible();
   await page.getByRole("textbox", { name: "갤러리 문서 검색" }).fill("없는 문서");
   await expect(page.getByText("조건에 맞는 문서가 없습니다.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "초기화" }).click();

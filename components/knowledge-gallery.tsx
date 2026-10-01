@@ -64,7 +64,7 @@ export function KnowledgeGallery({ documents, folder, token, ownerNames, revisio
   const tags = useMemo(() => [...new Set(documents.flatMap((document) => document.tags))].sort((a, b) => a.localeCompare(b, "ko")), [documents]);
   const owners = useMemo(() => [...new Set(documents.map((document) => document.owner_id))], [documents]);
   const visible = useMemo(() => documents.filter((document) => {
-    const haystack = `${document.title} ${document.folder} ${document.tags.join(" ")}`.toLocaleLowerCase("ko-KR");
+    const haystack = `${document.title} ${document.folder} ${document.tags.join(" ")} ${document.content_md}`.toLocaleLowerCase("ko-KR");
     return (!query || haystack.includes(query.toLocaleLowerCase("ko-KR"))) && (!tag || document.tags.includes(tag)) && (!owner || document.owner_id === owner) && (!status || document.status === status);
   }).sort((a, b) => {
     if (sort === "title_asc") return a.title.localeCompare(b.title, "ko", { numeric: true });
