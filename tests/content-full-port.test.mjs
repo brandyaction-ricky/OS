@@ -77,8 +77,9 @@ test("production media extends the private bucket without exposing local files",
     read("components/content-pipeline-panel.tsx"),
     read("package.json"),
   ]);
-  assert.match(migration, /update storage\.buckets/);
-  assert.match(migration, /public\s*=\s*false/);
+  assert.match(migration, /insert into storage\.buckets/);
+  assert.match(migration, /on conflict \(id\) do update/);
+  assert.match(migration, /values\s*\(\s*'os-content-media',\s*'os-content-media',\s*false,/s);
   for (const type of ["audio/mpeg", "image/png", "text/markdown", "application/pdf"]) assert.match(migration, new RegExp(type.replace("/", "\\/")));
   assert.match(route, /production\/\$\{actor\.id\}\/\$\{input\.sourceId\}\/\$\{input\.assetKind\}/);
   assert.match(route, /assertProductionAccess/);

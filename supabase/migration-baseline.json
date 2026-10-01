@@ -264,8 +264,8 @@
     },
     {
       "file": "20260930234912_content_production_assets.sql",
-      "sha256": "bd4abe3573866aa6888b25bc52f4c7a687f57acaa1a84dd86b90346925d58342",
-      "purpose": "extend the existing private content bucket to accept production audio, image, editing-document, and rough-cut formats",
+      "sha256": "7aafebd265008ab1245e424f3037203a1284ebd01f6b739e3df7c669d8c9e544",
+      "purpose": "create or extend the private content bucket to accept production audio, image, editing-document, and rough-cut formats",
       "requiresApproval": true,
       "appliedEnvironments": []
     }
