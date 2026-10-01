@@ -153,6 +153,7 @@ test("knowledge images can be dragged between document blocks", async ({ page })
 test("knowledge gallery browses local demo documents and stops image recovery before upload", async ({ page }) => {
   await page.goto("/knowledge");
   await page.getByRole("button", { name: "회사 wiki 2" }).click();
+  await page.getByRole("button", { name: "채널 운영 1" }).click();
   await page.getByRole("button", { name: "갤러리 보기" }).click();
 
   await expect(page.getByRole("heading", { name: "회사 wiki/채널 운영" })).toBeVisible();
