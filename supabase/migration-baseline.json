@@ -280,8 +280,10 @@
       "purpose": "link imported Obsidian and Markdown image references to the existing private knowledge attachment lifecycle without rewriting document bodies",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-01",
+      "productionApprovedAt": "2026-10-01",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     }
   ],
