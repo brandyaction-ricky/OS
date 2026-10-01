@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import ts from 'typescript';
 import * as pipeline from '../lib/content-pipeline.ts';
+import * as writingWorkflow from '../lib/content-writing-workflow.ts';
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const base = (id, extra = {}) => ({ id, record_type: 'content_topic', title: 'Example', description: 'Brief', source_url: null, parent_id: null, version: 1, metadata: {}, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', archived_at: null, ...extra });
@@ -30,7 +31,7 @@ function harness() {
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === './content-generation') return generation; throw Error(name); } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
@@ -41,6 +42,16 @@ function choosePlan(h) {
   h.rows[0].metadata.planningPackageId = plan.id; h.rows[0].metadata.planningPackageVersion = plan.version;
   return plan;
 }
+async function approveWritingWorkflow(h) {
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewWritingPreparation(h.actor, 'source', state.source.version, 'package', true, 'Current package checked');
+  for (const [step, content] of [['materials', 'Verified sources, facts, and limitations'], ['axis', 'One clear promise and exclusions'], ['design', 'Opening, evidence, interpretation, and close']]) {
+    state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.saveWritingPreparation(h.actor, 'source', state.source.version, step, content);
+    state = await h.api.readPipeline(h.actor, 'source');
+    await h.api.reviewWritingPreparation(h.actor, 'source', state.source.version, step, true, `${step} checked`);
+  }
+}
 test('pipeline stops at each gate and reuses successful generation', async () => {
   const h = harness();
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
@@ -50,11 +61,15 @@ test('pipeline stops at each gate and reuses successful generation', async () =>
   await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Checked reference');
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'PIPELINE_NEEDS_INPUT');
   await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'WRITING_WORKFLOW_REQUIRED');
+  await approveWritingWorkflow(h);
   await h.api.runPipelineGeneration(h.actor, input('script_draft'));
   const repeated = await h.api.runPipelineGeneration(h.actor, input('script_draft'));
   assert.equal(repeated.reused, true); assert.equal(h.calls(), 3);
   const packaging = h.rows.find((row) => row.metadata.packageKind === 'title_package');
   packaging.metadata.result.titles[0].text = 'Changed final title'; packaging.version++;
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'WRITING_WORKFLOW_REQUIRED');
+  await approveWritingWorkflow(h);
   const regenerated = await h.api.runPipelineGeneration(h.actor, input('script_draft'));
   assert.equal(regenerated.reused, undefined); assert.equal(h.calls(), 4);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
@@ -63,6 +78,33 @@ test('pipeline stops at each gate and reuses successful generation', async () =>
   const script = h.rows.findLast((row) => row.record_type === 'content_script'); script.version++;
   state = await h.api.readPipeline(h.actor, 'source'); assert.equal(state.approved[0], true); assert.equal(state.approved[1], false);
   await assert.rejects(h.api.runPipelineGeneration(h.actor, input('youtube_kit')), (error) => error.code === 'PIPELINE_APPROVAL_REQUIRED');
+});
+
+test('writing preparation is sequential and a package change invalidates downstream approvals', async () => {
+  const h = harness();
+  await h.api.runPipelineGeneration(h.actor, input('topic_plan')); choosePlan(h);
+  let state = await h.api.readPipeline(h.actor, 'source');
+  await h.api.reviewPipeline(h.actor, 'source', 1, state.signatures[0], true, 'Planning checked');
+  await h.api.runPipelineGeneration(h.actor, input('title_package'));
+  state = await h.api.readPipeline(h.actor, 'source');
+  await assert.rejects(h.api.saveWritingPreparation(h.actor, 'source', state.source.version, 'axis', 'Too early'), (error) => error.code === 'WRITING_STEP_BLOCKED');
+  await approveWritingWorkflow(h);
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.writing.ready, true);
+  assert.deepEqual(state.writing.steps.map((step) => step.approved), [true, true, true, true]);
+  const originalEvidence = h.rows[0].metadata.evidence;
+  h.rows[0].metadata.evidence = 'Changed planning evidence';
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.approved[0], false);
+  assert.equal(state.writing.ready, false);
+  h.rows[0].metadata.evidence = originalEvidence;
+  const packaging = h.rows.findLast((row) => row.metadata.packageKind === 'title_package');
+  packaging.metadata.result.titles[0].text = 'Changed package title'; packaging.version++;
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.writing.ready, false);
+  assert.equal(state.writing.steps[0].approved, false);
+  assert.equal(state.writing.steps[1].content, 'Verified sources, facts, and limitations');
+  await assert.rejects(h.api.runPipelineGeneration(h.actor, input('script_draft')), (error) => error.code === 'WRITING_WORKFLOW_REQUIRED');
 });
 test('pipeline retains failures, allows retry, and rejects concurrent runs', async () => {
   const h = harness(); h.fail(true);
