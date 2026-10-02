@@ -189,7 +189,10 @@ test("embedding backlog has admin control, cron authentication and bounded batch
   assert.match(indexing, /retryFailedEmbeddingJobs/);
   assert.match(indexing, /중단된 실행을 자동 복구했습니다/);
   assert.match(indexing, /새 문서 버전으로 대체된 작업입니다/);
-  assert.match(indexing, /previousChunks/);
+  assert.match(indexing, /rpc\("os_finish_embedding_job"/);
+  assert.doesNotMatch(indexing,/from\("os_document_chunks"\)\.delete/);
+  const baseline=await readFile(new URL("../supabase/migrations/20260917082749_core_baseline.sql",import.meta.url),"utf8");
+  assert.match(baseline,/os_finish_embedding_job[\s\S]*delete from os_document_chunks[\s\S]*insert into os_document_chunks/);
   assert.match(adminRoute, /actor\.role !== "admin"/);
   assert.match(cronRoute, /CRON_SECRET/);
   assert.match(cronRoute, /safeSecretMatch/);

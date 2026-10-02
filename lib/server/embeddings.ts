@@ -14,10 +14,13 @@ export async function createEmbeddings(input: string[], timeoutMs = 8_000): Prom
       signal: controller.signal,
     });
     const body = await response.json();
-    if (!response.ok) throw new ApiError(502, "EMBEDDING_PROVIDER_ERROR", "의미 검색 준비에 실패했습니다.");
+    if (!response.ok) {
+      const code=body?.error?.code==="insufficient_quota"?"EMBEDDING_QUOTA":[401,403].includes(response.status)?"EMBEDDING_AUTH":response.status===429?"EMBEDDING_RATE_LIMIT":"EMBEDDING_PROVIDER_ERROR";
+      throw new ApiError(502,code,"의미 검색 준비에 실패했습니다.");
+    }
     if (body.model && body.model !== OPENAI_EMBEDDING_MODEL) throw new ApiError(502, "EMBEDDING_MODEL_MISMATCH", "임베딩 모델이 서버 설정과 다릅니다.");
     const vectors = body.data?.sort((a: { index: number }, b: { index: number }) => a.index - b.index).map((item: { embedding: number[] }) => item.embedding);
-    if (!Array.isArray(vectors) || vectors.length !== input.length || vectors.some((vector) => vector.length !== 1536)) {
+    if (!Array.isArray(vectors) || vectors.length !== input.length || vectors.some((vector) => !Array.isArray(vector) || vector.length !== 1536 || vector.some(value=>typeof value!=="number"||!Number.isFinite(value)))) {
       throw new ApiError(502, "INVALID_EMBEDDING_RESPONSE", "임베딩 응답의 크기가 올바르지 않습니다.");
     }
     return vectors;

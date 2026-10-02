@@ -31,11 +31,11 @@ for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
     await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
     await page.goto("/content/performance");
     await expect(page.getByRole("combobox", { name: "콘텐츠 종류", exact: true })).toHaveValue("own");
-    await page.screenshot({ path: `/private/tmp/uiux-hygiene-${theme}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `/private/tmp/uiux-hygiene-${theme}-${width}.png`, fullPage: true, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
     await page.goto("/settings/access");
     await page.getByRole("button", { name: "키 발급", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "권한 범위", exact: true })).toHaveValue("draft");
-    await page.screenshot({ path: `/private/tmp/uiux-key-${theme}-${width}.png`, fullPage: false });
+    await page.screenshot({ path: `/private/tmp/uiux-key-${theme}-${width}.png`, fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import {progressiveSearch} from "@/lib/progressive-search";
+import type {IndexCoverage} from "@/lib/indexing-diagnostics";
 import { PageTitle } from "./page-title";
 
 import {
@@ -19,7 +21,7 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { SEARCH_DEGRADATION_MESSAGES, type SearchDegradation } from "@/lib/search-diagnostics";
 import { createLatestSearch } from "@/lib/knowledge-search-state";
-import { searchKnowledge } from "@/lib/api-client";
+import { apiRequest, searchKnowledge } from "@/lib/api-client";
 import { searchDemoDocuments } from "@/lib/demo-data";
 import type { DocumentStatus, SearchResult } from "@/lib/types";
 import { statusLabel } from "./dashboard";
@@ -39,6 +41,12 @@ function SearchContent() {
   const [statuses, setStatuses] = useState<DocumentStatus[]>(["canonical", "reviewed", "team"]);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchingMore,setSearchingMore]=useState(false);
+  const [partial,setPartial]=useState(false);
+  const [coverage,setCoverage]=useState<IndexCoverage|null>(null);
+  const [coverageError,setCoverageError]=useState("");
+  const controller=useRef<AbortController|null>(null);
+  useEffect(()=>{let active=true;const abort=new AbortController();setCoverage(null);setCoverageError("");if(!demo&&accessToken)apiRequest<{coverage:IndexCoverage}>("/api/v1/search/progress",{token:accessToken,signal:abort.signal}).then(result=>{if(active)setCoverage(result.coverage);}).catch(()=>{if(active)setCoverageError("검색 준비 현황을 확인하지 못했습니다. 검색은 계속 사용할 수 있습니다.");});return()=>{active=false;abort.abort();};},[demo,accessToken]);
   const [degraded, setDegraded] = useState(false);
   const [reasons, setReasons] = useState<SearchDegradation[]>([]);
   const [tookMs, setTookMs] = useState(0);
@@ -48,9 +56,10 @@ function SearchContent() {
   const execute = async (nextQuery = query) => {
     const trimmed = nextQuery.trim();
     if (!trimmed) return;
+    controller.current?.abort();const abort=new AbortController();controller.current=abort;
     const request = generation.current.start();
     const criteria = { query: trimmed, mode, statuses: [...statuses] };
-    setLoading(true); setError(""); setReasons([]); setDegraded(false);
+    setLoading(true);setSearchingMore(false);setPartial(false);setResults([]);setError(""); setReasons([]); setDegraded(false);
     const started = performance.now();
     try {
       if (!criteria.statuses.length) {
@@ -61,9 +70,14 @@ function SearchContent() {
         setResults(searchDemoDocuments(trimmed).filter((result) => statuses.includes(result.status)));
         setDegraded(false); setTookMs(Math.round(performance.now() - started));
       } else {
-        const response = await searchKnowledge(accessToken, { query: trimmed, mode, topK: 20, filters: { statuses } });
-        if (!generation.current.current(request)) return;
-        setResults(response.results); setDegraded(response.degraded); setReasons(response.degradationReasons ?? []); setTookMs(response.tookMs);
+        const input={query:trimmed,mode:criteria.mode,topK:20,filters:{statuses:criteria.statuses}};
+        const update=(response:Awaited<ReturnType<typeof searchKnowledge>>)=>{setResults(response.results);setDegraded(response.degraded);setReasons(response.degradationReasons??[]);setTookMs(response.tookMs);setApplied(criteria);setLastQuery(trimmed);};
+        if(criteria.mode==="keyword"){const response=await searchKnowledge(accessToken,input,abort.signal);if(!generation.current.current(request))return;update(response);}
+        else {
+          const outcome=await progressiveSearch(()=>searchKnowledge(accessToken,{...input,mode:"keyword",quick:true},abort.signal),()=>searchKnowledge(accessToken,input,abort.signal),response=>{if(generation.current.current(request)){update(response);setLoading(false);setSearchingMore(true);setPartial(true);}});
+          if(!generation.current.current(request))return;
+          update(outcome.result);setPartial(outcome.partial);setSearchingMore(false);
+        }
       }
       setApplied(criteria); setLastQuery(trimmed);
     } catch (reason) {
@@ -71,13 +85,13 @@ function SearchContent() {
       setApplied(criteria); setLastQuery(trimmed);
       setError(reason instanceof Error ? reason.message : "검색하지 못했습니다.");
       setResults([]);
-    } finally { if (generation.current.current(request)) setLoading(false); }
+    } finally { if (generation.current.current(request)) {setLoading(false);setSearchingMore(false);} }
   };
 
   useEffect(() => {
     const gate = generation.current;
     if (initialQuery && (demo || accessToken)) { setQuery(initialQuery); void execute(initialQuery); }
-    return () => { gate.invalidate(); };
+    return () => { gate.invalidate(); controller.current?.abort(); };
   }, [initialQuery, demo, accessToken]); // eslint-disable-line react-hooks/exhaustive-deps
   const conditionsChanged = Boolean(applied && (query.trim() !== applied.query || mode !== applied.mode || [...statuses].sort().join() !== [...applied.statuses].sort().join()));
 
@@ -112,6 +126,8 @@ function SearchContent() {
         <div className="status-filters"><Filter size={13} />{(["canonical", "reviewed", "team", "draft"] as DocumentStatus[]).map((status) => <button key={status} className={statuses.includes(status) ? "active" : ""} aria-pressed={statuses.includes(status)} onClick={() => toggleStatus(status)}><span />{statusLabel(status)}</button>)}</div>
       </div>
 
+      <div className="index-progress" role="status">{demo?"데모 · 색인 연결 현황은 로그인한 환경에서 확인할 수 있습니다.":coverage?<>접근 가능한 현재 문서의 색인 완료 {coverage.done.toLocaleString("ko-KR")} / 전체 {coverage.total.toLocaleString("ko-KR")} · 대기 {coverage.pending} · 처리 중 {coverage.running} · 실패 {coverage.failed} · 작업 미등록 {coverage.untracked}<br/>작업 상태 기준 · 나머지는 단어 검색을 이용할 수 있습니다. {coverage.truncated?"조회 한도에 도달한 부분 집계입니다.":""} 확인 {new Date(coverage.capturedAt).toLocaleTimeString("ko-KR")}</>:coverageError||"검색 준비 현황 확인 중…"}</div>
+      {searchingMore?<p className="inline-alert" role="status">단어 검색 결과부터 표시했습니다. 의미가 비슷한 자료를 더 찾는 중…</p>:partial?<p className="inline-alert" role="status">추가 검색을 완료하지 못해 먼저 찾은 단어 검색 결과를 유지합니다.</p>:null}
       {!statuses.length ? <p className="inline-alert">검색할 문서 상태를 하나 이상 선택해 주세요.</p> : null}
       {conditionsChanged ? <p className="inline-alert" role="status">조건 변경됨 · 아래는 이전 검색 결과입니다. 다시 검색하면 새 조건을 적용합니다.</p> : null}
       {degraded ? <div className="inline-alert"><CircleAlert size={15} /> {reasons.length ? reasons.map(reason => SEARCH_DEGRADATION_MESSAGES[reason]).join(" ") : "일부 검색 기능을 사용할 수 없어 단어 검색 결과를 표시합니다."} <button type="button" className="ghost-button" disabled={loading} onClick={() => execute()}>다시 검색</button></div> : null}

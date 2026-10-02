@@ -262,22 +262,23 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           </div>
           <div className="queue-metrics">
             <span>
-              <strong>{queue?.pending ?? "—"}</strong>
+              <strong>{queue?.coverage?.pending ?? queue?.pending ?? "—"}</strong>
               <small>대기</small>
             </span>
             <span>
-              <strong>{queue?.running ?? "—"}</strong>
+              <strong>{queue?.coverage?.running ?? queue?.running ?? "—"}</strong>
               <small>처리 중</small>
             </span>
             <span>
-              <strong>{queue?.failed ?? "—"}</strong>
+              <strong>{queue?.coverage?.failed ?? queue?.failed ?? "—"}</strong>
               <small>실패</small>
             </span>
             <span>
-              <strong>{queue?.done ?? "—"}</strong>
+              <strong>{queue?.coverage?.done ?? queue?.done ?? "—"}</strong>
               <small>완료</small>
             </span>
           </div>
+          {queue?.coverage?<div className="index-progress">현재 문서 {queue.coverage.total}개 기준 · 미등록 {queue.coverage.untracked}개 · 지난 작업 실패 {queue.coverage.historicalFailed}건은 현재 실패에서 제외했습니다.{queue.coverage.truncated?" 부분 집계입니다.":""}<ul className="index-failure-reasons">{queue.coverage.failureReasons.map(reason=><li key={reason.code}>{reason.label} {reason.count}건</li>)}</ul></div>:null}
           <div className="form-actions">
             <button
               className="primary-button"
@@ -288,10 +289,10 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
             </button>
             <button
               className="secondary-button"
-              disabled={loading || !queue?.failed}
+              disabled={loading || !(queue?.coverage?.failed ?? queue?.failed)}
               onClick={() => setConfirmation("retry_failed")}
             >
-              실패 작업 재시도
+              현재 버전 실패 재시도
             </button>
           </div>
           {!indexingConfigured ? <p className="field-hint">OpenAI 검색 키가 연결되지 않아 실행할 수 없습니다. 키 연결 후 버튼을 누르면 실행 확인창이 열립니다.</p> : null}

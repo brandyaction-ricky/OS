@@ -36,6 +36,22 @@ paths:
       responses:
         "200":
           description: 상태 스냅샷
+  /api/v1/search/progress:
+    get:
+      summary: 로그인한 사용자가 접근 가능한 현재 문서의 색인 작업 집계
+      description: 사용자 RLS로 문서 범위를 제한하고 현재 content_hash의 최신 작업을 문서당 한 번 집계합니다. 청크 검증률은 아닙니다. 문서 ID와 오류 원문을 반환하지 않으며 부분 조회는 truncated로 표시합니다. 에이전트 키는 허용하지 않습니다.
+      responses:
+        "200":
+          description: private no-store 색인 현황
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  coverage: { $ref: "#/components/schemas/IndexCoverage" }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
   /api/v1/search:
     post:
       summary: 권한 범위 안에서 회사 지식 검색
@@ -345,10 +361,11 @@ paths:
     get:
       summary: 관리자용 임베딩 큐 상태 조회
       responses:
-        "200": { description: pending/running/failed/done 건수와 설정 상태 }
+        "200": { description: 기존 전체 작업 pending/running/failed/done 건수와 설정 상태 및 현재 활성 문서의 coverage 집계 }
         "403": { $ref: "#/components/responses/ApiError" }
     post:
-      summary: 관리자가 제한된 인덱싱 배치를 실행하거나 실패 작업을 대기로 전환
+      summary: 관리자가 제한된 인덱싱 배치를 실행하거나 현재 버전 실패 작업을 대기로 전환
+      description: retry_failed는 활성 문서의 현재 hash 최신 실패만 대상으로 하며 이미 실행 중인 작업과 대체된 버전은 제외합니다. 부분 조회 시 쓰지 않고 실패합니다. 실제 재처리는 운영 승인을 받은 뒤 실행합니다.
       requestBody:
         required: true
         content:
@@ -559,12 +576,34 @@ components:
         tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
         source: { type: string, maxLength: 40 }
         sourceRef: { type: [string, "null"], maxLength: 500 }
+    IndexCoverage:
+      type: object
+      required: [total, done, failed, pending, running, untracked, historicalFailed, failureReasons, capturedAt, truncated]
+      properties:
+        total: { type: integer, minimum: 0 }
+        done: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        running: { type: integer, minimum: 0 }
+        untracked: { type: integer, minimum: 0 }
+        historicalFailed: { type: integer, minimum: 0, description: 조회된 활성 문서 범위에서 제외한 과거 실패 작업 수 }
+        capturedAt: { type: string, format: date-time }
+        truncated: { type: boolean }
+        failureReasons:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, enum: [superseded, archived, timeout, rate_limit, quota, authentication, configuration, storage, provider, unknown] }
+              label: { type: string }
+              count: { type: integer, minimum: 0 }
     SearchRequest:
       type: object
       required: [query]
       properties:
         query: { type: string, minLength: 1, maxLength: 1000 }
         mode: { type: string, enum: [hybrid, keyword, semantic], default: hybrid }
+        quick: { type: boolean, default: false, description: true이면 임베딩/RPC를 건너뛰고 요청자 권한 내 문서 단어 검색 결과를 먼저 반환 }
         topK: { type: integer, minimum: 1, maximum: 30, default: 10 }
         filters:
           type: object

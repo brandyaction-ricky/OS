@@ -44,7 +44,7 @@ for (const width of [1440, 390]) for (const theme of ["dark", "light"]) {
       await expect(page.locator(".connection-evidence-grid")).toBeVisible();
       const overflow = await page.locator("main").evaluate(element => element.scrollWidth > element.clientWidth + 1);
       expect(overflow).toBe(false);
-      await page.screenshot({ path: testInfo.outputPath(`${name}-${theme}-${width}.png`), fullPage: true });
+      await page.screenshot({ path: testInfo.outputPath(`${name}-${theme}-${width}.png`), fullPage: true, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
     }
   });
 }

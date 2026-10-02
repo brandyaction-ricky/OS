@@ -22,7 +22,8 @@ export async function POST(request: Request) {
     const outcome = await searchDocuments(actor, input);
     const tookMs = Date.now() - started;
     try {
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      // Only the complete request is counted; the early phase is the same user search.
+      if (!input.quick && process.env.SUPABASE_SERVICE_ROLE_KEY) {
         await createServiceSupabase().from("os_search_logs").insert({
           actor_type: actor.type,
           actor_id: actor.id,
