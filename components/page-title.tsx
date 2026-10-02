@@ -1,6 +1,9 @@
 "use client";
 import { usePathname, useSearchParams } from "next/navigation";
 import { findPage } from "@/lib/navigation";
+import { useWorkspaceSection } from "./workspace-section";
 export function PageTitle() {
-  return <h1>{findPage(`${usePathname()}?${useSearchParams().toString()}`).label}</h1>;
+  const title=findPage(`${usePathname()}?${useSearchParams().toString()}`).label;
+  const section=useWorkspaceSection();
+  return section ? <h2>{section}</h2> : <h1>{title}</h1>;
 }

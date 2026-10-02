@@ -36,9 +36,9 @@ test("knowledge workspace requests folder inventory and loads expanded folders l
 test("unimplemented knowledge filter and mismatched commerce title are removed", async () => {
   const [search, page] = await Promise.all([
     read("components/knowledge-search.tsx"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
   ]);
   assert.doesNotMatch(search, /상세 조건/);
-  assert.match(page, /<CommerceAdminLinks \/>/);
+  assert.match(page, /customers:CommerceAdminLinks/);
   assert.match(await read("components/performance-workspaces.tsx"), /<PageTitle \/>/);
 });

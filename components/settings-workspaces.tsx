@@ -250,7 +250,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
           : youtubeOAuth?.configured || health?.youtubeOAuth === "ready"
             ? "warning"
             : "waiting",
-        location: "유튜브 관리에서 채널 연결",
+        location: "작동 상태에서 채널 연결",
       },
       {
         system: "Meta·Google Ads",

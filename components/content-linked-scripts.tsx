@@ -22,9 +22,9 @@ const SCRIPT_REVIEW_PLACEHOLDERS: Record<ScriptReviewStep, string> = {
   expression: "일상어로 읽히는지, 오해할 표현·불필요한 반복·브랜드 기준 위반을 고친 내용을 적어주세요.",
 };
 
-export function ContentLinkedScripts({ showPlanningHandoff = false }: { showPlanningHandoff?: boolean }) {
-  const { accessToken } = useSession();
-  const [sourceId, setSourceId] = useState("");
+export function ContentLinkedScripts({ showPlanningHandoff = false, lockedSourceId }: { showPlanningHandoff?: boolean; lockedSourceId?:string }) {
+  const { accessToken, demo } = useSession();
+  const [sourceId, setSourceId] = useState(lockedSourceId??"");
   const [state, setState] = useState<LinkedPipelineState | null>(null);
   const [scripts, setScripts] = useState<OsRecord[]>([]);
   const [draft, setDraft] = useState("");
@@ -33,7 +33,7 @@ export function ContentLinkedScripts({ showPlanningHandoff = false }: { showPlan
   const [scriptReviewDrafts, setScriptReviewDrafts] = useState<Record<ScriptReviewStep, string>>({ claim: "", evidence: "", audience: "", expression: "" });
   const [scriptReviewReasons, setScriptReviewReasons] = useState<Partial<Record<ScriptReviewStep, string>>>({});
   const [error, setError] = useState(""); const [notice, setNotice] = useState(""); const [busy, setBusy] = useState(false);
-  useEffect(() => { setSourceId(new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, []);
+  useEffect(() => { setSourceId(lockedSourceId??new URLSearchParams(window.location.search).get("sourceId") ?? ""); }, [lockedSourceId]);
 
   const load = useCallback(async () => {
     if (!sourceId || !accessToken) return;
@@ -86,6 +86,7 @@ export function ContentLinkedScripts({ showPlanningHandoff = false }: { showPlan
     void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ operation: "script_review_decide", sourceId, expectedVersion: state.source.version, step, approved, note: scriptReviewReasons[step] ?? "" }) }), approved ? "현재 원고의 검수 항목을 승인했습니다." : "원고 수정 요청을 저장했습니다.");
   };
   if (!sourceId) return null;
+  if (demo) return <section className="panel load-error"><h2>연결된 원고 공정</h2><p>데모에서는 자료·핵심 축·영상 설계·원고 검수의 저장과 AI 생성을 실행하지 않습니다.</p></section>;
   const source = state?.source ?? null; const writing = state?.writing ?? null;
   return <>
     {showPlanningHandoff && source ? <ContentPlanningHandoff key={`${source.id}:${source.version}`} source={source} /> : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
 
 import {
@@ -75,14 +76,14 @@ function videoMime(file: File) {
   return ({ mp4: "video/mp4", mov: "video/quicktime", m4v: "video/x-m4v", webm: "video/webm", mkv: "video/x-matroska" } as Record<string, string>)[extension || ""] || "";
 }
 
-export function ContentShortformWorkspace() {
+export function ContentShortformWorkspace({lockedSource}:{lockedSource?:OsRecord} = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [allSources, setSources] = useState<OsRecord[]>([]);
+  const [allSources, setSources] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
   const [origin, setOrigin] = useState<OriginFilter>("own");
-  const sources = filterContentOrigin(allSources, origin);
+  const sources = lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin);
   const [clips, setClips] = useState<OsRecord[]>([]);
-  const [sourceId, setSourceId] = useState("");
-  const [tab, setTab] = useState<ShortsTab>("editor");
+  const [sourceId, setSourceId] = useState(lockedSource?.id??"");
+  const [tab, setTab] = useQueryTab<ShortsTab>("tab",["editor","clips"],"editor");
   const [style, setStyle] = useState<ShortsStyle>(DEFAULT_STYLE);
   const [count, setCount] = useState(5);
   const [localFile, setLocalFile] = useState<File | null>(null);
@@ -105,12 +106,12 @@ export function ContentShortformWorkspace() {
       ]);
       const usable = sourceResult.records;
       setSources(usable); setClips(clipResult.records);
-      setSourceId((current) => sourceSelection(usable, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
+      setSourceId((current) => lockedSource ? (usable.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceSelection(usable, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "숏폼 작업을 불러오지 못했습니다.");
     }
-  }, [accessToken, demo]);
+  }, [accessToken, demo, lockedSource]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => () => { if (localUrl) URL.revokeObjectURL(localUrl); }, [localUrl]);
@@ -276,7 +277,7 @@ export function ContentShortformWorkspace() {
   const previewPosition = style.position === "top" ? "flex-start" : style.position === "bottom" ? "flex-end" : "center";
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <nav className="studio-tabs content-radar-tabs" aria-label="숏폼 작업 단계"><button className={tab === "editor" ? "active" : ""} onClick={() => setTab("editor")}><strong>스타일·원본</strong><small>화면 템플릿</small></button><button className={tab === "clips" ? "active" : ""} onClick={() => setTab("clips")}><strong>클립</strong><small>구간·제작 관리</small></button></nav>
 
