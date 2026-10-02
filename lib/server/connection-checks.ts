@@ -1,3 +1,4 @@
+import {getIndexCoverage} from "./indexing-diagnostics";
 import { CONNECTIONS, connectionState, type ConnectionCheck, type ConnectionId } from "@/lib/connection-status";
 import { hasPublicSupabaseConfig, hasServerSupabaseConfig } from "@/lib/config";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -28,13 +29,13 @@ export async function readConnectionChecks() {
     let evidenceAvailable = !lastOk.error && !latest.error && !failures.error;
     // Existing failed jobs take precedence over a successful credentials probe.
     if (id === "embeddings") {
-      const [failed, success] = await Promise.all([
-        db.from("os_embedding_jobs").select("id", { count: "exact", head: true }).eq("status", "failed"),
+      const [coverage, success] = await Promise.all([
+        getIndexCoverage(db).catch(()=>null),
         db.from("os_embedding_jobs").select("finished_at").eq("status", "done").is("last_error", null).order("finished_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
-      blockedJobs = failed.error ? null : failed.count;
+      blockedJobs = !coverage || coverage.truncated ? null : coverage.failed;
       if (success.data?.finished_at && (!lastOkAt || success.data.finished_at > lastOkAt)) lastOkAt = success.data.finished_at;
-      evidenceAvailable &&= !failed.error && !success.error;
+      evidenceAvailable &&= Boolean(coverage&&!coverage.truncated) && !success.error;
     }
     if (id === "advertising") {
       const [failed, success] = await Promise.all([

@@ -6,7 +6,6 @@ import { searchSchema } from "@/lib/validation";
 import type { DocumentStatus, SearchResult } from "@/lib/types";
 import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
-import { createServiceSupabase } from "@/lib/supabase/server";
 import { hasLexicalEvidence, keywordQueryText, searchTerms } from "@/lib/search-relevance";
 
 type SearchInput = z.infer<typeof searchSchema>;
@@ -80,6 +79,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   const statuses = intersectStatuses(requested, actor.allowedStatuses);
   if (!statuses.length) return { results: [], degraded: false };
 
+  if(input.quick)return {results:await fallbackDocuments(actor,input,statuses),degraded:false};
   const normalizedQuery = keywordQueryText(input.query);
   let embedding: string | null = null;
   let degraded = false;
@@ -110,7 +110,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     p_min_score: 0,
   }).abortSignal(AbortSignal.timeout(4_000)) : { data: [], error: null };
   if (error) {
-    console.error("os_search_knowledge rpc failed", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+    console.error("os_search_knowledge rpc failed", { category: error.code === "57014" ? "timeout" : "database" });
     const fallback = await fallbackDocuments(actor, input, statuses);
     degradationReasons.push(error.code === "57014" || /abort|timeout/i.test(error.message) ? "search_timeout" : "search_failed");
     return { results: fallback, degraded: true, degradationReasons };
@@ -131,7 +131,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   // Without embeddings, the RPC can return low-signal full-text rows for an
   // unrelated sentence. Do not present those rows as evidence to chat users.
   if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
-  const sharedActor = actor.type === "user" ? { ...actor, supabase: createServiceSupabase() } : actor;
+  const sharedActor = actor; // Supplemental reads retain the requesting user’s RLS scope.
   let sharedKeyword: SearchResult[] = [];
   if (results.length < input.topK) {
     try { sharedKeyword = await fallbackDocuments(sharedActor, input, statuses); }

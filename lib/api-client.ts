@@ -108,11 +108,13 @@ export async function restoreDocumentVersion(token: string | null, id: string, v
 export async function searchKnowledge(
   token: string | null,
   input: {
+    quick?: boolean;
     query: string;
     mode?: "hybrid" | "keyword" | "semantic";
     topK?: number;
     filters?: { statuses?: string[]; folder?: string; brand?: string };
   },
+  signal?: AbortSignal,
 ) {
   return apiRequest<{
     query: string;
@@ -122,7 +124,7 @@ export async function searchKnowledge(
     results: SearchResult[];
     tookMs: number;
   }>("/api/v1/search", {
-    method: "POST",
+    method: "POST", signal,
     token,
     body: JSON.stringify(input),
   });
@@ -277,6 +279,7 @@ export async function importPerformanceCsv(token: string | null, input: { kind: 
 }
 
 export interface EmbeddingQueueStatus {
+  coverage?: import("./indexing-diagnostics").IndexCoverage;
   pending: number;
   running: number;
   failed: number;

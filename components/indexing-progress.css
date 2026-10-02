@@ -1,0 +1,6 @@
+.index-progress{padding:14px 16px;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--text-2);font-size:12px;line-height:1.8}.index-failure-reasons{display:flex;gap:12px;flex-wrap:wrap;margin:14px 18px;padding:0;list-style:none;color:var(--text-2);font-size:12px}
+.search-controls{flex-wrap:wrap;overflow:visible}
+.search-controls>.mode-switch{flex-shrink:0}
+.search-controls>.mode-switch button{white-space:nowrap;min-height:36px}
+.search-controls>.status-filters{min-width:0;flex-wrap:wrap}
+@media(max-width:600px){.search-controls{align-items:flex-start}.search-controls>.status-filters{flex-basis:100%;overflow:visible}}
