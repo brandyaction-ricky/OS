@@ -19,10 +19,11 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { roleLabel } from "@/lib/company-settings";
+import { DevelopmentRequestDrawer } from "./development-request-drawer";
 import { ServerConnectionStatus } from "./server-connection-status";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
@@ -44,8 +45,10 @@ function Initials({ name }: { name: string }) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const stage = useMemo(() => findStage(pathname), [pathname]);
-  const page = useMemo(() => findPage(pathname), [pathname]);
+  const params = useSearchParams();
+  const navigationPath = `${pathname}?${params.toString()}`;
+  const stage = useMemo(() => findStage(navigationPath), [navigationPath]);
+  const page = useMemo(() => findPage(navigationPath), [navigationPath]);
   const { profile, loading, demo, signOut } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -53,6 +56,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [knowledgeFocus, setKnowledgeFocus] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
@@ -250,7 +254,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="unified-sidebar-foot">
-          <Link className="sidebar-request" href={`/knowledge/development?new=request&page=${encodeURIComponent(pathname)}`} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></Link>
+          <button className="sidebar-request" onClick={() => { setRequestOpen(true); setMobileOpen(false); }} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></button>
           <div className="sidebar-status"><ServerConnectionStatus demo={demo} /></div>
           <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
             <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
@@ -284,6 +288,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+      <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />
       <CommandPalette open={paletteOpen} onClose={closePalette} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>

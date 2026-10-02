@@ -203,8 +203,10 @@ paths:
   /api/v1/records:
     get:
       summary: 권한 범위 안의 운영 기록 목록
+      description: notification 및 development_notification은 일반 기록 API에서 읽기·생성·변경·복원이 금지됩니다.
       parameters:
         - { in: query, name: type, schema: { $ref: "#/components/schemas/RecordType" } }
+        - { in: query, name: id, schema: { type: string, format: uuid }, description: 직접 연결된 단일 항목 조회 }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: brand, schema: { type: string } }
         - { in: query, name: team, schema: { type: string } }
@@ -440,6 +442,63 @@ paths:
         "200": { description: 등록된 공개 웹훅 URL }
         "403": { $ref: "#/components/responses/ApiError" }
         "503": { $ref: "#/components/responses/ApiError" }
+  /api/v1/my-work:
+    get:
+      summary: 로그인한 사람의 받은 일·검토·요청 목록
+      description: 사용자 JWT 전용. RLS로 읽은 업무와 문서에 본인·상태 조건을 적용하며 시장·테스트·보관 항목은 제외합니다. 각각 최근 1000개 범위이며 초과하면 truncated=true입니다.
+      responses:
+        "200":
+          description: private no-store 개인 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tabs, truncated, checkedAt]
+                properties:
+                  tabs:
+                    type: object
+                    properties:
+                      received: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                      review: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                      requested: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                  truncated: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+  /api/v1/notifications:
+    get:
+      summary: 현재 원본 접근 권한을 확인한 개인 통합 알림
+      description: 사용자 JWT 전용. 기존 개발 알림 API는 유지합니다. 원본이 보관되거나 접근 권한을 잃으면 제목·미읽음 건수에서 제외합니다. 최근 100개 범위. GET은 읽음 상태를 변경하지 않습니다.
+      responses:
+        "200":
+          description: notifications(id,title,reason,href,createdAt,readAt), unread, truncated. reason은 assignment/review/approval/blocked/status_change. readAt의 빈 문자열은 미읽음.
+        "503": { description: 추가 마이그레이션 미적용 또는 알림 저장소 확인 실패. 기존 개발 알림 API는 독립적으로 유지됨. }
+    patch:
+      summary: 본인 알림 읽음 처리
+      description: 원본 RLS를 다시 확인하고 알림 버전 조건으로 갱신합니다. 다른 수신자의 ID가 섞이면 갱신 전에 404, 중복 ID는 400, 충돌은 409입니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, uniqueItems: true, items: { type: string, format: uuid } }
+      responses:
+        "200": { description: read 건수와 readAt }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "404": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+  /api/v1/development-requests:
+    patch:
+      summary: 개발 요청 상태·처리 결과 갱신
+      description: 기존 계약을 유지하고 관리자 전용 plainSummary(240자), nextAction(500자), holdReason(2000자), reviewDate(YYYY-MM-DD 또는 빈 문자열)를 선택 필드로 추가합니다. id와 expectedVersion 필수. 기존 필드의 권한은 그대로입니다. 요약 마이그레이션 적용 전 새 필드를 보내면 503입니다.
+      responses:
+        "200": { description: 갱신된 record }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
 components:
   securitySchemes:
     bearerAuth:
@@ -447,6 +506,16 @@ components:
       scheme: bearer
       description: Supabase 사용자 JWT 또는 범위가 지정된 bos_pat 토큰(knowledge.read/knowledge.write/records.read/records.write)
   schemas:
+    PersonalWorkItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string, description: 표시용 한국어 상태 }
+        dueDate: { type: string, nullable: true }
+        href: { type: string }
+        kind: { type: string }
+        nextAction: { type: string }
     RecordType:
       type: string
       enum: [project, task, goal, kpi, decision, meeting, ai_job, content_topic, content_script, content_package, content_short, content_publish, content_metric, skill, knowledge_link, revenue, funnel, crm_action, customer, brand, connection, access_rule, company_setting, channel]

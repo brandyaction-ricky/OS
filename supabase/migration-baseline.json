@@ -297,6 +297,12 @@
       "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261002202443_personal_work_notifications.sql",
+      "sha256": "812eb802241dd7743e097ff7ed329db34fedd8187d52b9263b9d671beb7123dc",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

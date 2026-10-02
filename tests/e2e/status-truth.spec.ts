@@ -18,7 +18,7 @@ test("unified status keeps old URLs and explains unverified demo evidence", asyn
 });
 
 test("empty revenue and advertising values use em dashes instead of artificial zeroes", async ({ page }) => {
-  await page.goto("/home");
+  await page.goto("/home?view=management");
   await expect(page.locator(".revenue-band")).toContainText("주문 연결 대기");
   await expect(page.locator(".revenue-band")).not.toContainText("0만원");
   await page.goto("/performance/revenue");

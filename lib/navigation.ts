@@ -93,7 +93,8 @@ export const NAV_STAGES: NavStage[] = [
     { label: "경영지원", href: "/organization/finance", icon: ReceiptText, ready: true },
   ] },
   { id: "development", label: "개발", icon: Code2, href: "/knowledge/development", pages: [
-    { label: "수정 요청", href: "/knowledge/development", icon: Code2, aliases: ["개발 관리", "개발·배포 기록", "업데이트 내역"], ready: true },
+    { label: "수정 요청", href: "/knowledge/development", icon: Code2, aliases: ["개발 관리", "개발·배포 기록"], ready: true },
+    { label: "업데이트 내역", href: "/knowledge/development?tab=history", icon: ScrollText, ready: true },
     { label: "AI 작업", href: "/organization/agents", icon: Bot, ready: true },
   ] },
   { id: "settings", label: "설정", icon: Settings, href: "/settings/connections", pages: [
@@ -115,6 +116,13 @@ const matchesPath = (pathname: string, href: string) => pathname === href || (hr
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
   const pages = NAV_STAGES.flatMap(stage => stage.pages);
+  const query = new URLSearchParams(path.split("?")[1]?.split("#")[0] ?? "");
+  const queryPage = pages.find(page => {
+    if (!page.href.includes("?")) return false;
+    const [href, params] = page.href.split("?");
+    return pathname === href && [...new URLSearchParams(params)].every(([key,value]) => query.get(key) === value);
+  });
+  if (queryPage) return queryPage;
   const alias = Object.keys(NAV_ALIASES).find(href => matchesPath(pathname, href));
   if (alias) {
     const page = pages.find(item => item.href === NAV_ALIASES[alias])!;

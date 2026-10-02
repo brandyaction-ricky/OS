@@ -12,13 +12,14 @@ test("global shell controls do not present dead actions", async () => {
   assert.doesNotMatch(shell, /이 영역에 기능 추가/);
   assert.doesNotMatch(shell, /새로운 알림이 없습니다/);
   assert.match(shell, /DevelopmentRequestNotifications open=/);
-  assert.match(shell, /knowledge\/development\?new=request&page=/);
+  assert.match(shell, /DevelopmentRequestDrawer open=/);
+  assert.match(await read("components/project-hub-workspace.tsx"), /params.get\("new"\) === "request"/);
   assert.match(notifications, /fetch\(`\/api\/v1\/development-requests\?/);
   assert.match(notifications, /Authorization: `Bearer \$\{accessToken\}`/);
   assert.match(notifications, /query\.set\("scope", "mine"\)/);
   assert.match(notifications, /fetch\("\/api\/v1\/development-notifications"/);
-  assert.match(notifications, /개발 알림을 불러오지 못했습니다/);
-  assert.match(notifications, /개발 알림을 불러오는 중입니다/);
+  assert.match(notifications, /알림을 불러오지 못했습니다/);
+  assert.match(notifications, /알림을 불러오는 중입니다/);
   assert.match(notifications, /모두 읽음/);
 });
 

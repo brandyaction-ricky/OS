@@ -1,4 +1,5 @@
 "use client";
+import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
 
@@ -84,6 +85,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   };
 
   const openEdit = (record: OsRecord) => { setEditing(record); setEditorOpen(true); };
+  useRecordDeepLink("record", config.recordType, openEdit, setError);
   const archive = async (record: OsRecord) => {
     if (!window.confirm(`“${record.title}”을 보관할까요?`)) return;
     try { await archiveRecord(accessToken, record.id); await load(); }

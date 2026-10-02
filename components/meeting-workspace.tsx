@@ -1,4 +1,5 @@
 "use client";
+import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
 
@@ -162,6 +163,7 @@ export function MeetingWorkspace() {
     setDrawerOpen(true);
   };
 
+  useRecordDeepLink("meeting", "meeting", openEdit, setError);
   const startRecording = async () => {
     setError("");
     try {
