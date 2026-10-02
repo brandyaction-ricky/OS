@@ -3,7 +3,8 @@
  * Vercel Sandbox later; either way it holds only OS_URL and YOUTUBE_MEDIA_WORKER_SECRET.
  * The OS verifies every input; this process stitches audio, renders and uploads.
  *
- * OS_URL=https://<preview> YOUTUBE_MEDIA_WORKER_SECRET=... node tools/youtube-media-worker.mjs [--once]
+ * OS_URL=https://<preview> YOUTUBE_MEDIA_WORKER_SECRET=... node tools/youtube-media-worker.mjs [--once] [--run <voice run id>]
+ * --run limits both the voice steps and the render claim to one voice run, so older queued runs are left alone.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -15,6 +16,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
 const secret = process.env.YOUTUBE_MEDIA_WORKER_SECRET ?? "";
+const runArg = process.argv.indexOf("--run");
+const runId = runArg > 0 ? process.argv[runArg + 1] : undefined;
 
 async function call(body, route = "media") {
   const response = await fetch(`${osUrl}/api/v1/content/youtube-automation/${route}`, {
@@ -40,7 +43,7 @@ const seconds = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_
 
 /** Process one render job; returns false when the queue is empty. */
 export async function processOne() {
-  const job = await call({ action: "claim" });
+  const job = await call({ action: "claim", ...(runId && { voiceRunId: runId }) });
   if (job.idle) return false;
   const dir = mkdtempSync(path.join(os.tmpdir(), "brandyaction-render-"));
   const lease = { renderId: job.renderId, lease: job.lease };
@@ -79,7 +82,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || call({}, "worker").then((step) => {
+    const worked = await processOne().then((rendered) => rendered || call(runId ? { runId } : {}, "worker").then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
     }))

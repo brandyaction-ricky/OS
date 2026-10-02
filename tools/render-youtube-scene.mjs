@@ -217,6 +217,15 @@ const roughRect = (b, rnd, rough) => [[b.x, b.y, b.x + b.w, b.y], [b.x + b.w, b.
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 /** The poster's own drawing: title with a red highlighter, section frames and titles, panel frames and numbers, arrows. */
+/** A section title "01 label": font size and approximate width on the poster. */
+export function sectionLabel(s) {
+  const fs = Math.max(60, s.head * 0.6), label = `${String(s.index).padStart(2, "0")} ${s.label}`;
+  return { fs, label, lw: [...label].reduce((w, ch) => w + (/[가-힣]/.test(ch) ? 1 : 0.55), 0) * fs };
+}
+
+/** A scene with nothing to draw (caption only): it gets no cell, and the camera shows its section meanwhile. */
+export const blankBeat = (beat) => !/<(?!g[\s/>])[a-z]/i.test(beat.svg ?? "");
+
 export function posterDecor(layout, title) {
   let seed = 11;
   const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 2 ** 32; };
@@ -233,7 +242,7 @@ export function posterDecor(layout, title) {
     const t = 0.25 + i * 0.08;
     out.push(draw(roughRect(s.frame, rnd, 1.2), GREY, 2.5, t, 0.45));
     // Section title: Gaegu, sized to its header band (at least 60 px on the poster), with a navy underline.
-    const fs = Math.max(60, s.head * 0.6), label = `${String(s.index).padStart(2, "0")} ${s.label}`, lw = [...label].reduce((w, ch) => w + (/[가-힣]/.test(ch) ? 1 : 0.55), 0) * fs;
+    const { fs, label, lw } = sectionLabel(s);
     out.push(`<text x="${s.frame.x + fs * 0.6}" y="${s.frame.y + s.head * 0.55}" class="gaegu" font-size="${fs.toFixed(0)}" fill="${NAVY}" dominant-baseline="middle" data-k="fade" data-t="${t + 0.2}" data-d="0.3">${esc(label)}</text>`);
     out.push(draw(roughLine(s.frame.x + fs * 0.55, s.frame.y + s.head * 0.55 + fs * 0.62, s.frame.x + fs * 0.7 + lw, s.frame.y + s.head * 0.55 + fs * 0.56, rnd, 1.2), NAVY, 3.5, t + 0.35, 0.3));
     s.panels.forEach((p, j) => {
@@ -263,11 +272,16 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   const cells = new Map();
   layout.sections.forEach((s) => s.panels.forEach((p) => cells.set(p.segmentIndex, p)));
   const seen = new Map();
-  const placed = beats.map((beat) => {
+  const placed = [];
+  beats.forEach((beat) => {
+    if (blankBeat(beat)) {
+      const section = placed.at(-1)?.section ?? 0;
+      return placed.push({ ...beat, cell: null, panel: "", panelFrame: layout.sections[section].frame, section });
+    }
     const panel = cells.get(beat.segmentIndex), n = seen.get(beat.segmentIndex) ?? 0;
     seen.set(beat.segmentIndex, n + 1);
     const cell = panel?.cells[Math.min(n, panel.cells.length - 1)] ?? { x: 0, y: 0, w: 1280, h: 600 };
-    return { ...beat, cell, panel: panel?.number ?? "", panelFrame: panel?.frame ?? cell, section: layout.sections.findIndex((s) => s.panels.includes(panel)) };
+    placed.push({ ...beat, cell, panel: panel?.number ?? "", panelFrame: panel?.frame ?? cell, section: Math.max(0, layout.sections.findIndex((s) => s.panels.includes(panel))) });
   });
   const grain = `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .25 0 0 0 .9 0'/></filter><rect width='400' height='400' filter='url(%23n)'/></svg>`)}")`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
@@ -282,14 +296,14 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   <svg width="0" height="0" style="position:absolute"><defs>${[1, 2, 3].map((n) => `<filter id="pencil${n}" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="6000" height="4500"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${n * 7}"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter>`).join("")}
     <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="${PAPER}"/><line x1="0" y1="0" x2="0" y2="14" stroke="${NAVY}" stroke-width="5" stroke-opacity=".55"/></pattern></defs></svg>
   <div id="poster"><svg id="decor" width="${POSTER.w}" height="${POSTER.h}" viewBox="0 0 ${POSTER.w} ${POSTER.h}" style="left:0;top:0">${decor}</svg>
-  ${placed.map((beat, i) => `<svg id="b${i}" viewBox="${CELL_VIEW.x} ${CELL_VIEW.y} ${CELL_VIEW.w} ${CELL_VIEW.h}" width="${beat.cell.w.toFixed(1)}" height="${beat.cell.h.toFixed(1)}" style="left:${beat.cell.x.toFixed(1)}px;top:${beat.cell.y.toFixed(1)}px;visibility:hidden"><style>${style}</style>
+  ${placed.map((beat, i) => !beat.cell ? "" : `<svg id="b${i}" viewBox="${CELL_VIEW.x} ${CELL_VIEW.y} ${CELL_VIEW.w} ${CELL_VIEW.h}" width="${beat.cell.w.toFixed(1)}" height="${beat.cell.h.toFixed(1)}" style="left:${beat.cell.x.toFixed(1)}px;top:${beat.cell.y.toFixed(1)}px;visibility:hidden"><style>${style}</style>
     <defs><filter id="line${i}"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0 1 1 1"/><feFuncG type="discrete" tableValues="0 1 1 1"/><feFuncB type="discrete" tableValues="0 1 1 1"/></feComponentTransfer></filter></defs>
     ${beat.svg.replace(/<image data-character="([a-z0-9_-]+)"/g, (_, id) => `<image href="${characters.get(id)}" preserveAspectRatio="xMidYMid meet" data-character="${id}"`)}</svg>`).join("")}</div>
   <script>
   const OPEN = ${OPEN}, CLOSE = ${CLOSE}, STEP = ${STEP_FPS}, total = ${Number(duration) || 0};
   const beats = ${JSON.stringify(placed.map((beat) => ({ ...beat, svg: undefined })))};
   const captions = ${JSON.stringify(captions)};
-  const layout = ${JSON.stringify({ sections: layout.sections.map((s) => ({ index: s.index, frame: s.frame, head: s.head, label: s.label })) })};
+  const layout = ${JSON.stringify({ sections: layout.sections.map((s) => ({ index: s.index, frame: s.frame, head: s.head, label: s.label, labelW: sectionLabel(s).fs + sectionLabel(s).lw })) })};
   const monotoneCubic = ${monotoneCubic.toString()};
   const ease = v => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
   const poster = document.getElementById('poster'), svgs = beats.map((_, i) => document.getElementById('b' + i));
@@ -324,7 +338,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     const add = (tag, attrs, after) => { const el = document.createElementNS(ns, tag);
       Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); after.after(el);
       if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; el.style.strokeDashoffset = 1; } return el; };
-    svgs.forEach(svg => {
+    svgs.filter(Boolean).forEach(svg => {
       svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6, w = b.width;
         add('path', { class: 'r bold', d: 'M' + b.x + ' ' + (y + 4) + 'C' + (b.x + w * .25) + ' ' + (y - 8) + ' ' + (b.x + w * .55) + ' ' + (y + 10) + ' ' + (b.x + w) + ' ' + (y - 4), 'data-k': 'draw', 'data-g': host.dataset.g || 0, 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
       svg.querySelectorAll('text.ring').forEach(el => { const b = el.getBBox();
@@ -348,24 +362,29 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   // move never overshoots or stalls; zoom is interpolated in log space.
   const frameH = ${VH - SAFE_TOP - SAFE_BOTTOM - CAPTION_SPACE}, frameMid = ${SAFE_TOP} + frameH / 2;
   // A margin of 6% of the framed box on each side, so a zoomed-in cell still fills the frame.
-  const view = (b, pad = 0.06) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2, k: Math.min((${VW} - 60) / (b.w * (1 + pad * 2)), (frameH - 10) / (b.h * (1 + pad * 2))) });
+  // The camera never shows beyond the paper: at least the whole-poster zoom, and kept inside its edges.
+  const view = (b, pad = 0.06) => {
+    const k = Math.max(${VW / POSTER.w}, Math.min((${VW} - 60) / (b.w * (1 + pad * 2)), (frameH - 10) / (b.h * (1 + pad * 2))));
+    const clamp = (v, lo, hi) => lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v));
+    return { x: clamp(b.x + b.w / 2, ${VW / 2} / k, ${POSTER.w} - ${VW / 2} / k), y: clamp(b.y + b.h / 2, frameMid / k, ${POSTER.h} - (${VH} - frameMid) / k), k };
+  };
   const union = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
   const overview = { x: ${POSTER.w / 2}, y: ${POSTER.h / 2}, k: ${VW / POSTER.w} };
   let cam = null, moves = [];
   function buildCamera() {
     // A section begins with its title and first row of panels in view, then the camera moves into the first cell.
-    const intro = b => { const s = layout.sections[b.section]; return view(union({ x: s.frame.x, y: s.frame.y, w: s.frame.w, h: s.head }, b.panelFrame), 0.04); };
+    const intro = b => { const s = layout.sections[b.section]; return view(union({ x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head }, b.panelFrame), 0.04); };
     const keys = [[0, overview, ${VH / 2}], [OPEN - 0.8, overview, ${VH / 2}]];
     moves = [];
     beats.forEach((b, i) => {
-      const first = i === 0 || beats[i - 1].section !== b.section, target = view(b.cell), last = keys.at(-1);
+      const first = i === 0 || beats[i - 1].section !== b.section, target = b.cell ? view(b.cell) : overview, last = keys.at(-1);
       const arrive = Math.max(b.visualStartSeconds + OPEN, last[0] + (first ? 1.2 : 0.35));
       if (i === 0) { keys.push([OPEN - 0.3, intro(b), frameMid], [arrive, target, frameMid]); moves.push({ t: OPEN - 0.8, dur: arrive - OPEN + 0.8 }); return; }
       const dur = first ? 1.8 : 0.9, leave = Math.max(last[0] + 0.05, arrive - dur);
       keys.push([leave, last[1], last[2]]);
       if (first) keys.push([(leave + arrive) / 2, intro(b), frameMid]);
-      else if (beats[i - 1].panel !== b.panel) keys.push([(leave + arrive) / 2, (() => { const v = view(union(beats[i - 1].cell, b.cell), 0.1); return { ...v, k: Math.min(v.k, last[1].k * 0.8, target.k * 0.8) }; })(), frameMid]);
-      keys.push([arrive, target, frameMid]);
+      else if (beats[i - 1].panel !== b.panel && b.cell && beats[i - 1].cell) keys.push([(leave + arrive) / 2, (() => { const v = view(union(beats[i - 1].cell, b.cell), 0.1); return { ...v, k: Math.min(v.k, last[1].k * 0.8, target.k * 0.8) }; })(), frameMid]);
+      keys.push([arrive, target, b.cell ? frameMid : ${VH / 2}]);
       moves.push({ t: leave, dur: arrive - leave });
     });
     const end = total + OPEN, last = keys.at(-1);
@@ -388,6 +407,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     if (boil !== boiled) { boiled = boil; poster.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
     beats.forEach((b, i) => {
       const svg = svgs[i], start = b.visualStartSeconds + OPEN, local = (tv - start) / b.timeScale;
+      if (!svg) return;
       svg.style.visibility = tv >= start - 0.05 ? 'visible' : 'hidden';
       if (tv < start - 0.05) return;
       svg.querySelectorAll('[data-k]').forEach(el => {
@@ -423,7 +443,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
       const start = b.visualStartSeconds + OPEN;
       if (i) events.push({ t: start, kind: 'transition' });
       const groups = new Map();
-      svgs[i].querySelectorAll('[data-k]').forEach(el => {
+      svgs[i]?.querySelectorAll('[data-k]').forEach(el => {
         const g = +(el.dataset.g || 0), k = el.dataset.k === 'character' ? 'appear' : el.classList.contains('r') || el.classList.contains('acc') ? 'accent' : 'build';
         const rank = { appear: 3, build: 2, accent: 1 };
         if (!groups.has(g) || rank[k] > rank[groups.get(g)]) groups.set(g, k);
@@ -439,7 +459,8 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     // Checked mid-scene, when the camera has settled on it.
     const b = beats[i]; window.render(b.visualStartSeconds + OPEN + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6));
     const problems = [], box = el => el.getBoundingClientRect();
-    const svg = svgs[i], items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
+    const svg = svgs[i]; if (!svg) return [];
+    const items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
     for (const el of items) { const r = box(el);
       if (r.width && (r.left < -1 || r.right > ${VW} + 1 || r.top < ${SAFE_TOP} - 1 || r.bottom > ${VH - SAFE_BOTTOM} + 1)) problems.push(el.tagName + ' outside safe area'); }
     const texts = [...svg.querySelectorAll('text')].map(box), art = [...svg.querySelectorAll('image[data-k]')].map(box);
@@ -473,9 +494,11 @@ async function main() {
   const beats = brief.timeline.beats.map((beat) => ({ ...beat, timeScale: 1 }));
   const poster = brief.timeline.poster?.sections?.length ? brief.timeline.poster
     : { title: "", sections: [{ label: "", panels: [...new Set(beats.map((b) => b.segmentIndex))].map((segmentIndex) => ({ segmentIndex, importance: 2 })) }] };
+  // Caption-only scenes get no cell; a paragraph left with nothing to draw gets no panel.
   const counts = new Map();
-  beats.forEach((b) => counts.set(b.segmentIndex, (counts.get(b.segmentIndex) ?? 0) + 1));
-  const layout = posterLayout(poster, counts);
+  beats.filter((b) => !blankBeat(b)).forEach((b) => counts.set(b.segmentIndex, (counts.get(b.segmentIndex) ?? 0) + 1));
+  const shown = { ...poster, sections: poster.sections.map((s) => ({ ...s, panels: s.panels.filter((p) => counts.get(p.segmentIndex)) })).filter((s) => s.panels.length) };
+  const layout = posterLayout(shown, counts);
   const video = duration + OPEN + CLOSE;
   const browser = await chromium.launch();
   try {
@@ -494,7 +517,7 @@ async function main() {
     if (args["check-only"]) return console.log(`layout ok: ${beats.length} beats`);
     mkdirSync(path.dirname(path.resolve(args.output)), { recursive: true });
     // YouTube description chapters from the poster sections (video time).
-    const starts = layout.sections.map((s, i) => { const own = beats.filter((b) => poster.sections[i].panels.some((p) => p.segmentIndex === b.segmentIndex)); return { label: s.label, start: (own[0]?.visualStartSeconds ?? 0) + OPEN }; });
+    const starts = layout.sections.map((s, i) => { const own = beats.filter((b) => shown.sections[i].panels.some((p) => p.segmentIndex === b.segmentIndex)); return { label: s.label, start: (own[0]?.visualStartSeconds ?? 0) + OPEN }; });
     const chapters = youtubeChapters(starts.map((s, i) => ({ ...s, end: starts[i + 1]?.start ?? video })));
     writeFileSync(`${args.output}.chapters.txt`, `${chapters.text}\n${chapters.ok ? "" : "# 유튜브 챕터 조건(3개 이상, 각 10초 이상)을 채우지 못함\n"}`);
     const effects = path.join(os.tmpdir(), `brandyaction-effects-${process.pid}.wav`), mixed = path.join(os.tmpdir(), `brandyaction-mix-${process.pid}.wav`);
