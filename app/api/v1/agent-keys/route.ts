@@ -1,3 +1,4 @@
+import { agentKeyPolicy, isMissingAgentWritePolicy } from "@/lib/agent-key-policy";
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
@@ -11,8 +12,8 @@ const createSchema = z.object({
   team: z.string().trim().max(120).optional().default(""),
   brand: z.string().trim().max(120).nullable().optional().default(null),
   ownerUserId: z.string().uuid().optional(),
-  access: z.enum(["read", "write"]).optional().default("read"),
-  expiresAt: z.string().datetime().nullable().optional().default(null),
+  access: z.enum(["read", "draft", "write"]).optional().default("read"),
+  expiresAt: z.string().datetime().refine(value => Date.parse(value) > Date.now(), "미래 만료일이 필요합니다."),
 });
 
 function requireAdmin(role: string) {
@@ -24,7 +25,12 @@ export async function GET(request: Request) {
     const actor = await authenticateRequest(request); requireAdmin(actor.role);
     const organization = await getDefaultOrganization();
     const service = createServiceSupabase();
-    const { data, error } = await service.from("os_agent_keys").select("id,name,key_prefix,team,brand,scopes,allowed_statuses,owner_user_id,active,last_used_at,expires_at,created_at").eq("organization_id", organization.id).order("created_at", { ascending: false });
+    let { data, error } = await service.from("os_agent_keys").select("id,name,key_prefix,team,brand,scopes,allowed_statuses,enforce_write_statuses,owner_user_id,active,last_used_at,expires_at,created_at").eq("organization_id", organization.id).order("created_at", { ascending: false });
+    if (isMissingAgentWritePolicy(error)) {
+      const legacy = await service.from("os_agent_keys").select("id,name,key_prefix,team,brand,scopes,allowed_statuses,owner_user_id,active,last_used_at,expires_at,created_at").eq("organization_id", organization.id).order("created_at", { ascending: false });
+      data = legacy.data?.map(key => ({ ...key, enforce_write_statuses: false })) ?? null;
+      error = legacy.error;
+    }
     if (error) throw new ApiError(400, "AGENT_KEYS_FAILED", "에이전트 키를 불러오지 못했습니다.", error.message);
     const ownerIds = [...new Set((data ?? []).map((key) => key.owner_user_id).filter(Boolean))];
     const { data: owners } = ownerIds.length
@@ -48,12 +54,7 @@ export async function POST(request: Request) {
     const { data: owner } = await service.from("os_profiles").select("id,is_active").eq("id", ownerUserId).maybeSingle();
     if (!owner?.is_active) throw new ApiError(400, "AGENT_OWNER_INVALID", "활성 구성원만 AI 키의 소유자가 될 수 있습니다.");
     const raw = `bos_pat_${randomBytes(24).toString("base64url")}`;
-    const scopes = input.access === "write"
-      ? ["knowledge.read", "knowledge.write", "records.read", "records.write"]
-      : ["knowledge.read", "records.read"];
-    const allowedStatuses = input.access === "write"
-      ? ["draft", "team", "review", "reviewed", "canonical"]
-      : ["team", "canonical"];
+    const { scopes, allowedStatuses } = agentKeyPolicy(input.access);
     const { data, error } = await service.from("os_agent_keys").insert({
       name: input.name,
       key_hash: createHash("sha256").update(raw).digest("hex"),
@@ -65,8 +66,10 @@ export async function POST(request: Request) {
       brand: input.brand,
       scopes,
       allowed_statuses: allowedStatuses,
+      enforce_write_statuses: true,
       expires_at: input.expiresAt,
-    }).select("id,name,key_prefix,team,brand,scopes,allowed_statuses,owner_user_id,active,expires_at,created_at").single();
+    }).select("id,name,key_prefix,team,brand,scopes,allowed_statuses,enforce_write_statuses,owner_user_id,active,expires_at,created_at").single();
+    if (isMissingAgentWritePolicy(error)) throw new ApiError(503, "AGENT_KEY_POLICY_PENDING", "키 권한 정책 준비 중입니다. 기존 키는 계속 사용할 수 있습니다.");
     if (error) throw new ApiError(400, "AGENT_KEY_CREATE_FAILED", "에이전트 키를 만들지 못했습니다.", error.message);
     return NextResponse.json({
       key: data,

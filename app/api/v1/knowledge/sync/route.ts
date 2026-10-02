@@ -1,3 +1,4 @@
+import { canAgentWriteDocument } from "@/lib/server/document-access";
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
@@ -28,11 +29,12 @@ export async function POST(request: Request) {
     requireAgentScope(actor, "knowledge.write");
     const input = inputSchema.parse(await parseJson(request, 50_000_000));
     if (actor.type === "user" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자 또는 지식 쓰기 에이전트만 볼트를 동기화할 수 있습니다.");
-    if (input.documents.some((document) => !actor.allowedStatuses.includes(document.status))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 저장할 수 없는 문서 공개 범위가 포함돼 있습니다.");
+    if (input.documents.some((document) => (!canAgentWriteDocument(actor, document.status) || !actor.allowedStatuses.includes(document.status)))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 저장할 수 없는 문서 공개 범위가 포함돼 있습니다.");
     const service = createServiceSupabase();
     const refs = input.documents.map((document) => document.sourceRef.normalize("NFC"));
-    const { data: existing, error: readError } = await service.from("os_documents").select("id,source_ref,content_hash,current_version,status").eq("source", "obsidian_vault").in("source_ref", refs);
+    const { data: existing, error: readError } = await service.from("os_documents").select("id,source_ref,content_hash,current_version,status,owner_id").eq("source", "obsidian_vault").in("source_ref", refs);
     if (readError) throw new ApiError(400, "VAULT_SYNC_READ_FAILED", "기존 볼트 문서를 확인하지 못했습니다.", readError.message);
+    if (actor.type === "agent" && (existing ?? []).some(document => !canAgentWriteDocument(actor, document.status))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 기존 문서를 변경할 수 없습니다.");
     const byRef = new Map((existing ?? []).map((document) => [document.source_ref, document]));
     const counts = { created: 0, updated: 0, unchanged: 0, indexed: 0, queued: 0 };
     for (const incoming of input.documents) {
@@ -44,7 +46,11 @@ export async function POST(request: Request) {
       let documentId = current?.id as string | undefined;
       if (current?.content_hash === contentHash && current.status === incoming.status) { counts.unchanged += 1; continue; }
       if (current) {
-        const { data, error } = await service.rpc("os_update_document", { p_document_id: current.id, p_expected_version: current.current_version, p_title: incoming.title, p_content_md: incoming.content, p_folder: folder, p_brand: "", p_team: actor.team, p_tags: ["obsidian"], p_reason: "볼트 변경 자동 동기화" });
+        const { data, error } = actor.type === "agent" ? await service.rpc("os_agent_update_document", {
+          p_agent_key_id: actor.id, p_organization_id: actor.organizationId, p_document_id: current.id, p_expected_version: current.current_version,
+          p_title: incoming.title, p_content_md: incoming.content, p_folder: folder, p_brand: "", p_team: actor.team, p_tags: ["obsidian"],
+          p_changed_fields: ["title", "content_md", "folder", "tags"], p_reason: "볼트 변경 동기화",
+        }) : await service.rpc("os_update_document", { p_document_id: current.id, p_expected_version: current.current_version, p_title: incoming.title, p_content_md: incoming.content, p_folder: folder, p_brand: "", p_team: actor.team, p_tags: ["obsidian"], p_reason: "볼트 변경 자동 동기화" });
         if (error || !data) throw new ApiError(409, "VAULT_SYNC_UPDATE_FAILED", `${sourceRef} 문서를 갱신하지 못했습니다.`, error?.message);
         if (current.status !== incoming.status) {
           const { error: statusError } = await service.from("os_documents").update({ status: incoming.status }).eq("id", current.id);

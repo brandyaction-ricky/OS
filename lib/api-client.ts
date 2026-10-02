@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "./html-entities";
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
@@ -130,7 +131,8 @@ export async function searchKnowledge(
 export async function listRecords(token: string | null, recordType: RecordType, query = "") {
   const params = new URLSearchParams(query);
   params.set("type", recordType);
-  return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+  const result = await apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+  return { ...result, records: result.records.map(record => record.record_type.startsWith("content_") ? { ...record, title: decodeHtmlEntities(record.title) } : record) };
 }
 
 export async function listAllRecordsOfType(token: string | null, recordType: RecordType) {
@@ -326,6 +328,7 @@ export interface AgentAccessKey {
   brand: string | null;
   scopes: string[];
   allowed_statuses: string[];
+  enforce_write_statuses?: boolean;
   owner_user_id: string;
   active: boolean;
   last_used_at: string | null;
@@ -346,10 +349,10 @@ export async function listAgentKeys(token: string | null) {
 export async function createAgentKey(token: string | null, input: {
   name: string;
   ownerUserId: string;
-  access: "read" | "write";
+  access: "read" | "draft" | "write";
   team?: string;
   brand?: string | null;
-  expiresAt?: string | null;
+  expiresAt: string;
 }) {
   return apiRequest<{
     key: AgentAccessKey;
@@ -439,6 +442,7 @@ export async function deleteContentMedia(token: string | null, path: string) {
 
 export interface YoutubeMarketItem {
   live?: boolean;
+  channelId?: string;
   id: string;
   title: string;
   channelTitle: string;
@@ -453,8 +457,9 @@ export interface YoutubeMarketItem {
   url: string;
 }
 
-export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12, options: { region?: string; order?: string } = {}) {
+export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12, options: { region?: string; order?: string; own?: boolean } = {}) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults), region: options.region ?? "KR", order: options.order ?? "viewCount" });
+  if (options.own) params.set("own", "true");
   return apiRequest<{ query: string; configured: boolean; items: YoutubeMarketItem[] }>(`/api/v1/youtube/search?${params}`, { token });
 }
 

@@ -291,6 +291,12 @@
       "sha256": "0741f720a20adc91009d946ecb737165c051dd4ee6cbd91f1bd0233842548cde",
       "requiresApproval": true,
       "description": "Add server-only connection probe history and versioned owners; not applied."
+    },
+    {
+      "file": "20261002193500_agent_document_write_status_policy.sql",
+      "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

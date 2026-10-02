@@ -4,8 +4,12 @@ import type { RequestActor } from "./auth";
 type ReadableDocument = Pick<KnowledgeDocument, "owner_id" | "status">;
 type DocumentActor = Pick<RequestActor, "allowedStatuses" | "ownerId" | "role" | "type">;
 
-export function agentReadableStatuses(configured: DocumentStatus[]) {
-  return configured.includes("team") ? configured : [...configured, "team" as const];
+export function agentReadableStatuses(configured: DocumentStatus[], canWrite = false) {
+  // A draft-writing key still reads company reference documents; write checks use the raw policy.
+  return [...new Set([...configured, "team" as const, ...(canWrite ? ["canonical" as const] : [])])];
+}
+export function canAgentWriteDocument(actor: Pick<RequestActor, "type" | "allowedStatuses" | "writableStatuses">, status: DocumentStatus) {
+  return actor.type !== "agent" || (actor.writableStatuses ?? actor.allowedStatuses).includes(status);
 }
 
 export function canReadKnowledgeDocument(actor: DocumentActor, document: ReadableDocument) {

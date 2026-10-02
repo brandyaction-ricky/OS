@@ -37,7 +37,9 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.match(mcp, /confirm=true/);
   assert.doesNotMatch(mcp, /OS_USER_JWT/);
   assert.match(manager, /한 번만 표시되는 PAT/);
-  assert.match(manager, /읽기·쓰기/);
+  assert.match(manager, /초안 쓰기/);
+  assert.match(manager, /정본 쓰기/);
+  assert.match(manager, /만료일/);
   assert.match(manager, /AI 접근 키 연결 검증/);
   assert.match(manager, /type="password"/);
   assert.match(manager, /create_document/);

@@ -990,3 +990,12 @@ select option { background:var(--panel-2); color:var(--text); }
 .connection-owners select { width: 100%; }
 .connection-evidence-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 @media (max-width: 700px) { .connection-evidence-grid { grid-template-columns: minmax(0, 1fr); } }
+.content-origin-filter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.content-origin-filter select { min-width: 112px; max-width: 100%; }
+
+@media (max-width: 600px) {
+  .policy-table > header { display: none; }
+  .policy-table > div { grid-template-columns: minmax(0, 1fr); gap: 8px; font-size: 12px; }
+  .policy-table > div > strong { color: var(--text); }
+  .policy-table small { line-height: 1.6; }
+}
