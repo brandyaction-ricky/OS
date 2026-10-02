@@ -47,7 +47,9 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
         .select("id,content_md,content_hash,current_version,status")
         .eq("id", documentId)
         .single();
-    if (error || !document)
+    if (error)
+        throw new ApiError(503, "INDEX_STORAGE_ERROR", "색인할 문서를 읽지 못했습니다.");
+    if (!document)
         return "queued";
     if (document.status === "archived") {
         const { error: archiveError } = await supabase.from("os_embedding_jobs").update({ status: "failed", finished_at: new Date().toISOString(), last_error: "[archived] 보관 문서" }).eq("document_id", documentId).eq("status", "pending");
@@ -108,16 +110,18 @@ export async function processEmbeddingQueue(options: {
     const deadline = Date.now() + Math.min(Math.max(options.deadlineMs ?? 240000, 5000), 260000);
     const supabase = createServiceSupabase();
     const staleBefore = new Date(Date.now() - 15 * 60000).toISOString();
-    await supabase.from("os_embedding_jobs").update({
+    const { error: recoveryError } = await supabase.from("os_embedding_jobs").update({
         status: "pending", started_at: null, finished_at: null, last_error: "중단된 실행을 자동 복구했습니다.",
     }).eq("status", "running").lt("started_at", staleBefore);
+    if (recoveryError)
+        throw new ApiError(503, "INDEX_STORAGE_ERROR", "중단된 색인 작업을 확인하지 못했습니다.");
     const { data: jobs, error } = await supabase.from("os_embedding_jobs")
         .select("document_id")
         .eq("status", "pending")
         .order("created_at", { ascending: true })
         .limit(limit);
     if (error)
-        throw error;
+        throw new ApiError(503, "INDEX_QUEUE_UNAVAILABLE", "색인 대기열을 읽지 못했습니다.");
     let attempted = 0, completed = 0, failed = 0;
     for (const job of jobs ?? []) {
         if (Date.now() >= deadline)
