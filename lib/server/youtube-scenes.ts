@@ -40,11 +40,13 @@ const sceneSchema = z.object({
   visualType: z.enum(youtubeVisualTypes),
   visualBeats: z.array(visualBeatSchema).min(1).max(16),
   chapter: z.string().trim().max(12).optional(),
+  importance: z.number().int().min(1).max(3).optional(),
   emphasis: z.array(z.string().trim().min(2).max(10)).max(12).optional(),
   visualPrompt: z.string().trim().min(10).max(1_000),
   evidenceNote: z.string().trim().max(500),
 }).strict();
 export const scenePlanSchema = z.object({
+  posterTitle: z.string().trim().max(24).optional(),
   visualDirection: z.string().trim().min(20).max(2_000),
   visualFirst: z.literal(true),
   typographyMode: z.literal("single_active_cue"),
@@ -68,6 +70,7 @@ export async function readYoutubeSceneRules(actor: Pick<RequestActor, "supabase"
 const outputSchema = {
   type: "object", additionalProperties: false,
   properties: {
+    posterTitle: { type: "string" },
     visualDirection: { type: "string" },
     visualFirst: { type: "boolean", enum: [true] },
     typographyMode: { type: "string", enum: ["single_active_cue"] },
@@ -77,22 +80,23 @@ const outputSchema = {
         properties: { spokenAnchor: { type: "string" }, idea: { type: "string" }, template: { type: "string", enum: [...youtubeSceneTemplates] }, slots: { type: "string" }, cues: { type: "array", items: { type: "string" } },
           displayText: { type: "string" }, accentText: { type: "string" }, typographyAnchor: { type: "string" } },
         required: ["spokenAnchor", "idea", "template", "slots", "cues", "displayText", "accentText", "typographyAnchor"] } },
-      chapter: { type: "string" }, emphasis: { type: "array", items: { type: "string" } },
+      chapter: { type: "string" }, importance: { type: "integer", enum: [1, 2, 3] }, emphasis: { type: "array", items: { type: "string" } },
       visualPrompt: { type: "string" }, evidenceNote: { type: "string" },
-    }, required: ["segmentIndex", "visualType", "visualBeats", "chapter", "emphasis", "visualPrompt", "evidenceNote"] } },
+    }, required: ["segmentIndex", "visualType", "visualBeats", "chapter", "importance", "emphasis", "visualPrompt", "evidenceNote"] } },
     thumbnailDirection: { type: "string" }, unresolved: { type: "array", items: { type: "string" } },
-  }, required: ["visualDirection", "visualFirst", "typographyMode", "scenes", "thumbnailDirection", "unresolved"],
+  }, required: ["posterTitle", "visualDirection", "visualFirst", "typographyMode", "scenes", "thumbnailDirection", "unresolved"],
 };
 
 const STYLE_CONTRACT = `[화면 원칙]
-흰 배경에 내용만 둡니다. 한 장면에는 메시지 하나만 담습니다. 그림을 직접 그리지 않고, 아래 장면 틀 가운데 하나를 고른 뒤 slots만 채웁니다. 요소 수·배치·움직임·색은 틀이 정합니다.
+영상 전체가 손그림 포스터 한 장 위에서 진행됩니다. 원고를 섹션(큰 구획)으로 나누고, 단락 하나가 섹션 안의 칸 하나가 됩니다. 카메라가 칸을 차례로 찾아가며 내용을 채웁니다. 정보 전달·인사이트 영상이므로 가독성을 가장 우선합니다. 한 장면에는 메시지 하나만 담습니다. 그림을 직접 그리지 않고, 아래 장면 틀 가운데 하나를 고른 뒤 slots만 채웁니다. 요소 수·배치·움직임·색은 틀이 정합니다.
 
 [장면 틀]
 ${SCENE_TEMPLATE_GUIDE}
 
 [틀 고르기]
 글자보다 그림과 도식을 먼저 고릅니다. 화면에 원고 문장을 그대로 옮겨 적는 것은 최소로 합니다(자막이 이미 말을 보여줍니다).
-- 고민·문제·감정을 묘사하는 말: character_only(캐릭터 상반신, 필요하면 알약 한마디), 상황을 짧게 요약할 수 있으면 character_labels. 캐릭터 설명이 멘트의 뜻과 정확히 맞을 때만 캐릭터를 씁니다. 딱 맞는 캐릭터가 없으면 억지로 쓰지 말고 도식을 씁니다.
+- 캐릭터는 감정을 일으키는 말(공감·질문·놀람·결심·응원)에만 씁니다: character_only(캐릭터 하나, 필요하면 한마디 라벨), 상황을 짧게 요약할 수 있으면 character_labels. 숫자·정의·통계를 설명하는 장면에는 캐릭터를 넣지 않습니다. 캐릭터 설명이 멘트의 뜻과 정확히 맞을 때만 쓰고, 딱 맞는 캐릭터가 없으면 억지로 쓰지 말고 도식을 씁니다. 실사 사진은 쓰지 않습니다.
+- 정보나 핵심 문장은 글자 중심 장면(statement 등)으로 보여주고, 핵심 단어 하나에 빨간 밑줄(accent)을 둡니다.
 - 비교·대조("많다 → 적다", "이쪽은 A, 저쪽은 B"): 문장이나 목록으로 쓰지 말고 도식으로 보여줍니다. 우열 없이 나란한 두 입장은 split, 흔한 생각과 진짜 답은 compare, 무게·비중은 balance입니다.
 - 차례·인과는 steps, 반복·악순환(줄여도 또 생긴다)은 cycle, 많은 것이 걸러짐은 funnel, 섞임·겹침은 venn, 순서·우선순위는 ranking, 원인 정리는 formula입니다.
 - 같은 맥락의 예시를 이어서 나열할 때(유튜브·쇼핑몰·인스타 공구·블로그): 틀을 바꿔가며 따로 보여주지 말고 cards 하나에 담아 cues로 한 칸씩 채웁니다. 조언·할 일처럼 문장인 항목은 list(메모 앱)입니다.
@@ -105,15 +109,17 @@ ${SCENE_TEMPLATE_GUIDE}
 - slots의 글자는 원고의 말을 짧게 줄인 것이어야 하고, 원고에 없는 사실을 만들지 않습니다. 틀 설명의 글자 수를 지킵니다.
 
 [비트와 속도]
-비트 하나가 틀 하나입니다. 레퍼런스처럼 말의 리듬은 위쪽 자막이 2초마다 바꿔 주고, 화면은 한 메시지를 대략 4~10초(25~60자) 붙잡고 있습니다. 한 화면 안에서 cues로 부분이 하나씩 더해지며 말을 따라가게 하고, 메시지가 바뀔 때 새 비트로 넘깁니다. 단락별 비트 수 기준은 요청 끝에 있습니다.
+비트 하나가 틀 하나입니다. 레퍼런스처럼 말의 리듬은 아래쪽 자막이 2초마다 바꿔 주고, 화면은 한 메시지를 대략 4~10초(25~60자) 붙잡고 있습니다. 한 화면 안에서 cues로 부분이 하나씩 더해지며 말을 따라가게 하고, 메시지가 바뀔 때 새 비트로 넘깁니다. 단락별 비트 수 기준은 요청 끝에 있습니다.
 도식은 말과 같은 순간에 나타나야 합니다. 그림이 말보다 먼저 나오면 시선을 빼앗겨 메시지가 들리지 않습니다. 그래서 각 부분의 cue를 그 부분을 실제로 말하는 표현으로 고릅니다.
 spokenAnchor는 그 비트가 시작되는 원고 표현을 그대로 복사하고 원고 순서대로 둡니다. idea에는 이 장면이 전하는 메시지를 한 문장으로 적습니다.
 
 [타이포]
-화면 위쪽에는 진행 막대, 아래쪽에는 말 자막이 있어 제목을 두지 않습니다. displayText·accentText·typographyAnchor는 모두 빈 문자열로 둡니다.
+포스터 맨 위에 영상 제목, 섹션마다 섹션 제목이 손글씨로 쓰이고, 아래쪽에는 말 자막이 있어 장면 안에 제목을 두지 않습니다. displayText·accentText·typographyAnchor는 모두 빈 문자열로 둡니다.
 
-[진행 구간과 자막 강조]
-chapter: 이 단락이 영상 흐름에서 어떤 구간인지 6자 안팎의 짧은 이름(예: 문제 제기, 흔한 조언, 진짜 원인, 비교, 결론). 같은 구간이 이어지면 같은 이름을 그대로 반복합니다. 영상 전체가 3~6개 구간으로 나뉘게 합니다.
+[포스터 제목·섹션·칸]
+posterTitle: 포스터 맨 위에 쓸 영상 제목(20자 이내). [채택한 약속] 제목이 있으면 그대로 줄여 쓰고, 없으면 원고의 핵심 주장을 한 줄로 씁니다. 앞 구간에서 정한 제목이 있으면 그대로 반복합니다.
+chapter: 이 단락이 속한 섹션 제목입니다. 시청자가 다음 내용이 궁금해지는 짧은 문구(10자 이내)로 짓습니다(예: 줄이면 될까?, 진짜 이유, 남의 1순위). 같은 섹션이 이어지면 같은 제목을 글자 그대로 반복합니다. 영상 전체가 2~5개 섹션이 되게 합니다.
+importance: 이 단락(칸)의 중요도입니다. 섹션의 핵심 주장·결론이 담긴 단락은 3(포스터에서 가장 큰 칸), 뒷받침하는 설명은 2, 짧은 연결·예시는 1입니다. 3은 섹션마다 하나 정도만 씁니다.
 emphasis: 자막에서 굵게 보여줄 핵심 어구를 원고 단락에서 글자 그대로 복사합니다(2~6자, 조사 제외). 자막 한 줄은 약 2초이며 한 줄에 굵게는 한 곳만 나오므로, 대략 20자당 하나를 넘지 않게 고릅니다.
 - 우선순위: ① 단락의 핵심 주장·결론 단어 ② 대비되는 두 개념(A vs B) ③ 숫자·기간·횟수 ④ 공감 구간의 감정 단어. 장면(slots)에 나오는 단어와 겹치면 그 단어를 우선합니다.
 - 고르지 않음: 조사·접속어, 자기소개·자격 표현, 같은 단락에서 이미 고른 단어(첫 등장만).
@@ -151,7 +157,9 @@ function drawTemplates(value: unknown, segments: string[], sizes: CharacterSizes
     const emphasis = (Array.isArray(scene.emphasis) ? scene.emphasis : [])
       .filter((word): word is string => typeof word === "string" && word.trim().length >= 2 && source.includes(normalizeSpeech(word)))
       .map((word) => word.trim().slice(0, 10)).slice(0, 12);
-    return { ...scene, visualBeats: beats, chapter: typeof scene.chapter === "string" ? scene.chapter.trim().slice(0, 12) : undefined, emphasis };
+    const importance = Math.round(Number(scene.importance));
+    return { ...scene, visualBeats: beats, chapter: typeof scene.chapter === "string" ? scene.chapter.trim().slice(0, 12) : undefined,
+      importance: importance >= 1 && importance <= 3 ? importance : undefined, emphasis };
   });
   const emphasized = scenes.filter((scene) => scene.emphasis.length).map((scene) => `${Number((scene as Record<string, unknown>).segmentIndex) + 1}단락 ${scene.emphasis.join("·")}`);
   if (emphasized.length) notes.push(`자막 강조 확인: ${emphasized.join(" / ")}`.slice(0, 500));
@@ -163,7 +171,7 @@ function clampNotes(value: unknown) {
   if (!value || typeof value !== "object") return value;
   const plan = value as Record<string, unknown>;
   const cut = (text: unknown, max: number) => typeof text === "string" ? text.slice(0, max) : text;
-  return { ...plan, visualDirection: cut(plan.visualDirection, 2_000), thumbnailDirection: cut(plan.thumbnailDirection, 1_000),
+  return { ...plan, posterTitle: cut(plan.posterTitle, 24), visualDirection: cut(plan.visualDirection, 2_000), thumbnailDirection: cut(plan.thumbnailDirection, 1_000),
     unresolved: Array.isArray(plan.unresolved) ? plan.unresolved.slice(0, 20).map((note) => cut(note, 500)) : plan.unresolved,
     scenes: Array.isArray(plan.scenes) ? plan.scenes.map((scene: Record<string, unknown>) => ({ ...scene,
       visualPrompt: cut(scene.visualPrompt, 1_000), evidenceNote: cut(scene.evidenceNote, 500),

@@ -73,7 +73,8 @@ test('drawing parts start on their spoken cue, and each caption line bolds one c
   assert.equal(JSON.stringify(timeline.chapters), JSON.stringify([{ startSeconds: 0, label: '문제 제기' }]));
   cued.scenes[0].visualBeats[1].cues = ['에너지가'];
   assert.equal(JSON.stringify(alignYoutubeVisualBeats(cued, script, transcript, sha(finalAudio)).beats[1].cueSeconds), '[0]');
-  assert.ok(timeline.captions.length >= 2);
+  assert.ok(timeline.captions.length >= 1);
+  assert.equal(JSON.stringify(timeline.poster.sections.map((s) => s.panels.length)), JSON.stringify([cued.scenes.length]));
   assert.equal(timeline.captions[0].startSeconds, 0);
   // One bold phrase per caption line, each phrase only at its first appearance.
   assert.equal(JSON.stringify(captionBold(['하고 싶은 게 많아도', '줄이지 마세요 줄이지', '많아도 괜찮아요'], ['줄이지', '많아도'])),

@@ -85,8 +85,10 @@ export type YoutubeTimedVisualBeat = {
 
 /** `bold` holds at most one phrase of the line, chosen by the scene design from the script's meaning. */
 export type YoutubeCaption = { startSeconds: number; endSeconds: number; text: string; bold: string[] };
-/** Chapter bar: where each named part of the video starts. */
+/** Where each named section of the video starts. */
 export type YoutubeChapter = { startSeconds: number; label: string };
+/** Poster layout input: the title and, per section, its paragraphs (panels) with their importance (1–3). */
+export type YoutubePoster = { title: string; sections: { label: string; panels: { segmentIndex: number; importance: number }[] }[] };
 
 export type YoutubeRenderTimeline = {
   templateVersion: typeof YOUTUBE_VISUAL_TEMPLATE_VERSION;
@@ -95,10 +97,11 @@ export type YoutubeRenderTimeline = {
   beats: YoutubeTimedVisualBeat[];
   captions: YoutubeCaption[];
   chapters: YoutubeChapter[];
+  poster: YoutubePoster;
 };
 
 /** Split one narration paragraph into short caption lines at spaces, breaking after sentence or clause ends. */
-export function captionChunks(text: string, max = 22) {
+export function captionChunks(text: string, max = 34) {
   const chunks: string[] = [];
   // A tail of a few characters ("있습니다") joins the line before it instead of flashing alone.
   const push = (line: string) => { if (line.length < 6 && chunks.length) chunks[chunks.length - 1] += ` ${line}`; else chunks.push(line); };
@@ -263,6 +266,13 @@ export function alignYoutubeVisualBeats(
     });
     if (scene.chapter && scene.chapter !== chapters.at(-1)?.label) chapters.push({ startSeconds: segment.offsetSeconds, label: scene.chapter });
   }
+  // Consecutive paragraphs with the same section name form one section of the poster.
+  const sections: YoutubePoster["sections"] = [];
+  plan.scenes.forEach((scene) => {
+    const label = scene.chapter || sections.at(-1)?.label || "";
+    if (!sections.length || sections.at(-1)!.label !== label) sections.push({ label, panels: [] });
+    sections.at(-1)!.panels.push({ segmentIndex: scene.segmentIndex, importance: scene.importance ?? 2 });
+  });
   return { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, audioSha256: transcript.audioSha256,
-    audioDurationSeconds: transcript.audioDurationSeconds, beats, captions, chapters };
+    audioDurationSeconds: transcript.audioDurationSeconds, beats, captions, chapters, poster: { title: plan.posterTitle ?? "", sections } };
 }

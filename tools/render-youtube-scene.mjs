@@ -19,14 +19,14 @@ import { validateSceneSvg, YOUTUBE_SCENE_PALETTE as C, YOUTUBE_SCENE_SAFE_AREA a
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "../lib/youtube-visual-template.ts";
 
 const VERSION = YOUTUBE_VISUAL_TEMPLATE_VERSION;
-const W = 1280, H = 720;
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const fail = (message) => { throw new Error(message); };
-// Pretendard (captions, chapter bar) and Gaegu (hand-written scene text), both OFL-1.1, render identically on every worker.
+// Pretendard (captions, sources), Gaegu (hand-written labels) and Jua (titles, key sentences, numbers), all OFL-1.1.
 const FONTS = [
   ["Pretendard", 600, "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-SemiBold.woff2", "c863f76a7de5c1ddc1ed8b2fa794964530774592c4f31407a84e2a2ae93f17f0", "woff2"],
   ["Pretendard", 800, "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/static/woff2/Pretendard-ExtraBold.woff2", "dd7c1e156f508eb962acc7a33a7a1896d1e0b71e11156fad96e731689ceb6dc3", "woff2"],
   ["Gaegu", 700, "https://cdn.jsdelivr.net/gh/google/fonts@16680f8688ffcd467d2eb2146a9ce0343404581d/ofl/gaegu/Gaegu-Bold.ttf", "cc38a4af9506a45254d1ce07c589ec473d9e5f0be319e5a77b17c214903f8c1c", "truetype"],
+  ["Jua", 400, "https://cdn.jsdelivr.net/gh/google/fonts@16680f8688ffcd467d2eb2146a9ce0343404581d/ofl/jua/Jua-Regular.ttf", "3080d35028a655cf20b6dbd0714fa8170605b933e4a211c1ae2e4f442039faf6", "truetype"],
 ];
 
 async function fontFaces() {
@@ -87,7 +87,17 @@ export function effectTrack(events, duration, rate = 48_000) {
   const tone = (f, decay, amp, attack = 0.003) => (t) => (t > 6 / decay ? null : Math.sin(2 * Math.PI * f * t) * Math.min(1, t / attack) * Math.exp(-t * decay) * amp);
   const sound = { transition: (v) => tone(140 * v, 22, 0.28, 0.006), build: (v) => tone(720 * v, 70, 0.11), appear: (v) => tone(660 * v, 10, 0.08), accent: (v) => tone(1300 * v, 120, 0.05) };
   let lastTransition = -Infinity;
-  for (const { t, kind } of events) {
+  for (const { t, kind, dur } of events) {
+    // Camera move (Logan, 2026-10-02): a low whoosh (≈400 Hz and below) as long as the move, a little louder when quick.
+    if (kind === "move") {
+      const len = Math.max(0.3, dur), gain = 0.5 * Math.min(1.4, 0.9 / len);
+      let a = 0, b = 0, c = 0;
+      for (let i = Math.round(t * rate), n = 0; n < len * rate && i < out.length; i++, n++) {
+        a += 0.05 * ((rnd() * 2 - 1) - a); b += 0.05 * (a - b); c += 0.05 * (b - c);
+        out[i] += c * Math.sin(Math.PI * n / (len * rate)) ** 2 * gain * 1.6;
+      }
+      continue;
+    }
     // Scenes change every few seconds; a scene-change sound plays at most once every 4 s.
     if (kind === "transition") { if (t - lastTransition < 4) continue; lastTransition = t; }
     // Slightly different pitch and level each time, so repeats do not sound mechanical.
@@ -102,214 +112,336 @@ export function effectTrack(events, duration, rate = 48_000) {
   return wav;
 }
 
-/** Scenes are drawn between the chapter bar at the top and the spoken caption at the bottom. */
-const STAGE_TOP = 90, STAGE_BOTTOM = 590;
-/** Scene frames on the continuous sheet: columns per row and the distance between frames. */
-const SHEET_COLUMNS = 3, SHEET_STEP_X = 1350, SHEET_STEP_Y = 660;
-/** Gaegu draws Hangul smaller than Pretendard at the same size; template sizes are scaled by this. */
-const GAEGU_SCALE = 1.15;
+/** Output frame, and the poster the camera moves over (designed at 2× so the closing full view fills the frame). */
+const VW = 1920, VH = 1080, POSTER = { w: 3840, h: 2160 };
+/** YouTube player chrome covers the top 6% and bottom 12%; captions sit just above the bottom band. */
+const SAFE_TOP = 65, SAFE_BOTTOM = 130, CAPTION_SPACE = 120;
+/** Seconds of opening (poster drawn empty) before the narration, and of closing full view after it. */
+const OPEN = 1.8, CLOSE = 5;
+/** Visual motion is stepped at 15 fps (drawn on twos); audio and captions stay continuous. */
+const STEP_FPS = 15;
+/** Each scene is shown through this window of its 1280×720 frame (the band its content is centred in). */
+const CELL_VIEW = { x: 0, y: 40, w: 1280, h: 600 };
+/** Logan's design system (2026-10-02): charcoal text/lines, navy for section titles and bars, red for one key word. */
+const INK = "#2B2B2B", NAVY = "#2F3E6B", RED = "#D93A2B", GREY = "#8C8578", PAPER = "#F4F1EA";
+/** Template text at or above this size is a key sentence or number (Jua); smaller text is a label (Gaegu, enlarged). */
+const JUA_FROM = 56, GAEGU_SCALE = 1.15;
 
-export function pageHtml(beats, characters, faces, captions = [], chapters = [], duration = 0) {
-  const style = `.i{stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
-    .r{stroke:${C.red};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:${C.pale}}
-    text{font-family:"Gaegu";font-weight:700;fill:${C.ink};text-anchor:middle;dominant-baseline:middle;stroke:none}
-    .lab{font-size:30px} .sm{font-size:26px;fill:${C.muted};font-weight:600} .acc{fill:${C.red};font-weight:800} .muted{fill:${C.muted}}
-    .b7,.b8,.acc,.sm{font-weight:700} .start{text-anchor:start} .end{text-anchor:end} .inv{fill:#fff}`;
+/**
+ * Lay the poster out: title band, then one framed section per row group, each holding its paragraphs as panels
+ * (one cell per scene, side by side). Panel size grows with importance. The cell size is the largest that fits.
+ */
+export function posterLayout(poster, cellCounts, size = POSTER) {
+  const M = 100, TITLE = 240, grow = [1, 1.2, 1.45], aspect = CELL_VIEW.w / CELL_VIEW.h;
+  const attempt = (cw) => {
+    // Spacing follows the cell size, so a poster with many scenes does not spend its area on margins.
+    const GAP = Math.max(60, 0.25 * cw), PAD = Math.max(20, 0.1 * cw), HEAD = Math.max(70, 0.32 * cw);
+    const PANEL_GAP = Math.max(16, 0.14 * cw), CELL_GAP = Math.max(6, 0.05 * cw), PANEL_PAD = Math.max(12, 0.12 * cw), lineW = size.w - 2 * M - 2 * PAD;
+    const sections = [];
+    let y = M + TITLE, fits = true;
+    poster.sections.forEach((section, s) => {
+      const panels = section.panels.map((panel, p) => {
+        const n = Math.max(1, cellCounts.get(panel.segmentIndex) ?? 1), f = grow[(panel.importance ?? 2) - 1] ?? 1;
+        const w = cw * f, h = w / aspect, perRow = Math.max(1, Math.min(n, Math.floor((lineW - 2 * PANEL_PAD + CELL_GAP) / (w + CELL_GAP))));
+        const rows = Math.ceil(n / perRow);
+        if (w + 2 * PANEL_PAD > lineW) fits = false;
+        return { ...panel, number: `${s + 1}${String.fromCharCode(97 + p)}`, n, perRow, cw: w, ch: h,
+          w: perRow * w + (perRow - 1) * CELL_GAP + 2 * PANEL_PAD, h: rows * h + (rows - 1) * CELL_GAP + 2 * PANEL_PAD };
+      });
+      const lines = [];
+      for (const panel of panels) {
+        const line = lines.at(-1);
+        if (line && line.w + PANEL_GAP + panel.w <= lineW) { line.items.push(panel); line.w += PANEL_GAP + panel.w; line.h = Math.max(line.h, panel.h); }
+        else lines.push({ items: [panel], w: panel.w, h: panel.h });
+      }
+      const top = y, inner = lines.reduce((sum, line) => sum + line.h, 0) + (lines.length - 1) * PANEL_GAP;
+      let ly = top + HEAD + PAD;
+      for (const line of lines) {
+        let x = M + PAD + (lineW - line.w) / 2;
+        for (const panel of line.items) {
+          panel.frame = { x, y: ly + (line.h - panel.h) / 2, w: panel.w, h: panel.h };
+          panel.cells = Array.from({ length: panel.n }, (_, i) => ({ x: x + PANEL_PAD + (i % panel.perRow) * (panel.cw + CELL_GAP),
+            y: panel.frame.y + PANEL_PAD + Math.floor(i / panel.perRow) * (panel.ch + CELL_GAP), w: panel.cw, h: panel.ch }));
+          x += panel.w + PANEL_GAP;
+        }
+        ly += line.h + PANEL_GAP;
+      }
+      const h = HEAD + 2 * PAD + inner;
+      sections.push({ label: section.label, index: s + 1, frame: { x: M, y: top, w: size.w - 2 * M, h }, head: HEAD, panels });
+      y += h + GAP;
+    });
+    return { fits: fits && y - GAP + M <= size.h, sections };
+  };
+  let lo = 60, hi = 1400;
+  for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (attempt(mid).fits) lo = mid; else hi = mid; }
+  const { sections } = attempt(lo);
+  const arrows = sections.slice(1).map((next, i) => ({ x: M + 70, y1: sections[i].frame.y + sections[i].frame.h + 10, y2: next.frame.y - 10 }));
+  return { title: { x: size.w / 2, y: M + TITLE / 2 - 10 }, sections, arrows, cellWidth: lo };
+}
+
+/** Fritsch–Carlson monotone cubic through (xs, ys): no overshoot, and flat where neighbouring keys are equal. */
+export function monotoneCubic(xs, ys) {
+  const n = xs.length, d = [], m = new Array(n).fill(0);
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i] || 1e-9));
+  for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (3 * (xs[i + 1] - xs[i - 1])) / ((2 * xs[i + 1] - xs[i] - xs[i - 1]) / d[i - 1] + (xs[i + 1] + xs[i] - 2 * xs[i - 1]) / d[i]);
+  if (n > 1) { m[0] = d[0]; m[n - 1] = d[n - 2]; if (n > 2) { m[0] = 0; m[n - 1] = 0; } }
+  return (x) => {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    let i = 0;
+    while (x > xs[i + 1]) i++;
+    const h = xs[i + 1] - xs[i], t = (x - xs[i]) / h, t2 = t * t, t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h * m[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h * m[i + 1];
+  };
+}
+
+/** YouTube description chapters: "0:00 01 섹션" lines. YouTube needs at least three, each 10 s or longer. */
+export function youtubeChapters(sections) {
+  const stamp = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const lines = sections.map((s, i) => `${stamp(i ? s.start : 0)} ${String(i + 1).padStart(2, "0")} ${s.label}`);
+  const ok = sections.length >= 3 && sections.every((s, i) => (sections[i + 1]?.start ?? s.end) - (i ? s.start : 0) >= 10);
+  return { text: lines.join("\n"), ok };
+}
+
+/** A hand-drawn line: a gently bent stroke drawn twice with small offsets, like the same line traced twice. */
+function roughLine(x1, y1, x2, y2, rnd, rough = 1.5) {
+  const pass = () => {
+    const j = () => (rnd() - 0.5) * 4 * rough, len = Math.hypot(x2 - x1, y2 - y1), bend = Math.min(18, len * 0.012) * rough;
+    const mx = (x1 + x2) / 2 + (rnd() - 0.5) * bend, my = (y1 + y2) / 2 + (rnd() - 0.5) * bend;
+    return `M${(x1 + j()).toFixed(1)} ${(y1 + j()).toFixed(1)}Q${mx.toFixed(1)} ${my.toFixed(1)} ${(x2 + j()).toFixed(1)} ${(y2 + j()).toFixed(1)}`;
+  };
+  return pass() + pass();
+}
+const roughRect = (b, rnd, rough) => [[b.x, b.y, b.x + b.w, b.y], [b.x + b.w, b.y, b.x + b.w, b.y + b.h], [b.x + b.w, b.y + b.h, b.x, b.y + b.h], [b.x, b.y + b.h, b.x, b.y]]
+  .map(([a, b2, c, d]) => roughLine(a, b2, c, d, rnd, rough)).join("");
+const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/** The poster's own drawing: title with a red highlighter, section frames and titles, panel frames and numbers, arrows. */
+export function posterDecor(layout, title) {
+  let seed = 11;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 2 ** 32; };
+  // Lines keep a constant on-screen width however far the camera zooms: --zw is 1/zoom, set each frame
+  // (the red title marker is a band and scales with the poster).
+  const draw = (d, stroke, width, t, dur, extra = "", scales = false) => `<path d="${d}" stroke="${stroke}" ${scales ? `stroke-width="${width}"` : `style="stroke-width:calc(var(--zw) * ${width})"`} fill="none" stroke-linecap="round" pathLength="1" data-k="draw" data-t="${t}" data-d="${dur}" ${extra}/>`;
+  const out = [];
+  const tw = Math.min(2600, [...title].reduce((s, ch) => s + (/[가-힣]/.test(ch) ? 1 : 0.55), 0) * 116);
+  if (title) {
+    out.push(draw(roughLine(layout.title.x - tw / 2, layout.title.y + 40, layout.title.x + tw / 2, layout.title.y + 28, rnd, 2), RED, 42, 0.2, 0.35, 'stroke-opacity=".55"', true));
+    out.push(`<text x="${layout.title.x}" y="${layout.title.y}" class="jua" font-size="116" fill="${INK}" text-anchor="middle" dominant-baseline="middle" data-k="fade" data-t="0.05" data-d="0.3">${esc(title)}</text>`);
+  }
+  layout.sections.forEach((s, i) => {
+    const t = 0.25 + i * 0.08;
+    out.push(draw(roughRect(s.frame, rnd, 1.2), GREY, 2.5, t, 0.45));
+    // Section title: Gaegu, sized to its header band (at least 60 px on the poster), with a navy underline.
+    const fs = Math.max(60, s.head * 0.6), label = `${String(s.index).padStart(2, "0")} ${s.label}`, lw = [...label].reduce((w, ch) => w + (/[가-힣]/.test(ch) ? 1 : 0.55), 0) * fs;
+    out.push(`<text x="${s.frame.x + fs * 0.6}" y="${s.frame.y + s.head * 0.55}" class="gaegu" font-size="${fs.toFixed(0)}" fill="${NAVY}" dominant-baseline="middle" data-k="fade" data-t="${t + 0.2}" data-d="0.3">${esc(label)}</text>`);
+    out.push(draw(roughLine(s.frame.x + fs * 0.55, s.frame.y + s.head * 0.55 + fs * 0.62, s.frame.x + fs * 0.7 + lw, s.frame.y + s.head * 0.55 + fs * 0.56, rnd, 1.2), NAVY, 3.5, t + 0.35, 0.3));
+    s.panels.forEach((p, j) => {
+      const pt = t + 0.1 + j * 0.03, r = Math.max(14, p.cw * 0.07);
+      out.push(draw(roughRect(p.frame, rnd, 1.5), INK, 2.5, pt, 0.35));
+      // Panel number in a hand-drawn circle on the top-left corner.
+      const cx = p.frame.x + r * 0.4, cy = p.frame.y + r * 0.4;
+      out.push(`<circle cx="${cx}" cy="${cy}" r="${r * 1.05}" fill="${PAPER}" data-k="fade" data-t="${pt + 0.2}" data-d="0.2"/>`);
+      out.push(draw(`M${cx + r} ${cy}A${r} ${r * 0.95} 0 1 1 ${cx + r - 1} ${cy - 0.6}`, INK, 2.5, pt + 0.25, 0.25));
+      out.push(`<text x="${cx}" y="${cy + r * 0.06}" class="gaegu" font-size="${(r * 1.1).toFixed(1)}" fill="${INK}" text-anchor="middle" dominant-baseline="middle" data-k="fade" data-t="${pt + 0.3}" data-d="0.25">${p.number}</text>`);
+    });
+  });
+  layout.arrows.forEach((a, i) => {
+    const head = Math.min(26, (a.y2 - a.y1) * 0.4);
+    out.push(draw(roughLine(a.x, a.y1, a.x + 4, a.y2, rnd, 1) + `M${a.x - head * 0.8} ${a.y2 - head}L${a.x + 4} ${a.y2}L${a.x + head * 0.9} ${a.y2 - head * 0.95}`, INK, 3, 0.6 + i * 0.08, 0.3));
+  });
+  return out.join("");
+}
+
+export function pageHtml(beats, characters, faces, captions, layout, decor, duration) {
+  const style = `.i{stroke:${INK};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
+    .r{stroke:${RED};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:url(#hatch)}
+    text{font-family:"Gaegu";font-weight:700;fill:${INK};text-anchor:middle;dominant-baseline:middle;stroke:none}
+    .lab{font-size:30px} .sm{font-size:26px;fill:${GREY};font-family:"Pretendard";font-weight:600} .acc{fill:${RED}} .muted{fill:${GREY}}
+    .start{text-anchor:start} .end{text-anchor:end} .inv{fill:${INK}} .jua{font-family:"Jua";font-weight:400}`;
+  // Cells: each scene sits in its panel cell, seen through the band of its frame that holds its content.
+  const cells = new Map();
+  layout.sections.forEach((s) => s.panels.forEach((p) => cells.set(p.segmentIndex, p)));
+  const seen = new Map();
+  const placed = beats.map((beat) => {
+    const panel = cells.get(beat.segmentIndex), n = seen.get(beat.segmentIndex) ?? 0;
+    seen.set(beat.segmentIndex, n + 1);
+    const cell = panel?.cells[Math.min(n, panel.cells.length - 1)] ?? { x: 0, y: 0, w: 1280, h: 600 };
+    return { ...beat, cell, panel: panel?.number ?? "", panelFrame: panel?.frame ?? cell, section: layout.sections.findIndex((s) => s.panels.includes(panel)) };
+  });
+  const grain = `url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .35 0 0 0 0 .3 0 0 0 0 .25 0 0 0 .9 0'/></filter><rect width='400' height='400' filter='url(%23n)'/></svg>`)}")`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${faces}
-  html,body{margin:0;width:${W}px;height:${H}px;background:${C.paper};overflow:hidden}
-  #sheet{position:absolute;left:0;top:0;transform-origin:0 0} #sheet>svg{position:absolute;overflow:visible}
-  /* Spoken caption in the bottom safe area; one phrase in bold. */
-  #cap{position:absolute;left:0;right:0;bottom:56px;text-align:center;font:500 36px "Pretendard";color:#2a2d30;letter-spacing:-.5px;white-space:nowrap;z-index:2}
-  #cap b{font-weight:800;color:${C.ink}}
-  /* Chapter bar: one segment per named part, filling as the video plays, with the current part named. */
-  #bar{position:absolute;left:40px;right:40px;top:22px;display:flex;gap:6px;z-index:2}
-  #bar div{position:relative;height:6px;border-radius:3px;background:${C.line};overflow:visible}
-  #bar i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:${C.red}}
-  #bar span{position:absolute;left:0;top:13px;font:500 19px "Pretendard";color:${C.muted};white-space:nowrap}
-  #bar div.on span{font-weight:800;color:${C.ink}}</style></head><body><div id="bar"></div><div id="cap"></div>
-  <svg width="0" height="0" style="position:absolute">${[1, 2, 3].map((n) => `<filter id="pencil${n}" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="9000" height="9000"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${n * 7}"/><feDisplacementMap in="SourceGraphic" scale="4"/></filter>`).join("")}</svg>
-  <div id="sheet">${beats.map((beat, i) => `<svg id="b${i}" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="display:none"><style>${style}</style>
+  html,body{margin:0;width:${VW}px;height:${VH}px;background:${PAPER};overflow:hidden}
+  #poster{position:absolute;left:0;top:0;width:${POSTER.w}px;height:${POSTER.h}px;transform-origin:0 0;background:${PAPER}}
+  #poster::before{content:"";position:absolute;inset:0;background-image:${grain};opacity:.07;pointer-events:none}
+  #poster>svg{position:absolute;overflow:visible}
+  #decor .jua{font-family:"Jua"} #decor .gaegu{font-family:"Gaegu";font-weight:700}
+  /* Spoken caption above YouTube's bottom controls: charcoal only, up to two lines, one phrase in bold. */
+  #cap{position:absolute;left:0;right:0;bottom:${SAFE_BOTTOM + 14}px;text-align:center;font:500 46px/1.32 "Pretendard";color:${INK};letter-spacing:-.5px;white-space:pre-line;z-index:2}
+  #cap b{font-weight:800}</style></head><body><div id="cap"></div>
+  <svg width="0" height="0" style="position:absolute"><defs>${[1, 2, 3].map((n) => `<filter id="pencil${n}" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="6000" height="4500"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${n * 7}"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter>`).join("")}
+    <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="${PAPER}"/><line x1="0" y1="0" x2="0" y2="14" stroke="${NAVY}" stroke-width="5" stroke-opacity=".55"/></pattern></defs></svg>
+  <div id="poster"><svg id="decor" width="${POSTER.w}" height="${POSTER.h}" viewBox="0 0 ${POSTER.w} ${POSTER.h}" style="left:0;top:0">${decor}</svg>
+  ${placed.map((beat, i) => `<svg id="b${i}" viewBox="${CELL_VIEW.x} ${CELL_VIEW.y} ${CELL_VIEW.w} ${CELL_VIEW.h}" width="${beat.cell.w.toFixed(1)}" height="${beat.cell.h.toFixed(1)}" style="left:${beat.cell.x.toFixed(1)}px;top:${beat.cell.y.toFixed(1)}px;visibility:hidden"><style>${style}</style>
     <defs><filter id="line${i}"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0 1 1 1"/><feFuncG type="discrete" tableValues="0 1 1 1"/><feFuncB type="discrete" tableValues="0 1 1 1"/></feComponentTransfer></filter></defs>
     ${beat.svg.replace(/<image data-character="([a-z0-9_-]+)"/g, (_, id) => `<image href="${characters.get(id)}" preserveAspectRatio="xMidYMid meet" data-character="${id}"`)}</svg>`).join("")}</div>
   <script>
-  const beats = ${JSON.stringify(beats.map((beat) => ({ ...beat, svg: undefined })))};
+  const OPEN = ${OPEN}, CLOSE = ${CLOSE}, STEP = ${STEP_FPS}, total = ${Number(duration) || 0};
+  const beats = ${JSON.stringify(placed.map((beat) => ({ ...beat, svg: undefined })))};
   const captions = ${JSON.stringify(captions)};
-  const chapters = ${JSON.stringify(chapters)}, total = ${Number(duration) || 0};
-  const bar = document.getElementById('bar');
-  // A video with fewer than two named parts shows no chapter bar.
-  const parts = chapters.length > 1 && total > 0 ? chapters.map((c, i) => ({ ...c, end: chapters[i + 1]?.startSeconds ?? total })) : [];
-  parts.forEach(p => { const d = document.createElement('div'); d.style.flex = String(Math.max(0.01, p.end - p.startSeconds));
-    d.innerHTML = '<i></i><span></span>'; d.querySelector('span').textContent = p.label; bar.appendChild(d); });
+  const layout = ${JSON.stringify({ sections: layout.sections.map((s) => ({ index: s.index, frame: s.frame, head: s.head, label: s.label })) })};
+  const monotoneCubic = ${monotoneCubic.toString()};
   const ease = v => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
-  document.querySelectorAll('[data-k="draw"]').forEach(el => { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; });
+  const poster = document.getElementById('poster'), svgs = beats.map((_, i) => document.getElementById('b' + i));
+  document.querySelectorAll('[data-k="draw"]').forEach(el => { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; el.style.strokeDashoffset = 1; });
   document.querySelectorAll('image[data-k="character"]').forEach((img, n) => {
     const svg = img.ownerSVGElement, i = svg.id.slice(1), ns = 'http://www.w3.org/2000/svg';
     const clip = document.createElementNS(ns, 'clipPath'); clip.id = 'sweep' + i + '-' + n;
     const rect = document.createElementNS(ns, 'rect');
-    ['x', 'y', 'height'].forEach(a => rect.setAttribute(a, img.getAttribute(a === 'height' ? 'height' : a)));
+    ['x', 'y', 'height'].forEach(a => rect.setAttribute(a, img.getAttribute(a)));
     rect.setAttribute('width', 0); clip.appendChild(rect); svg.querySelector('defs').appendChild(clip);
     const line = img.cloneNode(); line.removeAttribute('data-k');
     line.setAttribute('filter', 'url(#line' + i + ')'); line.setAttribute('clip-path', 'url(#' + clip.id + ')');
-    img.parentNode.insertBefore(line, img); img._sweep = rect;
+    img.parentNode.insertBefore(line, img); img._sweep = rect; img._line = line;
   });
-  // After fonts load: draw emphasis from measured text, then enlarge and centre each scene below the caption.
+  // After fonts load: key sentences and numbers in Jua, labels in Gaegu, sources in Pretendard; black badges become
+  // outlined paper labels; underlines and rings are measured; each scene is centred in its frame.
   window.layoutBeats = () => {
     const ns = 'http://www.w3.org/2000/svg';
-    const add = (svg, tag, attrs, after) => { const el = document.createElementNS(ns, tag);
+    document.querySelectorAll('#poster > svg[id^="b"] text').forEach(el => {
+      const size = +el.getAttribute('font-size') || 30;
+      if (el.classList.contains('sm')) return;
+      if (size >= ${JUA_FROM}) el.classList.add('jua'); else el.setAttribute('font-size', size * ${GAEGU_SCALE});
+    });
+    document.querySelectorAll('#poster > svg[id^="b"] rect').forEach(el => {
+      const fill = (el.getAttribute('fill') || '').toUpperCase();
+      if (fill === '${C.ink}'.toUpperCase() || fill === '${C.red}'.toUpperCase()) {
+        const red = fill === '${C.red}'.toUpperCase();
+        el.setAttribute('fill', '${PAPER}'); el.setAttribute('stroke', red ? '${RED}' : '${INK}'); el.setAttribute('stroke-width', 4);
+        let t = el.nextElementSibling; if (t && t.tagName === 'text' && t.classList.contains('inv')) t.style.fill = red ? '${RED}' : '${INK}';
+      } else if (fill === '${C.pale}'.toUpperCase()) el.setAttribute('fill', 'url(#hatch)');
+    });
+    const add = (tag, attrs, after) => { const el = document.createElementNS(ns, tag);
       Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); after.after(el);
-      if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; } return el; };
-    // Gaegu's Hangul sits small in its em box; enlarge it to read like the template size.
-    document.querySelectorAll('#sheet text').forEach(el => el.setAttribute('font-size', (+el.getAttribute('font-size') || 30) * ${GAEGU_SCALE}));
-    document.querySelectorAll('svg[id^="b"]').forEach((svg, i) => {
-      svg.style.display = '';
-      svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6;
-        const w = b.width;
-        add(svg, 'path', { class: 'r bold', d: 'M' + b.x + ' ' + (y + 4) + 'C' + (b.x + w * .25) + ' ' + (y - 8) + ' ' + (b.x + w * .55) + ' ' + (y + 10) + ' ' + (b.x + w) + ' ' + (y - 4), 'data-k': 'draw', 'data-g': host.dataset.g || 0, 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
+      if (attrs['data-k'] === 'draw') { el.setAttribute('pathLength', 1); el.style.strokeDasharray = 1; el.style.strokeDashoffset = 1; } return el; };
+    svgs.forEach(svg => {
+      svg.querySelectorAll('.ul').forEach(el => { const b = el.getBBox(), host = el.closest('text'), y = b.y + b.height + 6, w = b.width;
+        add('path', { class: 'r bold', d: 'M' + b.x + ' ' + (y + 4) + 'C' + (b.x + w * .25) + ' ' + (y - 8) + ' ' + (b.x + w * .55) + ' ' + (y + 10) + ' ' + (b.x + w) + ' ' + (y - 4), 'data-k': 'draw', 'data-g': host.dataset.g || 0, 'data-s': (+host.dataset.s || 0) + .45, 'data-d': .35 }, host); });
       svg.querySelectorAll('text.ring').forEach(el => { const b = el.getBBox();
-        add(svg, 'ellipse', { class: 'r', cx: b.x + b.width / 2, cy: b.y + b.height / 2, rx: b.width / 2 + 34, ry: b.height / 2 + 16, 'data-k': 'draw', 'data-g': el.dataset.g || 0, 'data-s': (+el.dataset.s || 0) + .4, 'data-d': .4 }, el); });
+        add('ellipse', { class: 'r', cx: b.x + b.width / 2, cy: b.y + b.height / 2, rx: b.width / 2 + 34, ry: b.height / 2 + 16, 'data-k': 'draw', 'data-g': el.dataset.g || 0, 'data-s': (+el.dataset.s || 0) + .4, 'data-d': .4 }, el); });
       const group = document.createElementNS(ns, 'g');
       [...svg.childNodes].filter(n => !['style', 'defs'].includes(n.nodeName)).forEach(n => group.appendChild(n));
       svg.appendChild(group);
       const b = group.getBBox();
       if (b.width && b.height) {
         const font = Math.max(1, ...[...svg.querySelectorAll('text')].map(t => +t.getAttribute('font-size') || 30));
-        // A fixed layout (columns centred in each half) keeps its size and only moves vertically.
-        const fixed = svg.querySelector('.fixed');
-        const k = fixed ? 1 : Math.min(1.4, 96 / font, ${SAFE.x2 - SAFE.x1} / b.width, ${STAGE_BOTTOM - STAGE_TOP} / b.height);
-        const dx = fixed ? 0 : 640 - (b.x + b.width / 2) * k, dy = ${(STAGE_TOP + STAGE_BOTTOM) / 2} - (b.y + b.height / 2) * k;
-        group.setAttribute('transform', 'translate(' + dx.toFixed(1) + ' ' + dy.toFixed(1) + ') scale(' + k.toFixed(3) + ')');
+        // A fixed layout (two columns centred in each half) keeps its size and only moves vertically.
+        const fixed = svg.querySelector('.fixed'), k = fixed ? 1 : Math.min(1.4, 110 / font, 1140 / b.width, 520 / b.height);
+        group.setAttribute('transform', 'translate(' + (fixed ? 0 : 640 - (b.x + b.width / 2) * k).toFixed(1) + ' ' + (340 - (b.y + b.height / 2) * k).toFixed(1) + ') scale(' + k.toFixed(3) + ')');
       }
-      svg.style.display = 'none';
+      svg.querySelectorAll('.i,.r,rect,circle,ellipse,line,path,polyline').forEach(el => el.classList.add('pen'));
     });
-    layoutSheet();
+    buildCamera();
   };
-  // One continuous sheet: scenes run left→right, then right→left on the next row, so each move is short. The camera follows
-  // what has just been drawn, whips with a slight settle to each new scene, and pulls back over a part's last scenes at its end.
-  const svgs = [...document.querySelectorAll('#sheet > svg')], sheet = document.getElementById('sheet');
-  let keys = [], links = [], pulls = [];
-  const easeBack = x => { x = Math.max(0, Math.min(1, x)); return 1 + 2.3 * (x - 1) ** 3 + 1.3 * (x - 1) ** 2; };
-  const lerp = (a, b, e) => ({ x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, k: a.k + (b.k - a.k) * e });
-  const union = boxes => boxes.reduce((a, b) => ({ x1: Math.min(a.x1, b.x1), y1: Math.min(a.y1, b.y1), x2: Math.max(a.x2, b.x2), y2: Math.max(a.y2, b.y2) }));
-  const camAt = (key, t) => lerp(key.from, key.to, (key.whip ? easeBack : ease)((t - key.t) / key.dur));
-  function layoutSheet() {
-    const ns = 'http://www.w3.org/2000/svg';
-    const spot = i => { const row = Math.floor(i / ${SHEET_COLUMNS}), col = i % ${SHEET_COLUMNS}; return { x: (row % 2 ? ${SHEET_COLUMNS} - 1 - col : col) * ${SHEET_STEP_X}, y: row * ${SHEET_STEP_Y} }; };
-    svgs.forEach((svg, i) => { const p = spot(i); svg.style.left = p.x + 'px'; svg.style.top = p.y + 'px'; svg.style.display = ''; svg.style.visibility = 'visible';
-      svg.querySelectorAll('.i,.r,rect,circle,ellipse,line,path,polyline').forEach(el => el.classList.add('pen')); });
-    // Where each scene's parts land on the sheet, accumulated per reveal group.
-    const extents = svgs.map((svg, i) => {
-      const groups = new Map();
-      svg.querySelectorAll('[data-k]').forEach(el => {
-        if (el.tagName === 'g') return;
-        const r = el.getBoundingClientRect(), g = +(el.dataset.g || 0);
-        if (!r.width && !r.height) return;
-        const box = { x1: r.left, y1: r.top, x2: r.right, y2: r.bottom };
-        groups.set(g, groups.has(g) ? union([groups.get(g), box]) : box);
-      });
-      let acc = null;
-      return [...groups.keys()].sort((a, b) => a - b).map(g => {
-        acc = acc ? union([acc, groups.get(g)]) : groups.get(g);
-        return { t: beats[i].visualStartSeconds + (g ? (beats[i].cueSeconds?.[g] ?? g * .45) : 0), box: acc };
-      });
+  // Camera: full poster while it is drawn, dolly in to the first panel, track between cells of a panel, dolly out-move-in
+  // between panels (about 1 s), and pull back to the full poster at the end. Keys are joined by a monotone cubic so a
+  // move never overshoots or stalls; zoom is interpolated in log space.
+  const frameH = ${VH - SAFE_TOP - SAFE_BOTTOM - CAPTION_SPACE}, frameMid = ${SAFE_TOP} + frameH / 2;
+  // A margin of 6% of the framed box on each side, so a zoomed-in cell still fills the frame.
+  const view = (b, pad = 0.06) => ({ x: b.x + b.w / 2, y: b.y + b.h / 2, k: Math.min((${VW} - 60) / (b.w * (1 + pad * 2)), (frameH - 10) / (b.h * (1 + pad * 2))) });
+  const union = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
+  const overview = { x: ${POSTER.w / 2}, y: ${POSTER.h / 2}, k: ${VW / POSTER.w} };
+  let cam = null, moves = [];
+  function buildCamera() {
+    // A section begins with its title and first row of panels in view, then the camera moves into the first cell.
+    const intro = b => { const s = layout.sections[b.section]; return view(union({ x: s.frame.x, y: s.frame.y, w: s.frame.w, h: s.head }, b.panelFrame), 0.04); };
+    const keys = [[0, overview, ${VH / 2}], [OPEN - 0.8, overview, ${VH / 2}]];
+    moves = [];
+    beats.forEach((b, i) => {
+      const first = i === 0 || beats[i - 1].section !== b.section, target = view(b.cell), last = keys.at(-1);
+      const arrive = Math.max(b.visualStartSeconds + OPEN, last[0] + (first ? 1.2 : 0.35));
+      if (i === 0) { keys.push([OPEN - 0.3, intro(b), frameMid], [arrive, target, frameMid]); moves.push({ t: OPEN - 0.8, dur: arrive - OPEN + 0.8 }); return; }
+      const dur = first ? 1.8 : 0.9, leave = Math.max(last[0] + 0.05, arrive - dur);
+      keys.push([leave, last[1], last[2]]);
+      if (first) keys.push([(leave + arrive) / 2, intro(b), frameMid]);
+      else if (beats[i - 1].panel !== b.panel) keys.push([(leave + arrive) / 2, (() => { const v = view(union(beats[i - 1].cell, b.cell), 0.1); return { ...v, k: Math.min(v.k, last[1].k * 0.8, target.k * 0.8) }; })(), frameMid]);
+      keys.push([arrive, target, frameMid]);
+      moves.push({ t: leave, dur: arrive - leave });
     });
-    svgs.forEach(svg => { svg.style.display = 'none'; svg.style.visibility = ''; });
-    const view = (box, fill = 1) => { const w = box.x2 - box.x1 + 160, h = box.y2 - box.y1 + 120;
-      return { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2, k: fill < 1 ? Math.min(1120 / w, 470 / h) : Math.max(.8, Math.min(1.2, 1120 / w, 470 / h)) }; };
-    keys = extents.flatMap((list, i) => list.map((e, n) => ({ t: e.t, to: view(e.box), dur: n || !i ? .8 : .6, whip: !n && i > 0 })));
-    // At the end of each named part, pull back over its last scenes (up to six) before the next part begins.
-    pulls = chapters.length > 1 ? chapters.map((c, n) => {
-      const end = chapters[n + 1]?.startSeconds ?? total, own = extents.filter((list, i) => list.length && beats[i].visualStartSeconds >= c.startSeconds - .01 && beats[i].visualStartSeconds < end);
-      return own.length > 1 && end - c.startSeconds > 8 ? { t: end - 2.4, to: view(union(own.slice(-6).map(list => list.at(-1).box)), 0), dur: 1.2, pull: true, end } : null;
-    }).filter(Boolean) : [];
-    keys = keys.filter(key => !pulls.some(p => key.t >= p.t && key.t < p.end)).concat(pulls).sort((a, b) => a.t - b.t);
-    keys.forEach((key, n) => { key.from = n ? camAt(keys[n - 1], key.t) : key.to; });
-    // A pencil line from the last drawing of one scene to the first of the next, drawn during the move.
-    const link = document.createElementNS(ns, 'svg');
-    link.setAttribute('width', 1); link.setAttribute('height', 1); link.style.cssText = 'position:absolute;left:0;top:0;overflow:visible';
-    sheet.insertBefore(link, sheet.firstChild);
-    links = extents.slice(1).map((next, k) => {
-      if (!extents[k].length || !next.length) return null;
-      const a = extents[k].at(-1).box, b = next[0].box, ac = { x: (a.x1 + a.x2) / 2, y: (a.y1 + a.y2) / 2 }, bc = { x: (b.x1 + b.x2) / 2, y: (b.y1 + b.y2) / 2 };
-      const across = Math.abs(bc.x - ac.x) > Math.abs(bc.y - ac.y), right = bc.x > ac.x;
-      const from = across ? { x: right ? a.x2 + 30 : a.x1 - 30, y: ac.y + 40 } : { x: ac.x - 80, y: a.y2 + 30 };
-      const to = across ? { x: right ? b.x1 - 30 : b.x2 + 30, y: bc.y + 40 } : { x: bc.x - 80, y: b.y1 - 30 };
-      const bend = across ? { x: (from.x + to.x) / 2, y: Math.max(from.y, to.y) + 160 } : { x: Math.min(from.x, to.x) - 220, y: (from.y + to.y) / 2 };
-      const path = document.createElementNS(ns, 'path');
-      path.setAttribute('d', 'M' + from.x + ' ' + from.y + 'Q' + bend.x + ' ' + bend.y + ' ' + to.x + ' ' + to.y);
-      path.setAttribute('class', 'pen'); path.setAttribute('pathLength', 1);
-      path.style.cssText = 'stroke:${C.ink};stroke-width:4;fill:none;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1';
-      link.appendChild(path);
-      return { path, t: beats[k + 1].visualStartSeconds };
-    }).filter(Boolean);
+    const end = total + OPEN, last = keys.at(-1);
+    keys.push([Math.max(last[0] + 0.05, end + 0.1), last[1], last[2]], [end + 1.5, overview, ${VH / 2}], [end + CLOSE, overview, ${VH / 2}]);
+    moves.push({ t: end + 0.1, dur: 1.4 });
+    const ts = keys.map(k => k[0]);
+    const fx = monotoneCubic(ts, keys.map(k => k[1].x)), fy = monotoneCubic(ts, keys.map(k => k[1].y));
+    const fk = monotoneCubic(ts, keys.map(k => Math.log(k[1].k))), fm = monotoneCubic(ts, keys.map(k => k[2]));
+    cam = t => ({ x: fx(t), y: fy(t), k: Math.exp(fk(t)), mid: fm(t) });
   }
   let boiled = 0;
   window.render = t => {
-    const active = beats.findIndex(b => b.visualStartSeconds <= t && t < b.endSeconds);
-    const reached = beats.reduce((last, b, i) => (b.visualStartSeconds <= t ? i : last), -1);
-    // Scenes stay on the sheet once drawn; only the few near the camera are painted.
-    beats.forEach((b, i) => { const svg = svgs[i], near = i <= reached && i > reached - 7;
-      svg.style.display = near ? '' : 'none';
-      if (near && i !== active) svg.querySelectorAll('[data-k]').forEach(el => { const k = el.dataset.k;
-        if (k === 'draw') { el.style.strokeDashoffset = 0; el.style.opacity = 1; el.style.fillOpacity = 1; }
-        else if (k === 'fade') { el.style.opacity = 1; el.style.transform = 'none'; }
-        else if (k === 'grow-x' || k === 'grow-y') el.style.transform = 'none';
-        else if (k === 'character') { el._sweep.setAttribute('width', el.getAttribute('width')); el.style.opacity = 1; } }); });
-    const boil = Math.floor(t * 12) % 3 + 1;
-    if (boil !== boiled) { boiled = boil; sheet.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
-    // A connector is drawn during the move, fades once the camera arrives, and shows again during a pull back.
-    const pulling = pulls.some(p => t >= p.t && t < p.end);
-    links.forEach(l => { l.path.style.strokeDashoffset = 1 - ease((t - l.t + .1) / .6); l.path.style.opacity = pulling ? .6 : 1 - ease((t - l.t - .7) / .4); });
-    const key = [...keys].reverse().find(k => k.t <= t) ?? keys[0];
-    if (key) { const cam = camAt(key, t), p = (t - key.t) / key.dur, blur = (key.whip || key.pull) && p < 1 ? Math.sin(Math.PI * p) * 2 : 0;
-      sheet.style.transform = 'translate(' + (640 - cam.x * cam.k) + 'px,' + (${(STAGE_TOP + STAGE_BOTTOM) / 2} - cam.y * cam.k) + 'px) scale(' + cam.k + ')';
-      svgs.forEach(svg => { svg.style.filter = blur > .4 ? 'blur(' + blur.toFixed(2) + 'px)' : ''; }); }
-    const cap = document.getElementById('cap'), line = captions.find(c => c.startSeconds <= t && t < c.endSeconds);
-    const esc = v => v.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
-    const bold = line?.bold?.[0], at = bold ? line.text.indexOf(bold) : -1;
-    cap.innerHTML = !line ? '' : at < 0 ? esc(line.text) : esc(line.text.slice(0, at)) + '<b>' + esc(bold) + '</b>' + esc(line.text.slice(at + bold.length));
-    [...bar.children].forEach((d, i) => { const p = parts[i], f = Math.max(0, Math.min(1, (t - p.startSeconds) / (p.end - p.startSeconds)));
-      d.querySelector('i').style.width = (f * 100) + '%'; d.classList.toggle('on', p.startSeconds <= t && t < p.end); });
-    if (active < 0) return;
-    svgs[active].style.display = '';
-    const b = beats[active], local = (t - b.visualStartSeconds) / b.timeScale;
-    document.getElementById('b' + active).querySelectorAll('[data-k]').forEach(el => {
-      const g = +(el.dataset.g || 0), cue = b.cueSeconds?.[g] ?? g * .45;
-      const s = cue / b.timeScale + +el.dataset.s, d = +el.dataset.d, p = ease((local - s) / d), k = el.dataset.k;
-      if (k === 'draw') { el.style.strokeDashoffset = 1 - p; el.style.opacity = p > 0 ? 1 : 0; el.style.fillOpacity = Math.min(1, p * 1.6); }
-      else if (k === 'fade') { el.style.opacity = p; el.style.transform = 'translateY(' + (1 - p) * 8 + 'px)'; }
-      else if (k === 'grow-x' || k === 'grow-y') { el.style.transformBox = 'fill-box';
-        el.style.transformOrigin = k === 'grow-x' ? 'left center' : 'center bottom';
-        el.style.transform = (k === 'grow-x' ? 'scaleX(' : 'scaleY(') + p + ')'; }
-      else if (k === 'character') {
-        el._sweep.setAttribute('width', +el.getAttribute('width') * ease((local - s) / (d * .8)));
-        el.style.opacity = ease((local - s - d * .6) / (d * .5)); }
+    const tv = Math.floor(t * STEP + 1e-6) / STEP;  // visuals on 15 fps steps
+    const c = cam(tv);
+    poster.style.transform = 'translate(' + (${VW / 2} - c.x * c.k) + 'px,' + (c.mid - c.y * c.k) + 'px) scale(' + c.k + ')';
+    poster.style.setProperty('--zw', (1 / c.k).toFixed(4));
+    document.querySelectorAll('#decor [data-k]').forEach(el => { const p = ease((tv - +el.dataset.t) / +el.dataset.d);
+      if (el.dataset.k === 'draw') el.style.strokeDashoffset = 1 - p; else el.style.opacity = p; });
+    const boil = Math.floor(tv * 6) % 3 + 1;
+    if (boil !== boiled) { boiled = boil; poster.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
+    beats.forEach((b, i) => {
+      const svg = svgs[i], start = b.visualStartSeconds + OPEN, local = (tv - start) / b.timeScale;
+      svg.style.visibility = tv >= start - 0.05 ? 'visible' : 'hidden';
+      if (tv < start - 0.05) return;
+      svg.querySelectorAll('[data-k]').forEach(el => {
+        const g = +(el.dataset.g || 0), cue = b.cueSeconds?.[g] ?? g * .45;
+        const s = cue / b.timeScale + +el.dataset.s, d = +el.dataset.d, p = ease((local - s) / d), k = el.dataset.k;
+        if (k === 'draw') { el.style.strokeDashoffset = 1 - p; el.style.opacity = p > 0 ? 1 : 0; el.style.fillOpacity = Math.min(1, p * 1.6); }
+        else if (k === 'fade') { el.style.opacity = p; el.style.transform = 'translateY(' + (1 - p) * 8 + 'px)'; }
+        else if (k === 'grow-x' || k === 'grow-y') { el.style.transformBox = 'fill-box';
+          el.style.transformOrigin = k === 'grow-x' ? 'left center' : 'center bottom';
+          el.style.transform = (k === 'grow-x' ? 'scaleX(' : 'scaleY(') + p + ')'; }
+        else if (k === 'character') {
+          el._sweep.setAttribute('width', +el.getAttribute('width') * ease((local - s) / (d * .8)));
+          const o = ease((local - s - d * .6) / (d * .5)); el.style.opacity = o; el._line.style.opacity = 1 - o;
+          // Idle breathing: a slight tilt (±2.5°) and swell (1.00–1.02) every 2.6 s, anchored at the feet.
+          const ph = (tv + i * 0.7) / 2.6 * Math.PI * 2;
+          el.style.transformBox = 'fill-box'; el.style.transformOrigin = 'center bottom';
+          el.style.transform = 'rotate(' + (2.5 * Math.sin(ph)).toFixed(2) + 'deg) scale(' + (1.01 + 0.01 * Math.sin(ph * 2)).toFixed(4) + ')'; }
+      });
     });
+    const at = t - OPEN, line = captions.find(c => c.startSeconds <= at && at < c.endSeconds), cap = document.getElementById('cap');
+    const escH = v => v.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
+    let text = line ? line.text : '';
+    // Two lines of at most 18 characters, broken at the space nearest the middle.
+    if (text.length > 18) { const spaces = [...text].map((ch, i) => ch === ' ' ? i : -1).filter(i => i > 0);
+      const cut = spaces.sort((a, b) => Math.abs(a - text.length / 2) - Math.abs(b - text.length / 2))[0]; if (cut) text = text.slice(0, cut) + '\\n' + text.slice(cut + 1); }
+    const bold = line?.bold?.[0], pos = bold ? text.indexOf(bold) : -1;
+    cap.innerHTML = !line ? '' : pos < 0 ? escH(text) : escH(text.slice(0, pos)) + '<b>' + escH(bold) + '</b>' + escH(text.slice(pos + bold.length));
   };
-  // When each effect sound plays: scene changes, each drawn part, character entrances and red accents; close sounds keep the first.
+  // Sounds (video time): a scene-change pop, each drawn part, character entrances, red accents, and a soft camera whoosh.
   window.soundCues = () => {
     const events = [];
     beats.forEach((b, i) => {
-      if (i) events.push({ t: b.visualStartSeconds, kind: 'transition' });
+      const start = b.visualStartSeconds + OPEN;
+      if (i) events.push({ t: start, kind: 'transition' });
       const groups = new Map();
-      document.getElementById('b' + i).querySelectorAll('[data-k]').forEach(el => {
+      svgs[i].querySelectorAll('[data-k]').forEach(el => {
         const g = +(el.dataset.g || 0), k = el.dataset.k === 'character' ? 'appear' : el.classList.contains('r') || el.classList.contains('acc') ? 'accent' : 'build';
         const rank = { appear: 3, build: 2, accent: 1 };
         if (!groups.has(g) || rank[k] > rank[groups.get(g)]) groups.set(g, k);
       });
-      groups.forEach((kind, g) => events.push({ t: b.visualStartSeconds + (b.cueSeconds?.[g] ?? g * .45) + (g ? 0 : .12), kind }));
+      groups.forEach((kind, g) => events.push({ t: start + (b.cueSeconds?.[g] ?? g * .45) + (g ? 0 : .12), kind }));
     });
-    pulls.forEach(p => events.push({ t: p.t, kind: 'transition' }));
     events.sort((a, b) => a.t - b.t);
-    return events.filter((e, i) => !i || e.t - events[i - 1].t >= .25);
+    const kept = events.filter((e, i) => !i || e.t - events[i - 1].t >= .25);
+    return kept.concat(moves.map(m => ({ t: m.t, kind: 'move', dur: m.dur })));
   };
-  // Final-state geometry: stage area, text collisions, text over artwork.
+  // Final-state geometry of a scene at its end: inside the visible band, no text collisions, no text over artwork.
   window.inspectBeat = i => {
-    const b = beats[i]; window.render(b.endSeconds - 0.001);
+    // Checked mid-scene, when the camera has settled on it.
+    const b = beats[i]; window.render(b.visualStartSeconds + OPEN + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6));
     const problems = [], box = el => el.getBoundingClientRect();
-    const svg = document.getElementById('b' + i), items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
+    const svg = svgs[i], items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
     for (const el of items) { const r = box(el);
-      if (r.width && (r.left < ${SAFE.x1} - 1 || r.right > ${SAFE.x2} + 1 || r.top < ${STAGE_TOP} - 1 || r.bottom > ${STAGE_BOTTOM} + 1))
-        problems.push(el.tagName + ' outside safe area'); }
+      if (r.width && (r.left < -1 || r.right > ${VW} + 1 || r.top < ${SAFE_TOP} - 1 || r.bottom > ${VH - SAFE_BOTTOM} + 1)) problems.push(el.tagName + ' outside safe area'); }
     const texts = [...svg.querySelectorAll('text')].map(box), art = [...svg.querySelectorAll('image[data-k]')].map(box);
     const hit = (a, c, pad) => a.left < c.right + pad && c.left < a.right + pad && a.top < c.bottom + pad && c.top < a.bottom + pad;
     texts.forEach((a, m) => texts.slice(m + 1).forEach(c => { if (hit(a, c, 4)) problems.push('labels overlap'); }));
@@ -322,10 +454,8 @@ export function pageHtml(beats, characters, faces, captions = [], chapters = [],
 async function main() {
   const { values: args } = parseArgs({ options: {
     brief: { type: "string" }, audio: { type: "string" }, catalog: { type: "string" }, output: { type: "string" },
-    fps: { type: "string", default: "24" }, "allow-provisional-study": { type: "boolean" }, "check-only": { type: "boolean" } } });
+    "allow-provisional-study": { type: "boolean" }, "check-only": { type: "boolean" } } });
   if (!args.brief || !args.audio || !args.catalog || (!args.output && !args["check-only"])) fail("--brief, --audio, --catalog and --output are required");
-  const fps = Number(args.fps);
-  if (!(fps >= 12 && fps <= 30)) fail("FPS outside supported range");
   const brief = JSON.parse(readFileSync(args.brief, "utf8"));
   const catalog = JSON.parse(readFileSync(args.catalog, "utf8"));
   const audio = readFileSync(args.audio);
@@ -340,20 +470,20 @@ async function main() {
     if (!file.startsWith(root + path.sep) || sha256(bytes) !== asset.sha256) fail(`Character asset path or checksum changed: ${id}`);
     characters.set(id, `data:image/png;base64,${bytes.toString("base64")}`);
   }
-  // Drawings authored at natural pace are compressed to finish before the beat ends.
-  const beats = brief.timeline.beats.map((beat) => {
-    const summary = validateSceneSvg(beat.svg, new Set(characters.keys())).summary;
-    const room = Math.max(0.3, beat.endSeconds - beat.visualStartSeconds - 0.25);
-    // Cue-timed beats already follow the narration; older briefs compress their drawing to fit the beat.
-    return { ...beat, timeScale: beat.cueSeconds ? 1 : Math.min(1, room / Math.max(0.01, summary.drawSeconds)) };
-  });
+  const beats = brief.timeline.beats.map((beat) => ({ ...beat, timeScale: 1 }));
+  const poster = brief.timeline.poster?.sections?.length ? brief.timeline.poster
+    : { title: "", sections: [{ label: "", panels: [...new Set(beats.map((b) => b.segmentIndex))].map((segmentIndex) => ({ segmentIndex, importance: 2 })) }] };
+  const counts = new Map();
+  beats.forEach((b) => counts.set(b.segmentIndex, (counts.get(b.segmentIndex) ?? 0) + 1));
+  const layout = posterLayout(poster, counts);
+  const video = duration + OPEN + CLOSE;
   const browser = await chromium.launch();
   try {
-    const page = await browser.newPage({ viewport: { width: W, height: H } });
+    const page = await browser.newPage({ viewport: { width: VW, height: VH } });
     const captions = (brief.timeline.captions ?? []).filter((c) => typeof c.text === "string" && c.endSeconds > c.startSeconds);
-    await page.setContent(pageHtml(beats, characters, await fontFaces(), captions, brief.timeline.chapters ?? [], duration), { waitUntil: "load" });
-    if (!await page.evaluate(async () => { const specs = ['800 52px "Pretendard"', '600 30px "Pretendard"']; for (const spec of specs) await document.fonts.load(spec, "가A"); return specs.every((spec) => document.fonts.check(spec, "가A")); }))
-      fail("Pretendard did not load");
+    await page.setContent(pageHtml(beats, characters, await fontFaces(), captions, layout, posterDecor(layout, poster.title), duration), { waitUntil: "load" });
+    if (!await page.evaluate(async () => { const specs = ['500 46px "Pretendard"', '700 60px "Gaegu"', '400 90px "Jua"']; for (const spec of specs) await document.fonts.load(spec, "가A"); return specs.every((spec) => document.fonts.check(spec, "가A")); }))
+      fail("Fonts did not load");
     await page.evaluate(() => window.layoutBeats());
     const problems = [];
     for (let i = 0; i < beats.length; i++)
@@ -363,28 +493,33 @@ async function main() {
     if (problems.length) console.warn(`layout warnings (${problems.length}):\n${problems.join("\n")}`);
     if (args["check-only"]) return console.log(`layout ok: ${beats.length} beats`);
     mkdirSync(path.dirname(path.resolve(args.output)), { recursive: true });
+    // YouTube description chapters from the poster sections (video time).
+    const starts = layout.sections.map((s, i) => { const own = beats.filter((b) => poster.sections[i].panels.some((p) => p.segmentIndex === b.segmentIndex)); return { label: s.label, start: (own[0]?.visualStartSeconds ?? 0) + OPEN }; });
+    const chapters = youtubeChapters(starts.map((s, i) => ({ ...s, end: starts[i + 1]?.start ?? video })));
+    writeFileSync(`${args.output}.chapters.txt`, `${chapters.text}\n${chapters.ok ? "" : "# 유튜브 챕터 조건(3개 이상, 각 10초 이상)을 채우지 못함\n"}`);
     const effects = path.join(os.tmpdir(), `brandyaction-effects-${process.pid}.wav`), mixed = path.join(os.tmpdir(), `brandyaction-mix-${process.pid}.wav`);
-    writeFileSync(effects, effectTrack(await page.evaluate(() => window.soundCues()), duration));
-    // Voice: low rumble cut and light noise reduction; effects sit well under it. The mix is measured once, then levelled
-    // linearly to YouTube's -14 LUFS; a limiter first keeps enough peak headroom for that gain.
-    const chain = "[0:a]highpass=f=70,afftdn=nf=-30[v];[1:a]lowpass=f=6000,volume=0.5[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false";
+    writeFileSync(effects, effectTrack(await page.evaluate(() => window.soundCues()), video));
+    // Narration starts after the opening; the mix is limited, measured once, then levelled linearly to -14 LUFS.
+    const delay = Math.round(OPEN * 1000);
+    const chain = `[0:a]adelay=${delay}:all=1,apad=whole_dur=${video.toFixed(2)},highpass=f=70,afftdn=nf=-30[v];[1:a]lowpass=f=6000,volume=0.5[e];[v][e]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.5:level=false`;
     const measured = spawnSync("ffmpeg", ["-hide_banner", "-i", args.audio, "-i", effects, "-filter_complex", `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:print_format=json`, "-f", "null", "-"],
       { encoding: "utf8" }).stderr;
     const m = JSON.parse(measured.slice(measured.lastIndexOf("{"), measured.lastIndexOf("}") + 1));
     execFileSync("ffmpeg", ["-v", "error", "-y", "-i", args.audio, "-i", effects, "-filter_complex",
-      `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`, mixed]);
-    const ffmpeg = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-i", "pipe:0", "-i", mixed,
-      "-map", "0:v", "-map", "1:a",
-      "-t", String(duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", args.output], { stdio: ["pipe", "inherit", "inherit"] });
+      `${chain},loudnorm=I=-14:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true,aresample=48000`, "-t", video.toFixed(2), mixed]);
+    // Frames are drawn at 15 fps (motion on twos) and the file is written at 30 fps.
+    const ffmpeg = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(STEP_FPS), "-i", "pipe:0", "-i", mixed,
+      "-map", "0:v", "-map", "1:a", "-t", video.toFixed(2), "-r", "30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+      "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", args.output], { stdio: ["pipe", "inherit", "inherit"] });
     const done = new Promise((resolve, reject) => ffmpeg.on("close", (code) => code ? reject(new Error("Video encoder failed")) : resolve()));
-    for (let frame = 0; frame < Math.ceil(duration * fps); frame++) {
-      await page.evaluate((t) => window.render(t), frame / fps);
-      if (!ffmpeg.stdin.write(await page.screenshot({ type: "jpeg", quality: 95 }))) await new Promise((resolve) => ffmpeg.stdin.once("drain", resolve));
+    for (let frame = 0; frame < Math.ceil(video * STEP_FPS); frame++) {
+      await page.evaluate((t) => window.render(t), frame / STEP_FPS);
+      if (!ffmpeg.stdin.write(await page.screenshot({ type: "jpeg", quality: 92 }))) await new Promise((resolve) => ffmpeg.stdin.once("drain", resolve));
     }
     ffmpeg.stdin.end();
     await done;
     console.log(args.output);
+    console.log(`chapters:\n${chapters.text}`);
   } finally {
     await browser.close();
   }
