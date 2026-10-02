@@ -29,7 +29,7 @@ const FONTS = [
   ["Jua", 400, "https://cdn.jsdelivr.net/gh/google/fonts@16680f8688ffcd467d2eb2146a9ce0343404581d/ofl/jua/Jua-Regular.ttf", "3080d35028a655cf20b6dbd0714fa8170605b933e4a211c1ae2e4f442039faf6", "truetype"],
 ];
 
-async function fontFaces() {
+export async function fontFaces() {
   const faces = [];
   for (const [family, weight, url, digest, format] of FONTS) {
     const cached = path.join(os.tmpdir(), `brandyaction-${digest}.font`);
@@ -258,8 +258,9 @@ export function posterDecor(layout, title) {
     const t = 0.25 + i * 0.08;
     out.push(draw(rectPath(s.frame), GREY, 2.5, t, 0.45, 'stroke-linejoin="miter"'));
     // Section title: Gaegu, sized to its header band (at least 60 px on the poster), with a navy underline.
+    // Scene stylesheets apply document-wide (text-anchor: middle), so the title sets its own start anchor inline.
     const { fs, label, lw } = sectionLabel(s);
-    out.push(`<text x="${s.frame.x + fs * 0.6}" y="${s.frame.y + s.head * 0.55}" class="gaegu" font-size="${fs.toFixed(0)}" fill="${NAVY}" dominant-baseline="middle" data-k="fade" data-t="${t + 0.2}" data-d="0.3">${esc(label)}</text>`);
+    out.push(`<text x="${s.frame.x + fs * 0.6}" y="${s.frame.y + s.head * 0.55}" class="gaegu" font-size="${fs.toFixed(0)}" fill="${NAVY}" style="text-anchor:start" dominant-baseline="middle" data-k="fade" data-t="${t + 0.2}" data-d="0.3">${esc(label)}</text>`);
     out.push(draw(roughLine(s.frame.x + fs * 0.55, s.frame.y + s.head * 0.55 + fs * 0.62, s.frame.x + fs * 0.7 + lw, s.frame.y + s.head * 0.55 + fs * 0.56, rnd, 1.2), NAVY, 3.5, t + 0.35, 0.3));
     s.panels.forEach((p, j) => {
       out.push(draw(rectPath(p.frame), INK, 2.5, t + 0.1 + j * 0.03, 0.35, 'stroke-linejoin="miter"'));
@@ -275,7 +276,7 @@ export function posterDecor(layout, title) {
 export function pageHtml(beats, characters, faces, captions, layout, decor, duration) {
   const style = `.i{stroke:${INK};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round}
     .r{stroke:${RED};stroke-width:4;fill:none;stroke-linecap:round;stroke-linejoin:round} .thin{stroke-width:3} .bold{stroke-width:6} .p{fill:url(#hatch)}
-    text{font-family:"Gaegu";font-weight:700;fill:${INK};text-anchor:middle;dominant-baseline:middle;stroke:none}
+    text{font-family:"Gaegu";font-weight:700;fill:${INK};text-anchor:middle;dominant-baseline:middle;stroke:none;text-rendering:geometricPrecision}
     .lab{font-size:30px} .sm{font-size:26px;fill:${GREY};font-family:"Pretendard";font-weight:600} .acc{fill:${RED}} .muted{fill:${GREY}}
     .start{text-anchor:start} .end{text-anchor:end} .inv{fill:${INK}} .jua{font-family:"Jua";font-weight:400}`;
   // Cells: each scene sits in its panel cell, seen through the band of its frame that holds its content.
