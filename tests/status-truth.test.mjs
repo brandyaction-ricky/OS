@@ -42,6 +42,7 @@ const check = { configured: true, lastOkAt: "2026-10-03T11:00:00Z", failures24h:
 test("configured-only, stale and unavailable evidence never claim a verified connection", () => {
   assert.equal(connectionState({ ...check, lastOkAt: null }, now), "unverified");
   assert.equal(connectionState({ ...check, historyAvailable: false }, now), "unverified");
+  assert.equal(connectionState({ ...check, failures24h: null }, now), "unverified");
   assert.equal(connectionState({ ...check, configured: false }, now), "missing");
   assert.equal(connectionState({ ...check, lastOkAt: "2026-10-01T12:00:00Z" }, now), "stale");
   assert.equal(connectionState(check, now), "verified");

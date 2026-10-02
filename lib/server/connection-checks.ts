@@ -23,7 +23,7 @@ export async function readConnectionChecks() {
       db.from("os_connection_checks").select("id", { count: "exact", head: true }).eq("service", id).eq("ok", false).gte("checked_at", since),
     ]);
     let lastOkAt = lastOk.data?.checked_at ?? null;
-    let failures24h: number | null = failures.error ? null : failures.count;
+    let failures24h: number | null = failures.error || !latest.data ? null : failures.count;
     let blockedJobs: number | null = null;
     let evidenceAvailable = !lastOk.error && !latest.error && !failures.error;
     // Existing failed jobs take precedence over a successful credentials probe.

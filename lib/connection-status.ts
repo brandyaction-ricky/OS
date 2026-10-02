@@ -27,7 +27,7 @@ export interface ConnectionCheck {
 export function connectionState(check: Pick<ConnectionCheck, "configured" | "lastOkAt" | "failures24h" | "blockedJobs" | "latestFailed" | "historyAvailable">, now = Date.now()): ConnectionState {
   if (check.latestFailed || (check.failures24h ?? 0) > 0 || (check.blockedJobs ?? 0) > 0) return "error";
   if (!check.configured) return "missing";
-  if (!check.historyAvailable || !check.lastOkAt) return "unverified";
+  if (!check.historyAvailable || check.failures24h === null || !check.lastOkAt) return "unverified";
   return now - Date.parse(check.lastOkAt) <= 86_400_000 ? "verified" : "stale";
 }
 export const CONNECTION_STATE_LABELS: Record<ConnectionState, string> = {
