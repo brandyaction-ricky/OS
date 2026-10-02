@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { monotoneCubic, posterLayout, youtubeChapters } from "../tools/render-youtube-scene.mjs";
+import { cameraShots, monotoneCubic, posterLayout, youtubeChapters } from "../tools/render-youtube-scene.mjs";
 
 test("the poster fits every scene cell inside 3840×2160 and important panels get bigger cells", () => {
   const poster = { title: "t", sections: [
@@ -31,4 +31,13 @@ test("YouTube chapters start at 0:00 and flag fewer than three sections", () => 
   assert.equal(ok.text.split("\n")[2], "1:35 03 c");
   assert.ok(ok.ok);
   assert.ok(!youtubeChapters([{ label: "a", start: 0, end: 50 }, { label: "b", start: 50, end: 90 }]).ok);
+});
+
+test("camera shots last at least 4 s plus the move, and caption-only scenes stay in the shot before them", () => {
+  // Scenes start at these times (video seconds); scene 3 has nothing to draw.
+  const starts = [2, 7, 8.5, 10, 16, 17, 30, 31.5], drawn = [true, true, true, false, true, true, true, true];
+  const shots = cameraShots(starts, drawn, 33);
+  assert.deepEqual(shots, [[0], [1, 2, 3], [4, 5, 6, 7]], "the 3 s last shot joins the one before");
+  shots.slice(0, -1).forEach((shot, j) => assert.ok(starts[shots[j + 1][0]] - starts[shot[0]] >= 5));
+  assert.deepEqual(cameraShots([2, 9, 20], [true, true, true], 22), [[0], [1, 2]], "a 2 s last shot joins the one before");
 });

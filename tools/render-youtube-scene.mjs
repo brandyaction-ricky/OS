@@ -118,6 +118,8 @@ const VW = 1920, VH = 1080, POSTER = { w: 3840, h: 2160 };
 const SAFE_TOP = 65, SAFE_BOTTOM = 130, CAPTION_SPACE = 120;
 /** Seconds of opening (poster drawn empty) before the narration, and of closing full view after it. */
 const OPEN = 1.8, CLOSE = 5;
+// The camera holds every shot at least MIN_SHOT seconds; a move between shots takes MOVE seconds or a little more.
+const MIN_SHOT = 4, MOVE = 1;
 /** Visual motion is stepped at 15 fps (drawn on twos); audio and captions stay continuous. */
 const STEP_FPS = 15;
 /** Each scene is shown through this window of its 1280×720 frame (the band its content is centred in). */
@@ -212,11 +214,25 @@ function roughLine(x1, y1, x2, y2, rnd, rough = 1.5) {
   };
   return pass() + pass();
 }
-const roughRect = (b, rnd, rough) => [[b.x, b.y, b.x + b.w, b.y], [b.x + b.w, b.y, b.x + b.w, b.y + b.h], [b.x + b.w, b.y + b.h, b.x, b.y + b.h], [b.x, b.y + b.h, b.x, b.y]]
-  .map(([a, b2, c, d]) => roughLine(a, b2, c, d, rnd, rough)).join("");
+const rectPath = (b) => `M${b.x} ${b.y}H${b.x + b.w}V${b.y + b.h}H${b.x}Z`;
 const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-/** The poster's own drawing: title with a red highlighter, section frames and titles, panel frames and numbers, arrows. */
+/** The poster's own drawing: title with a red highlighter, section frames and titles, plain rectangular panel frames, arrows. */
+/**
+ * Group scenes into camera shots (lists of scene indexes). A shot lasts at least MIN_SHOT plus the move out of it, so
+ * short scenes share a shot and their cells are framed together; a caption-only scene stays in the shot before it;
+ * a too-short last shot joins the one before.
+ */
+export function cameraShots(starts, drawn, end) {
+  const shots = [];
+  starts.forEach((t, i) => {
+    const cur = shots.at(-1);
+    if (cur && (!drawn[i] || t - starts[cur[0]] < MIN_SHOT + MOVE)) cur.push(i); else shots.push([i]);
+  });
+  if (shots.length > 1 && end - starts[shots.at(-1)[0]] < MIN_SHOT) shots.at(-2).push(...shots.pop());
+  return shots;
+}
+
 /** A section title "01 label": font size and approximate width on the poster. */
 export function sectionLabel(s) {
   const fs = Math.max(60, s.head * 0.6), label = `${String(s.index).padStart(2, "0")} ${s.label}`;
@@ -240,19 +256,13 @@ export function posterDecor(layout, title) {
   }
   layout.sections.forEach((s, i) => {
     const t = 0.25 + i * 0.08;
-    out.push(draw(roughRect(s.frame, rnd, 1.2), GREY, 2.5, t, 0.45));
+    out.push(draw(rectPath(s.frame), GREY, 2.5, t, 0.45, 'stroke-linejoin="miter"'));
     // Section title: Gaegu, sized to its header band (at least 60 px on the poster), with a navy underline.
     const { fs, label, lw } = sectionLabel(s);
     out.push(`<text x="${s.frame.x + fs * 0.6}" y="${s.frame.y + s.head * 0.55}" class="gaegu" font-size="${fs.toFixed(0)}" fill="${NAVY}" dominant-baseline="middle" data-k="fade" data-t="${t + 0.2}" data-d="0.3">${esc(label)}</text>`);
     out.push(draw(roughLine(s.frame.x + fs * 0.55, s.frame.y + s.head * 0.55 + fs * 0.62, s.frame.x + fs * 0.7 + lw, s.frame.y + s.head * 0.55 + fs * 0.56, rnd, 1.2), NAVY, 3.5, t + 0.35, 0.3));
     s.panels.forEach((p, j) => {
-      const pt = t + 0.1 + j * 0.03, r = Math.max(14, p.cw * 0.07);
-      out.push(draw(roughRect(p.frame, rnd, 1.5), INK, 2.5, pt, 0.35));
-      // Panel number in a hand-drawn circle on the top-left corner.
-      const cx = p.frame.x + r * 0.4, cy = p.frame.y + r * 0.4;
-      out.push(`<circle cx="${cx}" cy="${cy}" r="${r * 1.05}" fill="${PAPER}" data-k="fade" data-t="${pt + 0.2}" data-d="0.2"/>`);
-      out.push(draw(`M${cx + r} ${cy}A${r} ${r * 0.95} 0 1 1 ${cx + r - 1} ${cy - 0.6}`, INK, 2.5, pt + 0.25, 0.25));
-      out.push(`<text x="${cx}" y="${cy + r * 0.06}" class="gaegu" font-size="${(r * 1.1).toFixed(1)}" fill="${INK}" text-anchor="middle" dominant-baseline="middle" data-k="fade" data-t="${pt + 0.3}" data-d="0.25">${p.number}</text>`);
+      out.push(draw(rectPath(p.frame), INK, 2.5, t + 0.1 + j * 0.03, 0.35, 'stroke-linejoin="miter"'));
     });
   });
   layout.arrows.forEach((a, i) => {
@@ -290,9 +300,10 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   #poster::before{content:"";position:absolute;inset:0;background-image:${grain};opacity:.07;pointer-events:none}
   #poster>svg{position:absolute;overflow:visible}
   #decor .jua{font-family:"Jua"} #decor .gaegu{font-family:"Gaegu";font-weight:700}
-  /* Spoken caption above YouTube's bottom controls: charcoal only, up to two lines, one phrase in bold. */
-  #cap{position:absolute;left:0;right:0;bottom:${SAFE_BOTTOM + 14}px;text-align:center;font:500 46px/1.32 "Pretendard";color:${INK};letter-spacing:-.5px;white-space:pre-line;z-index:2}
-  #cap b{font-weight:800}</style></head><body><div id="cap"></div>
+  /* Spoken caption above YouTube's bottom controls: one line (the timeline keeps it to 16 characters) on a white box so
+     poster lines never run through it; charcoal only, one phrase in bold. */
+  #cap{position:absolute;left:0;right:0;bottom:${SAFE_BOTTOM + 14}px;text-align:center;font:500 46px/1.32 "Pretendard";color:${INK};letter-spacing:-.5px;white-space:nowrap;z-index:2}
+  #cap span{display:inline-block;background:#FFFFFF;padding:6px 22px 8px;border-radius:4px} #cap b{font-weight:800}</style></head><body><div id="cap"></div>
   <svg width="0" height="0" style="position:absolute"><defs>${[1, 2, 3].map((n) => `<filter id="pencil${n}" filterUnits="userSpaceOnUse" x="-1000" y="-1000" width="6000" height="4500"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="${n * 7}"/><feDisplacementMap in="SourceGraphic" scale="3"/></filter>`).join("")}
     <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="${PAPER}"/><line x1="0" y1="0" x2="0" y2="14" stroke="${NAVY}" stroke-width="5" stroke-opacity=".55"/></pattern></defs></svg>
   <div id="poster"><svg id="decor" width="${POSTER.w}" height="${POSTER.h}" viewBox="0 0 ${POSTER.w} ${POSTER.h}" style="left:0;top:0">${decor}</svg>
@@ -357,9 +368,9 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     });
     buildCamera();
   };
-  // Camera: full poster while it is drawn, dolly in to the first panel, track between cells of a panel, dolly out-move-in
-  // between panels (about 1 s), and pull back to the full poster at the end. Keys are joined by a monotone cubic so a
-  // move never overshoots or stalls; zoom is interpolated in log space.
+  // Camera: the full poster while it is drawn, one move into the first shot, then a direct pan/zoom from shot to shot
+  // (no pull-back in between), each shot held at least ${MIN_SHOT} s, and a pull-back to the full poster at the end.
+  // Keys are joined by a monotone cubic so a move never overshoots or stalls; zoom is interpolated in log space.
   const frameH = ${VH - SAFE_TOP - SAFE_BOTTOM - CAPTION_SPACE}, frameMid = ${SAFE_TOP} + frameH / 2;
   // A margin of 6% of the framed box on each side, so a zoomed-in cell still fills the frame.
   // The camera never shows beyond the paper: at least the whole-poster zoom, and kept inside its edges.
@@ -371,21 +382,30 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   const union = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
   const overview = { x: ${POSTER.w / 2}, y: ${POSTER.h / 2}, k: ${VW / POSTER.w} };
   let cam = null, moves = [];
+  const MIN_SHOT = ${MIN_SHOT}, MOVE = ${MOVE}, cameraShots = ${cameraShots.toString()};
   function buildCamera() {
-    // A section begins with its title and first row of panels in view, then the camera moves into the first cell.
-    const intro = b => { const s = layout.sections[b.section]; return view(union({ x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head }, b.panelFrame), 0.04); };
-    const keys = [[0, overview, ${VH / 2}], [OPEN - 0.8, overview, ${VH / 2}]];
+    const keys = [[0, overview, ${VH / 2}]];
     moves = [];
-    beats.forEach((b, i) => {
-      const first = i === 0 || beats[i - 1].section !== b.section, target = b.cell ? view(b.cell) : overview, last = keys.at(-1);
-      const arrive = Math.max(b.visualStartSeconds + OPEN, last[0] + (first ? 1.2 : 0.35));
-      if (i === 0) { keys.push([OPEN - 0.3, intro(b), frameMid], [arrive, target, frameMid]); moves.push({ t: OPEN - 0.8, dur: arrive - OPEN + 0.8 }); return; }
-      const dur = first ? 1.8 : 0.9, leave = Math.max(last[0] + 0.05, arrive - dur);
-      keys.push([leave, last[1], last[2]]);
-      if (first) keys.push([(leave + arrive) / 2, intro(b), frameMid]);
-      else if (beats[i - 1].panel !== b.panel && b.cell && beats[i - 1].cell) keys.push([(leave + arrive) / 2, (() => { const v = view(union(beats[i - 1].cell, b.cell), 0.1); return { ...v, k: Math.min(v.k, last[1].k * 0.8, target.k * 0.8) }; })(), frameMid]);
-      keys.push([arrive, target, b.cell ? frameMid : ${VH / 2}]);
-      moves.push({ t: leave, dur: arrive - leave });
+    let section = null;
+    cameraShots(beats.map(b => b.visualStartSeconds + OPEN), beats.map(b => !!b.cell), total + OPEN).forEach((shot, j) => {
+      const own = shot.map(i => beats[i]), cells = own.map(b => b.cell).filter(Boolean), arrive = own[0].visualStartSeconds + OPEN, last = keys.at(-1);
+      let target = overview, mid = ${VH / 2};
+      if (cells.length) {
+        const box = cells.reduce(union);
+        target = view(box); mid = frameMid;
+        // The first shot of a section also shows the section title, when that keeps the cells large.
+        const sec = own.find(b => b.cell).section, s = layout.sections[sec];
+        if (sec !== section) { const titled = view(union({ x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head }, box)); if (titled.k >= target.k * 0.7) target = titled; }
+        section = sec;
+      }
+      if (target === last[1]) return;
+      // Longer moves take a little longer (up to 1.8 s) but never cut the previous shot below ${MIN_SHOT} s.
+      const dur = j === 0 ? Math.max(0.6, Math.min(1.2, arrive - 0.9))
+        : Math.max(${MOVE}, Math.min(1.8, ${MOVE} + Math.hypot(target.x - last[1].x, target.y - last[1].y) / 3000, arrive - last[0] - ${MIN_SHOT}));
+      const leave = Math.max(last[0], arrive - dur);
+      if (leave > last[0] + 1e-3) keys.push([leave, last[1], last[2]]);
+      keys.push([Math.max(arrive, leave + 0.3), target, mid]);
+      moves.push({ t: leave, dur: keys.at(-1)[0] - leave });
     });
     const end = total + OPEN, last = keys.at(-1);
     keys.push([Math.max(last[0] + 0.05, end + 0.1), last[1], last[2]], [end + 1.5, overview, ${VH / 2}], [end + CLOSE, overview, ${VH / 2}]);
@@ -429,12 +449,8 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     });
     const at = t - OPEN, line = captions.find(c => c.startSeconds <= at && at < c.endSeconds), cap = document.getElementById('cap');
     const escH = v => v.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[ch]);
-    let text = line ? line.text : '';
-    // Two lines of at most 18 characters, broken at the space nearest the middle.
-    if (text.length > 18) { const spaces = [...text].map((ch, i) => ch === ' ' ? i : -1).filter(i => i > 0);
-      const cut = spaces.sort((a, b) => Math.abs(a - text.length / 2) - Math.abs(b - text.length / 2))[0]; if (cut) text = text.slice(0, cut) + '\\n' + text.slice(cut + 1); }
-    const bold = line?.bold?.[0], pos = bold ? text.indexOf(bold) : -1;
-    cap.innerHTML = !line ? '' : pos < 0 ? escH(text) : escH(text.slice(0, pos)) + '<b>' + escH(bold) + '</b>' + escH(text.slice(pos + bold.length));
+    const text = line ? line.text : '', bold = line?.bold?.[0], pos = bold ? text.indexOf(bold) : -1;
+    cap.innerHTML = !line ? '' : '<span>' + (pos < 0 ? escH(text) : escH(text.slice(0, pos)) + '<b>' + escH(bold) + '</b>' + escH(text.slice(pos + bold.length))) + '</span>';
   };
   // Sounds (video time): a scene-change pop, each drawn part, character entrances, red accents, and a soft camera whoosh.
   window.soundCues = () => {

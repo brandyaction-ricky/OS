@@ -100,11 +100,20 @@ export type YoutubeRenderTimeline = {
   poster: YoutubePoster;
 };
 
-/** Split one narration paragraph into short caption lines at spaces, breaking after sentence or clause ends. */
-export function captionChunks(text: string, max = 34) {
+/** Split one narration paragraph into one-line captions (at most 16 characters) at spaces, breaking after sentence or clause ends. */
+export function captionChunks(text: string, max = 16) {
   const chunks: string[] = [];
-  // A tail of a few characters ("있습니다") joins the line before it instead of flashing alone.
-  const push = (line: string) => { if (line.length < 6 && chunks.length) chunks[chunks.length - 1] += ` ${line}`; else chunks.push(line); };
+  // A tail of a few characters ("있습니다") does not flash alone: it joins the line before, or the two are re-split evenly.
+  const push = (line: string) => {
+    const prev = chunks.at(-1);
+    if (line.length >= 6 || !prev) return void chunks.push(line);
+    const words = `${prev} ${line}`.split(" ");
+    const splits = words.slice(1).map((_, i) => [words.slice(0, i + 1).join(" "), words.slice(i + 1).join(" ")])
+      .filter(([a, b]) => a.length <= max && b.length <= max).sort((x, y) => Math.max(x[0].length, x[1].length) - Math.max(y[0].length, y[1].length));
+    if (`${prev} ${line}`.length <= max) chunks[chunks.length - 1] = `${prev} ${line}`;
+    else if (splits.length) chunks.splice(-1, 1, ...splits[0]);
+    else chunks.push(line);
+  };
   let current = "";
   for (const word of text.replace(/\s+/g, " ").trim().split(" ")) {
     if (current && `${current} ${word}`.length > max) { push(current); current = ""; }

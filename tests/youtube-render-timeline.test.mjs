@@ -81,8 +81,10 @@ test('drawing parts start on their spoken cue, and each caption line bolds one c
     JSON.stringify([['많아도'], ['줄이지'], []]));
 });
 
-test('caption lines stay short without leaving a tiny tail alone', () => {
-  const lines = captionChunks('글로벌 강점 교육기관 갤럽의 공식인증 강점 코치이자 사람들 강점 찾아주는 일을 하고 있습니다.');
-  assert.ok(lines.every((line) => line.length >= 6));
+test('caption lines fit one 16-character line without leaving a tiny tail alone', () => {
+  const text = '글로벌 강점 교육기관 갤럽의 공식인증 강점 코치이자 사람들 강점 찾아주는 일을 하고 있습니다.';
+  const lines = captionChunks(text);
+  assert.ok(lines.every((line) => line.length <= 16 && line.length >= 6), JSON.stringify(lines));
+  assert.equal(lines.join(' '), text);
   assert.ok(lines.at(-1).endsWith('있습니다.'));
 });
