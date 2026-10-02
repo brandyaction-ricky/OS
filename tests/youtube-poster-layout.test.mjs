@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cameraShots, monotoneCubic, posterLayout, youtubeChapters } from "../tools/render-youtube-scene.mjs";
+import { deckCameraPlan, monotoneCubic, posterLayout, youtubeChapters } from "../tools/render-youtube-scene.mjs";
 
 test("the poster fits every scene cell inside 3840×2160 and important panels get bigger cells", () => {
   const poster = { title: "t", sections: [
@@ -33,13 +33,17 @@ test("YouTube chapters start at 0:00 and flag fewer than three sections", () => 
   assert.ok(!youtubeChapters([{ label: "a", start: 0, end: 50 }, { label: "b", start: 50, end: 90 }]).ok);
 });
 
-test("camera shots group short scenes within a panel only, and caption-only scenes stay in the shot before them", () => {
-  // Scenes start at these times (video seconds); scene 3 has nothing to draw.
-  const starts = [2, 7, 8.5, 10, 16, 17, 30, 31.5], drawn = [true, true, true, false, true, true, true, true];
-  const panels = ["1a", "1a", "1a", "", "1b", "1b", "2a", "2a"];
-  assert.deepEqual(cameraShots(starts, drawn, panels, 40), [[0], [1, 2, 3], [4, 5], [6, 7]]);
-  // A panel's tail under 3 s joins the panel's shot before it; a longer one stays its own (short) shot.
-  assert.deepEqual(cameraShots([2, 8, 10, 10.5], [true, true, true, true], ["1a", "1a", "1a", "1b"], 20), [[0, 1, 2], [3]]);
-  assert.deepEqual(cameraShots([2, 8, 10, 11], [true, true, true, true], ["1a", "1a", "1a", "1b"], 20), [[0], [1, 2], [3]]);
-  assert.deepEqual(cameraShots([2, 9, 12], [true, true, true], ["1a", "1a", "1a"], 14), [[0], [1, 2]], "a 2 s last shot joins the one before");
+test("the camera leaves a deck only after its drawings end, sums up each finished section, and ends on the last", () => {
+  const decks = [{ start: 2, length: 6, section: 0 }, { start: 12, length: 3, section: 0 }, { start: 18, length: 5, section: 1 }, { start: 30, length: 2, section: 1 }];
+  const { keys, arrive } = deckCameraPlan(decks, () => 1, 40);
+  assert.deepEqual(arrive, [2, 12, 20.5, 30], "deck 2 waits for the section summary, so its drawing starts late");
+  assert.deepEqual(keys.map((k) => [k.t, k.at.deck ?? `s${k.at.section}`]),
+    [[2, 0], [11, 0], [12, 1], [16, 1], [17, "s0"], [19.5, "s0"], [20.5, 2], [29, 2], [30, 3], [34, 3], [35, "s1"], [40, "s1"]]);
+  keys.slice(1).forEach((k, n) => assert.ok(k.t > keys[n].t, `keys move forward at ${k.t}`));
+  // Each deck is left no sooner than 4 s after arrival and after its drawings have finished.
+  decks.forEach((d, j) => {
+    const leave = keys.find((k) => k.t > arrive[j] && k.at.deck !== j && keys[keys.indexOf(k) - 1].at.deck === j);
+    const departed = keys[keys.indexOf(leave) - 1].t;
+    assert.ok(departed >= arrive[j] + Math.max(4, d.length), `deck ${j} left at ${departed}`);
+  });
 });

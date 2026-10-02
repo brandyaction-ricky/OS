@@ -118,8 +118,9 @@ const VW = 1920, VH = 1080, POSTER = { w: 3840, h: 2160 };
 const SAFE_TOP = 65, SAFE_BOTTOM = 130, CAPTION_SPACE = 120;
 /** Seconds of opening (poster drawn empty) before the narration, and of closing full view after it. */
 const OPEN = 1.8, CLOSE = 5;
-// The camera holds every shot at least MIN_SHOT seconds; a move between shots takes MOVE seconds or a little more.
-const MIN_SHOT = 4, MOVE = 1;
+// The camera holds every deck at least MIN_SHOT seconds and leaves SETTLE after its last drawing; a move takes MOVE
+// seconds or a little more; the pull-back to a finished section is held SUMMARY_HOLD.
+const MIN_SHOT = 4, MOVE = 1, SETTLE = 0.4, SUMMARY_HOLD = 2.5;
 /** Visual motion is stepped at 15 fps (drawn on twos); audio and captions stay continuous. */
 const STEP_FPS = 15;
 /** Each scene is shown through this window of its 1280×720 frame (the band its content is centred in). */
@@ -168,8 +169,10 @@ export function posterLayout(poster, cellCounts, size = POSTER) {
         }
         ly += line.h + PANEL_GAP;
       }
+      // The frame hugs its decks (and its title), centred on the poster.
+      const w = Math.min(size.w - 2 * M, Math.max(...lines.map((line) => line.w), sectionLabel({ head: HEAD, index: s + 1, label: section.label }).lw * 1.2) + 2 * PAD), dx = (size.w - 2 * M - w) / 2;
       const h = HEAD + 2 * PAD + inner;
-      sections.push({ label: section.label, index: s + 1, frame: { x: M, y: top, w: size.w - 2 * M, h }, head: HEAD, panels });
+      sections.push({ label: section.label, index: s + 1, frame: { x: M + dx, y: top, w, h }, head: HEAD, panels });
       y += h + GAP;
     });
     return { fits: fits && y - GAP + M <= size.h, sections };
@@ -177,7 +180,7 @@ export function posterLayout(poster, cellCounts, size = POSTER) {
   let lo = 60, hi = 1400;
   for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (attempt(mid).fits) lo = mid; else hi = mid; }
   const { sections } = attempt(lo);
-  const arrows = sections.slice(1).map((next, i) => ({ x: M + 70, y1: sections[i].frame.y + sections[i].frame.h + 10, y2: next.frame.y - 10 }));
+  const arrows = sections.slice(1).map((next, i) => ({ x: size.w / 2, y1: sections[i].frame.y + sections[i].frame.h + 10, y2: next.frame.y - 10 }));
   return { title: { x: size.w / 2, y: M + TITLE / 2 - 10 }, sections, arrows, cellWidth: lo };
 }
 
@@ -219,23 +222,35 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 /** The poster's own drawing: title with a red highlighter, section frames and titles, plain rectangular panel frames, arrows. */
 /**
- * Group scenes into camera shots (lists of scene indexes). Short scenes of the same panel share a shot (their cells
- * are side by side and framed together) until the shot lasts MIN_SHOT plus the move out of it; a panel's tail
- * shorter than MIN_SHOT - MOVE joins the panel's shot before it. A caption-only scene stays in the shot before it.
- * Shots never span two panels: a short shot is still held MIN_SHOT and the next shot's drawing waits for the camera
- * (see buildCamera), which keeps cells large at the cost of a drawing up to about 2 s behind the voice.
+ * Camera plan over decks (one per paragraph): [{ start, length, section }] in video seconds, `length` being how long the
+ * deck's drawings and highlights take once begun. The camera arrives at a deck when its paragraph starts, or later (the
+ * drawing then waits for it); it leaves only after every drawing has finished and at least MIN_SHOT has passed. After
+ * the last deck of a section with two or more decks it pulls back to that section for SUMMARY_HOLD, and the video ends
+ * on the last section. `move(a, b)` gives the seconds between two targets ({ deck } or { section }).
+ * Returns the keys [{ t, at }] and each deck's arrival.
  */
-export function cameraShots(starts, drawn, panels, end) {
-  const shots = [], long = (shot, until) => until - starts[shot[0]] >= MIN_SHOT + MOVE;
-  starts.forEach((t, i) => {
-    const cur = shots.at(-1), prev = shots.at(-2);
-    if (cur && (!drawn[i] || (panels[i] === panels[cur[0]] && !long(cur, t)))) return cur.push(i);
-    if (cur && prev && t - starts[cur[0]] < MIN_SHOT - MOVE && panels[cur[0]] === panels[prev[0]]) prev.push(...shots.pop());
-    shots.push([i]);
+export function deckCameraPlan(decks, move, end) {
+  const keys = [], arrive = [], size = (s) => decks.filter((d) => d.section === s).length;
+  const free = (j) => arrive[j] + Math.max(MIN_SHOT, decks[j].length + SETTLE);
+  decks.forEach((d, j) => {
+    if (!j) { arrive.push(d.start); keys.push({ t: d.start, at: { deck: 0 } }); return; }
+    let at = { deck: j - 1 }, t = free(j - 1);
+    if (decks[j - 1].section !== d.section && size(decks[j - 1].section) > 1) {
+      const sum = { section: decks[j - 1].section };
+      keys.push({ t, at });
+      t += move(at, sum);
+      keys.push({ t, at: sum });
+      at = sum;
+      t = Math.max(t + SUMMARY_HOLD, d.start - move(sum, { deck: j }));
+    }
+    const dur = move(at, { deck: j }), a = Math.max(d.start, t + dur);
+    keys.push({ t: a - dur, at }, { t: a, at: { deck: j } });
+    arrive.push(a);
   });
-  const cur = shots.at(-1), prev = shots.at(-2);
-  if (prev && panels[cur[0]] === panels[prev[0]] && end - starts[cur[0]] < MIN_SHOT) prev.push(...shots.pop());
-  return shots;
+  const l = decks.length - 1, sum = { section: decks[l].section }, t = free(l);
+  if (t + move({ deck: l }, sum) < end) keys.push({ t, at: { deck: l } }, { t: t + move({ deck: l }, sum), at: sum });
+  keys.push({ t: Math.max(keys.at(-1).t + 0.05, end), at: keys.at(-1).at });
+  return { keys, arrive };
 }
 
 /** A section title "01 label": font size and approximate width on the poster. */
@@ -388,39 +403,37 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   const union = (a, b) => { const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
   const overview = { x: ${POSTER.w / 2}, y: ${POSTER.h / 2}, k: ${VW / POSTER.w} };
   let cam = null, moves = [];
-  const MIN_SHOT = ${MIN_SHOT}, MOVE = ${MOVE}, cameraShots = ${cameraShots.toString()};
+  const MIN_SHOT = ${MIN_SHOT}, MOVE = ${MOVE}, SETTLE = ${SETTLE}, SUMMARY_HOLD = ${SUMMARY_HOLD}, deckCameraPlan = ${deckCameraPlan.toString()};
   function buildCamera() {
-    const keys = [[0, overview, ${VH / 2}]];
     moves = [];
-    let section = null;
-    // The poster area a view shows above the bottom captions and below the top safe zone.
-    const shows = (v, b) => b.x >= v.x - ${VW / 2} / v.k && b.x + b.w <= v.x + ${VW / 2} / v.k && b.y >= v.y - (frameMid - ${SAFE_TOP}) / v.k && b.y + b.h <= v.y + (frameH + ${SAFE_TOP} - frameMid) / v.k;
     const starts = beats.map(b => b.visualStartSeconds + OPEN);
-    cameraShots(starts, beats.map(b => !!b.cell), beats.map(b => b.panel), total + OPEN).forEach((shot, j) => {
-      const own = shot.map(i => beats[i]), cells = own.map(b => b.cell).filter(Boolean), last = keys.at(-1);
-      let target = overview, mid = ${VH / 2};
-      if (cells.length) {
-        const box = cells.reduce(union);
-        target = view(box); mid = frameMid;
-        // The first shot of a section also shows the section title, when it fits whole and keeps the cells large.
-        const sec = own.find(b => b.cell).section, s = layout.sections[sec], title = { x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head };
-        if (sec !== section) { const titled = view(union(title, box)); if (titled.k >= target.k * 0.7 && shows(titled, title)) target = titled; }
-        section = sec;
-      }
-      if (target === last[1]) return;
-      // Longer moves take a little longer (up to 1.8 s). The previous shot is held at least ${MIN_SHOT} s; if that makes the
-      // camera arrive after this shot's scenes have started, they wait and are drawn as it arrives.
-      const dur = j === 0 ? Math.max(0.6, Math.min(1.2, starts[shot[0]] - 0.9))
-        : Math.min(1.8, ${MOVE} + Math.hypot(target.x - last[1].x, target.y - last[1].y) / 3000);
-      const arrive = j === 0 ? starts[shot[0]] : Math.max(starts[shot[0]], last[0] + ${MIN_SHOT} + dur), leave = arrive - dur;
-      shot.forEach(i => { beats[i].lag = Math.max(0, arrive - starts[i]); });
-      if (leave > last[0] + 1e-3) keys.push([leave, last[1], last[2]]);
-      keys.push([arrive, target, mid]);
-      moves.push({ t: leave, dur });
+    // How long each scene's drawings and highlights take once it begins (a character's sweep and fade run past d).
+    const lengths = beats.map((b, i) => svgs[i] ? Math.max(0, ...[...svgs[i].querySelectorAll('[data-k]')].map(el =>
+      (b.cueSeconds?.[+(el.dataset.g || 0)] ?? (+(el.dataset.g || 0)) * .45) + +(el.dataset.s || 0) + +(el.dataset.d || 0) * (el.dataset.k === 'character' ? 1.2 : 1))) : 0);
+    // A deck is the run of drawn scenes of one paragraph; caption-only scenes keep the deck before them.
+    const decks = [];
+    beats.forEach((b, i) => {
+      if (!b.cell) return;
+      const d = decks.at(-1);
+      if (d && d.panel === b.panel) { d.beats.push(i); d.length = Math.max(d.length, starts[i] - d.start + lengths[i]); }
+      else decks.push({ panel: b.panel, section: b.section, start: starts[i], length: lengths[i], beats: [i], frame: b.panelFrame });
     });
-    const end = total + OPEN, last = keys.at(-1);
-    keys.push([Math.max(last[0] + 0.05, end + 0.1), last[1], last[2]], [end + 1.5, overview, ${VH / 2}], [end + CLOSE, overview, ${VH / 2}]);
-    moves.push({ t: end + 0.1, dur: 1.4 });
+    const sectionBox = s => { const sec = layout.sections[s]; return [{ x: sec.frame.x, y: sec.frame.y, w: sec.labelW, h: sec.head }, ...decks.filter(d => d.section === s).map(d => d.frame)].reduce(union); };
+    const target = at => at.deck !== undefined ? view(decks[at.deck].frame, 0.03) : view(sectionBox(at.section), 0.04);
+    const move = (a, b) => { const p = target(a), q = target(b);
+      return Math.min(1.8, ${MOVE} + Math.hypot(q.x - p.x, q.y - p.y) * Math.min(p.k, q.k) / 4000 + 0.15 * Math.abs(Math.log(q.k / p.k))); };
+    const end = total + OPEN + CLOSE - 0.05;
+    const plan = deckCameraPlan(decks, move, end);
+    decks.forEach((d, j) => d.beats.forEach(i => { beats[i].lag = Math.max(0, plan.arrive[j] - starts[i]); }));
+    // Opening: the whole poster while its frames are drawn, then one move into the first deck.
+    const first = plan.keys[0].t, into = Math.max(0.6, Math.min(1.2, first - 0.9));
+    const keys = [[0, overview, ${VH / 2}], [first - into, overview, ${VH / 2}]];
+    moves.push({ t: first - into, dur: into });
+    plan.keys.forEach((k, n) => {
+      keys.push([k.t, target(k.at), frameMid]);
+      const prev = plan.keys[n - 1];
+      if (prev && JSON.stringify(prev.at) !== JSON.stringify(k.at)) moves.push({ t: prev.t, dur: k.t - prev.t });
+    });
     const ts = keys.map(k => k[0]);
     const fx = monotoneCubic(ts, keys.map(k => k[1].x)), fy = monotoneCubic(ts, keys.map(k => k[1].y));
     const fk = monotoneCubic(ts, keys.map(k => Math.log(k[1].k))), fm = monotoneCubic(ts, keys.map(k => k[2]));
