@@ -120,7 +120,7 @@ const SAFE_TOP = 65, SAFE_BOTTOM = 130, CAPTION_SPACE = 120;
 const OPEN = 1.8, CLOSE = 5;
 // The camera holds every deck at least MIN_SHOT seconds and leaves SETTLE after its last drawing; a move takes MOVE
 // seconds or a little more; the pull-back to a finished section is held SUMMARY_HOLD.
-const MIN_SHOT = 4, MOVE = 1, SETTLE = 0.4, SUMMARY_HOLD = 2.5;
+const MIN_SHOT = 4, MOVE = 1, SETTLE = 0.4, SUMMARY_HOLD = 2;
 /** Visual motion is stepped at 15 fps (drawn on twos); audio and captions stay continuous. */
 const STEP_FPS = 15;
 /** Each scene is shown through this window of its 1280×720 frame (the band its content is centred in). */

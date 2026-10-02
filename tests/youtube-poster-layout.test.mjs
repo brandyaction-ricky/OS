@@ -36,9 +36,9 @@ test("YouTube chapters start at 0:00 and flag fewer than three sections", () => 
 test("the camera leaves a deck only after its drawings end, sums up each finished section, and ends on the last", () => {
   const decks = [{ start: 2, length: 6, section: 0 }, { start: 12, length: 3, section: 0 }, { start: 18, length: 5, section: 1 }, { start: 30, length: 2, section: 1 }];
   const { keys, arrive } = deckCameraPlan(decks, () => 1, 40);
-  assert.deepEqual(arrive, [2, 12, 20.5, 30], "deck 2 waits for the section summary, so its drawing starts late");
+  assert.deepEqual(arrive, [2, 12, 20, 30], "deck 2 waits for the section summary, so its drawing starts late");
   assert.deepEqual(keys.map((k) => [k.t, k.at.deck ?? `s${k.at.section}`]),
-    [[2, 0], [11, 0], [12, 1], [16, 1], [17, "s0"], [19.5, "s0"], [20.5, 2], [29, 2], [30, 3], [34, 3], [35, "s1"], [40, "s1"]]);
+    [[2, 0], [11, 0], [12, 1], [16, 1], [17, "s0"], [19, "s0"], [20, 2], [29, 2], [30, 3], [34, 3], [35, "s1"], [40, "s1"]]);
   keys.slice(1).forEach((k, n) => assert.ok(k.t > keys[n].t, `keys move forward at ${k.t}`));
   // Each deck is left no sooner than 4 s after arrival and after its drawings have finished.
   decks.forEach((d, j) => {
