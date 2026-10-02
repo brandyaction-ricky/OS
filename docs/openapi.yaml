@@ -217,6 +217,7 @@ paths:
         "200": { description: 운영 기록 목록 }
     post:
       summary: 업무·목표·회의·콘텐츠·성과 기록 생성
+      description: 기존 계약 유지. task의 metadata.extractionReviewed=true는 활성 구성원 assigneeId, 유효 dueDate, 접근 가능한 원본 회의(metadata.meetingId 또는 parentId)를 요구합니다. 회의 검수 항목은 metadata.reviewItems, 업무 완료 기준은 metadata.doneCriteria로 추가됩니다.
       requestBody:
         required: true
         content:

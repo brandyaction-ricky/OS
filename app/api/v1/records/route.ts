@@ -1,3 +1,4 @@
+import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { contentOrigin } from "@/lib/content-origin";
 import { assertSkillSource } from "@/lib/server/skill-source";
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    await assertReviewedMeetingTask(actor,input);
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 작성해 주세요.");
@@ -128,11 +130,12 @@ export async function PATCH(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordUpdateSchema.parse(await parseJson(request));
-    const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata").eq("id", input.id).maybeSingle();
+    const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata,assignee_id,due_date,parent_id").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
+    await assertReviewedMeetingTask(actor,input,current);
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");

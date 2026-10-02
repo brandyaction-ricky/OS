@@ -10,7 +10,6 @@ import {
   FileSearch,
   FileText,
   Film,
-  GitBranch,
   Goal,
   Home,
   KeyRound,
@@ -84,8 +83,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "데이터 연결", href: "/performance/connections", icon: Link2, ready: true },
   ] },
   { id: "team", label: "팀", icon: Users, href: "/organization/meetings", pages: [
-    { label: "회의·결정", href: "/organization/meetings", icon: MessageSquareText, aliases: ["조직운영", "회의"], ready: true },
-    { label: "의사결정", href: "/home/decisions", icon: GitBranch, group: "회의·결정", ready: true },
+    { label: "회의·결정", href: "/organization/meetings", icon: MessageSquareText, aliases: ["조직운영", "회의", "의사결정"], ready: true },
     { label: "업무", href: "/organization/tasks", icon: ListChecks, aliases: ["업무 관리"], ready: true },
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정"], ready: true },
     { label: "연차·휴가", href: "/organization/leave", icon: Plane, group: "일정·휴가", ready: true },
@@ -106,6 +104,7 @@ export const NAV_STAGES: NavStage[] = [
 ];
 
 const NAV_ALIASES: Record<string, string> = {
+  "/home/decisions": "/organization/meetings",
   "/settings/monitoring": "/settings/connections",
   "/settings/channels": "/settings/connections",
   "/content/automation": "/content/publishing",

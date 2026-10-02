@@ -1,6 +1,14 @@
 "use client";
 import { useRecordDeepLink } from "./use-record-deep-link";
 
+import { useSearchParams } from "next/navigation";
+import { contentOrigin } from "@/lib/content-origin";
+import { demoRecord } from "@/lib/demo-record";
+import { makeMeetingReview, meetingReviewErrors, similarMeetings, readMeetingReview, normalizeMeetingTerms, matchMeetingAssignee, type MeetingReviewItem, type ReviewMember } from "@/lib/meeting-review";
+import { MeetingReviewEditor } from "./meeting-review-editor";
+import { WorkspaceLoadState } from "./workspace-load-state";
+import { OperationsWorkspace } from "./operations-workspace";
+import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 import { PageTitle } from "./page-title";
 
 import {
@@ -24,7 +32,8 @@ import {
   createDocument,
   createRecord,
   getMeetingRecordingUrl,
-  listRecords,
+  listAllRecordsOfType,
+  listMembers,
   prepareMeeting,
   summarizeMeeting,
   transcribeMeeting,
@@ -70,6 +79,16 @@ function suggestMeetingTitle(brand: string) {
 
 export function MeetingWorkspace() {
   const { accessToken, demo, profile } = useSession();
+  const params = useSearchParams();
+  const decisionsTab = params.get("tab") === "decisions";
+  const [members, setMembers] = useState<ReviewMember[]>([]);
+  const [reviewItems, setReviewItems] = useState<MeetingReviewItem[]>([]);
+  const [manualDecisions, setManualDecisions] = useState("");
+  const [manualTasks, setManualTasks] = useState("");
+  const [loading, setLoading] = useState(!demo);
+  const [notice, setNotice] = useState("");
+  const [comparison, setComparison] = useState<OsRecord | null>(null);
+  const savingRef = useRef(false);
   const [meetings, setMeetings] = useState<OsRecord[]>([]);
   const [decisions, setDecisions] = useState<OsRecord[]>([]);
   const [tasks, setTasks] = useState<OsRecord[]>([]);
@@ -98,16 +117,19 @@ export function MeetingWorkspace() {
   const chunksRef = useRef<Blob[]>([]);
 
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) {setMembers([{id:profile?.id||"demo",display_name:"데모 담당자",email:"demo@example.test",is_active:true}]);return;}
+    setLoading(true);
     try {
-      const [meetingResult, decisionResult, taskResult] = await Promise.all([
-        listRecords(accessToken, "meeting", "limit=200"),
-        listRecords(accessToken, "decision", "limit=200"),
-        listRecords(accessToken, "task", "limit=200"),
+      const [meetingResult, decisionResult, taskResult, memberResult] = await Promise.all([
+        listAllRecordsOfType(accessToken, "meeting"),
+        listAllRecordsOfType(accessToken, "decision"),
+        listAllRecordsOfType(accessToken, "task"),
+        listMembers(accessToken),
       ]);
-      setMeetings(meetingResult.records);
-      setDecisions(decisionResult.records);
-      setTasks(taskResult.records);
+      setMeetings(meetingResult.filter(item=>contentOrigin(item)==="own"));
+      setDecisions(decisionResult.filter(item=>contentOrigin(item)==="own"));
+      setTasks(taskResult.filter(item=>contentOrigin(item)==="own"));
+      setMembers(memberResult.members.filter(member=>member.is_active));
       setError("");
     } catch (reason) {
       setError(
@@ -116,14 +138,17 @@ export function MeetingWorkspace() {
           : "회의 기록을 불러오지 못했습니다.",
       );
     }
-  }, [accessToken, demo]);
+    finally {setLoading(false);}
+  }, [accessToken, demo, profile?.id]);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  useEffect(()=>{setReviewItems(previous=>previous.map(item=>!item.assigneeId&&item.assigneeHint?{...item,assigneeId:matchMeetingAssignee(item.assigneeHint,members)}:item));},[members]);
+
   const openNew = () => {
-    setEditing(null);
+    setEditing(null); setReviewItems([]); setManualDecisions(""); setManualTasks(""); setComparison(null);
     setTitle(suggestMeetingTitle(""));
     setBrand("");
     titleEditedRef.current = false;
@@ -137,11 +162,12 @@ export function MeetingWorkspace() {
     setDrawerOpen(true);
   };
   const openEdit = (meeting: OsRecord) => {
-    setEditing(meeting);
+    setEditing(meeting); setManualDecisions(""); setManualTasks(""); setComparison(null);
+    setReviewItems(readMeetingReview(meeting.metadata.reviewItems) ?? makeMeetingReview({decisions:Array.isArray(meeting.metadata.decisions)?meeting.metadata.decisions.map(String):[],pending:Array.isArray(meeting.metadata.pending)?meeting.metadata.pending.map(String):[],todos:Array.isArray(meeting.metadata.todos)?meeting.metadata.todos as MeetingSummaryResult["todos"]:[]},members));
     setTitle(meeting.title);
     setBrand(meeting.brand ?? "");
     titleEditedRef.current = true;
-    setStartsAtDraft(meeting.starts_at?.slice(0, 16) ?? "");
+    setStartsAtDraft(meeting.starts_at ? new Date(new Date(meeting.starts_at).getTime()-new Date(meeting.starts_at).getTimezoneOffset()*60000).toISOString().slice(0,16) : "");
     setStatusDraft(meeting.status);
     setSummary(meta(meeting, "summary"));
     setSummaryMode(meta(meeting, "summaryMode") as "ai" | "local" | "");
@@ -209,14 +235,11 @@ export function MeetingWorkspace() {
     setBusy(true);
     setError("");
     try {
-      const result = await summarizeMeeting(
-        accessToken,
-        text,
-        editing?.starts_at?.slice(0, 10),
-      );
-      setSummary(result.summary);
+      const result: MeetingSummaryResult = demo ? {summary:text,mode:"local",decisions:[],pending:text.split("\n").filter(Boolean),todos:[]} : await summarizeMeeting(accessToken, text, startsAtDraft.slice(0,10));
+      setSummary(normalizeMeetingTerms(result.summary));
       setSummaryMode(result.mode);
       setStructured(result);
+      setReviewItems(makeMeetingReview(result,members));
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -288,12 +311,17 @@ export function MeetingWorkspace() {
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (savingRef.current) return;
+    const errors=meetingReviewErrors(reviewItems,members);
+    if(errors.length || manualDecisions.trim() || manualTasks.trim()){setError(errors[0]||"직접 입력한 내용을 검수에 추가해 주세요.");return;}
+    savingRef.current=true;
     const form = new FormData(event.currentTarget);
     const value = (name: string) => String(form.get(name) ?? "").trim();
     setBusy(true);
     setError("");
     try {
       const recordingPath = meta(editing, "recordingPath");
+      const reviewed = { decisions:reviewItems.filter(item=>item.kind==="decision").map(item=>item.title.trim()), pending:reviewItems.filter(item=>item.kind==="pending").map(item=>item.title.trim()), todos:reviewItems.filter(item=>item.kind==="task").map(item=>({title:item.title.trim(),assignee:members.find(member=>member.id===item.assigneeId)?.display_name||"",assigneeId:item.assigneeId,dueDate:item.dueDate,dueLabel:item.dueDate,doneCriteria:item.doneCriteria,reviewId:item.id})) };
       const input = {
         recordType: "meeting",
         title: value("title"),
@@ -316,13 +344,16 @@ export function MeetingWorkspace() {
           transcript,
           summary,
           summaryMode,
-          decisions: structured?.decisions ?? [],
-          pending: structured?.pending ?? [],
-          todos: structured?.todos ?? [],
+          decisions: reviewed.decisions,
+          pending: reviewed.pending,
+          todos: reviewed.todos,
+          reviewItems,
+          extractionDraft: structured,
         },
       };
       let meeting: OsRecord;
-      if (editing)
+      if (demo) meeting=demoRecord(input,profile?.id||"demo",editing||undefined);
+      else if (editing)
         ({ record: meeting } = await updateRecord(accessToken, {
           ...input,
           id: editing.id,
@@ -330,65 +361,24 @@ export function MeetingWorkspace() {
         }));
       else ({ record: meeting } = await createRecord(accessToken, input));
 
-      const decisionLines = value("decisions")
-        .split("\n")
-        .map((line) => line.replace(/^[-*]\s*/, "").trim())
-        .filter(Boolean);
-      const taskLines = value("actions")
-        .split("\n")
-        .map((line) => line.replace(/^[-*]\s*/, "").trim())
-        .filter(Boolean);
-      const existingDecisionTitles = new Set(
-        decisions
-          .filter((item) => item.parent_id === meeting.id)
-          .map((item) => item.title),
-      );
-      for (const title of [
-        ...new Set([...(structured?.decisions ?? []), ...decisionLines]),
-      ].filter((item) => !existingDecisionTitles.has(item)))
-        await createRecord(accessToken, {
-          recordType: "decision",
-          parentId: meeting.id,
-          title,
-          description: `회의: ${meeting.title}`,
-          status: "decided",
-          team: meeting.team,
-          brand: meeting.brand,
-          metadata: { meetingId: meeting.id, source: "meeting" },
-        });
-      const todoRows = [
-        ...(structured?.todos ?? []),
-        ...taskLines.map((title) => ({
-          title,
-          assignee: "",
-          dueDate: "",
-          dueLabel: "",
-        })),
-      ];
-      const existingTaskTitles = new Set(
-        tasks
-          .filter((item) => item.parent_id === meeting.id)
-          .map((item) => item.title),
-      );
-      for (const todo of todoRows.filter(
-        (item) => !existingTaskTitles.has(item.title),
-      ))
-        await createRecord(accessToken, {
-          recordType: "task",
-          parentId: meeting.id,
-          title: todo.title,
-          description: `회의 후속 업무: ${meeting.title}${todo.assignee ? ` · 담당 ${todo.assignee}` : ""}${todo.dueLabel ? ` · ${todo.dueLabel}` : ""}`,
-          status: "planned",
-          team: meeting.team,
-          brand: meeting.brand,
-          dueDate: todo.dueDate || null,
-          metadata: {
-            meetingId: meeting.id,
-            source: "meeting",
-            assigneeName: todo.assignee,
-            dueLabel: todo.dueLabel,
-          },
-        });
+      // Keep the saved parent version for a retry after a partial child failure.
+      setEditing(meeting);
+      if(demo)setMeetings(previous=>[meeting,...previous.filter(item=>item.id!==meeting.id)]);
+      const [freshDecisions,freshTasks]=demo?[decisions,tasks]:await Promise.all([listAllRecordsOfType(accessToken,"decision"),listAllRecordsOfType(accessToken,"task")]);
+      const existingDecisionTitles=new Set(freshDecisions.filter(item=>(item.metadata.meetingId||item.parent_id)===meeting.id).map(item=>item.title));
+      for(const title of [...new Set(reviewed.decisions)].filter(title=>!existingDecisionTitles.has(title))) {
+        const body={recordType: "decision", parentId: meeting.id,title,description:`회의: ${meeting.title}`,status:"decided",team:meeting.team,brand:meeting.brand,metadata:{meetingId:meeting.id,source:"meeting"}};
+        const record=demo?demoRecord(body,profile?.id||"demo"):(await createRecord(accessToken,body)).record;
+        setDecisions(previous=>[record,...previous]);existingDecisionTitles.add(title);
+      }
+      const linkedTasks=freshTasks.filter(item=>(item.metadata.meetingId||item.parent_id)===meeting.id);
+      for(const todo of reviewed.todos) {
+        const existing=linkedTasks.find(item=>item.metadata.extractionReviewId===todo.reviewId || item.title===todo.title);
+        const body={recordType: "task", parentId: meeting.id,title:todo.title,description:existing?.description||`회의 후속 업무: ${meeting.title}`,status:existing?.status||"planned",team:meeting.team,brand:meeting.brand,assigneeId:todo.assigneeId,dueDate:todo.dueDate,metadata:{...existing?.metadata,meetingId:meeting.id,source:"meeting",assigneeName:todo.assignee,doneCriteria:todo.doneCriteria,extractionReviewId:todo.reviewId,extractionReviewed:true}};
+        if(existing && existing.assignee_id===todo.assigneeId && existing.due_date===todo.dueDate && existing.metadata.doneCriteria===todo.doneCriteria)continue;
+        const record=demo?demoRecord({...body,parentId:existing?.parent_id??meeting.id},profile?.id||"demo",existing):existing?(await updateRecord(accessToken,{...body,parentId:existing.parent_id,id:existing.id,expectedVersion:existing.version})).record:(await createRecord(accessToken,body)).record;
+        setTasks(previous=>[record,...previous.filter(item=>item.id!==record.id)]);if(existing)linkedTasks.splice(linkedTasks.indexOf(existing),1,record);else linkedTasks.push(record);
+      }
 
       // 지식 문서함 반영 — 텔레그램 /회의기록과 같은 두 문서(원문 01_Raw/주간회의,
       // 요약 02_Wiki/{사업}/운영/주간회의요약)를 만든다. 요약이 있고, 사업(브랜드)을
@@ -398,15 +388,15 @@ export function MeetingWorkspace() {
         | { rawId?: string; summaryId?: string }
         | undefined;
       const business = resolveMeetingBusiness(meeting.brand);
-      if (summary.trim() && business && !existingDocuments?.rawId && !existingDocuments?.summaryId) {
+      if (!demo && summary.trim() && business && !existingDocuments?.rawId && !existingDocuments?.summaryId) {
         try {
           const meetingDate = meeting.starts_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
           const raw = buildMeetingRawDocument(business, meetingDate, transcript || meeting.description || "");
           const summaryDoc = buildMeetingSummaryDocument(business, meetingDate, {
             summary,
-            decisions: structured?.decisions ?? [],
-            pending: structured?.pending ?? [],
-            todos: structured?.todos ?? [],
+            decisions: reviewed.decisions,
+            pending: reviewed.pending,
+            todos: reviewed.todos,
           });
           const [rawResult, summaryResult] = await Promise.all([
             createDocument(accessToken, { title: raw.title, content: raw.content_md, folder: raw.folder, brand: meeting.brand, team: meeting.team, tags: ["주간회의", business.label], source: "meeting_raw", sourceRef: meeting.id }),
@@ -418,7 +408,7 @@ export function MeetingWorkspace() {
             metadata: { ...meeting.metadata, knowledgeDocuments: { rawId: rawResult.document.id, summaryId: summaryResult.document.id } },
           });
         } catch (docError) {
-          console.error("meeting knowledge document push failed", docError);
+          void docError; setNotice("회의·후속 업무는 저장됐지만 문서함 반영은 완료하지 못했습니다. 회의를 다시 열어 확인해 주세요.");
         }
       }
 
@@ -433,10 +423,13 @@ export function MeetingWorkspace() {
           : "회의를 저장하지 못했습니다.",
       );
     } finally {
+      savingRef.current=false;
       setBusy(false);
     }
   };
 
+  const reviewErrors=meetingReviewErrors(reviewItems,members);
+  const similar=similarMeetings(meetings,title,brand,startsAtDraft.slice(0,10),editing?.id);
   const upcoming = meetings.filter(
     (meeting) => meeting.status === "planned",
   ).length;
@@ -445,13 +438,13 @@ export function MeetingWorkspace() {
   ).length;
   const meetingDecisions = decisions.filter(
     (item) =>
-      item.parent_id &&
-      meetings.some((meeting) => meeting.id === item.parent_id),
+      (item.metadata.meetingId || item.parent_id) &&
+      meetings.some((meeting) => meeting.id === (item.metadata.meetingId || item.parent_id)),
   );
   const meetingTasks = tasks.filter(
     (item) =>
-      item.parent_id &&
-      meetings.some((meeting) => meeting.id === item.parent_id),
+      (item.metadata.meetingId || item.parent_id) &&
+      meetings.some((meeting) => meeting.id === (item.metadata.meetingId || item.parent_id)),
   );
   const linkedDocuments = editing?.metadata.knowledgeDocuments as
     | { rawId?: string; summaryId?: string }
@@ -485,6 +478,10 @@ export function MeetingWorkspace() {
           <CircleAlert size={16} /> {error}
         </div>
       ) : null}
+      {notice&&<p className="inline-alert" role="status">{notice}</p>}
+      {demo&&<p className="field-hint">데모 · 저장한 회의는 현재 화면에서만 유지됩니다.</p>}
+      <nav className="workspace-tabs" aria-label="회의·결정 보기">{[["meetings","회의"],["decisions","모든 결정"]].map(([tab,label])=><button key={tab} className={decisionsTab===(tab==="decisions")?"active":""} onClick={()=>{const next=new URLSearchParams(params.toString());next.set("tab",tab);next.delete(tab==="decisions"?"meeting":"record");window.history.replaceState(null,"",`/organization/meetings?${next}`);}}>{label}</button>)}</nav>
+      {decisionsTab ? <OperationsWorkspace config={WORKSPACE_CONFIGS["/home/decisions"]} demoRecords={decisions} embedded /> : <WorkspaceLoadState loading={loading} error={error&&!meetings.length?error:undefined} retry={load}>
       <section className="metric-grid compact-metrics">
         <div className="metric-card">
           <div className="metric-top">
@@ -594,10 +591,10 @@ export function MeetingWorkspace() {
       <section className="meeting-grid">
         {meetings.map((meeting) => {
           const linkedDecisions = decisions.filter(
-            (item) => item.parent_id === meeting.id,
+            (item) => (item.metadata.meetingId || item.parent_id) === meeting.id,
           );
           const linkedTasks = tasks.filter(
-            (item) => item.parent_id === meeting.id,
+            (item) => (item.metadata.meetingId || item.parent_id) === meeting.id,
           );
           return (
             <article
@@ -670,6 +667,7 @@ export function MeetingWorkspace() {
           </div>
         ) : null}
       </section>
+      </WorkspaceLoadState>}
       {drawerOpen ? (
         <div
           className="drawer-backdrop"
@@ -688,21 +686,22 @@ export function MeetingWorkspace() {
               <button
                 type="button"
                 className="icon-button"
+                disabled={busy}
                 onClick={() => setDrawerOpen(false)}
               >
                 <X size={18} />
               </button>
             </div>
             <p className="field-hint">회의 기록 순서 · 아래로 내려가며 작성하세요.</p>
-            <ol className="meeting-phase-progress" aria-label="회의 기록 순서">
-              <li>1. 준비</li>
-              <li>2. 진행·전사</li>
-              <li>3. 결정·실행</li>
-            </ol>
+            <nav className="meeting-phase-progress" aria-label="회의 기록 순서">{[["meeting-prepare","1. 준비"],["meeting-transcript","2. 진행·전사"],["meeting-actions","3. 검수·확정"]].map(([id,label])=><button type="button" key={id} onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"})}>{label}</button>)}</nav>
+            {error&&<p role="alert" className="inline-alert danger">{error}</p>}
+            {similar.length>0&&<section className="meeting-duplicates"><p>같은 날 비슷한 회의가 있습니다. 원문을 비교하고 같은 회의라면 기존 회의에 이어서 기록하세요.</p>{similar.map(meeting=><button type="button" key={meeting.id} onClick={()=>setComparison(meeting)}>비교 · {meeting.title}</button>)}</section>}
+            {comparison&&<section className="meeting-comparison"><h3>회의 비교</h3><strong>현재 작성</strong><p>{transcript||"원문 없음"}</p><strong>{comparison.title}</strong><p>{String(comparison.metadata.transcript||comparison.description||"원문 없음")}</p>{!editing&&<button type="button" onClick={()=>{const draft=transcript, draftSummary=summary, draftItems=reviewItems;openEdit(comparison);setTranscript([String(comparison.metadata.transcript||""),draft].filter(Boolean).join("\n\n"));setSummary([String(comparison.metadata.summary||""),draftSummary].filter(Boolean).join("\n"));setReviewItems(previous=>[...previous,...draftItems]);setNotice("기존 회의에 새 원문을 이어 붙였습니다. 검수 후 저장하면 반영됩니다.");}}>기존 회의에 이어쓰기</button>}<button type="button" onClick={()=>setComparison(null)}>비교 닫기</button></section>}
             <label id="meeting-prepare">
               <span>회의명</span>
               <input
                 name="title"
+                aria-label="회의명"
                 required
                 value={title}
                 onChange={(event) => {
@@ -855,34 +854,8 @@ export function MeetingWorkspace() {
                 placeholder="핵심 회의 요약"
               />
             </label>
-            {structured ? (
-              <div className="structured-meeting">
-                <div>
-                  <strong>결정사항 {structured.decisions.length}</strong>
-                  {structured.decisions.map((item) => (
-                    <p key={item}>• {item}</p>
-                  ))}
-                </div>
-                <div>
-                  <strong>미해결 {structured.pending.length}</strong>
-                  {structured.pending.map((item) => (
-                    <p key={item}>• {item}</p>
-                  ))}
-                </div>
-                <div>
-                  <strong>후속 업무 {structured.todos.length}</strong>
-                  {structured.todos.map((item) => (
-                    <p key={item.title}>
-                      • {item.title}
-                      {item.assignee ? ` · ${item.assignee}` : ""}
-                      {item.dueDate || item.dueLabel
-                        ? ` · ${item.dueDate || item.dueLabel}`
-                        : ""}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <MeetingReviewEditor items={reviewItems} members={members} onChange={setReviewItems} disabled={busy}/>
+            {reviewErrors.length>0&&<p className="field-hint" role="status">{reviewErrors[0]}</p>}
             {linkedDocuments ? (
               <p className="field-hint">
                 📁 문서함 반영됨
@@ -903,23 +876,25 @@ export function MeetingWorkspace() {
             <div className="form-grid">
               <label>
                 <span>직접 추가할 결정 · 한 줄에 하나</span>
-                <textarea name="decisions" rows={4} />
+                <textarea name="decisions" rows={4} value={manualDecisions} onChange={event=>setManualDecisions(event.target.value)}/>
               </label>
               <label>
                 <span>직접 추가할 업무 · 한 줄에 하나</span>
-                <textarea name="actions" rows={4} />
+                <textarea name="actions" rows={4} value={manualTasks} onChange={event=>setManualTasks(event.target.value)}/>
               </label>
             </div>
+            <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검수에 추가</button>
             <div className="drawer-actions">
               <button
                 type="button"
                 className="secondary-button"
+                disabled={busy}
                 onClick={() => setDrawerOpen(false)}
               >
                 취소
               </button>
-              <button className="primary-button" disabled={busy || recording}>
-                {busy ? "저장 중…" : "회의·후속 업무 저장"}
+              <button className="primary-button" disabled={busy || recording || reviewErrors.length>0 || Boolean(manualDecisions.trim()||manualTasks.trim())}>
+                {busy ? "저장 중…" : "검수 확정·회의 저장"}
               </button>
             </div>
           </form>

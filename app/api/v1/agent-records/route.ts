@@ -1,3 +1,4 @@
+import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
     const organization = organizationId.parse(raw.organizationId);
     await assertOrganization(actor, organization);
     const input = recordCreateSchema.parse(raw);
+    await assertReviewedMeetingTask(actor,input);
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 작성해 주세요.");
@@ -134,6 +136,7 @@ export async function PATCH(request: Request) {
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     const recordType = (input.recordType ?? current.record_type) as RecordType;
+    await assertReviewedMeetingTask(actor,input,current);
     enforceHumanGates(recordType, input.status);
     await rateLimit(actor, "record.update");
     const payload = { ...databaseFields(input), updated_by: actor.ownerId };

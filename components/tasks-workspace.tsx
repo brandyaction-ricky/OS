@@ -1,6 +1,10 @@
 "use client";
 import { useRecordDeepLink } from "./use-record-deep-link";
 
+import { demoRecord } from "@/lib/demo-record";
+import { assignTaskBatch, validWorkDate } from "@/lib/task-management";
+import { contentOrigin } from "@/lib/content-origin";
+import { WorkspaceLoadState } from "./workspace-load-state";
 import { PageTitle } from "./page-title";
 
 import {
@@ -17,7 +21,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   createRecord,
   listMembers,
-  listRecords,
+  listAllRecordsOfType,
   updateRecord,
   type OsMember,
 } from "@/lib/api-client";
@@ -64,20 +68,28 @@ export function TasksWorkspace() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(true);
+  const [unassignedView, setUnassignedView] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [batchAssignee, setBatchAssignee] = useState("");
+  const [batchDue, setBatchDue] = useState("");
+  const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(!demo);
   useRecordDeepLink("task", "task", task => { setEditing(task); setDrawer(true); }, setError);
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) {setMembers([{id:profile?.id||"demo",email:"demo@example.test",display_name:"데모 담당자",role:"member",team:"",is_active:true,affiliation:"",roles:[],onboarding:{},finance_access:false,account_connected:true}]);return;}
+    setLoading(true);
     try {
       const [taskResult, projectResult, meetingResult, memberResult] = await Promise.all([
-        listRecords(accessToken, "task", "limit=200"),
-        listRecords(accessToken, "project", "limit=200"),
-        listRecords(accessToken, "meeting", "limit=200"),
+        listAllRecordsOfType(accessToken, "task"),
+        listAllRecordsOfType(accessToken, "project"),
+        listAllRecordsOfType(accessToken, "meeting"),
         listMembers(accessToken),
       ]);
-      setTasks(taskResult.records);
-      setProjects(projectResult.records);
-      setMeetings(meetingResult.records);
+      setTasks(taskResult.filter(task=>contentOrigin(task)==="own"));
+      setSelectedIds(previous=>previous.filter(id=>taskResult.some(task=>task.id===id&&!task.assignee_id)));
+      setProjects(projectResult);
+      setMeetings(meetingResult);
       setMembers(memberResult.members.filter((member) => member.is_active));
       setError("");
     } catch (reason) {
@@ -87,7 +99,8 @@ export function TasksWorkspace() {
           : "업무를 불러오지 못했습니다.",
       );
     }
-  }, [accessToken, demo]);
+    finally { setLoading(false); }
+  }, [accessToken, demo, profile?.id]);
   useEffect(() => {
     load();
   }, [load]);
@@ -114,12 +127,14 @@ export function TasksWorkspace() {
       metadata: {
         ...(editing?.metadata ?? {}),
         source: value("source") || "direct",
+        doneCriteria: value("doneCriteria"),
       },
     };
     setSaving(true);
     setError("");
     try {
-      if (editing)
+      if (demo) {const saved=demoRecord(input,profile?.id||"demo",editing||undefined);setTasks(previous=>[saved,...previous.filter(item=>item.id!==saved.id)]);}
+      else if (editing)
         await updateRecord(accessToken, {
           ...input,
           id: editing.id,
@@ -143,6 +158,7 @@ export function TasksWorkspace() {
     const task = tasks.find((item) => item.id === id);
     if (!task || task.status === status) return;
     try {
+      if(demo){setTasks(previous=>previous.map(item=>item.id===task.id?{...item,status,version:item.version+1,progress:status==="done"?100:item.progress}:item));return;}
       await updateRecord(accessToken, {
         id: task.id,
         expectedVersion: task.version,
@@ -171,15 +187,25 @@ export function TasksWorkspace() {
       .find((member) => member.id === task.assignee_id)
       ?.email.split("@")[0] ||
     "미지정";
+  const unassigned = tasks.filter(task=>!task.assignee_id && (sourceFilter==="all" || String(task.metadata.source||"direct")===sourceFilter));
+  const batchAssign = async () => {
+    if(saving || !members.some(member=>member.id===batchAssignee&&member.is_active)) return;
+    setSaving(true); setError("");
+    try {
+      const result=await assignTaskBatch(unassigned.filter(task=>selectedIds.includes(task.id)),batchAssignee,batchDue,async input=>{if(!demo)return updateRecord(accessToken,input);const current=tasks.find(task=>task.id===input.id);if(!current)throw new Error("업무 없음");const record=demoRecord(input,profile?.id||"demo",current);setTasks(previous=>previous.map(task=>task.id===record.id?record:task));return {record};});
+      setSelectedIds(result.failed); setNotice(`${result.updated.length}개 업무를 지정했습니다.${result.failed.length ? ` ${result.failed.length}개는 저장되지 않았습니다. 최신 내용을 확인한 뒤 다시 시도하세요.` : ""}`); await load();
+    } catch(reason) {setError(reason instanceof Error?reason.message:"업무를 지정하지 못했습니다.");}
+    finally {setSaving(false);}
+  };
   const visibleTasks = useMemo(
     () =>
       tasks.filter(
         (task) =>
-          (sourceFilter === "all" ||
+          (unassignedView ? !task.assignee_id : Boolean(task.assignee_id)) && (sourceFilter === "all" ||
             String(task.metadata.source || "direct") === sourceFilter) &&
-          (!mineOnly || task.assignee_id === profile?.id),
+          (unassignedView || !mineOnly || task.assignee_id === profile?.id),
       ),
-    [mineOnly, profile?.id, sourceFilter, tasks],
+    [mineOnly, profile?.id, sourceFilter, tasks, unassignedView],
   );
   const taskSummary = useMemo(() => {
     const open = visibleTasks.filter((task) => task.status !== "done");
@@ -218,11 +244,14 @@ export function TasksWorkspace() {
           <Plus size={16} /> 업무 추가
         </button>
       </header>
+      {demo && <p className="field-hint">데모 · 저장한 업무는 현재 화면에서만 유지됩니다.</p>}
       {error ? (
         <div className="inline-alert danger">
           <CircleAlert size={16} /> {error}
         </div>
       ) : null}
+      {notice && <p role="status" className="inline-alert">{notice}</p>}
+      <WorkspaceLoadState loading={loading} error={error && !tasks.length ? error : undefined} retry={load}>
       <section className="metric-grid compact-metrics task-summary">
         <div className="metric-card">
           <div className="metric-top"><span>전체 업무</span><ListChecks size={16} /></div>
@@ -246,12 +275,9 @@ export function TasksWorkspace() {
         </div>
       </section>
       <div className="task-filters">
-        <button
-          className={mineOnly ? "active" : ""}
-          onClick={() => setMineOnly((value) => !value)}
-        >
-          내 업무
-        </button>
+        <button className={!unassignedView && mineOnly ? "active" : ""} aria-pressed={!unassignedView&&mineOnly} onClick={()=>{setMineOnly(true);setUnassignedView(false);}}>내 업무</button>
+        <button className={!unassignedView && !mineOnly ? "active" : ""} aria-pressed={!unassignedView&&!mineOnly} onClick={()=>{setMineOnly(false);setUnassignedView(false);}}>팀 업무</button>
+        <button className={unassignedView ? "active" : ""} aria-pressed={unassignedView} onClick={()=>setUnassignedView(true)}>분류 대기 {unassigned.length}</button>
         {[
           ["all", "전체 출처"],
           ["meeting", "회의"],
@@ -261,13 +287,18 @@ export function TasksWorkspace() {
           <button
             key={value}
             className={sourceFilter === value ? "active" : ""}
-            onClick={() => setSourceFilter(value)}
+            onClick={() => {setSourceFilter(value);setSelectedIds([]);}}
           >
             {label}
           </button>
         ))}
       </div>
-      <section className="task-board">
+      {unassignedView ? <section className="panel task-triage" aria-label="분류 대기">
+        <header><h2>분류 대기</h2><p>담당자가 없는 업무입니다. 한 번에 20개까지 담당자와 기한을 지정하세요.</p></header>
+        <div className="task-bulk-controls"><label>일괄 담당자<select value={batchAssignee} onChange={event=>setBatchAssignee(event.target.value)} disabled={saving}><option value="">담당자 선택</option>{members.map(member=><option key={member.id} value={member.id}>{member.display_name||member.email.split("@")[0]}</option>)}</select></label><label>일괄 기한<input type="date" value={batchDue} onChange={event=>setBatchDue(event.target.value)} disabled={saving}/></label><button className="primary-button" disabled={saving||!selectedIds.length||!members.some(member=>member.id===batchAssignee&&member.is_active)||!validWorkDate(batchDue)} onClick={()=>void batchAssign()}>{saving?"지정 중…":`${selectedIds.length}개 지정`}</button></div>
+        {unassigned.map(task=><article key={task.id}><input type="checkbox" aria-label={`${task.title} 선택`} checked={selectedIds.includes(task.id)} disabled={saving||(!selectedIds.includes(task.id)&&selectedIds.length>=20)} onChange={event=>setSelectedIds(previous=>event.target.checked?[...previous,task.id]:previous.filter(id=>id!==task.id))}/><button onClick={()=>open(task)}><strong>{task.title}</strong><small>{sourceLabel(task)} · {task.due_date||"기한 미정"}</small></button></article>)}
+        {!unassigned.length&&<p>분류할 업무가 없습니다.</p>}
+      </section> : <section className="task-board">
         {COLUMNS.map((column) => {
           const items = visibleTasks.filter((task) =>
             column.statuses.includes(task.status),
@@ -328,7 +359,8 @@ export function TasksWorkspace() {
             </article>
           );
         })}
-      </section>
+      </section>}
+      </WorkspaceLoadState>
       {drawer ? (
         <div
           className="drawer-backdrop"
@@ -361,7 +393,7 @@ export function TasksWorkspace() {
               />
             </label>
             <label>
-              <span>완료 기준</span>
+              <span>상세 설명</span>
               <textarea
                 name="description"
                 required
@@ -369,6 +401,7 @@ export function TasksWorkspace() {
                 defaultValue={editing?.description ?? ""}
               />
             </label>
+            <label><span>완료 기준</span><textarea name="doneCriteria" rows={3} maxLength={2000} defaultValue={String(editing?.metadata.doneCriteria || editing?.description || "")} placeholder="어떤 결과가 나오면 완료인가요?"/></label>
             <div className="form-grid">
               <label>
                 <span>발생 출처</span>
@@ -385,6 +418,7 @@ export function TasksWorkspace() {
                 <span>연결 프로젝트</span>
                 <select name="parentId" defaultValue={editing?.parent_id ?? ""}>
                   <option value="">프로젝트 없음</option>
+                  {editing?.parent_id && !projects.some(project=>project.id===editing.parent_id) && <option value={editing.parent_id}>{meetings.find(meeting=>meeting.id===editing.parent_id)?.title || "기존 연결 유지"}</option>}
                   {projects.map((project) => (
                     <option value={project.id} key={project.id}>
                       {project.title}
