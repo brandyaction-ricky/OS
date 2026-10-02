@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { markdownBlocks, markdownCodeBody, markdownSections, treeWidth, type MarkdownSection } from "@/lib/markdown-sections";
 
 import {
@@ -495,6 +497,11 @@ function WorkspaceContent() {
   const openNewDocument = (folder = managedFolder || selected?.folder || "") => guardAction(() => {
     setNewFolderPath(folder); setNewError(""); setFieldErrors({}); setNewOpen(true);
   });
+  useEffect(() => {
+    const open = () => openNewDocument();
+    window.addEventListener("brandy-quick-record", open);
+    return () => window.removeEventListener("brandy-quick-record", open);
+  });
   const newDirty = Object.values(newValues).some(Boolean);
   const closeNewDocument = () => {
     if (busy) return;
@@ -877,7 +884,7 @@ function WorkspaceContent() {
   return (
     <>
       <header className="page-header workspace-page-header">
-        <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
+        <div className="page-title-group"><PageTitle /><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
         <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
       </header>
 

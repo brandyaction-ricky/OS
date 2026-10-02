@@ -1,5 +1,8 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
+import { WorkspaceLoadState } from "./workspace-load-state";
 import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
@@ -98,12 +101,13 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
 
   return <>
     <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">{config.eyebrow}</span><h1>{config.title}</h1><p>{config.description}</p></div>
+      <div className="page-title-group"><PageTitle /><p>{config.description}</p></div>
       <button className="primary-button" onClick={() => { setEditing(null); setEditorOpen(true); }}><Plus size={16} /> {config.singular} 추가</button>
     </header>
 
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
 
+    <WorkspaceLoadState loading={loading} error={error && !records.length ? error : undefined} retry={load}>
     <section className="metric-grid compact-metrics">
       <div className="metric-card"><div className="metric-top"><span>전체</span><span className="metric-icon"><Target size={16} /></span></div><div className="metric-value">{records.length}</div><div className="metric-caption">등록된 {config.singular}</div></div>
       <div className="metric-card"><div className="metric-top"><span>완료·정상</span><span className="metric-icon"><CheckCircle2 size={16} /></span></div><div className="metric-value">{completed}</div><div className="metric-caption good">실행이 끝난 항목</div></div>
@@ -132,6 +136,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       </div> : <div className="empty-state"><div><span><Target /></span><h3>{config.empty}</h3><p>{config.helper}</p><button className="primary-button" onClick={() => { setEditing(null); setEditorOpen(true); }}><Plus size={15} /> {config.singular} 추가</button></div></div>}
     </section>
 
+    </WorkspaceLoadState>
     {editorOpen ? <div className="drawer-backdrop" onMouseDown={() => setEditorOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
       <div className="drawer-head"><div><span className="eyebrow">{editing ? "수정" : "새 항목"}</span><h2>{editing ? config.singular + " 수정" : "새 " + config.singular}</h2></div><button type="button" className="icon-button" onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
       <label><span>제목</span><input name="title" required maxLength={240} defaultValue={editing?.title} placeholder={`${config.singular} 제목`} /></label>

@@ -32,6 +32,7 @@ paths:
     get:
       security: []
       summary: 서버와 외부 연결 준비 상태 확인
+      description: 기존 키는 호환을 위해 유지. checks 배열의 status와 lastOkAt은 실제 호출 범위를 나타내며 환경 설정만 있으면 unverified. checkedAt은 마지막 스냅샷 시각.
       responses:
         "200":
           description: 상태 스냅샷
@@ -321,14 +322,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, expiresAt]
               properties:
                 name: { type: string, minLength: 1, maxLength: 80 }
                 ownerUserId: { type: string, format: uuid }
-                access: { type: string, enum: [read, write], default: read }
+                access: { type: string, enum: [read, draft, write], default: read, description: "draft allows non-canonical document writes while retaining company-reference reads; existing keys retain their previous effective policy." }
                 team: { type: string, maxLength: 120 }
                 brand: { type: [string, "null"], maxLength: 120 }
-                expiresAt: { type: [string, "null"], format: date-time }
+                expiresAt: { type: string, format: date-time, description: "Required future expiration for newly issued keys. Existing non-expiring keys are unchanged." }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:
@@ -370,6 +371,13 @@ paths:
   /api/v1/ad-performance:
     get:
       summary: Meta·Google 광고 성과 일별 집계 조회
+      description: >-
+        기존 rows, channels, summary 필드는 유지한다. channels와 summary의 spend,
+        attributedRevenue, conversions, impressions, clicks, roas, cpa, ctr 및
+        summary.operatingRevenue는 number 또는 null. 미수집 집계와 분모 0의 비율은 null이며
+        실제 기록된 0은 0을 유지한다. sampleCount는 집계 행 수, financeVisible은 재무 조회 권한,
+        lastCollectedAt은 선택 범위의 마지막 저장 시각이다. financeAdExpense null은 권한 없음
+        또는 미수집을 뜻하며 financeVisible로 구분한다. 조회 오류를 0으로 반환하지 않는다.
       parameters:
         - { in: query, name: period, schema: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" } }
         - { in: query, name: brand, schema: { type: string, enum: [all, myin, brandyedu] } }
@@ -393,6 +401,33 @@ paths:
       responses:
         "200": { description: 공급자·브랜드별 처리 결과 }
         "403": { $ref: "#/components/responses/ApiError" }
+  /api/v1/connections:
+    get:
+      summary: 관리자용 연결 확인 이력과 담당자 조회
+      description: checks는 마지막 성공 호출, 최근 테스트·기록 시작 이후 색인 시도·광고 수집 실패와 현재 막힌 작업, 담당 정·부와 변경 버전을 포함한다. 이력 조회 불가일 때 실패 수는 null이며 정상으로 표시하지 않는다.
+      responses:
+        "200": { description: checks 및 checkedAt. 비밀값과 제공자 응답 본문은 반환하지 않음 }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+    post:
+      summary: 관리자가 service로 지정한 연결에 읽기 전용 테스트 실행
+      description: 현재 사용자 인증 뒤 고정 제공자 주소만 호출. 생성·발송·업로드·광고 변경 없음. 호출 범위와 결과만 기록. 이력 저장소 준비 전에는 실행하지 않음.
+      responses:
+        "200": { description: ok 및 checks. ok는 이번 호출 결과이며 최근 실패 이력은 그대로 유지 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "429": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
+    patch:
+      summary: 관리자가 연결의 정·부 담당 변경
+      description: service, primaryOwner, backupOwner, expectedVersion 필요. 활성 구성원만 지정하고 중복 정·부는 거절. 버전 충돌 시 409. 일반 사용자와 AI 키는 거절.
+      responses:
+        "200": { description: 담당 저장 완료 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
   /api/v1/telegram/setup:
     get:
       summary: 관리자가 봇과 웹훅 상태 확인

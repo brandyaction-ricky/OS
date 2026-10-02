@@ -1,3 +1,5 @@
+import { aggregateAdMetrics } from "@/lib/ad-metrics";
+import { measuredSum } from "@/lib/metric-format";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -42,13 +44,14 @@ export async function GET(request: Request) {
     let metricsQuery = actor.supabase.from("os_ad_performance_daily").select("*")
       .gte("metric_date", range.from).lte("metric_date", range.to).order("metric_date", { ascending: true });
     if (brand !== "all") metricsQuery = metricsQuery.eq("brand_key", brand);
-    const [{ data: rawRows, error }, { data: revenues }, { data: profile }] = await Promise.all([
+    const [{ data: rawRows, error }, { data: revenues, error: revenueError }, { data: profile }] = await Promise.all([
       metricsQuery,
       actor.supabase.from("os_records").select("brand,amount,metadata,starts_at,due_date,created_at").eq("record_type", "revenue").is("archived_at", null),
       actor.supabase.from("os_profiles").select("finance_access").eq("id", actor.id).maybeSingle(),
     ]);
     if (error) throw new ApiError(400, "AD_PERFORMANCE_LIST_FAILED", "광고 성과를 불러오지 못했습니다.", error.message);
 
+    if (revenueError) throw new ApiError(500, "REVENUE_LIST_FAILED", "매출 교차값을 불러오지 못했습니다.");
     const rows = (rawRows ?? []).map((row) => ({
       ...row,
       spend: Number(row.spend ?? 0),
@@ -58,38 +61,26 @@ export async function GET(request: Request) {
       clicks: Number(row.clicks ?? 0),
     }));
     const selectedBrands = brand === "all" ? ["마이인", "브랜디액션 에듀"] : [brandName(brand)];
-    const operatingRevenue = (revenues ?? []).filter((record) =>
+    const selectedRevenue = (revenues ?? []).filter((record) =>
       selectedBrands.includes(record.brand) && recordDate(record).startsWith(period),
-    ).reduce((sum, record) => sum + Number(record.metadata?.net ?? record.amount ?? 0), 0);
+    );
+    const operatingRevenue = measuredSum(selectedRevenue.map(record => record.metadata?.net ?? record.amount));
 
     const financeVisible = actor.role === "admin" || Boolean(profile?.finance_access);
     let financeAdExpense: number | null = null;
     if (financeVisible) {
-      const { data: expenses } = await actor.supabase.from("os_records")
+      const { data: expenses, error: expenseError } = await actor.supabase.from("os_records")
         .select("brand,amount,tags,metadata,starts_at,due_date,created_at")
         .eq("record_type", "expense").is("archived_at", null);
-      financeAdExpense = (expenses ?? []).filter((record) => {
+      if (expenseError) throw new ApiError(500, "EXPENSE_LIST_FAILED", "재무 교차값을 불러오지 못했습니다.");
+      const selectedExpenses = (expenses ?? []).filter((record) => {
         const marker = `${record.tags?.join(" ") ?? ""} ${String(record.metadata?.category ?? "")} ${String(record.metadata?.classification ?? "")}`;
         return selectedBrands.includes(record.brand) && recordDate(record).startsWith(period) && /광고|마케팅/i.test(marker);
-      }).reduce((sum, record) => sum + Number(record.amount ?? 0), 0);
+      });
+      financeAdExpense = measuredSum(selectedExpenses.map(record => record.amount));
     }
 
-    const aggregate = (source: typeof rows) => {
-      const value = source.reduce((total, row) => ({
-        spend: total.spend + row.spend,
-        attributedRevenue: total.attributedRevenue + row.attributed_revenue,
-        conversions: total.conversions + row.conversions,
-        impressions: total.impressions + row.impressions,
-        clicks: total.clicks + row.clicks,
-      }), { spend: 0, attributedRevenue: 0, conversions: 0, impressions: 0, clicks: 0 });
-      return {
-        ...value,
-        roas: value.spend ? value.attributedRevenue / value.spend : 0,
-        cpa: value.conversions ? value.spend / value.conversions : 0,
-        ctr: value.impressions ? value.clicks / value.impressions * 100 : 0,
-      };
-    };
-    const channels = (["meta", "google"] as AdProvider[]).map((provider) => ({ provider, ...aggregate(rows.filter((row) => row.provider === provider)) }));
+    const channels = (["meta", "google"] as AdProvider[]).map((provider) => ({ provider, ...aggregateAdMetrics(rows.filter((row) => row.provider === provider)) }));
 
     let lastRuns: unknown[] = [];
     if (actor.role === "admin") {
@@ -99,7 +90,9 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({
       period, brand, range, connections: adConnectionStatus(), rows, channels,
-      summary: { ...aggregate(rows), operatingRevenue, financeAdExpense },
+      summary: { ...aggregateAdMetrics(rows), operatingRevenue, financeAdExpense },
+      financeVisible,
+      lastCollectedAt: (rawRows ?? []).reduce<string | null>((latest, row) => row.updated_at && (!latest || row.updated_at > latest) ? row.updated_at : latest, null),
       lastRuns,
     });
   } catch (error) { return apiErrorResponse(error); }

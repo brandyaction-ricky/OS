@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import Link from "next/link";
 import {
   Bookmark,
@@ -19,6 +21,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest, createRecord, listAllRecordsOfType, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
 import { pickedPlanningCandidate, planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
+import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
+import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
 import { ContentJevAssist } from "./content-jev-assist";
 import { ContentJevUsageGuide, packagingJevUsageSteps } from "./content-jev-usage-guide";
@@ -58,7 +62,9 @@ function CandidateList({ title, subtitle, items, copied, onCopy, onPick }: {
 
 export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAssist?: boolean }) {
   const { accessToken, demo, profile } = useSession();
-  const [sources, setSources] = useState<OsRecord[]>([]);
+  const [allSources, setSources] = useState<OsRecord[]>([]);
+  const [origin, setOrigin] = useState<OriginFilter>("own");
+  const sources = filterContentOrigin(allSources, origin);
   const [packages, setPackages] = useState<OsRecord[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [tab, setTab] = useState<PackageTab>("search");
@@ -80,13 +86,13 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
     if (demo) return;
     try {
       const [sourceResult, packageResult, metrics] = await Promise.all([
-        listRecords(accessToken, "content_topic", "limit=200"),
+        listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })),
         listRecords(accessToken, "content_package", "limit=200"),
         listAllRecordsOfType(accessToken, "content_metric"),
       ]);
-      setSources(sourceResult.records.filter((record) => !["channel", "outlier"].includes(meta<string>(record, "studioKind", ""))));
+      setSources(sourceResult.records);
       setPackages(packageResult.records); setOwnMetrics(metrics);
-      setSourceId((current) => current || new URLSearchParams(window.location.search).get("sourceId") || sourceResult.records.find((record) => !["channel", "outlier"].includes(meta<string>(record, "studioKind", "")))?.id || "");
+      setSourceId((current) => sourceSelection(sourceResult.records, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "패키징 자료를 불러오지 못했습니다.");
@@ -149,11 +155,11 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   }), [format, marketResults, minViews, sort]);
 
   const searchMarket = async (ours = false) => {
-    const query = ours ? "브랜디액션" : marketQuery.trim() || selectedSource?.title || "";
-    if (query.length < 2) return setError("시장 검색어를 두 글자 이상 입력해 주세요.");
+    const query = ours ? "" : marketQuery.trim() || selectedSource?.title || "";
+    if (!ours && query.length < 2) return setError("시장 검색어를 두 글자 이상 입력해 주세요.");
     setBusy(true); setError("");
     try {
-      const response = await searchYoutubeMarket(accessToken, query, ours ? 12 : 20);
+      const response = await searchYoutubeMarket(accessToken, query, ours ? 12 : 20, { own: ours });
       if (ours) setOwnResults(response.items); else setMarketResults(response.items);
       if (!response.items.length) setError("검색된 시장 영상이 없습니다. 검색어를 넓혀보세요.");
     } catch (reason) {
@@ -245,7 +251,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false }: { showJevAs
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">패키징 스튜디오</span><h1>제목·썸네일</h1><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     {selectedSource && pipelineEnabled ? <section className="panel packaging-handoff" aria-label="기획에서 패키징으로 인계"><header className="panel-header"><div><span className="eyebrow">같은 콘텐츠에서 이어서 작업</span><h2>{selectedSource.title}</h2><p>주제·기획에서 승인한 범위를 그대로 확인하고, 최종 제목과 썸네일은 이 화면에서 결정합니다.</p></div><span className={`status-pill status-${planningApproved ? "ready" : "review"}`}>{planningApproved ? "기획·근거 승인 완료" : "기획·근거 승인 대기"}</span></header><dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selectedSource.id}</dd></div><div><dt>현재 단계</dt><dd>{selectedSource.stage || "패키징 준비"}</dd></div><div><dt>승인 소구점</dt><dd>{approvedAppeals.length}개</dd></div><div><dt>검증 레퍼런스</dt><dd>{referenceCount}개</dd></div></dl>{pickedPlan ? <article className="packaging-plan-card"><small>채택한 기획 방향 · 기획 v{selectedPlan?.version}</small><strong>{String(pickedPlan.title ?? "기획 방향")}</strong><p>{String(pickedPlan.narrative ?? pickedPlan.evidence ?? "")}</p><span>기획 단계의 제목·썸네일 문구는 방향 참고이며, 최종안은 이 화면에서 채택합니다.</span></article> : null}{generationBlocker ? <p className="inline-alert warning"><CircleAlert size={15} /> {generationBlocker}</p> : null}<nav className="planning-next-actions"><Link className="secondary-button" href={`/content/topics?sourceId=${selectedSource.id}`}>주제·기획 확인</Link><Link className="secondary-button" href={`/content/automation?sourceId=${selectedSource.id}`}>공정·승인 현황</Link></nav></section> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>

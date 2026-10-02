@@ -38,7 +38,7 @@ test("routes, search, key defaults, and RLS migration share one team-read contra
     readFile(new URL("../app/api/v1/knowledge-documents/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/v1/documents/[id]/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/server/search.ts", import.meta.url), "utf8"),
-    readFile(new URL("../app/api/v1/agent-keys/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/agent-key-policy.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/20260929062422_share_team_documents_with_all_members.sql", import.meta.url), "utf8"),
   ]);
   assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);

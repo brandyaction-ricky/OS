@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   CalendarDays,
   CircleAlert,
@@ -207,8 +209,7 @@ export function TasksWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">업무 보드</span>
-          <h1>업무 관리</h1>
+          <PageTitle />
           <p>프로젝트·담당자·기한과 발생 출처를 함께 관리합니다.</p>
         </div>
         <button className="primary-button" onClick={() => open(null)}>

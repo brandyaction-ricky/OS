@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   ArrowRight,
   CalendarDays,
@@ -11,15 +13,14 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { formatMoney as money } from "@/lib/metric-format";
+import { WorkspaceLoadState } from "./workspace-load-state";
 import { listDocuments, listRecords } from "@/lib/api-client";
 import { buildHomeRevenueView, groupHomeVideos, type RevenueBandValue } from "@/lib/home-dashboard";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { useSession } from "./session-provider";
 
-function money(value: number) {
-  return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
-}
 function date(value: string | null) {
   return value
     ? new Intl.DateTimeFormat("ko-KR", {
@@ -50,21 +51,28 @@ const DASHBOARD_RECORD_TYPES = [
 ] as const;
 
 export function Dashboard() {
-  const { accessToken, demo, profile } = useSession();
+  const { accessToken, demo } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
   useEffect(() => {
     if (demo) return;
+    let active = true;
+    setLoading(true);
+    setError("");
     Promise.all([
       Promise.all(DASHBOARD_RECORD_TYPES.map((type) => listRecords(accessToken, type, "limit=200"))),
       listDocuments(accessToken, "view=summary&limit=20&statuses=canonical,reviewed,team"),
     ])
       .then(([operating, knowledge]) => {
+        if (!active) return;
         setRecords(operating.flatMap((result) => result.records));
         setDocuments(knowledge.documents);
       })
-      .catch((reason) => setError(reason.message));
+      .catch((reason) => { if (active) setError(reason.message); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [accessToken, demo]);
   const view = useMemo(() => {
     const revenue = buildHomeRevenueView(records);
@@ -123,23 +131,21 @@ export function Dashboard() {
     <article className={`revenue-card ${total ? "revenue-total" : ""}`}>
       <span className="revenue-title">{total ? <TrendingUp size={18} /> : null}{title}</span>
       <strong>{money(value.current)}</strong>
+      {value.current === null ? <small>주문 연결 대기 · <Link href="/performance/connections">데이터 연결</Link></small> : null}
       <div className="revenue-comparisons">
         {changeLabel("전월", value.monthChange)}<b>·</b>{changeLabel("전주", value.weekChange)}
       </div>
-      {value.goal ? <><div className="revenue-progress"><i style={{ width: `${Math.min(100, (value.current / value.goal) * 100)}%` }} /></div><small>목표 {money(value.goal)} · {Math.round((value.current / value.goal) * 100)}%</small></> : <small className="revenue-goal-empty">목표 미설정 · <Link href="/home/goals">목표 설정하기</Link></small>}
+      {value.goal && value.current !== null ? <><div className="revenue-progress"><i style={{ width: `${Math.min(100, (value.current / value.goal) * 100)}%` }} /></div><small>목표 {money(value.goal)} · {Math.round((value.current / value.goal) * 100)}%</small></> : value.goal ? <small>목표 {money(value.goal)} · 달성률 —</small> : <small className="revenue-goal-empty">목표 미설정 · <Link href="/home/goals">목표 설정하기</Link></small>}
     </article>
   );
   return (
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">오늘 현황</span>
-          <h1>
-            {profile?.displayName || "리키"}님, 이번 주 핵심만 모았습니다.
-          </h1>
+          <PageTitle />
           <p>
             매출 목표, 회의에서 남은 이슈, 영상 제작과 최근 지식을 한 흐름으로
-            확인합니다. · {basisTime(view.revenue.lastUpdatedAt)}
+            확인합니다. · {loading ? "자료 확인 중" : error ? "자료 확인 실패" : basisTime(view.revenue.lastUpdatedAt)}
           </p>
         </div>
         <div className="header-actions">
@@ -159,6 +165,7 @@ export function Dashboard() {
           {error}
         </div>
       ) : null}
+      <WorkspaceLoadState loading={loading} error={error}>
       <section className="revenue-band">
         {revenueCard("이번 달 통합 순매출", view.revenue.total, true)}
         {revenueCard("마이인", view.revenue.myin)}
@@ -256,6 +263,7 @@ export function Dashboard() {
           </div>
         </article>
       </section>
+      </WorkspaceLoadState>
     </>
   );
 }

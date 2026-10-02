@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { BookCheck, Check, ChevronRight, CircleAlert, FileText, MessageSquareText, RotateCcw, Send, X } from "lucide-react";
 import Link from "next/link";
 import { KnowledgeReviewHistory } from "./knowledge-review-history";
@@ -46,7 +48,7 @@ function InboxContent() {
 
   return (
     <>
-      <header className="page-header"><div className="page-title-group"><span className="eyebrow">검토함</span><h1>지식 검토함</h1><p>팀의 경험을 확인하고 회사가 신뢰할 수 있는 정본으로 승인합니다.</p></div><div className="header-actions"><span className="review-count"><CircleAlert size={15} /> 검토 요청 {queue.filter((item) => item.status === "review").length}건</span></div></header>
+      <header className="page-header"><div className="page-title-group"><PageTitle /><p>팀의 경험을 확인하고 회사가 신뢰할 수 있는 정본으로 승인합니다.</p></div><div className="header-actions"><span className="review-count"><CircleAlert size={15} /> 검토 요청 {queue.filter((item) => item.status === "review").length}건</span></div></header>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
       {completed ? <p className="inline-alert" role="status">{completed.title} · {statusLabel(completed.status)} 상태로 변경했습니다. <Link href={`/knowledge?document=${completed.id}`}>변경한 원문 열기</Link></p> : null}
       <section className="review-layout">

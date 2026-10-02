@@ -76,6 +76,7 @@ function setup(overrides = {}, initialSession = {}) {
   };
   const jsx = (type, props) => ({ type, props });
   const modules = {
+    "./page-title": { PageTitle: () => null },
     react, "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, name) => String(name) }),
     "@/lib/api-client": api, "@/lib/script-documents": scripts,

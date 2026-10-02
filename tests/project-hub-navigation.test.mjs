@@ -48,6 +48,7 @@ function setup(initialQuery = "", { delayProjects = false } = {}) {
   const jsx = (type, props) => ({ type, props });
   const events = new EventTarget();
   const modules = {
+    "./page-title": { PageTitle: () => null },
     react,
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, name) => name }),

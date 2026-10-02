@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   Activity,
   Bot,
@@ -28,7 +30,7 @@ import {
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 
-export function MonitoringWorkspace() {
+export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }) {
   const { accessToken, demo } = useSession();
   const [health, setHealth] = useState<Awaited<
     ReturnType<typeof getHealth>
@@ -143,26 +145,25 @@ export function MonitoringWorkspace() {
     icon: React.ReactNode,
   ) => (
     <article className="panel service-status">
-      <span className={ready ? "ready" : "waiting"}>{icon}</span>
+      <span className="waiting">{icon}</span>
       <div>
         <strong>{title}</strong>
         <p>{description}</p>
       </div>
-      <em className={ready ? "ready" : "waiting"}>{ready ? "정상" : "대기"}</em>
+      <em className="waiting">{title === "지식 검색" && (queue?.failed ?? 0) > 0 ? `오류 · 막힌 작업 ${queue!.failed}건` : ready ? "설정됨(미확인)" : "확인 필요"}</em>
     </article>
   );
   return (
     <>
-      <header className="page-header">
+      {!embedded ? <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">운영 모니터링</span>
-          <h1>운영 모니터링</h1>
+          <PageTitle />
           <p>DB·인증·검색·메시지 연결과 내부 데이터 준비 상태를 점검합니다.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load}>
           <RefreshCw size={15} className={loading ? "spin" : ""} /> 새로 확인
         </button>
-      </header>
+      </header> : <button className="secondary-button" disabled={loading} onClick={load}>운영 상태 새로고침</button>}
       {error ? (
         <div className="inline-alert danger">
           <CircleAlert size={16} /> {error}
@@ -176,7 +177,7 @@ export function MonitoringWorkspace() {
             <p>실제 서버·검색·메시지 연결 상태를 모두 확인한 뒤 표시합니다.</p>
           </div>
         </section>
-      ) : (
+      ) : error && !health ? null : (
         <>
       <section className="monitor-summary panel">
         <span className={health?.ok ? "healthy" : "partial"}>
@@ -184,7 +185,7 @@ export function MonitoringWorkspace() {
         </span>
         <div>
           <strong>
-            {health?.ok ? "핵심 서버 정상" : "핵심 서버 확인 필요"}
+            {health?.ok ? "DB 조회 응답 확인" : "핵심 서버 확인 필요"}
           </strong>
           <p>
             {health?.checkedAt
@@ -213,7 +214,7 @@ export function MonitoringWorkspace() {
           health?.auth === "ready",
           "로그인 인증",
           health?.auth === "ready"
-            ? "이메일·비밀번호 세션 사용 가능"
+            ? "인증 환경 설정 있음 · 로그인 호출 별도 확인"
             : "공개 인증 설정 누락",
           <KeyRound size={18} />,
         )}
@@ -229,7 +230,7 @@ export function MonitoringWorkspace() {
           health?.embeddings === "ready",
           "지식 검색",
           health?.embeddings === "ready"
-            ? "키워드·의미·하이브리드 검색"
+            ? "검색 환경 설정 있음 · 아래 색인 작업 결과 확인"
             : "키워드 검색만 사용 중",
           <Search size={18} />,
         )}
@@ -237,7 +238,7 @@ export function MonitoringWorkspace() {
           Boolean(telegramStatus?.webhook?.url),
           "텔레그램",
           telegramStatus?.webhook?.url
-            ? `@${telegramStatus.bot?.username ?? "bot"} 웹훅 연결됨`
+            ? `@${telegramStatus.bot?.username ?? "bot"} 웹훅 설정 확인`
             : telegramStatus?.configured
               ? "토큰 확인됨 · 웹훅 등록 대기"
               : "봇 토큰 등록 전",
@@ -261,19 +262,19 @@ export function MonitoringWorkspace() {
           </div>
           <div className="queue-metrics">
             <span>
-              <strong>{queue?.pending ?? 0}</strong>
+              <strong>{queue?.pending ?? "—"}</strong>
               <small>대기</small>
             </span>
             <span>
-              <strong>{queue?.running ?? 0}</strong>
+              <strong>{queue?.running ?? "—"}</strong>
               <small>처리 중</small>
             </span>
             <span>
-              <strong>{queue?.failed ?? 0}</strong>
+              <strong>{queue?.failed ?? "—"}</strong>
               <small>실패</small>
             </span>
             <span>
-              <strong>{queue?.done ?? 0}</strong>
+              <strong>{queue?.done ?? "—"}</strong>
               <small>완료</small>
             </span>
           </div>
@@ -318,12 +319,12 @@ export function MonitoringWorkspace() {
               <small>웹훅</small>
             </span>
             <span>
-              <strong>{telegramStatus?.pendingUsers?.length ?? 0}</strong>
+              <strong>{telegramStatus?.pendingUsers?.length ?? "—"}</strong>
               <small>승인 대기 사용자</small>
             </span>
             <span>
               <strong>
-                {telegramStatus?.webhook?.lastError ? "오류" : "정상"}
+                {telegramStatus?.webhook?.lastError ? "오류" : telegramStatus?.webhook?.url ? "설정 확인" : "미확인"}
               </strong>
               <small>최근 상태</small>
             </span>
@@ -423,7 +424,7 @@ export function MonitoringWorkspace() {
             {connections.map((connection) => (
               <div key={connection.id}>
                 <span
-                  className={`state-dot ${connection.status === "healthy" ? "ready" : connection.status === "warning" ? "warning" : "waiting"}`}
+                  className={`state-dot ${connection.status === "healthy" ? "waiting" : connection.status === "warning" ? "warning" : "waiting"}`}
                 />
                 <span>
                   <strong>{connection.title}</strong>
@@ -434,7 +435,7 @@ export function MonitoringWorkspace() {
                 </span>
                 <em>
                   {connection.status === "healthy"
-                    ? "정상"
+                    ? "수동 등록(미확인)"
                     : connection.status === "warning"
                       ? "확인 필요"
                       : "연결 대기"}

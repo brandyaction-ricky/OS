@@ -3,11 +3,12 @@
 import { ArrowRight, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useState } from "react";
+import { safeLoginRedirect } from "@/lib/login-redirect";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") ?? "/home";
+  const next = safeLoginRedirect(searchParams.get("next"));
   const passwordChanged = searchParams.get("password") === "changed";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
