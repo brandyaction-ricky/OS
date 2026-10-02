@@ -222,16 +222,18 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 /** The poster's own drawing: title with a red highlighter, section frames and titles, plain rectangular panel frames, arrows. */
 /**
- * Camera plan over decks (one per paragraph): [{ start, length, section }] in video seconds, `length` being how long the
- * deck's drawings and highlights take once begun. The camera arrives at a deck when its paragraph starts, or later (the
- * drawing then waits for it); it leaves only after every drawing has finished and at least MIN_SHOT has passed. After
+ * Camera plan over decks (one per paragraph): [{ start, length, catchUp, section }] in video seconds: `length` is when the
+ * deck's last drawing or highlight ends after its start, and `catchUp` how long parts take to appear when the camera
+ * arrives late (parts already spoken then appear on arrival; later parts keep their spoken time, so lateness does not
+ * pile up). The camera arrives when the paragraph starts, or later; it leaves only after every drawing has finished
+ * and at least MIN_SHOT has passed. After
  * the last deck of a section with two or more decks it pulls back to that section for SUMMARY_HOLD, and the video ends
  * on the last section. `move(a, b)` gives the seconds between two targets ({ deck } or { section }).
  * Returns the keys [{ t, at }] and each deck's arrival.
  */
 export function deckCameraPlan(decks, move, end) {
   const keys = [], arrive = [], size = (s) => decks.filter((d) => d.section === s).length;
-  const free = (j) => arrive[j] + Math.max(MIN_SHOT, decks[j].length + SETTLE);
+  const free = (j) => Math.max(arrive[j] + MIN_SHOT, Math.max(decks[j].start + decks[j].length, arrive[j] + (decks[j].catchUp ?? 0)) + SETTLE);
   decks.forEach((d, j) => {
     if (!j) { arrive.push(d.start); keys.push({ t: d.start, at: { deck: 0 } }); return; }
     let at = { deck: j - 1 }, t = free(j - 1);
@@ -407,16 +409,18 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   function buildCamera() {
     moves = [];
     const starts = beats.map(b => b.visualStartSeconds + OPEN);
-    // How long each scene's drawings and highlights take once it begins (a character's sweep and fade run past d).
-    const lengths = beats.map((b, i) => svgs[i] ? Math.max(0, ...[...svgs[i].querySelectorAll('[data-k]')].map(el =>
-      (b.cueSeconds?.[+(el.dataset.g || 0)] ?? (+(el.dataset.g || 0)) * .45) + +(el.dataset.s || 0) + +(el.dataset.d || 0) * (el.dataset.k === 'character' ? 1.2 : 1))) : 0);
+    // When each scene's last drawing or highlight ends after it begins (a character's sweep and fade run past d), and how
+    // long its parts take to appear if the camera comes late.
+    const parts = i => svgs[i] ? [...svgs[i].querySelectorAll('[data-k]')].map(el => ({ cue: beats[i].cueSeconds?.[+(el.dataset.g || 0)] ?? (+(el.dataset.g || 0)) * .45,
+      span: +(el.dataset.s || 0) + +(el.dataset.d || 0) * (el.dataset.k === 'character' ? 1.2 : 1) })) : [];
+    const lengths = beats.map((b, i) => Math.max(0, ...parts(i).map(p => p.cue + p.span))), catchUps = beats.map((b, i) => Math.max(0, ...parts(i).map(p => p.span)));
     // A deck is the run of drawn scenes of one paragraph; caption-only scenes keep the deck before them.
     const decks = [];
     beats.forEach((b, i) => {
       if (!b.cell) return;
       const d = decks.at(-1);
-      if (d && d.panel === b.panel) { d.beats.push(i); d.length = Math.max(d.length, starts[i] - d.start + lengths[i]); }
-      else decks.push({ panel: b.panel, section: b.section, start: starts[i], length: lengths[i], beats: [i], frame: b.panelFrame });
+      if (d && d.panel === b.panel) { d.beats.push(i); d.length = Math.max(d.length, starts[i] - d.start + lengths[i]); d.catchUp = Math.max(d.catchUp, catchUps[i]); }
+      else decks.push({ panel: b.panel, section: b.section, start: starts[i], length: lengths[i], catchUp: catchUps[i], beats: [i], frame: b.panelFrame });
     });
     const sectionBox = s => { const sec = layout.sections[s]; return [{ x: sec.frame.x, y: sec.frame.y, w: sec.labelW, h: sec.head }, ...decks.filter(d => d.section === s).map(d => d.frame)].reduce(union); };
     const target = at => at.deck !== undefined ? view(decks[at.deck].frame, 0.03) : view(sectionBox(at.section), 0.04);
@@ -424,7 +428,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
       return Math.min(1.8, ${MOVE} + Math.hypot(q.x - p.x, q.y - p.y) * Math.min(p.k, q.k) / 4000 + 0.15 * Math.abs(Math.log(q.k / p.k))); };
     const end = total + OPEN + CLOSE - 0.05;
     const plan = deckCameraPlan(decks, move, end);
-    decks.forEach((d, j) => d.beats.forEach(i => { beats[i].lag = Math.max(0, plan.arrive[j] - starts[i]); }));
+    decks.forEach((d, j) => d.beats.forEach(i => { beats[i].arrive = plan.arrive[j]; }));
     // Opening: the whole poster while its frames are drawn, then one move into the first deck.
     const first = plan.keys[0].t, into = Math.max(0.6, Math.min(1.2, first - 0.9));
     const keys = [[0, overview, ${VH / 2}], [first - into, overview, ${VH / 2}]];
@@ -450,13 +454,14 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     const boil = Math.floor(tv * 6) % 3 + 1;
     if (boil !== boiled) { boiled = boil; poster.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
     beats.forEach((b, i) => {
-      const svg = svgs[i], start = b.visualStartSeconds + OPEN + (b.lag || 0), local = (tv - start) / b.timeScale;
+      const svg = svgs[i], start = b.visualStartSeconds + OPEN, local = (tv - start) / b.timeScale;
       if (!svg) return;
       svg.style.visibility = tv >= start - 0.05 ? 'visible' : 'hidden';
       if (tv < start - 0.05) return;
       svg.querySelectorAll('[data-k]').forEach(el => {
         const g = +(el.dataset.g || 0), cue = b.cueSeconds?.[g] ?? g * .45;
-        const s = cue / b.timeScale + +el.dataset.s, d = +el.dataset.d, p = ease((local - s) / d), k = el.dataset.k;
+        // A part spoken before the camera arrived appears on arrival; later parts keep their spoken time.
+        const s = Math.max(cue, (b.arrive ?? start) - start) / b.timeScale + +el.dataset.s, d = +el.dataset.d, p = ease((local - s) / d), k = el.dataset.k;
         if (k === 'draw') { el.style.strokeDashoffset = 1 - p; el.style.opacity = p > 0 ? 1 : 0; el.style.fillOpacity = Math.min(1, p * 1.6); }
         else if (k === 'fade') { el.style.opacity = p; el.style.transform = 'translateY(' + (1 - p) * 8 + 'px)'; }
         else if (k === 'grow-x' || k === 'grow-y') { el.style.transformBox = 'fill-box';
@@ -480,15 +485,15 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   window.soundCues = () => {
     const events = [];
     beats.forEach((b, i) => {
-      const start = b.visualStartSeconds + OPEN + (b.lag || 0);
-      if (i) events.push({ t: start, kind: 'transition' });
+      const start = b.visualStartSeconds + OPEN, shown = Math.max(start, b.arrive ?? start);
+      if (i) events.push({ t: shown, kind: 'transition' });
       const groups = new Map();
       svgs[i]?.querySelectorAll('[data-k]').forEach(el => {
         const g = +(el.dataset.g || 0), k = el.dataset.k === 'character' ? 'appear' : el.classList.contains('r') || el.classList.contains('acc') ? 'accent' : 'build';
         const rank = { appear: 3, build: 2, accent: 1 };
         if (!groups.has(g) || rank[k] > rank[groups.get(g)]) groups.set(g, k);
       });
-      groups.forEach((kind, g) => events.push({ t: start + (b.cueSeconds?.[g] ?? g * .45) + (g ? 0 : .12), kind }));
+      groups.forEach((kind, g) => events.push({ t: Math.max(start + (b.cueSeconds?.[g] ?? g * .45), shown) + (g ? 0 : .12), kind }));
     });
     events.sort((a, b) => a.t - b.t);
     const kept = events.filter((e, i) => !i || e.t - events[i - 1].t >= .25);
@@ -497,7 +502,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   // Final-state geometry of a scene at its end: inside the visible band, no text collisions, no text over artwork.
   window.inspectBeat = i => {
     // Checked mid-scene, when the camera has settled on it.
-    const b = beats[i]; window.render(b.visualStartSeconds + OPEN + (b.lag || 0) + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6));
+    const b = beats[i]; window.render(Math.max(b.visualStartSeconds + OPEN + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6), (b.arrive ?? 0) + 1.5));
     const problems = [], box = el => el.getBoundingClientRect();
     const svg = svgs[i]; if (!svg) return [];
     const items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
