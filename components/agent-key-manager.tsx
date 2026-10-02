@@ -1,5 +1,6 @@
 "use client";
 
+import { agentKeyAccessLabel, defaultAgentExpiry } from "@/lib/agent-key-policy";
 import { Bot, Check, Copy, KeyRound, LoaderCircle, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
@@ -60,7 +61,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
       const response = await createAgentKey(accessToken, {
         name: String(form.get("name") || ""),
         ownerUserId: String(form.get("ownerUserId") || ""),
-        access: String(form.get("access")) === "write" ? "write" : "read",
+        access: String(form.get("access")) === "write" ? "write" : String(form.get("access")) === "draft" ? "draft" : "read",
+        expiresAt: new Date(`${String(form.get("expiresAt"))}T23:59:59`).toISOString(),
         team: String(form.get("team") || ""),
       });
       setIssued({ token: response.token, organizationId: response.organization.id });
@@ -170,8 +172,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
           {(result?.keys ?? []).map((key) => (
             <div key={key.id}>
               <span className="document-symbol"><Bot size={15} /></span>
-              <span className="agent-key-main"><strong>{key.name}</strong><small>{key.owner?.display_name || key.owner?.email || "소유자 미확인"} · {key.key_prefix}… · 최근 사용 {dateLabel(key.last_used_at)}</small></span>
-              <em className={`status-pill status-${key.active ? "ready" : "waiting"}`}>{key.active ? (key.scopes.includes("knowledge.write") ? "읽기·쓰기" : "읽기 전용") : "폐기됨"}</em>
+              <span className="agent-key-main"><strong>{key.name}</strong><small>{key.owner?.display_name || key.owner?.email || "소유자 미확인"} · {key.key_prefix}… · 최근 사용 {dateLabel(key.last_used_at)} · 만료 {key.expires_at ? dateLabel(key.expires_at) : "없음(기존 키)"}</small></span>
+              <em className={`status-pill status-${key.active ? "ready" : "waiting"}`}>{key.active ? agentKeyAccessLabel(key) : "폐기됨"}</em>
               {key.active ? (revokeId === key.id ? (
                 <span className="agent-revoke-actions"><button type="button" onClick={() => revoke(key)} disabled={busy}>폐기 확정</button><button type="button" onClick={() => setRevokeId(null)}>취소</button></span>
               ) : <button className="icon-button" type="button" aria-label={`${key.name} 키 폐기`} onClick={() => setRevokeId(key.id)}><Trash2 size={14} /></button>) : null}
@@ -186,7 +188,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
             <div className="drawer-header"><div><span className="eyebrow">MCP 권한</span><h2>AI 접근 키 발급</h2></div><button className="icon-button" type="button" aria-label="닫기" onClick={() => setCreateOpen(false)}><X /></button></div>
             <label>키 이름<input name="name" required maxLength={80} placeholder="예: 정호 Claude Code" /></label>
             <label>귀속 구성원<select name="ownerUserId" required defaultValue={members.find((member) => member.is_active && member.id === defaultOwnerId)?.id ?? members.find((member) => member.is_active)?.id}>{members.filter((member) => member.is_active).map((member) => <option value={member.id} key={member.id}>{member.display_name || member.email}</option>)}</select></label>
-            <label>권한 범위<select name="access" defaultValue="write"><option value="write">읽기·쓰기</option><option value="read">읽기 전용</option></select></label>
+            <label>권한 범위<select name="access" defaultValue="draft"><option value="read">읽기</option><option value="draft">초안 쓰기 (정본 제외)</option><option value="write">정본 쓰기</option></select></label>
+            <label>만료일<input type="date" name="expiresAt" required min={new Date().toISOString().slice(0, 10)} defaultValue={defaultAgentExpiry()} /></label>
             <label>팀 범위<input name="team" maxLength={120} placeholder="비워두면 귀속 계정 기준" /></label>
             <div className="inline-alert"><ShieldCheck size={15} />새 문서는 개인 초안으로만 생성되고, 삭제는 휴지통 이동이며, 모든 쓰기는 감사 로그와 버전으로 남습니다.</div>
             <div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => setCreateOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <KeyRound />}발급</button></div>

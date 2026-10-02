@@ -72,6 +72,7 @@ function setup() {
   const mod = { exports: {} };
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, {
     AbortController, setTimeout, clearTimeout,
+    window: { location: { get pathname() { return pathname; }, search: "", hash: "" } },
     process: { env: { NEXT_PUBLIC_SUPABASE_URL: "https://example.test", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "test-key" } },
   })((id) => {
     assert.ok(id in modules, `Unexpected module: ${id}`);

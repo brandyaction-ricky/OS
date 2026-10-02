@@ -27,6 +27,7 @@ import { isNicheQueueRecord } from "@/lib/content-radar";
 import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
 import { planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
+import { contentOrigin } from "@/lib/content-origin";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
 import { ContentTopicJevAssist } from "./content-topic-jev-assist";
@@ -70,7 +71,9 @@ function compactNumber(value: number) {
 
 export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [records, setRecords] = useState<OsRecord[]>([]);
+  const [allRecords, setRecords] = useState<OsRecord[]>([]);
+  const [includeTests, setIncludeTests] = useState(false);
+  const records = useMemo(() => allRecords.filter(record => includeTests || contentOrigin(record) !== "test"), [allRecords, includeTests]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
   const [tab, setTab] = useState<RadarTab>("channels");
   const [selectedId, setSelectedId] = useState("");
@@ -497,6 +500,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   };
 
   return <>
+    <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
     <header className="page-header">
       <div className="page-title-group"><span className="eyebrow">콘텐츠 레이더</span><h1>주제·기획</h1><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
       <div className="header-actions">

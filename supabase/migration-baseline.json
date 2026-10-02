@@ -285,6 +285,12 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20261002193500_agent_document_write_status_policy.sql",
+      "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

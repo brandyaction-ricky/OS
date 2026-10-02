@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "@/lib/html-entities";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       channel: {
         id: item.id,
-        title: item.snippet?.title ?? "이름 없는 채널",
+        title: decodeHtmlEntities(item.snippet?.title ?? "이름 없는 채널"),
         description: item.snippet?.description?.slice(0, 500) ?? "",
         handle: item.snippet?.customUrl ?? "",
         thumbnail: item.snippet?.thumbnails?.medium?.url ?? item.snippet?.thumbnails?.default?.url ?? "",
