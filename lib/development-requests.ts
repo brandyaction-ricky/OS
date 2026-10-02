@@ -53,6 +53,10 @@ export const developmentRequestUpdateSchema = z.object({
   expectedVersion: z.number().int().positive(),
   status: z.enum(DEVELOPMENT_REQUEST_STATUSES).optional(),
   resolution: z.string().trim().max(12_000).optional(),
+  plainSummary: z.string().trim().max(240).optional(),
+  nextAction: z.string().trim().max(500).optional(),
+  holdReason: z.string().trim().max(2_000).optional(),
+  reviewDate: z.union([z.string().date(), z.literal("")]).optional(),
   branch: z.string().trim().max(300).optional(),
   commitSha: z.string().trim().max(64).refine((value) => !value || /^[a-f0-9]{7,64}$/i.test(value), "커밋 SHA를 확인해 주세요.").optional(),
   prUrl: link().optional(),
@@ -75,7 +79,7 @@ export class DevelopmentRequestPolicyError extends Error {
   }
 }
 
-const MANAGEMENT_FIELDS = ["resolution", "branch", "commitSha", "prUrl", "deploymentUrl"] as const;
+const MANAGEMENT_FIELDS = ["resolution", "branch", "commitSha", "prUrl", "deploymentUrl", "plainSummary", "nextAction", "holdReason", "reviewDate"] as const;
 const MANAGEMENT_INPUTS = [...MANAGEMENT_FIELDS, "assigneeId"] as const;
 
 export function validateDevelopmentRequestUpdate(

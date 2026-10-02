@@ -1,8 +1,8 @@
 import { findPage } from "@/lib/navigation";
-import { Dashboard } from "@/components/dashboard";
+import { PersonalWorkHome } from "@/components/personal-work-home";
 
 export const metadata = { title: `${findPage("/home").label} | 브랜디 OS` };
 
 export default function HomePage() {
-  return <Dashboard />;
+  return <PersonalWorkHome />;
 }

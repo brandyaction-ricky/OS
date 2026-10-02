@@ -50,7 +50,7 @@ const DASHBOARD_RECORD_TYPES = [
   "content_package", "content_short", "content_publish",
 ] as const;
 
-export function Dashboard() {
+export function Dashboard({ embedded = false }: { embedded?: boolean }) {
   const { accessToken, demo } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
@@ -140,7 +140,7 @@ export function Dashboard() {
   );
   return (
     <>
-      <header className="page-header">
+      {!embedded ? <header className="page-header">
         <div className="page-title-group">
           <PageTitle />
           <p>
@@ -158,7 +158,7 @@ export function Dashboard() {
             회의 준비
           </Link>
         </div>
-      </header>
+      </header> : null}
       {error ? (
         <div className="inline-alert danger">
           <CircleAlert size={16} />

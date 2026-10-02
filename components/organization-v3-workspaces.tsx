@@ -1,4 +1,5 @@
 "use client";
+import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
 
@@ -252,6 +253,7 @@ export function AiOperationsWorkspace() {
     done: "완료",
     failed: "실패",
   };
+  useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
   const selectedJobSourceUrl = safeWebUrl(selectedJob?.source_url);
   return (
     <>

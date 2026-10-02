@@ -33,11 +33,12 @@ import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gat
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 
-type GenericPageProps = { params: Promise<{ stage: string; page: string }> };
+type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-export async function generateMetadata({ params }: GenericPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: GenericPageProps): Promise<Metadata> {
   const resolved = await params;
-  const page = findPage(`/${resolved.stage}/${resolved.page}`);
+  const query = await searchParams;
+  const page = findPage(`/${resolved.stage}/${resolved.page}?tab=${typeof query.tab === "string" ? query.tab : ""}`);
   return { title: `${page.label} | 브랜디 OS` };
 }
 

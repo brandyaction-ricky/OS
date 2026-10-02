@@ -1,4 +1,5 @@
 "use client";
+import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
 
@@ -64,6 +65,7 @@ export function TasksWorkspace() {
   const [error, setError] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [mineOnly, setMineOnly] = useState(false);
+  useRecordDeepLink("task", "task", task => { setEditing(task); setDrawer(true); }, setError);
   const load = useCallback(async () => {
     if (demo) return;
     try {

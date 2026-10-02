@@ -9,7 +9,7 @@ test("local demo renders the application shell and health contract", async ({ pa
   await page.goto("/home");
 
   await expect(page.getByRole("heading", { level: 1 })).toContainText("내 할 일");
-  await expect(page.getByText("데모 데이터", { exact: true })).toBeVisible();
+  await expect(page.getByText("데모 · 실제 업무 연결 전", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "지식 찾기" })).toBeVisible();
 
   const healthResponse = await request.get("/api/v1/health");

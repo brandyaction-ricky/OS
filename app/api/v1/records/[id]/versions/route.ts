@@ -28,6 +28,7 @@ async function authorize(request: Request, id: string, write = false) {
   const service = createServiceSupabase();
   const { data, error } = await service.from("os_records").select("*").eq("id", id).maybeSingle();
   if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+  if (data.record_type === "notification") throw new ApiError(403,"NOTIFICATION_API_REQUIRED","알림 전용 화면을 이용해 주세요.");
   if (actor.role !== "admin" && ![data.owner_id, data.created_by, data.assignee_id].includes(actor.ownerId)) {
     throw new ApiError(403, "RECORD_RESTORE_FORBIDDEN", "이 운영 기록의 버전을 복원할 권한이 없습니다.");
   }
