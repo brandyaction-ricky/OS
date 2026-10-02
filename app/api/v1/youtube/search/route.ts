@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from "@/lib/html-entities";
+import { youtubeConnectionStatus } from "@/lib/server/youtube-oauth";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
@@ -7,7 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
-  q: z.string().trim().min(2).max(120),
+  q: z.string().trim().max(120).default(""),
+  own: z.boolean().default(false),
   region: z.enum(["KR", "US", "JP", "all"]).default("KR"),
   order: z.enum(["viewCount", "date", "relevance"]).default("viewCount"),
   maxResults: z.coerce.number().int().min(1).max(20).default(12),
@@ -27,16 +30,19 @@ function durationSeconds(value = "") {
 
 export async function GET(request: Request) {
   try {
-    await authenticateRequest(request);
+    const actor = await authenticateRequest(request);
     const key = process.env.YOUTUBE_API_KEY;
     if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
     const url = new URL(request.url);
-    const input = querySchema.parse({ q: url.searchParams.get("q"), maxResults: url.searchParams.get("maxResults") ?? 12, region: url.searchParams.get("region") ?? "KR", order: url.searchParams.get("order") ?? "viewCount" });
-    const searchParams = new URLSearchParams({ part: "snippet", type: "video", order: input.order, ...(input.region === "all" ? {} : { regionCode: input.region }), ...(input.region === "KR" ? { relevanceLanguage: "ko" } : {}), maxResults: String(input.maxResults), q: input.q, key });
+    const input = querySchema.parse({ q: url.searchParams.get("q") ?? "", own: url.searchParams.get("own") === "true", maxResults: url.searchParams.get("maxResults") ?? 12, region: url.searchParams.get("region") ?? "KR", order: url.searchParams.get("order") ?? "viewCount" });
+    if (!input.own && input.q.length < 2) throw new ApiError(400, "INVALID_YOUTUBE_QUERY", "검색어를 두 글자 이상 입력해 주세요.");
+    const connection = input.own ? await youtubeConnectionStatus(actor.id) : null;
+    if (input.own && (!connection?.connected || !connection.channelId)) throw new ApiError(409, "YOUTUBE_CHANNEL_REQUIRED", "연결된 우리 채널이 없습니다. 작동 상태에서 채널을 연결해 주세요.");
+    const searchParams = new URLSearchParams({ part: "snippet", type: "video", order: input.order, ...(input.region === "all" ? {} : { regionCode: input.region }), ...(input.region === "KR" ? { relevanceLanguage: "ko" } : {}), maxResults: String(input.maxResults), ...(connection?.channelId ? { channelId: connection.channelId } : { q: input.q }), key });
     const searchResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?${searchParams}`, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
     const searchBody = await searchResponse.json() as { items?: YoutubeSearchItem[]; error?: { message?: string } };
     if (!searchResponse.ok) throw new ApiError(502, "YOUTUBE_SEARCH_FAILED", "YouTube 시장 영상을 불러오지 못했습니다.", searchBody.error?.message);
-    const searchItems = searchBody.items ?? [];
+    const searchItems = (searchBody.items ?? []).filter(item => !connection?.channelId || item.snippet?.channelId === connection.channelId);
     const ids = searchItems.map((item) => item.id?.videoId).filter((id): id is string => Boolean(id));
     if (!ids.length) return NextResponse.json({ query: input.q, items: [], configured: true });
     const channelIds = [...new Set(searchItems.map((item) => item.snippet?.channelId).filter((id): id is string => Boolean(id)))];
@@ -56,7 +62,7 @@ export async function GET(request: Request) {
       const id = item.id?.videoId ?? ""; const stats = statistics.get(id); const channel = channelStats.get(item.snippet?.channelId ?? "");
       const subscribers = channel?.hiddenSubscriberCount ? null : Number(channel?.subscriberCount ?? 0) || null;
       const viewCount = Number(stats?.viewCount ?? 0);
-      return { id, live: Boolean(videoBody.items?.find((video) => video.id === id)?.liveStreamingDetails), title: item.snippet?.title ?? "제목 없음", channelTitle: item.snippet?.channelTitle ?? "", publishedAt: item.snippet?.publishedAt ?? null, thumbnail: item.snippet?.thumbnails?.high?.url ?? item.snippet?.thumbnails?.medium?.url ?? "", viewCount, likeCount: Number(stats?.likeCount ?? 0), commentCount: Number(stats?.commentCount ?? 0), durationSeconds: durationSeconds(details.get(id)?.duration), subscribers, viewSubscriberRatio: subscribers ? Number((viewCount / subscribers).toFixed(2)) : null, url: `https://www.youtube.com/watch?v=${id}` };
+      return { id, live: Boolean(videoBody.items?.find((video) => video.id === id)?.liveStreamingDetails), title: decodeHtmlEntities(item.snippet?.title ?? "제목 없음"), channelId: item.snippet?.channelId ?? "", channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? ""), publishedAt: item.snippet?.publishedAt ?? null, thumbnail: item.snippet?.thumbnails?.high?.url ?? item.snippet?.thumbnails?.medium?.url ?? "", viewCount, likeCount: Number(stats?.likeCount ?? 0), commentCount: Number(stats?.commentCount ?? 0), durationSeconds: durationSeconds(details.get(id)?.duration), subscribers, viewSubscriberRatio: subscribers ? Number((viewCount / subscribers).toFixed(2)) : null, url: `https://www.youtube.com/watch?v=${id}` };
     });
     return NextResponse.json({ query: input.q, configured: true, items });
   } catch (error) {

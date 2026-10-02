@@ -1,3 +1,4 @@
+import { contentOrigin } from "./content-origin.ts";
 import type { OsRecord } from "./record-types";
 
 const CONTENT_TYPES = new Set<OsRecord["record_type"]>([
@@ -226,6 +227,7 @@ export function groupHomeVideos(records: OsRecord[], limit = 6): HomeVideo[] {
     .filter((record) => !INACTIVE_CONTENT_STATUSES.has(record.status))
     .forEach((record) => {
       const root = contentRoot(record, byId);
+      if (contentOrigin(record) !== "own" || contentOrigin(root) !== "own") return;
       const key = root.id || normalizedVideoTitle(root.title).toLowerCase();
       const group = groups.get(key) ?? { root, items: [] };
       group.items.push(record);

@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "@/lib/html-entities";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, apiErrorResponse } from "@/lib/http";
@@ -17,7 +18,7 @@ async function youtube(resource: string, parameters: Record<string, string>) {
 }
 function normalize(item: Item): BaselineVideo {
   const duration = item.contentDetails?.duration?.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  return { id: item.id ?? "", channelId: item.snippet?.channelId ?? "", title: item.snippet?.title ?? "", publishedAt: item.snippet?.publishedAt ?? "", views: Number(item.statistics?.viewCount ?? 0), durationSeconds: duration ? Number(duration[1] ?? 0) * 3600 + Number(duration[2] ?? 0) * 60 + Number(duration[3] ?? 0) : 0, live: !!item.liveStreamingDetails || ["live", "upcoming"].includes(item.snippet?.liveBroadcastContent ?? ""), categoryId: item.snippet?.categoryId };
+  return { id: item.id ?? "", channelId: item.snippet?.channelId ?? "", title: decodeHtmlEntities(item.snippet?.title ?? ""), publishedAt: item.snippet?.publishedAt ?? "", views: Number(item.statistics?.viewCount ?? 0), durationSeconds: duration ? Number(duration[1] ?? 0) * 3600 + Number(duration[2] ?? 0) * 60 + Number(duration[3] ?? 0) : 0, live: !!item.liveStreamingDetails || ["live", "upcoming"].includes(item.snippet?.liveBroadcastContent ?? ""), categoryId: item.snippet?.categoryId };
 }
 export async function GET(request: Request) {
   try {

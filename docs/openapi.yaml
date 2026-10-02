@@ -321,14 +321,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, expiresAt]
               properties:
                 name: { type: string, minLength: 1, maxLength: 80 }
                 ownerUserId: { type: string, format: uuid }
-                access: { type: string, enum: [read, write], default: read }
+                access: { type: string, enum: [read, draft, write], default: read, description: "draft allows non-canonical document writes while retaining company-reference reads; existing keys retain their previous effective policy." }
                 team: { type: string, maxLength: 120 }
                 brand: { type: [string, "null"], maxLength: 120 }
-                expiresAt: { type: [string, "null"], format: date-time }
+                expiresAt: { type: string, format: date-time, description: "Required future expiration for newly issued keys. Existing non-expiring keys are unchanged." }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:

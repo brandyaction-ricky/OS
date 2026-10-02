@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from "@/lib/html-entities";
+import { contentOrigin } from "@/lib/content-origin";
 import { assertSkillSource } from "@/lib/server/skill-source";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
@@ -93,8 +95,16 @@ export async function POST(request: Request) {
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
     await assertDevelopmentRequestLink(actor.supabase, input);
     await assertSkillSource(actor.supabase, input.recordType, input.metadata);
+    let origin = contentOrigin(input);
+    if (input.metadata.origin !== undefined && !["own", "market", "test"].includes(String(input.metadata.origin))) throw new ApiError(400, "INVALID_CONTENT_ORIGIN", "콘텐츠 종류를 확인해 주세요.");
+    if (input.recordType.startsWith("content_") && input.parentId && input.metadata.origin === undefined && origin === "own") {
+      const { data: parent, error: parentError } = await actor.supabase.from("os_records").select("title,metadata").eq("id", input.parentId).is("archived_at", null).maybeSingle();
+      if (parentError) throw new ApiError(400, "CONTENT_PARENT_FAILED", "기준 콘텐츠 종류를 확인하지 못했습니다.");
+      if (parent) origin = contentOrigin(parent);
+    }
     const payload = {
       ...toDatabase(input),
+      ...(input.recordType.startsWith("content_") ? { title: decodeHtmlEntities(input.title), metadata: { ...input.metadata, origin } } : {}),
       owner_id: actor.id,
       created_by: actor.id,
       updated_by: actor.id,

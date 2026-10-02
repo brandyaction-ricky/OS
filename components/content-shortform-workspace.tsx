@@ -16,9 +16,11 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, listAllRecordsOfType, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
+import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
+import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
 
 type ShortsTab = "editor" | "clips";
@@ -73,7 +75,9 @@ function videoMime(file: File) {
 
 export function ContentShortformWorkspace() {
   const { accessToken, demo, profile } = useSession();
-  const [sources, setSources] = useState<OsRecord[]>([]);
+  const [allSources, setSources] = useState<OsRecord[]>([]);
+  const [origin, setOrigin] = useState<OriginFilter>("own");
+  const sources = filterContentOrigin(allSources, origin);
   const [clips, setClips] = useState<OsRecord[]>([]);
   const [sourceId, setSourceId] = useState("");
   const [tab, setTab] = useState<ShortsTab>("editor");
@@ -94,12 +98,12 @@ export function ContentShortformWorkspace() {
     if (demo) return;
     try {
       const [sourceResult, clipResult] = await Promise.all([
-        listRecords(accessToken, "content_topic", "limit=200"),
+        listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })),
         listRecords(accessToken, "content_short", "limit=200"),
       ]);
-      const usable = sourceResult.records.filter((record) => !["channel", "outlier"].includes(meta<string>(record, "studioKind", "")));
+      const usable = sourceResult.records;
       setSources(usable); setClips(clipResult.records);
-      setSourceId((current) => current || new URLSearchParams(window.location.search).get("sourceId") || usable[0]?.id || "");
+      setSourceId((current) => sourceSelection(usable, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "숏폼 작업을 불러오지 못했습니다.");
@@ -270,7 +274,7 @@ export function ContentShortformWorkspace() {
   const previewPosition = style.position === "top" ? "flex-start" : style.position === "bottom" ? "flex-end" : "center";
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">숏폼 제작실</span><h1>숏폼 편집</h1><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><span className="eyebrow">숏폼 제작실</span><h1>숏폼 편집</h1><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <nav className="studio-tabs content-radar-tabs" aria-label="숏폼 작업 단계"><button className={tab === "editor" ? "active" : ""} onClick={() => setTab("editor")}><strong>스타일·원본</strong><small>화면 템플릿</small></button><button className={tab === "clips" ? "active" : ""} onClick={() => setTab("clips")}><strong>클립</strong><small>구간·제작 관리</small></button></nav>
 
