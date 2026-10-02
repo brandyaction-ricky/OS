@@ -9,7 +9,7 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   if (record.metadata.kind === "development_request") return `/knowledge/development?request=${id}`;
   if (record.record_type === "task") return `/organization/tasks?task=${id}`;
   if (record.record_type === "meeting") return `/organization/meetings?meeting=${id}`;
-  if (record.record_type === "decision") return `/home/decisions?record=${id}`;
+  if (record.record_type === "decision") return `/organization/meetings?tab=decisions&record=${id}`;
   if (record.record_type === "leave_request") return "/organization/leave";
   if (record.record_type.startsWith("content_")) return `/content/publishing?sourceId=${encodeURIComponent(String(record.metadata.sourceId || record.id))}`;
   return `/organization/agents?job=${id}`;

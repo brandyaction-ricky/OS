@@ -42,7 +42,7 @@ export async function generateMetadata({ params, searchParams }: GenericPageProp
   return { title: `${page.label} | 브랜디 OS` };
 }
 
-export default async function GenericPage({ params }: GenericPageProps) {
+export default async function GenericPage({ params, searchParams }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
@@ -55,6 +55,11 @@ export default async function GenericPage({ params }: GenericPageProps) {
   if (href === "/home/goals") return <GoalsWorkspace />;
   if (href === "/home/reports") return <ReportsWorkspace />;
   if (href === "/organization/projects") redirect("/organization/meetings");
+  if (href === "/home/decisions") {
+    const previous = await searchParams; const query = new URLSearchParams({tab:"decisions"});
+    for(const [key,value] of Object.entries(previous)) if(key!=="tab"&&typeof value==="string") query.set(key,value);
+    redirect(`/organization/meetings?${query}`);
+  }
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
   if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;
