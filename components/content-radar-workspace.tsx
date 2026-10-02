@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import Link from "next/link";
 import {
   ArrowRight,
@@ -502,7 +504,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   return <>
     <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
     <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">콘텐츠 레이더</span><h1>주제·기획</h1><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
+      <div className="page-title-group"><PageTitle /><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
       <div className="header-actions">
         {tab === "channels" ? <button className="primary-button" onClick={() => setChannelOpen(true)}><Plus size={15} /> 채널 추가</button> : null}
         {tab === "niches" ? <button className="primary-button" onClick={() => setTopicOpen(true)}><Plus size={15} /> 틈새 후보 추가</button> : null}

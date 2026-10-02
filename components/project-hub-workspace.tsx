@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { ArrowUpRight, Check, CheckCircle2, Circle, CircleAlert, Copy, CornerDownRight, Download, Eye, FileText, FolderGit2, GitBranch, GitCommitHorizontal, Loader2, MessageCircle, Plus, RefreshCw, Rocket, Search, Send, SlidersHorizontal, Trash2, UploadCloud, UserRound, X } from "lucide-react";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -432,7 +434,7 @@ function ProjectHubContent() {
   const selectedHistory = useMemo(() => selected ? history.filter(item => meta(item, "requestId") === selected.id) : [], [history, selected]);
 
   return <div className="dev-workspace">
-    <header className="dev-page-header"><div><div className="dev-kicker"><FolderGit2 size={15} /> 회사 운영 / 개발</div><h1>개발 관리 <span>요청부터 해결까지</span></h1><p>불편한 점과 필요한 기능을 남기고, 무엇이 바뀌었는지 함께 확인하세요.</p></div><div className="dev-actions"><button className="dev-button" disabled={!current} onClick={() => copy()}><Copy size={14} /> Work에서 이어하기</button><button className="dev-button" onClick={() => open("request")} disabled={saving || !projects.length}><Plus size={15} /> 수정 요청</button><button className="dev-button primary" onClick={() => open("featureRequest")} disabled={saving || !projects.length}><Plus size={15} /> 추가 개발 요청</button></div></header>
+    <header className="dev-page-header"><div><PageTitle /><p>불편한 점과 필요한 기능을 남기고, 무엇이 바뀌었는지 함께 확인하세요.</p></div><div className="dev-actions"><button className="dev-button" disabled={!current} onClick={() => copy()}><Copy size={14} /> Work에서 이어하기</button><button className="dev-button" onClick={() => open("request")} disabled={saving || !projects.length}><Plus size={15} /> 수정 요청</button><button className="dev-button primary" onClick={() => open("featureRequest")} disabled={saving || !projects.length}><Plus size={15} /> 추가 개발 요청</button></div></header>
     {demo && <div className="dev-banner">미리보기 · 여기서 등록한 내용은 현재 화면에서만 유지됩니다.</div>}
     {notice && <div className="dev-notice" role="status"><CheckCircle2 size={15} />{notice}<button aria-label="안내 닫기" onClick={() => setNotice("")}><X size={14} /></button></div>}
     {error && <div className="dev-error" role="alert"><CircleAlert size={15} />{error}<button onClick={retryAll}>다시 불러오기</button></div>}

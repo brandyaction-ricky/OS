@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   ArrowRight,
   CalendarDays,
@@ -49,7 +51,7 @@ const DASHBOARD_RECORD_TYPES = [
 ] as const;
 
 export function Dashboard() {
-  const { accessToken, demo, profile } = useSession();
+  const { accessToken, demo } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [loading, setLoading] = useState(!demo);
@@ -140,10 +142,7 @@ export function Dashboard() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">오늘 현황</span>
-          <h1>
-            {profile?.displayName || "리키"}님, 이번 주 핵심만 모았습니다.
-          </h1>
+          <PageTitle />
           <p>
             매출 목표, 회의에서 남은 이슈, 영상 제작과 최근 지식을 한 흐름으로
             확인합니다. · {loading ? "자료 확인 중" : error ? "자료 확인 실패" : basisTime(view.revenue.lastUpdatedAt)}

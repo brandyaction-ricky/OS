@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { WorkspaceLoadState } from "./workspace-load-state";
 import { RefreshCw, ExternalLink } from "lucide-react";
 import Link from "next/link";
@@ -54,7 +56,7 @@ export function KnowledgeGraphWorkspace() {
   }));
   const select = (id: string) => { setSelectedId(id); setLimit(24); };
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">자동 지식 연결</span><h1>지식 연결</h1><p>[[문서명]] 연결을 탐색합니다. 제목이 겹치면 폴더를 포함한 전체 경로로 연결해 주세요.</p></div><Link className="primary-button" href="/knowledge">문서 작업공간 <ExternalLink size={15}/></Link></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>[[문서명]] 연결을 탐색합니다. 제목이 겹치면 폴더를 포함한 전체 경로로 연결해 주세요.</p></div><Link className="primary-button" href="/knowledge">문서 작업공간 <ExternalLink size={15}/></Link></header>
     <div className="p2-toolbar">{!loading && !error ? <span>휴지통 제외 전체 문서 {graph.nodes.length} · 연결 {graph.edges.length} · 깨진 링크 {graph.broken.length}</span> : null}<button className="secondary-button" disabled={loading} onClick={() => void load()}><RefreshCw size={15}/> {loading ? "갱신 중…" : "연결 새로고침"}</button></div>
     {error ? <p role="alert" className="inline-alert danger">{error} 기존 결과가 표시될 수 있습니다.</p> : null}
     <WorkspaceLoadState loading={loading} error={error} retry={load}>

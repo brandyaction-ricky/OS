@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   Activity,
   Bot,
@@ -155,8 +157,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
     <>
       {!embedded ? <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">운영 모니터링</span>
-          <h1>운영 모니터링</h1>
+          <PageTitle />
           <p>DB·인증·검색·메시지 연결과 내부 데이터 준비 상태를 점검합니다.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load}>

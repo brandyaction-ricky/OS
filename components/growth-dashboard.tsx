@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { formatMoney as manwon, formatNumber, measuredSum, measuredMedian } from "@/lib/metric-format";
 import { WorkspaceLoadState } from "./workspace-load-state";
 import { ArrowRight, BarChart3, CircleAlert, CircleDollarSign, Filter, Link2, TrendingUp } from "lucide-react";
@@ -49,7 +51,7 @@ export function GrowthDashboard() {
   })).sort((left, right) => right.amount - left.amount), [revenue]);
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">성과 한눈에</span><h1>성과 통합 현황</h1><p>순매출, 퍼널 전환, 주간 KPI와 자사몰 어드민 연결을 같은 브랜드·기간으로 봅니다.</p></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>순매출, 퍼널 전환, 주간 KPI와 자사몰 어드민 연결을 같은 브랜드·기간으로 봅니다.</p></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <WorkspaceLoadState loading={loading} error={error} retry={load}>
     <p className="field-hint">{month} · 선택 브랜드 · 매출 {revenue.length}건 기준 · <Link href="/performance/connections">데이터 연결</Link></p>

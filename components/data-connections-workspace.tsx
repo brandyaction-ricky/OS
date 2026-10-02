@@ -1,8 +1,9 @@
 "use client";
+
+import { PageTitle } from "./page-title";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAdPerformance, getConnectionChecks, getHealth, listMembers, listRecords } from "@/lib/api-client";
-import { findPage } from "@/lib/navigation";
 import { useSession } from "./session-provider";
 import { usePerformanceFilters } from "./performance-filter-context";
 import { WorkspaceLoadState } from "./workspace-load-state";
@@ -39,7 +40,7 @@ export function DataConnectionsWorkspace() {
   }, [accessToken, demo, profile?.role, month, brand]);
   useEffect(() => { const requests = generation; void load(); return () => { requests.current++; }; }, [load]);
   const displayed = demo ? [["주문·매출", "/performance/revenue"], ["Meta·Google 광고", "/performance/ads"], ["영상 성과", "/content/performance"]].map(([name, href]) => ({ name, status: name === "주문·매출" ? "주문 연결 대기" : "데모 모드 · 확인 전", collected: null, owner: "미지정", href })) : rows;
-  return <><header className="page-header"><div className="page-title-group"><h1>{findPage("/performance/connections").label}</h1><p>수집되지 않은 값은 —, 수집된 0은 0으로 표시합니다. 광고는 {month}·선택 브랜드, 영상은 조회 가능한 최근 저장 지표 기준입니다.</p></div><button className="secondary-button" onClick={load} disabled={demo || loading}>새로고침</button></header>
+  return <><header className="page-header"><div className="page-title-group"><PageTitle /><p>수집되지 않은 값은 —, 수집된 0은 0으로 표시합니다. 광고는 {month}·선택 브랜드, 영상은 조회 가능한 최근 저장 지표 기준입니다.</p></div><button className="secondary-button" onClick={load} disabled={demo || loading}>새로고침</button></header>
     <WorkspaceLoadState loading={loading || (!demo && !error && loadedKey !== `${month}:${brand}`)} error={error} retry={load}><section className="connection-evidence-grid">{displayed.map(row => <article className="panel connection-evidence" key={row.name}><h2>{row.name}</h2><p>{row.status}</p><dl><div><dt>마지막 수집·입력</dt><dd>{row.collected ? new Date(row.collected).toLocaleString("ko-KR") : "— 수집 이력 없음"}</dd></div><div><dt>정 담당</dt><dd>{row.owner}</dd></div></dl><div className="connection-evidence-actions"><Link className="secondary-button" href={row.href}>데이터 확인</Link><Link className="ghost-button" href="/settings/connections">담당·작동 상태</Link></div></article>)}</section></WorkspaceLoadState>
   </>;
 }

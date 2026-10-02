@@ -79,7 +79,7 @@ export default async function GenericPage({ params }: GenericPageProps) {
   if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
   if (href === "/performance/ads") return <AdPerformanceWorkspace />;
   if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
-  if (href === "/performance/customers") return <CommerceAdminLinks title="자사몰 어드민" />;
+  if (href === "/performance/customers") return <CommerceAdminLinks />;
   if (href === "/settings/monitoring") return <SystemStatusWorkspace tab="monitoring" />;
   if (href === "/settings/connections") return <SystemStatusWorkspace />;
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;

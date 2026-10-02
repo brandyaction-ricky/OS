@@ -8,7 +8,7 @@ test("local demo renders the application shell and health contract", async ({ pa
 
   await page.goto("/home");
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("이번 주 핵심만 모았습니다");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("내 할 일");
   await expect(page.getByText("데모 데이터", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "지식 찾기" })).toBeVisible();
 
@@ -24,16 +24,16 @@ test("local demo renders the application shell and health contract", async ({ pa
 });
 
 test("secondary publishing pages keep the content navigation context", async ({ page }) => {
-  for (const [pathname, label] of [
+  for (const [pathname] of [
     ["/content/automation", "멀티채널 자동화"],
     ["/content/review", "검토·발행 대기목록"],
     ["/content/calendar", "발행 캘린더"],
   ]) {
     await page.goto(pathname);
-    await expect(page.locator(".sidebar-head h2")).toHaveText("콘텐츠");
-    await expect(page.locator(".breadcrumbs")).toContainText(label);
-    await expect(page.getByRole("link", { name: "발행·업로드", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page).toHaveTitle(`${label} | 브랜디 OS`);
+    await expect(page.getByRole("button", { name: "콘텐츠", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".breadcrumbs")).toContainText("발행 일정");
+    await expect(page.getByRole("link", { name: "발행 일정", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveTitle("발행 일정 | 브랜디 OS");
   }
 });
 

@@ -3,6 +3,10 @@
 import {
   ChevronRight,
   ChevronsUpDown,
+  ChevronDown,
+  ChevronsLeft,
+  ChevronsRight,
+  NotebookPen,
   CircleHelp,
   Command,
   MessageSquarePlus,
@@ -29,6 +33,10 @@ type DisplayTheme = "dark" | "light";
 
 const THEME_STORAGE_KEY = "brandy-os-theme";
 const GUIDANCE_STORAGE_KEY = "brandy-os-guidance";
+const GROUPS_STORAGE_KEY = "brandy-os-nav-groups";
+const COLLAPSED_STORAGE_KEY = "brandy-os-nav-collapsed";
+const MENU_GUIDE_STORAGE_KEY = "brandy-os-menu-guide-v2";
+
 
 function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
@@ -47,9 +55,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [stage.id]: true });
+  const [menuGuide, setMenuGuide] = useState(false);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const previousStage = useRef(stage.id);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileTriggerRef = useRef<HTMLButtonElement>(null);
-  const railProfileTriggerRef = useRef<HTMLButtonElement>(null);
   const profileReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const profileMenuId = useId();
 
@@ -72,8 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     (menu?.querySelector<HTMLButtonElement>("button") ?? menu)?.focus();
     const containsProfileElement = (target: EventTarget | null) => target instanceof Node && (
       profileMenuRef.current?.contains(target) ||
-      profileTriggerRef.current?.contains(target) ||
-      railProfileTriggerRef.current?.contains(target)
+      profileTriggerRef.current?.contains(target)
     );
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -105,6 +117,47 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     setTheme(savedTheme === "light" ? "light" : "dark");
     setGuidanceOn(savedGuidance !== "off");
   }, []);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
+      const moved = previousStage.current !== stage.id;
+      previousStage.current = stage.id;
+      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, stored?.[item.id] === true])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
+      setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
+      setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
+    } catch { setOpenGroups({ [stage.id]: true }); }
+  }, [stage.id]);
+
+  const toggleGroup = (id: string) => {
+    const next = { ...openGroups, [id]: !openGroups[id] };
+    setOpenGroups(next);
+    try { window.localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(next)); } catch { /* Current view still works without storage. */ }
+  };
+  const toggleSidebar = () => {
+    setCollapsed(!collapsed);
+    try { window.localStorage.setItem(COLLAPSED_STORAGE_KEY, String(!collapsed)); } catch { /* Keep in-memory preference. */ }
+  };
+  const dismissGuide = () => {
+    setMenuGuide(false);
+    try { window.localStorage.setItem(MENU_GUIDE_STORAGE_KEY, "seen"); } catch { /* Keep in-memory preference. */ }
+  };
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    sidebarRef.current?.querySelector<HTMLButtonElement>('[aria-label="메뉴 닫기"]')?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setMobileOpen(false); mobileTriggerRef.current?.focus(); }
+      if (event.key !== "Tab") return;
+      const items = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? []).filter(item => item.getClientRects().length);
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", onKey); };
+  }, [mobileOpen]);
 
   const changeTheme = () => {
     const nextTheme: DisplayTheme = theme === "dark" ? "light" : "dark";
@@ -162,160 +215,75 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`os-app linear-shell${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
-      <aside className="stage-rail" aria-label="주요 영역">
-        <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">
-          BA
-        </Link>
-        <nav className="stage-list">
-          {NAV_STAGES.map((item) => {
+    <div className={`os-app linear-shell unified-shell${collapsed ? " nav-collapsed" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
+      <aside ref={sidebarRef} id="main-navigation" className={`unified-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
+        <div className="unified-sidebar-head">
+          <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">BA</Link>
+          <strong className="sidebar-brand">브랜디 OS</strong>
+          <button className="icon-button sidebar-collapse" aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"} aria-expanded={!collapsed} onClick={toggleSidebar}>
+            {collapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
+          </button>
+          <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
+        </div>
+        <nav className="unified-nav">
+          {NAV_STAGES.map(item => {
             const Icon = item.icon;
             const active = item.id === stage.id;
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                className={`stage-link${active ? " active" : ""}`}
-                aria-current={active ? "page" : undefined}
-              >
-                <Icon size={20} strokeWidth={1.8} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <button ref={railProfileTriggerRef} className="rail-avatar" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
-          <Initials name={profile?.displayName ?? "B"} />
-        </button>
-      </aside>
-
-      <aside className={`page-sidebar${mobileOpen ? " mobile-open" : ""}`}>
-        <div className="sidebar-head">
-          <div>
-            <span className="eyebrow">현재 영역</span>
-            <h2>{stage.label}</h2>
-          </div>
-          <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}>
-            <X size={18} />
-          </button>
-        </div>
-        <nav className="page-nav">
-          {stage.pages.map((item, index) => {
-            const Icon = item.icon;
-            const active = item.href === (page.navHref ?? page.href);
-            const previousGroup = index > 0 ? stage.pages[index - 1].group : undefined;
-            return (
-              <div key={item.href}>
-                {item.group && item.group !== previousGroup ? (
-                  <div className="nav-group">{item.group}</div>
-                ) : null}
-                <Link
-                  href={item.href}
-                  className={`page-link${active ? " active" : ""}`}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <Icon size={17} />
-                  <span>{item.label}</span>
-                  {!item.ready ? <span className="soon-dot" title="설계 대기" /> : null}
-                </Link>
+            return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
+              <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
+              <button className="nav-section-trigger" onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
+                <Icon size={18} /><span>{item.label}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
+              </button>
+              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={!openGroups[item.id]}>
+                {item.pages.map((entry, index) => {
+                  const selected = entry.href === (page.navHref ?? page.href);
+                  const PageIcon = entry.icon;
+                  return <div key={entry.href}>
+                    {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
+                    <Link href={entry.href} className={`page-link${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
+                      <PageIcon size={15} /><span>{entry.label}</span>
+                    </Link>
+                  </div>;
+                })}
               </div>
-            );
+            </section>;
           })}
         </nav>
-        <div className="sidebar-foot">
-          <ServerConnectionStatus demo={demo} />
+        <div className="unified-sidebar-foot">
+          <Link className="sidebar-request" href={`/knowledge/development?new=request&page=${encodeURIComponent(pathname)}`} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></Link>
+          <div className="sidebar-status"><ServerConnectionStatus demo={demo} /></div>
+          <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
+            <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
+            <span className="profile-copy"><strong>{profile?.displayName ?? "구성원"}</strong><small>{profile?.team ?? "전체"}</small></span><ChevronsUpDown size={14} />
+          </button>
+          {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
+            <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
+            <div className="display-controls" role="group" aria-label="화면 설정">
+              <button type="button" className="display-control" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
+              <button type="button" className="display-control guidance-control" role="switch" aria-checked={guidanceOn} aria-label={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>설명 {guidanceOn ? "ON" : "OFF"}</span></button>
+            </div>
+            <button onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /> 메뉴 안내 다시 보기</button>
+            {!demo ? <><button onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button><button onClick={signOut}><LogOut size={15} /> 로그아웃</button></> : null}
+          </div> : null}
         </div>
       </aside>
-
-      {mobileOpen ? <button className="mobile-scrim" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)} /> : null}
-
+      {mobileOpen ? <button className="mobile-scrim" aria-label="메뉴 배경 닫기" onClick={() => setMobileOpen(false)} /> : null}
       <div className="app-main">
-        <header className="topbar development-request-topbar">
-          <button className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} onClick={() => setMobileOpen(true)}>
-            <Menu size={19} />
-          </button>
-          <nav className="breadcrumbs" aria-label="현재 위치">
-            <Link href={stage.href}>{stage.label}</Link>
-            <ChevronRight size={14} />
-            <span aria-current="page">{page.label}</span>
-          </nav>
+        <header className="topbar">
+          <button ref={mobileTriggerRef} className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
+          <nav className="breadcrumbs" aria-label="현재 위치"><Link href={stage.href}>{stage.label}</Link><ChevronRight size={14} /><span aria-current="page">{page.label}</span></nav>
           <div className="topbar-actions">
-            <button className="command-trigger" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}>
-              <Search size={15} />
-              <span>페이지·지식 검색</span>
-              <kbd><Command size={11} />K</kbd>
-            </button>
-            <div className="display-controls" role="group" aria-label="화면 설정">
-              <button
-                type="button"
-                className="display-control"
-                aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`}
-                title={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`}
-                onClick={changeTheme}
-              >
-                {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
-                <span>{theme === "dark" ? "라이트" : "다크"}</span>
-              </button>
-              <button
-                type="button"
-                className={`display-control guidance-control${guidanceOn ? " active" : ""}`}
-                role="switch"
-                aria-checked={guidanceOn}
-                aria-label={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`}
-                title={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`}
-                onClick={changeGuidance}
-              >
-                <CircleHelp size={15} />
-                <span>설명</span>
-                <em>{guidanceOn ? "ON" : "OFF"}</em>
-              </button>
-            </div>
-            <Link className="development-request-quick-link" href={`/knowledge/development?new=request&page=${encodeURIComponent(pathname)}`} onClick={() => { setNotificationsOpen(false); setProfileOpen(false); }}>
-              <MessageSquarePlus size={14} aria-hidden="true" />
-              <span>수정 요청</span>
-            </Link>
+            <button className="command-trigger" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd><Command size={11} />K</kbd></button>
+            <Link className="quick-record-link" href="/knowledge?new=1" onClick={() => window.dispatchEvent(new Event("brandy-quick-record"))}><NotebookPen size={16} /><span>빠른 기록</span></Link>
             <DevelopmentRequestNotifications open={notificationsOpen} onOpenChange={changeNotificationsOpen} />
-            <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
-              <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
-              <span className="profile-copy">
-                <strong>{profile?.displayName ?? "구성원"}</strong>
-                <small>{profile?.team ?? "전체"}</small>
-              </span>
-              <ChevronsUpDown size={14} />
-            </button>
           </div>
-          {profileOpen ? (
-            <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
-              <strong>{profile?.displayName}</strong>
-              <span>{profile?.email}</span>
-              <span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
-              {!demo ? (
-                <>
-                  <button onClick={() => { setPasswordOpen(true); setProfileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button>
-                  <button onClick={signOut}><LogOut size={15} /> 로그아웃</button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
         </header>
         <main className="page-content">
+          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>내 할 일 · 콘텐츠 · 회사 문서 · 매출·성과 · 팀 · 개발 · 설정으로 묶었습니다. 찾기(⌘K)에서 이전 메뉴 이름도 사용할 수 있습니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
           {pathname.startsWith("/performance") ? <PerformanceFilterBar /> : null}
           {children}
         </main>
       </div>
-
-      <nav className="mobile-stage-bar" aria-label="모바일 주요 영역">
-        {NAV_STAGES.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Link key={item.id} href={item.href} className={item.id === stage.id ? "active" : ""}>
-              <Icon size={19} />
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
       <CommandPalette open={paletteOpen} onClose={closePalette} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>

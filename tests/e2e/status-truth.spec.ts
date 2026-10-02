@@ -36,10 +36,8 @@ test("empty revenue and advertising values use em dashes instead of artificial z
 for (const width of [1440, 390]) for (const theme of ["dark", "light"]) {
   test(`status and data connections remain readable at ${width}px in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 960 });
+    await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
     await page.goto("/settings/connections");
-    const desired = theme === "light" ? "라이트 모드로 전환" : "다크 모드로 전환";
-    const toggle = page.getByRole("button", { name: desired });
-    if (await toggle.isVisible()) await toggle.click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
     for (const [path, name] of [["/settings/connections", "status"], ["/performance/connections", "data"]]) {
       if (name === "data") await page.goto(path);

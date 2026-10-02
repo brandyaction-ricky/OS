@@ -38,5 +38,6 @@ test("unimplemented knowledge filter and mismatched commerce title are removed",
     read("app/(os)/[stage]/[page]/page.tsx"),
   ]);
   assert.doesNotMatch(search, /상세 조건/);
-  assert.match(page, /CommerceAdminLinks title="자사몰 어드민"/);
+  assert.match(page, /<CommerceAdminLinks \/>/);
+  assert.match(await read("components/performance-workspaces.tsx"), /<PageTitle \/>/);
 });

@@ -97,7 +97,7 @@ test("publishing keeps review, calendar and SEO editing in one operating flow", 
     read("components/content-automation-workspace.tsx"),
     read("components/publishing-calendar-workspace.tsx"),
   ]);
-  for (const label of ["검토 대기목록", "발행 캘린더", "파생 제작 현황", "칼럼 편집", "HTML 복사", "이미지 자리"]) assert.match(automation, new RegExp(label));
+  for (const label of ["검토 대기목록", "발행 캘린더", "멀티채널 자동화", "칼럼 편집", "HTML 복사", "이미지 자리"]) assert.match(automation, new RegExp(label));
   assert.match(automation, /sandbox=""/);
   assert.doesNotMatch(automation, /dangerouslySetInnerHTML/);
   assert.match(calendar, /href="\/content\/publishing"/);

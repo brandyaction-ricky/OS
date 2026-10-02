@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { KnowledgeClassificationSettings } from "./knowledge-classification-settings";
 
 import {
@@ -279,14 +281,6 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
     ],
     [health, youtubeOAuth],
   );
-  const title =
-    page === "connections"
-      ? "연결"
-      : page === "access"
-        ? "권한"
-        : page === "company"
-          ? "회사 설정"
-          : "메시지 창구";
   const pageDescription =
     page === "connections"
       ? "비밀값을 노출하지 않고 무엇이·누가·어디에 연결됐는지 관리합니다."
@@ -308,8 +302,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
     <>
       {!embedded ? <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">설정 관리</span>
-          <h1>{title}</h1>
+          <PageTitle />
           <p>{pageDescription}</p>
         </div>
       </header> : null}

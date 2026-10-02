@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { formatMoney as money, formatRatio as ratio, formatNumber, safeRatio } from "@/lib/metric-format";
 import { WorkspaceLoadState } from "./workspace-load-state";
 import { BarChart3, CircleAlert, CircleDollarSign, ExternalLink, FileUp, RefreshCw, Target, TrendingUp } from "lucide-react";
@@ -103,7 +105,7 @@ export function AdPerformanceWorkspace() {
   return (
     <>
       <header className="page-header">
-        <div className="page-title-group"><span className="eyebrow">광고 성과</span><h1>광고 성과</h1><p>Meta·Google 광고 데이터를 모아 광고비, 전환 매출, ROAS와 CPA를 비교합니다. 화면 금액은 만원 단위입니다.</p></div>
+        <div className="page-title-group"><PageTitle /><p>Meta·Google 광고 데이터를 모아 광고비, 전환 매출, ROAS와 CPA를 비교합니다. 화면 금액은 만원 단위입니다.</p></div>
         <div className="ad-toolbar">
           {profile?.role === "admin" ? <button type="button" className="ghost-button" onClick={downloadAdCsvSample}>CSV 예제</button> : null}
           {profile?.role === "admin" ? <label className="secondary-button file-button"><FileUp size={15} /> CSV 가져오기<input type="file" accept=".csv,text/csv" onChange={importCsv} /></label> : null}

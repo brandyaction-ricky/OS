@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   AudioLines,
   Bot,
@@ -457,8 +459,7 @@ export function MeetingWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">회의 → 실행</span>
-          <h1>회의·결정</h1>
+          <PageTitle />
           <p>
             지난 미해결 항목과 KPI를 이어받고, 녹음에서 결정과 후속 업무를
             만듭니다.

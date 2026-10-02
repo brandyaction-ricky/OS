@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   Bot,
   CalendarDays,
@@ -96,8 +98,7 @@ export function WeeklyScheduleWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">이번 주 일정</span>
-          <h1>이번 주 일정</h1>
+          <PageTitle />
           <p>회의·휴가·업무 마감·발행·계약 만료를 한곳에서 확인합니다.</p>
         </div>
       </header>
@@ -256,8 +257,7 @@ export function AiOperationsWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">하나의 지식 · 여러 창구</span>
-          <h1>AI 작업</h1>
+          <PageTitle />
           <p>
             AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고
             결정합니다.
@@ -457,8 +457,7 @@ export function LeaveWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">연차·휴가 관리</span>
-          <h1>연차·휴가</h1>
+          <PageTitle />
           <p>잔여 연차와 신청·승인·자동 차감을 관리합니다.</p>
         </div>
         <button className="primary-button" onClick={() => setDrawer(true)}>

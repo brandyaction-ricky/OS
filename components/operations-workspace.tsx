@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { WorkspaceLoadState } from "./workspace-load-state";
 import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -99,7 +101,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
 
   return <>
     <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">{config.eyebrow}</span><h1>{config.title}</h1><p>{config.description}</p></div>
+      <div className="page-title-group"><PageTitle /><p>{config.description}</p></div>
       <button className="primary-button" onClick={() => { setEditing(null); setEditorOpen(true); }}><Plus size={16} /> {config.singular} 추가</button>
     </header>
 
