@@ -285,6 +285,12 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20261002152810_connection_check_evidence.sql",
+      "sha256": "0741f720a20adc91009d946ecb737165c051dd4ee6cbd91f1bd0233842548cde",
+      "requiresApproval": true,
+      "description": "Add server-only connection probe history and versioned owners; not applied."
     }
   ],
   "legacyMigrations": [

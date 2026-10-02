@@ -17,7 +17,6 @@ import {
   LayoutDashboard,
   Link2,
   ListChecks,
-  Gauge,
   Megaphone,
   MessageSquareText,
   NotebookPen,
@@ -119,6 +118,7 @@ export const NAV_STAGES: NavStage[] = [
       { label: "주간 KPI", href: "/performance/weekly-kpi", icon: Goal, ready: true },
       { label: "매출", href: "/performance/revenue", icon: CircleDollarSign, ready: true },
       { label: "퍼널", href: "/performance/funnels", icon: FileSearch, ready: true },
+      { label: "데이터 연결", href: "/performance/connections", icon: Link2, ready: true },
       { label: "광고 성과", href: "/performance/ads", icon: Megaphone, ready: true },
       { label: "자사몰 어드민", href: "/performance/customers", icon: ContactRound, ready: true },
     ],
@@ -129,17 +129,17 @@ export const NAV_STAGES: NavStage[] = [
     icon: Settings,
     href: "/settings/connections",
     pages: [
-      { label: "연결", href: "/settings/connections", icon: Link2, ready: true },
+      { label: "작동 상태", href: "/settings/connections", icon: Link2, ready: true },
       { label: "권한", href: "/settings/access", icon: KeyRound, ready: true },
       { label: "감사 로그", href: "/settings/audit", icon: ScrollText, ready: true },
-      { label: "운영 모니터링", href: "/settings/monitoring", icon: Gauge, ready: true },
       { label: "회사 설정", href: "/settings/company", icon: Building2, ready: true },
-      { label: "메시지 창구", href: "/settings/channels", icon: Megaphone, ready: true },
     ],
   },
 ];
 
 const NAV_ALIASES = [
+  { href: "/settings/monitoring", stageId: "settings", pageHref: "/settings/connections", label: "작동 상태" },
+  { href: "/settings/channels", stageId: "settings", pageHref: "/settings/connections", label: "작동 상태" },
   { href: "/content/automation", stageId: "content", pageHref: "/content/publishing", label: "멀티채널 자동화" },
   { href: "/content/review", stageId: "content", pageHref: "/content/publishing", label: "검토·발행 대기목록" },
   { href: "/content/calendar", stageId: "content", pageHref: "/content/publishing", label: "발행 캘린더" },

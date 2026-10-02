@@ -1,3 +1,4 @@
+import { measuredNumber } from "./metric-format.ts";
 import type { OsRecord } from "./record-types";
 
 const CONTENT_TYPES = new Set<OsRecord["record_type"]>([
@@ -11,7 +12,7 @@ const CONTENT_TYPES = new Set<OsRecord["record_type"]>([
 const INACTIVE_CONTENT_STATUSES = new Set(["done", "published", "cancelled"]);
 
 export interface RevenueBandValue {
-  current: number;
+  current: number | null;
   goal: number;
   monthChange: number | null;
   weekChange: number | null;
@@ -115,7 +116,7 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
   const elapsedDay = Number(today.slice(8, 10));
   const todayMs = Date.parse(`${today}T00:00:00.000Z`);
   const weekElapsedDays = (now.getUTCDay() + 6) % 7; // Monday through the same weekday.
-  const revenue = records.filter((record) => record.record_type === "revenue" && !record.archived_at);
+  const revenue = records.filter((record) => record.record_type === "revenue" && !record.archived_at && measuredNumber(record.metadata.net ?? record.amount ?? record.metric_current) !== null);
   const goals = records.filter((record) => ["goal", "kpi"].includes(record.record_type) && recordMonth(record) === month);
 
   const band = (key: "myin" | "edu" | "all"): RevenueBandValue => {
@@ -141,7 +142,7 @@ export function buildHomeRevenueView(records: OsRecord[], now = new Date()): Hom
       ? targetByBrand(goals, "myin") + targetByBrand(goals, "edu")
       : explicitGoal;
     return {
-      current,
+      current: revenue.some((record) => recordDate(record).startsWith(month) && recordDate(record) <= today && matches(record) && (record.metadata.net ?? record.amount ?? record.metric_current) != null) ? current : null,
       goal,
       monthChange: revenue.some((record) => recordDate(record).startsWith(month) && recordDate(record) <= today && matches(record)) ? changePercent(current, priorMonth) : null,
       weekChange: weekly.currentRows ? changePercent(weekly.current, weekly.previous) : null,

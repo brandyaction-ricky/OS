@@ -969,3 +969,24 @@ select option { background:var(--panel-2); color:var(--text); }
 .knowledge-image-drop-indicator{position:fixed;z-index:1000;height:3px;border-radius:999px;background:var(--accent-2);box-shadow:none;pointer-events:none}.knowledge-image-drop-indicator::before{position:absolute;top:50%;left:-4px;width:9px;height:9px;border-radius:50%;background:var(--accent-2);content:"";transform:translateY(-50%)}
 .knowledge-rich-loading{min-height:558px;padding:40px;color:var(--muted);font-size:13px}.knowledge-rich-editor [role=toolbar] button,.knowledge-rich-editor [role=toolbar] [role=combobox]{color:var(--text)!important}
 @media(max-width:760px){.knowledge-rich-content{min-height:420px;padding:24px 20px 64px!important}.knowledge-rich-content h1{font-size:26px}.knowledge-rich-content h2{font-size:22px}.knowledge-rich-toolbar{overflow-x:auto}.knowledge-insert-toolbar{justify-content:flex-start}}
+
+/* Shared loading and measured-connection states use the existing theme tokens. */
+.workspace-skeleton { display: grid; gap: 20px; }
+.workspace-skeleton i { display: block; height: 16px; margin: 14px 0; border-radius: 6px; background: var(--line); }
+.workspace-skeleton .metric-card i:nth-child(2) { height: 32px; width: 60%; }
+.workspace-skeleton .panel { padding: 24px; }
+.load-error { padding: 24px; }
+.system-status-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.connection-evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.connection-evidence { padding: 20px; min-width: 0; }
+.connection-evidence header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
+.connection-evidence h2 { font-size: 16px; margin: 0; }
+.connection-evidence p, .connection-evidence small { color: var(--muted); overflow-wrap: anywhere; }
+.connection-evidence dl { display: grid; gap: 8px; font-size: 13px; }
+.connection-evidence dl div { display: flex; justify-content: space-between; gap: 14px; }
+.connection-evidence dd { margin: 0; text-align: right; }
+.connection-owners { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+.connection-owners label { flex: 1; min-width: 100px; font-size: 12px; }
+.connection-owners select { width: 100%; }
+.connection-evidence-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 700px) { .connection-evidence-grid { grid-template-columns: minmax(0, 1fr); } }
