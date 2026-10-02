@@ -224,3 +224,13 @@ export function trailingDateRange(days = 7) {
   start.setUTCDate(start.getUTCDate() - Math.max(1, days - 1));
   return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10) };
 }
+
+/** Read-only credentials probe. Does not sync rows or modify campaigns. */
+export async function probeAdConnections() {
+  const day = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const config = adConnectionStatus();
+  const probes = PROVIDERS.flatMap(provider => BRANDS.filter(brand => config[provider].brands[brand]).map(brand =>
+    provider === "meta" ? fetchMeta(brand, day, day) : fetchGoogle(brand, day, day)));
+  if (!probes.length) throw new Error("AD_CONNECTION_MISSING");
+  await Promise.all(probes);
+}

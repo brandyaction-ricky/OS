@@ -4,12 +4,14 @@ import test from "node:test";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
-test("fifth handoff exposes seven content pages and six settings pages", async () => {
+test("fifth handoff exposes seven content pages and unified system status with existing setting URLs", async () => {
   const [navigation, router, settings] = await Promise.all([
     read("lib/navigation.ts"), read("app/(os)/[stage]/[page]/page.tsx"), read("components/settings-workspaces.tsx"),
   ]);
   for (const label of ["주제·기획", "원고·스크립트", "제목·썸네일", "숏폼 편집", "발행·업로드", "유튜브 관리", "영상 성과"]) assert.match(navigation, new RegExp(label));
-  for (const route of ["connections", "access", "company", "channels"]) assert.match(router, new RegExp(`SettingsWorkspace page=\\"${route}\\"`));
+  for (const route of ["access", "company"]) assert.match(router, new RegExp(`SettingsWorkspace page=\\"${route}\\"`));
+  assert.match(router, /SystemStatusWorkspace tab="monitoring"/);
+  assert.match(router, /SystemStatusWorkspace tab="channels"/);
   for (const label of ["Supabase", "Vercel", "OpenAI", "Telegram", "Meta·Google Ads", "KnowledgeClassificationSettings"]) assert.match(settings, new RegExp(label));
 });
 

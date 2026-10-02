@@ -39,7 +39,7 @@ test("connection status uses automatic health values and distinct dot colors", a
     "youtubeOAuth",
     "advertising",
   ]) assert.match(settings, new RegExp(`health\\?\\.${field}|health\\.${field}`));
-  assert.match(settings, /state-dot \$\{row\.status\}/);
+  assert.match(settings, /state-dot \$\{row\.status === "ready" \? "warning" : row\.status\}/);
   assert.match(css, /\.state-dot\.waiting/);
   assert.match(css, /\.state-dot\.warning/);
   assert.match(settings, /settings-connection-metrics/);

@@ -19,6 +19,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { roleLabel } from "@/lib/company-settings";
+import { ServerConnectionStatus } from "./server-connection-status";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
 import { PerformanceFilterBar } from "./performance-filter-context";
@@ -222,10 +223,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="sidebar-foot">
-          <div className="system-state">
-            <span className={`state-dot ${demo ? "demo" : "ready"}`} />
-            <span>{demo ? "데모 데이터" : "서버 연결됨"}</span>
-          </div>
+          <ServerConnectionStatus demo={demo} />
         </div>
       </aside>
 

@@ -124,7 +124,7 @@ function SettingsLoading({ page }: { page: Page }) {
 
 import { TelegramAccessPanel } from "./telegram-access-panel";
 
-export function SettingsWorkspace({ page }: { page: Page }) {
+export function SettingsWorkspace({ page, embedded = false }: { page: Page; embedded?: boolean }) {
   const { accessToken, demo, profile } = useSession();
   const [health, setHealth] = useState<Awaited<ReturnType<typeof getHealth>> | null>(null);
   const [telegram, setTelegram] = useState<TelegramConnectionStatus | null>(null);
@@ -186,7 +186,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
       {
         system: "Supabase",
         purpose: "데이터베이스·로그인·접근 권한",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status:
           health?.database === "ready" && health.auth === "ready"
             ? "ready"
@@ -196,53 +196,53 @@ export function SettingsWorkspace({ page }: { page: Page }) {
       {
         system: "Vercel",
         purpose: "OS 웹·API·예약 작업",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.checkedAt ? "ready" : "waiting",
         location: "Vercel 환경변수",
       },
       {
         system: "OpenAI",
         purpose: "의미 검색·사진 글자 읽기·지식 답변",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.embeddings === "ready" ? "ready" : "waiting",
         location: "Vercel 환경변수",
       },
       {
         system: "Telegram",
         purpose: "질문·폰 캡처·알림",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.telegram === "ready" ? "ready" : "waiting",
         location: "Vercel 환경변수",
       },
       {
         system: "Claude",
         purpose: "콘텐츠 정본 실행",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.contentAi === "ready" ? "ready" : "waiting",
         location: "Vercel 환경변수",
       },
       {
         system: "Claude·Codex MCP",
         purpose: "회사 지식 검색·개인 초안 생성·수정·휴지통",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.agentMcp === "ready" ? "ready" : "waiting",
         location: "설정 → 권한 → AI 접근 키",
       },
       {
         system: "YouTube Data API",
         purpose: "시장 영상·공개 성과 읽기",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: health?.youtube === "ready" ? "ready" : "waiting",
         location: "Vercel 환경변수",
       },
       {
         system: "YouTube 업로드 OAuth",
         purpose: youtubeOAuth?.connected
-          ? `${youtubeOAuth.channelTitle || "YouTube 채널"} · 업로드 권한 연결됨`
+          ? `${youtubeOAuth.channelTitle || "YouTube 채널"} · 채널 동의 저장됨 · 호출 미확인`
           : youtubeOAuth?.configured || health?.youtubeOAuth === "ready"
             ? "OAuth 설정 완료 · Google 채널 동의 대기"
             : "OAuth 환경변수 등록 필요",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status: youtubeOAuth?.connected
           ? "ready"
           : youtubeOAuth?.configured || health?.youtubeOAuth === "ready"
@@ -253,7 +253,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
       {
         system: "Meta·Google Ads",
         purpose: "광고비·광고수익률 읽기",
-        owner: "리키",
+        owner: "작동 상태에서 지정",
         status:
           health?.advertising === "ready"
             ? "ready"
@@ -272,7 +272,7 @@ export function SettingsWorkspace({ page }: { page: Page }) {
       {
         system: "국민·신한 법인카드",
         purpose: "경영지원 지출 원장",
-        owner: "안저",
+        owner: "담당자 지정",
         status: "waiting",
         location: "카드 관리자·CSV",
       },
@@ -306,13 +306,13 @@ export function SettingsWorkspace({ page }: { page: Page }) {
 
   return (
     <>
-      <header className="page-header">
+      {!embedded ? <header className="page-header">
         <div className="page-title-group">
           <span className="eyebrow">설정 관리</span>
           <h1>{title}</h1>
           <p>{pageDescription}</p>
         </div>
-      </header>
+      </header> : null}
       {error ? (
         <div className="inline-alert danger">
           <CircleAlert size={16} /> {error}
@@ -326,19 +326,19 @@ export function SettingsWorkspace({ page }: { page: Page }) {
             <>
               <section className="metric-grid compact-metrics settings-connection-metrics">
                 <div className="metric-card"><div className="metric-top"><span>전체 연결</span><Link2 size={16} /></div><div className="metric-value">{connectionRows.length}</div></div>
-                <div className="metric-card"><div className="metric-top"><span>연결됨</span><CheckCircle2 size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "ready").length}</div></div>
+                <div className="metric-card"><div className="metric-top"><span>설정 있음</span><CheckCircle2 size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "ready").length}</div></div>
                 <div className="metric-card"><div className="metric-top"><span>일부 연결</span><CircleAlert size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "warning").length}</div></div>
                 <div className="metric-card"><div className="metric-top"><span>연결 대기</span><LoaderCircle size={16} /></div><div className="metric-value">{connectionRows.filter((row) => row.status === "waiting").length}</div></div>
               </section>
               <section className="connection-master">
                 {connectionRows.map((row) => (
                   <article className="panel connection-row" key={row.system}>
-                    <span className={`state-dot ${row.status}`} />
+                    <span className={`state-dot ${row.status === "ready" ? "warning" : row.status}`} />
                     <div className="connection-icon">{row.system === "Supabase" ? <Database /> : row.system === "Vercel" ? <Server /> : <Link2 />}</div>
                     <div><strong>{row.system}</strong><p>{row.purpose}</p></div>
                     <div><small>담당</small><span>{row.owner}</span></div>
                     <div><small>설정 위치</small><span>{row.location}</span></div>
-                    <em className={`status-pill status-${row.status}`}>{row.status === "ready" ? "연결됨" : row.status === "warning" ? "일부 연결" : "연결 대기"}</em>
+                    <em className={`status-pill status-${row.status === "ready" ? "waiting" : row.status}`}>{row.status === "ready" ? "설정됨(미확인)" : row.status === "warning" ? "일부 설정" : "연결 대기"}</em>
                   </article>
                 ))}
               </section>

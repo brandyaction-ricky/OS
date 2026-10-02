@@ -11,9 +11,9 @@ export async function GET() {
   let agentMcp: "ready" | "missing" | "error" = hasServerSupabaseConfig() ? "error" : "missing";
   if (hasServerSupabaseConfig()) {
     const service = createServiceSupabase();
-    const { error } = await service.from("os_documents").select("id").limit(1);
+    const { error } = await service.from("os_documents").select("id").limit(1).abortSignal(AbortSignal.timeout(8_000));
     database = error ? "error" : "ready";
-    const { error: agentError } = await service.from("os_organizations").select("id").eq("slug", "brandyaction").limit(1);
+    const { error: agentError } = await service.from("os_organizations").select("id").eq("slug", "brandyaction").limit(1).abortSignal(AbortSignal.timeout(8_000));
     agentMcp = agentError ? "error" : "ready";
   }
   const auth = hasPublicSupabaseConfig() ? "ready" : "missing";
@@ -27,6 +27,12 @@ export async function GET() {
   const advertising = adConnections.meta.configured && adConnections.google.configured
     ? "ready"
     : adConnections.meta.configured || adConnections.google.configured ? "partial" : "missing";
+  const checkedAt = new Date().toISOString();
+  const checks = [
+    { id: "database", status: database === "ready" ? "verified" : database, lastOkAt: database === "ready" ? checkedAt : null, scope: "문서 조회" },
+    { id: "auth", status: auth === "ready" ? "unverified" : "missing", lastOkAt: null, scope: "인증 설정" },
+    ...Object.entries({ embeddings, telegram, contentAi, youtube, youtubeOAuth, advertising, agentMcp }).map(([id, value]) => ({ id, status: value === "ready" || value === "partial" ? "unverified" : "missing", lastOkAt: null, scope: "설정 확인" })),
+  ];
   return NextResponse.json({
     ok: database === "ready" && auth === "ready",
     service: "brandyaction-os",
@@ -40,6 +46,7 @@ export async function GET() {
     youtube,
     youtubeOAuth,
     advertising,
-    checkedAt: new Date().toISOString(),
+    checkedAt,
+    checks,
   }, { headers: { "cache-control": "no-store" } });
 }

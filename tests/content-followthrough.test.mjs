@@ -111,5 +111,5 @@ test('generic edits cannot forge approval history or disable an enabled pipeline
 test('home month-to-date ignores future revenue and missing current records', () => {
   const rows = [record({ record_type: 'revenue', amount: 100, metadata: { date: '2026-08-01' } }), record({ record_type: 'revenue', amount: 500, metadata: { date: '2026-09-20' } })];
   const view = buildHomeRevenueView(rows, new Date('2026-09-01T10:00:00Z'));
-  assert.equal(view.total.current, 0); assert.equal(view.total.monthChange, null);
+  assert.equal(view.total.current, null); assert.equal(view.total.monthChange, null);
 });
