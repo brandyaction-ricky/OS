@@ -7,7 +7,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("content pages use the full screenshot-matched workspaces", async () => {
   const [router, radar, packaging, shorts, performance] = await Promise.all([
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("components/content-radar-workspace.tsx"),
     read("components/content-packaging-workspace.tsx"),
     read("components/content-shortform-workspace.tsx"),

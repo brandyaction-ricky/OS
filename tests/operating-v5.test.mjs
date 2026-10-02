@@ -6,7 +6,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("fifth handoff exposes seven content pages and unified system status with existing setting URLs", async () => {
   const [navigation, router, settings] = await Promise.all([
-    read("lib/navigation.ts"), read("app/(os)/[stage]/[page]/page.tsx"), read("components/settings-workspaces.tsx"),
+    read("lib/navigation.ts"), Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")), read("components/settings-workspaces.tsx"),
   ]);
   for (const label of ["주제·기획", "원고·스크립트", "제목·썸네일", "숏폼 편집", "발행·업로드", "유튜브 관리", "영상 성과"]) assert.match(navigation, new RegExp(label));
   for (const route of ["access", "company"]) assert.match(router, new RegExp(`SettingsWorkspace page=\\"${route}\\"`));
@@ -42,7 +42,7 @@ test("publishing and shorts enforce human gates before external work", async () 
 
 test("content studio ports planning, eight-step scripts and channel judgment", async () => {
   const [router, pipeline, generation, packageWorkspace] = await Promise.all([
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("components/content-pipeline-workspaces.tsx"),
     read("lib/server/content-generation.ts"),
     read("components/content-studio-workspaces.tsx"),
@@ -124,7 +124,7 @@ test("knowledge focus mode is persistent and development management reuses the p
     read("components/knowledge-workspace.tsx"),
     read("components/app-shell.tsx"),
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("lib/workspace-config.ts"),
   ]);
   assert.match(knowledge, /brandy-knowledge-focus/);

@@ -1,5 +1,6 @@
 "use client";
 
+import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
 
 import {
@@ -171,7 +172,7 @@ function downloadCsv(name: string, rows: string[][]) {
 
 export function FinanceWorkspace() {
   const { accessToken, demo, profile } = useSession();
-  const [tab, setTab] = useState<FinanceTab>("spend");
+  const [tab, setTab] = useQueryTab<FinanceTab>("tab",["spend","vat","contract","subscription","documents"],"spend");
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [preview, setPreview] = useState<ExpenseRow[]>([]);
   const [query, setQuery] = useState("");

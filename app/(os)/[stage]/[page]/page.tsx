@@ -1,28 +1,22 @@
+import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
+import {ContentProductionWorkspace} from "@/components/content-production-workspace";
+import {workspaceRedirect,productionRedirect} from "@/lib/workspace-tabs";
+import {AiOperationsWorkspace} from "@/components/organization-v3-workspaces";
 import { OperationsWorkspace } from "@/components/operations-workspace";
 import type { Metadata } from "next";
 import { PlaceholderPage } from "@/components/placeholder-page";
 import { MembersWorkspace } from "@/components/members-workspace";
 import { AuditWorkspace } from "@/components/audit-workspace";
-import { GoalsWorkspace } from "@/components/goals-workspace";
 import { redirect } from "next/navigation";
 import { MeetingWorkspace } from "@/components/meeting-workspace";
 import { ContentAutomationWorkspace } from "@/components/content-automation-workspace";
 import { PublishingCalendarWorkspace } from "@/components/publishing-calendar-workspace";
 import { SkillsWorkspace } from "@/components/skills-workspace";
-import { GrowthDashboard } from "@/components/growth-dashboard";
-import { ReportsWorkspace } from "@/components/reports-workspace";
 import { SystemStatusWorkspace } from "@/components/system-status-workspace";
 import { DataConnectionsWorkspace } from "@/components/data-connections-workspace";
 import { TasksWorkspace } from "@/components/tasks-workspace";
-import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "@/components/organization-v3-workspaces";
 import { FinanceWorkspace } from "@/components/finance-workspace";
-import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
-import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
-import { YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
-import { ContentScriptsWorkspace } from "@/components/content-pipeline-workspaces";
 import { ContentRadarWorkspace as ContentTopicsWorkspace } from "@/components/content-radar-workspace";
-import { ContentPackagingWorkspace as ContentPackageWorkspace } from "@/components/content-packaging-workspace";
-import { ContentShortformWorkspace as ContentShortsWorkspace } from "@/components/content-shortform-workspace";
 import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/components/content-performance-dashboard";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
@@ -45,6 +39,10 @@ export async function generateMetadata({ params, searchParams }: GenericPageProp
 export default async function GenericPage({ params, searchParams }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
+  const query = await searchParams;
+  const legacy = workspaceRedirect(href,query) ?? productionRedirect(href,query);
+  if(legacy)redirect(legacy);
+  if(href==="/content/topics"&&query.tab==="planning") { const next=new URLSearchParams();for(const [key,value]of Object.entries(query))if(key!=="tab"&&typeof value==="string")next.set(key,value);next.set("step","planning");if(!next.has("sourceId"))next.set("view","tools");redirect(`/content/production?${next}`); }
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
   const contentJevAssistEnabled = canUseContentJevAssist(process.env);
   const contentTopicJevAssistEnabled = canUseContentTopicJevAssist(process.env);
@@ -52,8 +50,6 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/members") return <MembersWorkspace />;
   if (href === "/settings/audit") return <AuditWorkspace />;
-  if (href === "/home/goals") return <GoalsWorkspace />;
-  if (href === "/home/reports") return <ReportsWorkspace />;
   if (href === "/organization/projects") redirect("/organization/meetings");
   if (href === "/home/decisions") {
     const previous = await searchParams; const query = new URLSearchParams({tab:"decisions"});
@@ -62,30 +58,23 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   }
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
-  if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;
-  if (href === "/organization/leave") return <LeaveWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
   if (href === "/organization/finance") return <FinanceWorkspace />;
+  if(href==="/content/production") return <ContentProductionWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showJevAssist={contentJevAssistEnabled} showTopicJevAssist={contentTopicJevAssistEnabled}/>;
+  if(href==="/performance/overview")return <WorkspaceTabHub hub="company"/>;
+  if(href==="/performance/revenue")return <WorkspaceTabHub hub="revenue"/>;
+  if(href==="/performance/ads")return <WorkspaceTabHub hub="ads"/>;
+  if(href==="/organization/schedule")return <WorkspaceTabHub hub="schedule"/>;
   if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} />;
   if (href === "/content/automation") return <ContentAutomationWorkspace />;
   if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/packages") return <ContentPackageWorkspace showJevAssist={contentJevAssistEnabled} />;
-  if (href === "/content/shorts") return <ContentShortsWorkspace />;
   if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/youtube") return <YoutubeKitWorkspace />;
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/knowledge/skills") return <SkillsWorkspace />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;
   if (href === "/knowledge/graph") return <KnowledgeGraphWorkspace />;
-  if (href === "/performance/overview") return <GrowthDashboard />;
   if (href === "/performance/connections") return <DataConnectionsWorkspace />;
-  if (href === "/performance/revenue") return <RevenueWorkspace />;
-  if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
-  if (href === "/performance/ads") return <AdPerformanceWorkspace />;
-  if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
-  if (href === "/performance/customers") return <CommerceAdminLinks />;
   if (href === "/settings/monitoring") return <SystemStatusWorkspace tab="monitoring" />;
   if (href === "/settings/connections") return <SystemStatusWorkspace />;
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;

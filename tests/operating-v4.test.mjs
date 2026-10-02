@@ -7,7 +7,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 test("fourth handoff exposes one advertising performance workspace", async () => {
   const [navigation, router, workspace] = await Promise.all([
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
     read("components/ad-performance-workspace.tsx"),
   ]);
   assert.match(navigation, /광고 성과/);

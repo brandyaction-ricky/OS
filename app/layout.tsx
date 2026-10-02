@@ -5,6 +5,7 @@ import "../components/linear-shell.css";
 import "../components/unified-shell.css";
 import "../components/personal-work.css";
 import "../components/meeting-tasks.css";
+import "../components/production-hub.css";
 
 export const metadata: Metadata = {
   title: "브랜디 OS",

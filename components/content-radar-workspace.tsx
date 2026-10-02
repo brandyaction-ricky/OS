@@ -1,5 +1,6 @@
 "use client";
 
+import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
 
 import Link from "next/link";
@@ -71,13 +72,14 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean } = {}) {
+export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false, lockedSource, productionMode=false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean; lockedSource?:OsRecord; productionMode?:boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [allRecords, setRecords] = useState<OsRecord[]>([]);
+  const [allRecords, setRecords] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
   const [includeTests, setIncludeTests] = useState(false);
   const records = useMemo(() => allRecords.filter(record => includeTests || contentOrigin(record) !== "test"), [allRecords, includeTests]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
-  const [tab, setTab] = useState<RadarTab>("channels");
+  const [queryTab, setTab] = useQueryTab<RadarTab>("tab",["channels","discovery","niches","planning"],"channels");
+  const tab=productionMode?"planning":queryTab;
   const [selectedId, setSelectedId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [resultQuery, setResultQuery] = useState("");
@@ -136,7 +138,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     .filter((record) => meta<string>(record, "packageKind", "") === "appeal_candidates")
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
-  const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
+  const visibleTopics = lockedSource ? records.filter(row=>row.id===lockedSource.id) : tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
   const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
   const plan = plans.filter((record) => record.parent_id === selected?.id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
@@ -511,9 +513,9 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       </div>
     </header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-    <nav className="studio-tabs content-radar-tabs" aria-label="주제 탐색 단계">
-      {TABS.map((item) => <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
-    </nav>
+    {!productionMode ? <nav className="studio-tabs content-radar-tabs" aria-label="주제 탐색 단계">
+      {TABS.filter(item=>item.key!=="planning").map((item) => <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
+    <Link href="/content/production?view=tools&step=planning">제작 기획으로</Link></nav> : null}
 
     {tab === "channels" ? <>
       <section className="metric-grid compact-metrics">
