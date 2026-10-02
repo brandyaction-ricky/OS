@@ -33,11 +33,13 @@ test("YouTube chapters start at 0:00 and flag fewer than three sections", () => 
   assert.ok(!youtubeChapters([{ label: "a", start: 0, end: 50 }, { label: "b", start: 50, end: 90 }]).ok);
 });
 
-test("camera shots last at least 4 s plus the move, and caption-only scenes stay in the shot before them", () => {
+test("camera shots group short scenes within a panel only, and caption-only scenes stay in the shot before them", () => {
   // Scenes start at these times (video seconds); scene 3 has nothing to draw.
   const starts = [2, 7, 8.5, 10, 16, 17, 30, 31.5], drawn = [true, true, true, false, true, true, true, true];
-  const shots = cameraShots(starts, drawn, 33);
-  assert.deepEqual(shots, [[0], [1, 2, 3], [4, 5, 6, 7]], "the 3 s last shot joins the one before");
-  shots.slice(0, -1).forEach((shot, j) => assert.ok(starts[shots[j + 1][0]] - starts[shot[0]] >= 5));
-  assert.deepEqual(cameraShots([2, 9, 20], [true, true, true], 22), [[0], [1, 2]], "a 2 s last shot joins the one before");
+  const panels = ["1a", "1a", "1a", "", "1b", "1b", "2a", "2a"];
+  assert.deepEqual(cameraShots(starts, drawn, panels, 40), [[0], [1, 2, 3], [4, 5], [6, 7]]);
+  // A panel's tail under 3 s joins the panel's shot before it; a longer one stays its own (short) shot.
+  assert.deepEqual(cameraShots([2, 8, 10, 10.5], [true, true, true, true], ["1a", "1a", "1a", "1b"], 20), [[0, 1, 2], [3]]);
+  assert.deepEqual(cameraShots([2, 8, 10, 11], [true, true, true, true], ["1a", "1a", "1a", "1b"], 20), [[0], [1, 2], [3]]);
+  assert.deepEqual(cameraShots([2, 9, 12], [true, true, true], ["1a", "1a", "1a"], 14), [[0], [1, 2]], "a 2 s last shot joins the one before");
 });

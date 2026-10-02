@@ -219,17 +219,22 @@ const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&l
 
 /** The poster's own drawing: title with a red highlighter, section frames and titles, plain rectangular panel frames, arrows. */
 /**
- * Group scenes into camera shots (lists of scene indexes). A shot lasts at least MIN_SHOT plus the move out of it, so
- * short scenes share a shot and their cells are framed together; a caption-only scene stays in the shot before it;
- * a too-short last shot joins the one before.
+ * Group scenes into camera shots (lists of scene indexes). Short scenes of the same panel share a shot (their cells
+ * are side by side and framed together) until the shot lasts MIN_SHOT plus the move out of it; a panel's tail
+ * shorter than MIN_SHOT - MOVE joins the panel's shot before it. A caption-only scene stays in the shot before it.
+ * Shots never span two panels: a short shot is still held MIN_SHOT and the next shot's drawing waits for the camera
+ * (see buildCamera), which keeps cells large at the cost of a drawing up to about 2 s behind the voice.
  */
-export function cameraShots(starts, drawn, end) {
-  const shots = [];
+export function cameraShots(starts, drawn, panels, end) {
+  const shots = [], long = (shot, until) => until - starts[shot[0]] >= MIN_SHOT + MOVE;
   starts.forEach((t, i) => {
-    const cur = shots.at(-1);
-    if (cur && (!drawn[i] || t - starts[cur[0]] < MIN_SHOT + MOVE)) cur.push(i); else shots.push([i]);
+    const cur = shots.at(-1), prev = shots.at(-2);
+    if (cur && (!drawn[i] || (panels[i] === panels[cur[0]] && !long(cur, t)))) return cur.push(i);
+    if (cur && prev && t - starts[cur[0]] < MIN_SHOT - MOVE && panels[cur[0]] === panels[prev[0]]) prev.push(...shots.pop());
+    shots.push([i]);
   });
-  if (shots.length > 1 && end - starts[shots.at(-1)[0]] < MIN_SHOT) shots.at(-2).push(...shots.pop());
+  const cur = shots.at(-1), prev = shots.at(-2);
+  if (prev && panels[cur[0]] === panels[prev[0]] && end - starts[cur[0]] < MIN_SHOT) prev.push(...shots.pop());
   return shots;
 }
 
@@ -388,25 +393,30 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     const keys = [[0, overview, ${VH / 2}]];
     moves = [];
     let section = null;
-    cameraShots(beats.map(b => b.visualStartSeconds + OPEN), beats.map(b => !!b.cell), total + OPEN).forEach((shot, j) => {
-      const own = shot.map(i => beats[i]), cells = own.map(b => b.cell).filter(Boolean), arrive = own[0].visualStartSeconds + OPEN, last = keys.at(-1);
+    // The poster area a view shows above the bottom captions and below the top safe zone.
+    const shows = (v, b) => b.x >= v.x - ${VW / 2} / v.k && b.x + b.w <= v.x + ${VW / 2} / v.k && b.y >= v.y - (frameMid - ${SAFE_TOP}) / v.k && b.y + b.h <= v.y + (frameH + ${SAFE_TOP} - frameMid) / v.k;
+    const starts = beats.map(b => b.visualStartSeconds + OPEN);
+    cameraShots(starts, beats.map(b => !!b.cell), beats.map(b => b.panel), total + OPEN).forEach((shot, j) => {
+      const own = shot.map(i => beats[i]), cells = own.map(b => b.cell).filter(Boolean), last = keys.at(-1);
       let target = overview, mid = ${VH / 2};
       if (cells.length) {
         const box = cells.reduce(union);
         target = view(box); mid = frameMid;
-        // The first shot of a section also shows the section title, when that keeps the cells large.
-        const sec = own.find(b => b.cell).section, s = layout.sections[sec];
-        if (sec !== section) { const titled = view(union({ x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head }, box)); if (titled.k >= target.k * 0.7) target = titled; }
+        // The first shot of a section also shows the section title, when it fits whole and keeps the cells large.
+        const sec = own.find(b => b.cell).section, s = layout.sections[sec], title = { x: s.frame.x, y: s.frame.y, w: s.labelW, h: s.head };
+        if (sec !== section) { const titled = view(union(title, box)); if (titled.k >= target.k * 0.7 && shows(titled, title)) target = titled; }
         section = sec;
       }
       if (target === last[1]) return;
-      // Longer moves take a little longer (up to 1.8 s) but never cut the previous shot below ${MIN_SHOT} s.
-      const dur = j === 0 ? Math.max(0.6, Math.min(1.2, arrive - 0.9))
-        : Math.max(${MOVE}, Math.min(1.8, ${MOVE} + Math.hypot(target.x - last[1].x, target.y - last[1].y) / 3000, arrive - last[0] - ${MIN_SHOT}));
-      const leave = Math.max(last[0], arrive - dur);
+      // Longer moves take a little longer (up to 1.8 s). The previous shot is held at least ${MIN_SHOT} s; if that makes the
+      // camera arrive after this shot's scenes have started, they wait and are drawn as it arrives.
+      const dur = j === 0 ? Math.max(0.6, Math.min(1.2, starts[shot[0]] - 0.9))
+        : Math.min(1.8, ${MOVE} + Math.hypot(target.x - last[1].x, target.y - last[1].y) / 3000);
+      const arrive = j === 0 ? starts[shot[0]] : Math.max(starts[shot[0]], last[0] + ${MIN_SHOT} + dur), leave = arrive - dur;
+      shot.forEach(i => { beats[i].lag = Math.max(0, arrive - starts[i]); });
       if (leave > last[0] + 1e-3) keys.push([leave, last[1], last[2]]);
-      keys.push([Math.max(arrive, leave + 0.3), target, mid]);
-      moves.push({ t: leave, dur: keys.at(-1)[0] - leave });
+      keys.push([arrive, target, mid]);
+      moves.push({ t: leave, dur });
     });
     const end = total + OPEN, last = keys.at(-1);
     keys.push([Math.max(last[0] + 0.05, end + 0.1), last[1], last[2]], [end + 1.5, overview, ${VH / 2}], [end + CLOSE, overview, ${VH / 2}]);
@@ -427,7 +437,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
     const boil = Math.floor(tv * 6) % 3 + 1;
     if (boil !== boiled) { boiled = boil; poster.querySelectorAll('.pen').forEach(el => el.setAttribute('filter', 'url(#pencil' + boil + ')')); }
     beats.forEach((b, i) => {
-      const svg = svgs[i], start = b.visualStartSeconds + OPEN, local = (tv - start) / b.timeScale;
+      const svg = svgs[i], start = b.visualStartSeconds + OPEN + (b.lag || 0), local = (tv - start) / b.timeScale;
       if (!svg) return;
       svg.style.visibility = tv >= start - 0.05 ? 'visible' : 'hidden';
       if (tv < start - 0.05) return;
@@ -457,7 +467,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   window.soundCues = () => {
     const events = [];
     beats.forEach((b, i) => {
-      const start = b.visualStartSeconds + OPEN;
+      const start = b.visualStartSeconds + OPEN + (b.lag || 0);
       if (i) events.push({ t: start, kind: 'transition' });
       const groups = new Map();
       svgs[i]?.querySelectorAll('[data-k]').forEach(el => {
@@ -474,7 +484,7 @@ export function pageHtml(beats, characters, faces, captions, layout, decor, dura
   // Final-state geometry of a scene at its end: inside the visible band, no text collisions, no text over artwork.
   window.inspectBeat = i => {
     // Checked mid-scene, when the camera has settled on it.
-    const b = beats[i]; window.render(b.visualStartSeconds + OPEN + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6));
+    const b = beats[i]; window.render(b.visualStartSeconds + OPEN + (b.lag || 0) + Math.max(0.5, (b.endSeconds - b.visualStartSeconds) * 0.6));
     const problems = [], box = el => el.getBoundingClientRect();
     const svg = svgs[i]; if (!svg) return [];
     const items = [...svg.querySelectorAll('[data-k]')].filter(el => el.tagName !== 'g');
