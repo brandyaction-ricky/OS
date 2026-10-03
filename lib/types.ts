@@ -16,6 +16,8 @@ export interface KnowledgeDocument {
   title: string;
   content_md: string;
   folder: string;
+  parent_document_id?: string | null;
+  page_order?: number;
   status: DocumentStatus;
   brand: string;
   team: string;
