@@ -9,6 +9,30 @@ export function scriptFileName(document: Pick<ScriptSummary, "source_ref" | "tit
   return (document.source_ref || document.title).split(/[\\/]/).at(-1) || document.title;
 }
 
+export function scriptVersionInfo(document: Pick<ScriptSummary, "source_ref" | "title">) {
+  const name = scriptFileName(document).replace(/\.(?:md|markdown|txt)$/i, "");
+  const match = name.match(/^(.*?)[\s_-]+v(\d+)$/i);
+  if (!match || !match[1].trim()) return null;
+  return { family: match[1].trim(), version: Number(match[2]) };
+}
+
+export function groupScriptVersions<T extends ScriptSummary & { id: string }>(documents: T[]) {
+  const groups = new Map<string, { key: string; label: string; documents: T[]; latest: T }>();
+  for (const document of documents) {
+    const version = scriptVersionInfo(document);
+    const key = version ? `version:${version.family.toLocaleLowerCase("ko-KR")}` : `single:${document.id}`;
+    const group = groups.get(key) ?? { key, label: version?.family ?? scriptFileName(document), documents: [], latest: document };
+    group.documents.push(document);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map(group => {
+    group.documents.sort((a, b) => (scriptVersionInfo(b)?.version ?? -1) - (scriptVersionInfo(a)?.version ?? -1)
+      || b.updated_at.localeCompare(a.updated_at));
+    group.latest = group.documents[0];
+    return group;
+  });
+}
+
 export function isVisibleScript(document: Pick<ScriptSummary, "folder" | "status">) {
   return document.status !== "archived" && !document.folder.split("/").some((part) => part.startsWith("_"));
 }

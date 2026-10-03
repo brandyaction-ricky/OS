@@ -1,10 +1,11 @@
 "use client";
 import {MEETING_TERMS, type MeetingReviewItem, type ReviewMember} from "@/lib/meeting-review";
-export function MeetingReviewEditor({items,members,onChange,disabled=false}:{items:MeetingReviewItem[];members:ReviewMember[];onChange:(items:MeetingReviewItem[])=>void;disabled?:boolean}) {
+import type { MeetingTerm } from "@/lib/meeting-term-settings";
+export function MeetingReviewEditor({items,members,terms=[],onChange,disabled=false}:{items:MeetingReviewItem[];members:ReviewMember[];terms?:MeetingTerm[];onChange:(items:MeetingReviewItem[])=>void;disabled?:boolean}) {
  const change=(id:string,values:Partial<MeetingReviewItem>)=>onChange(items.map(item=>item.id===id?{...item,...values}:item));
  return <section className="meeting-review-editor" aria-label="추출 검수">
  <header><h3>추출 검수</h3><p>결정·업무·미결·제외를 확인하세요. 업무는 담당자와 기한을 지정해야 확정할 수 있습니다.</p></header>
- <details><summary>용어 사전</summary><p>{MEETING_TERMS.map(term=>`${term.from} → ${term.to}`).join(" · ")}</p><small>추출한 문구에만 적용합니다. 아래에서 수정할 수 있으며 회의 원문은 유지됩니다.</small></details>
+ <details><summary>용어 사전</summary><p>{[...MEETING_TERMS,...terms].map(term=>`${term.from} → ${term.to}`).join(" · ")}</p><small>추출한 문구에만 적용합니다. 아래에서 수정할 수 있으며 회의 원문은 유지됩니다. 추가 용어는 회사 설정에서 관리합니다.</small></details>
  {items.map((item,index)=><article key={item.id} className={item.kind==="excluded"?"excluded":""}>
  <label>항목 {index+1} 분류<select aria-label={`항목 ${index+1} 분류`} value={item.kind} disabled={disabled} onChange={event=>change(item.id,{kind:event.target.value as MeetingReviewItem["kind"]})}><option value="decision">결정</option><option value="task">업무</option><option value="pending">미결</option><option value="excluded">제외</option></select></label>
  <label>내용<textarea aria-label={`항목 ${index+1} 내용`} value={item.title} disabled={disabled} maxLength={240} onChange={event=>change(item.id,{title:event.target.value})}/></label>

@@ -7,7 +7,7 @@ test('all 23 menus and account have three reviewed steps and a live next route',
   assert.equal(Object.keys(PAGE_GUIDES).length,24);
   // The approved guide snapshot is independent of private source documents.
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).sort(([a],[b])=>a.localeCompare(b)));
-  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'698f1be257cdd2541774c14e931a5f8e47476a450327d756dd5ceaf83d331531');
+  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'527cd568204d330b2e0b43875e6d7bc874943f7990e5fc76a766e2629aa20894');
   for(const page of [...NAV_STAGES.flatMap(stage=>stage.pages),ACCOUNT_PAGE]){
     const guide=PAGE_GUIDES[page.href];assert.ok(guide,page.href);assert.equal(guide.steps.length,3);
     for(const step of guide.steps)assert.ok(typeof step==='string'&&step.trim().length>0,page.href);

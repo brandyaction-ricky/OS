@@ -3,6 +3,7 @@ import { CompanyChannelConnections } from "./company-channel-connections";
 
 import { PageTitle } from "./page-title";
 import { ContentGenerationSettings } from "./content-generation-settings";
+import { MeetingTermSettings } from "./meeting-term-settings";
 
 import { KnowledgeClassificationSettings } from "./knowledge-classification-settings";
 
@@ -336,6 +337,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
           {page === "company" ? (
             <>
               <ContentGenerationSettings />
+              <MeetingTermSettings />
               <PerformanceFilterProvider><CommerceAdminLinks embedded /></PerformanceFilterProvider>
               <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">

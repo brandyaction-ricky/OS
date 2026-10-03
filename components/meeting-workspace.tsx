@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { contentOrigin } from "@/lib/content-origin";
 import { demoRecord } from "@/lib/demo-record";
 import { makeMeetingReview, meetingReviewErrors, similarMeetings, readMeetingReview, normalizeMeetingTerms, matchMeetingAssignee, type MeetingReviewItem, type ReviewMember } from "@/lib/meeting-review";
+import { customMeetingTerms, type MeetingTerm } from "@/lib/meeting-term-settings";
 import { MeetingReviewEditor } from "./meeting-review-editor";
 import { WorkspaceLoadState } from "./workspace-load-state";
 import { OperationsWorkspace } from "./operations-workspace";
@@ -82,6 +83,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   const params = useSearchParams();
   const decisionsTab = (params.get("tab") ?? initialTab) === "decisions";
   const [members, setMembers] = useState<ReviewMember[]>([]);
+  const [meetingTerms, setMeetingTerms] = useState<MeetingTerm[]>([]);
   const [reviewItems, setReviewItems] = useState<MeetingReviewItem[]>([]);
   const [manualDecisions, setManualDecisions] = useState("");
   const [manualTasks, setManualTasks] = useState("");
@@ -120,16 +122,18 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     if (demo) {setMembers([{id:profile?.id||"demo",display_name:"데모 담당자",email:"demo@example.test",is_active:true}]);return;}
     setLoading(true);
     try {
-      const [meetingResult, decisionResult, taskResult, memberResult] = await Promise.all([
+      const [meetingResult, decisionResult, taskResult, memberResult, settingResult] = await Promise.all([
         listAllRecordsOfType(accessToken, "meeting"),
         listAllRecordsOfType(accessToken, "decision"),
         listAllRecordsOfType(accessToken, "task"),
         listMembers(accessToken),
+        listAllRecordsOfType(accessToken, "company_setting").catch(() => []),
       ]);
       setMeetings(meetingResult.filter(item=>contentOrigin(item)==="own"));
       setDecisions(decisionResult.filter(item=>contentOrigin(item)==="own"));
       setTasks(taskResult.filter(item=>contentOrigin(item)==="own"));
       setMembers(memberResult.members.filter(member=>member.is_active));
+      setMeetingTerms(customMeetingTerms(settingResult));
       setError("");
     } catch (reason) {
       setError(
@@ -163,7 +167,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   };
   const openEdit = (meeting: OsRecord) => {
     setEditing(meeting); setManualDecisions(""); setManualTasks(""); setComparison(null);
-    setReviewItems(readMeetingReview(meeting.metadata.reviewItems) ?? makeMeetingReview({decisions:Array.isArray(meeting.metadata.decisions)?meeting.metadata.decisions.map(String):[],pending:Array.isArray(meeting.metadata.pending)?meeting.metadata.pending.map(String):[],todos:Array.isArray(meeting.metadata.todos)?meeting.metadata.todos as MeetingSummaryResult["todos"]:[]},members));
+    setReviewItems(readMeetingReview(meeting.metadata.reviewItems) ?? makeMeetingReview({decisions:Array.isArray(meeting.metadata.decisions)?meeting.metadata.decisions.map(String):[],pending:Array.isArray(meeting.metadata.pending)?meeting.metadata.pending.map(String):[],todos:Array.isArray(meeting.metadata.todos)?meeting.metadata.todos as MeetingSummaryResult["todos"]:[]},members,undefined,meetingTerms));
     setTitle(meeting.title);
     setBrand(meeting.brand ?? "");
     titleEditedRef.current = true;
@@ -236,10 +240,10 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     setError("");
     try {
       const result: MeetingSummaryResult = demo ? {summary:text,mode:"local",decisions:[],pending:text.split("\n").filter(Boolean),todos:[]} : await summarizeMeeting(accessToken, text, startsAtDraft.slice(0,10));
-      setSummary(normalizeMeetingTerms(result.summary));
+      setSummary(normalizeMeetingTerms(result.summary, meetingTerms));
       setSummaryMode(result.mode);
       setStructured(result);
-      setReviewItems(makeMeetingReview(result,members));
+      setReviewItems(makeMeetingReview(result,members,undefined,meetingTerms));
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -429,7 +433,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   };
 
   const reviewErrors=meetingReviewErrors(reviewItems,members);
-  const similar=similarMeetings(meetings,title,brand,startsAtDraft.slice(0,10),editing?.id);
+  const similar=similarMeetings(meetings,title,brand,startsAtDraft.slice(0,10),editing?.id,meetingTerms);
   const upcoming = meetings.filter(
     (meeting) => meeting.status === "planned",
   ).length;
@@ -854,7 +858,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 placeholder="핵심 회의 요약"
               />
             </label>
-            <MeetingReviewEditor items={reviewItems} members={members} onChange={setReviewItems} disabled={busy}/>
+            <MeetingReviewEditor items={reviewItems} members={members} terms={meetingTerms} onChange={setReviewItems} disabled={busy}/>
             {reviewErrors.length>0&&<p className="field-hint" role="status">{reviewErrors[0]}</p>}
             {linkedDocuments ? (
               <p className="field-hint">
@@ -883,7 +887,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 <textarea name="actions" rows={4} value={manualTasks} onChange={event=>setManualTasks(event.target.value)}/>
               </label>
             </div>
-            <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검수에 추가</button>
+            <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members,undefined,meetingTerms)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검수에 추가</button>
             <div className="drawer-actions">
               <button
                 type="button"

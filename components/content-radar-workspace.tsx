@@ -25,7 +25,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, createRecord, generateContent, listAllRecordsOfType, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { apiRequest, createRecord, generateContent, listAllRecordsOfType, listMembers, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
 import { structureBorrowInput } from "@/lib/structure-borrow";
 import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
@@ -33,6 +33,7 @@ import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeA
 import { planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import { contentOrigin } from "@/lib/content-origin";
+import { summarizeContentSearchHistory } from "@/lib/content-search-history";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
 import { ContentTopicJevAssist } from "./content-topic-jev-assist";
@@ -80,6 +81,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const [includeTests, setIncludeTests] = useState(false);
   const records = useMemo(() => allRecords.filter(record => includeTests || contentOrigin(record) !== "test"), [allRecords, includeTests]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
+  const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [queryTab, setTab] = useQueryTab<RadarTab>("tab",["channels","discovery","niches","planning"],"channels");
   const tab=productionMode?"planning":queryTab;
   const [selectedId, setSelectedId] = useState("");
@@ -110,12 +112,14 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const load = useCallback(async () => {
     if (demo) return;
     try {
-      const [topicResult, packageResult] = await Promise.all([
+      const [topicResult, packageResult, memberResult] = await Promise.all([
         listAllRecordsOfType(accessToken, "content_topic"),
         listAllRecordsOfType(accessToken, "content_package"),
+        listMembers(accessToken).catch(() => null),
       ]);
       setRecords(topicResult);
       setPackages(packageResult);
+      if (memberResult) setMemberNames(Object.fromEntries(memberResult.members.map(member => [member.id, member.display_name])));
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "콘텐츠 탐색 자료를 불러오지 못했습니다.");
@@ -140,6 +144,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     .filter((record) => meta<string>(record, "packageKind", "") === "appeal_candidates")
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
+  const searchSummaries = useMemo(() => summarizeContentSearchHistory(searches), [searches]);
   const visibleTopics = lockedSource ? records.filter(row=>row.id===lockedSource.id) : tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
   const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
   const plan = plans.filter((record) => record.parent_id === selected?.id)
@@ -558,7 +563,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
         return <article className="panel outlier-result" key={item.id}><label><input type="checkbox" checked={checkedVideos.has(item.id)} disabled={busy || saved || durationFilter === "short"} onChange={(event) => setCheckedVideos((current) => { const next = new Set(current); if (event.target.checked) next.add(item.id); else next.delete(item.id); return next; })} /> 근거 선택</label><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div>{baselines[item.id] ? <p className="baseline-result">{baselines[item.id].ratio === null ? `비교 표본 ${baselines[item.id].sampleCount}/20` : `중앙값 ${baselines[item.id].ratio!.toFixed(2)}배 · ${baselines[item.id].outlier ? "이상치 후보" : "일반 범위"}`}<small>{baselines[item.id].reason}</small></p> : null}<button className="secondary-button" disabled={busy} onClick={() => measureBaseline(item)}>같은 채널 20개와 비교</button><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved || durationFilter === "short"} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button><button className="secondary-button" disabled={busy} onClick={() => setBorrowItem(item)}>구조 빌려오기</button><label>팀 검토 적합도<select value={Number(decisions.get(item.id)?.metadata.fitScore ?? 0)} disabled={busy} onChange={(event) => void reviewVideo(item, "review", Number(event.target.value))}><option value={0}>미검토</option><option value={1}>낮음</option><option value={2}>보통</option><option value={3}>높음</option></select></label><button className="ghost-button" disabled={busy} onClick={() => void reviewVideo(item, decisions.get(item.id)?.status === "blocked" ? "review" : "blocked", Number(decisions.get(item.id)?.metadata.fitScore ?? 0))}>{decisions.get(item.id)?.status === "blocked" ? "검토 제외 취소" : "팀 검토에서 제외"}</button></div></article>;
       })}</section> : <div className="panel compact-empty discovery-empty"><Radar size={28} /><strong>키워드로 시장 영상을 탐색하세요.</strong><span>검색 결과는 저장하기 전까지 운영 데이터에 들어가지 않습니다.</span></div>}
-      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
+      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>같은 키워드는 묶어 표시합니다. 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>실행</span><span>마지막 실행자</span><span>마지막 실행</span></div>{searchSummaries.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.key} onClick={() => setSearchQuery(search.query)}><span><strong>{search.query}</strong><small>최근 결과 {search.resultCount === null ? "미집계" : `${search.resultCount}개`} · 최고 조회 {search.topViewCount === null ? "미집계" : compactNumber(search.topViewCount)}</small></span><span>{search.count}회</span><span>{memberNames[search.latestActorId] ?? (search.latestActorId === profile?.id ? profile.displayName : "실행자 미확인")}</span><span>{new Date(search.latestAt).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}
 
     {tab === "niches" || tab === "planning" ? <>

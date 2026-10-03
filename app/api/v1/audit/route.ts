@@ -18,23 +18,68 @@ function auditSubjectType(record: AuditRecord | null | undefined) {
     : record?.record_type ?? "record";
 }
 
+function dateBoundary(value: string | null, nextDay = false) {
+  if (!value) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new ApiError(400, "INVALID_AUDIT_DATE", "조회 날짜를 확인해 주세요.");
+  const [year, month, day] = value.split("-").map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day));
+  if (probe.toISOString().slice(0, 10) !== value) throw new ApiError(400, "INVALID_AUDIT_DATE", "조회 날짜를 확인해 주세요.");
+  return new Date(Date.parse(`${value}T00:00:00+09:00`) + (nextDay ? 86_400_000 : 0)).toISOString();
+}
+
+function readCursor(value: string | null): { at: string; id: string } | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { at?: unknown; id?: unknown };
+    if (typeof parsed.at === "string" && !Number.isNaN(Date.parse(parsed.at))
+      && typeof parsed.id === "string" && /^(record|document|agent|security):[\w-]+$/.test(parsed.id)) {
+      return { at: parsed.at, id: parsed.id };
+    }
+  } catch { /* Invalid cursors are rejected below. */ }
+  throw new ApiError(400, "INVALID_AUDIT_CURSOR", "변경 기록 페이지 주소를 확인해 주세요.");
+}
+
 export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const service = createServiceSupabase();
-    const limit = Math.min(Math.max(Number(new URL(request.url).searchParams.get("limit") ?? 100), 1), 200);
+    const params = new URL(request.url).searchParams;
+    const limit = Math.min(Math.max(Number(params.get("limit") ?? 100) || 100, 1), 200);
+    const from = dateBoundary(params.get("from"));
+    const to = dateBoundary(params.get("to"), true);
+    if (from && to && from >= to) throw new ApiError(400, "INVALID_AUDIT_RANGE", "시작일이 종료일보다 늦습니다.");
+    const cursor = readCursor(params.get("cursor"));
+    const queryLimit = limit * 3;
     let recordQuery = service.from("os_record_events")
       .select("id,record_id,actor_id,event_type,from_status,to_status,changed_fields,note,created_at,os_records(title,record_type,metadata)")
-      .order("created_at", { ascending: false }).limit(limit * 2);
+      .order("created_at", { ascending: false }).limit(queryLimit);
     let documentQuery = service.from("os_document_events")
       .select("id,document_id,actor_id,from_status,to_status,note,created_at")
-      .order("created_at", { ascending: false }).limit(limit * 2);
+      .order("created_at", { ascending: false }).limit(queryLimit);
     let agentQuery = service.from("os_agent_audit_logs")
       .select("id,agent_key_id,owner_user_id,action,document_id,record_id,title_snapshot,changed_fields,reason,created_at")
-      .order("created_at", { ascending: false }).limit(limit * 2);
+      .order("created_at", { ascending: false }).limit(queryLimit);
     let securityQuery = service.from("os_security_audit_logs")
       .select("id,actor_id,target_user_id,action,note,created_at")
-      .order("created_at", { ascending: false }).limit(limit * 2);
+      .order("created_at", { ascending: false }).limit(queryLimit);
+    if (from) {
+      recordQuery = recordQuery.gte("created_at", from);
+      documentQuery = documentQuery.gte("created_at", from);
+      agentQuery = agentQuery.gte("created_at", from);
+      securityQuery = securityQuery.gte("created_at", from);
+    }
+    if (to) {
+      recordQuery = recordQuery.lt("created_at", to);
+      documentQuery = documentQuery.lt("created_at", to);
+      agentQuery = agentQuery.lt("created_at", to);
+      securityQuery = securityQuery.lt("created_at", to);
+    }
+    if (cursor) {
+      recordQuery = recordQuery.lte("created_at", cursor.at);
+      documentQuery = documentQuery.lte("created_at", cursor.at);
+      agentQuery = agentQuery.lte("created_at", cursor.at);
+      securityQuery = securityQuery.lte("created_at", cursor.at);
+    }
     if (actor.role !== "admin") {
       recordQuery = recordQuery.eq("actor_id", actor.id);
       documentQuery = documentQuery.eq("actor_id", actor.id);
@@ -43,6 +88,7 @@ export async function GET(request: Request) {
     }
     const [recordResult, documentResult, agentResult, securityResult] = await Promise.all([recordQuery, documentQuery, agentQuery, securityQuery]);
     if (recordResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "감사 로그를 불러오지 못했습니다.", recordResult.error.message);
+    if (documentResult.error || agentResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "변경 기록을 불러오지 못했습니다.");
     if (securityResult.error) throw new ApiError(400, "SECURITY_AUDIT_LIST_FAILED", "계정 보안 기록을 불러오지 못했습니다.", securityResult.error.message);
 
     const documentIds = [...new Set([
@@ -130,9 +176,14 @@ export async function GET(request: Request) {
       note: event.note ?? "",
       created_at: event.created_at,
     }));
-    const events = [...records, ...documentEvents, ...agentEvents, ...securityEvents]
-      .sort((left, right) => right.created_at.localeCompare(left.created_at))
-      .slice(0, limit);
-    return NextResponse.json({ events });
+    const merged = [...records, ...documentEvents, ...agentEvents, ...securityEvents]
+      .sort((left, right) => right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id))
+      .filter(event => !cursor || event.created_at < cursor.at || (event.created_at === cursor.at && event.id < cursor.id));
+    const events = merged.slice(0, limit);
+    const last = events.at(-1);
+    const nextCursor = merged.length > limit && last
+      ? Buffer.from(JSON.stringify({ at: last.created_at, id: last.id })).toString("base64url")
+      : null;
+    return NextResponse.json({ events, nextCursor });
   } catch (error) { return apiErrorResponse(error); }
 }
