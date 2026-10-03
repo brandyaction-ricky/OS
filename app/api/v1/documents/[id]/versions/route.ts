@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,9 +16,14 @@ const restoreSchema = z.object({
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await authenticateRequest(request);
+    const actor = await authenticateRequest(request);
     const { id } = await params;
     const service = createServiceSupabase();
+    const { data: document, error: documentError } = await service.from("os_documents")
+      .select("*").eq("id", id).maybeSingle();
+    if (documentError || !document || !(await readableKnowledgePages(actor, [document])).has(id)) {
+      throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+    }
     const { data, error } = await service.from("os_document_versions").select("version_no,title,content_md,author_id,agent_key_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false });
     if (error) throw new ApiError(400, "DOCUMENT_VERSIONS_FAILED", "변경 이력을 불러오지 못했습니다.", error.message);
     const authorIds = [...new Set((data ?? []).map((version) => version.author_id).filter(Boolean))];
@@ -39,6 +45,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const actor = await authenticateRequest(request);
     const { id } = await params;
+    const { data: document, error: documentError } = await createServiceSupabase().from("os_documents")
+      .select("*").eq("id", id).maybeSingle();
+    if (documentError || !document || !(await readableKnowledgePages(actor, [document])).has(id)) {
+      throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+    }
     const input = restoreSchema.parse(await parseJson(request, 16_000));
     const { data, error } = await actor.supabase.rpc("os_restore_document_version", {
       p_document_id: id,

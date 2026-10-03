@@ -96,10 +96,24 @@ create trigger os_documents_page_guard_trigger
 create or replace function public.os_documents_page_folder_cascade()
 returns trigger
 language plpgsql security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 begin
   if new.folder is not distinct from old.folder then return new; end if;
+  -- A folder move must not silently rewrite another person's child page.
+  -- This also fails closed for service-role/AI writes without a user identity.
+  if not public.os_is_admin() and exists (
+    with recursive descendants as (
+      select id, owner_id, parent_document_id from public.os_documents
+      where parent_document_id = new.id
+      union all
+      select d.id, d.owner_id, d.parent_document_id from public.os_documents d
+      join descendants p on d.parent_document_id = p.id
+    )
+    select 1 from descendants where owner_id is distinct from auth.uid()
+  ) then
+    raise exception 'OS_PAGE_CHILD_MOVE_DENIED' using errcode = '42501';
+  end if;
   with recursive descendants as (
     select id from public.os_documents where parent_document_id = new.id
     union all

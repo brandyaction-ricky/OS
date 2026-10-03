@@ -13,14 +13,17 @@ import {
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { claimPendingKnowledgeAttachment, forgetKnowledgeAttachment, registerPendingKnowledgeAttachment } from "@/lib/server/knowledge-attachment-lifecycle";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
 
 async function readableDocument(actor: RequestActor, documentId: string) {
-  const { data, error } = await actor.supabase.from("os_documents").select("id,owner_id,status").eq("id", documentId).maybeSingle();
-  if (error || !data) throw new ApiError(404, "KNOWLEDGE_ATTACHMENT_DOCUMENT_NOT_FOUND", "첨부 자료가 연결된 문서를 열 수 없습니다.");
+  const { data, error } = await actor.supabase.from("os_documents").select("*").eq("id", documentId).maybeSingle();
+  if (error || !data || !(await readableKnowledgePages(actor, [data])).has(documentId)) {
+    throw new ApiError(404, "KNOWLEDGE_ATTACHMENT_DOCUMENT_NOT_FOUND", "첨부 자료가 연결된 문서를 열 수 없습니다.");
+  }
   return data;
 }
 
