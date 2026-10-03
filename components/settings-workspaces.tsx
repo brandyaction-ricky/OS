@@ -3,6 +3,8 @@ import { CompanyChannelConnections } from "./company-channel-connections";
 
 import { PageTitle } from "./page-title";
 import { ContentGenerationSettings } from "./content-generation-settings";
+import { MeetingTermSettings } from "./meeting-term-settings";
+import { ApprovalSettings } from "./approval-settings";
 
 import { KnowledgeClassificationSettings } from "./knowledge-classification-settings";
 
@@ -59,7 +61,7 @@ interface ConnectionRow {
 
 const POLICY_ROWS = [
   ["정본 편집", "활성 구성원", "수정본 저장 후 검토 단계"],
-  ["정본 승격", "작성자 자기 승인 가능", "모든 승격 이력을 감사 로그에 기록"],
+  ["정본 승격", "지정 승인자·유효한 위임자", "작성자 자기 승인 금지 · 승인 이력 기록"],
   ["경영지원 민감", "sensitive", "경영지원 권한 또는 관리자"],
   ["일반 회사 서류", "활성 구성원", "비활성 계정 자동 차단"],
   ["RS 협업 지식", "허용 팀·사용자", "브랜드·팀 범위 제한"],
@@ -335,7 +337,9 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
 
           {page === "company" ? (
             <>
+              <ApprovalSettings token={accessToken} members={members} actorId={profile?.id} isAdmin={profile?.role === "admin"} demo={demo} />
               <ContentGenerationSettings />
+              <MeetingTermSettings />
               <PerformanceFilterProvider><CommerceAdminLinks embedded /></PerformanceFilterProvider>
               <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">

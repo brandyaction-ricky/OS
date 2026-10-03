@@ -1,5 +1,5 @@
 import { decodeHtmlEntities } from "./html-entities";
-import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
+import type { DocumentProposal, DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
 import type { ProductionWorkflowStep } from "./content-production-workflow";
@@ -48,6 +48,20 @@ export async function getKnowledgeGraph(token: string | null) {
   return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
 }
 
+export async function repairKnowledgeLinks(token: string | null, input: {
+  oldTarget: string; targetId: string; sources: Array<{ id: string; expectedVersion: number }>;
+}) {
+  return apiRequest<{ results: Array<{ id: string; outcome: "updated" | "proposal" | "failed"; count?: number; code?: string; message?: string }>; partial: boolean }>("/api/v1/knowledge/graph/repair", {
+    token, method: "POST", body: JSON.stringify(input),
+  });
+}
+
+export async function setDocumentSteward(token: string | null, documentId: string, expectedVersion: number, stewardId: string | null) {
+  return apiRequest<{ document: KnowledgeDocument }>("/api/v1/documents/steward", {
+    token, method: "PATCH", body: JSON.stringify({ documentId, expectedVersion, stewardId }),
+  });
+}
+
 export async function createDocument(
   token: string | null,
   input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null; parentDocumentId?: string | null },
@@ -73,7 +87,7 @@ export async function updateDocument(
     reason?: string;
   },
 ) {
-  return apiRequest<{ document: KnowledgeDocument; indexing: string }>("/api/v1/documents", {
+  return apiRequest<{ document: KnowledgeDocument; proposal?: DocumentProposal; indexing: string }>("/api/v1/documents", {
     method: "PATCH",
     token,
     body: JSON.stringify(input),
@@ -108,7 +122,7 @@ export async function listDocumentVersions(token: string | null, id: string) {
 }
 
 export async function restoreDocumentVersion(token: string | null, id: string, version: number, expectedVersion: number) {
-  return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${id}/versions`, {
+  return apiRequest<{ document: KnowledgeDocument; proposal?: DocumentProposal }>(`/api/v1/documents/${id}/versions`, {
     method: "POST", token, body: JSON.stringify({ version, expectedVersion, reason: `v${version}로 되돌리기` }),
   });
 }
@@ -345,7 +359,7 @@ export interface AgentAccessKey {
   last_used_at: string | null;
   expires_at: string | null;
   created_at: string;
-  owner: { id: string; display_name: string; email: string; is_active: boolean } | null;
+  owner: { id: string; display_name: string; email: string; is_active: boolean; is_shared_account?: boolean } | null;
 }
 
 export interface AgentAccessResponse {
@@ -364,6 +378,7 @@ export async function createAgentKey(token: string | null, input: {
   team?: string;
   brand?: string | null;
   expiresAt: string;
+  reason?: string;
 }) {
   return apiRequest<{
     key: AgentAccessKey;
@@ -375,6 +390,12 @@ export async function createAgentKey(token: string | null, input: {
 
 export async function revokeAgentKey(token: string | null, id: string) {
   return apiRequest<{ revoked: boolean }>(`/api/v1/agent-keys?id=${encodeURIComponent(id)}`, { method: "DELETE", token });
+}
+
+export async function requestAgentKeyReissue(token: string | null, input: { keyId: string; recipientId: string }) {
+  return apiRequest<{ requested: boolean; requestId: string }>("/api/v1/agent-keys/reissue-request", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
 }
 
 export async function generateContent(token: string | null, input: {
@@ -682,6 +703,7 @@ export interface OsMember {
   role: "member" | "lead" | "admin";
   team: string;
   is_active: boolean;
+  is_shared_account?: boolean;
   affiliation: string;
   roles: string[];
   onboarding: Record<string, boolean>;

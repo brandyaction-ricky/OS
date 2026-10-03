@@ -10,6 +10,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
+import { changesAppealDecision, isAppealCandidatePackage } from "@/lib/appeal-decision-guard";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { assertDevelopmentRequestLink } from "@/lib/development-links";
 
@@ -101,6 +102,7 @@ export async function POST(request: Request) {
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "content_metric" && input.metadata.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 수집 작업에서만 저장합니다.");
     if (input.recordType === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 수집 기록은 전용 API에서만 만듭니다.");
+    if (isAppealCandidatePackage(input.recordType, input.metadata)) throw new ApiError(403, "APPEAL_DECISION_API_REQUIRED", "소구점 후보 세트는 전용 생성·승인 경로로만 만듭니다.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 작성해 주세요.");
     if ((input.recordType === "development_notification" || input.recordType === "notification") || (input.metadata.kind === "development_notification" || input.metadata.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
@@ -140,6 +142,7 @@ export async function PATCH(request: Request) {
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
     if ((current.record_type === "content_metric" && current.metadata?.channelSnapshotVersion === 1) || input.metadata?.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 변경하지 않습니다. 수기 기록을 따로 추가하세요.");
     if (current.record_type === "content_comment" && !isCommentDraftPatch(current, input)) throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글은 초안만 변경할 수 있습니다. 전송·숨기기는 전용 사람 확인 API를 사용하세요.");
+    if (isAppealCandidatePackage(current.record_type, current.metadata) && changesAppealDecision(current.metadata, input.metadata)) throw new ApiError(403, "APPEAL_DECISION_API_REQUIRED", "소구점 승인·보류·수정 요청은 전용 API에서 처리해 주세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
     await assertReviewedMeetingTask(actor,input,current);

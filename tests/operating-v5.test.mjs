@@ -42,15 +42,17 @@ test("publishing and shorts enforce human gates before external work", async () 
 });
 
 test("content studio ports planning, eight-step scripts and channel judgment", async () => {
-  const [router, pipeline, generation, packageWorkspace] = await Promise.all([
+  const [router, pipeline, generation, packageWorkspace, performance] = await Promise.all([
     Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("components/content-pipeline-workspaces.tsx"),
     read("lib/server/content-generation.ts"),
     read("components/content-studio-workspaces.tsx"),
+    read("components/content-performance-dashboard.tsx"),
   ]);
   for (const workspace of ["ContentTopicsWorkspace", "ContentScriptsWorkspace", "ContentPerformanceWorkspace"]) assert.match(router, new RegExp(workspace));
   for (const step of ["채널 모으기", "터진 영상 발굴", "틈새 확정", "축 확정", "설계표", "다듬기", "발행"]) assert.match(pipeline, new RegExp(step));
-  for (const metric of ["CTR", "시청지속", "전환"]) assert.match(pipeline, new RegExp(metric));
+  for (const metric of ["CTR", "시청지속", "전환"]) assert.match(performance, new RegExp(metric));
+  assert.doesNotMatch(pipeline, /export function ContentPerformanceWorkspace/);
   assert.match(generation, /topic_plan/);
   assert.match(generation, /script_draft/);
   assert.match(packageWorkspace, /candidate-pick/);

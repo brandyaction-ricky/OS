@@ -7,6 +7,7 @@ import { canReadKnowledgeDocument, canAgentWriteDocument } from "@/lib/server/do
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
+import { createCanonicalProposal } from "@/lib/server/document-proposals";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -192,6 +193,21 @@ export async function PATCH(request: Request) {
       ["brand", input.brand], ["team", input.team], ["tags", input.tags],
     ] as const).filter(([, value]) => value !== undefined).map(([field]) => field);
     let document: KnowledgeDocument | null = null;
+
+    if (current.status === "canonical" && (next.title !== current.title || next.content !== current.content_md) && (actor.type === "user" || actor.enforceWriteStatuses)) {
+      if (!canReadKnowledgeDocument(actor, current) || !(await readableKnowledgePages(actor, [current])).has(current.id)) {
+        throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 정본에 변경 제안을 만들 수 없습니다.");
+      }
+      const proposal = await createCanonicalProposal(actor, current, expectedVersion, {
+        title: next.title,
+        content_md: next.content,
+        folder: next.folder,
+        brand: next.brand ?? "",
+        team: next.team,
+        tags: next.tags,
+      });
+      return NextResponse.json({ documentId: current.id, document: current, proposalId: proposal.id, proposal, indexing: "queued" }, { status: 202 });
+    }
 
     if (actor.type === "agent") {
       const { data, error } = await service.rpc("os_agent_update_document", {

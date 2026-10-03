@@ -6,6 +6,7 @@ import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { createCanonicalProposal } from "@/lib/server/document-proposals";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -136,6 +137,18 @@ export async function PATCH(request: Request) {
     if (readError || !current) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     if (current.current_version !== input.expectedVersion) {
       throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.", { currentVersion: current.current_version });
+    }
+
+    if (current.status === "canonical" && (input.title !== undefined && input.title !== current.title || input.content !== undefined && input.content !== current.content_md)) {
+      const proposal = await createCanonicalProposal(actor, current, input.expectedVersion, {
+        title: input.title ?? current.title,
+        content_md: input.content ?? current.content_md,
+        folder: input.folder ?? current.folder,
+        brand: input.brand ?? current.brand ?? "",
+        team: input.team ?? current.team,
+        tags: input.tags ?? current.tags,
+      });
+      return NextResponse.json({ document: current, proposal, indexing: "queued" }, { status: 202 });
     }
 
     const { data, error } = await actor.supabase.rpc("os_update_document", {

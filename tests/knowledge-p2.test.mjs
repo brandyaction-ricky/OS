@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as zod from 'zod';
 import { graphView, changedLineRange } from '../lib/knowledge-graph-view.ts';
-import { buildKnowledgeGraph, extractWikiLinks } from '../lib/knowledge-links.ts';
+import { buildKnowledgeGraph, extractWikiLinks, replaceWikiLinkTarget } from '../lib/knowledge-links.ts';
 import * as importing from '../lib/knowledge-import.ts';
 import * as diagnostics from '../lib/search-diagnostics.ts';
 import * as relevance from '../lib/search-relevance.ts';
@@ -41,6 +41,13 @@ test('broken links distinguish missing and ambiguous, exclude image embeds and r
   assert.deepEqual(extractWikiLinks(source.content_md),['Same','Missing']);
   assert.equal(graph.broken[0].reason,'ambiguous');assert.equal(graph.broken[0].candidates.length,2);assert.equal(graph.broken[1].reason,'missing');
   assert.equal(buildKnowledgeGraph([{...source,content_md:'[[First/Same]]'},document('one',{title:'Same',folder:'First'})]).broken.length,0);
+});
+test('link repair changes only the chosen wiki target and preserves aliases, embeds and other links',()=>{
+  const original='[[Same]] [[Same#Heading|label]] ![[Same]] [[Other]]';
+  const repaired=replaceWikiLinkTarget(original,'Same','First/Same');
+  assert.equal(repaired.count,2);
+  assert.equal(repaired.content,'[[First/Same]] [[First/Same#Heading|label]] ![[Same]] [[Other]]');
+  assert.equal(buildKnowledgeGraph([document('source',{content_md:repaired.content}),document('one',{title:'Same',folder:'First'}),document('other',{title:'Other'})]).broken.length,0);
 });
 test('search excerpts include a distant actual hit and the containing heading',()=>{
   const body='# Intro\n'+ 'plain text '.repeat(150)+'\n## Answer\n'+ 'target answer '+ 'context '.repeat(150);
@@ -129,7 +136,7 @@ test('partial import failure retains exact item identity and retries only unfini
 });
 
 test('version restore conflicts return 409 rather than implying the old version was restored',async()=>{
-  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{createServiceSupabase:()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:'test-document',owner_id:'owner',status:'draft'},error:null})})})},'@/lib/server/knowledge-page-access':{readableKnowledgePages:async()=>new Set(['test-document'])},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
+  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{createServiceSupabase:()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:'test-document',owner_id:'owner',status:'draft'},error:null})})})},'@/lib/server/knowledge-page-access':{readableKnowledgePages:async()=>new Set(['test-document'])},'@/lib/server/document-proposals':{createCanonicalProposal:async()=>{throw Error('not reached');}},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
   const response=await api.POST(new Request('http://localhost',{method:'POST',body:JSON.stringify({version:1,expectedVersion:3})}),{params:Promise.resolve({id:'test-document'})});
   assert.equal(response.status,409);assert.equal((await response.json()).error.code,'VERSION_CONFLICT');
 });

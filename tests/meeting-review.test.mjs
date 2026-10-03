@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {makeMeetingReview,meetingReviewErrors,matchMeetingAssignee,normalizeMeetingTerms,similarMeetings,decisionSource,readMeetingReview} from "../lib/meeting-review.ts";
 import {assignTaskBatch,validWorkDate} from "../lib/task-management.ts";
+import { customMeetingTerms, validMeetingTerms, MEETING_TERM_SETTING_KEY } from "../lib/meeting-term-settings.ts";
 const members=[{id:"a",display_name:"검증자",email:"one@example.test",is_active:true},{id:"b",display_name:"검증자",email:"two@example.test",is_active:true},{id:"c",display_name:"비활성",email:"off@example.test",is_active:false}];
 test("names match only a unique active member; ambiguous or inactive names stay unresolved",()=>{
  assert.equal(matchMeetingAssignee("검증자",members),"");assert.equal(matchMeetingAssignee("one",members),"a");assert.equal(matchMeetingAssignee("비활성",members),"");
@@ -15,6 +16,17 @@ test("task confirmation requires real assignee and a calendar date; excluded ite
 });
 test("terms do not replace substrings inside unrelated Korean words and malformed stored reviews cannot crash the editor",()=>{
  assert.equal(normalizeMeetingTerms("마인드와 마인을 자산몰에서 확인"),"마인드와 마이인을 자사몰에서 확인");assert.equal(readMeetingReview([null]),null);assert.equal(makeMeetingReview({decisions:[],pending:[],todos:[null,{title:"이전 업무"}]},members,()=>"legacy")[0].assigneeId,"");assert.equal(readMeetingReview([{kind:"task"}]),null);
+});
+test("company meeting glossary extends defaults without altering source text or malformed settings",()=>{
+ const records=[{record_type:"company_setting",archived_at:null,metadata:{settingKey:MEETING_TERM_SETTING_KEY,terms:[{from:"핀터",to:"핀터레스트"},{from:"",to:"무효"}]}}];
+ const terms=customMeetingTerms(records);
+ assert.deepEqual(terms,[{from:"핀터",to:"핀터레스트"}]);
+ assert.equal(normalizeMeetingTerms("마인을 핀터에서 확인",terms),"마이인을 핀터레스트에서 확인");
+ assert.equal(normalizeMeetingTerms("핀터링은 유지",terms),"핀터링은 유지");
+ assert.deepEqual(validMeetingTerms({terms:[]}),[]);
+ const extracted={decisions:["핀터 검토"],pending:[],todos:[]};
+ assert.equal(makeMeetingReview(extracted,members,()=>"id",terms)[0].title,"핀터레스트 검토");
+ assert.equal(extracted.decisions[0],"핀터 검토");
 });
 test("duplicate suggestions use the Korean calendar day and exclude archived and the current meeting",()=>{
  const row={id:"m",title:"마이인 정기 회의",brand:"마이인",starts_at:"2026-10-02T16:00:00Z",archived_at:null};

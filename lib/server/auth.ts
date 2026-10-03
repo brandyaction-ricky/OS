@@ -16,6 +16,7 @@ export interface RequestActor {
   brand: string | null;
   allowedStatuses: DocumentStatus[];
   writableStatuses?: DocumentStatus[];
+  enforceWriteStatuses?: boolean;
   scopes: string[];
   organizationId: string | null;
   ownerId: string;
@@ -82,6 +83,7 @@ export async function authenticateRequest(
       // team-shared documents are readable without granting write access.
       allowedStatuses: agentReadableStatuses(data.allowed_statuses ?? ["canonical"], data.enforce_write_statuses === true && scopes.includes("knowledge.write")),
       writableStatuses: data.enforce_write_statuses === true ? data.allowed_statuses : ["draft", "team", "review", "reviewed", "canonical"],
+      enforceWriteStatuses: data.enforce_write_statuses === true,
       scopes,
       organizationId: data.organization_id,
       ownerId: data.owner_user_id,

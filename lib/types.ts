@@ -25,6 +25,7 @@ export interface KnowledgeDocument {
   source: string;
   source_ref: string | null;
   owner_id: string;
+  steward_id?: string | null;
   created_by: string;
   current_version: number;
   created_at: string;
@@ -40,6 +41,36 @@ export interface DocumentVersion {
   author_name: string;
   reason: string;
   created_at: string;
+}
+
+export interface DocumentProposal {
+  id: string;
+  document_id: string;
+  base_version: number;
+  title: string;
+  content_md: string;
+  folder: string;
+  brand: string;
+  team: string;
+  tags: string[];
+  author_id: string;
+  agent_key_id: string | null;
+  status: "open" | "approved" | "returned" | "withdrawn";
+  reviewer_id?: string | null;
+  decided_at?: string | null;
+  note?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface DocumentProposalComment {
+  id: string;
+  proposal_id: string;
+  line_no: number;
+  body: string;
+  author_id: string;
+  created_at: string;
+  resolved_at?: string | null;
 }
 
 export interface SearchResult {

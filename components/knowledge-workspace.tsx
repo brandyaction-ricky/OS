@@ -43,7 +43,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -228,7 +228,7 @@ function MarkdownSectionView({ section, onOpenLink }: { section: MarkdownSection
   </details>;
 }
 
-function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+export function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
   const root = useMemo(() => markdownSections(content), [content]);
   const headings: MarkdownSection[] = [];
   const collect = (section: MarkdownSection) => { if (section.title) headings.push(section); section.children.forEach(collect); };
@@ -676,8 +676,9 @@ function WorkspaceContent() {
     setBusy(true); setError("");
     try {
       const current = !demo && renameDocument.content_md === undefined ? (await getDocument(accessToken, renameDocument.id)).document : renameDocument;
-      const document = demo ? { ...current, title, current_version: current.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { id: current.id, expectedVersion: current.current_version, title, content: current.content_md, reason: "파일 트리에서 문서 이름 변경" })).document;
-      commitDocument(document, current); discard(document.id); setRenameDocument(null); setToast("문서 이름을 변경했습니다.");
+      const result = demo ? { document: { ...current, title, current_version: current.current_version + 1, updated_at: new Date().toISOString() }, proposal: undefined } : await updateDocument(accessToken, { id: current.id, expectedVersion: current.current_version, title, content: current.content_md, reason: "파일 트리에서 문서 이름 변경" });
+      if (!result.proposal) commitDocument(result.document, current);
+      discard(current.id); setRenameDocument(null); setToast(result.proposal ? "제목 변경 제안을 저장했습니다. 승인 전까지 정본 이름은 그대로입니다." : "문서 이름을 변경했습니다.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 이름을 변경하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -826,13 +827,14 @@ function WorkspaceContent() {
     setBusy(true); setError("");
     try {
       const input = documentCreateSchema.parse({ ...draft, folder: draft.folder.trim() ? normalizeKnowledgeFolder(draft.folder) : "", tags: draft.tags.split(",").map(tag => tag.trim()).filter(Boolean) });
-      const document = demo ? { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" })).document;
+      const result = demo ? { document: { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() }, proposal: undefined } : await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" });
       const pending = [...(pendingAttachmentPaths.current.get(selected.id) ?? [])];
       const unused = pending.filter(path => !input.content.includes(encodeURIComponent(path)));
       if (unused.length) await cleanupPendingAttachments(selected.id, unused);
       pendingAttachmentPaths.current.delete(selected.id);
-      commitDocument(document); discard(document.id);
-      setMode("read"); setToast("새 버전으로 저장했습니다."); return true;
+      if (!result.proposal) commitDocument(result.document);
+      discard(selected.id);
+      setMode("read"); setToast(result.proposal ? "정본 변경 제안을 저장했습니다. 승인 전까지 기존 정본은 그대로입니다." : "새 버전으로 저장했습니다."); return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "저장하지 못했습니다. 작성 내용은 유지됩니다.");
       if (reason instanceof ApiRequestError && reason.code === "VERSION_CONFLICT") {
@@ -874,16 +876,27 @@ function WorkspaceContent() {
     else setMode("edit");
   };
 
+  const saveDocumentSteward = async (stewardId: string) => {
+    if (!selected || demo) return;
+    setBusy(true); setError("");
+    try {
+      const result = await setDocumentSteward(accessToken, selected.id, selected.current_version, stewardId || null);
+      commitDocument(result.document); setToast("문서 담당을 저장했습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 담당을 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   const restoreVersion = async (version: DocumentVersion) => {
     if (!selected || !compareBase) return;
     setBusy(true); setError("");
     try {
       let restored: KnowledgeDocument;
+      let proposalCreated = false;
       const current = documentsRef.current.find(item => item.id === selected.id) ?? selected;
       if (demo) restored = { ...current, title: version.title, content_md: version.content_md, current_version: current.current_version + 1, updated_at: new Date().toISOString() };
-      else ({ document: restored } = await restoreDocumentVersion(accessToken, selected.id, version.version_no, compareBase.current_version));
+      else { const response = await restoreDocumentVersion(accessToken, selected.id, version.version_no, compareBase.current_version); restored = response.document; proposalCreated = Boolean(response.proposal); }
       setCompareVersion(null); setCompareBase(null);
-      commitDocument(restored); discard(restored.id); setToast(`v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
+      if (!proposalCreated) commitDocument(restored);
+      discard(restored.id); setToast(proposalCreated ? `v${version.version_no} 내용의 변경 제안을 저장했습니다. 승인 전까지 정본은 그대로입니다.` : `v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "버전을 되돌리지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -1051,7 +1064,7 @@ function WorkspaceContent() {
                   {mode === "edit" ? <button className="primary-button compact" onClick={save} disabled={busy}><Save size={14} /> 저장</button> : null}
                   {selected.status !== "archived" ? <button className="secondary-button compact" onClick={() => openPageMove(selected)} disabled={busy}><MoveRight size={14} /> 위치 이동</button> : null}
                   {(selected.owner_id === profile?.id || profile?.role === "admin") && nextStatus(selected.status) && statusActionLabel(selected.status) ? <button className="secondary-button compact" onClick={() => guardAction(() => moveStatus(nextStatus(selected.status)!))} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
-                  {(selected.owner_id === profile?.id || profile?.role === "admin") && ["draft", "team", "review", "reviewed"].includes(selected.status) ? <button className="primary-button compact" onClick={() => guardAction(() => moveStatus("canonical"))} disabled={busy}><BookCheck size={14} /> 회사 정본으로</button> : null}
+                  {selected.status === "reviewed" ? <Link className="primary-button compact" href={`/knowledge/review?document=${selected.id}`}><BookCheck size={14} /> 승인 화면에서 공개</Link> : null}
                   {selected.status === "review" ? <><Link className="secondary-button compact" href={`/knowledge/review?document=${selected.id}`}>검토함에서 보기</Link>{selected.owner_id === profile?.id || profile?.role === "admin" ? <button className="secondary-button compact" disabled={busy} onClick={() => guardAction(() => moveStatus("draft"))}>검토 회수 (초안)</button> : null}</> : null}
                   <button className="icon-button" title="문서 정보" aria-label="문서 정보" onClick={() => setMode("info")}><MoreHorizontal size={17} /></button>
                 </div>
@@ -1080,7 +1093,8 @@ function WorkspaceContent() {
                 <div className="document-info">
                   <h2>문서 정보</h2>
                   <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>소유자</dt><dd>{ownerNames.get(selected.owner_id) || "소유자 미지정"}</dd></div><div><dt>현재 버전</dt><dd>v{selected.current_version}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "전체"}</dd></div><div><dt>담당 팀</dt><dd>{selected.team || "전체"}</dd></div><div><dt>원본</dt><dd>{selected.source}</dd></div></dl>
-                  <h3>문서 상태 흐름</h3><p>동료 검토는 선택 사항입니다. 작성자는 기존처럼 정본으로 바로 공개할 수 있습니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
+                  {Object.hasOwn(selected, "steward_id") ? <label>문서 담당<select aria-label="문서 담당" value={selected.steward_id ?? ""} disabled={busy || demo || profile?.role !== "admin"} onChange={(event) => void saveDocumentSteward(event.target.value)}><option value="">담당 없음</option>{members.filter(member => member.is_active).map(member => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label> : <p className="inline-alert">문서 담당 기능은 개발 DB 적용 후 사용할 수 있습니다.</p>}
+                  <h3>문서 상태 흐름</h3><p>정본 공개는 작성자와 다른 지정 승인자 또는 위임자가 검토 후 처리합니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
                   <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} />
                   <h3>변경 이력</h3>
                   <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => guardAction(() => {setError(""); setCompareBase(documentsRef.current.find(item => item.id === selected.id) ?? selected); setCompareVersion(version);})}><RotateCcw size={13} /> 비교·복원</button> : <em>현재</em>}</div>)}</div>
@@ -1138,7 +1152,7 @@ function WorkspaceContent() {
       {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} initialParent={folderManagerParent} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => { setFolderManagerOpen(false); setFolderManagerParent(undefined); }} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); setFolderManagerParent(undefined); openNewDocument(folder); }} /> : null}
       {renameDocument ? <KnowledgeModal title="문서 이름 변경" onClose={() => setRenameDocument(null)} busy={busy}><form className="form-modal knowledge-rename-modal" onSubmit={(event) => { event.preventDefault(); void renameContextDocument(); }}><header><h2>문서 이름 변경</h2></header><div className="form-fields"><label className="wide"><span>새 문서 이름</span><input autoFocus required maxLength={200} disabled={busy} value={renameTitle} onChange={event => setRenameTitle(event.target.value)} /></label>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button type="button" className="secondary-button" disabled={busy} onClick={() => setRenameDocument(null)}>취소</button><button className="primary-button" disabled={busy || !renameTitle.trim()}>{busy ? "변경 중…" : "이름 변경"}</button></footer></form></KnowledgeModal> : null}
       {folderDeletePath ? <KnowledgeModal title="폴더 문서 휴지통 이동" onClose={() => setFolderDeletePath("")} busy={busy}><div className="form-modal folder-delete-modal"><header><h2>폴더를 정리할까요?</h2></header><div className="form-fields"><p className="wide"><strong>{folderDeletePath}</strong><br/>이 폴더와 모든 하위 폴더의 활성 문서를 휴지통으로 옮깁니다. 본문과 변경 이력은 보존되며 문서별로 복원할 수 있습니다.</p>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setFolderDeletePath("")}>취소</button><button className="primary-button danger-button" disabled={busy} onClick={() => void archiveFolderDocuments()}>{busy ? "처리 중…" : "폴더 문서 휴지통으로"}</button></footer></div></KnowledgeModal> : null}
-      {canonicalGate ? <KnowledgeModal title="회사 정본 편집 안내" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></KnowledgeModal> : null}
+      {canonicalGate ? <KnowledgeModal title="회사 정본 변경 제안" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>정본에 변경을 제안합니다</h2><p>저장해도 기존 정본은 바로 바뀌지 않습니다. 작성자와 다른 승인자가 변경 내용을 확인하고 승인하면 새 버전으로 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>변경 제안 작성</button></div></div></KnowledgeModal> : null}
       {externalLinkOpen ? <KnowledgeModal title="웹 링크 넣기" onClose={() => setExternalLinkOpen(false)}><form className="form-modal knowledge-link-modal" onSubmit={addExternalLink}><header><h2>웹 링크 넣기</h2></header><div className="form-fields"><label className="wide"><span>표시할 이름</span><input name="label" maxLength={200} placeholder="예: 참고 자료" /></label><label className="wide"><span>웹 주소</span><input name="url" type="url" required maxLength={2000} placeholder="https://…" autoFocus /></label>{externalLinkError ? <p role="alert" className="inline-alert danger wide">{externalLinkError}</p> : null}</div><footer><button type="button" className="secondary-button" onClick={() => setExternalLinkOpen(false)}>취소</button><button className="primary-button">본문에 넣기</button></footer></form></KnowledgeModal> : null}
       {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(false);}} /> : null}
       {importOpen ? <KnowledgeImport token={accessToken} demo={demo} ownerId={profile?.id ?? "demo-ricky"} team={profile?.team ?? ""} options={folderOptions} onSaved={commitDocument} onBusy={setBusy} onClose={() => setImportOpen(false)} /> : null}

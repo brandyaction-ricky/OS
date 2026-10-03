@@ -28,7 +28,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       p_to: input.status,
       p_note: input.note,
     });
-    if (error) throw new ApiError(400, "STATUS_CHANGE_FAILED", "문서 상태를 변경하지 못했습니다.", error.message);
+    if (error) {
+      const denied = error.message.includes("OS_STATUS_TRANSITION_DENIED");
+      throw new ApiError(denied ? 403 : 400, denied ? "STATUS_CHANGE_DENIED" : "STATUS_CHANGE_FAILED",
+        denied ? "작성자와 승인자를 분리한 승인 규칙에 따라 상태를 변경할 수 없습니다." : "문서 상태를 변경하지 못했습니다.", error.message);
+    }
     return NextResponse.json({ document: data });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_STATUS", "변경할 상태를 확인해 주세요.", error.flatten()));

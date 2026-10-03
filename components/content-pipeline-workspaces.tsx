@@ -4,10 +4,11 @@ import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-gen
 
 import { PageTitle } from "./page-title";
 
-import { BarChart3, Check, CircleAlert, FileText, Gauge, Plus, Search, Sparkles, Target, X } from "lucide-react";
+import { Check, CircleAlert, FileText, Plus, Search, Sparkles, Target, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createDocument, createRecord, generateContent, getDocument, listDocumentFolders, listDocuments, listRecords, updateRecord } from "@/lib/api-client";
-import { buildScriptDocumentInput, compareScriptDocuments, isVisibleScript, normalizeScriptRoot, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
+import { buildScriptDocumentInput, compareScriptDocuments, groupScriptVersions, isVisibleScript, normalizeScriptRoot, scriptFileName, scriptProgress, SCRIPT_STEPS, SCRIPT_DOCUMENT_ROOT, SCRIPT_DOCUMENT_STATUSES, SCRIPT_FOLDER_NAME_LIMIT } from "@/lib/script-documents";
+import { diffMarkdownLines, type LineChange } from "@/lib/line-diff";
 import type { OsRecord } from "@/lib/record-types";
 import type { KnowledgeDocument } from "@/lib/types";
 import { ContentLinkedScripts } from "./content-linked-scripts";
@@ -63,6 +64,9 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
   const [readerError, setReaderError] = useState("");
   const [readerLoading, setReaderLoading] = useState(false);
   const [readerRevision, setReaderRevision] = useState(0);
+  const [versionDiff, setVersionDiff] = useState<{ olderId: string; latestId: string; changes: LineChange[] } | null>(null);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -91,7 +95,13 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
       const linked = lockedSource ? grouped.filter(document=>document.folder===lockedSource.metadata.scriptFolder || document.folder.split("/").at(-1)===lockedSource.title) : [];
       const linkedFolders = new Set(linked.map(document=>document.folder));
       setFolder((current) => lockedSource ? linkedFolders.size===1 ? linked[0].folder : "" : grouped.some((document) => document.folder === current) ? current : grouped[0]?.folder ?? "");
-      setSelectedId((current) => lockedSource ? linkedFolders.size===1 ? linked[0].id : "" : grouped.some((document) => document.id === current) ? current : grouped[0]?.id ?? "");
+      setSelectedId((current) => {
+        if (lockedSource && linkedFolders.size !== 1) return "";
+        const candidates = lockedSource ? linked : grouped;
+        if (candidates.some((document) => document.id === current)) return current;
+        const preferredFolder = lockedSource ? linked[0]?.folder : grouped[0]?.folder;
+        return groupScriptVersions(candidates.filter((document) => document.folder === preferredFolder))[0]?.latest.id ?? "";
+      });
     } catch (reason) {
       if (generation === listGeneration.current) setError(reason instanceof Error ? reason.message : "원고 문서를 불러오지 못했습니다.");
     } finally {
@@ -131,13 +141,16 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
     return [...grouped.values()].map((group) => ({ ...group, progress: scriptProgress(groupedDocuments.filter((doc) => doc.folder === group.name)) })).sort((a, b) => Number(a.progress.published) - Number(b.progress.published) || b.name.localeCompare(a.name, "ko", { numeric: true }));
   }, [groupedDocuments]);
   const folderDocuments = useMemo(() => groupedDocuments.filter((document) => document.folder === folder).sort(compareScriptDocuments), [groupedDocuments, folder]);
-  const selected = folderDocuments.find((document) => document.id === selectedId) ?? folderDocuments[0] ?? null;
+  const scriptGroups = useMemo(() => groupScriptVersions(folderDocuments), [folderDocuments]);
+  const selected = folderDocuments.find((document) => document.id === selectedId) ?? scriptGroups[0]?.latest ?? null;
+  const selectedGroup = scriptGroups.find(group => group.documents.some(document => document.id === selected?.id));
   const readerId = selected?.id ?? "";
   const readerVersion = selected?.current_version;
 
   useEffect(() => {
     let active = true;
     setReader(null); setReaderError("");
+    setVersionDiff(null); setDiffError(""); setDiffLoading(false);
     if (demo || !accessToken || !readerId) { setReaderLoading(false); return; }
     setReaderLoading(true);
     void getDocument(accessToken, readerId).then(({ document }) => {
@@ -149,6 +162,17 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
     }).finally(() => { if (active) setReaderLoading(false); });
     return () => { active = false; };
   }, [accessToken, demo, readerId, readerVersion, readerRevision]);
+
+  const compareWithLatest = async () => {
+    if (!accessToken || !reader || reader.id !== selected?.id || !selectedGroup || selectedGroup.latest.id === reader.id) return;
+    setDiffLoading(true); setDiffError("");
+    try {
+      const { document: latest } = await getDocument(accessToken, selectedGroup.latest.id);
+      setVersionDiff({ olderId: reader.id, latestId: latest.id, changes: diffMarkdownLines(reader.content_md || "", latest.content_md || "") });
+    } catch (reason) {
+      setDiffError(reason instanceof Error ? reason.message : "버전 비교를 불러오지 못했습니다.");
+    } finally { setDiffLoading(false); }
+  };
 
   useEffect(() => {
     if (!editorOpen) return;
@@ -212,7 +236,10 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
       </aside>
       <article className="panel script-detail script-document-reader">{selected ? <>
         <header><div><span className={`status-pill status-${selected.status}`}>{selected.status === "canonical" ? "회사 정본" : selected.status === "team" ? "팀 공유" : selected.status === "reviewed" ? "검토 완료" : selected.status === "review" ? "검토 요청" : "개인 초안"}</span><h2>{selected.title}</h2><p>{selected.folder} · 최근 수정 {new Date(selected.updated_at).toLocaleString("ko-KR")}</p>{selected.status === "review" ? <p className="inline-alert warning">원고 검토·승인 대기 중입니다. 패키징·축·설계표는 승인 결과를 확인한 뒤 다음 단계로 진행해 주세요.</p> : null}</div><span className="count-badge">v{selected.current_version}</span></header>
-        <nav aria-label="원고 파일">{folderDocuments.map((document) => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{scriptFileName(document)}</button>)}</nav>
+        <nav aria-label="원고 파일">{scriptGroups.map(group => group.documents.length > 1 ? <details key={group.key} className="script-version-family" open={group.documents.some(document => document.id === selected.id)}><summary>{group.label} <small>{group.documents.length}개 · 최신 {scriptFileName(group.latest)}</small></summary><div>{group.documents.map(document => <button key={document.id} className={selected.id === document.id ? "active" : ""} aria-current={selected.id === document.id ? "true" : undefined} onClick={() => setSelectedId(document.id)}>{scriptFileName(document)}</button>)}</div></details> : <button key={group.key} className={selected.id === group.latest.id ? "active" : ""} aria-current={selected.id === group.latest.id ? "true" : undefined} onClick={() => setSelectedId(group.latest.id)}>{scriptFileName(group.latest)}</button>)}</nav>
+        {reader && selectedGroup && selectedGroup.documents.length > 1 && selectedGroup.latest.id !== selected.id ? <div className="script-compare-toolbar"><span>이전 파일을 보는 중입니다.</span><button type="button" className="secondary-button" disabled={diffLoading || reader.id !== selected.id} onClick={() => void compareWithLatest()}>{diffLoading ? "비교 중…" : "최신 파일과 비교"}</button></div> : null}
+        {diffError ? <p className="inline-alert danger" role="alert">{diffError}</p> : null}
+        {versionDiff && versionDiff.olderId === selected.id && versionDiff.latestId === selectedGroup?.latest.id ? <section className="script-version-diff" aria-label="최신 파일과 줄별 비교"><header><strong>최신 파일과 비교</strong><button type="button" className="ghost-button" onClick={() => setVersionDiff(null)}>닫기</button></header><div>{versionDiff.changes.map((change, index) => <div key={index} className={`script-diff-${change.kind}`}><span aria-hidden="true">{change.kind === "added" ? "+" : change.kind === "removed" ? "−" : " "}</span><span>{change.oldLine ?? ""}</span><span>{change.newLine ?? ""}</span><code>{change.text || " "}</code></div>)}</div></section> : null}
         {readerError ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`} role="alert">{readerError}<button className="ghost-button" onClick={() => setReaderRevision((current) => current + 1)}>다시 불러오기</button></div> : readerLoading || reader?.id !== selected.id ? <div className="list-empty" role="status">본문을 불러오는 중입니다.</div> : <pre>{reader.content_md || "아직 본문이 없습니다. 지식에서 내용을 작성해 주세요."}</pre>}
       </> : <div className="empty-state"><div><FileText /><h3>{loading ? "원고를 불러오는 중입니다" : "첫 원고를 작성해 보세요"}</h3><p>제목과 영상 폴더명을 정하면 원고 작업을 시작할 수 있습니다.</p><button className="primary-button" onClick={openEditor} disabled={demo || !accessToken}><Plus size={16} /> 새 원고 작성</button></div></div>}</article>
     </section>
@@ -225,12 +252,4 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSou
       <div className="drawer-actions"><button type="button" className="secondary-button" disabled={saving} onClick={() => setEditorOpen(false)}>취소</button><button className="primary-button" disabled={saving || demo || !accessToken}>{saving ? "저장 중…" : "개인 초안 저장"}</button></div>
     </form></div> : null}
   </>;
-}
-
-export function ContentPerformanceWorkspace() {
-  const { accessToken, demo, profile } = useSession(); const [records, setRecords] = useState<OsRecord[]>([]); const [open, setOpen] = useState(false); const [error, setError] = useState("");
-  const load = useCallback(async () => { if (demo) return; try { setRecords((await listRecords(accessToken, "content_metric", "limit=200")).records); setError(""); } catch (reason) { setError(reason instanceof Error ? reason.message : "영상 성과를 불러오지 못했습니다."); } }, [accessToken, demo]); useEffect(() => { load(); }, [load]);
-  const totals = useMemo(() => ({ views: records.reduce((sum, item) => sum + Number(value(item, "views", item.metric_current ?? 0)), 0), ctr: records.length ? records.reduce((sum, item) => sum + Number(value(item, "ctr", 0)), 0) / records.length : 0, retention: records.length ? records.reduce((sum, item) => sum + Number(value(item, "retention", 0)), 0) / records.length : 0, conversions: records.reduce((sum, item) => sum + Number(value(item, "conversions", 0)), 0) }), [records]);
-  const submit = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { await createRecord(accessToken, { recordType: "content_metric", title: text(form, "title"), description: text(form, "note"), status: "measuring", priority: "normal", team: profile?.team || "콘텐츠", brand: text(form, "brand"), sourceUrl: text(form, "sourceUrl") || null, metricCurrent: Number(text(form, "views") || 0), metricUnit: "조회", metadata: { platform: text(form, "platform"), views: Number(text(form, "views") || 0), ctr: Number(text(form, "ctr") || 0), retention: Number(text(form, "retention") || 0), conversions: Number(text(form, "conversions") || 0), hierarchy: text(form, "hierarchy") } }); setOpen(false); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "성과를 저장하지 못했습니다."); } };
-  return <><header className="page-header"><div className="page-title-group"><PageTitle /><p>조회수만 보지 않고 CTR·시청지속·전환을 콘텐츠 위계와 함께 판정합니다.</p></div><button className="primary-button" onClick={() => setOpen(true)}><Plus size={16} /> 성과 기록</button></header>{error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}<section className="metric-grid compact-metrics"><div className="metric-card"><div className="metric-top"><span>총 조회</span><BarChart3 size={16} /></div><div className="metric-value">{totals.views.toLocaleString("ko-KR")}</div><div className="metric-caption">등록 영상 합계</div></div><div className="metric-card"><div className="metric-top"><span>평균 CTR</span><Target size={16} /></div><div className="metric-value">{totals.ctr.toFixed(1)}%</div><div className="metric-caption">패키징 신호</div></div><div className="metric-card"><div className="metric-top"><span>평균 지속률</span><Gauge size={16} /></div><div className="metric-value">{totals.retention.toFixed(1)}%</div><div className="metric-caption">콘텐츠 전달 신호</div></div><div className="metric-card"><div className="metric-top"><span>전환</span><Check size={16} /></div><div className="metric-value">{totals.conversions}</div><div className="metric-caption">CTA 결과</div></div></section><section className="panel performance-table"><div className="panel-header"><div><h2>영상별 판정</h2><p>현재기준의 숫자는 정본에서 갱신하고, 이 표에는 실측만 기록합니다.</p></div></div>{records.length ? <table><thead><tr><th>영상</th><th>위계</th><th>플랫폼</th><th>조회</th><th>CTR</th><th>지속률</th><th>전환</th></tr></thead><tbody>{records.map((item) => <tr key={item.id}><td><strong>{item.title}</strong></td><td>{value(item, "hierarchy", "미정")}</td><td>{value(item, "platform", "YouTube")}</td><td>{Number(value(item, "views", item.metric_current ?? 0)).toLocaleString("ko-KR")}</td><td>{Number(value(item, "ctr", 0)).toFixed(1)}%</td><td>{Number(value(item, "retention", 0)).toFixed(1)}%</td><td>{Number(value(item, "conversions", 0))}</td></tr>)}</tbody></table> : <div className="empty-state"><div><BarChart3 /><h3>측정된 영상이 없습니다.</h3><p>YouTube API 연결 전에는 실측 값을 직접 기록할 수 있습니다.</p></div></div>}</section>{open ? <div className="drawer-backdrop" onMouseDown={() => setOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">실측 입력</span><h2>영상 성과 기록</h2></div><button type="button" className="icon-button" onClick={() => setOpen(false)}><X size={18} /></button></div><label><span>영상 제목</span><input name="title" required /></label><div className="form-grid"><label><span>브랜드</span><input name="brand" /></label><label><span>플랫폼</span><select name="platform"><option>YouTube</option><option>YouTube Shorts</option><option>Instagram</option><option>Threads</option></select></label></div><label><span>콘텐츠 위계</span><select name="hierarchy"><option>유입형</option><option>전환형</option><option>판매형</option></select></label><div className="form-grid"><label><span>조회수</span><input type="number" name="views" min="0" /></label><label><span>CTR %</span><input type="number" name="ctr" min="0" step="0.1" /></label></div><div className="form-grid"><label><span>시청지속률 %</span><input type="number" name="retention" min="0" step="0.1" /></label><label><span>전환</span><input type="number" name="conversions" min="0" /></label></div><label><span>영상 URL</span><input type="url" name="sourceUrl" /></label><label><span>판정 메모</span><textarea name="note" rows={4} /></label><div className="drawer-actions"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>취소</button><button className="primary-button">저장</button></div></form></div> : null}</>;
 }

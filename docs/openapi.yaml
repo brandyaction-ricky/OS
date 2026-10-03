@@ -8,6 +8,81 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/knowledge/graph:
+    get:
+      summary: 현재 사용자가 읽을 수 있는 문서의 연결·깨진 링크·전체 연결 수
+      responses:
+        "200": { description: 권한 내 연결 그래프와 stewardReady 상태 }
+  /api/v1/knowledge/graph/repair:
+    post:
+      summary: 깨진 위키 링크를 최대 50개 원본에서 버전 확인 후 수정
+      description: 정본은 변경 제안만 생성합니다. 여러 원본의 일부 실패는 각 결과와 207 상태로 반환합니다.
+      responses:
+        "200": { description: 모든 원본 수정 또는 변경 제안 생성 }
+        "207": { description: 일부 원본 실패 및 문서별 오류 }
+        "409": { description: 대상 경로가 중복되거나 대상 문서가 휴지통에 있음 }
+  /api/v1/documents/steward:
+    patch:
+      summary: 관리자가 문서 담당을 지정하거나 해제
+      description: 기존 본문·상태·버전을 유지하고 지정 변경은 문서 이벤트로 남깁니다.
+      responses:
+        "200": { description: 담당이 반영된 문서 }
+        "403": { description: 관리자 권한 필요 }
+        "409": { description: 문서 버전 충돌 }
+  /api/v1/approvals:
+    get:
+      summary: 활성 승인자·위임 목록과 문서별 승인 가능 여부
+      description: 문서별 판정은 documentId, 소구점 후보별 판정은 recordId 쿼리로 요청하며 작성자 자기 승인은 항상 거절합니다. 연결된 DB에 승인 마이그레이션이 없으면 실패 상태를 반환합니다.
+      parameters:
+        - in: query
+          name: documentId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: recordId
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: assignments와 canApprove }
+        "403": { description: 구성원 계정 필요 }
+        "503": { description: 승인 설정 마이그레이션 적용 대기 }
+    post:
+      summary: 승인자 지정·기간 위임·해제
+      description: add_approver는 관리자만, delegate는 현재 승인자만, revoke는 관리자 또는 해당 위임자만 수행합니다. 대상은 활성 구성원이어야 합니다.
+      responses:
+        "200": { description: 해제된 assignment }
+        "201": { description: 생성된 assignment }
+        "400": { description: 잘못된 입력·비활성 구성원 }
+        "403": { description: 승인자 관리 권한 없음 }
+        "409": { description: 중복 지정·동시 변경 }
+  /api/v1/content/appeals/decide:
+    post:
+      summary: 사람 승인자의 소구점 후보 일괄 판정
+      description: id, expectedVersion, candidateSetVersion와 entries(index, decision, note)를 받습니다. 작성자는 자기 후보를 승인할 수 없고 수정 요청에는 사유가 필요합니다. 일반 기록 API로 판정 필드를 변경할 수 없습니다.
+      responses:
+        "200": { description: 판정 이력이 추가된 record }
+        "400": { description: 후보·사유·입력 검증 실패 }
+        "403": { description: 작성자·비승인자·AI 키 }
+        "409": { description: 후보 세트 또는 기록 버전 충돌 }
+  /api/v1/content/appeals/request:
+    post:
+      summary: 네 칸의 기획 준비도를 확인하고 소구점 승인 요청 알림 발송
+      description: packageId와 expectedVersion 필요. 대표 시청자·사람들이 찾는 말·콘텐츠 위계·시장 근거 영상 주소를 확인한 뒤 현재 승인자 및 유효 위임자에게 멱등 알림을 보냅니다.
+      responses:
+        "200": { description: requested와 recipientCount }
+        "409": { description: 준비도 누락·버전 변경·승인자 없음 }
+        "503": { description: 알림 또는 승인 규칙 마이그레이션 적용 대기 }
+  /api/v1/content/appeals/comments:
+    get:
+      summary: 현재 후보 세트의 후보별 추가형 댓글 조회
+      parameters:
+        - { in: query, name: packageId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: comments }
+    post:
+      summary: 후보별 댓글 추가
+      description: packageId, expectedVersion, candidateSetVersion, index, body 필요. 기존 댓글은 수정하거나 삭제하지 않습니다.
+      responses:
+        "201": { description: 추가된 comment }
+        "409": { description: 후보 세트 버전 변경 }
   /api/v1/content/comments:
     get:
       summary: 최근 댓글 목록과 본인·공유 처리 권한
@@ -227,7 +302,7 @@ paths:
         "400": { $ref: "#/components/responses/ApiError" }
         "409": { $ref: "#/components/responses/ApiError", description: 같은 source/sourceRef 원본이 이미 존재함 }
     patch:
-      summary: 기대 버전을 확인한 뒤 문서 수정
+      summary: 기대 버전을 확인한 뒤 문서 수정. 정본 제목·본문은 변경 제안으로 저장
       requestBody:
         required: true
         content:
@@ -242,6 +317,7 @@ paths:
                     expectedVersion: { type: integer, minimum: 1 }
       responses:
         "200": { description: 수정된 문서와 색인 상태 }
+        "202": { description: 정본은 그대로이며 proposal 필드에 열린 변경 제안을 반환 }
         "409": { $ref: "#/components/responses/ApiError" }
     delete:
       summary: 문서를 삭제하지 않고 보관 상태로 전환
@@ -287,7 +363,7 @@ paths:
         "201": { description: 생성 문서, documentId와 색인 상태 }
         "429": { $ref: "#/components/responses/ApiError" }
     patch:
-      summary: knowledge.write PAT로 버전을 남기고 문서 수정
+      summary: knowledge.write PAT로 버전을 남기고 문서 수정. 새 정본 쓰기 키는 제안을 생성하고 기존 키 동작은 유지
       requestBody:
         required: true
         content:
@@ -306,6 +382,7 @@ paths:
                 reason: { type: string, maxLength: 500 }
       responses:
         "200": { description: 수정 문서와 새 버전 }
+        "202": { description: 정본은 그대로이며 proposalId와 proposal 필드로 변경 제안 반환 }
         "409": { $ref: "#/components/responses/ApiError" }
         "429": { $ref: "#/components/responses/ApiError" }
     delete:
@@ -343,11 +420,40 @@ paths:
       responses:
         "200": { description: 수정자·사유·시각을 포함한 버전 목록 }
     post:
-      summary: 선택한 과거 버전을 새 버전으로 복원
+      summary: 선택한 과거 버전을 새 버전으로 복원. 정본은 변경 제안으로 저장
       parameters:
         - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 복원된 최신 문서 }
+        "202": { description: 정본은 그대로이며 proposal 필드에 열린 변경 제안을 반환 }
+  /api/v1/documents/proposals:
+    get:
+      summary: 읽을 수 있는 정본의 열린 변경 제안 목록 또는 단일 제안·댓글
+      parameters:
+        - { in: query, name: id, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: proposals, documents, comments }
+    post:
+      summary: 줄 댓글 또는 승인·보완·철회
+      description: action=approve는 작성자와 다른 승인자/위임자가 기준 버전을 확인한 뒤 새 정본 버전을 만듭니다. action=return은 보완 사유가 필요하며 action=withdraw는 작성자만 할 수 있습니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, proposalId]
+              properties:
+                action: { type: string, enum: [comment, approve, return, withdraw] }
+                proposalId: { type: string, format: uuid }
+                lineNo: { type: integer, minimum: 1 }
+                body: { type: string, maxLength: 2000 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: 처리된 제안과 승인 시 새 정본 }
+        "201": { description: 저장된 줄 댓글 }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
   /api/v1/records:
     get:
       summary: 권한 범위 안의 운영 기록 목록
@@ -447,22 +553,36 @@ paths:
         "200": { description: 다음 회의 준비 자료 }
   /api/v1/members:
     get:
-      summary: 실제 로그인 구성원 목록
+      summary: 실제 로그인 구성원 목록 (is_shared_account 포함)
       responses:
         "200": { description: 역할·팀·사용 상태 목록 }
     patch:
-      summary: 관리자가 구성원 역할·팀·사용 상태 변경
+      summary: 관리자가 구성원 역할·팀·사용 상태 및 공용 계정 표시 변경 (isSharedAccount)
       responses:
         "200": { description: 변경된 구성원 }
         "403": { $ref: "#/components/responses/ApiError" }
   /api/v1/audit:
     get:
-      summary: 운영 기록·지식 문서·AI 에이전트 변경 이력
+      summary: 운영 기록·지식 문서 버전·AI 에이전트 변경 이력
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date }, description: "한국 시간 기준 시작일" }
+        - { in: query, name: to, schema: { type: string, format: date }, description: "한국 시간 기준 종료일" }
+        - { in: query, name: cursor, schema: { type: string }, description: "이전 응답의 nextCursor" }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
       responses:
-        "200": { description: 관리자 전체 또는 사용자 본인 변경 이력 }
+        "200": { description: 관리자 전체 또는 사용자 본인 변경 이력과 nextCursor }
+  /api/v1/audit/diff:
+    get:
+      summary: 문서 버전 또는 운영 기록의 변경 전·후 차이
+      description: 운영 기록의 민감한 metadata 값은 표시하지 않습니다. 복원은 각각의 기존 버전 API 권한 검사를 따릅니다.
+      parameters:
+        - { in: query, name: eventId, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 비교 가능한 필드 또는 문서 Markdown과 복원 가능한 이전 버전 }
+        "404": { description: 기록을 열 권한이 없거나 버전이 없음 }
   /api/v1/agent-keys:
     get:
-      summary: 관리자용 Agent PAT 목록
+      summary: 관리자용 Agent PAT 목록 (소유자 공용 계정 표시 포함)
       responses:
         "200": { description: 키 메타데이터 목록 }
     post:
@@ -481,6 +601,7 @@ paths:
                 team: { type: string, maxLength: 120 }
                 brand: { type: [string, "null"], maxLength: 120 }
                 expiresAt: { type: string, format: date-time, description: "Required future expiration for newly issued keys. Existing non-expiring keys are unchanged." }
+                reason: { type: string, maxLength: 500, description: "Required when ownerUserId refers to a shared account; stored in the security audit log." }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:
@@ -489,6 +610,23 @@ paths:
         - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 폐기 완료 }
+  /api/v1/agent-keys/reissue-request:
+    post:
+      summary: 공용 계정 PAT의 개인 계정 재발급 요청 알림 (키 발급·폐기 없음)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId, recipientId]
+              properties:
+                keyId: { type: string, format: uuid }
+                recipientId: { type: string, format: uuid, description: "실제 사용자인 활성 개인 계정" }
+      responses:
+        "201": { description: 요청 기록과 알림 생성 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
   /api/v1/indexing:
     get:
       summary: 관리자용 임베딩 큐 상태 조회
