@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -111,13 +112,20 @@ export async function GET(request: Request) {
     ].filter(Boolean))];
     const agentKeyIds = [...new Set((agentResult.data ?? []).map((event) => event.agent_key_id).filter(Boolean))];
     const agentRecordIds = [...new Set((agentResult.data ?? []).map((event) => event.record_id).filter(Boolean))];
-    const [documents, profiles, agentKeys, agentRecords] = await Promise.all([
-      documentIds.length ? service.from("os_documents").select("id,title").in("id", documentIds) : Promise.resolve({ data: [] }),
+    const [documentLookup, profiles, agentKeys, agentRecords] = await Promise.all([
+      documentIds.length ? service.from("os_documents").select("id,title,status,owner_id,parent_document_id").in("id", documentIds) : Promise.resolve({ data: [], error: null }),
       actorIds.length ? service.from("os_profiles").select("id,display_name,email").in("id", actorIds) : Promise.resolve({ data: [] }),
       agentKeyIds.length ? service.from("os_agent_keys").select("id,name").in("id", agentKeyIds) : Promise.resolve({ data: [] }),
       agentRecordIds.length ? service.from("os_records").select("id,title,record_type,metadata").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
     ]);
-    const documentNames = new Map((documents.data ?? []).map((document) => [document.id, document.title]));
+    let documents = documentLookup;
+    if (documentIds.length && (documents.error?.code === "42703" || documents.error?.code === "PGRST204")) {
+      const legacy = await service.from("os_documents").select("id,title,status,owner_id").in("id", documentIds);
+      documents = { ...legacy, data: legacy.data?.map((document) => ({ ...document, parent_document_id: null })) ?? null } as typeof documents;
+    }
+    if (documents.error) throw new ApiError(400, "AUDIT_DOCUMENT_ACCESS_FAILED", "문서 변경 기록의 접근 권한을 확인하지 못했습니다.");
+    const allowedDocuments = await readableKnowledgePages(actor, documents.data ?? []);
+    const documentNames = new Map((documents.data ?? []).filter((document) => allowedDocuments.has(document.id)).map((document) => [document.id, document.title]));
     const profileNames = new Map((profiles.data ?? []).map((profile) => [profile.id, profile.display_name || profile.email || "구성원"]));
     const agentNames = new Map((agentKeys.data ?? []).map((key) => [key.id, key.name]));
     const agentRecordNames = new Map((agentRecords.data ?? []).map((record) => [record.id, record]));
@@ -139,7 +147,7 @@ export async function GET(request: Request) {
       created_at: event.created_at,
     }); });
     const documentEvents = (documentResult.data ?? [])
-      .filter((event) => !String(event.note ?? "").startsWith("MCP 에이전트 "))
+      .filter((event) => allowedDocuments.has(event.document_id) && !String(event.note ?? "").startsWith("MCP 에이전트 "))
       .map((event) => ({
         id: `document:${event.id}`,
         subject_id: event.document_id,
@@ -155,7 +163,7 @@ export async function GET(request: Request) {
         note: event.note ?? "",
         created_at: event.created_at,
       }));
-    const versionEvents = (versionResult.data ?? []).map((version) => ({
+    const versionEvents = (versionResult.data ?? []).filter((version) => allowedDocuments.has(version.document_id)).map((version) => ({
       id: `version:${version.document_id}:${version.version_no}`,
       subject_id: version.document_id,
       subject_type: "knowledge_document",
@@ -166,7 +174,7 @@ export async function GET(request: Request) {
       event_type: "updated", from_status: null, to_status: null,
       changed_fields: ["content_md"], note: `문서 v${version.version_no} 저장`, created_at: version.created_at,
     }));
-    const agentEvents = (agentResult.data ?? []).map((event) => ({
+    const agentEvents = (agentResult.data ?? []).filter((event) => !event.document_id || allowedDocuments.has(event.document_id)).map((event) => ({
       id: `agent:${event.id}`,
       subject_id: event.record_id || event.document_id,
       subject_type: event.record_id ? auditSubjectType(agentRecordNames.get(event.record_id)) : "knowledge_document",

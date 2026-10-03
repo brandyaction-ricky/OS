@@ -12,6 +12,8 @@ test("audit history includes versioned document edits and server-side date pagin
   assert.match(route, /versionQuery = versionQuery\.gte\("created_at", from\)/);
   assert.match(route, /versionQuery = versionQuery\.lt\("created_at", to\)/);
   assert.match(route, /id: `version:\$\{version\.document_id\}:\$\{version\.version_no\}`/);
+  assert.match(route, /allowedDocuments = await readableKnowledgePages\(actor, documents\.data/);
+  assert.match(route, /versionResult\.data \?\? \[\]\)\.filter\(\(version\) => allowedDocuments\.has\(version\.document_id\)\)/);
   assert.match(ui, /nextCursor/);
   assert.match(ui, /groupAuditHistory/);
   assert.match(sql, /os_document_versions_created_at_idx/);
