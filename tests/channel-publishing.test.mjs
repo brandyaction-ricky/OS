@@ -61,7 +61,7 @@ test("live dispatch is locked before any record/storage/provider side effects",a
 });
 test("cron defaults off, authenticates first and only reminds instead of publishing",async()=>{
   let calls=0;const env={CRON_SECRET:"test-cron"};
-  const route=await moduleOf("app/api/v1/content/channel-sync/route.ts",{"next/server":{NextResponse:Response},"@/lib/http":{ApiError,apiErrorResponse:error=>Response.json({code:error.code},{status:error.status??500})},"@/lib/server/auth":{safeSecretMatch:(a,b)=>a===b},"@/lib/server/channel-comments":{syncChannelComments:async()=>({comments:0})},"@/lib/server/channel-sync":{syncChannelReminders:async()=>{calls++;return{notifications:1};}}},{process:{env},Response});
+  const route=await moduleOf("app/api/v1/content/channel-sync/route.ts",{"next/server":{NextResponse:Response},"@/lib/http":{ApiError,apiErrorResponse:error=>Response.json({code:error.code},{status:error.status??500})},"@/lib/server/auth":{safeSecretMatch:(a,b)=>a===b},"@/lib/server/channel-metrics":{syncChannelMetrics:async()=>({metrics:0})},"@/lib/server/channel-comments":{syncChannelComments:async()=>({comments:0})},"@/lib/server/channel-sync":{syncChannelReminders:async()=>{calls++;return{notifications:1};}}},{process:{env},Response});
   assert.equal((await route.GET(new Request("https://example.com"))).status,401);
   const request=new Request("https://example.com",{headers:{authorization:"Bearer test-cron"}});
   assert.equal((await(await route.GET(request)).json()).enabled,false);assert.equal(calls,0);

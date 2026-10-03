@@ -1,6 +1,7 @@
 "use client";
 
 import { PageTitle } from "./page-title";
+import { ChannelMetricsPanel } from "./channel-metrics-panel";
 import {useContentWork} from "./content-work-provider";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
@@ -21,6 +22,7 @@ export function ContentPerformanceDashboard() {
   const work=useContentWork();
   const { accessToken, demo, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]); const [hypotheses, setHypotheses] = useState<OsRecord[]>([]); const [allSources, setSources] = useState<OsRecord[]>([]);
+  const [snapshots,setSnapshots]=useState<OsRecord[]>([]),[loading,setLoading]=useState(!demo);
   const [origin, setOrigin] = useState<OriginFilter>("own");
   const sources = filterContentOrigin(allSources, origin);
   const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [localSourceId, setLocalSourceId] = useState("all");
@@ -33,8 +35,12 @@ export function ContentPerformanceDashboard() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [reportId, setReportId] = useState("");
   const load = useCallback(async () => {
     if (demo) return;
+    setLoading(true);
+    try {
     const [metrics, decisions, topics] = await Promise.all([listAllRecordsOfType(accessToken, "content_metric"), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "content_topic")]);
-    setRecords(metrics); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis"));
+    setSnapshots(metrics.filter(item=>item.metadata.channelSnapshotVersion===1));
+    setRecords(metrics.filter(item=>item.metadata.channelSnapshotVersion!==1)); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis"));
+    } finally {setLoading(false);}
   }, [accessToken, demo]);
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);
   const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
@@ -48,7 +54,7 @@ export function ContentPerformanceDashboard() {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     await perform(async () => {
       const numeric = Object.fromEntries(FIELDS.map(({ key }) => [key, text(form, key) === "" ? null : Number(text(form, key))]));
-      const payload = { title: text(form, "title"), description: text(form, "note"), status: "measuring", brand: text(form, "brand"), team: profile?.team || "콘텐츠", parentId: text(form, "sourceId") || null, sourceUrl: text(form, "sourceUrl") || null, startsAt: `${text(form, "date")}T12:00:00Z`, metricCurrent: numeric.views, metricUnit: "조회", metadata: { ...(editing?.metadata ?? {}), ...numeric, platform: text(form, "platform"), hierarchy: text(form, "hierarchy"), topic: text(form, "topic"), hookType: text(form, "hookType"), traffic: text(form, "traffic"), contentId: text(form, "contentId"), metricMode: text(form, "metricMode"), dataSource: "manual", measuredAt: new Date().toISOString() } };
+      const payload = { title: text(form, "title"), description: text(form, "note"), status: "measuring", brand: text(form, "brand"), team: profile?.team || "콘텐츠", parentId: text(form, "sourceId") || null, sourceUrl: text(form, "sourceUrl") || null, startsAt: `${text(form, "date")}T12:00:00Z`, metricCurrent: numeric.views, metricUnit: "조회", metadata: { ...(editing?.metadata ?? {}), ...numeric, platform: text(form, "platform"), hierarchy: text(form, "hierarchy"), topic: text(form, "topic"), hookType: text(form, "hookType"), traffic: text(form, "traffic"), contentId: text(form, "contentId"), metricMode: text(form, "metricMode"), source: "manual", dataSource: "manual", measuredAt: new Date().toISOString() } };
       if (editing) await updateRecord(accessToken, { id: editing.id, expectedVersion: editing.version, ...payload }); else await createRecord(accessToken, { recordType: "content_metric", ...payload });
       setOpen(false); setEditing(null);
     });
@@ -71,6 +77,7 @@ export function ContentPerformanceDashboard() {
   });
   return <>
     <header className="page-header"><div className="page-title-group"><PageTitle /><p>실측 성과를 비교하고 다음 제작 가설을 검토합니다. 빈 값은 미연결로 표시합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={busy} onClick={() => void perform(load)}>새로고침</button><button className="secondary-button" disabled={busy || !filtered.length} onClick={weeklyReport}>주간리포트 초안</button><button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}>성과 기록</button></div></header>
+    <ChannelMetricsPanel records={snapshots.filter(row=>sourceId==="all"||row.parent_id===sourceId)} loading={loading}/>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}{reportId ? <p className="inline-alert success"><Link href={`/knowledge?document=${reportId}`}>저장된 주간리포트 열기</Link></p> : null}
     <section className="panel content-performance-filters"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId("all"); setLearningTargetId(""); }} /><label>기준 콘텐츠<select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="all">전체</option>{sources.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label>브랜드<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => item.brand).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>플랫폼<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => String(item.metadata.platform ?? "")).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>위계<select value={hierarchy} onChange={(event) => setHierarchy(event.target.value)}><option value="all">전체</option>{["유입형", "전환형", "판매형"].map((value) => <option key={value}>{value}</option>)}</select></label><label>시작<input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} /></label><label>종료<input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} /></label></section>
     <p className="metric-caption">중복 측정 제거 후 {filtered.length}건 · 누적 측정은 영상별 최신 값 사용 · 비율은 노출·조회 수가 있는 기록으로 계산</p>

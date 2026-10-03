@@ -29,6 +29,8 @@
 
 ## 수행하지 않은 검증
 
+성과 수집은 D1/D7/D28 경과 후 각 24시간 창 안에서만 저장한다. 지나간 스냅샷은 현재 누적값으로 채우지 않는다. 수집하지 못한 지표는 제외하고 missingMetrics로 센다. 자동 기록은 기존 수기 기록과 별도 보존하며 일반/AI 기록 API로 덮어쓰거나 지울 수 없다. [Meta 공식 Threads 게시물 성과](https://www.postman.com/meta/threads/request/ndeeu6p/get-post-insights)를 참조했으며 Instagram 실제 지표 지원은 계정·게시 형식별 사전 확인이 남아 있다. 수집 API는 GET뿐이며 외부 게시 동작은 없다.
+
 댓글 수집은 최근 14일의 게시 완료 기록에서 외부 ID를 읽는다. 동일 플랫폼·계정·댓글은 결정적 ID와 유일 인덱스로 한 번만 넣고, 이미 담당/답글/숨김 처리된 기록을 덮어쓰지 않는다. 현재 한 번에 게시물 100개, 댓글 페이지 5개 한도이며 초과는 truncated로 표시한다. Instagram 중첩 답글 수집은 추가 검수가 필요하다. 실제 답글·숨기기는 실게시와 같은 이유로 서버에서 잠가 두었다.
 
 Threads 읽기와 중첩 관계 필드는 [Meta 공식 Threads API 컬렉션](https://www.postman.com/meta/threads/documentation/dht3nzz/threads-api?entity=request-34203612-74fb48b1-ad1a-480e-b200-4dcdb8126a2f)을 참조했다. 실제 계정 응답·페이징·권한 범위는 아직 확인하지 않았다.
