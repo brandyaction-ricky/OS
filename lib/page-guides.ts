@@ -2,7 +2,7 @@ export interface PageGuideDefinition { steps: readonly [string,string,string]; n
 // Text is the final handoff's section 6; menu aliases resolve before this lookup.
 export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/home": {steps:["위에서부터 기한이 빠른 일을 처리합니다","‘검토·승인’ 탭에서 내 검토 차례를 확인합니다","막힌 일은 링크를 눌러 해결 화면으로 갑니다"],next:"/content/topics"},
-  "/content/topics": {steps:["매일 보는 채널을 모읍니다 — 비어 있으면 채널 탐색 사전에서 시작","‘탐색’에서 터진 영상을 근거로 저장합니다","‘틈새’에서 주제를 확정하면 원고로 넘어갑니다"],next:"/content/scripts"},
+  "/content/topics": {steps:["매일 보는 채널을 모읍니다 — 비어 있으면 채널 탐색 사전에서 시작","‘탐색’에서 근거 영상을 연결하고 준비도 네 칸을 채웁니다","‘틈새’에서 소구점을 선택해 승인 요청한 뒤 기획으로 넘깁니다"],next:"/content/scripts"},
   "/content/scripts": {steps:["위에서 작업 중인 영상을 고르면 그 폴더가 열립니다","단계 칩으로 지금 단계의 문서만 봅니다","다듬기가 끝나면 문서를 검토 요청합니다"],next:"/content/packages"},
   "/content/packages": {steps:["‘검색’에서 시장 썸네일을 근거로 모읍니다","제목 · 썸네일 후보를 뽑습니다","채택한 안을 저장함에 넣습니다"],next:"/content/shorts"},
   "/content/shorts": {steps:["원본 영상과 스타일 템플릿을 정합니다","‘클립’에서 쓸 구간을 고릅니다","승인한 구간을 제작으로 넘깁니다"],next:"/content/publishing"},

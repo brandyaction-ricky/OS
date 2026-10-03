@@ -41,6 +41,27 @@ paths:
         "400": { description: 후보·사유·입력 검증 실패 }
         "403": { description: 작성자·비승인자·AI 키 }
         "409": { description: 후보 세트 또는 기록 버전 충돌 }
+  /api/v1/content/appeals/request:
+    post:
+      summary: 네 칸의 기획 준비도를 확인하고 소구점 승인 요청 알림 발송
+      description: packageId와 expectedVersion 필요. 대표 시청자·사람들이 찾는 말·콘텐츠 위계·시장 근거 영상 주소를 확인한 뒤 현재 승인자 및 유효 위임자에게 멱등 알림을 보냅니다.
+      responses:
+        "200": { description: requested와 recipientCount }
+        "409": { description: 준비도 누락·버전 변경·승인자 없음 }
+        "503": { description: 알림 또는 승인 규칙 마이그레이션 적용 대기 }
+  /api/v1/content/appeals/comments:
+    get:
+      summary: 현재 후보 세트의 후보별 추가형 댓글 조회
+      parameters:
+        - { in: query, name: packageId, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: comments }
+    post:
+      summary: 후보별 댓글 추가
+      description: packageId, expectedVersion, candidateSetVersion, index, body 필요. 기존 댓글은 수정하거나 삭제하지 않습니다.
+      responses:
+        "201": { description: 추가된 comment }
+        "409": { description: 후보 세트 버전 변경 }
   /api/v1/content/comments:
     get:
       summary: 최근 댓글 목록과 본인·공유 처리 권한

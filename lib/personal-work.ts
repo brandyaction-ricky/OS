@@ -14,6 +14,7 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   if (record.record_type === "meeting") return `/organization/meetings?meeting=${id}`;
   if (record.record_type === "decision") return `/organization/meetings?tab=decisions&record=${id}`;
   if (record.record_type === "leave_request") return "/organization/leave";
+  if (record.record_type === "content_package" && record.metadata.packageKind === "appeal_candidates") return "/content/topics?tab=niches";
   if (record.record_type.startsWith("content_")) return `/content/publishing?sourceId=${encodeURIComponent(String(record.metadata.sourceId || record.id))}`;
   return `/organization/agents?job=${id}`;
 }

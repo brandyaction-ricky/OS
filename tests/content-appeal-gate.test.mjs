@@ -49,7 +49,7 @@ test("generation and workspace contracts preserve the approval gate", () => {
   assert.match(server, /text.length <= 120/);
   assert.match(server, /CONTENT_APPEAL_RESEARCH_REQUIRED/);
   assert.match(server, /설명·이유·근거·레퍼런스·제목·썸네일 문구를 붙이지 않는다/);
-  assert.match(workspace, /decideAppeal\(index, "approved"\)/);
+  assert.match(workspace, /decideAppeals\(\[\.\.\.selectedAppeals\], "approved"\)/);
   assert.match(workspace, /name="youtubeSources"/);
   assert.match(workspace, /name="instagramSources"/);
   assert.match(workspace, /name="topicFit"/);

@@ -336,6 +336,13 @@
       "purpose": "add reviewed canonical change proposals and line comments without replacing existing Markdown or versions",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003162000_appeal_candidate_comments.sql",
+      "sha256": "44b5840481f3af10456e0e31f0101613a54ce81cd6c76e55a391354345648832",
+      "purpose": "add append-only per-candidate appeal discussion without modifying prior decisions",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [
