@@ -18,6 +18,13 @@ The uploaded reference inputs are local private working material, not intended f
 - Local mock: account connect/share/test, Threads edit/approve/schedule/publish, two-card image rendering, private-channel reply controls, checked reply submission, metrics sample bounds and missing snapshots.
 - Existing knowledge editing, image movement, folder actions, meeting review, task triage, search/indexing, access-key controls and contextual request drawer regressions passed.
 - New migration SQL was scanned for destructive table/column/data commands; none found. This is static review, not database execution.
+- Public archive verification at `6971645`: full verify passed again with no private inputs or local environment files present. The guide snapshot test no longer depends on a private document.
+
+## Preview delivery
+
+- Draft PR: https://github.com/brandyaction-ricky/OS/pull/132.
+- This task branch alone has credential-free demo/mock Preview overrides. Production, global configuration and other branches are unchanged.
+- Preview is a UI/mock review artifact, not connected DEV acceptance or Production readiness. The final deployment URL, exact SHA and browser result are recorded in the PR and local completion note after deployment finishes.
 
 ## Differences from reference boards
 
@@ -43,7 +50,7 @@ Document body headings and existing detailed editors are retained to avoid chang
 3. Meta tester registration, platform account eligibility, provider permissions/API version, real OAuth/token refresh, storage media upload and rate limits require connected QA.
 4. Subscription queue worker scheduling, actual AI cost/usage, and notification delivery remain unverified. Telegram failures are counted but not automatically retried.
 5. Channel cron is disabled by default. Its bounded sequential collection can time out at large volumes; add incremental cursors/job splitting before enabling it for a large backlog. Missing D1 windows are not backfilled.
-6. With explicit approval, all 25 private inputs were excluded from the 12 unpublished task commits. Their working files and original commits remain in a local backup; code content, base and other branches are unchanged. Git and CLI deployment ignore rules protect those inputs. PR/Preview preparation is in progress.
+6. With explicit approval, all 25 private inputs were excluded from the 12 unpublished task commits. Their working files and original commits remain in a local backup; code content, base and other branches are unchanged. Git and CLI deployment ignore rules protect those inputs. Only the sanitized task branch is published.
 7. OS completion synchronization remains pending under the local-migration no-production-write rule. Merge, Production database/environment changes and Production deployment require separate approval.
 
 ## Evidence limitations
