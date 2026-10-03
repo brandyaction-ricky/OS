@@ -34,12 +34,13 @@ test("generic record writes cannot replace candidate decisions or their history"
 });
 
 test("approval routes fail closed and the review UI uses the server decision", async () => {
-  const [management, status, inbox, records, appeal] = await Promise.all([
+  const [management, status, inbox, records, appeal, workspace] = await Promise.all([
     read("app/api/v1/approvals/route.ts"),
     read("app/api/v1/documents/[id]/status/route.ts"),
     read("components/review-inbox.tsx"),
     read("app/api/v1/records/route.ts"),
     read("app/api/v1/content/appeals/decide/route.ts"),
+    read("components/knowledge-workspace.tsx"),
   ]);
   assert.match(management, /actor\.role !== "admin"/);
   assert.match(management, /APPROVER_REQUIRED/);
@@ -48,4 +49,6 @@ test("approval routes fail closed and the review UI uses the server decision", a
   assert.match(inbox, /disabled=\{busy \|\| !approvalLoaded \|\| !canApprove\}/);
   assert.match(records, /APPEAL_DECISION_API_REQUIRED/);
   assert.match(appeal, /os_decide_appeals/);
+  assert.doesNotMatch(workspace, /moveStatus\("canonical"\)/);
+  assert.match(workspace, /승인 화면에서 공개/);
 });
