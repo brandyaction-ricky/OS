@@ -22,7 +22,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/organization/agents": {steps:["대기 · 처리 중 작업을 확인합니다","실패한 작업의 사유를 봅니다","필요하면 다시 요청합니다"],next:"/home"},
   "/settings/connections": {steps:["회사 앱 연결이 ‘연결됨’인지 봅니다","사람별 채널 현황과 테스터 요청을 확인합니다","‘운영 점검’에서 막힌 작업을 확인합니다"],next:"/settings/audit"},
   "/settings/access": {steps:["역할과 AI 키의 단계·만료일을 확인합니다","공용 계정 키는 개인 계정 재발급 요청 알림을 보냅니다","새 키 발급과 기존 키 폐기는 관리자가 별도로 진행합니다"],next:"/settings/audit"},
-  "/settings/audit": {steps:["기간을 고르면 서버에서 그 기간의 기록을 찾습니다","연속 수정을 펼쳐 각 변경의 실행자와 시각을 봅니다","이전 기록은 ‘더 보기’로 이어서 확인합니다"],next:"/settings/connections"},
+  "/settings/audit": {steps:["기간을 고르면 서버에서 그 기간의 기록을 찾습니다","연속 수정을 펼쳐 변경 전·후 차이를 봅니다","권한이 있는 기록은 사유를 적고 이전 내용으로 새 버전을 만듭니다"],next:"/settings/connections"},
   "/settings/company": {steps:["승인자와 기간 위임을 확인합니다","브랜드 · 표시 이름을 확인합니다","텔레그램 승인 대기를 처리합니다"],next:"/settings/connections"},
   "/settings/account": {steps:["내 YouTube · 인스타 · Threads를 하나씩 연결합니다","같이 쓸 계정은 ‘팀 공유’를 켭니다 — 켜면 직원 누구나 게시 · 답글","‘만료’가 뜨면 ‘다시 연결’ — 내 할 일 ‘막힌 일’에도 올라옵니다"],next:"/content/publishing"},
 };

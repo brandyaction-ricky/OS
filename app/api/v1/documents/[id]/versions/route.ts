@@ -59,7 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const proposal = await createCanonicalProposal(actor, document, input.expectedVersion, {
         title: version.title, content_md: version.content_md, folder: document.folder,
         brand: document.brand ?? "", team: document.team, tags: document.tags,
-      });
+      }, input.reason);
       return NextResponse.json({ document, proposal }, { status: 202 });
     }
     const { data, error } = await actor.supabase.rpc("os_restore_document_version", {

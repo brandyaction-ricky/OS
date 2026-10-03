@@ -357,6 +357,13 @@
       "purpose": "assign an optional document steward with version and administrator checks while preserving existing documents",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003190000_audit_version_time_index.sql",
+      "sha256": "6dd5757d9c0c143208278c660ab9b8b584b62d72eb9561d220d05b907c8ba12b",
+      "purpose": "index document versions for bounded audit history date and cursor queries",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

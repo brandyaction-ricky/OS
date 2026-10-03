@@ -13,7 +13,7 @@ export interface DocumentProposalInput {
 
 export async function createCanonicalProposal(actor: RequestActor, current: {
   id: string; current_version: number; status: string;
-}, expectedVersion: number, next: DocumentProposalInput) {
+}, expectedVersion: number, next: DocumentProposalInput, note = "") {
   if (current.status !== "canonical") throw new ApiError(400, "CANONICAL_REQUIRED", "회사 정본만 변경 제안을 만듭니다.");
   if (current.current_version !== expectedVersion) throw new ApiError(409, "VERSION_CONFLICT", "정본이 먼저 변경됐습니다. 다시 열어 확인해 주세요.");
   const { data, error } = await createServiceSupabase().from("os_document_proposals").insert({
@@ -23,6 +23,7 @@ export async function createCanonicalProposal(actor: RequestActor, current: {
     author_id: actor.ownerId,
     agent_key_id: actor.type === "agent" ? actor.id : null,
     status: "open",
+    note,
   }).select("id,document_id,base_version,title,content_md,folder,brand,team,tags,author_id,agent_key_id,status,created_at").single();
   if (error || !data) throw new ApiError(error?.code === "42P01" ? 503 : 400,
     error?.code === "42P01" ? "PROPOSAL_SETUP_PENDING" : "PROPOSAL_CREATE_FAILED",

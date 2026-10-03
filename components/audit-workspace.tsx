@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { groupAuditHistory } from "@/lib/audit-history";
+import { AuditDiffPanel } from "./audit-diff-panel";
 import {
   auditEventLabel,
   auditFieldLabels,
@@ -54,6 +55,7 @@ export function AuditWorkspace() {
   const [grouped, setGrouped] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [selected, setSelected] = useState<AuditEvent | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     if (demo) {
@@ -82,7 +84,7 @@ export function AuditWorkspace() {
       .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "변경 기록을 불러오지 못했습니다."); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [accessToken, demo, from, to]);
+  }, [accessToken, demo, from, to, reloadKey]);
 
   const loadMore = async () => {
     if (!nextCursor || loadingMore) return;
@@ -125,7 +127,7 @@ export function AuditWorkspace() {
       ) : null}
       <section className="panel audit-panel">
         <div className="panel-header">
-          <div><h2>변경 기록</h2><p>선택한 기간을 서버에서 조회합니다 · 읽기 전용</p></div>
+          <div><h2>변경 기록</h2><p>선택한 기간을 서버에서 조회하고, 권한이 있는 버전은 차이·복원을 확인합니다.</p></div>
           <span className="count-badge">{loading ? "확인 중" : `${visible.length}/${events.length}${nextCursor ? "+" : ""}`}</span>
         </div>
         <div className="audit-filters">
@@ -183,7 +185,7 @@ export function AuditWorkspace() {
         )}
         {nextCursor && !loading ? <button type="button" className="secondary-button audit-more" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "불러오는 중…" : "이전 기록 더 보기"}</button> : null}
       </section>
-      {selected ? <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}><section className="record-drawer audit-detail" onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">변경 상세</span><h2>{selected.title}</h2></div><button type="button" className="icon-button" aria-label="감사 상세 닫기" onClick={() => setSelected(null)}><X size={18} /></button></div><dl><div><dt>실행자</dt><dd>{selected.actor_name} · {selected.actor_type === "agent" ? "AI 에이전트" : "구성원"}</dd></div><div><dt>동작</dt><dd>{auditEventLabel(selected.event_type)}</dd></div><div><dt>기록 유형</dt><dd>{auditRecordLabel(selected.subject_type)}</dd></div><div><dt>상태 변경</dt><dd>{selected.from_status !== selected.to_status ? `${auditStatusLabel(selected.from_status, selected.subject_type)} → ${auditStatusLabel(selected.to_status, selected.subject_type)}` : "상태 변경 없음"}</dd></div><div><dt>변경 필드</dt><dd>{auditFieldLabels(selected.changed_fields).join(", ") || "세부 필드 기록 없음"}</dd></div><div><dt>변경 사유</dt><dd>{selected.note || "기록된 사유 없음"}</dd></div><div><dt>실행 시각</dt><dd>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "medium" }).format(new Date(selected.created_at))}</dd></div></dl></section></div> : null}
+      {selected ? <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}><section className="record-drawer audit-detail" onMouseDown={(event) => event.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">변경 상세</span><h2>{selected.title}</h2></div><button type="button" className="icon-button" aria-label="감사 상세 닫기" onClick={() => setSelected(null)}><X size={18} /></button></div><dl><div><dt>실행자</dt><dd>{selected.actor_name} · {selected.actor_type === "agent" ? "AI 에이전트" : "구성원"}</dd></div><div><dt>동작</dt><dd>{auditEventLabel(selected.event_type)}</dd></div><div><dt>기록 유형</dt><dd>{auditRecordLabel(selected.subject_type)}</dd></div><div><dt>상태 변경</dt><dd>{selected.from_status !== selected.to_status ? `${auditStatusLabel(selected.from_status, selected.subject_type)} → ${auditStatusLabel(selected.to_status, selected.subject_type)}` : "상태 변경 없음"}</dd></div><div><dt>변경 필드</dt><dd>{auditFieldLabels(selected.changed_fields).join(", ") || "세부 필드 기록 없음"}</dd></div><div><dt>변경 사유</dt><dd>{selected.note || "기록된 사유 없음"}</dd></div><div><dt>실행 시각</dt><dd>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "medium" }).format(new Date(selected.created_at))}</dd></div></dl><AuditDiffPanel key={selected.id} eventId={selected.id} token={accessToken} onRestored={() => setReloadKey(value => value + 1)} /></section></div> : null}
     </>
   );
 }

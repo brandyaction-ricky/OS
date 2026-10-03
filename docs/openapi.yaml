@@ -563,9 +563,23 @@ paths:
         "403": { $ref: "#/components/responses/ApiError" }
   /api/v1/audit:
     get:
-      summary: 운영 기록·지식 문서·AI 에이전트 변경 이력
+      summary: 운영 기록·지식 문서 버전·AI 에이전트 변경 이력
+      parameters:
+        - { in: query, name: from, schema: { type: string, format: date }, description: "한국 시간 기준 시작일" }
+        - { in: query, name: to, schema: { type: string, format: date }, description: "한국 시간 기준 종료일" }
+        - { in: query, name: cursor, schema: { type: string }, description: "이전 응답의 nextCursor" }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 200 } }
       responses:
-        "200": { description: 관리자 전체 또는 사용자 본인 변경 이력 }
+        "200": { description: 관리자 전체 또는 사용자 본인 변경 이력과 nextCursor }
+  /api/v1/audit/diff:
+    get:
+      summary: 문서 버전 또는 운영 기록의 변경 전·후 차이
+      description: 운영 기록의 민감한 metadata 값은 표시하지 않습니다. 복원은 각각의 기존 버전 API 권한 검사를 따릅니다.
+      parameters:
+        - { in: query, name: eventId, required: true, schema: { type: string } }
+      responses:
+        "200": { description: 비교 가능한 필드 또는 문서 Markdown과 복원 가능한 이전 버전 }
+        "404": { description: 기록을 열 권한이 없거나 버전이 없음 }
   /api/v1/agent-keys:
     get:
       summary: 관리자용 Agent PAT 목록 (소유자 공용 계정 표시 포함)

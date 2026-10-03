@@ -32,7 +32,7 @@ function readCursor(value: string | null): { at: string; id: string } | null {
   try {
     const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { at?: unknown; id?: unknown };
     if (typeof parsed.at === "string" && !Number.isNaN(Date.parse(parsed.at))
-      && typeof parsed.id === "string" && /^(record|document|agent|security):[\w-]+$/.test(parsed.id)) {
+      && typeof parsed.id === "string" && /^(record|document|agent|security):[\w-]+$|^version:[\w-]+:\d+$/.test(parsed.id)) {
       return { at: parsed.at, id: parsed.id };
     }
   } catch { /* Invalid cursors are rejected below. */ }
@@ -56,6 +56,9 @@ export async function GET(request: Request) {
     let documentQuery = service.from("os_document_events")
       .select("id,document_id,actor_id,from_status,to_status,note,created_at")
       .order("created_at", { ascending: false }).limit(queryLimit);
+    let versionQuery = service.from("os_document_versions")
+      .select("document_id,version_no,author_id,created_at")
+      .gt("version_no", 1).order("created_at", { ascending: false }).limit(queryLimit);
     let agentQuery = service.from("os_agent_audit_logs")
       .select("id,agent_key_id,owner_user_id,action,document_id,record_id,title_snapshot,changed_fields,reason,created_at")
       .order("created_at", { ascending: false }).limit(queryLimit);
@@ -65,39 +68,45 @@ export async function GET(request: Request) {
     if (from) {
       recordQuery = recordQuery.gte("created_at", from);
       documentQuery = documentQuery.gte("created_at", from);
+      versionQuery = versionQuery.gte("created_at", from);
       agentQuery = agentQuery.gte("created_at", from);
       securityQuery = securityQuery.gte("created_at", from);
     }
     if (to) {
       recordQuery = recordQuery.lt("created_at", to);
       documentQuery = documentQuery.lt("created_at", to);
+      versionQuery = versionQuery.lt("created_at", to);
       agentQuery = agentQuery.lt("created_at", to);
       securityQuery = securityQuery.lt("created_at", to);
     }
     if (cursor) {
       recordQuery = recordQuery.lte("created_at", cursor.at);
       documentQuery = documentQuery.lte("created_at", cursor.at);
+      versionQuery = versionQuery.lte("created_at", cursor.at);
       agentQuery = agentQuery.lte("created_at", cursor.at);
       securityQuery = securityQuery.lte("created_at", cursor.at);
     }
     if (actor.role !== "admin") {
       recordQuery = recordQuery.eq("actor_id", actor.id);
       documentQuery = documentQuery.eq("actor_id", actor.id);
+      versionQuery = versionQuery.eq("author_id", actor.id);
       agentQuery = agentQuery.eq("owner_user_id", actor.id);
       securityQuery = securityQuery.or(`actor_id.eq.${actor.id},target_user_id.eq.${actor.id}`);
     }
-    const [recordResult, documentResult, agentResult, securityResult] = await Promise.all([recordQuery, documentQuery, agentQuery, securityQuery]);
+    const [recordResult, documentResult, versionResult, agentResult, securityResult] = await Promise.all([recordQuery, documentQuery, versionQuery, agentQuery, securityQuery]);
     if (recordResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "감사 로그를 불러오지 못했습니다.", recordResult.error.message);
-    if (documentResult.error || agentResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "변경 기록을 불러오지 못했습니다.");
+    if (documentResult.error || versionResult.error || agentResult.error) throw new ApiError(400, "AUDIT_LIST_FAILED", "변경 기록을 불러오지 못했습니다.");
     if (securityResult.error) throw new ApiError(400, "SECURITY_AUDIT_LIST_FAILED", "계정 보안 기록을 불러오지 못했습니다.", securityResult.error.message);
 
     const documentIds = [...new Set([
       ...(documentResult.data ?? []).map((event) => event.document_id),
+      ...(versionResult.data ?? []).map((event) => event.document_id),
       ...(agentResult.data ?? []).map((event) => event.document_id),
     ].filter(Boolean))];
     const actorIds = [...new Set([
       ...(recordResult.data ?? []).map((event) => event.actor_id),
       ...(documentResult.data ?? []).map((event) => event.actor_id),
+      ...(versionResult.data ?? []).map((event) => event.author_id),
       ...(securityResult.data ?? []).flatMap((event) => [event.actor_id, event.target_user_id]),
     ].filter(Boolean))];
     const agentKeyIds = [...new Set((agentResult.data ?? []).map((event) => event.agent_key_id).filter(Boolean))];
@@ -146,6 +155,17 @@ export async function GET(request: Request) {
         note: event.note ?? "",
         created_at: event.created_at,
       }));
+    const versionEvents = (versionResult.data ?? []).map((version) => ({
+      id: `version:${version.document_id}:${version.version_no}`,
+      subject_id: version.document_id,
+      subject_type: "knowledge_document",
+      title: documentNames.get(version.document_id) ?? "지식 문서",
+      actor_id: version.author_id,
+      actor_type: "user",
+      actor_name: version.author_id ? profileNames.get(version.author_id) ?? "구성원" : "시스템",
+      event_type: "updated", from_status: null, to_status: null,
+      changed_fields: ["content_md"], note: `문서 v${version.version_no} 저장`, created_at: version.created_at,
+    }));
     const agentEvents = (agentResult.data ?? []).map((event) => ({
       id: `agent:${event.id}`,
       subject_id: event.record_id || event.document_id,
@@ -176,7 +196,7 @@ export async function GET(request: Request) {
       note: event.note ?? "",
       created_at: event.created_at,
     }));
-    const merged = [...records, ...documentEvents, ...agentEvents, ...securityEvents]
+    const merged = [...records, ...documentEvents, ...versionEvents, ...agentEvents, ...securityEvents]
       .sort((left, right) => right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id))
       .filter(event => !cursor || event.created_at < cursor.at || (event.created_at === cursor.at && event.id < cursor.id));
     const events = merged.slice(0, limit);
