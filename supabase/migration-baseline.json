@@ -322,6 +322,13 @@
       "purpose": "add ID-based knowledge page hierarchy and enforce folder, visibility, cycle, and archive invariants without changing existing Markdown documents",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003143000_document_approval_assignments.sql",
+      "sha256": "f2767be2da417592406f489a69585d8b8293a3dec0033e07c60dbdaeb9f98403",
+      "purpose": "add explicit approver and dated delegation assignments, deny self-approval, guard appeal decisions, and retain prior document transitions",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

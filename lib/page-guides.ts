@@ -12,7 +12,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/content/performance": {steps:["플랫폼 탭을 고릅니다","같은 경과일(D+7 등)끼리 비교합니다","n<5면 결론을 미룹니다"],next:"/content/topics"},
   "/knowledge": {steps:["폴더에서 문서를 엽니다","고칠 곳은 수정본으로 저장하고 검토를 요청합니다","‘연결’ 탭에서 깨진 링크를 고칩니다"],next:"/knowledge/review"},
   "/knowledge/search": {steps:["찾을 말을 넣습니다","결과에서 정본 배지가 있는 문서를 먼저 봅니다","없으면 새 문서를 만듭니다"],next:"/knowledge"},
-  "/knowledge/review": {steps:["내 검토 차례를 엽니다","바뀐 부분을 확인합니다","승인하거나 의견을 남깁니다"],next:"/knowledge"},
+  "/knowledge/review": {steps:["내 검토 차례를 엽니다","문서 내용과 이전 검토 이력을 확인합니다","작성자와 다른 승인자 또는 위임자가 승인합니다"],next:"/knowledge"},
   "/organization/meetings": {steps:["회의 녹음이나 메모를 올립니다","뽑힌 결정 · 업무를 검수합니다","업무는 담당 · 기한을 정해 확정합니다"],next:"/organization/tasks"},
   "/organization/tasks": {steps:["‘분류 대기’부터 담당 · 기한을 정합니다","내 업무를 진행 상태로 옮깁니다","끝나면 완료로 옮깁니다"],next:"/home"},
   "/organization/schedule": {steps:["이번 주 회의 · 마감을 확인합니다","휴가를 신청합니다","승인 대기를 처리합니다"],next:"/home"},
@@ -23,7 +23,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/settings/connections": {steps:["회사 앱 연결이 ‘연결됨’인지 봅니다","사람별 채널 현황과 테스터 요청을 확인합니다","‘운영 점검’에서 막힌 작업을 확인합니다"],next:"/settings/audit"},
   "/settings/access": {steps:["역할을 확인합니다","AI 접근 키의 단계와 만료일을 확인합니다","쓰지 않는 키는 끕니다"],next:"/settings/audit"},
   "/settings/audit": {steps:["기간을 고르면 서버에서 그 기간의 기록을 찾습니다","연속 수정을 펼쳐 각 변경의 실행자와 시각을 봅니다","이전 기록은 ‘더 보기’로 이어서 확인합니다"],next:"/settings/connections"},
-  "/settings/company": {steps:["브랜드 · 표시 이름을 확인합니다","텔레그램 승인 대기를 처리합니다","외부 관리자 바로가기를 엽니다"],next:"/settings/connections"},
+  "/settings/company": {steps:["승인자와 기간 위임을 확인합니다","브랜드 · 표시 이름을 확인합니다","텔레그램 승인 대기를 처리합니다"],next:"/settings/connections"},
   "/settings/account": {steps:["내 YouTube · 인스타 · Threads를 하나씩 연결합니다","같이 쓸 계정은 ‘팀 공유’를 켭니다 — 켜면 직원 누구나 게시 · 답글","‘만료’가 뜨면 ‘다시 연결’ — 내 할 일 ‘막힌 일’에도 올라옵니다"],next:"/content/publishing"},
 };
 export const guideClosedKey = (path:string) => `brandy-os-guide-closed:${path}`;

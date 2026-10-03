@@ -29,7 +29,7 @@ import { apiRequest, createRecord, generateContent, listAllRecordsOfType, listMe
 import { structureBorrowInput } from "@/lib/structure-borrow";
 import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
-import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
+import { appealWorkflowState, approvedAppeals, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
 import { planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import { contentOrigin } from "@/lib/content-origin";
@@ -108,6 +108,10 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const [topicOpen, setTopicOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [appealNote, setAppealNote] = useState("");
+  const [appealCanApprove, setAppealCanApprove] = useState(false);
+  const [appealApprovalLoaded, setAppealApprovalLoaded] = useState(false);
+  const [appealAssignments, setAppealAssignments] = useState<Array<{ user_id: string; kind: string }>>([]);
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -150,6 +154,22 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const plan = plans.filter((record) => record.parent_id === selected?.id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
   const appealSet = appealSets.find((record) => record.parent_id === selected?.id) ?? null;
+  useEffect(() => {
+    if (!appealSet) { setAppealCanApprove(false); setAppealApprovalLoaded(true); setAppealAssignments([]); return; }
+    if (demo) {
+      setAppealCanApprove(profile?.role === "admin" && appealSet.created_by !== profile?.id);
+      setAppealApprovalLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    setAppealApprovalLoaded(false);
+    apiRequest<{ canApprove: boolean; assignments: Array<{ user_id: string; kind: string }> }>(
+      `/api/v1/approvals?recordId=${encodeURIComponent(appealSet.id)}`, { token: accessToken })
+      .then((result) => { if (!cancelled) { setAppealCanApprove(result.canApprove); setAppealAssignments(result.assignments); } })
+      .catch(() => { if (!cancelled) { setAppealCanApprove(false); setAppealAssignments([]); } })
+      .finally(() => { if (!cancelled) setAppealApprovalLoaded(true); });
+    return () => { cancelled = true; };
+  }, [appealSet, accessToken, demo, profile?.id, profile?.role]);
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
   const planningReady = Boolean(selected && planningSelectionReady(selected, plan));
@@ -392,23 +412,20 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const decideAppeal = async (index: number, decision: AppealDecision) => {
     if (!appealSet) return;
-    const decidedAt = new Date().toISOString();
-    const next = decideAppealCandidate(appealCandidates, index, decision, decidedAt);
-    const nextState = appealWorkflowState(next, false);
-    const history = Array.isArray(appealSet.metadata?.decisionHistory) ? appealSet.metadata.decisionHistory : [];
+    if (!appealCanApprove) return setError("작성자와 승인자를 분리해야 합니다. 회사 설정의 승인자 또는 위임자에게 요청해 주세요.");
+    if (decision === "revision" && !appealNote.trim()) return setError("수정 요청 사유를 적어 주세요.");
     setBusy(true); setError(""); setNotice("");
     try {
-      const { record } = await updateRecord(accessToken, {
+      const { record } = await apiRequest<{ record: OsRecord }>("/api/v1/content/appeals/decide", {
+        method: "POST", token: accessToken, body: JSON.stringify({
         id: appealSet.id,
         expectedVersion: appealSet.version,
-        metadata: {
-          ...appealSet.metadata,
-          workflowStage: nextState.stage,
-          result: { ...appealResult, candidates: next },
-          decisionHistory: [...history, { candidateIndex: index, text: next[index]?.text ?? "", decision, decidedAt }].slice(-100),
-        },
+        candidateSetVersion: String(appealSet.metadata?.candidateSetVersion ?? ""),
+        entries: [{ index, decision, note: appealNote.trim() }],
+        }),
       });
       setPackages((current) => current.map((item) => item.id === record.id ? record : item));
+      setAppealNote("");
       setNotice("소구점 판정을 저장했습니다. 승인 구성이 바뀌면 레퍼런스를 다시 검증해야 합니다.");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "소구점 판정을 저장하지 못했습니다.");
@@ -582,7 +599,8 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
           <section className="appeal-workflow">
             <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><ContentGenerationButton type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onGenerate={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</ContentGenerationButton></div>
             <dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selected.id}</dd></div><div><dt>후보 세트 버전</dt><dd>{appealSet ? String(meta(appealSet, "candidateSetVersion", appealSet.created_at)) : "없음"}</dd></div><div><dt>승인</dt><dd>{approvedAppealItems.length}개</dd></div><div><dt>막힌 이유</dt><dd>{workflowState.blocker || "없음"}</dd></div></dl>
-            {appealCandidates.length ? <div className="appeal-candidate-list">{appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><span>{index + 1}</span><strong>{candidate.text}</strong><div><button type="button" className={candidate.decision === "approved" ? "active" : ""} aria-pressed={candidate.decision === "approved"} disabled={busy} onClick={() => decideAppeal(index, "approved")}>승인</button><button type="button" className={candidate.decision === "revision" ? "active" : ""} aria-pressed={candidate.decision === "revision"} disabled={busy} onClick={() => decideAppeal(index, "revision")}>수정 요청</button><button type="button" className={candidate.decision === "held" ? "active" : ""} aria-pressed={candidate.decision === "held"} disabled={busy} onClick={() => decideAppeal(index, "held")}>보류</button></div></article>)}</div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
+            {appealSet ? <p className="appeal-approvers">승인자 {appealAssignments.filter((item) => item.kind === "approver").map((item) => memberNames[item.user_id] ?? "구성원").join(", ") || "미지정 · 관리자"} · <Link href="/settings/company">위임 설정</Link>{appealApprovalLoaded && !appealCanApprove ? " · 내 승인 권한 없음" : ""}</p> : null}
+            {appealCandidates.length ? <div className="appeal-candidate-list"><label>수정 요청 사유 또는 판정 메모<input aria-label="소구점 판정 메모" maxLength={500} value={appealNote} onChange={(event) => setAppealNote(event.target.value)} placeholder="수정 요청 시 사유 필수" /></label>{appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><span>{index + 1}</span><strong>{candidate.text}</strong><div><button type="button" className={candidate.decision === "approved" ? "active" : ""} aria-pressed={candidate.decision === "approved"} disabled={busy || !appealApprovalLoaded || !appealCanApprove} onClick={() => decideAppeal(index, "approved")}>승인</button><button type="button" className={candidate.decision === "revision" ? "active" : ""} aria-pressed={candidate.decision === "revision"} disabled={busy || !appealApprovalLoaded || !appealCanApprove} onClick={() => decideAppeal(index, "revision")}>수정 요청</button><button type="button" className={candidate.decision === "held" ? "active" : ""} aria-pressed={candidate.decision === "held"} disabled={busy || !appealApprovalLoaded || !appealCanApprove} onClick={() => decideAppeal(index, "held")}>보류</button></div></article>)}</div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
           </section>
           {approvedAppealItems.length ? <form className="research-brief" key={`${selected.id}-${selected.version}-${appealSet?.version ?? 0}`} onSubmit={saveResearchBrief}>
             <div><h3>승인 소구점 레퍼런스 검증</h3><p>YouTube와 Instagram Reels 출처를 남기고, 세 가지 적합성과 확인 한계를 각각 기록합니다. 확인하지 못한 수치는 비워 두세요.</p></div>

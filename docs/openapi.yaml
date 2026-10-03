@@ -8,6 +8,39 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/approvals:
+    get:
+      summary: 활성 승인자·위임 목록과 문서별 승인 가능 여부
+      description: 문서별 판정은 documentId, 소구점 후보별 판정은 recordId 쿼리로 요청하며 작성자 자기 승인은 항상 거절합니다. 연결된 DB에 승인 마이그레이션이 없으면 실패 상태를 반환합니다.
+      parameters:
+        - in: query
+          name: documentId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: recordId
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: assignments와 canApprove }
+        "403": { description: 구성원 계정 필요 }
+        "503": { description: 승인 설정 마이그레이션 적용 대기 }
+    post:
+      summary: 승인자 지정·기간 위임·해제
+      description: add_approver는 관리자만, delegate는 현재 승인자만, revoke는 관리자 또는 해당 위임자만 수행합니다. 대상은 활성 구성원이어야 합니다.
+      responses:
+        "200": { description: 해제된 assignment }
+        "201": { description: 생성된 assignment }
+        "400": { description: 잘못된 입력·비활성 구성원 }
+        "403": { description: 승인자 관리 권한 없음 }
+        "409": { description: 중복 지정·동시 변경 }
+  /api/v1/content/appeals/decide:
+    post:
+      summary: 사람 승인자의 소구점 후보 일괄 판정
+      description: id, expectedVersion, candidateSetVersion와 entries(index, decision, note)를 받습니다. 작성자는 자기 후보를 승인할 수 없고 수정 요청에는 사유가 필요합니다. 일반 기록 API로 판정 필드를 변경할 수 없습니다.
+      responses:
+        "200": { description: 판정 이력이 추가된 record }
+        "400": { description: 후보·사유·입력 검증 실패 }
+        "403": { description: 작성자·비승인자·AI 키 }
+        "409": { description: 후보 세트 또는 기록 버전 충돌 }
   /api/v1/content/comments:
     get:
       summary: 최근 댓글 목록과 본인·공유 처리 권한
