@@ -17,20 +17,13 @@ test("unified status keeps old URLs and explains unverified demo evidence", asyn
   expect(health.checks.find((check: { id: string }) => check.id === "database")).toMatchObject({ status: "missing", lastOkAt: null });
 });
 
-test("empty revenue and advertising values use em dashes instead of artificial zeroes", async ({ page }) => {
-  await page.goto("/home?view=management");
-  await expect(page.locator(".revenue-band")).toContainText("주문 연결 대기");
-  await expect(page.locator(".revenue-band")).not.toContainText("0만원");
-  await page.goto("/performance/revenue");
-  await expect(page.getByText("선택 기간 매출 0건 기준 · 주문 연결 대기", { exact: true })).toBeVisible();
-  await expect(page.locator(".metric-value").first()).toHaveText("—");
-  await page.goto("/performance/ads");
-  const roas = page.locator(".metric-card").filter({ hasText: "ROAS" });
-  await expect(roas.locator(".metric-value")).toHaveText("—");
-  await expect(page.locator(".metric-grid")).not.toContainText("0.00배");
-  await page.goto("/performance/connections");
-  await expect(page.getByRole("heading", { name: "데이터 연결", exact: true })).toBeVisible();
-  await expect(page.getByText("주문 연결 대기", { exact: true })).toBeVisible();
+test("retired finance views do not display placeholder revenue on home", async ({ page }) => {
+  for (const route of ["/home?view=management", "/performance/revenue", "/performance/ads"]) {
+    await page.goto(route);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("내 할 일");
+    await expect(page.locator(".revenue-band")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "오늘 콘텐츠 운영" })).toBeVisible();
+  }
 });
 
 for (const width of [1440, 390]) for (const theme of ["dark", "light"]) {

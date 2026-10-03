@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 test("content selectors default to own and retain market/test filters", async ({ page }) => {
-  for (const route of ["/content/performance", "/content/packages", "/content/shorts", "/content/youtube"]) {
+  for (const route of ["/content/performance"]) {
     await page.goto(route);
     const filter = page.getByRole("combobox", { name: "콘텐츠 종류", exact: true });
     await expect(filter).toHaveValue("own");

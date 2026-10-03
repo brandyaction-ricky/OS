@@ -13,7 +13,7 @@ test("meeting review requires assignee and due date, saves reviewed actions, and
 });
 test("meeting phases navigate and decisions retain old deep links",async({page})=>{
  const drawer=await openMeeting(page);await drawer.getByRole("button",{name:"3. 검수·확정"}).click();await expect(drawer.getByLabel("회의 요약",{exact:true})).toBeInViewport();
- await page.goto("/home/decisions?record=fixture");await expect(page).toHaveURL(/\/organization\/meetings\?tab=decisions&record=fixture/);await expect(page.getByRole("heading",{level:1})).toHaveText("회의·결정");await expect(page.getByRole("navigation",{name:"결정 출처"})).toBeVisible();
+ await page.goto("/home/decisions?record=fixture");await expect(page).toHaveURL(/\/home\/decisions\?record=fixture/);await expect(page.getByRole("heading",{level:1})).toHaveText("회의·결정");await expect(page.getByRole("navigation",{name:"결정 출처"})).toBeVisible();
 });
 test("unassigned work is kept off the board and bulk assignment moves it to my work",async({page})=>{
  await page.goto("/organization/tasks");await expect(page.getByRole("button",{name:"내 업무",exact:true})).toHaveAttribute("aria-pressed","true");

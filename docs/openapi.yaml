@@ -36,10 +36,10 @@ paths:
         "503": { description: 실계정 API 게시 미공개 }
   /api/v1/content/channel-sync:
     get:
-      summary: 인증된 예약 작업의 채널 알림 동기화
-      description: CRON_SECRET Bearer 인증. CHANNEL_SYNC_ENABLED=true이고 demo가 아닐 때만 실행. 예약 알림과 만료 알림만 저장하며 게시·답글·숨기기는 실행하지 않습니다. Telegram 실패는 응답 수치로 남기고 OS 알림은 유지됩니다.
+      summary: 인증된 예약 작업의 알림·댓글·성과 수집
+      description: CRON_SECRET Bearer 인증. CHANNEL_SYNC_ENABLED=true이고 demo가 아닐 때만 실행. 예약·만료 알림을 저장한 뒤 최근 14일 게시물 댓글과 D1/D7/D28 성과를 순서대로 수집합니다. 게시·답글·숨기기는 실행하지 않습니다. 기존 댓글·수기 성과를 덮어쓰지 않으며 범위 초과는 truncated로 반환합니다. Telegram 실패는 응답 수치로 남기고 OS 알림은 유지됩니다.
       responses:
-        "200": { description: 활성 여부와 알림·전송·실패 건수 }
+        "200": { description: 활성 여부와 알림·댓글·성과 수집 및 실패·범위 초과 수치 }
         "401": { description: 예약 작업 인증 실패 }
         "503": { description: DB 준비 필요 }
   /api/v1/channels:

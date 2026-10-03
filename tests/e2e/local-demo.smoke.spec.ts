@@ -30,10 +30,10 @@ test("secondary publishing pages keep the content navigation context", async ({ 
     ["/content/calendar", "발행 캘린더"],
   ]) {
     await page.goto(pathname);
-    await expect(page.getByRole("button", { name: "콘텐츠", exact: true })).toHaveAttribute("aria-expanded", "true");
-    await expect(page.locator(".breadcrumbs")).toContainText("발행 일정");
-    await expect(page.getByRole("link", { name: "발행 일정", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page).toHaveTitle("발행 일정 | 브랜디 OS");
+    await expect(page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".breadcrumbs")).toContainText("발행·업로드");
+    await expect(page.getByRole("link", { name: "발행·업로드", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveTitle("발행·업로드 | 브랜디 OS");
   }
 });
 
