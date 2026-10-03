@@ -43,7 +43,7 @@ Document body headings and existing detailed editors are retained to avoid chang
 3. Meta tester registration, platform account eligibility, provider permissions/API version, real OAuth/token refresh, storage media upload and rate limits require connected QA.
 4. Subscription queue worker scheduling, actual AI cost/usage, and notification delivery remain unverified. Telegram failures are counted but not automatically retried.
 5. Channel cron is disabled by default. Its bounded sequential collection can time out at large volumes; add incremental cursors/job splitting before enabling it for a large backlog. Missing D1 windows are not backfilled.
-6. Private input files are still in unpublished local commits. Publication is paused pending permission to preserve a local backup and remove those files from the public commit history. No push/PR/Preview has occurred.
+6. With explicit approval, all 25 private inputs were excluded from the 12 unpublished task commits. Their working files and original commits remain in a local backup; code content, base and other branches are unchanged. Git and CLI deployment ignore rules protect those inputs. PR/Preview preparation is in progress.
 7. OS completion synchronization remains pending under the local-migration no-production-write rule. Merge, Production database/environment changes and Production deployment require separate approval.
 
 ## Evidence limitations
