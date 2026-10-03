@@ -878,12 +878,13 @@ select option { background:var(--panel-2); color:var(--text); }
 .folder-move-preview{max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px}
 .folder-move-preview>div{display:grid;gap:4px;padding:10px;border-bottom:1px solid var(--line)}
 .folder-move-preview small{overflow-wrap:anywhere;color:var(--muted)}
-.document-tree-select-row{display:flex;align-items:center;height:38px;min-height:38px}.document-tree-select-row>.document-tree-row{flex:1;min-width:0;width:auto}.document-tree-select-row>input{margin-left:10px;margin-right:2px;flex:none}
-.knowledge-bulk-actions{display:flex;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line-soft);font-size:12px}
+.document-tree-select-row{display:flex;align-items:center;height:38px;min-height:38px}.document-tree-select-row>.document-tree-row{flex:1;min-width:0;width:auto}.document-tree-select-row>.document-tree-row.selected-for-move{background:var(--surface-hover);box-shadow:inset 0 0 0 1px var(--accent);color:var(--text)}
+.knowledge-bulk-actions{display:flex;gap:6px;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line-soft);font-size:12px}.knowledge-bulk-actions>span{min-width:0;flex:1;color:var(--text-2)}.knowledge-bulk-actions button{min-height:28px;padding:4px 8px;font-size:11px}
 .knowledge-tree-heading{height:44px;padding-inline:12px}
 .knowledge-tree-heading-actions,.knowledge-tree-control-actions{display:flex;align-items:center;gap:2px;flex:none}
 .knowledge-tree-heading-actions button,.knowledge-tree-control-actions button{min-width:28px;min-height:28px;padding:5px;display:inline-flex;align-items:center;justify-content:center;gap:4px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer}
 .knowledge-tree-heading-actions button:hover,.knowledge-tree-control-actions button:hover,.knowledge-tree-heading-actions button:focus-visible,.knowledge-tree-control-actions button:focus-visible{background:var(--surface-hover);color:var(--text)}
+.knowledge-tree-control-actions button[aria-pressed="true"]{background:var(--surface-hover);color:var(--accent-2)}
 .knowledge-tree-controls{height:38px;padding:0 8px 0 12px;display:flex;align-items:center;gap:5px;border-bottom:1px solid var(--line-soft)}
 .knowledge-tree-control-actions button:first-child{font-size:11px;white-space:nowrap}
 .knowledge-tree-scope{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}

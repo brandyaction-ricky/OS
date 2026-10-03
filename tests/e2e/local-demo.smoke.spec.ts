@@ -214,6 +214,13 @@ test("knowledge tree supports context actions and direct drag moves", async ({ p
   await companyFolder.click();
   await page.getByRole("button", { name: "채널 운영 1" }).click();
   const documentRow = page.getByRole("button", { name: /패키징 원칙/ });
+  await expect(page.locator(".document-tree-select-row input[type=checkbox]")).toHaveCount(0);
+  await page.getByRole("button", { name: "여러 문서 선택" }).click();
+  await documentRow.click();
+  await expect(documentRow).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("문서를 눌러 선택 · 1개")).toBeVisible();
+  await page.getByRole("button", { name: "완료" }).click();
+  await expect(documentRow).not.toHaveAttribute("aria-pressed");
   await documentRow.dispatchEvent("contextmenu", { clientX: 260, clientY: 300 });
   const documentMenu = page.getByRole("menu", { name: "패키징 원칙 문서 메뉴" });
   await expect(documentMenu.getByRole("menuitem", { name: "이름 변경" })).toBeVisible();
