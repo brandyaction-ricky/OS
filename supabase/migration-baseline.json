@@ -343,6 +343,13 @@
       "purpose": "add append-only per-candidate appeal discussion without modifying prior decisions",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003174000_shared_agent_accounts.sql",
+      "sha256": "a51ac7d2567ab6c4e2217661e8b4624b280029fc81f1a312ae5ffbffb3002dcd",
+      "purpose": "mark shared OS accounts and audit changes or shared-key issuance without revoking existing keys",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

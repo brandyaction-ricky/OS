@@ -532,11 +532,11 @@ paths:
         "200": { description: 다음 회의 준비 자료 }
   /api/v1/members:
     get:
-      summary: 실제 로그인 구성원 목록
+      summary: 실제 로그인 구성원 목록 (is_shared_account 포함)
       responses:
         "200": { description: 역할·팀·사용 상태 목록 }
     patch:
-      summary: 관리자가 구성원 역할·팀·사용 상태 변경
+      summary: 관리자가 구성원 역할·팀·사용 상태 및 공용 계정 표시 변경 (isSharedAccount)
       responses:
         "200": { description: 변경된 구성원 }
         "403": { $ref: "#/components/responses/ApiError" }
@@ -547,7 +547,7 @@ paths:
         "200": { description: 관리자 전체 또는 사용자 본인 변경 이력 }
   /api/v1/agent-keys:
     get:
-      summary: 관리자용 Agent PAT 목록
+      summary: 관리자용 Agent PAT 목록 (소유자 공용 계정 표시 포함)
       responses:
         "200": { description: 키 메타데이터 목록 }
     post:
@@ -566,6 +566,7 @@ paths:
                 team: { type: string, maxLength: 120 }
                 brand: { type: [string, "null"], maxLength: 120 }
                 expiresAt: { type: string, format: date-time, description: "Required future expiration for newly issued keys. Existing non-expiring keys are unchanged." }
+                reason: { type: string, maxLength: 500, description: "Required when ownerUserId refers to a shared account; stored in the security audit log." }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:
@@ -574,6 +575,23 @@ paths:
         - { in: query, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 폐기 완료 }
+  /api/v1/agent-keys/reissue-request:
+    post:
+      summary: 공용 계정 PAT의 개인 계정 재발급 요청 알림 (키 발급·폐기 없음)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyId, recipientId]
+              properties:
+                keyId: { type: string, format: uuid }
+                recipientId: { type: string, format: uuid, description: "실제 사용자인 활성 개인 계정" }
+      responses:
+        "201": { description: 요청 기록과 알림 생성 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
   /api/v1/indexing:
     get:
       summary: 관리자용 임베딩 큐 상태 조회

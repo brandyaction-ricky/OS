@@ -28,6 +28,7 @@ interface Member {
   onboarding: Record<string, boolean>;
   finance_access: boolean;
   is_active: boolean;
+  is_shared_account: boolean;
   created_at: string;
   updated_at: string;
   account_connected: boolean;
@@ -122,6 +123,7 @@ export function MembersWorkspace() {
           ),
           financeAccess: form.get("financeAccess") === "on",
           isActive: form.get("isActive") === "on",
+          isSharedAccount: selected.account_connected ? form.get("isSharedAccount") === "on" : undefined,
         }),
       });
       await load();
@@ -393,6 +395,15 @@ export function MembersWorkspace() {
                   {selected.id !== profile?.id ? <button type="button" className="secondary-button" disabled={accountBusy || profile?.role !== "admin"} onClick={resetPassword}>{accountBusy ? "초기화 중…" : "최초 비밀번호로 초기화"}</button> : <small>본인 계정은 상단 프로필의 비밀번호 변경을 이용하세요.</small>}
                 </section>
               ) : null}
+              <label className="toggle-label">
+                <input
+                  type="checkbox"
+                  name="isSharedAccount"
+                  defaultChecked={selected.is_shared_account}
+                  disabled={profile?.role !== "admin" || !selected.account_connected || selected.id === profile?.id}
+                />
+                <span>공용 계정으로 표시 <small>이 계정의 AI 키는 실제 사용자를 구분할 수 없어 경고가 표시됩니다.</small></span>
+              </label>
               <label className="toggle-label">
                 <input
                   type="checkbox"

@@ -169,10 +169,10 @@ export async function GET(request: Request) {
       actor_id: event.actor_id,
       actor_type: "user",
       actor_name: event.actor_id ? profileNames.get(event.actor_id) ?? "관리자" : "시스템",
-      event_type: ({ "account.created": "account_created", "password.changed": "password_changed", "password.reset": "password_reset" } as Record<string, string>)[event.action] ?? "updated",
+      event_type: ({ "account.created": "account_created", "password.changed": "password_changed", "password.reset": "password_reset", "member.shared_account": "updated", "agent_key.issued_shared": "created", "agent_key.reissue_requested": "created" } as Record<string, string>)[event.action] ?? "updated",
       from_status: null,
       to_status: null,
-      changed_fields: ["password"],
+      changed_fields: event.action === "member.shared_account" ? ["is_shared_account"] : event.action.startsWith("agent_key.") ? ["agent_key"] : ["password"],
       note: event.note ?? "",
       created_at: event.created_at,
     }));

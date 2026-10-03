@@ -345,7 +345,7 @@ export interface AgentAccessKey {
   last_used_at: string | null;
   expires_at: string | null;
   created_at: string;
-  owner: { id: string; display_name: string; email: string; is_active: boolean } | null;
+  owner: { id: string; display_name: string; email: string; is_active: boolean; is_shared_account?: boolean } | null;
 }
 
 export interface AgentAccessResponse {
@@ -364,6 +364,7 @@ export async function createAgentKey(token: string | null, input: {
   team?: string;
   brand?: string | null;
   expiresAt: string;
+  reason?: string;
 }) {
   return apiRequest<{
     key: AgentAccessKey;
@@ -375,6 +376,12 @@ export async function createAgentKey(token: string | null, input: {
 
 export async function revokeAgentKey(token: string | null, id: string) {
   return apiRequest<{ revoked: boolean }>(`/api/v1/agent-keys?id=${encodeURIComponent(id)}`, { method: "DELETE", token });
+}
+
+export async function requestAgentKeyReissue(token: string | null, input: { keyId: string; recipientId: string }) {
+  return apiRequest<{ requested: boolean; requestId: string }>("/api/v1/agent-keys/reissue-request", {
+    method: "POST", token, body: JSON.stringify(input),
+  });
 }
 
 export async function generateContent(token: string | null, input: {
@@ -682,6 +689,7 @@ export interface OsMember {
   role: "member" | "lead" | "admin";
   team: string;
   is_active: boolean;
+  is_shared_account?: boolean;
   affiliation: string;
   roles: string[];
   onboarding: Record<string, boolean>;
