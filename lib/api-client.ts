@@ -485,6 +485,8 @@ export async function resolveYoutubeChannel(token: string | null, query: string)
 }
 
 export interface YoutubeOAuthStatus {
+  ownerId?: string;
+  teamShared?: boolean;
   configured: boolean;
   canManage: boolean;
   connected: boolean;
@@ -505,7 +507,7 @@ export async function disconnectYoutubeOAuth(token: string | null) {
   return apiRequest<{ disconnected: true }>("/api/v1/youtube/oauth", { method: "DELETE", token });
 }
 
-export async function createYoutubeUploadSession(token: string | null, input: { kitId: string; fileName: string; fileSize: number; mimeType: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+export async function createYoutubeUploadSession(token: string | null, input: { kitId: string; fileName: string; fileSize: number; mimeType: string; privacyStatus: "private" | "unlisted"; finalApproval: true; connectionOwnerId?: string }) {
   return apiRequest<{ uploadUrl: string; kitId: string; privacyStatus: "private" | "unlisted"; fileName: string }>("/api/v1/youtube/upload/session", { method: "POST", token, body: JSON.stringify(input) });
 }
 
@@ -525,7 +527,7 @@ export function uploadYoutubeFile(uploadUrl: string, file: File, onProgress: (pe
   });
 }
 
-export async function completeYoutubeUpload(token: string | null, input: { kitId: string; videoId: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+export async function completeYoutubeUpload(token: string | null, input: { kitId: string; videoId: string; privacyStatus: "private" | "unlisted"; finalApproval: true; connectionOwnerId?: string }) {
   return apiRequest<{ uploaded: true; videoId: string; videoUrl: string; privacyStatus: string }>("/api/v1/youtube/upload/complete", { method: "POST", token, body: JSON.stringify(input) });
 }
 

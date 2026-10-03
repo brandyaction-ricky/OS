@@ -18,7 +18,7 @@ class ApiError extends Error {
 function setup(options = {}) {
   const rows = [{ id: kitId, record_type: "content_package", title: "발행 키트", parent_id: "source", metadata: { packageKind: "youtube_kit" }, version: 1, archived_at: null }];
   const controls = { conflict: false, insertFailures: 0, concurrentInsert: false, ...options };
-  const actor = { id: "admin", role: "admin", team: "콘텐츠", supabase: {
+  const actor = { id: "owner", type: "user", role: "member", team: "콘텐츠", supabase: {
     from(table) {
       assert.equal(table, "os_records");
       const conditions = [];
@@ -57,7 +57,8 @@ function setup(options = {}) {
       if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
       return actor;
     } },
-    "@/lib/server/youtube-oauth": { getYoutubeAccessToken: async () => "test", youtubeConnectionStatus: async () => ({ channelId, channelTitle: "우리 채널" }) },
+    "@/lib/server/channel-access": { auditChannelAction: async () => {} },
+    "@/lib/server/youtube-oauth": { authorizeYoutubeConnection: async () => { if (controls.denyChannel) throw new ApiError(403, "CHANNEL_ACCESS_DENIED", "denied"); }, getYoutubeAccessToken: async () => "test", youtubeConnectionStatus: async () => ({ channelId, channelTitle: "우리 채널" }) },
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ code: error.code }, { status: error.status ?? 500 }) },
   };
   const commonJsModule = { exports: {} };
@@ -70,12 +71,12 @@ function setup(options = {}) {
   return { rows, actor, controls, complete, fetchCount: () => fetchCount };
 }
 
-test("completion rejects anonymous users, members and archived kits before contacting YouTube", async () => {
+test("completion rejects anonymous users, unauthorized channels and archived kits before contacting YouTube", async () => {
   const state = setup();
   assert.equal((await state.complete(false)).status, 401);
-  state.actor.role = "member";
+  state.controls.denyChannel = true;
   assert.equal((await state.complete()).status, 403);
-  state.actor.role = "admin"; state.rows[0].archived_at = "2026-09-08";
+  state.controls.denyChannel = false; state.rows[0].archived_at = "2026-09-08";
   assert.equal((await state.complete()).status, 404);
   assert.equal(state.fetchCount(), 0);
 });

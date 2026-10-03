@@ -88,3 +88,32 @@ html[data-guidance="off"] .dev-page-header p { display: none; }
 .generation-settings { padding:20px; display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
 .generation-settings h2,.generation-settings p { width:100%; margin:0; }
 .generation-settings label { display:grid; gap:6px; min-width:180px; }
+.account-layout {display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start;}
+.company-channel-directory {margin-top:18px;}
+.channel-app-summary {display:flex;gap:12px;flex-wrap:wrap;padding:16px;color:var(--muted);border-bottom:1px solid var(--line);}
+.channel-directory-scroll {overflow:auto;}
+.channel-directory-scroll table {width:100%;min-width:540px;border-collapse:collapse;}
+.channel-directory-scroll th,.channel-directory-scroll td {padding:14px;text-align:left;border-bottom:1px solid var(--line);}
+.channel-directory-scroll td small {display:block;color:var(--muted);margin-top:5px;}
+.account-layout>aside {display:grid;gap:12px;}
+.account-info,.account-shared {padding:16px;}
+.account-info dl,.account-channel-card dl {display:grid;grid-template-columns:46px minmax(0,1fr);gap:12px;margin:18px 0;}
+.account-info dt,.account-channel-card dt {color:var(--muted);}
+.account-info dd,.account-channel-card dd {margin:0;overflow-wrap:anywhere;}
+.account-info label {display:grid;gap:8px;margin-bottom:14px;}
+.account-channels h2 {display:flex;align-items:center;gap:10px;}
+.account-channels small,.account-shared-row span {color:var(--muted);font-weight:400;}
+.account-channel-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+.account-channel-card {display:flex;flex-direction:column;min-width:0;}
+.account-channel-card>header {display:flex;align-items:center;gap:8px;padding:15px;border-bottom:1px solid var(--line);}
+.account-channel-card>header h3 {font-size:14px;margin:0;flex:1;}
+.account-channel-body {padding:16px;flex:1;min-height:280px;}
+.account-channel-body p,.account-shared p {color:var(--muted);line-height:1.65;}
+.account-channel-card>footer {padding:14px;border-top:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap;}
+.account-tester-steps {padding-left:18px;display:grid;gap:18px;}
+.account-tester-steps small {display:block;margin-top:5px;}
+.account-tester-steps label,.channel-share {display:flex;align-items:center;gap:8px;}
+.account-tester-steps input,.channel-share input {width:auto;}
+.account-shared-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
+@media(max-width:1100px){.account-layout{grid-template-columns:210px minmax(0,1fr);}.account-channel-grid{grid-template-columns:1fr;}.account-channel-body{min-height:0;}}
+@media(max-width:640px){.account-layout{grid-template-columns:1fr;}.account-shared-row{flex-wrap:wrap;}}

@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 function resultUrl(result: string) {
   const base = (process.env.OS_PUBLIC_URL || "https://brandyaction-os.vercel.app").replace(/\/$/, "");
-  return `${base}/content/youtube?youtube=${encodeURIComponent(result)}`;
+  return `${base}/settings/account?youtube=${encodeURIComponent(result)}`;
 }
 
 export async function GET(request: Request) {
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     await saveYoutubeConnection(ownerId, tokens);
     return clear(NextResponse.redirect(resultUrl("connected")));
   } catch (error) {
-    console.error("YouTube OAuth callback failed", error instanceof Error ? error.message : "unknown error");
+    void error; // Never log provider responses or token exchange details.
     return clear(NextResponse.redirect(resultUrl("failed")));
   }
 }

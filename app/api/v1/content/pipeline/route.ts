@@ -6,6 +6,7 @@ import { readPipeline, reviewPipeline, reviewProductionStep, reviewRelease, revi
 import { PRODUCTION_WORKFLOW_STEPS } from "@/lib/content-production-workflow";
 import { SCRIPT_REVIEW_STEPS } from "@/lib/content-script-review";
 import { WRITING_WORKFLOW_STEPS } from "@/lib/content-writing-workflow";
+import { authorizeYoutubeConnection } from "@/lib/server/youtube-oauth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,13 +43,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ record: await reviewProductionStep(actor, input.sourceId, input.expectedVersion, input.step, input.approved, input.note) });
     }
     if (operation === "release_plan") {
-      if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 발행 조건을 저장할 수 있습니다.");
       const input = z.object({ operation: z.literal("release_plan"), sourceId: z.string().uuid(), expectedVersion: z.number().int().positive(), channelId: z.string().trim().min(1).max(200), channelTitle: z.string().trim().max(200).default(""), privacyStatus: z.enum(["private", "unlisted"]), scheduledAt: z.string().datetime().or(z.literal("")).default("") }).parse(body);
+      const owner = z.object({ connectionOwnerId: z.string().uuid().optional() }).parse(body);
+      const connection = await authorizeYoutubeConnection(actor, owner.connectionOwnerId ?? actor.id);
+      if (connection.channel_id !== input.channelId) throw new ApiError(409, "RELEASE_CHANNEL_CHANGED", "연결 채널을 다시 확인해 주세요.");
       return NextResponse.json({ record: await saveReleasePlan(actor, input.sourceId, input.expectedVersion, input) });
     }
     if (operation === "release_review") {
-      if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 외부 발행을 승인할 수 있습니다.");
       const input = z.object({ operation: z.literal("release_review"), sourceId: z.string().uuid(), expectedVersion: z.number().int().positive(), signature: z.string().length(64), approved: z.boolean(), note: z.string().trim().max(2000).default("") }).parse(body);
+      const owner = z.object({ connectionOwnerId: z.string().uuid().optional() }).parse(body);
+      const connection = await authorizeYoutubeConnection(actor, owner.connectionOwnerId ?? actor.id);
+      const state = await readPipeline(actor, input.sourceId);
+      if (state.release.plan?.channelId !== connection.channel_id) throw new ApiError(409, "RELEASE_CHANNEL_CHANGED", "연결 채널과 승인할 채널이 다릅니다.");
       return NextResponse.json({ record: await reviewRelease(actor, input.sourceId, input.expectedVersion, input.signature, input.approved, input.note) });
     }
     const input = z.object({ sourceId: z.string().uuid(), gate: z.number().int().min(1).max(3), signature: z.string().length(64), approved: z.boolean(), note: z.string().trim().max(2000).default("") }).parse(body);

@@ -7,6 +7,7 @@ export interface WorkItem { id: string; title: string; status: string; dueDate: 
 export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "metadata">) {
   const id = encodeURIComponent(record.id);
   if (record.metadata.kind === "development_request") return `/knowledge/development?request=${id}`;
+  if (record.metadata.kind === "meta_tester_request") return `/settings/account?tester=${id}`;
   if (record.record_type === "task") return `/organization/tasks?task=${id}`;
   if (record.record_type === "meeting") return `/organization/meetings?meeting=${id}`;
   if (record.record_type === "decision") return `/organization/meetings?tab=decisions&record=${id}`;

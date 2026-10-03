@@ -1,4 +1,5 @@
 import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
+import {AccountWorkspace} from "@/components/account-workspace";
 import {ContentProductionWorkspace} from "@/components/content-production-workspace";
 import {retiredRoute} from "@/lib/final-routes";
 import {ContentStepWorkspace} from "@/components/content-step-workspace";
@@ -72,6 +73,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if (href === "/settings/monitoring") return <SystemStatusWorkspace tab="monitoring" />;
   if (href === "/settings/connections") return <SystemStatusWorkspace />;
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;
+  if (href === "/settings/account") return <AccountWorkspace />;
   if (href === "/settings/company") return <SettingsWorkspace page="company" />;
   if (href === "/settings/channels") return <SystemStatusWorkspace tab="channels" />;
   if (resolved.stage === "performance") redirect("/performance/overview");

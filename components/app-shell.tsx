@@ -123,6 +123,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const savedGuidance = document.documentElement.dataset.guidance;
     setTheme(savedTheme === "light" ? "light" : "dark");
     setGuidanceOn(savedGuidance !== "off");
+    const syncTheme = () => setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+    const device = window.matchMedia("(prefers-color-scheme: dark)");
+    const deviceChanged = () => {
+      try { if (window.localStorage.getItem(THEME_STORAGE_KEY)) return; } catch { /* Follow device without storage. */ }
+      document.documentElement.dataset.theme = device.matches ? "dark" : "light";
+      document.documentElement.style.colorScheme = device.matches ? "dark" : "light";
+      syncTheme();
+    };
+    window.addEventListener("brandy-os-theme-change", syncTheme);
+    device.addEventListener("change", deviceChanged);
+    return () => {
+      window.removeEventListener("brandy-os-theme-change", syncTheme);
+      device.removeEventListener("change", deviceChanged);
+    };
   }, []);
 
   useEffect(() => {

@@ -3,12 +3,14 @@ export interface PendingYoutubeCompletion {
   videoId: string;
   privacyStatus: "private" | "unlisted";
   finalApproval: true;
+  connectionOwnerId?: string;
 }
 
 export async function finalizeYoutubeUpload<T>(options: {
   kitId: string;
   privacyStatus: "private" | "unlisted";
   pending: PendingYoutubeCompletion | null;
+  connectionOwnerId?: string;
   upload: () => Promise<{ id: string }>;
   complete: (input: PendingYoutubeCompletion) => Promise<T>;
   remember: (pending: PendingYoutubeCompletion | null) => void;
@@ -17,7 +19,7 @@ export async function finalizeYoutubeUpload<T>(options: {
   let pending = options.pending;
   if (!pending) {
     const video = await options.upload();
-    pending = { kitId: options.kitId, videoId: video.id, privacyStatus: options.privacyStatus, finalApproval: true };
+    pending = { kitId: options.kitId, videoId: video.id, privacyStatus: options.privacyStatus, finalApproval: true, ...(options.connectionOwnerId ? { connectionOwnerId: options.connectionOwnerId } : {}) };
     // Keep the video identity before making another network request. A retry must not resend bytes.
     options.remember(pending);
   }

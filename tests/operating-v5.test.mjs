@@ -92,7 +92,7 @@ test("YouTube market evidence stays server-side and feeds title packaging", asyn
   assert.match(settings, /YouTube Data API/);
 });
 
-test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval gate", async () => {
+test("YouTube OAuth upload keeps tokens encrypted and requires owner or shared access and human approval", async () => {
   const [migration, oauth, callback, session, complete, client, workspace, health] = await Promise.all([
     read("supabase/migrations-legacy/202608300007_youtube_oauth.sql"),
     read("app/api/v1/youtube/oauth/route.ts"),
@@ -108,7 +108,8 @@ test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval
   assert.match(oauth, /httpOnly: true/);
   assert.match(oauth, /sameSite: "lax"/);
   assert.match(callback, /verifyYoutubeOAuthState/);
-  assert.match(session, /actor\.role !== "admin"/);
+  assert.match(session, /authorizeYoutubeConnection/);
+  assert.match(complete, /authorizeYoutubeConnection/);
   assert.match(session, /finalApproval: z\.literal\(true\)/);
   assert.match(session, /RELEASE_APPROVAL_REQUIRED/);
   assert.match(session, /uploadType: "resumable"/);

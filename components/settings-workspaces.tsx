@@ -1,4 +1,5 @@
 "use client";
+import { CompanyChannelConnections } from "./company-channel-connections";
 
 import { PageTitle } from "./page-title";
 import { ContentGenerationSettings } from "./content-generation-settings";
@@ -336,6 +337,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
                   </article>
                 ))}
               </section>
+              <CompanyChannelConnections />
             </>
           ) : null}
 

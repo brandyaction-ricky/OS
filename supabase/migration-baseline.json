@@ -303,6 +303,12 @@
       "sha256": "812eb802241dd7743e097ff7ed329db34fedd8187d52b9263b9d671beb7123dc",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003044602_final_os_channel_connections.sql",
+      "sha256": "104c11c2835b0af9fcbe7275c4a6b0c4dd6d25eea201d7b4e56140d5b2ff7eb1",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [
