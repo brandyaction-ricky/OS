@@ -21,3 +21,13 @@ test("2,000-line documents compare within the review budget", () => {
   assert.equal(changes.filter(item => item.kind === "added").length, 1);
   assert.equal(changes.filter(item => item.kind === "removed").length, 1);
 });
+
+test("2,000 entirely changed lines stay within the review budget", () => {
+  const before = Array.from({ length: 2000 }, (_, index) => `기존 ${index}`).join("\n");
+  const after = Array.from({ length: 2000 }, (_, index) => `수정 ${index}`).join("\n");
+  const start = performance.now();
+  const changes = diffMarkdownLines(before, after);
+  assert.ok(performance.now() - start < 1000);
+  assert.equal(changes.filter(item => item.kind === "added").length, 2000);
+  assert.equal(changes.filter(item => item.kind === "removed").length, 2000);
+});

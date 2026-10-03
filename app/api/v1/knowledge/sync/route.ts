@@ -6,6 +6,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
 import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { createCanonicalProposal } from "@/lib/server/document-proposals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,11 +33,11 @@ export async function POST(request: Request) {
     if (input.documents.some((document) => (!canAgentWriteDocument(actor, document.status) || !actor.allowedStatuses.includes(document.status)))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 저장할 수 없는 문서 공개 범위가 포함돼 있습니다.");
     const service = createServiceSupabase();
     const refs = input.documents.map((document) => document.sourceRef.normalize("NFC"));
-    const { data: existing, error: readError } = await service.from("os_documents").select("id,source_ref,content_hash,current_version,status,owner_id").eq("source", "obsidian_vault").in("source_ref", refs);
+    const { data: existing, error: readError } = await service.from("os_documents").select("id,source_ref,title,folder,content_hash,current_version,status,owner_id").eq("source", "obsidian_vault").in("source_ref", refs);
     if (readError) throw new ApiError(400, "VAULT_SYNC_READ_FAILED", "기존 볼트 문서를 확인하지 못했습니다.", readError.message);
     if (actor.type === "agent" && (existing ?? []).some(document => !canAgentWriteDocument(actor, document.status))) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 기존 문서를 변경할 수 없습니다.");
     const byRef = new Map((existing ?? []).map((document) => [document.source_ref, document]));
-    const counts = { created: 0, updated: 0, unchanged: 0, indexed: 0, queued: 0 };
+    const counts = { created: 0, updated: 0, proposed: 0, unchanged: 0, indexed: 0, queued: 0 };
     for (const incoming of input.documents) {
       const sourceRef = incoming.sourceRef.normalize("NFC");
       const folder = sourceRef.split("/").slice(0, -1).join("/");
@@ -44,7 +45,19 @@ export async function POST(request: Request) {
       if (incoming.contentHash && incoming.contentHash !== contentHash) throw new ApiError(400, "VAULT_HASH_MISMATCH", `${sourceRef} 내용 해시가 일치하지 않습니다.`);
       const current = byRef.get(sourceRef);
       let documentId = current?.id as string | undefined;
-      if (current?.content_hash === contentHash && current.status === incoming.status) { counts.unchanged += 1; continue; }
+      const storedHash = createHash("md5").update(incoming.content).digest("hex");
+      if (current?.content_hash === storedHash && current.title === incoming.title && current.folder === folder && current.status === incoming.status) { counts.unchanged += 1; continue; }
+      if (current?.status === "canonical" && (actor.type === "user" || actor.enforceWriteStatuses)) {
+        if (incoming.status !== "canonical") throw new ApiError(409, "CANONICAL_STATUS_CHANGE_FORBIDDEN", "정본 공개 범위 변경은 볼트 동기화로 처리할 수 없습니다.");
+        await createCanonicalProposal(actor, current, current.current_version, {
+          title: incoming.title, content_md: incoming.content, folder, brand: "", team: actor.team, tags: ["obsidian"],
+        });
+        counts.proposed += 1;
+        continue;
+      }
+      if (!current && incoming.status === "canonical" && actor.type === "agent" && actor.enforceWriteStatuses) {
+        throw new ApiError(409, "CANONICAL_CREATE_REVIEW_REQUIRED", "새 정본은 초안으로 만든 뒤 검토·승인을 요청해 주세요.");
+      }
       if (current) {
         const { data, error } = actor.type === "agent" ? await service.rpc("os_agent_update_document", {
           p_agent_key_id: actor.id, p_organization_id: actor.organizationId, p_document_id: current.id, p_expected_version: current.current_version,

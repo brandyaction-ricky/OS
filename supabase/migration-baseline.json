@@ -329,6 +329,13 @@
       "purpose": "add explicit approver and dated delegation assignments, deny self-approval, guard appeal decisions, and retain prior document transitions",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003151000_document_change_proposals.sql",
+      "sha256": "567a2bf129a041a99f4134652c5eac6ae951e1a13ce9f31dc3a5728c2c6f89e1",
+      "purpose": "add reviewed canonical change proposals and line comments without replacing existing Markdown or versions",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

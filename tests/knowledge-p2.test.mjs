@@ -129,7 +129,7 @@ test('partial import failure retains exact item identity and retries only unfini
 });
 
 test('version restore conflicts return 409 rather than implying the old version was restored',async()=>{
-  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{createServiceSupabase:()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:'test-document',owner_id:'owner',status:'draft'},error:null})})})},'@/lib/server/knowledge-page-access':{readableKnowledgePages:async()=>new Set(['test-document'])},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
+  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{createServiceSupabase:()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:'test-document',owner_id:'owner',status:'draft'},error:null})})})},'@/lib/server/knowledge-page-access':{readableKnowledgePages:async()=>new Set(['test-document'])},'@/lib/server/document-proposals':{createCanonicalProposal:async()=>{throw Error('not reached');}},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
   const response=await api.POST(new Request('http://localhost',{method:'POST',body:JSON.stringify({version:1,expectedVersion:3})}),{params:Promise.resolve({id:'test-document'})});
   assert.equal(response.status,409);assert.equal((await response.json()).error.code,'VERSION_CONFLICT');
 });

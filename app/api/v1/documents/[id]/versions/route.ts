@@ -4,6 +4,7 @@ import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { createCanonicalProposal } from "@/lib/server/document-proposals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,6 +52,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     }
     const input = restoreSchema.parse(await parseJson(request, 16_000));
+    if (document.status === "canonical") {
+      const { data: version, error: versionError } = await createServiceSupabase().from("os_document_versions")
+        .select("title,content_md").eq("document_id", id).eq("version_no", input.version).maybeSingle();
+      if (versionError || !version) throw new ApiError(404, "VERSION_NOT_FOUND", "되돌릴 버전을 찾을 수 없습니다.");
+      const proposal = await createCanonicalProposal(actor, document, input.expectedVersion, {
+        title: version.title, content_md: version.content_md, folder: document.folder,
+        brand: document.brand ?? "", team: document.team, tags: document.tags,
+      });
+      return NextResponse.json({ document, proposal }, { status: 202 });
+    }
     const { data, error } = await actor.supabase.rpc("os_restore_document_version", {
       p_document_id: id,
       p_version_no: input.version,

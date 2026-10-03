@@ -1,5 +1,5 @@
 import { decodeHtmlEntities } from "./html-entities";
-import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
+import type { DocumentProposal, DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
 import type { ProductionWorkflowStep } from "./content-production-workflow";
@@ -73,7 +73,7 @@ export async function updateDocument(
     reason?: string;
   },
 ) {
-  return apiRequest<{ document: KnowledgeDocument; indexing: string }>("/api/v1/documents", {
+  return apiRequest<{ document: KnowledgeDocument; proposal?: DocumentProposal; indexing: string }>("/api/v1/documents", {
     method: "PATCH",
     token,
     body: JSON.stringify(input),
@@ -108,7 +108,7 @@ export async function listDocumentVersions(token: string | null, id: string) {
 }
 
 export async function restoreDocumentVersion(token: string | null, id: string, version: number, expectedVersion: number) {
-  return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${id}/versions`, {
+  return apiRequest<{ document: KnowledgeDocument; proposal?: DocumentProposal }>(`/api/v1/documents/${id}/versions`, {
     method: "POST", token, body: JSON.stringify({ version, expectedVersion, reason: `v${version}로 되돌리기` }),
   });
 }

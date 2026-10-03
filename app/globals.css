@@ -391,6 +391,20 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; bor
 
 .review-count { padding: 8px 11px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 8px; color: var(--warning); background: var(--danger-soft); font-size: 11px; }
 .review-layout { display: grid; grid-template-columns: 250px minmax(440px,1fr) 230px; align-items: start; gap: 12px; }
+.knowledge-proposal-tabs { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; }
+.knowledge-proposal-tabs button { border: 1px solid var(--line); border-radius: 7px; padding: 7px 11px; background: var(--panel); color: var(--text-2); cursor: pointer; white-space: nowrap; }
+.knowledge-proposal-tabs button[aria-selected="true"] { border-color: var(--accent); color: var(--text); background: var(--accent-soft); }
+.knowledge-proposal-diff { padding: 12px 20px; max-height: 520px; overflow: auto; }
+.knowledge-proposal-lines { display: grid; gap: 0; border: 1px solid var(--line); border-radius: 7px; overflow-x: auto; }
+.knowledge-proposal-line { display: grid; grid-template-columns: 34px 34px 18px minmax(0, 1fr); gap: 6px; align-items: baseline; min-width: 420px; padding: 3px 6px; border: 0; border-bottom: 1px solid var(--line-soft); background: var(--panel); color: var(--text); text-align: left; cursor: pointer; font-size: 11px; }
+.knowledge-proposal-line.added { background: var(--mint-soft); }
+.knowledge-proposal-line.removed { background: var(--danger-soft); }
+.knowledge-proposal-line:disabled { cursor: default; }
+.knowledge-proposal-line span { color: var(--text-2); text-align: right; }
+.knowledge-proposal-line code { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.knowledge-proposal-comments { display: grid; gap: 10px; padding: 15px 20px; }
+.knowledge-proposal-comments textarea { min-height: 80px; width: 100%; resize: vertical; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); padding: 8px; }
+.knowledge-proposal-comments input { max-width: 80px; margin-left: 8px; }
 .review-queue { overflow: hidden; }
 .review-queue > button { width: 100%; min-height: 64px; padding: 10px 12px; display: flex; align-items: center; gap: 9px; border: 0; border-bottom: 1px solid var(--line-soft); background: transparent; color: var(--text-2); text-align: left; cursor: pointer; }
 .review-queue > button:hover { background: var(--panel-2); }.review-queue > button.active { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }

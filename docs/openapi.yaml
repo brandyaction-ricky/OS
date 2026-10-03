@@ -260,7 +260,7 @@ paths:
         "400": { $ref: "#/components/responses/ApiError" }
         "409": { $ref: "#/components/responses/ApiError", description: 같은 source/sourceRef 원본이 이미 존재함 }
     patch:
-      summary: 기대 버전을 확인한 뒤 문서 수정
+      summary: 기대 버전을 확인한 뒤 문서 수정. 정본 제목·본문은 변경 제안으로 저장
       requestBody:
         required: true
         content:
@@ -275,6 +275,7 @@ paths:
                     expectedVersion: { type: integer, minimum: 1 }
       responses:
         "200": { description: 수정된 문서와 색인 상태 }
+        "202": { description: 정본은 그대로이며 proposal 필드에 열린 변경 제안을 반환 }
         "409": { $ref: "#/components/responses/ApiError" }
     delete:
       summary: 문서를 삭제하지 않고 보관 상태로 전환
@@ -320,7 +321,7 @@ paths:
         "201": { description: 생성 문서, documentId와 색인 상태 }
         "429": { $ref: "#/components/responses/ApiError" }
     patch:
-      summary: knowledge.write PAT로 버전을 남기고 문서 수정
+      summary: knowledge.write PAT로 버전을 남기고 문서 수정. 새 정본 쓰기 키는 제안을 생성하고 기존 키 동작은 유지
       requestBody:
         required: true
         content:
@@ -339,6 +340,7 @@ paths:
                 reason: { type: string, maxLength: 500 }
       responses:
         "200": { description: 수정 문서와 새 버전 }
+        "202": { description: 정본은 그대로이며 proposalId와 proposal 필드로 변경 제안 반환 }
         "409": { $ref: "#/components/responses/ApiError" }
         "429": { $ref: "#/components/responses/ApiError" }
     delete:
@@ -376,11 +378,40 @@ paths:
       responses:
         "200": { description: 수정자·사유·시각을 포함한 버전 목록 }
     post:
-      summary: 선택한 과거 버전을 새 버전으로 복원
+      summary: 선택한 과거 버전을 새 버전으로 복원. 정본은 변경 제안으로 저장
       parameters:
         - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
       responses:
         "200": { description: 복원된 최신 문서 }
+        "202": { description: 정본은 그대로이며 proposal 필드에 열린 변경 제안을 반환 }
+  /api/v1/documents/proposals:
+    get:
+      summary: 읽을 수 있는 정본의 열린 변경 제안 목록 또는 단일 제안·댓글
+      parameters:
+        - { in: query, name: id, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: proposals, documents, comments }
+    post:
+      summary: 줄 댓글 또는 승인·보완·철회
+      description: action=approve는 작성자와 다른 승인자/위임자가 기준 버전을 확인한 뒤 새 정본 버전을 만듭니다. action=return은 보완 사유가 필요하며 action=withdraw는 작성자만 할 수 있습니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, proposalId]
+              properties:
+                action: { type: string, enum: [comment, approve, return, withdraw] }
+                proposalId: { type: string, format: uuid }
+                lineNo: { type: integer, minimum: 1 }
+                body: { type: string, maxLength: 2000 }
+                note: { type: string, maxLength: 500 }
+      responses:
+        "200": { description: 처리된 제안과 승인 시 새 정본 }
+        "201": { description: 저장된 줄 댓글 }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
   /api/v1/records:
     get:
       summary: 권한 범위 안의 운영 기록 목록

@@ -41,7 +41,7 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
   await page.goto("/knowledge");
   await page.getByRole("treeitem", { name: "회사 wiki 2" }).click();
   await page.getByRole("button", { name: "정본 편집" }).click();
-  await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
+  await page.getByRole("button", { name: "변경 제안 작성" }).click();
 
   const richEditor = page.getByRole("textbox", { name: "editable markdown" });
   const richToolbar = page.getByRole("toolbar");
@@ -114,7 +114,7 @@ test("knowledge image drop events move images between document blocks", async ({
   await page.goto("/knowledge");
   await page.getByRole("treeitem", { name: "회사 wiki 2" }).click();
   await page.getByRole("button", { name: "정본 편집" }).click();
-  await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
+  await page.getByRole("button", { name: "변경 제안 작성" }).click();
 
   const richEditor = page.getByRole("textbox", { name: "editable markdown" });
   await richEditor.click();
