@@ -1,5 +1,6 @@
 "use client";
 import { useRecordDeepLink } from "./use-record-deep-link";
+import {useSearchParams} from "next/navigation";
 
 import { demoRecord } from "@/lib/demo-record";
 import { assignTaskBatch, validWorkDate } from "@/lib/task-management";
@@ -58,6 +59,8 @@ function dueSignal(task: OsRecord) {
 }
 
 export function TasksWorkspace() {
+  const search=useSearchParams();
+  const newTask=search.get("new");
   const { accessToken, demo, profile } = useSession();
   const [tasks, setTasks] = useState<OsRecord[]>([]);
   const [projects, setProjects] = useState<OsRecord[]>([]);
@@ -75,6 +78,7 @@ export function TasksWorkspace() {
   const [batchDue, setBatchDue] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(!demo);
+  useEffect(()=>{if(newTask==="1"){setEditing(null);setDrawer(true);}},[newTask]);
   useRecordDeepLink("task", "task", task => { setEditing(task); setDrawer(true); }, setError);
   const load = useCallback(async () => {
     if (demo) {setMembers([{id:profile?.id||"demo",email:"demo@example.test",display_name:"데모 담당자",role:"member",team:"",is_active:true,affiliation:"",roles:[],onboarding:{},finance_access:false,account_connected:true}]);return;}

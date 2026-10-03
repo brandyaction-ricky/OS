@@ -57,7 +57,7 @@ test("existing settings URLs share one menu, heading, breadcrumb and browser tit
   }
   assert.equal(findPage("/settings/monitoring").navHref, "/settings/connections");
   assert.equal(NAV_STAGES.find(stage => stage.id === "settings").pages.filter(page => page.label === "작동 상태").length, 1);
-  assert.equal(findPage("/performance/connections").label, "데이터 연결");
+  assert.equal(findPage("/performance/connections").label, "작동 상태");
 });
 test("loading and failed boundaries suppress numeric and empty-state children", async () => {
   const source = await readFile(new URL("../components/workspace-load-state.tsx", import.meta.url), "utf8");

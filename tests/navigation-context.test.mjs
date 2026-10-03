@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findPage, findStage, NAV_STAGES, searchNavigation } from "../lib/navigation.ts";
+import { findPage, findStage, NAV_STAGES, searchNavigation, ACCOUNT_PAGE } from "../lib/navigation.ts";
+import {RETIRED_ROUTES,retiredRoute} from "../lib/final-routes.ts";
 
 const cases = [
   ["/content/automation", "멀티채널 자동화"],
@@ -11,7 +12,7 @@ const cases = [
 test("secondary content routes keep the content shell and publishing navigation active", () => {
   for (const [pathname] of cases) {
     assert.equal(findStage(pathname).id, "content");
-    assert.equal(findPage(pathname).label, "발행 일정");
+    assert.equal(findPage(pathname).label, "발행·업로드");
     assert.equal(findPage(pathname).navHref, "/content/publishing");
   }
 });
@@ -25,13 +26,12 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   const groups = {
     home: ["/home"],
     content: ["/content/topics", "/content/scripts", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance"],
-    knowledge: ["/knowledge", "/knowledge/search", "/knowledge/review", "/knowledge/skills", "/knowledge/graph"],
-    performance: ["/home/goals", "/home/reports", "/performance/overview", "/performance/weekly-kpi", "/performance/revenue", "/performance/customers", "/performance/funnels", "/performance/ads", "/performance/connections"],
-    team: ["/home/decisions", "/organization/meetings", "/organization/tasks", "/organization/schedule", "/organization/leave", "/organization/members", "/organization/finance"],
+    knowledge: ["/knowledge", "/knowledge/search", "/knowledge/review", "/knowledge/graph"],
+    team: ["/home/decisions", "/organization/meetings", "/organization/tasks", "/organization/schedule", "/organization/leave", "/organization/members"],
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.length, 7);
+  assert.equal(NAV_STAGES.length, 6);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 5));
   for (const [group, paths] of Object.entries(groups)) for (const path of paths) {
     assert.equal(findStage(path).id, group, path);
@@ -45,8 +45,26 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   assert.notEqual(findPage("/knowledge/development-extra").label, "수정 요청");
 });
 test("command palette finds both new labels and former menu labels", () => {
-  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제·기획","주제 찾기"],["발행·업로드","발행 일정"],["문서 작업공간","전체 문서"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["성과 통합 현황","회사 현황"],["감사 로그","변경 기록"]]) {
+  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["발행 일정","발행·업로드"],["문서 작업공간","전체 문서"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
     assert.ok(searchNavigation(oldName).some(page => page.label === newName), oldName);
     assert.ok(searchNavigation(newName).some(page => page.label === newName), newName);
   }
+});
+
+test('final navigation has exactly 23 menus; account is outside them',()=>{
+  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,8,3,4,3,4]);
+  assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
+  assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
+  assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7,8]);
+  assert.equal(findPage('/knowledge/development?tab=history').label,'업데이트 내역');
+  assert.equal(findPage('/knowledge/development?tab=updates').label,'업데이트 내역');
+});
+test('ten approved retired menus get a data-preserved redirect',()=>{
+  assert.equal(Object.keys(RETIRED_ROUTES).length,10);
+  for(const [path,name] of Object.entries(RETIRED_ROUTES)){
+    assert.equal(new URL(retiredRoute(path),'https://example.test').searchParams.get('moved'),name);
+    assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===path)));
+  }
+  assert.equal(retiredRoute('/organization/tasks'),null);
+  assert.equal(retiredRoute('/performance/ads-other'),null);
 });

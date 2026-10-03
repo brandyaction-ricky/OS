@@ -89,7 +89,7 @@ test("record API enforces optimistic updates and soft archives", async () => {
 
 test("monthly goals connect KPIs without a new database contract", async () => {
   const workspace = await readFile(new URL("../components/goals-workspace.tsx", import.meta.url), "utf8");
-  const router = (await Promise.all(["../app/(os)/[stage]/[page]/page.tsx", "../lib/workspace-tabs.ts", "../components/workspace-tab-hub.tsx"].map(path=>readFile(new URL(path,import.meta.url),"utf8")))).join("\n");
+  const router = (await Promise.all(["../app/(os)/[stage]/[page]/page.tsx", "../lib/final-routes.ts", "../lib/workspace-tabs.ts", "../components/workspace-tab-hub.tsx"].map(path=>readFile(new URL(path,import.meta.url),"utf8")))).join("\n");
   assert.match(workspace, /listRecords\(accessToken, "goal"/);
   assert.match(workspace, /listRecords\(accessToken, "kpi"/);
   assert.match(workspace, /periodMonth/);
@@ -171,7 +171,7 @@ test("project, task, skill and content workspaces use linked operating records",
 });
 
 test("specialized routes expose reports, growth and monitoring without placeholders", async () => {
-  const router = (await Promise.all(["../app/(os)/[stage]/[page]/page.tsx", "../lib/workspace-tabs.ts", "../components/workspace-tab-hub.tsx"].map(path=>readFile(new URL(path,import.meta.url),"utf8")))).join("\n");
+  const router = (await Promise.all(["../app/(os)/[stage]/[page]/page.tsx", "../lib/final-routes.ts", "../lib/workspace-tabs.ts", "../components/workspace-tab-hub.tsx"].map(path=>readFile(new URL(path,import.meta.url),"utf8")))).join("\n");
   for (const route of ["/home/reports", "/organization/projects", "/organization/tasks", "/organization/meetings", "/content/automation", "/content/review", "/content/calendar", "/knowledge/skills", "/performance/overview", "/settings/monitoring"]) {
     assert.match(router, new RegExp(route.replaceAll("/", "\\/")));
   }

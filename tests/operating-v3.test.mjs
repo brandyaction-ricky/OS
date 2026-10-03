@@ -36,7 +36,9 @@ test("leave decisions are atomic and telegram users are approved in the OS", asy
 test("home and organization expose the third handoff operating flow", async () => {
   const [dashboard, navigation, meeting, tasks] = await Promise.all([read("components/dashboard.tsx"), read("lib/navigation.ts"), read("components/meeting-workspace.tsx"), read("components/tasks-workspace.tsx")]);
   for (const label of ["통합 순매출", "이번 주 핵심 이슈", "이번 주 영상", "최근 지식"]) assert.match(dashboard, new RegExp(label));
-  for (const route of ["/organization/schedule", "/organization/leave", "/organization/finance"]) assert.match(navigation, new RegExp(route));
+  for (const route of ["/organization/schedule", "/organization/leave"]) assert.match(navigation, new RegExp(route));
+  assert.doesNotMatch(navigation, /\/organization\/finance/);
+  assert.match(await read("lib/final-routes.ts"), /\/organization\/finance/);
   assert.match(meeting, /원본 폐기됨/);
   assert.match(tasks, /sourceFilter/);
 });

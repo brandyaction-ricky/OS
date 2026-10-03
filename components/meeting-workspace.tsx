@@ -77,10 +77,10 @@ function suggestMeetingTitle(brand: string) {
   return label ? `${label} 회의 · ${dateLabel}` : `${dateLabel} 회의`;
 }
 
-export function MeetingWorkspace() {
+export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"|"decisions"} = {}) {
   const { accessToken, demo, profile } = useSession();
   const params = useSearchParams();
-  const decisionsTab = params.get("tab") === "decisions";
+  const decisionsTab = (params.get("tab") ?? initialTab) === "decisions";
   const [members, setMembers] = useState<ReviewMember[]>([]);
   const [reviewItems, setReviewItems] = useState<MeetingReviewItem[]>([]);
   const [manualDecisions, setManualDecisions] = useState("");

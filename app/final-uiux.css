@@ -7,6 +7,13 @@
   font-display: swap;
 }
 body { font-size: 13px; }
+.nav-process-caption { display: block; font-size: 11px; font-weight: 400; color: var(--muted); }
+.unified-shell .page-link .process-number { flex: none; width: 16px; }
+.quick-record-menu { position: relative; }
+.quick-record-options { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; width: 150px; padding: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); box-shadow: var(--shadow); }
+.quick-record-options > * { display: block; width: 100%; padding: 8px; text-align: left; border: 0; background: transparent; border-radius: 4px; cursor: pointer; }
+.quick-record-options > *:hover { background: var(--surface-hover); }
+.profile-menu > a { display: flex; align-items: center; gap: 8px; padding: 8px; }
 .os-app.unified-shell { --nav-width: 240px; }
 .os-app.unified-shell.nav-collapsed { --nav-width: 64px; }
 .unified-shell .topbar { height: 52px; }

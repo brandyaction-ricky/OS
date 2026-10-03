@@ -128,7 +128,7 @@ function ProjectHubContent() {
   const rootComments = comments.filter(comment => !meta(comment, "replyTo") || !commentIds.has(meta(comment, "replyTo")));
   const replies = (commentId: string) => comments.filter(comment => meta(comment, "replyTo") === commentId);
   const chooseProject = (id: string, nextStatus = "") => { setProjectId(id); setSelected(null); setStatus(nextStatus); setScope(""); setSearch(""); setQuery(""); setOffset(0); setTab("requests");
-    if (new URLSearchParams(navigationQuery).get("tab") === "history") {
+    if (["history", "updates"].includes(new URLSearchParams(navigationQuery).get("tab") ?? "")) {
       const next = new URLSearchParams(); if (id) next.set("project",id); if (nextStatus) next.set("status",nextStatus);
       window.history.replaceState(null,"",`/knowledge/development${next.size ? `?${next}` : ""}`);
     }
@@ -136,7 +136,7 @@ function ProjectHubContent() {
 
   useEffect(() => {
     const params = new URLSearchParams(navigationQuery);
-    setTab((["requests", "history", "context", "connections", "guide"] as const).find(value => value === params.get("tab")) ?? "requests");
+    setTab(params.get("tab") === "updates" ? "history" : (["requests", "history", "context", "connections", "guide"] as const).find(value => value === params.get("tab")) ?? "requests");
     deepRequest.current = params.get("request") || "";
     initialProject.current = params.get("project") || "";
     if (!params.get("project") && !params.get("request")) setProjectId("");

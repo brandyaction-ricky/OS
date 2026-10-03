@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
-test("performance brand and month filters persist across all stage pages", async () => {
+test("retired performance screens retain filter state without exposing their toolbar globally", async () => {
   const [filters, shell, layout, revenue, ads, overview] = await Promise.all([
     read("components/performance-filter-context.tsx"),
     read("components/app-shell.tsx"),
@@ -15,7 +15,7 @@ test("performance brand and month filters persist across all stage pages", async
   ]);
   assert.match(filters, /brandy-performance-filters/);
   assert.match(filters, /localStorage\.setItem/);
-  assert.match(shell, /pathname\.startsWith\("\/performance"\).*PerformanceFilterBar/s);
+  assert.doesNotMatch(shell, /<PerformanceFilterBar/);
   assert.match(layout, /PerformanceFilterProvider/);
   for (const source of [revenue, ads, overview]) assert.match(source, /usePerformanceFilters/);
 });

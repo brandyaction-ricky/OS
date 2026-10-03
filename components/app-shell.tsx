@@ -17,6 +17,7 @@ import {
   Search,
   Sun,
   X,
+  UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -27,7 +28,7 @@ import { DevelopmentRequestDrawer } from "./development-request-drawer";
 import { ServerConnectionStatus } from "./server-connection-status";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
-import { PerformanceFilterBar } from "./performance-filter-context";
+import {MovedMenuNotice} from "./moved-menu-notice";
 import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
 type DisplayTheme = "dark" | "light";
@@ -36,7 +37,7 @@ const THEME_STORAGE_KEY = "brandy-os-theme";
 const GUIDANCE_STORAGE_KEY = "brandy-os-guidance";
 const GROUPS_STORAGE_KEY = "brandy-os-nav-groups";
 const COLLAPSED_STORAGE_KEY = "brandy-os-nav-collapsed";
-const MENU_GUIDE_STORAGE_KEY = "brandy-os-menu-guide-v2";
+const MENU_GUIDE_STORAGE_KEY = "brandy-os-menu-guide-final";
 
 
 function Initials({ name }: { name: string }) {
@@ -57,6 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [knowledgeFocus, setKnowledgeFocus] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
@@ -86,7 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!profileOpen) return;
     const menu = profileMenuRef.current;
-    (menu?.querySelector<HTMLButtonElement>("button") ?? menu)?.focus();
+    (menu?.querySelector<HTMLElement>("a, button") ?? menu)?.focus();
     const containsProfileElement = (target: EventTarget | null) => target instanceof Node && (
       profileMenuRef.current?.contains(target) ||
       profileTriggerRef.current?.contains(target)
@@ -127,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
       const moved = previousStage.current !== stage.id;
       previousStage.current = stage.id;
-      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, stored?.[item.id] === true])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
+      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, stored?.[item.id] !== false])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
       setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
       setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
     } catch { setOpenGroups({ [stage.id]: true }); }
@@ -174,7 +176,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const changeGuidance = () => {
     const nextGuidance = !guidanceOn;
     document.documentElement.dataset.guidance = nextGuidance ? "on" : "off";
-    window.localStorage.setItem(GUIDANCE_STORAGE_KEY, nextGuidance ? "on" : "off");
+    try {
+      window.localStorage.setItem(GUIDANCE_STORAGE_KEY, nextGuidance ? "on" : "off");
+      if (nextGuidance) Object.keys(window.localStorage).filter(key=>key.startsWith("brandy-os-guide-closed:")).forEach(key=>window.localStorage.removeItem(key));
+    } catch { /* Display preferences still work when storage is unavailable. */ }
+    window.dispatchEvent(new Event("brandy-guidance-change"));
     setGuidanceOn(nextGuidance);
   };
 
@@ -232,11 +238,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="unified-nav">
           {NAV_STAGES.map(item => {
             const Icon = item.icon;
-            const active = item.id === stage.id;
+            const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               <button className="nav-section-trigger" onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
-                <Icon size={18} /><span>{item.label}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
+                <Icon size={18} /><span>{item.label}{item.id === "content" ? <small className="nav-process-caption">유튜브 공정 순서</small> : null}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
               </button>
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={!openGroups[item.id]}>
                 {item.pages.map((entry, index) => {
@@ -245,7 +251,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   return <div key={entry.href}>
                     {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
                     <Link href={entry.href} className={`page-link${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
-                      <PageIcon size={15} /><span>{entry.label}</span>
+                      {entry.processNumber ? <span className="process-number" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦","⑧"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>
                     </Link>
                   </div>;
                 })}
@@ -258,13 +264,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <div className="sidebar-status"><ServerConnectionStatus demo={demo} /></div>
           <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
             <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
-            <span className="profile-copy"><strong>{profile?.displayName ?? "구성원"}</strong><small>{profile?.team ?? "전체"}</small></span><ChevronsUpDown size={14} />
+            <span className="profile-copy"><strong>{profile?.displayName ?? "구성원"}</strong><small>내 계정 · 채널 연결</small></span><ChevronsUpDown size={14} />
           </button>
           {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
+            <Link href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 계정 · 채널 연결</Link>
             <div className="display-controls" role="group" aria-label="화면 설정">
               <button type="button" className="display-control" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
-              <button type="button" className="display-control guidance-control" role="switch" aria-checked={guidanceOn} aria-label={`기능 설명 안내 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>설명 {guidanceOn ? "ON" : "OFF"}</span></button>
             </div>
             <button onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /> 메뉴 안내 다시 보기</button>
             {!demo ? <><button onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button><button onClick={signOut}><LogOut size={15} /> 로그아웃</button></> : null}
@@ -275,16 +281,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="app-main">
         <header className="topbar">
           <button ref={mobileTriggerRef} className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <nav className="breadcrumbs" aria-label="현재 위치"><Link href={stage.href}>{stage.label}</Link><ChevronRight size={14} /><span aria-current="page">{page.label}</span></nav>
+          <nav className="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={stage.href}>{stage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{page.label}</span></nav>
           <div className="topbar-actions">
             <button className="command-trigger" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd><Command size={11} />K</kbd></button>
-            <Link className="quick-record-link" href="/knowledge?new=1" onClick={() => window.dispatchEvent(new Event("brandy-quick-record"))}><NotebookPen size={16} /><span>빠른 기록</span></Link>
+            <button type="button" className="display-control guidance-control" role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
+            <div className="quick-record-menu" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setQuickOpen(false);}} onKeyDown={event=>{if(event.key==="Escape"){setQuickOpen(false);event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();}}}>
+              <button className="quick-record-link" aria-expanded={quickOpen} aria-controls="quick-record-options" onClick={()=>setQuickOpen(!quickOpen)}><NotebookPen size={16} /><span>빠른 기록</span></button>
+              {quickOpen ? <div id="quick-record-options" className="quick-record-options"><Link href="/knowledge?new=1" onClick={()=>{setQuickOpen(false);window.dispatchEvent(new Event("brandy-quick-record"));}}>메모</Link><Link href="/organization/tasks?new=1" onClick={()=>setQuickOpen(false)}>업무</Link><button onClick={()=>{setRequestOpen(true);setQuickOpen(false);}}>수정 요청</button></div> : null}
+            </div>
             <DevelopmentRequestNotifications open={notificationsOpen} onOpenChange={changeNotificationsOpen} />
           </div>
         </header>
         <main className="page-content">
-          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>내 할 일 · 콘텐츠 · 회사 문서 · 매출·성과 · 팀 · 개발 · 설정으로 묶었습니다. 찾기(⌘K)에서 이전 메뉴 이름도 사용할 수 있습니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
-          {pathname.startsWith("/performance") ? <PerformanceFilterBar /> : null}
+          <MovedMenuNotice />
+          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>내 할 일 · 콘텐츠 · 회사 문서 · 팀 · 개발 · 설정, 6묶음 23개 메뉴입니다. 채널 연결은 아래 프로필의 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
           {children}
         </main>
       </div>
