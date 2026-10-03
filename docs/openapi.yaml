@@ -8,6 +8,22 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/content/comments:
+    get:
+      summary: 최근 댓글 목록과 본인·공유 처리 권한
+      description: 사람 로그인/RLS 범위에서 최근 200건. comments[].canRespond/teamShared와 truncated를 반환하며 채널 토큰·비공유 계정의 이름은 반환하지 않습니다.
+      responses:
+        "200": { description: 댓글 목록 }
+        "503": { description: 댓글·채널 저장소 준비 필요 }
+    post:
+      summary: 댓글 분류·담당·주제 전환·초안·모의 답글/숨기기
+      description: id/expectedVersion/operation 필요. assign/classify/topic/draft는 활성 직원에게 열려 있습니다. reply/hide는 본인 또는 공유 계정 및 confirm=true가 필요합니다. Threads는 최상위 답글만 숨김. draft 기본 queue는 202와 jobId, 명시적 api는 저장된 초안과 생성 기록을 반환합니다. 실계정 답글·숨기기는 별도 검수 전 503.
+      responses:
+        "200": { description: comment 또는 topicId }
+        "202": { description: 구독 대기열 요청 저장 }
+        "403": { description: 채널 처리 권한 없음 }
+        "409": { description: 버전 충돌 또는 이미 처리됨 }
+        "503": { description: 실계정 처리 미공개 또는 API 준비 필요 }
   /api/v1/content/publish:
     post:
       summary: 사람 전용 채널 게시 편집·승인·예약·모의 게시

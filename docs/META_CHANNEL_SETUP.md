@@ -29,6 +29,10 @@
 
 ## 수행하지 않은 검증
 
+댓글 수집은 최근 14일의 게시 완료 기록에서 외부 ID를 읽는다. 동일 플랫폼·계정·댓글은 결정적 ID와 유일 인덱스로 한 번만 넣고, 이미 담당/답글/숨김 처리된 기록을 덮어쓰지 않는다. 현재 한 번에 게시물 100개, 댓글 페이지 5개 한도이며 초과는 truncated로 표시한다. Instagram 중첩 답글 수집은 추가 검수가 필요하다. 실제 답글·숨기기는 실게시와 같은 이유로 서버에서 잠가 두었다.
+
+Threads 읽기와 중첩 관계 필드는 [Meta 공식 Threads API 컬렉션](https://www.postman.com/meta/threads/documentation/dht3nzz/threads-api?entity=request-34203612-74fb48b1-ad1a-480e-b200-4dcdb8126a2f)을 참조했다. 실제 계정 응답·페이징·권한 범위는 아직 확인하지 않았다.
+
 실제 DEV/운영 DB 적용, RLS 연결 시험, Instagram 프로페셔널 계정 OAuth, Threads OAuth, 토큰 만료·갱신, 실게시, 실제 테스터 알림 전달은 아직 검증하지 않았다. Instagram Login의 계정 유형 응답과 앱별 scope 허용은 실계정 연결 검수에서 확인해야 한다. API 응답 차이는 안전하게 연결 실패로 처리한다. Meta 테스터 수 제한 및 Instagram 첫 댓글 API 지원 여부는 미확정이다.
 
 Google 앱 게시 상태 역시 확인하지 않았다. 외부 테스트 앱의 갱신 토큰은 기본 권한만 요청하는 예외를 제외하면 7일 만료 영향을 받는다.

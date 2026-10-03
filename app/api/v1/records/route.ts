@@ -1,3 +1,4 @@
+import { isCommentDraftPatch } from "@/lib/content-comments";
 import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { contentOrigin } from "@/lib/content-origin";
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
+    if (input.recordType === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 수집 기록은 전용 API에서만 만듭니다.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 작성해 주세요.");
     if ((input.recordType === "development_notification" || input.recordType === "notification") || (input.metadata.kind === "development_notification" || input.metadata.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     if (input.recordType === "leave_balance" && actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 연차를 부여할 수 있습니다.");
@@ -135,6 +137,7 @@ export async function PATCH(request: Request) {
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if ([current.metadata?.kind, input.metadata?.kind].some(kind => ["meta_tester_request", "channel_audit"].includes(String(kind)))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
+    if (current.record_type === "content_comment" && !isCommentDraftPatch(current, input)) throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글은 초안만 변경할 수 있습니다. 전송·숨기기는 전용 사람 확인 API를 사용하세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
     await assertReviewedMeetingTask(actor,input,current);
@@ -186,6 +189,7 @@ export async function DELETE(request: Request) {
     if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
     if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "PUBLICATION_API_REQUIRED", "채널 게시 이력은 보존합니다.");
+    if (current.record_type === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 처리 이력은 보존합니다.");
     if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);

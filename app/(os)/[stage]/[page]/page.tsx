@@ -1,4 +1,5 @@
 import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
+import {ContentCommentsWorkspace} from "@/components/content-comments-workspace";
 import {AccountWorkspace} from "@/components/account-workspace";
 import {ContentProductionWorkspace} from "@/components/content-production-workspace";
 import {retiredRoute} from "@/lib/final-routes";
@@ -67,6 +68,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
     return view === "calendar" ? <PublishingCalendarWorkspace /> : <ContentAutomationWorkspace key={view} initialView={view === "create" ? "pipeline" : "review"} />;
   }
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
+  if (href === "/content/comments") return <ContentCommentsWorkspace />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;
   if (href === "/knowledge/graph") return <><KnowledgeTabs connections /><KnowledgeGraphWorkspace /></>;
   if (href === "/performance/connections") redirect("/settings/connections");
