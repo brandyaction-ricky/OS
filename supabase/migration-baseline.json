@@ -285,6 +285,36 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20261002152810_connection_check_evidence.sql",
+      "sha256": "0741f720a20adc91009d946ecb737165c051dd4ee6cbd91f1bd0233842548cde",
+      "requiresApproval": true,
+      "description": "Add server-only connection probe history and versioned owners; not applied."
+    },
+    {
+      "file": "20261002193500_agent_document_write_status_policy.sql",
+      "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
+      "requiresApproval": true,
+      "appliedEnvironments": []
+    },
+    {
+      "file": "20261002202443_personal_work_notifications.sql",
+      "sha256": "812eb802241dd7743e097ff7ed329db34fedd8187d52b9263b9d671beb7123dc",
+      "requiresApproval": true,
+      "appliedEnvironments": []
+    },
+    {
+      "file": "20261003044602_final_os_channel_connections.sql",
+      "sha256": "104c11c2835b0af9fcbe7275c4a6b0c4dd6d25eea201d7b4e56140d5b2ff7eb1",
+      "requiresApproval": true,
+      "appliedEnvironments": []
+    },
+    {
+      "file": "20261003054936_channel_publication_guards_and_comments.sql",
+      "sha256": "f375cc4bcc135e13978677c939f90fa7272daf53c3d06a5ce1c1d1000e9632a2",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

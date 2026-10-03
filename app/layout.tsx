@@ -2,6 +2,12 @@ import type { Metadata, Viewport } from "next";
 import "./theme-tokens.css";
 import "./globals.css";
 import "../components/linear-shell.css";
+import "../components/unified-shell.css";
+import "../components/personal-work.css";
+import "../components/meeting-tasks.css";
+import "../components/production-hub.css";
+import "../components/indexing-progress.css";
+import "./final-uiux.css";
 
 export const metadata: Metadata = {
   title: "브랜디 OS",

@@ -15,16 +15,16 @@ const contrast = (foreground, background) => {
   return (values[0] + 0.05) / (values[1] + 0.05);
 };
 
-test("the global header exposes persistent theme and guidance controls", async () => {
+test("profile theme and topbar guidance retain persistent preferences", async () => {
   const [shell, layout] = await Promise.all([
     read("components/app-shell.tsx"),
     read("app/layout.tsx"),
   ]);
 
-  assert.match(shell, /aria-label="화면 설정"/);
+  assert.match(shell, /aria-label="내 계정"[\s\S]*aria-label="화면 설정"/);
   assert.match(shell, /라이트.*모드로 전환/);
   assert.match(shell, /role="switch"/);
-  assert.match(shell, /기능 설명 안내/);
+  assert.match(shell, /사용 가이드/);
   assert.match(shell, /brandy-os-theme/);
   assert.match(shell, /brandy-os-guidance/);
   assert.match(shell, /window\.localStorage\.setItem/);

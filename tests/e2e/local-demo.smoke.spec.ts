@@ -8,8 +8,8 @@ test("local demo renders the application shell and health contract", async ({ pa
 
   await page.goto("/home");
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("이번 주 핵심만 모았습니다");
-  await expect(page.getByText("데모 데이터", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("내 할 일");
+  await expect(page.getByText("데모 · 실제 업무 연결 전", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "지식 찾기" })).toBeVisible();
 
   const healthResponse = await request.get("/api/v1/health");
@@ -24,16 +24,16 @@ test("local demo renders the application shell and health contract", async ({ pa
 });
 
 test("secondary publishing pages keep the content navigation context", async ({ page }) => {
-  for (const [pathname, label] of [
+  for (const [pathname] of [
     ["/content/automation", "멀티채널 자동화"],
     ["/content/review", "검토·발행 대기목록"],
     ["/content/calendar", "발행 캘린더"],
   ]) {
     await page.goto(pathname);
-    await expect(page.locator(".sidebar-head h2")).toHaveText("콘텐츠");
-    await expect(page.locator(".breadcrumbs")).toContainText(label);
+    await expect(page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".breadcrumbs")).toContainText("발행·업로드");
     await expect(page.getByRole("link", { name: "발행·업로드", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page).toHaveTitle(`${label} | 브랜디 OS`);
+    await expect(page).toHaveTitle("발행·업로드 | 브랜디 OS");
   }
 });
 
@@ -214,6 +214,13 @@ test("knowledge tree supports context actions and direct drag moves", async ({ p
   await companyFolder.click();
   await page.getByRole("button", { name: "채널 운영 1" }).click();
   const documentRow = page.getByRole("button", { name: /패키징 원칙/ });
+  await expect(page.locator(".document-tree-select-row input[type=checkbox]")).toHaveCount(0);
+  await page.getByRole("button", { name: "여러 문서 선택" }).click();
+  await documentRow.click();
+  await expect(documentRow).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("문서를 눌러 선택 · 1개")).toBeVisible();
+  await page.getByRole("button", { name: "완료" }).click();
+  await expect(documentRow).not.toHaveAttribute("aria-pressed");
   await documentRow.dispatchEvent("contextmenu", { clientX: 260, clientY: 300 });
   const documentMenu = page.getByRole("menu", { name: "패키징 원칙 문서 메뉴" });
   await expect(documentMenu.getByRole("menuitem", { name: "이름 변경" })).toBeVisible();

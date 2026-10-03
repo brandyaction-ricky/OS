@@ -39,7 +39,7 @@ test("connection status uses automatic health values and distinct dot colors", a
     "youtubeOAuth",
     "advertising",
   ]) assert.match(settings, new RegExp(`health\\?\\.${field}|health\\.${field}`));
-  assert.match(settings, /state-dot \$\{row\.status\}/);
+  assert.match(settings, /state-dot \$\{row\.status === "ready" \? "warning" : row\.status\}/);
   assert.match(css, /\.state-dot\.waiting/);
   assert.match(css, /\.state-dot\.warning/);
   assert.match(settings, /settings-connection-metrics/);
@@ -81,8 +81,10 @@ test("production QA fixes label key controls and keep the weekly board in view",
   assert.match(shorts, /aria-label="제안할 클립 수"/);
   assert.match(search, /aria-label="지식 검색어"/);
   assert.match(graph, /aria-label=\{`\$\{node\.folder\}\/\$\{node\.title\} 문서 선택`\}/);
-  assert.match(calendar, /aria-label="이전 달"/);
-  assert.match(calendar, /aria-label="다음 달"/);
+  assert.match(calendar, /aria-label="이전 기간"/);
+  assert.match(calendar, /aria-label="다음 기간"/);
+  assert.match(calendar, /setMode\("week"\)/);
+  assert.match(calendar, /setMode\("month"\)/);
   assert.match(css, /\.week-board \{[^}]*minmax\(128px,1fr\)/);
 });
 
@@ -144,8 +146,9 @@ test("mobile navigation includes settings and company settings link to canonical
   assert.doesNotMatch(shell, /NAV_STAGES\.slice\(0, 5\)/);
   assert.match(css, /mobile-stage-bar[^}]*grid-template-columns: repeat\(6,1fr\)/);
   assert.match(settings, /href="\/organization\/members"/);
-  assert.match(settings, /href="\/home\/goals"/);
-  assert.match(settings, /이번 달 매출 목표/);
+  assert.doesNotMatch(settings, /href="\/home\/goals"/);
+  assert.doesNotMatch(settings, /이번 달 매출 목표/);
+  assert.match(settings, /CommerceAdminLinks embedded/);
 });
 
 test("sensitive access gaps, shared knowledge categories and action confirmations are explicit", async () => {

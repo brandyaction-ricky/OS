@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "./html-entities";
 import type { DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
 import type { OsRecord, RecordType } from "./record-types";
@@ -107,11 +108,13 @@ export async function restoreDocumentVersion(token: string | null, id: string, v
 export async function searchKnowledge(
   token: string | null,
   input: {
+    quick?: boolean;
     query: string;
     mode?: "hybrid" | "keyword" | "semantic";
     topK?: number;
     filters?: { statuses?: string[]; folder?: string; brand?: string };
   },
+  signal?: AbortSignal,
 ) {
   return apiRequest<{
     query: string;
@@ -121,7 +124,7 @@ export async function searchKnowledge(
     results: SearchResult[];
     tookMs: number;
   }>("/api/v1/search", {
-    method: "POST",
+    method: "POST", signal,
     token,
     body: JSON.stringify(input),
   });
@@ -130,7 +133,8 @@ export async function searchKnowledge(
 export async function listRecords(token: string | null, recordType: RecordType, query = "") {
   const params = new URLSearchParams(query);
   params.set("type", recordType);
-  return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+  const result = await apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
+  return { ...result, records: result.records.map(record => record.record_type.startsWith("content_") ? { ...record, title: decodeHtmlEntities(record.title) } : record) };
 }
 
 export async function listAllRecordsOfType(token: string | null, recordType: RecordType) {
@@ -216,6 +220,15 @@ export async function prepareMeeting(token: string | null, brand = "", team = ""
   return apiRequest<{ latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null; pending: string[]; todos: OsRecord[]; kpis: { id: string; title: string; current: number; previous: number; unit: string; signal: string }[] }>(`/api/v1/meeting-prep?${query}`, { token });
 }
 
+export async function getConnectionChecks(token: string | null) {
+  return apiRequest<{ checks: import("./connection-status").ConnectionCheck[]; checkedAt: string }>("/api/v1/connections", { token });
+}
+export async function testConnection(token: string | null, service: string) {
+  return apiRequest<{ ok: boolean; checks: import("./connection-status").ConnectionCheck[] }>("/api/v1/connections", { token, method: "POST", body: JSON.stringify({ service }) });
+}
+export async function saveConnectionOwners(token: string | null, input: { service: string; primaryOwner: string | null; backupOwner: string | null; expectedVersion: number }) {
+  return apiRequest<{ ok: boolean }>("/api/v1/connections", { token, method: "PATCH", body: JSON.stringify(input) });
+}
 export async function getHealth() {
   return apiRequest<{
     ok: boolean;
@@ -231,6 +244,7 @@ export async function getHealth() {
     youtubeOAuth: "ready" | "missing";
     advertising: "ready" | "partial" | "missing";
     checkedAt: string;
+    checks: Array<{ id: string; status: string; lastOkAt: string | null; scope: string }>;
   }>("/api/v1/health");
 }
 
@@ -240,8 +254,10 @@ export interface AdPerformanceResponse {
   range: { from: string; to: string };
   connections: Record<"meta" | "google", { configured: boolean; brands: Record<"myin" | "brandyedu", boolean> }>;
   rows: Array<{ provider: "meta" | "google"; brand_key: "myin" | "brandyedu"; metric_date: string; spend: number; attributed_revenue: number; conversions: number; impressions: number; clicks: number; currency: string; source_account: string }>;
-  channels: Array<{ provider: "meta" | "google"; spend: number; attributedRevenue: number; conversions: number; impressions: number; clicks: number; roas: number; cpa: number; ctr: number }>;
-  summary: { spend: number; attributedRevenue: number; conversions: number; impressions: number; clicks: number; roas: number; cpa: number; ctr: number; operatingRevenue: number; financeAdExpense: number | null };
+  channels: Array<{ provider: "meta" | "google" } & ReturnType<typeof import("./ad-metrics").aggregateAdMetrics>>;
+  summary: ReturnType<typeof import("./ad-metrics").aggregateAdMetrics> & { operatingRevenue: number | null; financeAdExpense: number | null };
+  financeVisible: boolean;
+  lastCollectedAt: string | null;
   lastRuns: Array<{ provider: "meta" | "google"; brand_key: "myin" | "brandyedu"; status: string; rows_written: number; error_message: string; started_at: string; finished_at: string | null }>;
 }
 
@@ -263,6 +279,7 @@ export async function importPerformanceCsv(token: string | null, input: { kind: 
 }
 
 export interface EmbeddingQueueStatus {
+  coverage?: import("./indexing-diagnostics").IndexCoverage;
   pending: number;
   running: number;
   failed: number;
@@ -314,6 +331,7 @@ export interface AgentAccessKey {
   brand: string | null;
   scopes: string[];
   allowed_statuses: string[];
+  enforce_write_statuses?: boolean;
   owner_user_id: string;
   active: boolean;
   last_used_at: string | null;
@@ -334,10 +352,10 @@ export async function listAgentKeys(token: string | null) {
 export async function createAgentKey(token: string | null, input: {
   name: string;
   ownerUserId: string;
-  access: "read" | "write";
+  access: "read" | "draft" | "write";
   team?: string;
   brand?: string | null;
-  expiresAt?: string | null;
+  expiresAt: string;
 }) {
   return apiRequest<{
     key: AgentAccessKey;
@@ -354,6 +372,7 @@ export async function revokeAgentKey(token: string | null, id: string) {
 export async function generateContent(token: string | null, input: {
   action: "appeal_candidates" | "topic_plan" | "script_draft" | "derivatives" | "title_package" | "shorts_proposal" | "youtube_kit";
   sourceId: string;
+  mode?: "queue" | "api";
   platforms?: Array<"shorts" | "threads" | "column" | "instagram" | "essay">;
   count?: number;
   marketEvidence?: Array<Pick<YoutubeMarketItem, "title" | "channelTitle" | "viewCount" | "url">>;
@@ -427,6 +446,7 @@ export async function deleteContentMedia(token: string | null, path: string) {
 
 export interface YoutubeMarketItem {
   live?: boolean;
+  channelId?: string;
   id: string;
   title: string;
   channelTitle: string;
@@ -441,8 +461,9 @@ export interface YoutubeMarketItem {
   url: string;
 }
 
-export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12, options: { region?: string; order?: string } = {}) {
+export async function searchYoutubeMarket(token: string | null, query: string, maxResults = 12, options: { region?: string; order?: string; own?: boolean } = {}) {
   const params = new URLSearchParams({ q: query, maxResults: String(maxResults), region: options.region ?? "KR", order: options.order ?? "viewCount" });
+  if (options.own) params.set("own", "true");
   return apiRequest<{ query: string; configured: boolean; items: YoutubeMarketItem[] }>(`/api/v1/youtube/search?${params}`, { token });
 }
 
@@ -464,6 +485,8 @@ export async function resolveYoutubeChannel(token: string | null, query: string)
 }
 
 export interface YoutubeOAuthStatus {
+  ownerId?: string;
+  teamShared?: boolean;
   configured: boolean;
   canManage: boolean;
   connected: boolean;
@@ -484,7 +507,7 @@ export async function disconnectYoutubeOAuth(token: string | null) {
   return apiRequest<{ disconnected: true }>("/api/v1/youtube/oauth", { method: "DELETE", token });
 }
 
-export async function createYoutubeUploadSession(token: string | null, input: { kitId: string; fileName: string; fileSize: number; mimeType: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+export async function createYoutubeUploadSession(token: string | null, input: { kitId: string; fileName: string; fileSize: number; mimeType: string; privacyStatus: "private" | "unlisted"; finalApproval: true; connectionOwnerId?: string }) {
   return apiRequest<{ uploadUrl: string; kitId: string; privacyStatus: "private" | "unlisted"; fileName: string }>("/api/v1/youtube/upload/session", { method: "POST", token, body: JSON.stringify(input) });
 }
 
@@ -504,7 +527,7 @@ export function uploadYoutubeFile(uploadUrl: string, file: File, onProgress: (pe
   });
 }
 
-export async function completeYoutubeUpload(token: string | null, input: { kitId: string; videoId: string; privacyStatus: "private" | "unlisted"; finalApproval: true }) {
+export async function completeYoutubeUpload(token: string | null, input: { kitId: string; videoId: string; privacyStatus: "private" | "unlisted"; finalApproval: true; connectionOwnerId?: string }) {
   return apiRequest<{ uploaded: true; videoId: string; videoUrl: string; privacyStatus: string }>("/api/v1/youtube/upload/complete", { method: "POST", token, body: JSON.stringify(input) });
 }
 

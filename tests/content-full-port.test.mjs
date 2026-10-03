@@ -7,7 +7,7 @@ const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
 test("content pages use the full screenshot-matched workspaces", async () => {
   const [router, radar, packaging, shorts, performance] = await Promise.all([
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("components/content-radar-workspace.tsx"),
     read("components/content-packaging-workspace.tsx"),
     read("components/content-shortform-workspace.tsx"),
@@ -97,8 +97,8 @@ test("publishing keeps review, calendar and SEO editing in one operating flow", 
     read("components/content-automation-workspace.tsx"),
     read("components/publishing-calendar-workspace.tsx"),
   ]);
-  for (const label of ["검토 대기목록", "발행 캘린더", "파생 제작 현황", "칼럼 편집", "HTML 복사", "이미지 자리"]) assert.match(automation, new RegExp(label));
+  for (const label of ["검토 대기목록", "발행 캘린더", "PublishingTabs", "칼럼 편집", "HTML 복사", "이미지 자리"]) assert.match(automation, new RegExp(label));
   assert.match(automation, /sandbox=""/);
   assert.doesNotMatch(automation, /dangerouslySetInnerHTML/);
-  assert.match(calendar, /href="\/content\/publishing"/);
+  assert.match(calendar, /PublishingTabs view="calendar"/);
 });

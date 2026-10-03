@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { canReadKnowledgeDocument } from "@/lib/server/document-access";
+import { canReadKnowledgeDocument, canAgentWriteDocument } from "@/lib/server/document-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
 import type { KnowledgeDocument } from "@/lib/types";
@@ -126,6 +126,7 @@ export async function POST(request: Request) {
     requireAgentScope(actor, "knowledge.write");
     const input = createSchema.parse(await parseJson(request));
     await assertOrganization(actor, input.organizationId);
+    if (!canAgentWriteDocument(actor, "draft")) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 초안을 만들 수 없습니다.");
     let document: KnowledgeDocument | null = null;
 
     if (actor.type === "agent") {
@@ -175,6 +176,7 @@ export async function PATCH(request: Request) {
     const service = createServiceSupabase();
     const { data: current, error: readError } = await service.from("os_documents").select("*").eq("id", input.documentId).single();
     if (readError || !current) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+    if (!canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
     const expectedVersion = input.expectedVersion ?? current.current_version;
     const next = {
       title: input.title ?? current.title,
@@ -248,6 +250,8 @@ export async function DELETE(request: Request) {
     let document: KnowledgeDocument | null = null;
 
     if (actor.type === "agent") {
+      const { data: current } = await createServiceSupabase().from("os_documents").select("status").eq("id", documentId).single();
+      if (current && current.status !== "archived" && !canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
       const { data, error } = await createServiceSupabase().rpc("os_agent_archive_document", {
         p_agent_key_id: actor.id,
         p_organization_id: parsedOrganizationId,

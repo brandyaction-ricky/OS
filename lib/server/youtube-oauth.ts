@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { assertActiveChannelOwner, assertConnectionAccess, auditChannelAction, type ChannelActor } from "./channel-access";
 
 export const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
 export const YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
@@ -8,6 +9,7 @@ export const YOUTUBE_OAUTH_COOKIE = "bos_youtube_oauth";
 
 type StoredConnection = {
   owner_id: string;
+  team_shared?: boolean;
   encrypted_refresh_token: string;
   encrypted_access_token: string | null;
   access_token_expires_at: string | null;
@@ -118,36 +120,55 @@ export async function exchangeYoutubeCode(code: string) {
   }));
 }
 
-async function loadConnection(ownerId: string) {
+export async function loadYoutubeConnection(ownerId: string) {
   const { data, error } = await createServiceSupabase().from("os_youtube_connections").select("*").eq("owner_id", ownerId).maybeSingle();
   if (error) throw new ApiError(500, "YOUTUBE_CONNECTION_READ_FAILED", "YouTube 연결 정보를 불러오지 못했습니다.", error.message);
   return data as StoredConnection | null;
 }
 
 export async function saveYoutubeConnection(ownerId: string, tokens: GoogleTokenResponse) {
+  await assertActiveChannelOwner(ownerId);
   if (!tokens.refresh_token || !tokens.access_token) throw new ApiError(502, "YOUTUBE_REFRESH_TOKEN_MISSING", "Google에서 갱신 토큰을 받지 못했습니다. 다시 연결해 주세요.");
   const channelResponse = await fetch("https://www.googleapis.com/youtube/v3/channels?part=id,snippet&mine=true", { headers: { authorization: `Bearer ${tokens.access_token}` }, cache: "no-store" });
   const channelBody = await channelResponse.json().catch(() => ({})) as { items?: Array<{ id?: string; snippet?: { title?: string } }>; error?: { message?: string } };
   if (!channelResponse.ok) throw new ApiError(502, "YOUTUBE_CHANNEL_READ_FAILED", "연결한 YouTube 채널을 확인하지 못했습니다.", channelBody.error?.message);
   const channel = channelBody.items?.[0];
   if (!channel?.id) throw new ApiError(400, "YOUTUBE_CHANNEL_MISSING", "선택한 Google 계정에 YouTube 채널이 없습니다.");
+  const existing = await loadYoutubeConnection(ownerId);
+  if (existing && existing.channel_id !== channel.id) throw new ApiError(409, "CHANNEL_REPLACEMENT_REQUIRED", "이미 연결된 채널이 있습니다. 내 계정에서 먼저 해제한 뒤 다른 채널을 연결해 주세요.");
+  const { data: duplicate, error: duplicateError } = await createServiceSupabase().from("os_youtube_connections").select("owner_id").eq("channel_id", channel.id).neq("owner_id", ownerId).limit(1).maybeSingle();
+  if (duplicateError) throw new ApiError(500, "CHANNEL_DUPLICATE_CHECK_FAILED", "채널 연결 중복을 확인하지 못했습니다.");
+  if (duplicate) throw new ApiError(409, "CHANNEL_ALREADY_CONNECTED", "다른 OS 계정에 연결된 채널입니다. 해당 계정에서 팀 공유를 켜 주세요.");
   const now = new Date().toISOString();
-  const { error } = await createServiceSupabase().from("os_youtube_connections").upsert({
+  const payload = {
     owner_id: ownerId, encrypted_refresh_token: encryptYoutubeToken(tokens.refresh_token), encrypted_access_token: encryptYoutubeToken(tokens.access_token),
     access_token_expires_at: new Date(Date.now() + Math.max(60, tokens.expires_in ?? 3600) * 1000).toISOString(), scope: tokens.scope ?? "",
-    channel_id: channel.id, channel_title: channel.snippet?.title ?? "YouTube 채널", connected_at: now, updated_at: now,
-  }, { onConflict: "owner_id" });
+    channel_id: channel.id, channel_title: channel.snippet?.title ?? "YouTube 채널", connected_at: existing?.connected_at ?? now, updated_at: now,
+  };
+  const table = createServiceSupabase().from("os_youtube_connections");
+  const query = existing ? table.update(payload).eq("owner_id", ownerId).eq("channel_id", channel.id) : table.insert(payload);
+  const { data: saved, error } = await query.select("owner_id").maybeSingle();
+  if (error?.code === "23505" || (!error && !saved)) throw new ApiError(409, "CHANNEL_ALREADY_CONNECTED", "연결이 변경되었거나 다른 OS 계정에 연결된 채널입니다. 새로 확인해 주세요.");
   if (error) throw new ApiError(500, "YOUTUBE_CONNECTION_SAVE_FAILED", "YouTube 연결 정보를 저장하지 못했습니다.", error.message);
+  await auditChannelAction(ownerId, ownerId, "youtube", "연결");
   return { channelId: channel.id, channelTitle: channel.snippet?.title ?? "YouTube 채널" };
 }
 
 export async function youtubeConnectionStatus(ownerId: string) {
-  const connection = await loadConnection(ownerId);
-  return connection ? { connected: true, channelId: connection.channel_id, channelTitle: connection.channel_title, connectedAt: connection.connected_at } : { connected: false, channelId: null, channelTitle: null, connectedAt: null };
+  const connection = await loadYoutubeConnection(ownerId);
+  return connection ? { connected: true, channelId: connection.channel_id, channelTitle: connection.channel_title, connectedAt: connection.connected_at, ownerId, teamShared: connection.team_shared === true } : { connected: false, channelId: null, channelTitle: null, connectedAt: null, ownerId, teamShared: false };
+}
+
+export async function authorizeYoutubeConnection(actor: ChannelActor, ownerId = actor.id) {
+  const connection = await loadYoutubeConnection(ownerId);
+  if (!connection) throw new ApiError(409, "YOUTUBE_NOT_CONNECTED", "먼저 내 계정에서 YouTube 채널을 연결해 주세요.");
+  assertConnectionAccess(actor, connection);
+  await assertActiveChannelOwner(ownerId);
+  return connection;
 }
 
 export async function getYoutubeAccessToken(ownerId: string) {
-  const connection = await loadConnection(ownerId);
+  const connection = await loadYoutubeConnection(ownerId);
   if (!connection) throw new ApiError(409, "YOUTUBE_NOT_CONNECTED", "먼저 YouTube 채널을 연결해 주세요.");
   if (connection.encrypted_access_token && connection.access_token_expires_at && new Date(connection.access_token_expires_at).getTime() > Date.now() + 60_000) return decryptYoutubeToken(connection.encrypted_access_token);
   const tokens = await requestGoogleToken(new URLSearchParams({
@@ -162,7 +183,7 @@ export async function getYoutubeAccessToken(ownerId: string) {
 }
 
 export async function disconnectYoutube(ownerId: string) {
-  const connection = await loadConnection(ownerId);
+  const connection = await loadYoutubeConnection(ownerId);
   if (connection) {
     const token = decryptYoutubeToken(connection.encrypted_refresh_token);
     await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token }), cache: "no-store" }).catch(() => null);

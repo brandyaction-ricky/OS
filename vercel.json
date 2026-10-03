@@ -18,6 +18,7 @@
   "crons": [
     { "path": "/api/v1/indexing/cron", "schedule": "0 18 * * *" },
     { "path": "/api/v1/telegram/digest", "schedule": "15 * * * *" },
-    { "path": "/api/v1/youtube/observe", "schedule": "5 * * * *" }
+    { "path": "/api/v1/youtube/observe", "schedule": "5 * * * *" },
+    { "path": "/api/v1/content/channel-sync", "schedule": "25 * * * *" }
   ]
 }

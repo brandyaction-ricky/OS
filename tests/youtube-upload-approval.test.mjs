@@ -20,7 +20,7 @@ function setup(options = {}) {
     { id: kitId, record_type: "content_package", title: "발행 키트", parent_id: sourceId, archived_at: null, metadata: { packageKind: "youtube_kit", result: { title: "영상 제목" } } },
     { id: sourceId, record_type: "content_topic", archived_at: null, metadata: { pipelineEnabled: true } },
   ];
-  const actor = { id: "admin", role: "admin", supabase: { from() {
+  const actor = { id: "owner", type: "user", role: "member", supabase: { from() {
     const filters = [];
     const builder = { select() { return builder; }, eq(key, value) { filters.push((row) => row[key] === value); return builder; }, is(key, value) { filters.push((row) => row[key] === value); return builder; }, async maybeSingle() { return { data: structuredClone(rows.find((row) => filters.every((match) => match(row))) ?? null), error: null }; } };
     return builder;
@@ -30,7 +30,8 @@ function setup(options = {}) {
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ code: error.code }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => actor },
     "@/lib/server/content-pipeline": { readPipeline: async () => ({ approved: controls.approved, release: { approved: controls.releaseApproved, plan: { channelId: controls.approvedChannel, privacyStatus: controls.approvedPrivacy } } }) },
-    "@/lib/server/youtube-oauth": { youtubeConnectionStatus: async () => ({ channelId: controls.connectedChannel, channelTitle: "Main" }), getYoutubeAccessToken: async () => "token" },
+    "@/lib/server/channel-access": { auditChannelAction: async () => {} },
+    "@/lib/server/youtube-oauth": { authorizeYoutubeConnection: async () => { if (controls.denyChannel) throw new ApiError(403, "CHANNEL_ACCESS_DENIED", "denied"); }, youtubeConnectionStatus: async () => ({ channelId: controls.connectedChannel, channelTitle: "Main" }), getYoutubeAccessToken: async () => "token" },
   };
   const commonJsModule = { exports: {} }; let fetchCount = 0;
   runInNewContext(`(function(require, module, exports) { ${code}\n})`, { Response, URLSearchParams, fetch: async () => { fetchCount++; return new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }); } })((key) => modules[key], commonJsModule, commonJsModule.exports);
@@ -43,6 +44,12 @@ test("pipeline video upload requires a persisted release approval", async () => 
   const response = await state.post();
   assert.equal(response.status, 409);
   assert.equal((await response.json()).code, "RELEASE_APPROVAL_REQUIRED");
+  assert.equal(state.fetchCount(), 0);
+});
+
+test("non-shared channel upload is rejected before provider calls", async () => {
+  const state = setup({ releaseApproved: true, denyChannel: true });
+  assert.equal((await state.post()).status, 403);
   assert.equal(state.fetchCount(), 0);
 });
 

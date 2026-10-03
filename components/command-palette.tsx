@@ -3,7 +3,7 @@
 import { ArrowRight, FileText, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { NAV_STAGES } from "@/lib/navigation";
+import { searchNavigation } from "@/lib/navigation";
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
@@ -11,17 +11,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
 
-  const pages = useMemo(
-    () => NAV_STAGES.flatMap((stage) => stage.pages.map((page) => ({ ...page, stage: stage.label }))),
-    [],
-  );
-  const matches = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("ko-KR");
-    if (!normalized) return pages.slice(0, 8);
-    return pages
-      .filter((page) => `${page.stage} ${page.label}`.toLocaleLowerCase("ko-KR").includes(normalized))
-      .slice(0, 8);
-  }, [pages, query]);
+  const matches = useMemo(() => searchNavigation(query), [query]);
 
   useEffect(() => {
     if (!open) return;

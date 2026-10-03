@@ -1,27 +1,23 @@
+import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
+import {ContentCommentsWorkspace} from "@/components/content-comments-workspace";
+import {AccountWorkspace} from "@/components/account-workspace";
+import {ContentProductionWorkspace} from "@/components/content-production-workspace";
+import {retiredRoute} from "@/lib/final-routes";
+import {ContentStepWorkspace} from "@/components/content-step-workspace";
+import {KnowledgeTabs} from "@/components/knowledge-tabs";
+import {AiOperationsWorkspace} from "@/components/organization-v3-workspaces";
 import { OperationsWorkspace } from "@/components/operations-workspace";
 import type { Metadata } from "next";
 import { PlaceholderPage } from "@/components/placeholder-page";
 import { MembersWorkspace } from "@/components/members-workspace";
 import { AuditWorkspace } from "@/components/audit-workspace";
-import { GoalsWorkspace } from "@/components/goals-workspace";
 import { redirect } from "next/navigation";
 import { MeetingWorkspace } from "@/components/meeting-workspace";
 import { ContentAutomationWorkspace } from "@/components/content-automation-workspace";
 import { PublishingCalendarWorkspace } from "@/components/publishing-calendar-workspace";
-import { SkillsWorkspace } from "@/components/skills-workspace";
-import { GrowthDashboard } from "@/components/growth-dashboard";
-import { ReportsWorkspace } from "@/components/reports-workspace";
-import { MonitoringWorkspace } from "@/components/monitoring-workspace";
+import { SystemStatusWorkspace } from "@/components/system-status-workspace";
 import { TasksWorkspace } from "@/components/tasks-workspace";
-import { AiOperationsWorkspace, LeaveWorkspace, WeeklyScheduleWorkspace } from "@/components/organization-v3-workspaces";
-import { FinanceWorkspace } from "@/components/finance-workspace";
-import { AcquisitionFunnelWorkspace, CommerceAdminLinks, RevenueWorkspace, WeeklyKpiWorkspace } from "@/components/performance-workspaces";
-import { AdPerformanceWorkspace } from "@/components/ad-performance-workspace";
-import { YoutubeKitWorkspace } from "@/components/content-studio-workspaces";
-import { ContentScriptsWorkspace } from "@/components/content-pipeline-workspaces";
 import { ContentRadarWorkspace as ContentTopicsWorkspace } from "@/components/content-radar-workspace";
-import { ContentPackagingWorkspace as ContentPackageWorkspace } from "@/components/content-packaging-workspace";
-import { ContentShortformWorkspace as ContentShortsWorkspace } from "@/components/content-shortform-workspace";
 import { ContentPerformanceDashboard as ContentPerformanceWorkspace } from "@/components/content-performance-dashboard";
 import { SettingsWorkspace } from "@/components/settings-workspaces";
 import { KnowledgeGraphWorkspace } from "@/components/knowledge-graph-workspace";
@@ -32,17 +28,21 @@ import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gat
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 
-type GenericPageProps = { params: Promise<{ stage: string; page: string }> };
+type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
-export async function generateMetadata({ params }: GenericPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: GenericPageProps): Promise<Metadata> {
   const resolved = await params;
-  const page = findPage(`/${resolved.stage}/${resolved.page}`);
+  const query = await searchParams;
+  const page = findPage(`/${resolved.stage}/${resolved.page}?tab=${typeof query.tab === "string" ? query.tab : ""}`);
   return { title: `${page.label} | 브랜디 OS` };
 }
 
-export default async function GenericPage({ params }: GenericPageProps) {
+export default async function GenericPage({ params, searchParams }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
+  const query = await searchParams;
+  const legacy = retiredRoute(href);
+  if(legacy)redirect(legacy);
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);
   const contentJevAssistEnabled = canUseContentJevAssist(process.env);
   const contentTopicJevAssistEnabled = canUseContentTopicJevAssist(process.env);
@@ -50,39 +50,34 @@ export default async function GenericPage({ params }: GenericPageProps) {
   const page = stage?.pages.find((item) => item.href === href);
   if (href === "/organization/members") return <MembersWorkspace />;
   if (href === "/settings/audit") return <AuditWorkspace />;
-  if (href === "/home/goals") return <GoalsWorkspace />;
-  if (href === "/home/reports") return <ReportsWorkspace />;
   if (href === "/organization/projects") redirect("/organization/meetings");
+  if (href === "/home/decisions") return <MeetingWorkspace initialTab="decisions" />;
   if (href === "/organization/meetings") return <MeetingWorkspace />;
   if (href === "/organization/tasks") return <TasksWorkspace />;
-  if (href === "/organization/schedule") return <WeeklyScheduleWorkspace />;
-  if (href === "/organization/leave") return <LeaveWorkspace />;
   if (href === "/organization/agents") return <AiOperationsWorkspace />;
-  if (href === "/organization/finance") return <FinanceWorkspace />;
+  if(href==="/content/production") return <ContentProductionWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showJevAssist={contentJevAssistEnabled} showTopicJevAssist={contentTopicJevAssistEnabled}/>;
+  if(href==="/organization/schedule")return <WorkspaceTabHub hub="schedule"/>;
+  if(href==="/organization/leave")return <WorkspaceTabHub hub="schedule" initialTab="leave"/>;
   if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} />;
-  if (href === "/content/automation") return <ContentAutomationWorkspace />;
-  if (href === "/content/review") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/packages") return <ContentPackageWorkspace showJevAssist={contentJevAssistEnabled} />;
-  if (href === "/content/shorts") return <ContentShortsWorkspace />;
-  if (href === "/content/publishing") return <ContentAutomationWorkspace initialView="review" />;
-  if (href === "/content/youtube") return <YoutubeKitWorkspace />;
-  if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
+  if (href === "/content/scripts") return <ContentStepWorkspace step="scripts" showPlanningHandoff={contentPlanningHandoffEnabled} />;
+  if (href === "/content/packages") return <ContentStepWorkspace step="packages" showJevAssist={contentJevAssistEnabled} />;
+  if (href === "/content/shorts") return <ContentStepWorkspace step="shorts" />;
+  if (href === "/content/youtube") return <ContentStepWorkspace step="youtube" />;
+  if (["/content/automation", "/content/review", "/content/publishing", "/content/calendar"].includes(href)) {
+    const view = href === "/content/calendar" || query.tab === "calendar" ? "calendar" : href === "/content/automation" || query.tab === "create" ? "create" : "review";
+    return view === "calendar" ? <PublishingCalendarWorkspace /> : <ContentAutomationWorkspace key={view} initialView={view === "create" ? "pipeline" : "review"} />;
+  }
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
-  if (href === "/knowledge/skills") return <SkillsWorkspace />;
+  if (href === "/content/comments") return <ContentCommentsWorkspace />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;
-  if (href === "/knowledge/graph") return <KnowledgeGraphWorkspace />;
-  if (href === "/performance/overview") return <GrowthDashboard />;
-  if (href === "/performance/revenue") return <RevenueWorkspace />;
-  if (href === "/performance/funnels") return <AcquisitionFunnelWorkspace />;
-  if (href === "/performance/ads") return <AdPerformanceWorkspace />;
-  if (href === "/performance/weekly-kpi") return <WeeklyKpiWorkspace />;
-  if (href === "/performance/customers") return <CommerceAdminLinks title="자사몰 어드민" />;
-  if (href === "/settings/monitoring") return <MonitoringWorkspace />;
-  if (href === "/settings/connections") return <SettingsWorkspace page="connections" />;
+  if (href === "/knowledge/graph") return <><KnowledgeTabs connections /><KnowledgeGraphWorkspace /></>;
+  if (href === "/performance/connections") redirect("/settings/connections");
+  if (href === "/settings/monitoring") return <SystemStatusWorkspace tab="monitoring" />;
+  if (href === "/settings/connections") return <SystemStatusWorkspace />;
   if (href === "/settings/access") return <SettingsWorkspace page="access" />;
+  if (href === "/settings/account") return <AccountWorkspace />;
   if (href === "/settings/company") return <SettingsWorkspace page="company" />;
-  if (href === "/settings/channels") return <SettingsWorkspace page="channels" />;
+  if (href === "/settings/channels") return <SystemStatusWorkspace tab="channels" />;
   if (resolved.stage === "performance") redirect("/performance/overview");
   const config = WORKSPACE_CONFIGS[href];
   if (config) return <OperationsWorkspace config={config} />;

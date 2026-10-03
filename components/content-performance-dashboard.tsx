@@ -1,10 +1,16 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+import { ChannelMetricsPanel } from "./channel-metrics-panel";
+import {useContentWork} from "./content-work-provider";
+
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, updateRecord } from "@/lib/api-client";
 import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import type { OsRecord } from "@/lib/record-types";
+import { filterContentOrigin, linkedContentOrigin, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
+import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
 
 const METRICS = [{ key: "views", label: "조회", suffix: "" }, { key: "ctr", label: "노출 가중 CTR", suffix: "%" }, { key: "retention", label: "조회 가중 지속률", suffix: "%" }, { key: "purchases", label: "구매", suffix: "" }, { key: "revenue", label: "기여 매출", suffix: "원" }, { key: "subscribers", label: "구독자 순증", suffix: "" }] as const;
@@ -13,9 +19,15 @@ const today = () => new Date().toISOString().slice(0, 10);
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export function ContentPerformanceDashboard() {
+  const work=useContentWork();
   const { accessToken, demo, profile } = useSession();
-  const [records, setRecords] = useState<OsRecord[]>([]); const [hypotheses, setHypotheses] = useState<OsRecord[]>([]); const [sources, setSources] = useState<OsRecord[]>([]);
-  const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [sourceId, setSourceId] = useState("all");
+  const [records, setRecords] = useState<OsRecord[]>([]); const [hypotheses, setHypotheses] = useState<OsRecord[]>([]); const [allSources, setSources] = useState<OsRecord[]>([]);
+  const [snapshots,setSnapshots]=useState<OsRecord[]>([]),[loading,setLoading]=useState(!demo);
+  const [origin, setOrigin] = useState<OriginFilter>("own");
+  const sources = filterContentOrigin(allSources, origin);
+  const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [localSourceId, setLocalSourceId] = useState("all");
+  const sourceId=work?work.topicId||"all":localSourceId;
+  const setSourceId=(id:string)=>{setLocalSourceId(id);work?.select(id==="all"?"":id);};
   const [from, setFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)); const [to, setTo] = useState(today());
   const [dimension, setDimension] = useState("video"); const [weekA, setWeekA] = useState(""); const [weekB, setWeekB] = useState("");
   const [editing, setEditing] = useState<OsRecord | null>(null); const [open, setOpen] = useState(false);
@@ -23,12 +35,16 @@ export function ContentPerformanceDashboard() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [reportId, setReportId] = useState("");
   const load = useCallback(async () => {
     if (demo) return;
+    setLoading(true);
+    try {
     const [metrics, decisions, topics] = await Promise.all([listAllRecordsOfType(accessToken, "content_metric"), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "content_topic")]);
-    setRecords(metrics); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis"));
+    setSnapshots(metrics.filter(item=>item.metadata.channelSnapshotVersion===1));
+    setRecords(metrics.filter(item=>item.metadata.channelSnapshotVersion!==1)); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis"));
+    } finally {setLoading(false);}
   }, [accessToken, demo]);
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);
   const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
-  const scope = useMemo(() => records.filter((item) => (sourceId === "all" || item.parent_id === sourceId) && (brand === "all" || item.brand === brand) && (platform === "all" || item.metadata.platform === platform) && (hierarchy === "all" || item.metadata.hierarchy === hierarchy)), [records, sourceId, brand, platform, hierarchy]);
+  const scope = useMemo(() => records.filter((item) => (origin === "all" || linkedContentOrigin(item, allSources) === origin) && (sourceId === "all" || item.parent_id === sourceId) && (brand === "all" || item.brand === brand) && (platform === "all" || item.metadata.platform === platform) && (hierarchy === "all" || item.metadata.hierarchy === hierarchy)), [records, allSources, origin, sourceId, brand, platform, hierarchy]);
   const filtered = useMemo(() => dedupeMetricSnapshots(scope.filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= from && date <= to; })), [scope, from, to]);
   const totals = summarizeMetrics(filtered);
   const daily = groupMetricDimension(filtered.filter((record) => record.metadata.metricMode !== "cumulative").map((record) => ({ ...record, metadata: { ...record.metadata, day: (record.starts_at ?? record.created_at).slice(0, 10) } })), "day").sort((a, b) => a.title.localeCompare(b.title));
@@ -38,7 +54,7 @@ export function ContentPerformanceDashboard() {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     await perform(async () => {
       const numeric = Object.fromEntries(FIELDS.map(({ key }) => [key, text(form, key) === "" ? null : Number(text(form, key))]));
-      const payload = { title: text(form, "title"), description: text(form, "note"), status: "measuring", brand: text(form, "brand"), team: profile?.team || "콘텐츠", parentId: text(form, "sourceId") || null, sourceUrl: text(form, "sourceUrl") || null, startsAt: `${text(form, "date")}T12:00:00Z`, metricCurrent: numeric.views, metricUnit: "조회", metadata: { ...(editing?.metadata ?? {}), ...numeric, platform: text(form, "platform"), hierarchy: text(form, "hierarchy"), topic: text(form, "topic"), hookType: text(form, "hookType"), traffic: text(form, "traffic"), contentId: text(form, "contentId"), metricMode: text(form, "metricMode"), dataSource: "manual", measuredAt: new Date().toISOString() } };
+      const payload = { title: text(form, "title"), description: text(form, "note"), status: "measuring", brand: text(form, "brand"), team: profile?.team || "콘텐츠", parentId: text(form, "sourceId") || null, sourceUrl: text(form, "sourceUrl") || null, startsAt: `${text(form, "date")}T12:00:00Z`, metricCurrent: numeric.views, metricUnit: "조회", metadata: { ...(editing?.metadata ?? {}), ...numeric, platform: text(form, "platform"), hierarchy: text(form, "hierarchy"), topic: text(form, "topic"), hookType: text(form, "hookType"), traffic: text(form, "traffic"), contentId: text(form, "contentId"), metricMode: text(form, "metricMode"), source: "manual", dataSource: "manual", measuredAt: new Date().toISOString() } };
       if (editing) await updateRecord(accessToken, { id: editing.id, expectedVersion: editing.version, ...payload }); else await createRecord(accessToken, { recordType: "content_metric", ...payload });
       setOpen(false); setEditing(null);
     });
@@ -60,9 +76,10 @@ export function ContentPerformanceDashboard() {
     const { document } = await createDocument(accessToken, { title: `콘텐츠 성과 검토 ${from} ~ ${to}`, folder: "콘텐츠/성과/주간리포트", tags: ["콘텐츠", "주간리포트"], content: `# 콘텐츠 성과 검토\n\n기간: ${from} ~ ${to} · 브랜드: ${brand} · 채널: ${platform} · 위계: ${hierarchy}\n\n## 1. 확인한 사실\n표본 ${filtered.length}건. ${METRICS.map((item) => `${item.label}: ${metricDisplay(totals[item.key], item.suffix)}`).join(" · ")}\n\n## 2. 검토할 가설\n${hypotheses.filter((item) => item.status === "review").map((item) => `- ${item.description}`).join("\n") || "- 등록된 가설 없음"}\n\n## 3. 다음 주 실험\n- A/B 기간, 대상 영상, 변경 변수와 성공 기준을 사람이 입력\n\n## 4. 사람 판정\n- 채택 / 폐기 / 관찰 / 수정 결정 대기\n- 미연결 값은 0으로 해석하지 않음. 자동 정본 반영·외부 발행 없음.\n` }); setReportId(document.id);
   });
   return <>
-    <header className="page-header"><div className="page-title-group"><h1>영상 성과</h1><p>실측 성과를 비교하고 다음 제작 가설을 검토합니다. 빈 값은 미연결로 표시합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={busy} onClick={() => void perform(load)}>새로고침</button><button className="secondary-button" disabled={busy || !filtered.length} onClick={weeklyReport}>주간리포트 초안</button><button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}>성과 기록</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>실측 성과를 비교하고 다음 제작 가설을 검토합니다. 빈 값은 미연결로 표시합니다.</p></div><div className="header-actions"><button className="secondary-button" disabled={busy} onClick={() => void perform(load)}>새로고침</button><button className="secondary-button" disabled={busy || !filtered.length} onClick={weeklyReport}>주간리포트 초안</button><button className="primary-button" onClick={() => { setEditing(null); setOpen(true); }}>성과 기록</button></div></header>
+    <ChannelMetricsPanel records={snapshots.filter(row=>sourceId==="all"||row.parent_id===sourceId)} loading={loading}/>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}{reportId ? <p className="inline-alert success"><Link href={`/knowledge?document=${reportId}`}>저장된 주간리포트 열기</Link></p> : null}
-    <section className="panel content-performance-filters"><label>기준 콘텐츠<select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="all">전체</option>{sources.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label>브랜드<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => item.brand).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>플랫폼<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => String(item.metadata.platform ?? "")).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>위계<select value={hierarchy} onChange={(event) => setHierarchy(event.target.value)}><option value="all">전체</option>{["유입형", "전환형", "판매형"].map((value) => <option key={value}>{value}</option>)}</select></label><label>시작<input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} /></label><label>종료<input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} /></label></section>
+    <section className="panel content-performance-filters"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId("all"); setLearningTargetId(""); }} /><label>기준 콘텐츠<select value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="all">전체</option>{sources.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}</select></label><label>브랜드<select value={brand} onChange={(event) => setBrand(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => item.brand).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>플랫폼<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="all">전체</option>{[...new Set(records.map((item) => String(item.metadata.platform ?? "")).filter(Boolean))].map((value) => <option key={value}>{value}</option>)}</select></label><label>위계<select value={hierarchy} onChange={(event) => setHierarchy(event.target.value)}><option value="all">전체</option>{["유입형", "전환형", "판매형"].map((value) => <option key={value}>{value}</option>)}</select></label><label>시작<input type="date" value={from} max={to} onChange={(event) => setFrom(event.target.value)} /></label><label>종료<input type="date" value={to} min={from} onChange={(event) => setTo(event.target.value)} /></label></section>
     <p className="metric-caption">중복 측정 제거 후 {filtered.length}건 · 누적 측정은 영상별 최신 값 사용 · 비율은 노출·조회 수가 있는 기록으로 계산</p>
     <section className="metric-grid content-performance-metrics">{METRICS.map((item) => <div className="metric-card" key={item.key}><div className="metric-top">{item.label}</div><div className="metric-value">{metricDisplay(totals[item.key], item.suffix)}</div><small>측정 {filtered.filter((record) => metricValue(record, item.key) !== null).length}/{filtered.length}건</small></div>)}</section>
     <section className="performance-analysis-grid"><article className="panel pipeline-panel"><h2>일별 조회 흐름</h2><p>당일 증가분 기록만 표시합니다. 누적 스냅샷은 합산하지 않습니다.</p>{daily.slice(-14).map((day) => <p key={day.key}>{day.title} · {metricDisplay(day.views)}회</p>)}{!daily.length ? <p>당일 증가분 기록이 없습니다.</p> : null}</article><article className="panel pipeline-panel"><h2>콘텐츠 전환 퍼널</h2><p>선택 기간 실측값 · 미연결 구간은 판정 보류</p>{[["노출", totals.impressions], ["조회", totals.views], ["클릭", totals.clicks], ["구매", totals.purchases]].map(([label, value]) => <p key={String(label)}>{label}: {metricDisplay(value as number | null)}</p>)}</article></section>

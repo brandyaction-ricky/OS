@@ -21,6 +21,7 @@ export const documentUpdateSchema = documentCreateSchema.partial().extend({
 });
 
 export const searchSchema = z.object({
+  quick: z.boolean().optional(),
   organizationId: z.string().uuid().optional(),
   query: z.string().trim().min(1).max(1000),
   mode: z.enum(["hybrid", "keyword", "semantic"]).optional().default("hybrid"),

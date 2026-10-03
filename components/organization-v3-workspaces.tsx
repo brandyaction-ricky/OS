@@ -1,4 +1,9 @@
 "use client";
+import { generationJobLabel } from "@/lib/content-generation-mode";
+import { sampleSummary } from "@/lib/channel-metrics";
+import { useRecordDeepLink } from "./use-record-deep-link";
+
+import { PageTitle } from "./page-title";
 
 import {
   Bot,
@@ -96,8 +101,7 @@ export function WeeklyScheduleWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">이번 주 일정</span>
-          <h1>이번 주 일정</h1>
+          <PageTitle />
           <p>회의·휴가·업무 마감·발행·계약 만료를 한곳에서 확인합니다.</p>
         </div>
       </header>
@@ -241,23 +245,13 @@ export function AiOperationsWorkspace() {
       health?.embeddings === "ready" ? "저장 이벤트 처리" : "OpenAI 키 대기",
     ],
   ];
-  const jobStatusLabel: Record<string, string> = {
-    backlog: "대기",
-    draft: "초안",
-    active: "실행 중",
-    review: "검수 중",
-    ready: "승인 대기",
-    blocked: "막힘",
-    done: "완료",
-    failed: "실패",
-  };
+  useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
   const selectedJobSourceUrl = safeWebUrl(selectedJob?.source_url);
   return (
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">하나의 지식 · 여러 창구</span>
-          <h1>AI 작업</h1>
+          <PageTitle />
           <p>
             AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고
             결정합니다.
@@ -306,9 +300,9 @@ export function AiOperationsWorkspace() {
               <span
                 className={`status-pill status-${job.status}`}
                 role="status"
-                aria-label={`작업 상태: ${jobStatusLabel[job.status] ?? job.status}`}
+                aria-label={`작업 상태: ${generationJobLabel(job)}`}
               >
-                {jobStatusLabel[job.status] ?? job.status}
+                {generationJobLabel(job)}
               </span>
             </button>
           ))}
@@ -325,7 +319,7 @@ export function AiOperationsWorkspace() {
         <aside className="record-drawer" role="dialog" aria-label="AI 작업 상세" onMouseDown={(event) => event.stopPropagation()}>
           <div className="drawer-head"><div><span className="eyebrow">AI 작업 상세</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
           <div className="ai-job-detail">
-            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{jobStatusLabel[selectedJob.status] ?? selectedJob.status}</span></div>
+            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{generationJobLabel(selectedJob)}</span></div>
             <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
             {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
@@ -436,12 +430,8 @@ export function LeaveWorkspace() {
     }
   };
   const pending = requests.filter((item) => item.status === "pending").length;
-  const avg = balances.length
-    ? balances.reduce(
-        (sum, item) => sum + Number(item.metric_current || 0),
-        0,
-      ) / balances.length
-    : 0;
+  const remaining = sampleSummary(balances.flatMap(item =>
+    typeof item.metric_current === "number" ? [item.metric_current] : []));
   const rosterBalances = BRANDYACTION_ROSTER.map((rosterMember) => {
     const account = members.find((member) =>
       memberMatchesRoster(member, rosterMember.name),
@@ -457,8 +447,7 @@ export function LeaveWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">연차·휴가 관리</span>
-          <h1>연차·휴가</h1>
+          <PageTitle />
           <p>잔여 연차와 신청·승인·자동 차감을 관리합니다.</p>
         </div>
         <button className="primary-button" onClick={() => setDrawer(true)}>
@@ -482,10 +471,11 @@ export function LeaveWorkspace() {
         </div>
         <div className="metric-card">
           <div className="metric-top">
-            <span>평균 잔여</span>
+            <span>잔여 연차 중앙값</span>
             <Plane size={16} />
           </div>
-          <div className="metric-value">{avg.toFixed(1)}일</div>
+          <div className="metric-value">{remaining.median === null ? "미등록" : `${remaining.median.toFixed(1)}일`}</div>
+          <small>{remaining.n ? `범위 ${remaining.min}–${remaining.max}일 · n=${remaining.n}개 등록 기록` : "등록된 잔여 연차 기록이 없습니다."}</small>
         </div>
         <div className="metric-card">
           <div className="metric-top">

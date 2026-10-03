@@ -8,10 +8,141 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/content/comments:
+    get:
+      summary: 최근 댓글 목록과 본인·공유 처리 권한
+      description: 사람 로그인/RLS 범위에서 최근 200건. comments[].canRespond/teamShared와 truncated를 반환하며 채널 토큰·비공유 계정의 이름은 반환하지 않습니다.
+      responses:
+        "200": { description: 댓글 목록 }
+        "503": { description: 댓글·채널 저장소 준비 필요 }
+    post:
+      summary: 댓글 분류·담당·주제 전환·초안·모의 답글/숨기기
+      description: id/expectedVersion/operation 필요. assign/classify/topic/draft는 활성 직원에게 열려 있습니다. reply/hide는 본인 또는 공유 계정 및 confirm=true가 필요합니다. Threads는 최상위 답글만 숨김. draft 기본 queue는 202와 jobId, 명시적 api는 저장된 초안과 생성 기록을 반환합니다. 실계정 답글·숨기기는 별도 검수 전 503.
+      responses:
+        "200": { description: comment 또는 topicId }
+        "202": { description: 구독 대기열 요청 저장 }
+        "403": { description: 채널 처리 권한 없음 }
+        "409": { description: 버전 충돌 또는 이미 처리됨 }
+        "503": { description: 실계정 처리 미공개 또는 API 준비 필요 }
+  /api/v1/content/publish:
+    post:
+      summary: 사람 전용 채널 게시 편집·승인·예약·모의 게시
+      description: id/expectedVersion/operation 필요. operation은 edit, approve, schedule, reschedule, publish, manual_done. 선택한 계정의 본인 또는 팀 공유 사용자만 가능. edit은 settings를 받고 재승인 필요 상태로 저장합니다. approve/publish/manual_done은 confirm=true가 필요합니다. 실계정 API 게시는 별도 DB 보안 검수 전 503으로 잠겨 있습니다. 기존 사용자 RLS 쓰기 유지.
+      responses:
+        "200": { description: 갱신된 record }
+        "400": { description: 입력·사람 확인·게시 파일 검증 실패 }
+        "403": { description: 비공유 채널 또는 AI 키 사용 거절 }
+        "409": { description: 버전 충돌·승인 필요·중간 결과 확인 필요 }
+        "503": { description: 실계정 API 게시 미공개 }
+  /api/v1/content/channel-sync:
+    get:
+      summary: 인증된 예약 작업의 알림·댓글·성과 수집
+      description: CRON_SECRET Bearer 인증. CHANNEL_SYNC_ENABLED=true이고 demo가 아닐 때만 실행. 예약·만료 알림을 저장한 뒤 최근 14일 게시물 댓글과 D1/D7/D28 성과를 순서대로 수집합니다. 게시·답글·숨기기는 실행하지 않습니다. 기존 댓글·수기 성과를 덮어쓰지 않으며 범위 초과는 truncated로 반환합니다. Telegram 실패는 응답 수치로 남기고 OS 알림은 유지됩니다.
+      responses:
+        "200": { description: 활성 여부와 알림·댓글·성과 수집 및 실패·범위 초과 수치 }
+        "401": { description: 예약 작업 인증 실패 }
+        "503": { description: DB 준비 필요 }
+  /api/v1/channels:
+    get:
+      summary: 내 채널과 팀 공유 채널 목록
+      description: 사람 로그인만 허용. 기본은 내 채널·팀 공유만. scope=company는 관리자만 허용하며 그 외 역할은 403. 암호화 토큰과 Meta 외부 계정 ID는 반환하지 않습니다.
+      responses:
+        "200": { description: connections 배열과 Meta mode(mock 또는 live) }
+        "503": { description: 추가 마이그레이션 적용 필요 }
+  /api/v1/meta/{action}:
+    parameters:
+      - in: path
+        name: action
+        required: true
+        schema: { type: string, enum: [status, start, test, share, disconnect, refresh] }
+    get:
+      summary: status — 안전한 연결 상태 조회
+      responses:
+        "200": { description: 내 채널과 팀 공유 채널 }
+    post:
+      summary: Meta 연결 관리
+      description: 기본 모의 모드. start/share는 본인만, disconnect는 본인 또는 관리자, test/refresh는 본인 또는 팀 공유. 실제 OAuth·게시는 별도 환경 승인 대상.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform]
+              properties:
+                platform: { type: string, enum: [instagram, threads] }
+                ownerId: { type: string, format: uuid }
+                teamShared: { type: boolean }
+      responses:
+        "200": { description: 처리 결과 또는 authorizationUrl }
+        "403": { description: 연결 권한 없음 }
+        "409": { description: 중복·교체·모드 불일치 }
+  /api/v1/meta/tester:
+    get:
+      summary: 본인 요청 또는 관리자 전체 테스터 등록 요청 조회
+      responses:
+        "200": { description: requests 배열 }
+    post:
+      summary: 관리자에게 Meta 테스터 등록 요청
+      description: body.platform instagram 또는 threads. OS 알림만 생성하며 외부 Meta 역할은 자동 변경하지 않습니다.
+      responses:
+        "200": { description: 요청 기록 }
+    patch:
+      summary: 관리자가 외부 테스터 등록 확인
+      description: body.id, expectedVersion, registered(true). 본인 연결은 해당 사용자 OAuth로만 가능합니다.
+      responses:
+        "200": { description: 저장된 요청 }
+        "403": { description: 관리자 아님 }
+        "409": { description: 버전 충돌 }
+  /api/v1/youtube/oauth:
+    get:
+      summary: 내 YouTube OAuth 상태
+      responses:
+        "200": { description: 기존 상태 필드에 ownerId와 teamShared 추가 }
+    post:
+      summary: 본인 YouTube 연결 시작
+      responses:
+        "200": { description: authorizationUrl }
+    patch:
+      summary: 본인 채널 팀 공유 변경
+      description: body.teamShared boolean
+      responses:
+        "200": { description: 공유 설정 저장 }
+    delete:
+      summary: 본인 또는 관리자 채널 해제
+      parameters:
+        - in: query
+          name: ownerId
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: 해제됨 }
+  /api/v1/youtube/oauth/test:
+    post:
+      summary: 본인 또는 공유 채널의 실제 연결 확인
+      description: body.ownerId 선택. 실제 Google 채널을 조회하고 성공 변경 기록을 저장합니다.
+      responses:
+        "200": { description: ok와 checkedAt }
+        "403": { description: 채널 권한 없음 }
+  /api/v1/youtube/upload/session:
+    post:
+      summary: 승인한 YouTube 업로드 세션 생성
+      description: 기존 kitId/fileName/fileSize/mimeType/privacyStatus/finalApproval 계약 유지. 선택 필드 connectionOwnerId 추가. 본인 또는 팀 공유만 허용. 현재 공정·발행 승인과 채널·공개 범위를 검사합니다.
+      responses:
+        "200": { description: 업로드 세션 }
+        "403": { description: 채널 사용 권한 없음 }
+        "409": { description: 승인 조건 변경 }
+  /api/v1/youtube/upload/complete:
+    post:
+      summary: 실제 업로드 결과 확인 및 OS 기록
+      description: 기존 kitId/videoId/privacyStatus/finalApproval 계약 유지. 선택 필드 connectionOwnerId 추가. 재시도는 최초 연결 소유자와 영상 ID를 유지합니다.
+      responses:
+        "200": { description: 확인된 영상과 발행 기록 }
+        "403": { description: 채널 사용 권한 없음 }
+        "409": { description: 영상 소유권 또는 기록 버전 충돌 }
   /api/v1/content/generate:
     post:
       summary: 회사 절차 정본 기반 콘텐츠 생성·자가검수
-      description: 외부 발행은 수행하지 않으며 결과는 검토 상태 또는 AI 연결 대기로 저장됩니다.
+      description: 기본 mode=queue는 ai_job만 저장하고 외부 모델을 호출하지 않습니다. mode=api는 사람이 명시적으로 요청할 때만 즉시 생성하며 실행·사용량·결과 ID를 기록합니다. 외부 발행은 수행하지 않습니다.
       requestBody:
         required: true
         content:
@@ -20,21 +151,39 @@ paths:
               type: object
               required: [action, sourceId]
               properties:
+                mode: { type: string, enum: [queue, api], default: queue }
                 action: { type: string, enum: [derivatives, title_package, shorts_proposal, youtube_kit] }
                 sourceId: { type: string, format: uuid }
                 platforms: { type: array, items: { type: string, enum: [shorts, threads, column, instagram, essay] } }
                 count: { type: integer, minimum: 1, maximum: 12, default: 5 }
       responses:
         "201": { description: 정본 실행 및 자가검수 후 검토 기록 생성 }
-        "202": { description: Claude 키 연결 대기 작업 생성 }
+        "202": { description: 구독 대기열 작업 생성 또는 동일 요청 재사용 }
         "409": { description: 실행 절차 정본 없음 }
   /api/v1/health:
     get:
       security: []
       summary: 서버와 외부 연결 준비 상태 확인
+      description: 기존 키는 호환을 위해 유지. checks 배열의 status와 lastOkAt은 실제 호출 범위를 나타내며 환경 설정만 있으면 unverified. checkedAt은 마지막 스냅샷 시각.
       responses:
         "200":
           description: 상태 스냅샷
+  /api/v1/search/progress:
+    get:
+      summary: 로그인한 사용자가 접근 가능한 현재 문서의 색인 작업 집계
+      description: 사용자 RLS로 문서 범위를 제한하고 현재 content_hash의 최신 작업을 문서당 한 번 집계합니다. 청크 검증률은 아닙니다. 문서 ID와 오류 원문을 반환하지 않으며 부분 조회는 truncated로 표시합니다. 에이전트 키는 허용하지 않습니다.
+      responses:
+        "200":
+          description: private no-store 색인 현황
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  coverage: { $ref: "#/components/schemas/IndexCoverage" }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
   /api/v1/search:
     post:
       summary: 권한 범위 안에서 회사 지식 검색
@@ -202,8 +351,10 @@ paths:
   /api/v1/records:
     get:
       summary: 권한 범위 안의 운영 기록 목록
+      description: notification 및 development_notification은 일반 기록 API에서 읽기·생성·변경·복원이 금지됩니다.
       parameters:
         - { in: query, name: type, schema: { $ref: "#/components/schemas/RecordType" } }
+        - { in: query, name: id, schema: { type: string, format: uuid }, description: 직접 연결된 단일 항목 조회 }
         - { in: query, name: status, schema: { type: string } }
         - { in: query, name: brand, schema: { type: string } }
         - { in: query, name: team, schema: { type: string } }
@@ -214,6 +365,7 @@ paths:
         "200": { description: 운영 기록 목록 }
     post:
       summary: 업무·목표·회의·콘텐츠·성과 기록 생성
+      description: 기존 계약 유지. task의 metadata.extractionReviewed=true는 활성 구성원 assigneeId, 유효 dueDate, 접근 가능한 원본 회의(metadata.meetingId 또는 parentId)를 요구합니다. 회의 검수 항목은 metadata.reviewItems, 업무 완료 기준은 metadata.doneCriteria로 추가됩니다.
       requestBody:
         required: true
         content:
@@ -321,14 +473,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name]
+              required: [name, expiresAt]
               properties:
                 name: { type: string, minLength: 1, maxLength: 80 }
                 ownerUserId: { type: string, format: uuid }
-                access: { type: string, enum: [read, write], default: read }
+                access: { type: string, enum: [read, draft, write], default: read, description: "draft allows non-canonical document writes while retaining company-reference reads; existing keys retain their previous effective policy." }
                 team: { type: string, maxLength: 120 }
                 brand: { type: [string, "null"], maxLength: 120 }
-                expiresAt: { type: [string, "null"], format: date-time }
+                expiresAt: { type: string, format: date-time, description: "Required future expiration for newly issued keys. Existing non-expiring keys are unchanged." }
       responses:
         "201": { description: 최초 한 번만 표시하는 원문 토큰 }
     delete:
@@ -341,10 +493,11 @@ paths:
     get:
       summary: 관리자용 임베딩 큐 상태 조회
       responses:
-        "200": { description: pending/running/failed/done 건수와 설정 상태 }
+        "200": { description: 기존 전체 작업 pending/running/failed/done 건수와 설정 상태 및 현재 활성 문서의 coverage 집계 }
         "403": { $ref: "#/components/responses/ApiError" }
     post:
-      summary: 관리자가 제한된 인덱싱 배치를 실행하거나 실패 작업을 대기로 전환
+      summary: 관리자가 제한된 인덱싱 배치를 실행하거나 현재 버전 실패 작업을 대기로 전환
+      description: retry_failed는 활성 문서의 현재 hash 최신 실패만 대상으로 하며 이미 실행 중인 작업과 대체된 버전은 제외합니다. 부분 조회 시 쓰지 않고 실패합니다. 실제 재처리는 운영 승인을 받은 뒤 실행합니다.
       requestBody:
         required: true
         content:
@@ -370,6 +523,13 @@ paths:
   /api/v1/ad-performance:
     get:
       summary: Meta·Google 광고 성과 일별 집계 조회
+      description: >-
+        기존 rows, channels, summary 필드는 유지한다. channels와 summary의 spend,
+        attributedRevenue, conversions, impressions, clicks, roas, cpa, ctr 및
+        summary.operatingRevenue는 number 또는 null. 미수집 집계와 분모 0의 비율은 null이며
+        실제 기록된 0은 0을 유지한다. sampleCount는 집계 행 수, financeVisible은 재무 조회 권한,
+        lastCollectedAt은 선택 범위의 마지막 저장 시각이다. financeAdExpense null은 권한 없음
+        또는 미수집을 뜻하며 financeVisible로 구분한다. 조회 오류를 0으로 반환하지 않는다.
       parameters:
         - { in: query, name: period, schema: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" } }
         - { in: query, name: brand, schema: { type: string, enum: [all, myin, brandyedu] } }
@@ -393,6 +553,33 @@ paths:
       responses:
         "200": { description: 공급자·브랜드별 처리 결과 }
         "403": { $ref: "#/components/responses/ApiError" }
+  /api/v1/connections:
+    get:
+      summary: 관리자용 연결 확인 이력과 담당자 조회
+      description: checks는 마지막 성공 호출, 최근 테스트·기록 시작 이후 색인 시도·광고 수집 실패와 현재 막힌 작업, 담당 정·부와 변경 버전을 포함한다. 이력 조회 불가일 때 실패 수는 null이며 정상으로 표시하지 않는다.
+      responses:
+        "200": { description: checks 및 checkedAt. 비밀값과 제공자 응답 본문은 반환하지 않음 }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+    post:
+      summary: 관리자가 service로 지정한 연결에 읽기 전용 테스트 실행
+      description: 현재 사용자 인증 뒤 고정 제공자 주소만 호출. 생성·발송·업로드·광고 변경 없음. 호출 범위와 결과만 기록. 이력 저장소 준비 전에는 실행하지 않음.
+      responses:
+        "200": { description: ok 및 checks. ok는 이번 호출 결과이며 최근 실패 이력은 그대로 유지 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "429": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
+    patch:
+      summary: 관리자가 연결의 정·부 담당 변경
+      description: service, primaryOwner, backupOwner, expectedVersion 필요. 활성 구성원만 지정하고 중복 정·부는 거절. 버전 충돌 시 409. 일반 사용자와 AI 키는 거절.
+      responses:
+        "200": { description: 담당 저장 완료 }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
   /api/v1/telegram/setup:
     get:
       summary: 관리자가 봇과 웹훅 상태 확인
@@ -405,6 +592,63 @@ paths:
         "200": { description: 등록된 공개 웹훅 URL }
         "403": { $ref: "#/components/responses/ApiError" }
         "503": { $ref: "#/components/responses/ApiError" }
+  /api/v1/my-work:
+    get:
+      summary: 로그인한 사람의 받은 일·검토·요청 목록
+      description: 사용자 JWT 전용. RLS로 읽은 업무와 문서에 본인·상태 조건을 적용하며 시장·테스트·보관 항목은 제외합니다. 각각 최근 1000개 범위이며 초과하면 truncated=true입니다.
+      responses:
+        "200":
+          description: private no-store 개인 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tabs, truncated, checkedAt]
+                properties:
+                  tabs:
+                    type: object
+                    properties:
+                      received: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                      review: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                      requested: { type: array, items: { $ref: "#/components/schemas/PersonalWorkItem" } }
+                  truncated: { type: boolean }
+                  checkedAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/ApiError" }
+        "403": { $ref: "#/components/responses/ApiError" }
+  /api/v1/notifications:
+    get:
+      summary: 현재 원본 접근 권한을 확인한 개인 통합 알림
+      description: 사용자 JWT 전용. 기존 개발 알림 API는 유지합니다. 원본이 보관되거나 접근 권한을 잃으면 제목·미읽음 건수에서 제외합니다. 최근 100개 범위. GET은 읽음 상태를 변경하지 않습니다.
+      responses:
+        "200":
+          description: notifications(id,title,reason,href,createdAt,readAt), unread, truncated. reason은 assignment/review/approval/blocked/status_change. readAt의 빈 문자열은 미읽음.
+        "503": { description: 추가 마이그레이션 미적용 또는 알림 저장소 확인 실패. 기존 개발 알림 API는 독립적으로 유지됨. }
+    patch:
+      summary: 본인 알림 읽음 처리
+      description: 원본 RLS를 다시 확인하고 알림 버전 조건으로 갱신합니다. 다른 수신자의 ID가 섞이면 갱신 전에 404, 중복 ID는 400, 충돌은 409입니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, minItems: 1, maxItems: 100, uniqueItems: true, items: { type: string, format: uuid } }
+      responses:
+        "200": { description: read 건수와 readAt }
+        "400": { $ref: "#/components/responses/ApiError" }
+        "404": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+  /api/v1/development-requests:
+    patch:
+      summary: 개발 요청 상태·처리 결과 갱신
+      description: 기존 계약을 유지하고 관리자 전용 plainSummary(240자), nextAction(500자), holdReason(2000자), reviewDate(YYYY-MM-DD 또는 빈 문자열)를 선택 필드로 추가합니다. id와 expectedVersion 필수. 기존 필드의 권한은 그대로입니다. 요약 마이그레이션 적용 전 새 필드를 보내면 503입니다.
+      responses:
+        "200": { description: 갱신된 record }
+        "403": { $ref: "#/components/responses/ApiError" }
+        "409": { $ref: "#/components/responses/ApiError" }
+        "503": { $ref: "#/components/responses/ApiError" }
 components:
   securitySchemes:
     bearerAuth:
@@ -412,6 +656,16 @@ components:
       scheme: bearer
       description: Supabase 사용자 JWT 또는 범위가 지정된 bos_pat 토큰(knowledge.read/knowledge.write/records.read/records.write)
   schemas:
+    PersonalWorkItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        status: { type: string, description: 표시용 한국어 상태 }
+        dueDate: { type: string, nullable: true }
+        href: { type: string }
+        kind: { type: string }
+        nextAction: { type: string }
     RecordType:
       type: string
       enum: [project, task, goal, kpi, decision, meeting, ai_job, content_topic, content_script, content_package, content_short, content_publish, content_metric, skill, knowledge_link, revenue, funnel, crm_action, customer, brand, connection, access_rule, company_setting, channel]
@@ -454,12 +708,34 @@ components:
         tags: { type: array, maxItems: 30, items: { type: string, maxLength: 60 } }
         source: { type: string, maxLength: 40 }
         sourceRef: { type: [string, "null"], maxLength: 500 }
+    IndexCoverage:
+      type: object
+      required: [total, done, failed, pending, running, untracked, historicalFailed, failureReasons, capturedAt, truncated]
+      properties:
+        total: { type: integer, minimum: 0 }
+        done: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        pending: { type: integer, minimum: 0 }
+        running: { type: integer, minimum: 0 }
+        untracked: { type: integer, minimum: 0 }
+        historicalFailed: { type: integer, minimum: 0, description: 조회된 활성 문서 범위에서 제외한 과거 실패 작업 수 }
+        capturedAt: { type: string, format: date-time }
+        truncated: { type: boolean }
+        failureReasons:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string, enum: [superseded, archived, timeout, rate_limit, quota, authentication, configuration, storage, provider, unknown] }
+              label: { type: string }
+              count: { type: integer, minimum: 0 }
     SearchRequest:
       type: object
       required: [query]
       properties:
         query: { type: string, minLength: 1, maxLength: 1000 }
         mode: { type: string, enum: [hybrid, keyword, semantic], default: hybrid }
+        quick: { type: boolean, default: false, description: true이면 임베딩/RPC를 건너뛰고 요청자 권한 내 문서 단어 검색 결과를 먼저 반환 }
         topK: { type: integer, minimum: 1, maximum: 30, default: 10 }
         filters:
           type: object

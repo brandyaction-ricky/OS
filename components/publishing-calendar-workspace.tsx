@@ -1,53 +1,52 @@
 "use client";
-
-import { ArrowLeft, ArrowRight, CalendarDays, CircleAlert, FileText, Instagram, NotebookPen, Send, Youtube } from "lucide-react";
 import Link from "next/link";
+import { ArrowLeft, ArrowRight, CircleAlert } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { listRecords, updateRecord } from "@/lib/api-client";
+import { apiRequest, listRecords, updateRecord } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
-import { canMovePublication, localCalendarDate, localCalendarTime, movePublicationDate } from "@/lib/publishing-calendar";
+import { canMovePublication, localCalendarDate, localCalendarTime, movePublicationDate, publicationCalendarFormat, PUBLICATION_FORMATS } from "@/lib/publishing-calendar";
+import { PageTitle } from "./page-title";
+import { useContentWork } from "./content-work-provider";
+import { PublishingTabs } from "./publishing-tabs";
 import { useSession } from "./session-provider";
 
-const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
-
-function currentMonth() { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`; }
-function shiftMonth(value: string, delta: number) { const [year, month] = value.split("-").map(Number); const date = new Date(year, month - 1 + delta, 1); return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`; }
-function meta(record: OsRecord, key: string) { const value = record.metadata?.[key]; return typeof value === "string" ? value : ""; }
-const PLATFORMS = [
-  { id: "shorts", label: "유튜브 쇼츠", icon: <Youtube size={14} /> },
-  { id: "threads", label: "Threads", icon: <Send size={14} /> },
-  { id: "column", label: "SEO 칼럼", icon: <FileText size={14} /> },
-  { id: "instagram", label: "인스타그램", icon: <Instagram size={14} /> },
-  { id: "essay", label: "에세이", icon: <NotebookPen size={14} /> },
-] as const;
-function normalizedPlatform(record: OsRecord) { const value = meta(record, "platform"); return value === "youtube" ? "shorts" : value; }
-function icon(platform: string) { return platform === "shorts" || platform === "youtube" ? <Youtube size={12} /> : platform === "instagram" ? <Instagram size={12} /> : platform === "column" ? <FileText size={12} /> : platform === "essay" ? <NotebookPen size={12} /> : <Send size={12} />; }
-
-export function PublishingCalendarWorkspace() {
-  const { accessToken, demo } = useSession();
-  const [month, setMonth] = useState(currentMonth);
-  const [records, setRecords] = useState<OsRecord[]>([]);
-  const [platform, setPlatform] = useState("all");
-  const [error, setError] = useState("");
-
-  const load = useCallback(async () => { if (demo) return; try { const result = await listRecords(accessToken, "content_publish", "limit=200"); setRecords(result.records); setError(""); } catch (reason) { setError(reason instanceof Error ? reason.message : "발행 일정을 불러오지 못했습니다."); } }, [accessToken, demo]);
-  useEffect(() => { load(); }, [load]);
-
-  const days = useMemo(() => {
-    const [year, monthNumber] = month.split("-").map(Number);
-    const first = new Date(year, monthNumber - 1, 1);
-    const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
-    return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
-  }, [month]);
-  const visible = records.filter((record) => record.starts_at && (platform === "all" || normalizedPlatform(record) === platform));
-
-  const moveRecord = async (id: string, dateValue: string) => {
-    const record = records.find((item) => item.id === id); if (!record) return;
-    const change = movePublicationDate(record, dateValue);
-    if (!change) { setError("발행 완료 항목은 이동할 수 없습니다. 예약 날짜를 확인해 주세요."); return; }
-    try { await updateRecord(accessToken, { id: record.id, expectedVersion: record.version, ...change }); await load(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "발행 일정을 이동하지 못했습니다."); }
-  };
-
-  return <><header className="page-header"><div className="page-title-group"><span className="eyebrow">발행 일정</span><h1>발행 캘린더</h1><p>플랫폼별 일정을 확인하고 콘텐츠를 날짜 사이로 끌어 이동합니다.</p></div><div className="calendar-platforms"><button className={platform === "all" ? "active" : ""} onClick={() => setPlatform("all")}>전체</button>{PLATFORMS.map((item) => <button key={item.id} className={platform === item.id ? `active ${item.id}` : item.id} onClick={() => setPlatform(item.id)}>{item.icon} {item.label}</button>)}</div></header><nav className="studio-tabs publishing-tabs" aria-label="발행 작업 보기"><Link href="/content/publishing"><CalendarDays size={13} /> 검토 대기목록</Link><button className="active"><CalendarDays size={13} /> 발행 캘린더</button></nav>{error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}<div className="period-toolbar panel"><button className="icon-button" aria-label="이전 달" onClick={() => setMonth((value) => shiftMonth(value, -1))}><ArrowLeft size={16} /></button><label><CalendarDays size={16} /><input aria-label="발행 캘린더 기준월" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /><strong>{month.replace("-", "년 ")}월</strong></label><button className="icon-button" aria-label="다음 달" onClick={() => setMonth((value) => shiftMonth(value, 1))}><ArrowRight size={16} /></button><button className="ghost-button" onClick={() => setMonth(currentMonth())}>이번 달</button></div><section className="publishing-calendar panel"><div className="calendar-weekdays">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-days">{days.map((date) => { const key = localCalendarDate(date); const items = visible.filter((record) => localCalendarDate(record.starts_at) === key); return <div className={date.getMonth() + 1 === Number(month.slice(5)) ? "" : "outside"} key={key} onDragOver={(event) => event.preventDefault()} onDrop={(event) => moveRecord(event.dataTransfer.getData("text/plain"), key)}><header><span>{date.getDate()}</span><small>{items.length || ""}</small></header>{items.map((record) => { const itemPlatform = normalizedPlatform(record); return <button draggable={canMovePublication(record.status)} key={record.id} className={`calendar-content ${itemPlatform || "unknown"}`} onDragStart={(event) => event.dataTransfer.setData("text/plain", record.id)}><span>{icon(itemPlatform)}</span><strong>{record.title}</strong><time>{localCalendarTime(record.starts_at)}</time></button>; })}</div>; })}</div></section></>;
+export function PublishingCalendarWorkspace(){
+  const work=useContentWork(),{accessToken,demo}=useSession();
+  const [mode,setMode]=useState<"week"|"month">("week"),[anchor,setAnchor]=useState(()=>localCalendarDate(new Date()));
+  const [records,setRecords]=useState<OsRecord[]>([]),[error,setError]=useState(""),[loading,setLoading]=useState(!demo),[busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{if(demo)return;setLoading(true);try{const result=await listRecords(accessToken,"content_publish","limit=200");setRecords(result.records);setError("");}catch(reason){setError(reason instanceof Error?reason.message:"일정 조회 실패");}finally{setLoading(false);}},[accessToken,demo]);
+  useEffect(()=>{void load();},[load]);
+  const days=useMemo(()=>{
+    const start=new Date(anchor+"T12:00:00");if(Number.isNaN(start.getTime()))return [];
+    if(mode==="week")start.setDate(start.getDate()-((start.getDay()+6)%7));else start.setDate(1);
+    const count=mode==="week"?7:new Date(start.getFullYear(),start.getMonth()+1,0).getDate();
+    return Array.from({length:count},(_,index)=>{const value=new Date(start);value.setDate(start.getDate()+index);return value;});
+  },[anchor,mode]);
+  const visible=records.filter(row=>!work?.topicId||row.parent_id===work.topicId);
+  function shift(delta:number){const next=new Date(anchor+"T12:00:00");if(mode==="week")next.setDate(next.getDate()+delta*7);else{next.setDate(1);next.setMonth(next.getMonth()+delta);}setAnchor(localCalendarDate(next));}
+  async function moveRecord(id:string,date:string){
+    const record=records.find(row=>row.id===id);if(!record||busy)return;
+    const change=movePublicationDate(record,date);if(!change){setError("발행 완료 항목은 이동할 수 없습니다.");return;}
+    setBusy(true);setError("");
+    try{
+      if(demo){setRecords(old=>old.map(row=>row.id===id?{...row,starts_at:change.startsAt}:row));return;}
+      if(record.metadata.channelWorkflowVersion===1)await apiRequest("/api/v1/content/publish",{method:"POST",token:accessToken,body:JSON.stringify({id,expectedVersion:record.version,operation:"reschedule",startsAt:change.startsAt})});
+      else await updateRecord(accessToken,{id,expectedVersion:record.version,...change});
+      await load();
+    }catch(reason){setError(reason instanceof Error?reason.message:"일정을 이동하지 못했습니다.");}finally{setBusy(false);}
+  }
+  const due=visible.filter(row=>row.status==="scheduled"&&row.starts_at&&Date.parse(row.starts_at)<=Date.now());
+  const manual=visible.filter(row=>row.status!=="published"&&row.metadata.publishMode==="manual");
+  const failed=visible.filter(row=>row.metadata.publishError);
+  const href=(row:OsRecord)=>"/content/publishing?tab=review&publication="+encodeURIComponent(row.id)+(row.parent_id?"&sourceId="+encodeURIComponent(row.parent_id):"");
+  return <>
+    <header className="page-header"><div className="page-title-group"><PageTitle/><p>시각이 되면 알림을 받고, 사람이 확인한 뒤 게시합니다.</p></div></header>
+    <PublishingTabs view="calendar"/>
+    {error?<div className="inline-alert danger" role="alert"><CircleAlert size={16}/>{error}</div>:null}
+    <div className="period-toolbar panel"><button className="icon-button" aria-label="이전 기간" onClick={()=>shift(-1)}><ArrowLeft size={16}/></button><input aria-label="발행 캘린더 기준일" type="date" value={anchor} onChange={event=>{if(event.target.value)setAnchor(event.target.value);}}/><button className="icon-button" aria-label="다음 기간" onClick={()=>shift(1)}><ArrowRight size={16}/></button><button className="ghost-button" onClick={()=>setAnchor(localCalendarDate(new Date()))}>오늘</button><button className={mode==="week"?"primary-button":"secondary-button"} onClick={()=>setMode("week")}>주</button><button className={mode==="month"?"primary-button":"secondary-button"} onClick={()=>setMode("month")}>월</button></div>
+    {loading?<div className="panel loading-state" role="status">일정 불러오는 중…</div>:<div className="channel-calendar-layout">
+      <section className="panel channel-calendar-scroll" aria-label="형식별 발행 캘린더"><table className={"channel-calendar-table "+mode}><thead><tr><th>게시 형식</th>{days.map(date=><th key={localCalendarDate(date)}>{date.getDate()}일 <small>{new Intl.DateTimeFormat("ko-KR",{weekday:"short"}).format(date)}</small></th>)}</tr></thead><tbody>{PUBLICATION_FORMATS.map(format=><tr key={format.id}><th scope="row">{format.label}</th>{days.map(date=>{const key=localCalendarDate(date);return <td key={key} onDragOver={event=>event.preventDefault()} onDrop={event=>void moveRecord(event.dataTransfer.getData("text/plain"),key)}>{visible.filter(row=>row.starts_at&&publicationCalendarFormat(row)===format.id&&localCalendarDate(row.starts_at)===key).map(row=><Link key={row.id} href={href(row)} className={"calendar-content "+String(row.metadata.platform??"unknown")} draggable={!busy&&canMovePublication(row.status)} onDragStart={event=>event.dataTransfer.setData("text/plain",row.id)}><strong>{row.title}</strong><time>{localCalendarTime(row.starts_at)}</time><small>{row.status==="published"?"게시됨":row.metadata.needsRecheck?"재확인 필요":row.status==="scheduled"?"확인 예약":"준비 중"}</small></Link>)}</td>;})}</tr>)}</tbody></table>{!visible.length?<p className="list-empty">등록된 발행 일정이 없습니다. 검토·발행 대기에서 먼저 예약하세요.</p>:null}{records.length===200?<p>최근 200건 범위입니다. 이전 기록은 검색에서 확인하세요.</p>:null}</section>
+      <aside className="channel-calendar-alerts">{[{title:"지금 확인할 것",rows:due},{title:"앱에서 직접 할 일",rows:manual},{title:"실패 · 결과 확인",rows:failed}].map(group=><section className="panel" key={group.title}><h2>{group.title} <small>{group.rows.length}</small></h2>{group.rows.length?group.rows.map(row=><Link key={row.id} href={href(row)}>{row.title}<small>게시 설정 열기 →</small></Link>):<p>확인할 항목이 없습니다.</p>}</section>)}</aside>
+    </div>}
+  </>;
 }

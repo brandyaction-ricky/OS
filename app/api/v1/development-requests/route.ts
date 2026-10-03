@@ -102,6 +102,7 @@ export async function PATCH(request: Request) {
     await assertAssignee(input.assigneeId, current.assignee_id);
     assertAttachmentOwner(actor, input.attachmentPath);
     const { data, error } = await actor.supabase.from("os_records").update({ ...developmentRequestUpdateFields(current as OsRecord, input), updated_by: actor.id }).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("*").maybeSingle();
+    if (error?.code === "23514" && error.message === "DEVELOPMENT_REQUEST_METADATA_INVALID" && ["plainSummary", "nextAction", "holdReason", "reviewDate"].some(key => key in input)) throw new ApiError(503, "REQUEST_SUMMARY_NOT_READY", "요청 요약 저장을 준비 중입니다. 요약 입력을 비우면 기존 상태·처리 결과를 저장할 수 있습니다.");
     if (error) throw new ApiError(500, "REQUEST_UPDATE_FAILED", "수정 요청을 변경하지 못했습니다.");
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 요청을 다시 열어 주세요.");
     return NextResponse.json({ record: data }, { headers });

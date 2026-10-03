@@ -1,5 +1,7 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import {
   Activity,
   Bot,
@@ -91,8 +93,7 @@ export function AuditWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">감사 기록</span>
-          <h1>감사 로그</h1>
+          <PageTitle />
           <p>운영 기록의 생성·수정·보관 이력을 되돌릴 수 있는 근거로 남깁니다.</p>
         </div>
       </header>

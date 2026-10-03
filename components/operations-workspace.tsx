@@ -1,8 +1,13 @@
 "use client";
+import { useRecordDeepLink } from "./use-record-deep-link";
 
+import { decisionSource } from "@/lib/meeting-review";
+import { PageTitle } from "./page-title";
+
+import { WorkspaceLoadState } from "./workspace-load-state";
 import { Archive, ArrowUpRight, CalendarDays, CheckCircle2, CircleAlert, History, Plus, RotateCcw, Search, Target, X } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { archiveRecord, createRecord, listRecords, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
+import { archiveRecord, createRecord, listAllRecordsOfType, listRecordVersions, restoreRecordVersion, updateRecord, type RecordVersionSummary } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { normalizedWorkspaceStatus, workspaceStatusLabel, type WorkspaceConfig } from "@/lib/workspace-config";
 import { useSession } from "./session-provider";
@@ -21,12 +26,13 @@ function metricValue(record: OsRecord, mode?: WorkspaceConfig["metricMode"]) {
   return `${record.progress}%`;
 }
 
-export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
+export function OperationsWorkspace({ config, embedded = false, demoRecords }: { config: WorkspaceConfig; embedded?: boolean; demoRecords?: OsRecord[] }) {
   const { demo, accessToken, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<OsRecord | null>(null);
@@ -35,22 +41,22 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = async () => {
-    if (demo) return;
+    if (demo) {if(demoRecords)setRecords(demoRecords);return;}
     setLoading(true);
     try {
-      const response = await listRecords(accessToken, config.recordType);
-      setRecords(response.records);
+      const response = await listAllRecordsOfType(accessToken, config.recordType);
+      setRecords(response);
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "목록을 불러오지 못했습니다."); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [accessToken, config.recordType, demo]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [accessToken, config.recordType, demo, demoRecords]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => records.filter((record) => {
     const matchesQuery = !query || `${record.title} ${record.description} ${record.brand} ${record.team}`.toLowerCase().includes(query.toLowerCase());
-    return matchesQuery && (statusFilter === "all" || normalizedWorkspaceStatus(config, record.status) === statusFilter);
-  }), [config, query, records, statusFilter]);
+    return matchesQuery && (config.recordType !== "decision" || sourceFilter === "all" || decisionSource(record) === sourceFilter) && (statusFilter === "all" || normalizedWorkspaceStatus(config, record.status) === statusFilter);
+  }), [config, query, records, statusFilter, sourceFilter]);
 
   const completed = records.filter((record) => ["done", "published", "decided", "healthy", "loyal"].includes(normalizedWorkspaceStatus(config, record.status))).length;
   const blocked = records.filter((record) => ["blocked", "warning", "churned", "disconnected"].includes(normalizedWorkspaceStatus(config, record.status))).length;
@@ -81,6 +87,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   };
 
   const openEdit = (record: OsRecord) => { setEditing(record); setEditorOpen(true); };
+  useRecordDeepLink("record", config.recordType, openEdit, setError);
   const archive = async (record: OsRecord) => {
     if (!window.confirm(`“${record.title}”을 보관할까요?`)) return;
     try { await archiveRecord(accessToken, record.id); await load(); }
@@ -97,13 +104,15 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
   };
 
   return <>
-    <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">{config.eyebrow}</span><h1>{config.title}</h1><p>{config.description}</p></div>
+    {!embedded && <header className="page-header">
+      <div className="page-title-group"><PageTitle /><p>{config.description}</p></div>
       <button className="primary-button" onClick={() => { setEditing(null); setEditorOpen(true); }}><Plus size={16} /> {config.singular} 추가</button>
-    </header>
+    </header>}
+    {embedded && <div className="header-actions"><button className="primary-button" onClick={()=>{setEditing(null);setEditorOpen(true);}}><Plus size={16}/> 결정 추가</button></div>}
 
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
 
+    <WorkspaceLoadState loading={loading} error={error && !records.length ? error : undefined} retry={load}>
     <section className="metric-grid compact-metrics">
       <div className="metric-card"><div className="metric-top"><span>전체</span><span className="metric-icon"><Target size={16} /></span></div><div className="metric-value">{records.length}</div><div className="metric-caption">등록된 {config.singular}</div></div>
       <div className="metric-card"><div className="metric-top"><span>완료·정상</span><span className="metric-icon"><CheckCircle2 size={16} /></span></div><div className="metric-value">{completed}</div><div className="metric-caption good">실행이 끝난 항목</div></div>
@@ -111,6 +120,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       <div className="metric-card"><div className="metric-top"><span>7일 내 기한</span><span className="metric-icon"><CalendarDays size={16} /></span></div><div className="metric-value">{dueSoon}</div><div className="metric-caption">오늘 포함 예정 업무</div></div>
     </section>
 
+    {config.recordType === "decision" && <nav className="task-filters" aria-label="결정 출처">{[["all","전체"],["meeting","회의"],["planning","콘텐츠 기획"],["telegram","텔레그램"],["direct","직접·기타"]].map(([id,label])=><button key={id} aria-pressed={sourceFilter===id} className={sourceFilter===id?"active":""} onClick={()=>setSourceFilter(id)}>{label} {records.filter(record=>id==="all"||decisionSource(record)===id).length}</button>)}</nav>}
     <section className="panel records-panel">
       <div className="records-toolbar">
         <div className="search-field"><Search size={16} /><input aria-label={`${config.singular} 검색`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`${config.singular} 검색`} /></div>
@@ -132,6 +142,7 @@ export function OperationsWorkspace({ config }: { config: WorkspaceConfig }) {
       </div> : <div className="empty-state"><div><span><Target /></span><h3>{config.empty}</h3><p>{config.helper}</p><button className="primary-button" onClick={() => { setEditing(null); setEditorOpen(true); }}><Plus size={15} /> {config.singular} 추가</button></div></div>}
     </section>
 
+    </WorkspaceLoadState>
     {editorOpen ? <div className="drawer-backdrop" onMouseDown={() => setEditorOpen(false)}><form className="record-drawer" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
       <div className="drawer-head"><div><span className="eyebrow">{editing ? "수정" : "새 항목"}</span><h2>{editing ? config.singular + " 수정" : "새 " + config.singular}</h2></div><button type="button" className="icon-button" onClick={() => setEditorOpen(false)}><X size={18} /></button></div>
       <label><span>제목</span><input name="title" required maxLength={240} defaultValue={editing?.title} placeholder={`${config.singular} 제목`} /></label>

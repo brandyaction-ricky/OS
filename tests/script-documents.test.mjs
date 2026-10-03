@@ -76,6 +76,9 @@ function setup(overrides = {}, initialSession = {}) {
   };
   const jsx = (type, props) => ({ type, props });
   const modules = {
+    "./page-title": { PageTitle: () => null },
+    "./content-generation-button": { ContentGenerationButton: () => null },
+    "@/lib/content-generation-mode": { GENERATION_QUEUED_NOTICE: "구독 대기열에 저장했습니다." },
     react, "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, name) => String(name) }),
     "@/lib/api-client": api, "@/lib/script-documents": scripts,

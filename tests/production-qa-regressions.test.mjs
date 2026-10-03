@@ -12,13 +12,14 @@ test("global shell controls do not present dead actions", async () => {
   assert.doesNotMatch(shell, /이 영역에 기능 추가/);
   assert.doesNotMatch(shell, /새로운 알림이 없습니다/);
   assert.match(shell, /DevelopmentRequestNotifications open=/);
-  assert.match(shell, /knowledge\/development\?new=request&page=/);
+  assert.match(shell, /DevelopmentRequestDrawer open=/);
+  assert.match(await read("components/project-hub-workspace.tsx"), /params.get\("new"\) === "request"/);
   assert.match(notifications, /fetch\(`\/api\/v1\/development-requests\?/);
   assert.match(notifications, /Authorization: `Bearer \$\{accessToken\}`/);
   assert.match(notifications, /query\.set\("scope", "mine"\)/);
   assert.match(notifications, /fetch\("\/api\/v1\/development-notifications"/);
-  assert.match(notifications, /개발 알림을 불러오지 못했습니다/);
-  assert.match(notifications, /개발 알림을 불러오는 중입니다/);
+  assert.match(notifications, /알림을 불러오지 못했습니다/);
+  assert.match(notifications, /알림을 불러오는 중입니다/);
   assert.match(notifications, /모두 읽음/);
 });
 
@@ -35,8 +36,9 @@ test("knowledge workspace requests folder inventory and loads expanded folders l
 test("unimplemented knowledge filter and mismatched commerce title are removed", async () => {
   const [search, page] = await Promise.all([
     read("components/knowledge-search.tsx"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
   ]);
   assert.doesNotMatch(search, /상세 조건/);
-  assert.match(page, /CommerceAdminLinks title="자사몰 어드민"/);
+  assert.match(page, /customers:CommerceAdminLinks/);
+  assert.match(await read("components/performance-workspaces.tsx"), /<PageTitle \/>/);
 });
