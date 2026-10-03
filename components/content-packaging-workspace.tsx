@@ -61,11 +61,11 @@ function CandidateList({ title, subtitle, items, copied, onCopy, onPick }: {
   })}</div> : <div className="compact-empty"><Sparkles size={24} /><strong>생성된 후보가 없습니다.</strong><span>시장 근거를 모은 뒤 후보 생성을 실행하세요.</span></div>}</section>;
 }
 
-export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource }: { showJevAssist?: boolean; lockedSource?:OsRecord }) {
+export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,sourceOptions,onSourceChange }: { showJevAssist?: boolean; lockedSource?:OsRecord;sourceOptions?:OsRecord[];onSourceChange?:(id:string)=>void }) {
   const { accessToken, demo, profile } = useSession();
   const [allSources, setSources] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
   const [origin, setOrigin] = useState<OriginFilter>("own");
-  const sources = lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin);
+  const sources = sourceOptions ?? (lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin));
   const [packages, setPackages] = useState<OsRecord[]>([]);
   const [sourceId, setSourceId] = useState(lockedSource?.id??"");
   const [tab, setTab] = useQueryTab<PackageTab>("tab",["search","title","thumbnail","saved"],"search");
@@ -93,12 +93,12 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource 
       ]);
       setSources(sourceResult.records);
       setPackages(packageResult.records); setOwnMetrics(metrics);
-      setSourceId((current) => lockedSource ? (sourceResult.records.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceSelection(sourceResult.records, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
+      setSourceId((current) => lockedSource ? (sourceResult.records.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceOptions ? "" : sourceSelection(sourceResult.records, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "패키징 자료를 불러오지 못했습니다.");
     }
-  }, [accessToken, demo, lockedSource]);
+  }, [accessToken, demo, lockedSource, sourceOptions]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -252,7 +252,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource 
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     {selectedSource && pipelineEnabled ? <section className="panel packaging-handoff" aria-label="기획에서 패키징으로 인계"><header className="panel-header"><div><span className="eyebrow">같은 콘텐츠에서 이어서 작업</span><h2>{selectedSource.title}</h2><p>주제·기획에서 승인한 범위를 그대로 확인하고, 최종 제목과 썸네일은 이 화면에서 결정합니다.</p></div><span className={`status-pill status-${planningApproved ? "ready" : "review"}`}>{planningApproved ? "기획·근거 승인 완료" : "기획·근거 승인 대기"}</span></header><dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selectedSource.id}</dd></div><div><dt>현재 단계</dt><dd>{selectedSource.stage || "패키징 준비"}</dd></div><div><dt>승인 소구점</dt><dd>{approvedAppeals.length}개</dd></div><div><dt>검증 레퍼런스</dt><dd>{referenceCount}개</dd></div></dl>{pickedPlan ? <article className="packaging-plan-card"><small>채택한 기획 방향 · 기획 v{selectedPlan?.version}</small><strong>{String(pickedPlan.title ?? "기획 방향")}</strong><p>{String(pickedPlan.narrative ?? pickedPlan.evidence ?? "")}</p><span>기획 단계의 제목·썸네일 문구는 방향 참고이며, 최종안은 이 화면에서 채택합니다.</span></article> : null}{generationBlocker ? <p className="inline-alert warning"><CircleAlert size={15} /> {generationBlocker}</p> : null}<nav className="planning-next-actions"><Link className="secondary-button" href={`/content/topics?sourceId=${selectedSource.id}`}>주제·기획 확인</Link><Link className="secondary-button" href={`/content/automation?sourceId=${selectedSource.id}`}>공정·승인 현황</Link></nav></section> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>

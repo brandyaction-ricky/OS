@@ -65,11 +65,11 @@ export function ContentShortsWorkspace() {
 
 const KIT_FIELDS = [["title", "영상 제목"], ["description", "유튜브 설명"], ["tags", "태그"], ["chapters", "챕터"], ["pinnedComment", "고정 댓글"], ["kakao", "카카오톡"], ["cafe", "네이버 카페"], ["post", "게시글"], ["checklist", "업로드 체크리스트"]] as const;
 
-export function YoutubeKitWorkspace({lockedSource}:{lockedSource?:OsRecord} = {}) {
+export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange}:{lockedSource?:OsRecord;sourceOptions?:OsRecord[];onSourceChange?:(id:string)=>void} = {}) {
   const { accessToken, demo } = useSession();
   const [allSources, setSources] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
   const [origin, setOrigin] = useState<OriginFilter>("own");
-  const sources = lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin); const [kits, setKits] = useState<OsRecord[]>([]); const [sourceId, setSourceId] = useState(lockedSource?.id??"");
+  const sources = sourceOptions ?? (lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin)); const [kits, setKits] = useState<OsRecord[]>([]); const [sourceId, setSourceId] = useState(lockedSource?.id??"");
   const [oauth, setOauth] = useState<YoutubeOAuthStatus | null>(null); const [file, setFile] = useState<File | null>(null); const [privacy, setPrivacy] = useState<"private" | "unlisted">("private");
   const [pipeline, setPipeline] = useState<{ source: OsRecord; approved: boolean[]; release: ReleaseWorkflowState } | null>(null);
   const [releaseNote, setReleaseNote] = useState(""); const [scheduledAt, setScheduledAt] = useState(""); const [uploadProgress, setUploadProgress] = useState(0); const [uploadedUrl, setUploadedUrl] = useState("");
@@ -80,9 +80,9 @@ export function YoutubeKitWorkspace({lockedSource}:{lockedSource?:OsRecord} = {}
     try {
       const [sourceResult, packageResult, oauthResult] = await Promise.all([listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })), listRecords(accessToken, "content_package", "limit=200"), getYoutubeOAuthStatus(accessToken)]);
       setSources(sourceResult.records); setKits(packageResult.records.filter((item) => metadata<string>(item, "packageKind", "") === "youtube_kit")); setOauth(oauthResult);
-      setSourceId((current) => lockedSource ? (sourceResult.records.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceSelection(sourceResult.records, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
+      setSourceId((current) => lockedSource ? (sourceResult.records.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceOptions ? "" : sourceSelection(sourceResult.records, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
     } catch (reason) { setError(reason instanceof Error ? reason.message : "유튜브 발행 정보를 불러오지 못했습니다."); }
-  }, [accessToken, demo, lockedSource]);
+  }, [accessToken, demo, lockedSource, sourceOptions]);
   useEffect(() => { load(); }, [load]);
   const loadPipeline = useCallback(async () => {
     if (!sourceId || demo) { setPipeline(null); return; }
@@ -140,7 +140,7 @@ export function YoutubeKitWorkspace({lockedSource}:{lockedSource?:OsRecord} = {}
     } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 업로드를 완료하지 못했습니다."); } finally { setBusy(false); }
   };
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>정본으로 발행 키트를 만든 뒤 관리자 승인으로 연결 채널에 비공개 또는 일부공개 업로드합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<SourcePicker sources={sources} value={sourceId} onChange={setSourceId} />{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</button></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>정본으로 발행 키트를 만든 뒤 관리자 승인으로 연결 채널에 비공개 또는 일부공개 업로드합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<SourcePicker sources={sources} value={sourceId} onChange={onSourceChange ?? setSourceId} />{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</button></div></header>
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <section className="panel youtube-connection"><div><span className="platform-icon youtube"><Youtube size={17}/></span><span><strong>{oauth?.connected?oauth.channelTitle:"YouTube 채널 동의 확인 필요"}</strong><small>채널 동의와 해제는 설정의 작동 상태에서 관리합니다.</small></span></div><Link className="secondary-button" href="/settings/connections">채널 연결 관리</Link></section>
     <section className="panel kit-guide"><span><strong>1</strong> 기준 롱폼 선택</span><span><strong>2</strong> 정본으로 키트 만들기</span><span><strong>3</strong> 최종 영상 검수</span><span><strong>4</strong> 발행 조건 승인 후 업로드</span></section>

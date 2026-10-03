@@ -29,6 +29,7 @@ import { ServerConnectionStatus } from "./server-connection-status";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
 import {MovedMenuNotice} from "./moved-menu-notice";
+import {ContentWorkProvider} from "./content-work-provider";
 import { PasswordChangeForm } from "./password-change-form";
 import { useSession } from "./session-provider";
 type DisplayTheme = "dark" | "light";
@@ -295,7 +296,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="page-content">
           <MovedMenuNotice />
           {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>내 할 일 · 콘텐츠 · 회사 문서 · 팀 · 개발 · 설정, 6묶음 23개 메뉴입니다. 채널 연결은 아래 프로필의 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
-          {children}
+          <ContentWorkProvider>{children}</ContentWorkProvider>
         </main>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />

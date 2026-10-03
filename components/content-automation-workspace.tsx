@@ -1,6 +1,9 @@
 "use client";
 
 import { PageTitle } from "./page-title";
+import {useContentWork} from "./content-work-provider";
+import {PublishingTabs} from "./publishing-tabs";
+import {useSearchParams} from "next/navigation";
 
 import { Archive, ArrowRight, CalendarDays, CheckCircle2, CircleAlert, Clipboard, Code2, Eye, FileText, Film, ImagePlus, Instagram, Layers3, NotebookPen, Pencil, Plus, Save, Send, Sparkles, Upload, X, Youtube } from "lucide-react";
 import Link from "next/link";
@@ -59,13 +62,17 @@ function SeoColumnEditor({ output, busy, onClose, onSave }: { output: OsRecord; 
 }
 
 export function ContentAutomationWorkspace({ initialView = "pipeline" }: { initialView?: AutomationView }) {
+  const work=useContentWork();
+  const search=useSearchParams();
   const { accessToken, demo, profile } = useSession();
   const [allSources, setSources] = useState<OsRecord[]>([]); const [allOutputs, setOutputs] = useState<OsRecord[]>([]);
   const [origin, setOrigin] = useState<OriginFilter>("own");
-  const sources = filterContentOrigin(allSources, origin);
-  const outputs = allOutputs.filter(record => origin === "all" || linkedContentOrigin(record, allSources) === origin);
+  const sources = filterContentOrigin(allSources, origin).filter(record=>!work?.topicId||record.id===work.topicId);
+  const outputs = allOutputs.filter(record => (origin === "all" || linkedContentOrigin(record, allSources) === origin)&&(!work?.topicId||record.parent_id===work.topicId));
   const [pipelineTab, setPipelineTab] = useState<"workflow" | "derivatives">("workflow");
-  const [view, setView] = useState<AutomationView>(initialView); const [selectedId, setSelectedId] = useState(""); const [sourceOpen, setSourceOpen] = useState(false);
+  const view:AutomationView = search.get("tab")==="create" ? "pipeline" : search.get("tab")==="review" ? "review" : initialView;
+  const setView=(next:AutomationView)=>{const params=new URLSearchParams(search.toString());params.set("tab",next==="pipeline"?"create":"review");window.history.replaceState(null,"",`/content/publishing?${params}`);};
+  const [selectedId, setSelectedId] = useState(""); const [sourceOpen, setSourceOpen] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [platformFilter, setPlatformFilter] = useState("all");
   const [reviewSort, setReviewSort] = useState<ReviewSort>("due"); const [reviewGroup, setReviewGroup] = useState<ReviewGroup>("source"); const [scheduleDrafts, setScheduleDrafts] = useState<Record<string, string>>({});
   const [importNotice, setImportNotice] = useState("");
@@ -82,7 +89,7 @@ export function ContentAutomationWorkspace({ initialView = "pipeline" }: { initi
   }, [accessToken, demo]);
   useEffect(() => { load(); }, [load]);
 
-  const selected = sources.find((source) => source.id === selectedId) ?? sources[0] ?? null;
+  const selected = sources.find((source) => source.id === (work?.topicId||selectedId)) ?? sources[0] ?? null;
   const selectedOutputs = outputs.filter((output) => output.parent_id === selected?.id);
   const reviewCount = outputs.filter((output) => ["draft", "review", "ready", "blocked"].includes(output.status)).length;
   const scheduledCount = outputs.filter((output) => output.status === "scheduled").length;
@@ -151,7 +158,7 @@ export function ContentAutomationWorkspace({ initialView = "pipeline" }: { initi
 
   return <>
     <header className="page-header"><div className="page-title-group"><PageTitle /><p>최종 롱폼 1개를 쇼츠·Threads·SEO 칼럼·카드뉴스·에세이로 전환하고 검토·예약합니다.</p></div><div className="header-actions"><ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSelectedId(""); }} /><Link className="secondary-button" href="/content/calendar"><CalendarDays size={16} /> 발행 캘린더</Link>{profile?.role === "admin" ? <label className="secondary-button content-import-button"><Upload size={15} /> 콘텐츠 JSON 가져오기<input type="file" accept="application/json,.json" disabled={busy} onChange={(event) => { importSnapshot(event.target.files?.[0]); event.target.value = ""; }} /></label> : null}<button className="secondary-button" onClick={() => setView(view === "pipeline" ? "review" : "pipeline")}><CheckCircle2 size={16} /> {view === "pipeline" ? `대기목록 ${reviewCount}` : "자동화 현황"}</button><button className="primary-button" onClick={() => setSourceOpen(true)}><Plus size={16} /> 콘텐츠 등록</button></div></header>
-    <nav className="studio-tabs publishing-tabs" aria-label="발행 작업 보기"><button className={view === "review" ? "active" : ""} onClick={() => setView("review")}><CheckCircle2 size={13} /> 검토·발행 대기목록</button><Link href="/content/calendar"><CalendarDays size={13} /> 발행 캘린더</Link><button className={view === "pipeline" ? "active" : ""} onClick={() => setView("pipeline")}><Layers3 size={13} /> 멀티채널 자동화</button></nav>
+    <PublishingTabs view={view === "pipeline" ? "create" : "review"} />
     {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
     <details className="content-import-help"><summary>콘텐츠 JSON 가져오기 안내</summary><p>기존 콘텐츠 도구에서 내보낸 스냅샷을 사용합니다. sources·derivatives·metrics 배열과 원본 ID 연결을 포함해야 하며 5MB 이하입니다. 임의 문서 JSON은 가져올 수 없습니다.</p></details>{importNotice ? <div className="inline-alert success"><CheckCircle2 size={16} /> {importNotice}</div> : null}
     <section className="metric-grid compact-metrics automation-metrics"><button className="metric-card" onClick={() => setView("pipeline")}><div className="metric-top"><span>원본 롱폼</span><span className="metric-icon"><Film size={16} /></span></div><div className="metric-value">{sources.length}</div><div className="metric-caption">자동화 현황 보기</div></button><button className="metric-card" onClick={() => setView("review")}><div className="metric-top"><span>검토 대기</span><span className="metric-icon"><Sparkles size={16} /></span></div><div className="metric-value">{reviewCount}</div><div className="metric-caption warn">사람 판단 필요</div></button><Link className="metric-card" href="/content/calendar"><div className="metric-top"><span>예약 발행</span><span className="metric-icon"><CalendarDays size={16} /></span></div><div className="metric-value">{scheduledCount}</div><div className="metric-caption">캘린더 보기</div></Link><button className="metric-card" onClick={() => setView("review")}><div className="metric-top"><span>발행 완료</span><span className="metric-icon"><CheckCircle2 size={16} /></span></div><div className="metric-value">{publishedCount}</div><div className="metric-caption good">성과 측정 가능</div></button></section>

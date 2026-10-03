@@ -48,7 +48,7 @@ export function ContentTopicsWorkspace() {
   </>;
 }
 
-export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showPlanningHandoff?: boolean } = {}) {
+export function ContentScriptsWorkspace({ showPlanningHandoff = false, lockedSource }: { showPlanningHandoff?: boolean; lockedSource?:OsRecord } = {}) {
   const { accessToken, demo, profile } = useSession();
   const [root, setRoot] = useState(SCRIPT_DOCUMENT_ROOT);
   const [folderOptions, setFolderOptions] = useState<string[]>([]);
@@ -86,14 +86,16 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showP
       const active = loaded.filter(isVisibleScript).sort(compareScriptDocuments);
       const grouped = active.filter((document) => document.folder !== root);
       setDocuments(active);
-      setFolder((current) => grouped.some((document) => document.folder === current) ? current : grouped[0]?.folder ?? "");
-      setSelectedId((current) => grouped.some((document) => document.id === current) ? current : grouped[0]?.id ?? "");
+      const linked = lockedSource ? grouped.filter(document=>document.folder===lockedSource.metadata.scriptFolder || document.folder.split("/").at(-1)===lockedSource.title) : [];
+      const linkedFolders = new Set(linked.map(document=>document.folder));
+      setFolder((current) => lockedSource ? linkedFolders.size===1 ? linked[0].folder : "" : grouped.some((document) => document.folder === current) ? current : grouped[0]?.folder ?? "");
+      setSelectedId((current) => lockedSource ? linkedFolders.size===1 ? linked[0].id : "" : grouped.some((document) => document.id === current) ? current : grouped[0]?.id ?? "");
     } catch (reason) {
       if (generation === listGeneration.current) setError(reason instanceof Error ? reason.message : "원고 문서를 불러오지 못했습니다.");
     } finally {
       if (generation === listGeneration.current) setLoading(false);
     }
-  }, [accessToken, demo, root]);
+  }, [accessToken, demo, root, lockedSource]);
 
   useEffect(() => {
     const saved = typeof window === "undefined" ? null : window.localStorage.getItem("os-script-document-root");
@@ -192,7 +194,8 @@ export function ContentScriptsWorkspace({ showPlanningHandoff = false }: { showP
     {demo ? <div className="inline-alert" role="status">데모에서는 원고를 저장할 수 없습니다. 로그인한 운영 환경에서 작성해 주세요.</div> : null}
     {error ? <div className="inline-alert danger" role="alert"><CircleAlert size={16} /> {error}<button className="ghost-button" onClick={() => void load()} disabled={loading}>다시 불러오기</button></div> : null}
     {notice ? <div className="inline-alert" role="status"><Check size={16} /> {notice}</div> : null}
-    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} />
+    <ContentLinkedScripts showPlanningHandoff={showPlanningHandoff} lockedSourceId={lockedSource?.id} />
+    {lockedSource && !loading && !folder ? <p className="inline-alert" role="status">이 영상과 연결된 문서 폴더가 없습니다. 아래에서 폴더를 선택하거나 새 원고를 작성하세요. 연결된 기획 원고는 위 공정에서 확인할 수 있습니다.</p> : null}
     <div className="procedure-chips script-process-guide" aria-label="원고 공정 산출물"><span>기획</span><span>패키징</span><span>자료</span><span>축 확정</span><span>설계표</span><span>초안</span><span>다듬기</span><span>발행</span></div>
     <section className="script-layout scripts-document-layout">
       <aside className="panel source-list script-folder-list"><div className="panel-header"><div><h2>영상 폴더</h2><p>{folders.length}개 작업 묶음 · 묶음 안 문서 {groupedDocuments.length}개</p></div><button className="ghost-button" onClick={() => void load()} disabled={loading || demo || !accessToken}>새로고침</button></div>

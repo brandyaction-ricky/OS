@@ -1,11 +1,7 @@
 import {WorkspaceTabHub} from "@/components/workspace-tab-hub";
 import {ContentProductionWorkspace} from "@/components/content-production-workspace";
 import {retiredRoute} from "@/lib/final-routes";
-import {ContentScriptsWorkspace} from "@/components/content-pipeline-workspaces";
-import {ContentPackagingWorkspace} from "@/components/content-packaging-workspace";
-import {ContentShortformWorkspace} from "@/components/content-shortform-workspace";
-import {YoutubeKitWorkspace} from "@/components/content-studio-workspaces";
-import {PublishingTabs} from "@/components/publishing-tabs";
+import {ContentStepWorkspace} from "@/components/content-step-workspace";
 import {KnowledgeTabs} from "@/components/knowledge-tabs";
 import {AiOperationsWorkspace} from "@/components/organization-v3-workspaces";
 import { OperationsWorkspace } from "@/components/operations-workspace";
@@ -61,13 +57,13 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if(href==="/organization/schedule")return <WorkspaceTabHub hub="schedule"/>;
   if(href==="/organization/leave")return <WorkspaceTabHub hub="schedule" initialTab="leave"/>;
   if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
-  if (href === "/content/scripts") return <ContentScriptsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} />;
-  if (href === "/content/packages") return <ContentPackagingWorkspace showJevAssist={contentJevAssistEnabled} />;
-  if (href === "/content/shorts") return <ContentShortformWorkspace />;
-  if (href === "/content/youtube") return <YoutubeKitWorkspace />;
+  if (href === "/content/scripts") return <ContentStepWorkspace step="scripts" showPlanningHandoff={contentPlanningHandoffEnabled} />;
+  if (href === "/content/packages") return <ContentStepWorkspace step="packages" showJevAssist={contentJevAssistEnabled} />;
+  if (href === "/content/shorts") return <ContentStepWorkspace step="shorts" />;
+  if (href === "/content/youtube") return <ContentStepWorkspace step="youtube" />;
   if (["/content/automation", "/content/review", "/content/publishing", "/content/calendar"].includes(href)) {
     const view = href === "/content/calendar" || query.tab === "calendar" ? "calendar" : href === "/content/automation" || query.tab === "create" ? "create" : "review";
-    return <><PublishingTabs view={view} />{view === "calendar" ? <PublishingCalendarWorkspace /> : <ContentAutomationWorkspace key={view} initialView={view === "create" ? "pipeline" : "review"} />}</>;
+    return view === "calendar" ? <PublishingCalendarWorkspace /> : <ContentAutomationWorkspace key={view} initialView={view === "create" ? "pipeline" : "review"} />;
   }
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;

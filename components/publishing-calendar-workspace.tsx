@@ -1,9 +1,10 @@
 "use client";
 
 import { PageTitle } from "./page-title";
+import {useContentWork} from "./content-work-provider";
+import {PublishingTabs} from "./publishing-tabs";
 
 import { ArrowLeft, ArrowRight, CalendarDays, CircleAlert, FileText, Instagram, NotebookPen, Send, Youtube } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listRecords, updateRecord } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
@@ -26,6 +27,7 @@ function normalizedPlatform(record: OsRecord) { const value = meta(record, "plat
 function icon(platform: string) { return platform === "shorts" || platform === "youtube" ? <Youtube size={12} /> : platform === "instagram" ? <Instagram size={12} /> : platform === "column" ? <FileText size={12} /> : platform === "essay" ? <NotebookPen size={12} /> : <Send size={12} />; }
 
 export function PublishingCalendarWorkspace() {
+  const work=useContentWork();
   const { accessToken, demo } = useSession();
   const [month, setMonth] = useState(currentMonth);
   const [records, setRecords] = useState<OsRecord[]>([]);
@@ -41,7 +43,7 @@ export function PublishingCalendarWorkspace() {
     const start = new Date(first); start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
     return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
   }, [month]);
-  const visible = records.filter((record) => record.starts_at && (platform === "all" || normalizedPlatform(record) === platform));
+  const visible = records.filter((record) => record.starts_at && (platform === "all" || normalizedPlatform(record) === platform) && (!work?.topicId || record.parent_id === work.topicId));
 
   const moveRecord = async (id: string, dateValue: string) => {
     const record = records.find((item) => item.id === id); if (!record) return;
@@ -51,5 +53,5 @@ export function PublishingCalendarWorkspace() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "발행 일정을 이동하지 못했습니다."); }
   };
 
-  return <><header className="page-header"><div className="page-title-group"><PageTitle /><p>플랫폼별 일정을 확인하고 콘텐츠를 날짜 사이로 끌어 이동합니다.</p></div><div className="calendar-platforms"><button className={platform === "all" ? "active" : ""} onClick={() => setPlatform("all")}>전체</button>{PLATFORMS.map((item) => <button key={item.id} className={platform === item.id ? `active ${item.id}` : item.id} onClick={() => setPlatform(item.id)}>{item.icon} {item.label}</button>)}</div></header><nav className="studio-tabs publishing-tabs" aria-label="발행 작업 보기"><Link href="/content/publishing"><CalendarDays size={13} /> 검토·발행 대기목록</Link><button className="active"><CalendarDays size={13} /> 발행 캘린더</button><Link href="/content/automation">멀티채널 자동화</Link></nav>{error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}<div className="period-toolbar panel"><button className="icon-button" aria-label="이전 달" onClick={() => setMonth((value) => shiftMonth(value, -1))}><ArrowLeft size={16} /></button><label><CalendarDays size={16} /><input aria-label="발행 캘린더 기준월" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /><strong>{month.replace("-", "년 ")}월</strong></label><button className="icon-button" aria-label="다음 달" onClick={() => setMonth((value) => shiftMonth(value, 1))}><ArrowRight size={16} /></button><button className="ghost-button" onClick={() => setMonth(currentMonth())}>이번 달</button></div><section className="publishing-calendar panel"><div className="calendar-weekdays">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-days">{days.map((date) => { const key = localCalendarDate(date); const items = visible.filter((record) => localCalendarDate(record.starts_at) === key); return <div className={date.getMonth() + 1 === Number(month.slice(5)) ? "" : "outside"} key={key} onDragOver={(event) => event.preventDefault()} onDrop={(event) => moveRecord(event.dataTransfer.getData("text/plain"), key)}><header><span>{date.getDate()}</span><small>{items.length || ""}</small></header>{items.map((record) => { const itemPlatform = normalizedPlatform(record); return <button draggable={canMovePublication(record.status)} key={record.id} className={`calendar-content ${itemPlatform || "unknown"}`} onDragStart={(event) => event.dataTransfer.setData("text/plain", record.id)}><span>{icon(itemPlatform)}</span><strong>{record.title}</strong><time>{localCalendarTime(record.starts_at)}</time></button>; })}</div>; })}</div></section></>;
+  return <><header className="page-header"><div className="page-title-group"><PageTitle /><p>플랫폼별 일정을 확인하고 콘텐츠를 날짜 사이로 끌어 이동합니다.</p></div><div className="calendar-platforms"><button className={platform === "all" ? "active" : ""} onClick={() => setPlatform("all")}>전체</button>{PLATFORMS.map((item) => <button key={item.id} className={platform === item.id ? `active ${item.id}` : item.id} onClick={() => setPlatform(item.id)}>{item.icon} {item.label}</button>)}</div></header><PublishingTabs view="calendar" />{error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}<div className="period-toolbar panel"><button className="icon-button" aria-label="이전 달" onClick={() => setMonth((value) => shiftMonth(value, -1))}><ArrowLeft size={16} /></button><label><CalendarDays size={16} /><input aria-label="발행 캘린더 기준월" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /><strong>{month.replace("-", "년 ")}월</strong></label><button className="icon-button" aria-label="다음 달" onClick={() => setMonth((value) => shiftMonth(value, 1))}><ArrowRight size={16} /></button><button className="ghost-button" onClick={() => setMonth(currentMonth())}>이번 달</button></div><section className="publishing-calendar panel"><div className="calendar-weekdays">{WEEKDAYS.map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-days">{days.map((date) => { const key = localCalendarDate(date); const items = visible.filter((record) => localCalendarDate(record.starts_at) === key); return <div className={date.getMonth() + 1 === Number(month.slice(5)) ? "" : "outside"} key={key} onDragOver={(event) => event.preventDefault()} onDrop={(event) => moveRecord(event.dataTransfer.getData("text/plain"), key)}><header><span>{date.getDate()}</span><small>{items.length || ""}</small></header>{items.map((record) => { const itemPlatform = normalizedPlatform(record); return <button draggable={canMovePublication(record.status)} key={record.id} className={`calendar-content ${itemPlatform || "unknown"}`} onDragStart={(event) => event.dataTransfer.setData("text/plain", record.id)}><span>{icon(itemPlatform)}</span><strong>{record.title}</strong><time>{localCalendarTime(record.starts_at)}</time></button>; })}</div>; })}</div></section></>;
 }

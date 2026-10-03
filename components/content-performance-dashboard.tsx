@@ -1,6 +1,7 @@
 "use client";
 
 import { PageTitle } from "./page-title";
+import {useContentWork} from "./content-work-provider";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
@@ -17,11 +18,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export function ContentPerformanceDashboard() {
+  const work=useContentWork();
   const { accessToken, demo, profile } = useSession();
   const [records, setRecords] = useState<OsRecord[]>([]); const [hypotheses, setHypotheses] = useState<OsRecord[]>([]); const [allSources, setSources] = useState<OsRecord[]>([]);
   const [origin, setOrigin] = useState<OriginFilter>("own");
   const sources = filterContentOrigin(allSources, origin);
-  const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [sourceId, setSourceId] = useState("all");
+  const [brand, setBrand] = useState("all"); const [platform, setPlatform] = useState("all"); const [hierarchy, setHierarchy] = useState("all"); const [localSourceId, setLocalSourceId] = useState("all");
+  const sourceId=work?work.topicId||"all":localSourceId;
+  const setSourceId=(id:string)=>{setLocalSourceId(id);work?.select(id==="all"?"":id);};
   const [from, setFrom] = useState(new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)); const [to, setTo] = useState(today());
   const [dimension, setDimension] = useState("video"); const [weekA, setWeekA] = useState(""); const [weekB, setWeekB] = useState("");
   const [editing, setEditing] = useState<OsRecord | null>(null); const [open, setOpen] = useState(false);
