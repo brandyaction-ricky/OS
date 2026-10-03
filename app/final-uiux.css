@@ -14,6 +14,22 @@ body { font-size: 13px; }
 .quick-record-options > * { display: block; width: 100%; padding: 8px; text-align: left; border: 0; background: transparent; border-radius: 4px; cursor: pointer; }
 .quick-record-options > *:hover { background: var(--surface-hover); }
 .profile-menu > a { display: flex; align-items: center; gap: 8px; padding: 8px; }
+.guide-strip { padding: 10px 14px; border: 1px solid var(--accent-2); border-radius: 10px; background: var(--accent-soft); color: var(--text-2); font-size: 12.5px; font-weight: 400; line-height: 1.5; }
+.guide-heading { display: flex; align-items: center; gap: 8px; color: var(--accent-2); }
+.guide-heading strong { font-size: 13px; }
+.guide-heading a { margin-left: auto; font-size: 12px; }
+.guide-heading .icon-button { flex: none; }
+.guide-strip ol { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; padding: 0; margin: 8px 0 0; list-style: none; }
+.guide-strip li { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+.guide-no { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; flex: none; background: var(--accent); color: var(--on-accent); font-size: 11px; font-weight: 700; }
+.unified-shell :is(.page-header,.dev-page-header):has(.guide-strip) { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "title actions" "description actions" "guide guide"; gap: 8px 12px; }
+.unified-shell :is(.page-header,.dev-page-header) > :first-child:has(.guide-strip) { display: contents; }
+.unified-shell :is(.page-header,.dev-page-header):has(.guide-strip) h1 { grid-area: title; margin: 0; }
+.unified-shell :is(.page-header,.dev-page-header):has(.guide-strip) :is(.page-title-group,div):has(>h1) > p { grid-area: description; margin: 0; }
+.unified-shell :is(.page-header,.dev-page-header):has(.guide-strip) > :nth-child(2) { grid-area: actions; }
+.unified-shell :is(.page-header,.dev-page-header) .guide-strip { grid-area: guide; }
+html[data-guidance="off"] :is(.guide-strip,.guide-no,.menu-guide[aria-label="메뉴 안내"]) { display: none !important; }
+html[data-guidance="off"] .dev-page-header p { display: none; }
 .os-app.unified-shell { --nav-width: 240px; }
 .os-app.unified-shell.nav-collapsed { --nav-width: 64px; }
 .unified-shell .topbar { height: 52px; }
@@ -43,6 +59,12 @@ body { font-size: 13px; }
 .unified-shell .header-actions { flex-wrap: wrap; }
 .unified-shell .performance-filters { flex-wrap: wrap; }
 @media (max-width: 820px) {
+  .guide-strip ol { grid-template-columns: 1fr; gap: 7px; }
+  .guide-heading { flex-wrap: wrap; }
+  .guide-heading a { margin-left: 0; }
+  .unified-shell :is(.page-header,.dev-page-header):has(.guide-strip) { grid-template-columns: minmax(0,1fr); grid-template-areas: "title" "description" "actions" "guide"; }
+  .unified-shell .topbar .guidance-control { padding: 5px; gap: 3px; }
+  .unified-shell .topbar .guidance-control span { display: none; }
   .unified-shell .page-content { padding: 12px 14px 28px; }
   .unified-shell .topbar { height: 52px; padding-inline: 10px; }
   .unified-shell .page-header > .page-title-group { flex-basis: 100%; }
