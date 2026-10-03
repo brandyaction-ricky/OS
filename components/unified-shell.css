@@ -19,7 +19,7 @@
 .unified-shell .nav-section-pages .page-link.active { background: var(--accent-soft); color: var(--accent-2); font-weight: 700; }
 .unified-shell .nav-section-pages .page-link.temporary-child { margin-left: 25px; }
 .temporary-nav-group { padding: 8px 10px 2px 25px; display: flex; flex-wrap: wrap; gap: 5px; color: var(--muted); font-size: 11px; }
-.temporary-nav-group small { font-size: 9px; opacity: .85; }
+.temporary-nav-group small { font-size: 11px; opacity: .85; }
 .compact-group { display: none; }
 .unified-sidebar-foot { position: relative; flex: none; padding: 10px; border-top: 1px solid var(--line); }
 .sidebar-request { display: flex; align-items: center; gap: 9px; padding: 8px 10px; font-size: 12px; color: var(--text-2); }
@@ -45,7 +45,7 @@
   .nav-collapsed .unified-sidebar-head { flex-direction: column; gap: 6px; }
   .nav-collapsed .sidebar-collapse { margin: 0; }
   .nav-collapsed .compact-group { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 5px; min-height: 60px; border-radius: 8px; color: var(--text-2); }
-  .nav-collapsed .compact-group span { font-size: 10px; white-space: nowrap; }
+  .nav-collapsed .compact-group span { font-size: 11px; white-space: nowrap; }
   .nav-collapsed .compact-group.active { background: var(--accent-soft); color: var(--accent-2); }
   .nav-collapsed .unified-nav { padding: 4px 6px; }
   .nav-collapsed .sidebar-request, .nav-collapsed .profile-trigger { justify-content: center; }
