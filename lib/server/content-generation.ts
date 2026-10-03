@@ -132,9 +132,9 @@ function scheduleDate(index: number) {
   return date.toISOString();
 }
 
-async function insertGenerated(actor: RequestActor, source: Record<string, unknown>, action: z.infer<typeof generationSchema>["action"], result: Record<string, unknown>, requestKey?: string, generationId?: string) {
+async function insertGenerated(actor: RequestActor, source: Record<string, unknown>, action: z.infer<typeof generationSchema>["action"], result: Record<string, unknown>, requestKey?: string, generationId?: string, procedureSource?: string) {
   const generatedAt = new Date().toISOString();
-  const generationMetadata = { generationRequestKey: requestKey ?? null, generationId, contentId: source.id };
+  const generationMetadata = { generationRequestKey: requestKey ?? null, generationId, contentId: source.id, generationMode: "api", procedureSource: procedureSource ?? "canonical" };
   const base = { parent_id: source.id, brand: source.brand ?? "", team: source.team ?? actor.team, owner_id: actor.id, created_by: actor.id, updated_by: actor.id, source_url: source.source_url ?? null };
   if (action === "derivatives") {
     const items = Array.isArray(result.items) ? result.items : [];
@@ -252,7 +252,7 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
       const generated = Array.isArray(result.items) ? result.items.map((item: { platform?: string }) => item.platform) : [];
       if (platforms.some((platform) => !generated.includes(platform)) || generated.some((platform) => !platforms.includes(platform as typeof platforms[number]))) throw new ApiError(502, "CONTENT_CHANNEL_OUTPUT_MISSING", "요청한 채널의 산출물이 모두 생성되지 않았습니다. 결과를 저장하지 않았습니다.");
     }
-    const records = await insertGenerated(actor, source, input.action, result, requestKey, job.id);
+    const records = await insertGenerated(actor, source, input.action, result, requestKey, job.id, procedure.includes("· 기본 절차") ? "fallback" : "canonical");
     await finishGenerationJob(actor, job, records, { model: generated.model, usage: generated.usage, costUsd: generated.costUsd });
     return { configured: true, queued: false, action: input.action, records, generationId: job.id };
     } catch (failure) {

@@ -91,7 +91,7 @@ export function hasCurrentApproval(reviews: PipelineReview[], gate: number, sign
   return latest?.approved === true && latest.signature === signature;
 }
 
-export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow", "releaseWorkflow"];
+export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow", "releaseWorkflow", "channelWorkflowVersion", "publicationApproval", "publishCheckpoint", "publishOperation", "externalIds", "postedBy", "publishedAt", "mockPublished"];
 export function protectedPipelineChange(current: Record<string, unknown>, proposed?: Record<string, unknown>) {
   return !!proposed && ((current.pipelineEnabled === true && proposed.pipelineEnabled !== true) || PIPELINE_PROTECTED_KEYS.some((key) => JSON.stringify(current[key]) !== JSON.stringify(proposed[key])));
 }

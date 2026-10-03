@@ -1,7 +1,7 @@
 import type { OsRecord } from "./record-types";
 import { recordWorkHref } from "./personal-work.ts";
 export const NOTIFICATION_REASONS = {
-  assignment: "업무 배정", review: "검토 요청", approval: "승인 대기", blocked: "자동화 확인 필요", status_change: "요청 상태 변경",
+  assignment: "업무 배정", review: "검토 요청", approval: "승인 대기", blocked: "자동화 확인 필요", status_change: "요청 상태 변경", scheduled: "예약 게시 확인", token_expiring: "채널 연결 만료 확인",
 } as const;
 export interface WorkNotification { id: string; title: string; reason: keyof typeof NOTIFICATION_REASONS; href: string; createdAt: string; readAt: string }
 export interface WorkNotificationSummary { notifications: WorkNotification[]; unread: number; truncated: boolean }

@@ -140,6 +140,7 @@ export async function PATCH(request: Request) {
     await assertReviewedMeetingTask(actor,input,current);
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
+    if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "PUBLICATION_API_REQUIRED", "계정별 게시물은 게시 설정 패널에서 수정·승인·예약해 주세요.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");
     if (current.record_type === "content_publish" && input.status === "blocked" && !String(input.metadata?.rejectionReason ?? "").trim()) throw new ApiError(400, "REVIEW_REASON_REQUIRED", "수정 요청 사유를 입력해 주세요.");
     if (current?.record_type === "content_publish" && input.status && input.status !== current.status) {
@@ -184,6 +185,7 @@ export async function DELETE(request: Request) {
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
+    if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "PUBLICATION_API_REQUIRED", "채널 게시 이력은 보존합니다.");
     if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
     if ((current.record_type === "development_notification" || current.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     const { error } = await actor.supabase.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.id }).eq("id", id).eq("version", current.version);

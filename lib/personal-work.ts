@@ -8,6 +8,8 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   const id = encodeURIComponent(record.id);
   if (record.metadata.kind === "development_request") return `/knowledge/development?request=${id}`;
   if (record.metadata.kind === "meta_tester_request") return `/settings/account?tester=${id}`;
+  if (record.metadata.kind === "channel_expiry") return "/settings/account";
+  if (record.record_type === "content_publish") return `/content/publishing?tab=review&publication=${id}`;
   if (record.record_type === "task") return `/organization/tasks?task=${id}`;
   if (record.record_type === "meeting") return `/organization/meetings?meeting=${id}`;
   if (record.record_type === "decision") return `/organization/meetings?tab=decisions&record=${id}`;

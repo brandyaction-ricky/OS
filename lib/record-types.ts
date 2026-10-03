@@ -2,7 +2,7 @@ export const RECORD_TYPES = [
   "project", "task", "goal", "kpi", "decision", "meeting", "ai_job",
   "development_log", "deployment", "development_comment", "development_notification", "notification",
   "content_topic", "content_script", "content_package", "content_short",
-  "content_publish", "content_metric", "skill", "knowledge_link",
+  "content_publish", "content_metric", "content_comment", "skill", "knowledge_link",
   "revenue", "funnel", "crm_action", "customer", "brand",
   "connection", "access_rule", "company_setting", "channel",
   "leave_balance", "leave_request", "expense", "contract", "subscription", "company_document",

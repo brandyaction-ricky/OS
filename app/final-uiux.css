@@ -88,6 +88,23 @@ html[data-guidance="off"] .dev-page-header p { display: none; }
 .generation-settings { padding:20px; display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
 .generation-settings h2,.generation-settings p { width:100%; margin:0; }
 .generation-settings label { display:grid; gap:6px; min-width:180px; }
+.publication-settings {position:fixed;z-index:45;top:66px;right:20px;width:min(470px,calc(100vw - 28px));max-height:calc(100vh - 82px);overflow-y:auto;box-shadow:var(--shadow);padding:18px;display:grid;gap:14px;background:var(--card);}
+.publication-settings>header {display:flex;justify-content:space-between;gap:12px;align-items:flex-start;}
+.publication-settings h2,.publication-settings h3,.publication-settings p {margin:0;}
+.publication-settings label {display:grid;gap:6px;font-size:12px;}
+.publication-settings textarea {min-height:105px;resize:vertical;}
+.publication-settings fieldset {border:0;padding:0;margin:0;display:grid;gap:12px;min-width:0;}
+.publication-settings fieldset>section {display:grid;gap:10px;}
+.publication-settings small {color:var(--muted);font-size:11px;line-height:1.6;}
+.publication-thumbnails {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
+.publication-thumbnails figure {margin:0;}
+.publication-thumbnails img {width:100%;height:auto;aspect-ratio:4/5;object-fit:contain;border:1px solid var(--line);border-radius:6px;}
+.publication-thumbnails figcaption {font-size:11px;color:var(--muted);text-align:center;}
+.publication-validation {display:grid;gap:8px;border:1px solid var(--line);border-radius:8px;padding:12px;color:var(--muted);font-size:12px;}
+.publication-validation ul {margin:0;padding-left:18px;color:var(--warning);}
+.publication-settings .publication-confirm {display:flex;align-items:center;gap:8px;}
+.publication-confirm input {width:auto;}
+.publication-actions {display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
 .account-layout {display:grid;grid-template-columns:250px minmax(0,1fr);gap:16px;align-items:start;}
 .company-channel-directory {margin-top:18px;}
 .channel-app-summary {display:flex;gap:12px;flex-wrap:wrap;padding:16px;color:var(--muted);border-bottom:1px solid var(--line);}
@@ -117,3 +134,18 @@ html[data-guidance="off"] .dev-page-header p { display: none; }
 .account-shared-row {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);}
 @media(max-width:1100px){.account-layout{grid-template-columns:210px minmax(0,1fr);}.account-channel-grid{grid-template-columns:1fr;}.account-channel-body{min-height:0;}}
 @media(max-width:640px){.account-layout{grid-template-columns:1fr;}.account-shared-row{flex-wrap:wrap;}}
+.channel-calendar-layout { display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px;align-items:start; }
+.channel-calendar-scroll { overflow:auto; }
+.channel-calendar-table { border-collapse:collapse;width:100%;min-width:850px;table-layout:fixed;font-size:12px; }
+.channel-calendar-table.month { width:max-content;min-width:100%; }
+.channel-calendar-table th,.channel-calendar-table td { border:1px solid var(--line-soft);padding:10px;vertical-align:top;min-width:105px;width:105px;height:84px; }
+.channel-calendar-table th { height:auto;background:var(--panel-2);text-align:left;font-weight:600; }
+.channel-calendar-table th:first-child { width:125px;position:sticky;left:0;z-index:1; }
+.channel-calendar-table small { display:block;font-size:11px;font-weight:400;color:var(--muted); }
+.channel-calendar-table .calendar-content { display:flex;flex-direction:column;align-items:start;padding:8px;white-space:normal;word-break:break-word; }
+.channel-calendar-alerts { display:grid;gap:12px; }
+.channel-calendar-alerts .panel { padding:16px; }
+.channel-calendar-alerts h2 { font-size:14px; }.channel-calendar-alerts p { color:var(--muted);font-size:12px; }
+.channel-calendar-alerts a { display:block;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13px; }
+.channel-calendar-alerts small { display:block;color:var(--muted);font-size:11px; }
+@media(max-width:800px){.channel-calendar-layout{grid-template-columns:1fr;}.channel-calendar-alerts{grid-template-columns:1fr;}}

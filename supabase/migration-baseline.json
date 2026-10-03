@@ -309,6 +309,12 @@
       "sha256": "104c11c2835b0af9fcbe7275c4a6b0c4dd6d25eea201d7b4e56140d5b2ff7eb1",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003054936_channel_publication_guards_and_comments.sql",
+      "sha256": "f375cc4bcc135e13978677c939f90fa7272daf53c3d06a5ce1c1d1000e9632a2",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [
