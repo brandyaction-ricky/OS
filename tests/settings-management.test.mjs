@@ -146,8 +146,9 @@ test("mobile navigation includes settings and company settings link to canonical
   assert.doesNotMatch(shell, /NAV_STAGES\.slice\(0, 5\)/);
   assert.match(css, /mobile-stage-bar[^}]*grid-template-columns: repeat\(6,1fr\)/);
   assert.match(settings, /href="\/organization\/members"/);
-  assert.match(settings, /href="\/home\/goals"/);
-  assert.match(settings, /이번 달 매출 목표/);
+  assert.doesNotMatch(settings, /href="\/home\/goals"/);
+  assert.doesNotMatch(settings, /이번 달 매출 목표/);
+  assert.match(settings, /CommerceAdminLinks embedded/);
 });
 
 test("sensitive access gaps, shared knowledge categories and action confirmations are explicit", async () => {

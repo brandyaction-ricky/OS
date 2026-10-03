@@ -65,6 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [stage.id]: true });
   const [menuGuide, setMenuGuide] = useState(false);
+  const [serverOk, setServerOk] = useState<boolean | null>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const previousStage = useRef(stage.id);
@@ -257,7 +258,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               <button className="nav-section-trigger" onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
-                <Icon size={18} /><span>{item.label}{item.id === "content" ? <small className="nav-process-caption">유튜브 공정 순서</small> : null}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
+                <Icon size={18} /><span>{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}{item.id === "content" ? <small className="nav-process-caption">유튜브 공정 순서</small> : null}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
               </button>
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={!openGroups[item.id]}>
                 {item.pages.map((entry, index) => {
@@ -276,7 +277,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="unified-sidebar-foot">
           <button className="sidebar-request" onClick={() => { setRequestOpen(true); setMobileOpen(false); }} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></button>
-          <div className="sidebar-status"><ServerConnectionStatus demo={demo} /></div>
+          <div className="sidebar-status"><ServerConnectionStatus demo={demo} onStatusChange={setServerOk} /></div>
           <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
             <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
             <span className="profile-copy"><strong>{profile?.displayName ?? "구성원"}</strong><small>내 계정 · 채널 연결</small></span><ChevronsUpDown size={14} />

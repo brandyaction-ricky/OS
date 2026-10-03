@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, RefreshCw } from "lucide-react";
 import type { WorkItem, WorkTab } from "@/lib/personal-work";
-import { Dashboard } from "./dashboard";
+import { TodayContentOperations } from "./today-content-operations";
 import { PageTitle } from "./page-title";
 import { useSession } from "./session-provider";
 import { WorkspaceSkeleton } from "./workspace-load-state";
@@ -13,7 +13,6 @@ interface WorkResponse { tabs: Record<WorkTab, WorkItem[]>; truncated: boolean; 
 export function PersonalWorkHome() {
   const { demo, accessToken, loading: sessionLoading } = useSession();
   const params = useSearchParams();
-  const view = params.get("view") === "management" ? "management" : "mine";
   const tab = TABS.some(([id]) => id === params.get("tab")) ? params.get("tab") as WorkTab : "received";
   const [data, setData] = useState<WorkResponse | null>(null);
   const [error, setError] = useState("");
@@ -45,8 +44,8 @@ export function PersonalWorkHome() {
   }, [load, revision]);
   const change = (key: string, value: string) => { const next = new URLSearchParams(params.toString()); next.set(key, value); window.history.replaceState(null, "", `/home?${next}`); };
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>나에게 배정된 일, 확인할 문서, 요청의 진행 상황을 확인합니다.</p></div><div className="header-actions"><div className="mode-switch" aria-label="홈 보기"><button className={view === "mine" ? "active" : ""} aria-pressed={view === "mine"} onClick={() => change("view", "mine")}>내 보기</button><button className={view === "management" ? "active" : ""} aria-pressed={view === "management"} onClick={() => change("view", "management")}>경영 보기</button></div></div></header>
-    {view === "management" ? <Dashboard embedded /> : <>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>나에게 배정된 일, 확인할 문서, 요청의 진행 상황을 확인합니다.</p></div></header>
+    <TodayContentOperations />
       <nav className="workspace-tabs" aria-label="내 할 일 보기">{TABS.map(([id,label]) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => change("tab",id)}>{label} <span>{loading || !data ? "…" : data.tabs[id].length}</span></button>)}</nav>
       {error ? <div className="inline-alert danger" role="alert">{error}<button className="secondary-button" onClick={() => setRevision(value => value + 1)}><RefreshCw size={14} /> 다시 불러오기</button></div> : loading || !data ? <WorkspaceSkeleton /> : <section className="panel personal-work-list" aria-label={TABS.find(([id])=>id===tab)?.[1]}>
         <header><span>{tab === "review" ? "현재 권한으로 검토할 수 있는 항목" : tab === "requested" ? "내가 등록한 요청·업무" : "기한이 빠른 순서"}</span><small>{demo ? "데모 · 실제 업무 연결 전" : "접속 중 1분마다 갱신"}</small></header>
@@ -54,7 +53,7 @@ export function PersonalWorkHome() {
         {data.tabs[tab].map(item => <Link key={`${item.kind}-${item.id}`} href={item.href}><div><strong>{item.title}</strong><p>{item.nextAction}</p></div><span>{item.status}</span><time>{item.dueDate || "기한 미정"}</time><ArrowRight size={15} /></Link>)}
         {!data.tabs[tab].length && <div className="empty-state"><div><CheckCircle2 /><h2>{tab === "received" ? "배정된 일이 없습니다" : tab === "review" ? "확인할 항목이 없습니다" : "남긴 요청이 없습니다"}</h2><p>업무가 생기면 이곳에서 바로 확인할 수 있습니다.</p></div></div>}
       </section>}
+      {data && !error && [...new Map([...data.tabs.received, ...data.tabs.requested].filter(item => item.status === "막힘").map(item => [item.id, item])).values()].length > 0 ? <section className="panel personal-work-blocked"><h2>막힌 일</h2>{[...new Map([...data.tabs.received, ...data.tabs.requested].filter(item => item.status === "막힘").map(item => [item.id, item])).values()].map(item => <Link key={item.id} href={item.href}><strong>{item.title}</strong><span>{item.nextAction}</span></Link>)}</section> : null}
       <div className="personal-work-links"><Link href="/organization/tasks">업무 열기 <ArrowRight size={14} /></Link><Link href="/knowledge/search">지식 찾기 <ArrowRight size={14} /></Link></div>
-    </>}
   </>;
 }

@@ -999,3 +999,12 @@ select option { background:var(--panel-2); color:var(--text); }
   .policy-table > div > strong { color: var(--text); }
   .policy-table small { line-height: 1.6; }
 }
+/* Final home: operational summaries, never placeholder revenue totals. */
+.today-content-operations { padding: 20px; margin: 0 0 20px; }
+.today-content-cards { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.today-content-cards > a { display: flex; flex-direction: column; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+.today-content-cards strong { font-size: 28px; }
+.today-content-cards small { color: var(--muted); }
+.personal-work-blocked { padding: 16px; margin: 16px 0; }
+.personal-work-blocked a { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+@media(max-width: 640px) { .today-content-cards { grid-template-columns: 1fr; } }

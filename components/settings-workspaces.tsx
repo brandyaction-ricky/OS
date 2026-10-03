@@ -43,6 +43,8 @@ import { memberMatchesRoster } from "@/lib/company-roster";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { AgentKeyManager } from "./agent-key-manager";
+import { CommerceAdminLinks } from "./performance-workspaces";
+import { PerformanceFilterProvider } from "./performance-filter-context";
 
 type Page = "connections" | "access" | "company" | "channels";
 type ConnectionStatus = "ready" | "warning" | "waiting";
@@ -62,53 +64,6 @@ const POLICY_ROWS = [
   ["일반 회사 서류", "활성 구성원", "비활성 계정 자동 차단"],
   ["RS 협업 지식", "허용 팀·사용자", "브랜드·팀 범위 제한"],
 ] as const;
-
-function currentMonth() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function recordMonth(record: OsRecord) {
-  const metadataMonth = record.metadata.periodMonth;
-  return typeof metadataMonth === "string"
-    ? metadataMonth
-    : record.due_date?.slice(0, 7) ||
-        record.starts_at?.slice(0, 7) ||
-        record.created_at.slice(0, 7);
-}
-
-function normalized(value: string) {
-  return value.toLowerCase().replaceAll(" ", "");
-}
-
-function targetInWon(record: OsRecord) {
-  const target = Number(record.metric_target);
-  if (!Number.isFinite(target) || target <= 0) return 0;
-  const unit = record.metric_unit.toLowerCase().replaceAll(" ", "");
-  const terms = `${record.title} ${record.tags.join(" ")} ${String(record.metadata.metricKind ?? "")}`.toLowerCase();
-  const monetaryUnit = /(원|만원|억원|억|krw)/.test(unit);
-  if (!monetaryUnit && (unit || !/(매출|revenue)/.test(terms))) return 0;
-  if (unit.includes("억원") || unit === "억") return target * 100_000_000;
-  if (unit.includes("만원")) return target * 10_000;
-  return unit.includes("원") || !unit ? target : 0;
-}
-
-function monthlyTarget(goals: OsRecord[], brand: string) {
-  const key = normalized(brand);
-  return goals
-    .filter(
-      (goal) =>
-        recordMonth(goal) === currentMonth() &&
-        normalized(`${goal.brand} ${goal.title}`).includes(key),
-    )
-    .reduce((sum, goal) => sum + targetInWon(goal), 0);
-}
-
-function money(value: number) {
-  if (value >= 100_000_000)
-    return `${(value / 100_000_000).toLocaleString("ko-KR", { maximumFractionDigits: 1 })}억원`;
-  return `${Math.round(value / 10_000).toLocaleString("ko-KR")}만원`;
-}
 
 function SettingsLoading({ page }: { page: Page }) {
   return (
@@ -135,7 +90,6 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
   const [youtubeOAuth, setYoutubeOAuth] = useState<YoutubeOAuthStatus | null>(null);
   const [members, setMembers] = useState<OsMember[]>([]);
   const [brands, setBrands] = useState<OsRecord[]>([]);
-  const [goals, setGoals] = useState<OsRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
 
@@ -146,12 +100,11 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
     }
     setLoaded(false);
     try {
-      const [status, memberResult, brandResult, goalResult, telegramResult, youtubeOAuthResult] =
+      const [status, memberResult, brandResult, telegramResult, youtubeOAuthResult] =
         await Promise.all([
           getHealth(),
           listMembers(accessToken),
           listRecords(accessToken, "brand", "limit=100"),
-          listRecords(accessToken, "goal", "limit=200"),
           (page === "channels" || page === "company") && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
@@ -162,7 +115,6 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
       setHealth(status);
       setMembers(memberResult.members);
       setBrands(brandResult.records);
-      setGoals(goalResult.records);
       setTelegram(telegramResult);
       setYoutubeOAuth(youtubeOAuthResult);
       setError("");
@@ -384,19 +336,18 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
           {page === "company" ? (
             <>
               <ContentGenerationSettings />
+              <PerformanceFilterProvider><CommerceAdminLinks embedded /></PerformanceFilterProvider>
               <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header">
-                    <div><h2>운영 브랜드</h2><p>브랜드 목표와 담당 기준</p></div>
-                    <Link className="panel-link" href="/home/goals">월 목표 설정 <ArrowRight size={13} /></Link>
+                    <div><h2>운영 브랜드</h2><p>등록된 브랜드와 운영 상태</p></div>
                   </div>
                   {displayBrands.map((brand) => {
-                    const target = monthlyTarget(goals, brand.title);
                     return (
                       <div className="company-list-row" key={brand.id}>
                         <Building2 size={16} />
-                        <span><strong>{brand.title}</strong><small>{target ? `이번 달 매출 목표 ${money(target)}` : "이번 달 매출 목표 미설정"}</small></span>
+                        <span><strong>{brand.title}</strong><small>{brand.description || "등록된 운영 브랜드"}</small></span>
                         <em>{operatingStatusLabel(brand.status)}</em>
                       </div>
                     );

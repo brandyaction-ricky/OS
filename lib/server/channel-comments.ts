@@ -40,7 +40,7 @@ export async function syncChannelComments(now=new Date()){
         const result=await collectPostComments(connection as MetaConnection,externalId);counts.truncated ||= result.truncated;
         for(const comment of result.rows){
           const id=collectedCommentId(String(account.platform),account.ownerId,comment.externalId);
-          const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_comment",title:comment.text.slice(0,200)||"댓글",description:comment.text,status:"unanswered",parent_id:post.id,owner_id:account.ownerId,created_by:account.ownerId,updated_by:account.ownerId,metadata:{postTitle:post.title,platform:account.platform,connectionOwnerId:account.ownerId,externalId:comment.externalId,author:comment.author,kind:"unclassified",topLevel:comment.topLevel,commentedAt:comment.createdAt,mock:metaMode()==="mock"}},{onConflict:"id",ignoreDuplicates:true}).select("id");
+          const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_comment",title:comment.text.slice(0,200)||"댓글",description:comment.text,status:"unanswered",parent_id:post.id,owner_id:account.ownerId,created_by:account.ownerId,updated_by:account.ownerId,metadata:{sourceTopicId:post.parent_id,postTitle:post.title,platform:account.platform,connectionOwnerId:account.ownerId,externalId:comment.externalId,author:comment.author,kind:"unclassified",topLevel:comment.topLevel,commentedAt:comment.createdAt,mock:metaMode()==="mock"}},{onConflict:"id",ignoreDuplicates:true}).select("id");
           if(writeError)throw Error("comment save failed");counts.comments+=inserted?.length??0;
         }
       }

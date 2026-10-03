@@ -1,5 +1,6 @@
 "use client";
 import { generationJobLabel } from "@/lib/content-generation-mode";
+import { sampleSummary } from "@/lib/channel-metrics";
 import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
@@ -429,12 +430,8 @@ export function LeaveWorkspace() {
     }
   };
   const pending = requests.filter((item) => item.status === "pending").length;
-  const avg = balances.length
-    ? balances.reduce(
-        (sum, item) => sum + Number(item.metric_current || 0),
-        0,
-      ) / balances.length
-    : 0;
+  const remaining = sampleSummary(balances.flatMap(item =>
+    typeof item.metric_current === "number" ? [item.metric_current] : []));
   const rosterBalances = BRANDYACTION_ROSTER.map((rosterMember) => {
     const account = members.find((member) =>
       memberMatchesRoster(member, rosterMember.name),
@@ -474,10 +471,11 @@ export function LeaveWorkspace() {
         </div>
         <div className="metric-card">
           <div className="metric-top">
-            <span>평균 잔여</span>
+            <span>잔여 연차 중앙값</span>
             <Plane size={16} />
           </div>
-          <div className="metric-value">{avg.toFixed(1)}일</div>
+          <div className="metric-value">{remaining.median === null ? "미등록" : `${remaining.median.toFixed(1)}일`}</div>
+          <small>{remaining.n ? `범위 ${remaining.min}–${remaining.max}일 · n=${remaining.n}개 등록 기록` : "등록된 잔여 연차 기록이 없습니다."}</small>
         </div>
         <div className="metric-card">
           <div className="metric-top">
