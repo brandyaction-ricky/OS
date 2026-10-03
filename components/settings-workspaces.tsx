@@ -1,6 +1,7 @@
 "use client";
 
 import { PageTitle } from "./page-title";
+import { ContentGenerationSettings } from "./content-generation-settings";
 
 import { KnowledgeClassificationSettings } from "./knowledge-classification-settings";
 
@@ -380,6 +381,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
 
           {page === "company" ? (
             <>
+              <ContentGenerationSettings />
               <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">

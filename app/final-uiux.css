@@ -84,3 +84,7 @@ html[data-guidance="off"] .dev-page-header p { display: none; }
   .unified-shell .topbar { height: 52px; padding-inline: 10px; }
   .unified-shell .page-header > .page-title-group { flex-basis: 100%; }
 }
+.generation-actions { display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.generation-settings { padding:20px; display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
+.generation-settings h2,.generation-settings p { width:100%; margin:0; }
+.generation-settings label { display:grid; gap:6px; min-width:180px; }

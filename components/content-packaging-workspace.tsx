@@ -1,4 +1,6 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
 
 import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
@@ -191,14 +193,14 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
     } finally { setBusy(false); }
   };
 
-  const generate = async () => {
+  const generate = async (mode: GenerationMode = "queue") => {
     if (!sourceId) return;
     if (pipelineEnabled && generationBlocker) return setError(generationBlocker);
     setBusy(true); setError("");
     try {
       const evidence = sortedResults.map(({ title, channelTitle, viewCount, url }) => ({ title, channelTitle, viewCount, url }));
-      const response = await generateContent(accessToken, { action: "title_package", sourceId, marketEvidence: evidence });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "title_package", sourceId, marketEvidence: evidence });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       else {
         if (response.records?.length) {
           setPackages((current) => [
@@ -252,8 +254,8 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><button className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onClick={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</button></div></header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><ContentGenerationButton className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onGenerate={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</ContentGenerationButton></div></header>
+    {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     {selectedSource && pipelineEnabled ? <section className="panel packaging-handoff" aria-label="기획에서 패키징으로 인계"><header className="panel-header"><div><span className="eyebrow">같은 콘텐츠에서 이어서 작업</span><h2>{selectedSource.title}</h2><p>주제·기획에서 승인한 범위를 그대로 확인하고, 최종 제목과 썸네일은 이 화면에서 결정합니다.</p></div><span className={`status-pill status-${planningApproved ? "ready" : "review"}`}>{planningApproved ? "기획·근거 승인 완료" : "기획·근거 승인 대기"}</span></header><dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selectedSource.id}</dd></div><div><dt>현재 단계</dt><dd>{selectedSource.stage || "패키징 준비"}</dd></div><div><dt>승인 소구점</dt><dd>{approvedAppeals.length}개</dd></div><div><dt>검증 레퍼런스</dt><dd>{referenceCount}개</dd></div></dl>{pickedPlan ? <article className="packaging-plan-card"><small>채택한 기획 방향 · 기획 v{selectedPlan?.version}</small><strong>{String(pickedPlan.title ?? "기획 방향")}</strong><p>{String(pickedPlan.narrative ?? pickedPlan.evidence ?? "")}</p><span>기획 단계의 제목·썸네일 문구는 방향 참고이며, 최종안은 이 화면에서 채택합니다.</span></article> : null}{generationBlocker ? <p className="inline-alert warning"><CircleAlert size={15} /> {generationBlocker}</p> : null}<nav className="planning-next-actions"><Link className="secondary-button" href={`/content/topics?sourceId=${selectedSource.id}`}>주제·기획 확인</Link><Link className="secondary-button" href={`/content/automation?sourceId=${selectedSource.id}`}>공정·승인 현황</Link></nav></section> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
     <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{PACKAGE_TABS.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>

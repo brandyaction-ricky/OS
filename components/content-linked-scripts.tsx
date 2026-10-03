@@ -1,4 +1,6 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -68,9 +70,9 @@ export function ContentLinkedScripts({ showPlanningHandoff = false, lockedSource
     if (!state) return;
     void perform(() => apiRequest("/api/v1/content/pipeline", { method: "POST", token: accessToken, body: JSON.stringify({ operation: "writing_review", sourceId, expectedVersion: state.source.version, step, approved, note: reviewNotes[step] ?? "" }) }), approved ? "현재 내용을 승인했습니다. 다음 단계가 열렸습니다." : "수정 요청을 저장했습니다.");
   };
-  const generateScript = () => {
+  const generateScript = (mode: GenerationMode = "queue") => {
     if (!state) return;
-    void perform(async () => { const response = await generateContent(accessToken, { action: "script_draft", sourceId }); if (response.queued) throw new Error("Claude 연결이 필요합니다. 준비한 자료와 승인 이력은 저장되어 있습니다."); }, "승인된 자료·축·설계로 원고 초안을 만들었습니다.");
+    void perform(async () => { const response = await generateContent(accessToken, { mode, action: "script_draft", sourceId }); if (response.queued) throw new Error(GENERATION_QUEUED_NOTICE); }, "승인된 자료·축·설계로 원고 초안을 만들었습니다.");
   };
   const script = scripts[0];
   const saveScript = async () => {
@@ -98,9 +100,9 @@ export function ContentLinkedScripts({ showPlanningHandoff = false, lockedSource
         <div className="writing-step-actions">{step.key !== "package" ? <button className="secondary-button" disabled={!step.canEdit || busy || !preparation[step.key].trim()} onClick={() => savePreparation(step.key as WritingPreparationStep)}>내용 저장</button> : null}<button className="primary-button" disabled={busy || step.approved || !step.canApprove} title={step.blocker} onClick={() => reviewPreparation(step.key, true)}>현재 내용 승인</button></div>
         {(step.content || step.key === "package") ? <div className="writing-revision"><input aria-label={`${step.label} 수정 요청 사유`} value={reviewNotes[step.key] ?? ""} onChange={(event) => setReviewNotes((current) => ({ ...current, [step.key]: event.target.value }))} placeholder="수정 요청 사유" /><button className="ghost-button" disabled={busy || !(reviewNotes[step.key] ?? "").trim()} onClick={() => reviewPreparation(step.key, false)}>수정 요청</button></div> : null}
       </article>)}</div>
-      <footer><span>{writing.ready ? "원고 전 작업이 모두 승인됐습니다." : `다음: ${writing.nextAction}`}</span><button className="primary-button" disabled={busy || !writing.ready} title={writing.blocker || "승인된 현재 산출물로 원고를 만듭니다."} onClick={generateScript}>{busy ? "처리 중…" : "원고 초안 만들기"}</button></footer>
+      <footer><span>{writing.ready ? "원고 전 작업이 모두 승인됐습니다." : `다음: ${writing.nextAction}`}</span><ContentGenerationButton className="primary-button" disabled={busy || !writing.ready} title={writing.blocker || "승인된 현재 산출물로 원고를 만듭니다."} onGenerate={generateScript}>{busy ? "처리 중…" : "원고 초안 만들기"}</ContentGenerationButton></footer>
     </section> : <section className="panel pipeline-panel"><p>{error || "연결된 작업 공정을 불러오는 중…"}</p></section>}
-    {notice ? <p className="inline-alert">{notice}</p> : null}{error ? <p className="inline-alert danger">{error}</p> : null}
+    {notice ? <p className="inline-alert">{notice}</p> : null}{error ? <p className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}>{error}</p> : null}
     <section className="panel pipeline-panel"><header><h2>연결된 제작 공정 원고</h2><Link href={`/content/automation?sourceId=${sourceId}`}>공정·승인 현황으로</Link></header>{script ? <><strong>{script.title} · v{script.version}</strong><p>원고를 수정하면 공정 화면에서 해당 자료를 다시 승인해야 합니다.</p><textarea rows={18} aria-label="연결된 원고 본문" value={draft} onChange={(event) => setDraft(event.target.value)} /><button className="primary-button" disabled={busy || !draft.trim()} onClick={saveScript}>원고 저장</button></> : <p>연결된 원고가 없습니다. 패키징·자료·축·설계를 순서대로 승인하면 이 화면에서 초안을 만들 수 있습니다.</p>}</section>
     {script && state?.scriptReview ? <section className="panel writing-workflow script-review-workflow" aria-label="원고 퇴고와 단계별 검수">
       <header className="panel-header"><div><span className="eyebrow">원고 다음 공정</span><h2>퇴고 · 단계별 검수</h2><p>현재 원고의 주장·근거·타깃·표현을 각각 확인합니다. 원고를 고치면 기존 메모는 남고 네 항목의 승인만 다시 필요합니다.</p></div><Link className="secondary-button" href={`/content/automation?sourceId=${sourceId}`}>전체 공정 보기</Link></header>

@@ -1,4 +1,5 @@
 "use client";
+import { generationJobLabel } from "@/lib/content-generation-mode";
 import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { PageTitle } from "./page-title";
@@ -243,16 +244,6 @@ export function AiOperationsWorkspace() {
       health?.embeddings === "ready" ? "저장 이벤트 처리" : "OpenAI 키 대기",
     ],
   ];
-  const jobStatusLabel: Record<string, string> = {
-    backlog: "대기",
-    draft: "초안",
-    active: "실행 중",
-    review: "검수 중",
-    ready: "승인 대기",
-    blocked: "막힘",
-    done: "완료",
-    failed: "실패",
-  };
   useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
   const selectedJobSourceUrl = safeWebUrl(selectedJob?.source_url);
   return (
@@ -308,9 +299,9 @@ export function AiOperationsWorkspace() {
               <span
                 className={`status-pill status-${job.status}`}
                 role="status"
-                aria-label={`작업 상태: ${jobStatusLabel[job.status] ?? job.status}`}
+                aria-label={`작업 상태: ${generationJobLabel(job)}`}
               >
-                {jobStatusLabel[job.status] ?? job.status}
+                {generationJobLabel(job)}
               </span>
             </button>
           ))}
@@ -327,7 +318,7 @@ export function AiOperationsWorkspace() {
         <aside className="record-drawer" role="dialog" aria-label="AI 작업 상세" onMouseDown={(event) => event.stopPropagation()}>
           <div className="drawer-head"><div><span className="eyebrow">AI 작업 상세</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
           <div className="ai-job-detail">
-            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{jobStatusLabel[selectedJob.status] ?? selectedJob.status}</span></div>
+            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{generationJobLabel(selectedJob)}</span></div>
             <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
             {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>

@@ -15,10 +15,11 @@ test("fifth handoff exposes seven content pages and unified system status with e
   for (const label of ["Supabase", "Vercel", "OpenAI", "Telegram", "Meta·Google Ads", "KnowledgeClassificationSettings"]) assert.match(settings, new RegExp(label));
 });
 
-test("content generation reads canonical procedures and waits safely for credentials", async () => {
+test("content generation reads canonical procedures and defaults to a subscription queue", async () => {
   const route = await read("lib/server/content-generation.ts");
   assert.match(route, /document\.status === "canonical"/);
-  assert.match(route, /queueForCredentials/);
+  assert.match(route, /beginGenerationJob/);
+  assert.match(route, /input.mode !== "api"/);
   assert.match(route, /자가검수|score와 review/);
   assert.match(route, /finalApprovalRequired: true/);
   assert.match(route, /output_config/);

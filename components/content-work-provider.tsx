@@ -9,9 +9,10 @@ import {defaultsToAll,workTopicSelection,workTopics,workTopicHref} from "@/lib/c
 import {productionStep,PRODUCTION_STEPS} from "@/lib/content-production-board";
 import type {OsRecord,RecordType} from "@/lib/record-types";
 import {useSession} from "./session-provider";
-type WorkContext = {topics:OsRecord[];selected?:OsRecord;topicId:string;loading:boolean;error:string;select:(id:string)=>void;reload:()=>void};
+import {defaultGenerationMode,type GenerationMode} from "@/lib/content-generation-mode";
+type WorkContext = {topics:OsRecord[];selected?:OsRecord;topicId:string;loading:boolean;error:string;generationMode:GenerationMode;select:(id:string)=>void;reload:()=>void};
 const Context=createContext<WorkContext|null>(null);
-const TYPES:RecordType[]=["content_topic","content_script","content_package","content_short","content_publish"];
+const TYPES:RecordType[]=["content_topic","content_script","content_package","content_short","content_publish","company_setting"];
 export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   const path=usePathname(), search=useSearchParams(), {accessToken,demo,profile}=useSession();
   const enabled=path.startsWith("/content/");
@@ -40,7 +41,7 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   const page=findPage(path), content=NAV_STAGES.find(stage=>stage.id==="content")!;
   const currentStep=selected?productionStep(selected,records):null;
   const completedThrough=currentStep?PRODUCTION_STEPS.findIndex(([key])=>key===currentStep):0;
-  return <Context.Provider value={{topics,selected,topicId,loading,error,select,reload}}>
+  return <Context.Provider value={{topics,selected,topicId,loading,error,generationMode:defaultGenerationMode(records),select,reload}}>
     {enabled?<section className="process-bar" aria-label="작업 중인 영상">
       <label><span>작업 중인 영상</span><select aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
       <nav aria-label="콘텐츠 공정 순서">{content.pages.map((item,index)=>{

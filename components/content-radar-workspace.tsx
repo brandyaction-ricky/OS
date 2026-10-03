@@ -1,4 +1,6 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
 
 import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
@@ -357,25 +359,25 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     } finally { setBusy(false); }
   };
 
-  const makePlan = async () => {
+  const makePlan = async (mode: GenerationMode = "queue") => {
     if (!selected) return;
     if (!researchReady) return setError("승인된 소구점의 레퍼런스 검증을 먼저 완료해 주세요.");
     setBusy(true); setError("");
     try {
-      const response = await generateContent(accessToken, { action: "topic_plan", sourceId: selected.id });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "topic_plan", sourceId: selected.id });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "기획 후보를 만들지 못했습니다.");
     } finally { setBusy(false); }
   };
 
-  const makeAppeals = async () => {
+  const makeAppeals = async (mode: GenerationMode = "queue") => {
     if (!selected) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const response = await generateContent(accessToken, { action: "appeal_candidates", sourceId: selected.id, count: 10 });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "appeal_candidates", sourceId: selected.id, count: 10 });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       else setNotice("설명과 레퍼런스 없이 소구점 후보 10개를 만들었습니다. 진행할 후보를 사람이 승인해 주세요.");
       await load();
     } catch (reason) {
@@ -512,7 +514,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         {tab === "niches" ? <button className="primary-button" onClick={() => setTopicOpen(true)}><Plus size={15} /> 틈새 후보 추가</button> : null}
       </div>
     </header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
+    {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     {!productionMode ? <nav className="studio-tabs content-radar-tabs" aria-label="주제 탐색 단계">
       {TABS.filter(item=>item.key!=="planning").map((item) => <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
     <Link href="/content/production?view=tools&step=planning">제작 기획으로</Link></nav> : null}
@@ -570,10 +572,10 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       <section className="content-planning-layout">
         <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "미정이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "미정"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
-          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy || !researchReady} title={researchReady ? "검증된 소구점으로 기획안을 만듭니다." : workflowState.blocker} onClick={makePlan}><Sparkles size={14} /> 기획안 만들기</button></header>
+          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><ContentGenerationButton className="primary-button" disabled={busy || !researchReady} title={researchReady ? "검증된 소구점으로 기획안을 만듭니다." : workflowState.blocker} onGenerate={makePlan}><Sparkles size={14} /> 기획안 만들기</ContentGenerationButton></header>
           <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
           <section className="appeal-workflow">
-            <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><button type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onClick={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</button></div>
+            <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><ContentGenerationButton type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onGenerate={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</ContentGenerationButton></div>
             <dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selected.id}</dd></div><div><dt>후보 세트 버전</dt><dd>{appealSet ? String(meta(appealSet, "candidateSetVersion", appealSet.created_at)) : "없음"}</dd></div><div><dt>승인</dt><dd>{approvedAppealItems.length}개</dd></div><div><dt>막힌 이유</dt><dd>{workflowState.blocker || "없음"}</dd></div></dl>
             {appealCandidates.length ? <div className="appeal-candidate-list">{appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><span>{index + 1}</span><strong>{candidate.text}</strong><div><button type="button" className={candidate.decision === "approved" ? "active" : ""} aria-pressed={candidate.decision === "approved"} disabled={busy} onClick={() => decideAppeal(index, "approved")}>승인</button><button type="button" className={candidate.decision === "revision" ? "active" : ""} aria-pressed={candidate.decision === "revision"} disabled={busy} onClick={() => decideAppeal(index, "revision")}>수정 요청</button><button type="button" className={candidate.decision === "held" ? "active" : ""} aria-pressed={candidate.decision === "held"} disabled={busy} onClick={() => decideAppeal(index, "held")}>보류</button></div></article>)}</div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
           </section>

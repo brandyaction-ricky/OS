@@ -1,4 +1,6 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
 
 import {useQueryTab} from "./use-query-tab";
 import { PageTitle } from "./page-title";
@@ -188,7 +190,7 @@ export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceCh
     setEditClip({ ...selectedSource, id: "", version: 0, record_type: "content_short", parent_id: sourceId, title: `${selectedSource.title} 수동 클립`, description: "", metadata: { proposalOnly: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style } });
   };
 
-  const propose = async () => {
+  const propose = async (mode: GenerationMode = "queue") => {
     if (!sourceId || !selectedSource) return;
     if (!timedCueCount) {
       openManualClip();
@@ -197,8 +199,8 @@ export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceCh
     if (transcript !== meta(selectedSource, "transcriptSrt", "")) return setError("변경한 자막을 원본·스타일 저장으로 먼저 저장해 주세요.");
     setBusy(true); setError("");
     try {
-      const response = await generateContent(accessToken, { action: "shorts_proposal", sourceId, count });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "shorts_proposal", sourceId, count });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       else setTab("clips");
       await load();
     } catch (reason) {
@@ -277,8 +279,8 @@ export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceCh
   const previewPosition = style.position === "top" ? "flex-start" : style.position === "bottom" ? "flex-end" : "center";
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</ContentGenerationButton></div></header>
+    {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     <nav className="studio-tabs content-radar-tabs" aria-label="숏폼 작업 단계"><button className={tab === "editor" ? "active" : ""} onClick={() => setTab("editor")}><strong>스타일·원본</strong><small>화면 템플릿</small></button><button className={tab === "clips" ? "active" : ""} onClick={() => setTab("clips")}><strong>클립</strong><small>구간·제작 관리</small></button></nav>
 
     {tab === "editor" ? <section className="shorts-editor-layout">
