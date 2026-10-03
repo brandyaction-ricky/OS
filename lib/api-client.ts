@@ -50,7 +50,7 @@ export async function getKnowledgeGraph(token: string | null) {
 
 export async function createDocument(
   token: string | null,
-  input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null },
+  input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null; parentDocumentId?: string | null },
 ) {
   return apiRequest<{ document: KnowledgeDocument; indexing: string }>("/api/v1/documents", {
     method: "POST",
@@ -77,6 +77,14 @@ export async function updateDocument(
     method: "PATCH",
     token,
     body: JSON.stringify(input),
+  });
+}
+
+export async function moveKnowledgePage(token: string | null, input: {
+  id: string; parentDocumentId: string | null; folder: string; expectedUpdatedAt: string;
+}) {
+  return apiRequest<{ document: KnowledgeDocument }>("/api/v1/documents/pages", {
+    method: "PATCH", token, body: JSON.stringify(input),
   });
 }
 

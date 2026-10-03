@@ -12,6 +12,7 @@ export const documentCreateSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(60)).max(30).optional().default([]),
   source: z.string().trim().max(40).optional().default("wiki"),
   sourceRef: z.string().trim().max(500).nullable().optional().default(null),
+  parentDocumentId: z.string().uuid().nullable().optional().default(null),
 });
 
 export const documentUpdateSchema = documentCreateSchema.partial().extend({

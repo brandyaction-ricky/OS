@@ -315,6 +315,13 @@
       "sha256": "f375cc4bcc135e13978677c939f90fa7272daf53c3d06a5ce1c1d1000e9632a2",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003122206_knowledge_page_tree.sql",
+      "sha256": "94505f4889567568e12cfaacdc590be704a9aa3fe9f2d3cf0d17460215fb463c",
+      "purpose": "add ID-based knowledge page hierarchy and enforce folder, visibility, cycle, and archive invariants without changing existing Markdown documents",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

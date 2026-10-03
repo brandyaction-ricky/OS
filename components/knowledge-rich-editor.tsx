@@ -17,6 +17,8 @@ export interface KnowledgeRichEditorProps {
   disabled?: boolean;
   onChange: (markdown: string) => void;
   onError: (message: string) => void;
+  onRequestImage?: () => void;
+  onCreateChildPage?: () => void;
 }
 
 export const KnowledgeRichEditor = forwardRef<MDXEditorMethods, KnowledgeRichEditorProps>((props, ref) => (

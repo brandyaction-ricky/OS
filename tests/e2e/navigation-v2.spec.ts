@@ -40,7 +40,8 @@ test("quick record works when already in the document workspace", async ({ page 
   await page.goto("/knowledge");
   await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
   await page.getByRole("link", { name: "메모", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "새 문서 만들기", exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "새 문서 만들기" })).toHaveCount(0);
 });
 
 for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
