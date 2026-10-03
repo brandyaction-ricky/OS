@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as zod from 'zod';
 import { graphView, changedLineRange } from '../lib/knowledge-graph-view.ts';
-import { buildKnowledgeGraph, extractWikiLinks } from '../lib/knowledge-links.ts';
+import { buildKnowledgeGraph, extractWikiLinks, replaceWikiLinkTarget } from '../lib/knowledge-links.ts';
 import * as importing from '../lib/knowledge-import.ts';
 import * as diagnostics from '../lib/search-diagnostics.ts';
 import * as relevance from '../lib/search-relevance.ts';
@@ -41,6 +41,13 @@ test('broken links distinguish missing and ambiguous, exclude image embeds and r
   assert.deepEqual(extractWikiLinks(source.content_md),['Same','Missing']);
   assert.equal(graph.broken[0].reason,'ambiguous');assert.equal(graph.broken[0].candidates.length,2);assert.equal(graph.broken[1].reason,'missing');
   assert.equal(buildKnowledgeGraph([{...source,content_md:'[[First/Same]]'},document('one',{title:'Same',folder:'First'})]).broken.length,0);
+});
+test('link repair changes only the chosen wiki target and preserves aliases, embeds and other links',()=>{
+  const original='[[Same]] [[Same#Heading|label]] ![[Same]] [[Other]]';
+  const repaired=replaceWikiLinkTarget(original,'Same','First/Same');
+  assert.equal(repaired.count,2);
+  assert.equal(repaired.content,'[[First/Same]] [[First/Same#Heading|label]] ![[Same]] [[Other]]');
+  assert.equal(buildKnowledgeGraph([document('source',{content_md:repaired.content}),document('one',{title:'Same',folder:'First'}),document('other',{title:'Other'})]).broken.length,0);
 });
 test('search excerpts include a distant actual hit and the containing heading',()=>{
   const body='# Intro\n'+ 'plain text '.repeat(150)+'\n## Answer\n'+ 'target answer '+ 'context '.repeat(150);

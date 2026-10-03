@@ -43,7 +43,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -876,6 +876,15 @@ function WorkspaceContent() {
     else setMode("edit");
   };
 
+  const saveDocumentSteward = async (stewardId: string) => {
+    if (!selected || demo) return;
+    setBusy(true); setError("");
+    try {
+      const result = await setDocumentSteward(accessToken, selected.id, selected.current_version, stewardId || null);
+      commitDocument(result.document); setToast("문서 담당을 저장했습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 담당을 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   const restoreVersion = async (version: DocumentVersion) => {
     if (!selected || !compareBase) return;
     setBusy(true); setError("");
@@ -1084,6 +1093,7 @@ function WorkspaceContent() {
                 <div className="document-info">
                   <h2>문서 정보</h2>
                   <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>소유자</dt><dd>{ownerNames.get(selected.owner_id) || "소유자 미지정"}</dd></div><div><dt>현재 버전</dt><dd>v{selected.current_version}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "전체"}</dd></div><div><dt>담당 팀</dt><dd>{selected.team || "전체"}</dd></div><div><dt>원본</dt><dd>{selected.source}</dd></div></dl>
+                  {Object.hasOwn(selected, "steward_id") ? <label>문서 담당<select aria-label="문서 담당" value={selected.steward_id ?? ""} disabled={busy || demo || profile?.role !== "admin"} onChange={(event) => void saveDocumentSteward(event.target.value)}><option value="">담당 없음</option>{members.filter(member => member.is_active).map(member => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label> : <p className="inline-alert">문서 담당 기능은 개발 DB 적용 후 사용할 수 있습니다.</p>}
                   <h3>문서 상태 흐름</h3><p>정본 공개는 작성자와 다른 지정 승인자 또는 위임자가 검토 후 처리합니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
                   <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} />
                   <h3>변경 이력</h3>

@@ -48,6 +48,20 @@ export async function getKnowledgeGraph(token: string | null) {
   return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
 }
 
+export async function repairKnowledgeLinks(token: string | null, input: {
+  oldTarget: string; targetId: string; sources: Array<{ id: string; expectedVersion: number }>;
+}) {
+  return apiRequest<{ results: Array<{ id: string; outcome: "updated" | "proposal" | "failed"; count?: number; code?: string; message?: string }>; partial: boolean }>("/api/v1/knowledge/graph/repair", {
+    token, method: "POST", body: JSON.stringify(input),
+  });
+}
+
+export async function setDocumentSteward(token: string | null, documentId: string, expectedVersion: number, stewardId: string | null) {
+  return apiRequest<{ document: KnowledgeDocument }>("/api/v1/documents/steward", {
+    token, method: "PATCH", body: JSON.stringify({ documentId, expectedVersion, stewardId }),
+  });
+}
+
 export async function createDocument(
   token: string | null,
   input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null; parentDocumentId?: string | null },

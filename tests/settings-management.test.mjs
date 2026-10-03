@@ -114,7 +114,7 @@ test("knowledge counts state the scope that each page actually uses", async () =
     read("components/monitoring-workspace.tsx"),
   ]);
   assert.match(knowledge, /내 문서 \+ 회사 정본 · 휴지통 제외/);
-  assert.match(graph, /휴지통 제외 전체 문서/);
+  assert.match(graph, /볼 수 있는 문서/);
   assert.match(monitoring, /휴지통 포함/);
 });
 

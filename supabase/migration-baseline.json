@@ -350,6 +350,13 @@
       "purpose": "mark shared OS accounts and audit changes or shared-key issuance without revoking existing keys",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261003183000_document_steward.sql",
+      "sha256": "1bb24006bf58b493f797d977edb1a4880eba68807fedabcc29349a5d081da5f8",
+      "purpose": "assign an optional document steward with version and administrator checks while preserving existing documents",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

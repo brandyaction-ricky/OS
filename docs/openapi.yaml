@@ -8,6 +8,27 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/v1/knowledge/graph:
+    get:
+      summary: 현재 사용자가 읽을 수 있는 문서의 연결·깨진 링크·전체 연결 수
+      responses:
+        "200": { description: 권한 내 연결 그래프와 stewardReady 상태 }
+  /api/v1/knowledge/graph/repair:
+    post:
+      summary: 깨진 위키 링크를 최대 50개 원본에서 버전 확인 후 수정
+      description: 정본은 변경 제안만 생성합니다. 여러 원본의 일부 실패는 각 결과와 207 상태로 반환합니다.
+      responses:
+        "200": { description: 모든 원본 수정 또는 변경 제안 생성 }
+        "207": { description: 일부 원본 실패 및 문서별 오류 }
+        "409": { description: 대상 경로가 중복되거나 대상 문서가 휴지통에 있음 }
+  /api/v1/documents/steward:
+    patch:
+      summary: 관리자가 문서 담당을 지정하거나 해제
+      description: 기존 본문·상태·버전을 유지하고 지정 변경은 문서 이벤트로 남깁니다.
+      responses:
+        "200": { description: 담당이 반영된 문서 }
+        "403": { description: 관리자 권한 필요 }
+        "409": { description: 문서 버전 충돌 }
   /api/v1/approvals:
     get:
       summary: 활성 승인자·위임 목록과 문서별 승인 가능 여부

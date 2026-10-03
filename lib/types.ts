@@ -25,6 +25,7 @@ export interface KnowledgeDocument {
   source: string;
   source_ref: string | null;
   owner_id: string;
+  steward_id?: string | null;
   created_by: string;
   current_version: number;
   created_at: string;
