@@ -1046,3 +1046,15 @@ select option { background:var(--panel-2); color:var(--text); }
 .document-tree-select-row{position:relative}.document-tree-select-row>.document-tree-row{width:auto;margin-right:4px}.document-tree-select-row>.document-tree-row>span{min-width:0;display:flex;flex:1;flex-direction:column}.document-tree-select-row>.document-tree-row>span strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.knowledge-page-chevron{flex:none;width:16px;height:28px;padding:0;display:grid;place-items:center;border:0;background:transparent;color:var(--muted);cursor:pointer}.knowledge-page-inline-action{flex:none;width:23px;height:27px;padding:0;display:grid;place-items:center;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;opacity:0}.document-tree-select-row:hover .knowledge-page-inline-action,.document-tree-select-row:focus-within .knowledge-page-inline-action{opacity:1}.knowledge-page-inline-action:hover,.knowledge-page-inline-action:focus-visible{background:var(--surface-hover);color:var(--text)}
 @media(hover:none){.knowledge-page-inline-action{opacity:1}}
 @media(max-width:760px){.knowledge-new-canvas-body{padding:26px 18px 70px}.knowledge-page-title{font-size:28px}.knowledge-new-canvas-top{flex-wrap:wrap}.knowledge-new-canvas-top>div{width:100%;justify-content:flex-end}.knowledge-page-properties>div{grid-template-columns:1fr}.knowledge-block-picker{left:8px!important;right:8px;width:auto}}
+.canonical-actions { display: grid; gap: 14px; padding-block: 14px; border-bottom: 1px solid var(--line); min-width: 0; }
+.canonical-actions > header, .canonical-run > header { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 10px; }
+.canonical-actions p, .canonical-actions small { color: var(--muted); overflow-wrap: anywhere; }
+.canonical-action-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); }
+.canonical-action-grid > * { padding: 14px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; background: var(--card); }
+.canonical-action-grid summary { cursor: pointer; font-weight: 600; }
+.canonical-action-grid label { display: grid; gap: 6px; margin-block: 12px; }
+.canonical-action-grid input, .canonical-action-grid select { width: 100%; min-width: 0; max-width: 100%; }
+.canonical-run { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.canonical-rule { display: flex; flex-wrap: wrap; align-items: start; gap: 12px; padding-block: 12px; border-top: 1px solid var(--line); }
+.canonical-rule > div { flex: 1 1 230px; min-width: 0; display: grid; gap: 6px; overflow-wrap: anywhere; }
+.canonical-rule blockquote { margin: 0; padding: 8px 12px; border-left: 2px solid var(--line); white-space: pre-wrap; color: var(--muted); }

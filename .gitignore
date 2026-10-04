@@ -19,3 +19,5 @@ docs/handoff/os-final-20261003/01_*
 docs/handoff/os-final-20261003/02_*
 docs/handoff/os-final-20261003/README.md
 docs/handoff/os-final-20261003/screens/
+.vercel
+.env*

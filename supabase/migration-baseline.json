@@ -364,6 +364,13 @@
       "purpose": "index document versions for bounded audit history date and cursor queries",
       "requiresApproval": true,
       "appliedEnvironments": []
+    },
+    {
+      "file": "20261004040710_canonical_source_workflow.sql",
+      "sha256": "566143f80728c0cb3b80bff807c4b9186ec4c99ff2b42c6ecc66f37cfe182c98",
+      "purpose": "service-only canonical source synchronization proposals and grounded rule extraction receipts; no automatic canonical promotion",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

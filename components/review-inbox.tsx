@@ -30,7 +30,7 @@ function InboxContent() {
   const [canApprove, setCanApprove] = useState(false);
   const [approvalLoaded, setApprovalLoaded] = useState(false);
   const [approvalError, setApprovalError] = useState(false);
-  const [reviewMode, setReviewMode] = useState<"documents" | "proposals">("documents");
+  const [reviewMode, setReviewMode] = useState<"documents" | "proposals">(params.has("proposal")?"proposals":"documents");
   const [reviewTab, setReviewTab] = useState<"changes" | "preview" | "comments">("changes");
   const [previousContent, setPreviousContent] = useState("");
   const [previousLoaded, setPreviousLoaded] = useState(false);
