@@ -1049,8 +1049,13 @@ select option { background:var(--panel-2); color:var(--text); }
 .canonical-actions { display: grid; gap: 14px; padding-block: 14px; border-bottom: 1px solid var(--line); min-width: 0; }
 .canonical-actions > header, .canonical-run > header { display: flex; flex-wrap: wrap; align-items: start; justify-content: space-between; gap: 10px; }
 .canonical-actions p, .canonical-actions small { color: var(--muted); overflow-wrap: anywhere; }
+.canonical-actions :is(h3,h4,p) { margin: 0; }
+.canonical-actions > header > div { min-width: 0; display: grid; gap: 8px; }
+.canonical-actions > .quiet-state { min-height: 64px; padding: 12px; align-items: flex-start; text-align: left; border: 1px dashed var(--line); border-radius: 8px; }
 .canonical-action-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(min(100%,260px),1fr)); }
-.canonical-action-grid > * { padding: 14px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; background: var(--card); }
+.canonical-action-grid > * { padding: 14px; border: 1px solid var(--line); border-radius: 8px; min-width: 0; background: var(--card); align-self: start; }
+.canonical-action-grid > section { grid-column: 1 / -1; display: grid; gap: 10px; }
+.canonical-action-grid > section > button { justify-self: start; }
 .canonical-action-grid summary { cursor: pointer; font-weight: 600; }
 .canonical-action-grid label { display: grid; gap: 6px; margin-block: 12px; }
 .canonical-action-grid input, .canonical-action-grid select { width: 100%; min-width: 0; max-width: 100%; }

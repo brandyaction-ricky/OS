@@ -57,8 +57,13 @@ for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (width === 390) {
       await page.getByRole("link", { name: "영상 성과", exact: true }).click();
+      // A sidebar link closes immediately; wait for the destination before
+      // testing a new drawer lifecycle, not the router's in-flight focus move.
+      await expect(page).toHaveURL(/\/content\/performance(?:\?|$)/);
+      await expect(page.getByRole("heading", { name: "영상 성과", exact: true, level: 1 })).toBeVisible();
       await expect(page.getByRole("button", { name: "메뉴 열기" })).toHaveAttribute("aria-expanded", "false");
       await page.getByRole("button", { name: "메뉴 열기" }).click();
+      await expect(page.getByRole("button", { name: "메뉴 닫기", exact: true })).toBeFocused();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("button", { name: "메뉴 열기" })).toBeFocused();
     }

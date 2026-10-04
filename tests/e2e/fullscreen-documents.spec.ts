@@ -42,6 +42,7 @@ for(const width of [1280,390])test(`canonical workflow is bounded and safe in de
   await page.goto("/knowledge?tab=canon");
   await page.getByRole("button",{name:"실행 규칙",exact:true}).click();
   const workflow=page.getByRole("region",{name:"정본 동기화와 규칙 추출"});
+  await expect.poll(async()=>((await workflow.locator(":scope > .quiet-state").boundingBox())?.height??Infinity)).toBeLessThanOrEqual(90);
   await workflow.getByText("외부 원문 연결",{exact:true}).click();
   await workflow.getByText("파일로 변경 제안",{exact:true}).click();
   await expect(workflow.getByLabel("HTTPS 원문 주소")).toBeDisabled();
