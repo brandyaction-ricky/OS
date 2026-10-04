@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim();
 const baseURL = externalBaseUrl || "http://127.0.0.1:3100";
+const productionServer = process.env.PLAYWRIGHT_SERVER_MODE === "production";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -9,7 +10,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? "github" : "list",
+  reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     baseURL,
     trace: "retain-on-failure",
@@ -24,7 +25,7 @@ export default defineConfig({
   webServer: externalBaseUrl
     ? undefined
     : {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+        command: `npm run ${productionServer ? "start" : "dev"} -- --hostname 127.0.0.1 --port 3100`,
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
