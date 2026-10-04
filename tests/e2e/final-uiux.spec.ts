@@ -52,9 +52,9 @@ test("mock metrics preserve missing snapshots and show measured sample bounds", 
   const panel = page.getByRole("region", { name: "게시 후 경과일 비교" });
   await panel.getByRole("button", { name: "모의 성과 불러오기" }).click();
   await expect(panel.getByText("차이 없음 · 관찰 범위 겹침", { exact: false })).toBeVisible();
-  await expect(panel.getByRole("row")).toHaveCount(13);
-  await panel.getByLabel("경과일").selectOption("d1");
-  await expect(panel.getByRole("row")).toHaveCount(1);
+  await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(13);
+  await panel.getByRole("combobox",{name:/^경과일/}).selectOption("d1");
+  await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(1);
   await expect(panel.getByText("선택 범위의 측정값이 없습니다. 미측정은 0이 아닙니다.", { exact: true })).toBeVisible();
 });
 test("mock comment handling protects private channels and requires human confirmation", async ({ page }) => {
@@ -71,6 +71,6 @@ test("mock comment handling protects private channels and requires human confirm
   await composer.getByRole("checkbox").check();
   await composer.getByRole("button", { name: "모의 답글 보내기" }).click();
   await expect(page.getByText("모의 처리 완료 · 외부 전송 없음", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "답함", exact: true }).click();
+  await page.getByRole("navigation",{name:"댓글 보기"}).getByRole("button", { name: /^답함/ }).click();
   await expect(page.locator(".comment-row")).toHaveCount(1);
 });

@@ -5,6 +5,13 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as scripts from "../lib/script-documents.ts";
 import * as lineDiff from "../lib/line-diff.ts";
+test("script stage chips classify actual filenames without assigning approval state",()=>{
+  const row={title:"03_초안_v2.md",source_ref:"scripts/03_초안_v2.md"};
+  assert.equal(scripts.matchesScriptStep(row,"all"),true);
+  assert.equal(scripts.matchesScriptStep(row,"초안"),true);
+  assert.equal(scripts.matchesScriptStep(row,"자료"),false);
+  assert.equal(scripts.matchesScriptStep(row,"unknown"),false);
+});
 
 test("direct-edit variants outrank manuscript versions without requiring a specific suffix", () => {
   const doc = (title) => ({ title, folder: "scripts", status: "draft", updated_at: "2026-09-10" });

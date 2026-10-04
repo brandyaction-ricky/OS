@@ -27,6 +27,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
 import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
+import { ContentStageTabs } from "./content-stage-tabs";
 import { ContentJevAssist } from "./content-jev-assist";
 import { ContentJevUsageGuide, packagingJevUsageSteps } from "./content-jev-usage-guide";
 
@@ -80,13 +81,16 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
   const [sort, setSort] = useState<"ratio" | "views" | "engagement" | "subscribers">("ratio");
   const [format, setFormat] = useState<"all" | "long" | "short">("all");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
   const [quickTopicOpen, setQuickTopicOpen] = useState(false);
   const [pipelineState, setPipelineState] = useState<{ approved: boolean[]; missing: string[][] } | null>(null);
 
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) { setLoading(false); return; }
+    if (!accessToken) return;
+    setLoading(true);
     try {
       const [sourceResult, packageResult, metrics] = await Promise.all([
         listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })),
@@ -99,6 +103,8 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "패키징 자료를 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
     }
   }, [accessToken, demo, lockedSource, sourceOptions]);
 
@@ -254,11 +260,12 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
   };
 
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions">{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><ContentGenerationButton className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onGenerate={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</ContentGenerationButton></div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>자사·시장 썸네일을 근거로 모으고, 정본에서 제목·카피·디자인 프롬프트를 생성해 채택합니다.</p></div><div className="header-actions"><button className="secondary-button" onClick={() => setQuickTopicOpen(true)}><Target size={15} /> 새 주제로 검증</button><ContentGenerationButton className="primary-button" title={generationBlocker || "현재 기획으로 제목·썸네일 후보를 만듭니다."} disabled={!canGenerate || busy} onGenerate={generate}><Sparkles size={15} /> {busy ? "처리 중…" : "제목·썸네일 후보 뽑기"}</ContentGenerationButton></div></header>
+    <div className="fullscreen-source-row"><span>기준 콘텐츠</span>{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{meta(source, "temporary", false) ? "[빠른 검증] " : source.metadata.pickedCandidate ? "[패키징 준비] " : "[기획 미확정] "}{source.title}</option>)}</select><span>작업 중인 영상과 같은 값</span></div>
     {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     {selectedSource && pipelineEnabled ? <section className="panel packaging-handoff" aria-label="기획에서 패키징으로 인계"><header className="panel-header"><div><span className="eyebrow">같은 콘텐츠에서 이어서 작업</span><h2>{selectedSource.title}</h2><p>주제·기획에서 승인한 범위를 그대로 확인하고, 최종 제목과 썸네일은 이 화면에서 결정합니다.</p></div><span className={`status-pill status-${planningApproved ? "ready" : "review"}`}>{planningApproved ? "기획·근거 승인 완료" : "기획·근거 승인 대기"}</span></header><dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selectedSource.id}</dd></div><div><dt>현재 단계</dt><dd>{selectedSource.stage || "패키징 준비"}</dd></div><div><dt>승인 소구점</dt><dd>{approvedAppeals.length}개</dd></div><div><dt>검증 레퍼런스</dt><dd>{referenceCount}개</dd></div></dl>{pickedPlan ? <article className="packaging-plan-card"><small>채택한 기획 방향 · 기획 v{selectedPlan?.version}</small><strong>{String(pickedPlan.title ?? "기획 방향")}</strong><p>{String(pickedPlan.narrative ?? pickedPlan.evidence ?? "")}</p><span>기획 단계의 제목·썸네일 문구는 방향 참고이며, 최종안은 이 화면에서 채택합니다.</span></article> : null}{generationBlocker ? <p className="inline-alert warning"><CircleAlert size={15} /> {generationBlocker}</p> : null}<nav className="planning-next-actions"><Link className="secondary-button" href={`/content/topics?sourceId=${selectedSource.id}`}>주제·기획 확인</Link><Link className="secondary-button" href={`/content/automation?sourceId=${selectedSource.id}`}>공정·승인 현황</Link></nav></section> : null}
     <p className="field-hint">검색으로 근거 모으기 → 제목 선택 → 썸네일 카피·디자인 검토 → 채택 저장</p><p className="field-hint">내부 예상 비용: 제목 3~8원, 카피·디자인 20~35원. 실제 비용은 모델·입력 길이·생성 범위에 따라 달라집니다. 현재 버튼은 제목·카피·디자인을 함께 생성합니다.</p>
-    <nav className="studio-tabs content-radar-tabs" aria-label="제목 썸네일 작업 단계">{PACKAGE_TABS.map((item) => <button className={tab === item.key ? "active" : ""} key={item.key} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</nav>
+    <ContentStageTabs label="제목 썸네일 작업 단계" value={tab} onChange={setTab} items={PACKAGE_TABS.map(item => ({...item, count: loading ? null : ({search:sortedResults.length,title:titles.length,thumbnail:copies.length,saved:references.length})[item.key]}))} />
 
     {tab === "search" ? <>
       <section className="panel own-thumbnail-strip"><div className="panel-header"><div><h2>우리 채널 썸네일</h2><p>자사 채널의 기존 패키징과 저장된 실측 CTR을 확인합니다.</p></div><select aria-label="우리 채널 정렬" value={ownSort} onChange={(event) => setOwnSort(event.target.value)}><option value="ctr">실측 CTR 순</option><option value="views">조회순</option></select><button className="ghost-button" disabled={busy} onClick={() => searchMarket(true)}><Search size={14} /> 불러오기</button></div><div>{sortedOwn.map((item) => <a href={item.url} target="_blank" rel="noreferrer" key={item.id}><span style={{ backgroundImage: `url(${item.thumbnail})` }} /><strong>{item.title}</strong><small>조회 {compactNumber(item.viewCount)} · CTR {measuredCtr(item.id) === null ? "미연결" : `${measuredCtr(item.id)!.toFixed(1)}%`}</small></a>)}{!ownResults.length ? <button className="thumbnail-empty" onClick={() => searchMarket(true)}><ImageIcon size={24} /><span>우리 채널 썸네일 불러오기</span></button> : null}</div></section>

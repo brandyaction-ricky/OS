@@ -36,6 +36,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { contentOrigin } from "@/lib/content-origin";
 import { summarizeContentSearchHistory } from "@/lib/content-search-history";
 import { useSession } from "./session-provider";
+import { ContentStageTabs } from "./content-stage-tabs";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
 import { ContentTopicJevAssist } from "./content-topic-jev-assist";
 
@@ -108,6 +109,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const [verifiedChannel, setVerifiedChannel] = useState<YoutubeChannelIdentity | null>(null);
   const [topicOpen, setTopicOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
   const [appealNote, setAppealNote] = useState("");
   const [selectedAppeals, setSelectedAppeals] = useState<Set<number>>(new Set());
@@ -120,7 +122,9 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const [appealCommentError, setAppealCommentError] = useState("");
 
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) { setLoading(false); return; }
+    if (!accessToken) return;
+    setLoading(true);
     try {
       const [topicResult, packageResult, memberResult] = await Promise.all([
         listAllRecordsOfType(accessToken, "content_topic"),
@@ -133,7 +137,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "콘텐츠 탐색 자료를 불러오지 못했습니다.");
-    }
+    } finally { setLoading(false); }
   }, [accessToken, demo]);
 
   useEffect(() => { load(); }, [load]);
@@ -599,26 +603,25 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   };
 
   return <>
-    <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
     <header className="page-header">
       <div className="page-title-group"><PageTitle /><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
       <div className="header-actions">
+        <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
         {tab === "channels" ? <button className="primary-button" onClick={() => setChannelOpen(true)}><Plus size={15} /> 채널 추가</button> : null}
         {tab === "niches" ? <button className="primary-button" onClick={() => setTopicOpen(true)}><Plus size={15} /> 틈새 후보 추가</button> : null}
       </div>
     </header>
     {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
-    {!productionMode ? <nav className="studio-tabs content-radar-tabs" aria-label="주제 탐색 단계">
-      {TABS.filter(item=>item.key!=="planning").map((item) => <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
-    <Link href="/content/production?view=tools&step=planning">제작 기획으로</Link></nav> : null}
+    {!productionMode ? <ContentStageTabs label="주제 탐색 단계" value={tab} onChange={setTab} items={TABS.map(item => ({...item, count: loading ? null : ({channels:channels.length,discovery:outliers.length,niches:nicheTopics.length,planning:plannedTopics.length})[item.key]}))} /> : null}
 
     {tab === "channels" ? <>
       <section className="metric-grid compact-metrics">
-        <div className="metric-card"><div className="metric-top"><span>매일 보는 채널</span><Users size={16} /></div><div className="metric-value">{channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
-        <div className="metric-card"><div className="metric-top"><span>모은 영상</span><Youtube size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">OS에 저장한 근거 영상</div></div>
-        <div className="metric-card"><div className="metric-top"><span>발견 근거</span><Radar size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">저장한 시장 영상</div></div>
-        <div className="metric-card"><div className="metric-top"><span>기획 확정</span><Check size={16} /></div><div className="metric-value">{topics.filter((topic) => topic.status === "planned").length}</div><div className="metric-caption good">원고 공정 전달 가능</div></div>
+        <div className="metric-card"><div className="metric-top"><span>매일 보는 채널</span><Users size={16} /></div><div className="metric-value">{loading ? "…" : channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
+        <div className="metric-card"><div className="metric-top"><span>모은 영상</span><Youtube size={16} /></div><div className="metric-value">{loading ? "…" : outliers.length}</div><div className="metric-caption">OS에 저장한 근거 영상</div></div>
+        <div className="metric-card"><div className="metric-top"><span>발견 근거</span><Radar size={16} /></div><div className="metric-value">{loading ? "…" : outliers.length}</div><div className="metric-caption">저장한 시장 영상</div></div>
+        <div className="metric-card"><div className="metric-top"><span>기획 확정</span><Check size={16} /></div><div className="metric-value">{loading ? "…" : plannedTopics.length}</div><div className="metric-caption good">원고 공정 전달 가능</div></div>
       </section>
+      <div className="fullscreen-topics-grid">
       <section className="panel channel-dictionary">
         <div className="panel-header"><div><h2>채널 탐색 사전</h2><p>A–L 사람들이 찾는 말로 시장을 넓히되, 채널 승인에는 반복 근거를 남깁니다.</p></div><span>{ENTRY_CATEGORIES.length}개 분류</span></div>
         <div>{ENTRY_CATEGORIES.map(([letter, name, description]) => <button type="button" key={letter} onClick={() => { setSearchQuery(description.split(",")[0].trim()); setTab("discovery"); }}><b>{letter}</b><span><strong>{name}</strong><small>{description}</small></span></button>)}</div>
@@ -627,8 +630,9 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         <div className="panel-header"><div><h2>매일 보는 채널</h2><p>채널 URL·운영하는 곳·대표 형식을 함께 관리합니다.</p></div><button className="ghost-button" onClick={() => setChannelOpen(true)}><Plus size={14} /> 직접 추가</button></div>
         <div className="content-table-head"><span>채널</span><span>분류</span><span>운영하는 곳</span><span>기본 형식</span><span>상태</span><span /></div>
         {channels.map((channel) => <div className="content-table-row" key={channel.id}><span><strong>{channel.title}</strong><small>{channel.description || "승인 근거 미입력"}</small></span><span>{meta(channel, "category", "미분류")}</span><span>{meta(channel, "ownerGroup", "미입력")}</span><span>{meta(channel, "defaultFormat", "해설")}</span><span className="status-pill status-active">추적 중</span><span>{channel.source_url ? <a href={channel.source_url} target="_blank" rel="noreferrer" aria-label={`${channel.title} 열기`}><ExternalLink size={14} /></a> : null}</span></div>)}
-        {!channels.length ? <div className="compact-empty"><Youtube size={24} /><strong>아직 매일 보는 채널이 없습니다.</strong><span>캡처의 채널 사전 기준으로 첫 관찰 채널을 등록하세요.</span></div> : null}
+        {!channels.length ? <div className="compact-empty" role="status"><Youtube size={24} /><strong>{loading ? "채널을 불러오는 중입니다." : "아직 매일 보는 채널이 없습니다."}</strong><span>채널 탐색 사전에서 분류를 고르거나 URL로 직접 추가하세요.</span><button className="secondary-button" onClick={() => setChannelOpen(true)}>URL로 직접 추가</button></div> : null}
       </section>
+      </div>
     </> : null}
 
     {tab === "discovery" ? <>
