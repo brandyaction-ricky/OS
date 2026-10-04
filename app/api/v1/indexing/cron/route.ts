@@ -5,6 +5,7 @@ import { processEmbeddingQueue } from "@/lib/server/indexing";
 import { syncAdPerformance, trailingDateRange } from "@/lib/server/ad-performance";
 import { cleanupExpiredContentMedia } from "@/lib/server/content-media";
 import { cleanupPendingKnowledgeAttachments } from "@/lib/server/knowledge-attachment-lifecycle";
+import { processCanonicalSync } from "@/lib/server/canonical-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export async function GET(request: Request) {
     const advertising = await syncAdPerformance({ ...range });
     const contentMedia = await cleanupExpiredContentMedia();
     const knowledgeAttachments = await cleanupPendingKnowledgeAttachments();
-    return NextResponse.json({ ok: true, embeddings, advertising, contentMedia, knowledgeAttachments });
+    const canonicalSources = await processCanonicalSync();
+    return NextResponse.json({ ok: true, embeddings, advertising, contentMedia, knowledgeAttachments, canonicalSources });
   } catch (error) { return apiErrorResponse(error); }
 }

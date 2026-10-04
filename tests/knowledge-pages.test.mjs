@@ -30,7 +30,7 @@ test("toggle markdown keeps folded headings and fenced delimiters in one block",
   assert.equal(parseKnowledgeToggle(":::toggle{title=\"x\"}\n본문"), null);
 });
 
-test("page migration is additive, guarded, and pending environment approval", async () => {
+test("page migration is additive, guarded, and recorded as DEV-only", async () => {
   const migration = await readFile(new URL("../supabase/migrations/20261003122206_knowledge_page_tree.sql", import.meta.url), "utf8");
   const manifest = JSON.parse(await readFile(new URL("../supabase/migration-baseline.json", import.meta.url), "utf8"));
   const entry = manifest.forwardMigrations.find(item => item.file === "20261003122206_knowledge_page_tree.sql");
@@ -42,7 +42,13 @@ test("page migration is additive, guarded, and pending environment approval", as
   assert.match(migration, /owner_id is distinct from auth\.uid\(\)/);
   assert.doesNotMatch(migration, /\b(?:truncate|delete from|drop table)\b/i);
   assert.equal(entry?.requiresApproval, true);
-  assert.deepEqual(entry?.appliedEnvironments, []);
+  assert.equal(entry?.developmentApprovedAt, "2026-10-04");
+  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
+});
+
+test("page moves accept the offset timestamp returned by Supabase", async () => {
+  const route = await readFile(new URL("../app/api/v1/documents/pages/route.ts", import.meta.url), "utf8");
+  assert.match(route, /expectedUpdatedAt: z\.string\(\)\.datetime\(\{ offset: true \}\)/);
 });
 
 test("page-aware routes keep ancestor access checks", async () => {

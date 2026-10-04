@@ -7,15 +7,17 @@ import type { DocumentProposal, DocumentProposalComment, KnowledgeDocument } fro
 import { KnowledgeInlineProvider } from "./knowledge-inline";
 import { MarkdownView } from "./knowledge-workspace";
 import { useSession } from "./session-provider";
+import { useSearchParams } from "next/navigation";
 
 type ProposalResponse = { proposals: DocumentProposal[]; documents: KnowledgeDocument[]; comments: DocumentProposalComment[]; incomingLinks?: number | null };
 type Tab = "changes" | "preview" | "comments";
 
 export function KnowledgeProposalReview() {
+  const requestedId=useSearchParams().get("proposal");
   const { accessToken, demo, profile } = useSession();
   const [proposals, setProposals] = useState<DocumentProposal[]>([]);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(requestedId);
   const [comments, setComments] = useState<DocumentProposalComment[]>([]);
   const [incomingLinks, setIncomingLinks] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("changes");

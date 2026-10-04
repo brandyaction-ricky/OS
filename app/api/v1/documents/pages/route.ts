@@ -12,7 +12,7 @@ const movePageSchema = z.object({
   id: z.string().uuid(),
   parentDocumentId: z.string().uuid().nullable(),
   folder: z.string().max(160),
-  expectedUpdatedAt: z.string().datetime(),
+  expectedUpdatedAt: z.string().datetime({ offset: true }),
 });
 
 export async function PATCH(request: Request) {

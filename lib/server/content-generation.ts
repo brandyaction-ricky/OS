@@ -71,7 +71,7 @@ function tokenBudget(action: z.infer<typeof generationSchema>["action"]) {
   return 7_000;
 }
 
-async function claude(prompt: string, model: string, jsonSchema: JsonSchema, maxTokens: number) {
+export async function claude(prompt: string, model: string, jsonSchema: JsonSchema, maxTokens: number) {
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
