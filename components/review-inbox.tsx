@@ -23,6 +23,7 @@ function InboxContent() {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(() => demo ? getDemoKnowledgeDocuments() : []);
   const [selectedId, setSelectedId] = useState(params.get("document"));
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [completed, setCompleted] = useState<KnowledgeDocument | null>(null);
@@ -35,9 +36,12 @@ function InboxContent() {
   const [previousLoaded, setPreviousLoaded] = useState(false);
 
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) {setLoading(false);return;}
+    if (!accessToken) return;
+    setLoading(true);
     try { setDocuments((await listDocuments(accessToken, "limit=100&statuses=review,reviewed")).documents); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "검토함을 불러오지 못했습니다."); }
+    finally {setLoading(false);}
   }, [accessToken, demo]);
   useEffect(() => { load(); }, [load]);
 
@@ -92,7 +96,7 @@ function InboxContent() {
 
   return (
     <>
-      <header className="page-header"><div className="page-title-group"><PageTitle /><p>팀의 경험을 확인하고 회사가 신뢰할 수 있는 정본으로 승인합니다.</p></div><div className="header-actions"><span className="review-count"><CircleAlert size={15} /> 검토 요청 {queue.filter((item) => item.status === "review").length}건</span></div></header>
+      <header className="page-header"><div className="page-title-group"><PageTitle /><p>팀의 경험을 확인하고 회사가 신뢰할 수 있는 정본으로 승인합니다.</p></div><div className="header-actions"><span className="review-count"><CircleAlert size={15} /> 검토 요청 {loading?"…":queue.filter((item) => item.status === "review").length}건</span></div></header>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
       {completed ? <p className="inline-alert" role="status">{completed.title} · {statusLabel(completed.status)} 상태로 변경했습니다. <Link href={`/knowledge?document=${completed.id}`}>변경한 원문 열기</Link></p> : null}
       <div className="knowledge-proposal-tabs" role="tablist" aria-label="검토 유형"><button type="button" role="tab" aria-selected={reviewMode === "documents"} onClick={() => setReviewMode("documents")}>문서 검토</button><button type="button" role="tab" aria-selected={reviewMode === "proposals"} onClick={() => setReviewMode("proposals")}>정본 변경 제안</button></div>
@@ -101,7 +105,7 @@ function InboxContent() {
         <aside className="panel review-queue">
           <div className="panel-header"><div><h2>검토 목록</h2><p>최근 변경 순으로 표시합니다.</p></div></div>
           {queue.map((document) => <button key={document.id} className={selected?.id === document.id ? "active" : ""} onClick={() => { setSelectedId(document.id); setNote(""); }}><span className={`document-symbol status-${document.status}`}><FileText size={15} /></span><span><strong>{document.title}</strong><small>{document.team || "전체"} · v{document.current_version}</small></span><ChevronRight size={14} /></button>)}
-          {!queue.length ? <div className="quiet-state"><BookCheck size={25} /><strong>모든 검토를 마쳤습니다</strong><span>새 요청이 들어오면 표시됩니다.</span></div> : null}
+          {loading ? <p role="status">검토 목록 불러오는 중…</p> : !queue.length && !error ? <div className="quiet-state"><BookCheck size={25} /><strong>모든 검토를 마쳤습니다</strong><span>새 요청이 들어오면 표시됩니다.</span></div> : null}
         </aside>
         <article className="panel review-document">
           {selected ? <>

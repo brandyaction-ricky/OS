@@ -309,7 +309,7 @@ function WorkspaceContent() {
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
   const [hoverTree, setHoverTree] = useState(false);
-  const [paneWidth, setPaneWidth] = useState(280);
+  const [paneWidth, setPaneWidth] = useState(300);
   const [treeScroll, setTreeScroll] = useState(0);
   const [linkQuery, setLinkQuery] = useState<string | null>(null);
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
