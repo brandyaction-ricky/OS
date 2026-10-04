@@ -55,8 +55,10 @@ export const NAV_STAGES: NavStage[] = [
     { label: "숏폼 편집", href: "/content/shorts", icon: Scissors, processNumber: 4, ready: true },
     { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, processNumber: 5, aliases: ["발행 일정", "멀티채널 자동화", "검토·발행 대기목록", "발행 캘린더"], ready: true },
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 6, ready: true },
-    { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, processNumber: 7, ready: true },
-    { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 8, aliases: ["콘텐츠 성과"], ready: true },
+    { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 7, aliases: ["콘텐츠 성과"], ready: true },
+  ] },
+  { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/content/comments", pages: [
+    { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge", pages: [
     { label: "전체 문서", href: "/knowledge", icon: FileText, aliases: ["지식", "문서 작업공간"], ready: true },

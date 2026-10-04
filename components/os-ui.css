@@ -1,0 +1,451 @@
+/*
+  브랜디 OS 화면 CSS — 시안 F-1 ~ F-9 그대로 (2026-10-03, 2판)
+  기준: screens/clean/*.png · screens/F?_*.html#clean. 값 출처: 시안 보드의 CSS (Pretendard로 잰 값)
+  넣는 법: components/os-ui.css 로 복사 → app/layout.tsx 에서 linear-shell.css 다음 줄에 import "../components/os-ui.css";
+
+  켜는 스위치 2개 — 클래스가 없으면 이 파일은 글꼴(0절)과 토큰(1절) 말고는 아무것도 바꾸지 않습니다.
+    .shell-v2  → AppShell 루트(.os-app.linear-shell)에 붙임 (S2). 새 사이드바 · 상단 막대 · 공정 막대 · 사용 가이드 줄.
+    .ui-v2     → AppShell의 <main class="page-content">에 붙임, 새 화면 8개만 (S4 ~ S9). 본문 컴포넌트.
+  화면 폭 820px 이하(모바일)에서는 셸의 크기 · 배치 규칙을 끄고 지금 OS 모바일 규칙을 그대로 씁니다(21절 미디어 쿼리).
+  지금 OS 클래스 이름을 살리고(.page-sidebar · .page-link · .topbar · .command-trigger · .guidance-control ·
+  .development-notifications-* · .primary-button · .secondary-button · .panel · .status-pill · .empty-state …), 없는 것만 새로 만듭니다.
+*/
+
+/* ───────────── 0. 글꼴 — Pretendard Variable (npm pretendard 1.3.9, OFL-1.1) ─────────────
+   node_modules/pretendard/dist/web/variable/woff2/PretendardVariable.woff2 → public/fonts/ (라이선스 파일도 같이).
+   글꼴 이름을 'Pretendard' 그대로 두려고 next/font 대신 @font-face를 씁니다(검사가 이 이름을 봄).
+   body가 이미 Pretendard를 첫 글꼴로 적고 있어서, 이 규칙으로 모든 화면의 글꼴이 실제 Pretendard가 됩니다(작업지시서 5.2). */
+@font-face {
+  font-family: Pretendard;
+  src: local("Pretendard Variable"), url("/fonts/pretendard/PretendardVariable.woff2") format("woff2-variations"), url("/fonts/pretendard/PretendardVariable.woff2") format("woff2");
+  font-weight: 45 920; font-style: normal; font-display: swap;
+}
+
+/* ───────────── 1. 토큰 추가 (새 3개) ───────────── */
+:root {
+  --card: #141516;
+  --platform-instagram: #d9467a;
+  --platform-youtube: #e5484d;
+  --ui-font: Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+}
+html[data-theme="light"] { --card: #ffffff; }
+
+/* ───────────── 2. 새 범위 — 줄 간격 normal · 글자 간격 normal ─────────────
+   지금 body(1.55) · .linear-shell(-.01em)을 새 셸과 새 화면에서만 끕니다. */
+.linear-shell.shell-v2 :is(.page-sidebar, .topbar, .process-bar, .guide-strip),
+.linear-shell .page-content.ui-v2 {
+  font-family: var(--ui-font);
+  line-height: normal;
+  letter-spacing: normal;
+}
+.linear-shell .ui-v2 b, .linear-shell .ui-v2 strong { font-weight: 700; }
+.linear-shell .ui-v2 :where(a:not([class])) { color: var(--accent-2); }   /* 시안: 본문 글 링크 = --accent-2, 올리면 --text */
+.linear-shell .ui-v2 :where(a:not([class])):hover { color: var(--text); }
+
+/* ───────────── 3. 사이드바 (240 · 펼친 메뉴 하나 — 크기는 21절) ───────────── */
+.linear-shell.shell-v2 .page-sidebar {
+  padding: 12px 10px; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel); border-right: 1px solid var(--line-soft); color: var(--text);
+}
+.linear-shell.shell-v2 .page-sidebar .sidebar-head {
+  min-height: 0; display: flex; align-items: center; gap: 9px; padding: 0 4px 10px; border: 0;
+}
+.linear-shell.shell-v2 .page-sidebar .brand-mark {
+  width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 8px; background: none;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: normal; color: var(--text);
+}
+.linear-shell.shell-v2 .brand-copy { display: flex; flex-direction: column; line-height: 1.25; }
+.linear-shell.shell-v2 .brand-copy b { font-size: 14px; }
+.linear-shell.shell-v2 .brand-copy span { font-size: 11px; color: var(--muted); }
+.linear-shell.shell-v2 .sidebar-collapse {
+  margin-left: auto; width: 26px; height: 26px; padding: 1px 6px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 6px; background: none;
+  color: var(--muted); font: inherit; font-size: 13px; line-height: 1;
+}
+.linear-shell.shell-v2 .page-nav { padding: 0; display: flex; flex-direction: column; gap: 2px; flex-grow: 1; }
+.linear-shell.shell-v2 .nav-section { display: flex; flex-direction: column; gap: 1px; }
+.linear-shell.shell-v2 .nav-divider { height: 1px; background: var(--line-soft); margin: 5px 4px; }
+.linear-shell.shell-v2 .nav-spacer { flex-grow: 1; }
+
+/* 메뉴 묶음 머리 (펼침 ▾ / 접힘 ▸) — 지금 .nav-group(10px 대문자 라벨)을 단추로 바꿈 */
+.linear-shell.shell-v2 .nav-group {
+  width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 0;
+  border: 0; border-radius: 6px; background: none; text-align: left; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 700; color: var(--text); letter-spacing: normal; text-transform: none;
+}
+.linear-shell.shell-v2 .nav-chevron { width: 10px; font-size: 10px; color: var(--muted); }
+.linear-shell.shell-v2 .nav-icon { display: flex; color: var(--muted); }
+.linear-shell.shell-v2 .nav-icon svg { width: 16px; height: 16px; }
+.linear-shell.shell-v2 .nav-group-note { font-size: 10.5px; font-weight: 400; color: var(--muted); margin-left: 2px; }
+.linear-shell.shell-v2 .nav-group-count { margin-left: auto; font-size: 11px; color: var(--muted); }
+.linear-shell.shell-v2 .nav-alert-dot { width: 7px; height: 7px; border-radius: 4px; background: var(--warning); display: inline-block; margin-left: 2px; }
+
+/* 메뉴 항목 */
+.linear-shell.shell-v2 .page-link {
+  min-height: 0; margin: 0; display: flex; align-items: center; gap: 7px;
+  padding: 6px 10px 6px 30px; border-radius: 6px; box-shadow: none;
+  font-size: 13px; font-weight: 400; color: var(--text-2); text-decoration: none; background: transparent;
+}
+.linear-shell.shell-v2 .page-link > span { flex: 0 0 auto; }            /* 지금 globals.css의 .page-link span { flex: 1 } 끔 */
+.linear-shell.shell-v2 .page-link.is-sub { padding-left: 44px; }
+.linear-shell.shell-v2 .page-link.active,
+.linear-shell.shell-v2 .page-link[aria-current="page"] { color: var(--text); background: var(--surface-selected); font-weight: 600; }
+.linear-shell.shell-v2 .page-link.nav-home { gap: 8px; padding: 8px 10px; font-size: 13.5px; font-weight: 700; color: var(--text); }
+.linear-shell.shell-v2 .nav-indent { width: 10px; }
+.linear-shell.shell-v2 .nav-step-no { width: 14px; color: var(--muted); font-size: 12px; }
+.linear-shell.shell-v2 .nav-count {
+  margin-left: auto; font-size: 11px; font-weight: 700; border-radius: 9px; padding: 0 7px; line-height: 18px; white-space: nowrap;
+  background: var(--accent); color: var(--on-accent);
+}
+.linear-shell.shell-v2 .nav-count.is-soft { background: var(--panel-3); color: var(--text-2); }
+.linear-shell.shell-v2 .nav-count.is-warning { background: var(--warning-soft); color: var(--warning); }
+.linear-shell.shell-v2 .tag-new {
+  font-size: 10px; font-weight: 700; color: var(--accent-2); border: 1px solid var(--accent-2);
+  border-radius: 4px; padding: 0 4px; line-height: 15px;
+}
+
+/* 아래 프로필 = 내 계정 (지금 상단 막대의 프로필 단추를 사이드바 아래로) */
+.linear-shell.shell-v2 .page-sidebar .sidebar-foot { border-top: 1px solid var(--line-soft); margin-top: 4px; padding: 10px 6px 0; }
+.linear-shell.shell-v2 .page-sidebar .profile-trigger {
+  width: 100%; display: flex; align-items: center; gap: 9px; padding: 4px 6px; border: 0; border-radius: 6px;
+  background: none; color: var(--text); text-decoration: none; font: inherit; text-align: left;
+}
+.linear-shell.shell-v2 .page-sidebar .profile-trigger[aria-current="page"] { background: var(--surface-selected); }
+.linear-shell.shell-v2 .page-sidebar .avatar {
+  width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--panel-3);
+  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--text);
+}
+.linear-shell.shell-v2 .page-sidebar .profile-copy { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.linear-shell.shell-v2 .page-sidebar .profile-copy b { font-size: 12.5px; font-weight: 700; }
+.linear-shell.shell-v2 .page-sidebar .profile-copy span { font-size: 11px; color: var(--muted); }
+.linear-shell.shell-v2 .profile-more { margin-left: auto; color: var(--muted); font-size: 16px; padding: 2px 4px; }
+
+/* ───────────── 4. 상단 막대 (53 = 52 + 아래 줄 1 — 크기는 21절) ───────────── */
+.linear-shell.shell-v2 .topbar {
+  gap: 10px; display: flex; align-items: center;
+  background: var(--panel); border-bottom: 1px solid var(--line-soft); box-shadow: none; backdrop-filter: none;
+}
+.linear-shell.shell-v2 .breadcrumbs { font-size: 13px; color: var(--text); gap: 4px; }
+.linear-shell.shell-v2 .breadcrumbs a { color: var(--muted); }
+.linear-shell.shell-v2 .breadcrumbs [aria-current="page"] { color: var(--text); font-weight: 400; }
+.linear-shell.shell-v2 .breadcrumbs .sep { color: var(--muted); }
+.linear-shell.shell-v2 .topbar-spacer { flex-grow: 1; }
+.linear-shell.shell-v2 .topbar-actions { gap: 10px; display: flex; align-items: center; }
+.linear-shell.shell-v2 .command-trigger {
+  height: 32px; box-sizing: border-box; gap: 6px;
+  display: flex; align-items: center; border: 1px solid var(--line); border-radius: 6px;
+  background: var(--card); color: var(--muted); font-size: 12px; box-shadow: none;
+}
+.linear-shell.shell-v2 .command-trigger svg { width: 14px; height: 14px; }
+.linear-shell.shell-v2 .command-trigger kbd {
+  margin-left: auto; font-family: inherit; font-size: 11px; border: 1px solid var(--line); border-radius: 4px;
+  padding: 0 4px; background: none; box-shadow: none; color: var(--muted); line-height: normal;
+}
+/* 사용 가이드 ON / OFF (지금 ‘설명’ 단추 자리) */
+.linear-shell.shell-v2 .display-control.guidance-control {
+  height: auto; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--text-2);
+  font-size: 12px; font-weight: 400; box-shadow: none;
+}
+.linear-shell.shell-v2 .display-control.guidance-control svg { width: 15px; height: 15px; color: currentColor; }
+.linear-shell.shell-v2 .display-control.guidance-control em { min-width: 0; font-size: inherit; letter-spacing: normal; font-style: normal; font-weight: 700; color: var(--muted); } /* 지금 em: 8px · 최소폭 24 끔 */
+.linear-shell.shell-v2 .display-control.guidance-control.active { border-color: var(--accent-2); background: var(--accent-soft); color: var(--accent-2); }
+.linear-shell.shell-v2 .display-control.guidance-control.active em { color: inherit; }
+/* + 빠른 기록 (새 단추) */
+.linear-shell.shell-v2 .quick-add {
+  font: inherit; font-size: 12px; font-weight: 500; color: var(--on-accent); background: var(--accent);
+  border: 0; border-radius: 6px; padding: 7px 11px; line-height: normal; white-space: nowrap; cursor: pointer;
+}
+/* 알림 — 지금 components/development-request-notifications.tsx · development-notifications.css 의 클래스.
+   그 CSS가 이 파일보다 늦게 불러와도 이기도록 선택자를 한 단계 더 씁니다. */
+.linear-shell.shell-v2 .topbar .development-notifications-trigger {
+  width: auto; height: auto; background: none; border: 0; border-radius: 6px; padding: 4px; color: var(--text-2); display: flex; position: relative;
+}
+.linear-shell.shell-v2 .topbar .development-notifications-trigger svg { width: 19px; height: 19px; }
+.linear-shell.shell-v2 .topbar .development-notifications-badge {
+  position: absolute; top: -2px; right: -4px; min-width: 0; height: auto; display: block; border: 0;
+  background: var(--danger); color: var(--on-accent);
+  font-size: 9px; font-weight: 700; border-radius: 7px; padding: 0 4px; line-height: 14px;
+}
+
+/* ───────────── 5. 공정 막대 (콘텐츠 ①~⑧ 화면, 47 = 46 + 1) — AppShell이 상단 막대 아래에 그림 ───────────── */
+.linear-shell.shell-v2 .process-bar {
+  height: 47px; box-sizing: border-box; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 20px;
+  background: var(--panel-2); border-bottom: 1px solid var(--line-soft);
+}
+.linear-shell.shell-v2 .process-bar-label { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.linear-shell.shell-v2 .process-steps .process-bar-label { margin-right: 4px; }
+.linear-shell.shell-v2 .process-video {
+  font: inherit; font-size: 12.5px; font-weight: 600; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; line-height: normal;
+  display: inline-flex; align-items: center; gap: 6px; max-width: 220px; white-space: nowrap; overflow: hidden;
+}
+.linear-shell.shell-v2 .process-video svg { width: 13px; height: 13px; }
+.linear-shell.shell-v2 .process-steps { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.linear-shell.shell-v2 .process-step {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px;
+  font-size: 12px; color: var(--text-2); text-decoration: none; white-space: nowrap;
+}
+.linear-shell.shell-v2 .process-step.current { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--text); font-weight: 700; }
+.linear-shell.shell-v2 .process-icon { display: inline-block; width: 7px; height: 7px; border-radius: 4px; }
+.linear-shell.shell-v2 .process-icon.now { background: var(--accent); }
+.linear-shell.shell-v2 .process-icon.todo { box-shadow: inset 0 0 0 1.5px var(--line); }
+.linear-shell.shell-v2 .process-icon.done { width: auto; height: auto; border-radius: 0; display: flex; color: var(--mint); }
+.linear-shell.shell-v2 .process-icon.done svg { width: 12px; height: 12px; }
+
+/* ───────────── 6. 사용 가이드 줄 · 번호 (모든 화면, 셸 범위) ───────────── */
+.linear-shell.shell-v2 .guide-strip {
+  background: var(--accent-soft); border: 1px solid var(--accent-2); border-radius: 10px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 8px; color: var(--text);
+}
+.linear-shell.shell-v2 .guide-strip-head { display: flex; align-items: center; gap: 8px; }
+.linear-shell.shell-v2 .guide-strip-head > svg { width: 16px; height: 16px; color: var(--accent-2); }
+.linear-shell.shell-v2 .guide-strip-title { font-size: 13px; font-weight: 700; color: var(--accent-2); }
+.linear-shell.shell-v2 .guide-strip-next { margin-left: auto; font-size: 12px; color: var(--text-2); }
+.linear-shell.shell-v2 .guide-strip-next a { font-weight: 700; color: var(--accent-2); }
+.linear-shell.shell-v2 .guide-strip-close { font: inherit; background: none; border: 0; color: var(--muted); display: flex; padding: 2px; }
+.linear-shell.shell-v2 .guide-strip-close svg { width: 14px; height: 14px; }
+.linear-shell.shell-v2 .guide-strip-items { display: flex; gap: 14px; }
+.linear-shell.shell-v2 .guide-item { display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; flex: 1; min-width: 0; }
+.linear-shell.shell-v2 .guide-no {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+  border-radius: 9px; background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent-2);
+  font-size: 10.5px; font-weight: 700; flex-shrink: 0; line-height: 1;
+}
+html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, html[data-guidance="off"] .ui-v2 .page-header-note { display: none; }
+
+/* ───────────── 7. 본문 · 화면 머리 (새 화면 8개) ───────────── */
+.linear-shell .page-content.ui-v2 { display: flex; flex-direction: column; gap: var(--page-gap, 10px); }
+.linear-shell .ui-v2 .page-header {
+  margin: 0; padding: 0; border: 0; display: flex; justify-content: space-between; align-items: center; gap: 16px;
+}
+.linear-shell .ui-v2 .page-header.is-inline { justify-content: flex-start; align-items: baseline; gap: 12px; }
+.linear-shell .ui-v2 .page-title,
+.linear-shell .ui-v2 .page-title-group h1 { margin: 0; font-size: 22px; font-weight: 700; line-height: normal; letter-spacing: normal; color: var(--text); }
+.linear-shell .ui-v2 .page-header-note { font-size: 12px; color: var(--muted); }
+
+/* ───────────── 8. 탭 · 단계 탭 · 카드 · 글 ───────────── */
+.linear-shell .ui-v2 .page-tabs { display: flex; gap: 2px; align-items: center; border-bottom: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .page-tab {
+  font: inherit; font-size: 13px; border: 0; background: none; padding: 7px 10px; white-space: nowrap;
+  color: var(--muted); line-height: normal; cursor: pointer; border-radius: 0;
+}
+.linear-shell .ui-v2 .page-tab[aria-selected="true"], .linear-shell .ui-v2 .page-tab.active { color: var(--text); font-weight: 700; border-bottom: 2px solid var(--accent); }
+/* F-2 주제·기획의 단계 탭(카드 모양) */
+.linear-shell .ui-v2 .step-tabs { display: flex; gap: 4px; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 4px; }
+.linear-shell .ui-v2 .step-tab {
+  font: inherit; text-align: left; border: 0; border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 1px;
+  min-width: 116px; background: none; color: var(--text-2); cursor: pointer;
+}
+.linear-shell .ui-v2 .step-tab[aria-selected="true"] { background: var(--card); box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--text); }
+.linear-shell .ui-v2 .step-tab-title { font-size: 12.5px; font-weight: 700; }
+.linear-shell .ui-v2 .step-tab-title small { font-size: inherit; font-weight: 400; color: var(--muted); }
+.linear-shell .ui-v2 .step-tab-sub { font-size: 11px; color: var(--muted); }
+.linear-shell .ui-v2 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: none; padding: 0; }
+.linear-shell .ui-v2 .panel-pad { padding: 12px 14px; }
+.linear-shell .ui-v2 .panel-pad-sm { padding: 10px 12px; }
+.linear-shell .ui-v2 .panel-pad-lg { padding: 14px 16px; }
+.linear-shell .ui-v2 .card-title { font-size: 14px; font-weight: 700; }
+.linear-shell .ui-v2 .card-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .card-head .card-title { font-size: 13px; }
+.linear-shell .ui-v2 .section-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.linear-shell .ui-v2 .section-meta { font-size: 12px; color: var(--muted); }
+.linear-shell .ui-v2 .body-text { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.linear-shell .ui-v2 .hint { font-size: 11px; color: var(--muted); line-height: 1.45; }
+.linear-shell .ui-v2 .footnote { font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+.linear-shell .ui-v2 .text-warning { color: var(--warning); font-weight: 600; }
+
+/* ───────────── 9. 버튼 (높이 28 · 둥글기 6 · 12px) ───────────── */
+.linear-shell .ui-v2 :where(.primary-button, .secondary-button) {
+  min-height: 0; font: inherit; font-size: 12px; font-weight: 400; line-height: normal; border-radius: 6px;
+  white-space: nowrap; box-shadow: none; transform: none; letter-spacing: normal; cursor: pointer;
+}
+.linear-shell .ui-v2 .primary-button { border: 0; background: var(--accent); color: var(--on-accent); padding: 7px 12px; }
+.linear-shell .ui-v2 .primary-button.compact { padding: 5px 10px; }
+.linear-shell .ui-v2 .primary-button:disabled, .linear-shell .ui-v2 .primary-button[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.linear-shell .ui-v2 .secondary-button { border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 6px 10px; }
+.linear-shell .ui-v2 .secondary-button.compact { padding: 5px 10px; }
+.linear-shell .ui-v2 .secondary-button.sm { padding: 4px 9px; font-size: 11.5px; }
+.linear-shell .ui-v2 .secondary-button.xs { padding: 3px 8px; font-size: 11px; }
+.linear-shell .ui-v2 .secondary-button.icon { padding: 4px 7px; display: flex; }
+.linear-shell .ui-v2 .secondary-button.danger { color: var(--danger); }
+.linear-shell .ui-v2 :where(.primary-button, .secondary-button).with-icon { display: inline-flex; align-items: center; gap: 6px; }
+
+/* ───────────── 10. 배지 · 칩 · 점 ───────────── */
+.linear-shell .ui-v2 .status-pill { font-size: 11px; font-weight: 500; padding: 2px 7px; border-radius: 4px; white-space: nowrap; line-height: normal; }
+.linear-shell .ui-v2 .status-pill.is-sm { font-size: 10.5px; }
+.linear-shell .ui-v2 .status-pill.is-xs { font-size: 10px; }
+.linear-shell .ui-v2 .status-pill[data-status="draft"]     { background: var(--panel-3); color: var(--text-2); }   /* 초안 */
+.linear-shell .ui-v2 .status-pill[data-status="review"]    { background: var(--warning-soft); color: var(--warning); } /* 검토 */
+.linear-shell .ui-v2 .status-pill[data-status="approved"]  { background: var(--mint-soft); color: var(--mint); }   /* 최종 승인 */
+.linear-shell .ui-v2 .status-pill[data-status="scheduled"] { background: var(--accent-soft); color: var(--accent-2); } /* 예약 */
+.linear-shell .ui-v2 .status-pill[data-status="waiting"]   { background: var(--purple-soft); color: var(--purple); } /* 확인 대기 */
+.linear-shell .ui-v2 .status-pill[data-status="published"] { background: var(--mint-soft); color: var(--mint); }   /* 게시됨 */
+.linear-shell .ui-v2 .status-pill[data-status="failed"]    { background: var(--danger-soft); color: var(--danger); } /* 실패 */
+.linear-shell .ui-v2 .status-pill[data-status="manual"]    { background: var(--warning-soft); color: var(--warning); } /* 앱에서 직접 */
+.linear-shell .ui-v2 .state-badge { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px; white-space: nowrap; line-height: normal; }
+.linear-shell .ui-v2 .state-badge[data-tone="ok"]   { color: var(--mint); background: var(--mint-soft); }       /* 연결됨 */
+.linear-shell .ui-v2 .state-badge[data-tone="warn"] { color: var(--warning); background: var(--warning-soft); } /* 만료 D-7 */
+.linear-shell .ui-v2 .state-badge[data-tone="wait"] { color: var(--muted); background: var(--panel-3); }        /* 연결 전 · 연결 대기 */
+.linear-shell .ui-v2 .state-badge[data-tone="dev"]  { color: var(--accent-2); background: var(--accent-soft); } /* 개발 모드 */
+.linear-shell .ui-v2 .account-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; text-decoration: none; color: var(--text-2);
+  border: 1px solid var(--line); background: var(--card); border-radius: 14px; padding: 3px 10px; white-space: nowrap; line-height: normal;
+}
+.linear-shell .ui-v2 .account-chip-state { color: var(--muted); }
+.linear-shell .ui-v2 .account-chip-state.is-warning { color: var(--warning); }
+.linear-shell .ui-v2 .platform-dot { width: 7px; height: 7px; border-radius: 7px; flex-shrink: 0; display: inline-block; background: var(--muted); }
+.linear-shell .ui-v2 .platform-dot.is-md { width: 8px; height: 8px; border-radius: 8px; }
+.linear-shell .ui-v2 .platform-dot.is-lg { width: 9px; height: 9px; border-radius: 9px; }
+.linear-shell .ui-v2 .platform-dot[data-platform="instagram"] { background: var(--platform-instagram); }
+.linear-shell .ui-v2 .platform-dot[data-platform="youtube"]   { background: var(--platform-youtube); }
+.linear-shell .ui-v2 .platform-dot[data-platform="threads"]   { background: var(--text); }
+.linear-shell .ui-v2 .platform-dot[data-platform="seo"]       { background: var(--cyan); }
+.linear-shell .ui-v2 .platform-dot[data-platform="essay"]     { background: var(--purple); }
+
+/* ───────────── 11. 입력칸 (화면마다 시안 값이 조금씩 다름 — 그대로) ───────────── */
+.linear-shell .ui-v2 :where(.field) {
+  font: inherit; font-size: 12px; line-height: normal; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; box-shadow: none; min-height: 0; height: auto;
+}
+.linear-shell .ui-v2 .field.is-panel { background: var(--panel); }        /* F-3 게시 설정 · F-5 답글 패널 안 */
+.linear-shell .ui-v2 .field.sm { padding: 5px 7px; }                       /* F-3 select · 시각 입력 */
+.linear-shell .ui-v2 .field.sm-wide { padding: 5px 8px; }                  /* F-5 패널 select */
+.linear-shell .ui-v2 .field.xs { padding: 4px 8px; }                       /* F-5 계정 필터 */
+.linear-shell .ui-v2 .field.is-area { line-height: 1.5; padding: 7px 8px; resize: none; }            /* F-3 캡션 */
+.linear-shell .ui-v2 .field.is-reply { font-size: 13px; line-height: 1.55; border-radius: 8px; padding: 10px 12px; resize: none; } /* F-5 답글 */
+.linear-shell .ui-v2 .field.is-date { width: 92px; }                      /* F-6 기간 */
+.linear-shell .ui-v2 :where(input[type="checkbox"], input[type="radio"]) { accent-color: var(--accent); }
+.linear-shell .ui-v2 .check-lg { width: 15px; height: 15px; }             /* F-1 할 일 완료 */
+
+/* ───────────── 12. 입력류 — 스위치 · 단추 묶음 ───────────── */
+.linear-shell .ui-v2 .switch-label { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.linear-shell .ui-v2 .switch-label b { font-weight: 600; }
+.linear-shell .ui-v2 .switch {
+  position: relative; width: 32px; height: 18px; border-radius: 9px; flex-shrink: 0; display: inline-block;
+  background: var(--panel-3); box-shadow: inset 0 0 0 1px var(--line); cursor: pointer;
+}
+.linear-shell .ui-v2 .switch[aria-checked="true"] { background: var(--accent); box-shadow: none; }
+.linear-shell .ui-v2 .switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 7px;
+  background: var(--on-accent); box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+}
+.linear-shell .ui-v2 .switch[aria-checked="true"]::after { left: 16px; }
+.linear-shell .ui-v2 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; font-size: 12px; }
+.linear-shell .ui-v2 .segmented button { font: inherit; border: 0; background: var(--card); color: var(--text-2); padding: 4px 10px; line-height: normal; cursor: pointer; }
+.linear-shell .ui-v2 .segmented button + button { border-left: 1px solid var(--line); }
+.linear-shell .ui-v2 .segmented button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-2); font-weight: 700; }
+
+/* ───────────── 13. 내 계정 — 채널 카드 · 단계 · 이름-값 줄 · 목록 줄 ───────────── */
+.linear-shell .ui-v2 .channel-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; min-width: 0; }
+.linear-shell .ui-v2 .channel-card-head { display: flex; align-items: center; gap: 8px; padding: 11px 14px; min-height: 42px; box-sizing: border-box; border-bottom: 1px solid var(--line-soft); } /* 시안 42 */
+.linear-shell .ui-v2 .channel-card-head b { font-size: 14px; }
+.linear-shell .ui-v2 .channel-card-head .state-badge { margin-left: auto; }
+.linear-shell .ui-v2 .channel-card-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex-grow: 1; }
+.linear-shell .ui-v2 .channel-card-foot { padding: 10px 14px; border-top: 1px solid var(--line-soft); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.linear-shell .ui-v2 .channel-card-split { border-top: 1px dashed var(--line); padding-top: 9px; display: flex; flex-direction: column; gap: 4px; }
+.linear-shell .ui-v2 .kv { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; }
+.linear-shell .ui-v2 .kv > span:first-child { color: var(--muted); width: 52px; flex-shrink: 0; }
+.linear-shell .ui-v2 .kv > span:last-child { color: var(--text-2); min-width: 0; }
+.linear-shell .ui-v2 .kv strong { color: var(--text); }
+.linear-shell .ui-v2 .steps { display: flex; flex-direction: column; gap: 8px; }
+.linear-shell .ui-v2 .step { display: flex; gap: 8px; align-items: flex-start; }
+.linear-shell .ui-v2 .step-icon { display: block; width: 18px; height: 18px; border-radius: 9px; flex-shrink: 0; margin-top: 1px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.linear-shell .ui-v2 .step-icon.done { box-shadow: none; background: var(--mint-soft); color: var(--mint); display: flex; align-items: center; justify-content: center; }
+.linear-shell .ui-v2 .step-icon.done svg { width: 11px; height: 11px; }
+.linear-shell .ui-v2 .step-icon.now { box-shadow: inset 0 0 0 2px var(--accent); display: flex; align-items: center; justify-content: center; }
+.linear-shell .ui-v2 .step-icon.now::after { content: ""; width: 6px; height: 6px; border-radius: 3px; background: var(--accent); }
+.linear-shell .ui-v2 .step-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.linear-shell .ui-v2 .step-text > span:first-child { font-size: 12.5px; font-weight: 500; line-height: 1.4; }
+.linear-shell .ui-v2 .step.now .step-text > span:first-child { font-weight: 700; }
+.linear-shell .ui-v2 .step-text > span + span { font-size: 11px; color: var(--muted); line-height: 1.45; }
+.linear-shell .ui-v2 .rules-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+.linear-shell .ui-v2 .rules-row span { color: var(--muted); }
+.linear-shell .ui-v2 .list-row { display: flex; align-items: center; gap: 7px; font-size: 12px; padding: 5px 0; border-top: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .list-row-meta { margin-left: auto; color: var(--muted); font-size: 11px; }
+.linear-shell .ui-v2 .label-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+
+/* ───────────── 14. 표 · 지표 · 빈 상태 · 불러오는 중 ───────────── */
+.linear-shell .ui-v2 .data-table { border-collapse: collapse; width: 100%; }
+.linear-shell .ui-v2 .data-table th { font-size: 11.5px; font-weight: 500; color: var(--muted); text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+.linear-shell .ui-v2 .data-table td { padding: 6px 12px; border-bottom: 1px solid var(--line-soft); vertical-align: top; font-size: 12px; color: var(--text-2); }
+.linear-shell .ui-v2 .data-table .cell-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.linear-shell .ui-v2 .data-table.is-compact th { font-size: 11px; padding: 6px 10px; }
+.linear-shell .ui-v2 .data-table.is-compact td { padding: 6px 10px; }
+.linear-shell .ui-v2 .metric { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.linear-shell .ui-v2 .metric .metric-label { font-size: 11.5px; color: var(--muted); }
+.linear-shell .ui-v2 .metric .metric-value { margin: 0; font-size: 24px; font-weight: 700; }
+.linear-shell .ui-v2 .metric .metric-value.is-sm { font-size: 20px; }
+.linear-shell .ui-v2 .metric .metric-note { font-size: 11px; color: var(--muted); }
+.linear-shell .ui-v2 .empty-state {
+  min-height: 0; place-items: normal; display: flex; align-items: center; gap: 10px; text-align: left;
+  border: 1px dashed var(--line); border-radius: 10px; padding: 12px; color: var(--text-2); font-size: 12.5px;
+}
+.linear-shell .ui-v2 .empty-state > span { width: auto; height: auto; display: inline; margin: 0; border-radius: 0; background: none; color: inherit; } /* 지금 .empty-state span(46px 아이콘 상자) 끔 */
+.linear-shell .ui-v2 .skeleton { display: block; background: var(--panel-3); border-radius: 4px; }
+
+/* ───────────── 15. 화면별 본문 여백 · 간격 · 격자 (시안 1280px) ───────────── */
+.linear-shell .ui-v2.screen-home        { --page-pad-y: 14px; --page-gap: 11px; } /* F-1 */
+.linear-shell .ui-v2.screen-topics      { --page-pad-y: 14px; --page-gap: 12px; } /* F-2 */
+.linear-shell .ui-v2.screen-publish     { --page-pad-y: 12px; --page-gap: 10px; } /* F-3 */
+.linear-shell .ui-v2.screen-calendar    { --page-pad-y: 12px; --page-gap: 9px; }  /* F-4 */
+.linear-shell .ui-v2.screen-comments    { --page-pad-y: 12px; --page-gap: 9px; }  /* F-5 */
+.linear-shell .ui-v2.screen-performance { --page-pad-y: 12px; --page-gap: 10px; } /* F-6 */
+.linear-shell .ui-v2.screen-settings    { --page-pad-y: 12px; --page-gap: 9px; }  /* F-7 */
+.linear-shell .ui-v2.screen-account     { --page-pad-y: 12px; --page-gap: 10px; } /* F-9 */
+.linear-shell .ui-v2 .grid-home       { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 12px; }
+.linear-shell .ui-v2 .grid-home-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.linear-shell .ui-v2 .grid-topics-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.linear-shell .ui-v2 .grid-topics     { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; }
+.linear-shell .ui-v2 .grid-publish-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.linear-shell .ui-v2 .grid-publish    { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 12px; }
+.linear-shell .ui-v2 .grid-calendar   { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px; }
+.linear-shell .ui-v2 .grid-comments   { display: grid; grid-template-columns: 370px minmax(0, 1fr); gap: 12px; }
+.linear-shell .ui-v2 .grid-performance-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.linear-shell .ui-v2 .grid-performance { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 12px; }
+.linear-shell .ui-v2 .grid-settings   { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; }
+.linear-shell .ui-v2 .grid-account    { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 14px; }
+.linear-shell .ui-v2 .grid-channels   { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.linear-shell .ui-v2 .grid-publish-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }  /* F-3 게시 설정 안: 게시 계정 · 게시 시각 */
+.linear-shell .ui-v2 .grid-reply-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 12px; } /* F-5 답글 패널 아래: 담당 · 처리 기록 */
+.linear-shell .ui-v2 .grid-fill { flex-grow: 1; min-height: 0; }        /* 시안처럼 남은 높이를 채움 */
+.linear-shell .ui-v2 .stack { display: flex; flex-direction: column; min-width: 0; gap: var(--stack-gap, 8px); }
+
+/* ───────────── 16. 올림 · 초점 (시안에 없음 — 지금 OS 규칙 + 초점 표시) ───────────── */
+.linear-shell.shell-v2 .page-link:not(.active):not([aria-current="page"]):hover,
+.linear-shell.shell-v2 .nav-group:hover,
+.linear-shell.shell-v2 .page-sidebar .profile-trigger:hover { background: var(--surface-hover); }
+.linear-shell .ui-v2 .primary-button:not(:disabled):hover,
+.linear-shell.shell-v2 .quick-add:hover { background: var(--accent-hover); filter: none; transform: none; }
+.linear-shell .ui-v2 .secondary-button:not(:disabled):hover { background: var(--surface-hover); border-color: var(--line); }
+.linear-shell.shell-v2 :is(.page-sidebar, .topbar, .process-bar, .guide-strip) :focus-visible,
+.linear-shell .ui-v2 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ───────────── 21. 데스크톱 크기 · 배치 (821px 이상) ─────────────
+   820px 이하에서는 이 절이 꺼지고, 지금 OS의 모바일 규칙(linear-shell.css: 서랍 사이드바 min(286px, 88vw) · 48px 상단 막대 · 본문 18 14 80)이 그대로 동작합니다. */
+@media (min-width: 821px) {
+  .linear-shell.shell-v2 .stage-rail { display: none; }                         /* 펼친 상태: 아이콘 줄 대신 사이드바 하나 */
+  .linear-shell.shell-v2 .page-sidebar { left: 0; width: 240px; }
+  .linear-shell.shell-v2 .app-main { padding-left: 240px; display: flex; flex-direction: column; min-height: 100vh; }
+  .linear-shell.shell-v2 .page-content { min-height: 0; flex: 1 0 auto; }       /* 지금 calc(100vh - 48px) → 53px 막대와 겹쳐 5px 스크롤 생김 */
+  .linear-shell.shell-v2 .topbar { height: 53px; padding: 0 20px; box-sizing: border-box; }
+  .linear-shell.shell-v2 .command-trigger { width: 230px; padding: 0 10px; }
+  .linear-shell.shell-v2 .display-control.guidance-control { padding: 5px 11px; }
+  .linear-shell .page-content.ui-v2 { padding: var(--page-pad-y, 12px) 24px; }
+  /* 접힌 상태(« 누름): 시안 없음 — 지금 아이콘 줄(64px)을 그대로 보여 줌 */
+  .linear-shell.shell-v2.sidebar-collapsed .stage-rail { display: flex; }
+  .linear-shell.shell-v2.sidebar-collapsed .page-sidebar { display: none; }
+  .linear-shell.shell-v2.sidebar-collapsed .app-main { padding-left: var(--rail); }
+}
+
+/* ───────────── 22. 좁은 화면 (820px 이하) — 시안 없음, 깨지지 않게만 (작업지시서 5.5) ───────────── */
+@media (max-width: 820px) {
+  .linear-shell .ui-v2 :is(.grid-home, .grid-topics, .grid-publish, .grid-calendar, .grid-comments, .grid-performance,
+    .grid-settings, .grid-account, .grid-channels) { grid-template-columns: minmax(0, 1fr); }
+  .linear-shell .ui-v2 :is(.grid-home-stats, .grid-topics-stats, .grid-publish-stats, .grid-performance-stats) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .linear-shell .ui-v2 :is(.page-tabs, .step-tabs) { overflow-x: auto; }
+  .linear-shell.shell-v2 .guide-strip-items { flex-direction: column; gap: 6px; }   /* 사용 가이드 줄은 기존 화면에도 나옴(셸 범위) */
+  .linear-shell .ui-v2 .data-table { display: block; overflow-x: auto; }
+  .linear-shell.shell-v2 .process-bar { overflow-x: auto; }
+}

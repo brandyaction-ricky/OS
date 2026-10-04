@@ -31,8 +31,10 @@ test("all legacy pages resolve to their new group and one authoritative name", (
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.length, 6);
-  assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 5));
+  assert.equal(NAV_STAGES.length, 7);
+  assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
+  assert.equal(findStage("/content/comments").id, "automation");
+  assert.equal(findPage("/content/comments").processNumber, undefined);
   for (const [group, paths] of Object.entries(groups)) for (const path of paths) {
     assert.equal(findStage(path).id, group, path);
     assert.equal(findPage(path).href, path);
@@ -52,10 +54,10 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('final navigation has exactly 23 menus; account is outside them',()=>{
-  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,8,3,4,3,4]);
+  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,1,3,4,3,4]);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
-  assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7,8]);
+  assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);
   assert.equal(findPage('/knowledge/development?tab=history').label,'업데이트 내역');
   assert.equal(findPage('/knowledge/development?tab=updates').label,'업데이트 내역');
 });

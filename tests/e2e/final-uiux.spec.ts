@@ -40,7 +40,7 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
       await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.label);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".profile-trigger")).toBeAttached();
-      if (entry.href.startsWith("/content/")) await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
+      if (entry.href.startsWith("/content/") && entry.href !== "/content/comments") await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath(`${String(index).padStart(2,"0")}-${theme}-${width}.png`), fullPage: true, mask: [page.locator(".profile-trigger")] });
     }

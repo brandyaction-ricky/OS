@@ -7,10 +7,10 @@ test("retired UI routes go home without changing underlying APIs", async ({ page
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("내 할 일");
   }
 });
-test("one selected video remains across the eight process screens and reload", async ({ page }) => {
+test("one selected video remains across the seven process screens and reload", async ({ page }) => {
   await page.goto("/content/topics");
   await page.getByRole("combobox", { name: "작업 중인 영상 선택" }).selectOption("demo-final-topic");
-  for (const name of ["원고·스크립트", "제목·썸네일", "숏폼 편집", "발행·업로드", "유튜브 관리", "댓글·답글", "영상 성과"]) {
+  for (const name of ["원고·스크립트", "제목·썸네일", "숏폼 편집", "발행·업로드", "유튜브 관리", "영상 성과"]) {
     await page.getByRole("navigation", { name: "콘텐츠 공정 순서" }).getByRole("link", { name: new RegExp(name) }).click();
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(name);
     await expect(page).toHaveURL(/topic=demo-final-topic/);

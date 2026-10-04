@@ -38,7 +38,7 @@ test("groups, collapse and display preferences persist, and old names remain sea
 
 test("quick record works when already in the document workspace", async ({ page }) => {
   await page.goto("/knowledge");
-  await page.getByRole("button", { name: "빠른 기록", exact: true }).click();
+  await page.getByRole("button", { name: "기록 종류 선택", exact: true }).click();
   await page.getByRole("link", { name: "메모", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toBeVisible();
   await expect(page.getByRole("dialog", { name: "새 문서 만들기" })).toHaveCount(0);
@@ -46,14 +46,14 @@ test("quick record works when already in the document workspace", async ({ page 
 });
 
 for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
-  test(`navigation at ${width}px in ${theme}`, async ({ page }) => {
+  test(`navigation at ${width}px in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 960 });
     await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
     await page.goto("/home");
     if (width === 390) await page.getByRole("button", { name: "메뉴 열기" }).click();
     await expect(page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true })).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("link", { name: "주제·기획", exact: true })).toBeVisible();
-    await page.screenshot({ path: `/private/tmp/uiux-navigation-${theme}-${width}.png`, fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: await page.locator(".unified-sidebar").evaluate(element => getComputedStyle(element).backgroundColor) });
+    await page.screenshot({ path: testInfo.outputPath(`uiux-navigation-${theme}-${width}.png`), fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: await page.locator(".unified-sidebar").evaluate(element => getComputedStyle(element).backgroundColor) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (width === 390) {
       await page.getByRole("link", { name: "영상 성과", exact: true }).click();
