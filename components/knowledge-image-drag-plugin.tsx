@@ -130,15 +130,19 @@ function KnowledgeImageDragSupport() {
     };
     const moveImageBlock = (event: DragEvent) => {
       const raw = event.dataTransfer?.getData("application/x-lexical-drag");
-      if (!raw) return false;
       let key = "";
-      try {
-        const payload = JSON.parse(raw) as { type?: string; data?: { key?: string } };
-        if (payload.type !== "image" || !payload.data?.key) return false;
-        key = payload.data.key;
-      } catch {
-        return false;
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw) as { type?: string; data?: { key?: string } };
+          if (payload.type === "image" && payload.data?.key) key = payload.data.key;
+        } catch { /* An internal image drag can still be recovered from the source node. */ }
       }
+      if (!key && draggedImageBlock) editor.getEditorState().read(() => {
+        const image = draggedImageBlock?.querySelector("img");
+        const node = image ? $getNearestNodeFromDOMNode(image) : null;
+        if ($isImageNode(node)) key = node.getKey();
+      });
+      if (!key) return false;
 
       const placement = dropPlacement(event.clientY);
       event.preventDefault();
@@ -165,6 +169,7 @@ function KnowledgeImageDragSupport() {
     root.addEventListener("pointerdown", selectImageBeforeDrag, true);
     root.addEventListener("dragstart", beginImageDrag, true);
     root.addEventListener("dragover", previewImageDrop);
+    root.addEventListener("drop", moveImageBlock, true);
     root.addEventListener("dragend", finishImageDrag, true);
     root.addEventListener(FILE_DROP_POSITION_EVENT, placeExternalFileDrop);
     const unregisterDrop = editor.registerCommand(DROP_COMMAND, moveImageBlock, COMMAND_PRIORITY_CRITICAL);
@@ -175,6 +180,7 @@ function KnowledgeImageDragSupport() {
       root.removeEventListener("pointerdown", selectImageBeforeDrag, true);
       root.removeEventListener("dragstart", beginImageDrag, true);
       root.removeEventListener("dragover", previewImageDrop);
+      root.removeEventListener("drop", moveImageBlock, true);
       root.removeEventListener("dragend", finishImageDrag, true);
       root.removeEventListener(FILE_DROP_POSITION_EVENT, placeExternalFileDrop);
     };

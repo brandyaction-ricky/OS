@@ -7,10 +7,29 @@ import type { DocumentStatus, SearchResult } from "@/lib/types";
 import type { RequestActor } from "./auth";
 import { createEmbeddings, toPgVector } from "./embeddings";
 import { hasLexicalEvidence, keywordQueryText, searchTerms } from "@/lib/search-relevance";
+import { readableKnowledgePages } from "./knowledge-page-access";
 
 type SearchInput = z.infer<typeof searchSchema>;
 
 interface SearchOutcome { results: SearchResult[]; degraded: boolean; degradationReasons?: SearchDegradation[]; }
+
+async function visiblePageResults(actor: RequestActor, results: SearchResult[]) {
+  const ids = [...new Set(results.map((result) => result.documentId))];
+  if (!ids.length) return results;
+  const { data, error: pageError } = await actor.supabase.from("os_documents")
+    .select("id,owner_id,status,parent_document_id").in("id", ids);
+  let error = pageError;
+  let rows: Array<{ id: string; owner_id: string; status: DocumentStatus; parent_document_id?: string | null }> = data ?? [];
+  // The application can be deployed before the additive page-tree migration.
+  if (error?.code === "42703") {
+    const legacy = await actor.supabase.from("os_documents").select("id,owner_id,status").in("id", ids);
+    rows = legacy.data ?? [];
+    error = legacy.error;
+  }
+  if (error) throw new ApiError(503, "SEARCH_ACCESS_FAILED", "검색 권한을 확인하지 못했습니다.");
+  const readable = await readableKnowledgePages(actor, rows);
+  return results.filter((result) => readable.has(result.documentId));
+}
 
 function countOccurrences(value: string, term: string) {
   let count = 0;
@@ -79,7 +98,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   const statuses = intersectStatuses(requested, actor.allowedStatuses);
   if (!statuses.length) return { results: [], degraded: false };
 
-  if(input.quick)return {results:await fallbackDocuments(actor,input,statuses),degraded:false};
+  if(input.quick)return {results:await visiblePageResults(actor, await fallbackDocuments(actor,input,statuses)),degraded:false};
   const normalizedQuery = keywordQueryText(input.query);
   let embedding: string | null = null;
   let degraded = false;
@@ -113,7 +132,7 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     console.error("os_search_knowledge rpc failed", { category: error.code === "57014" ? "timeout" : "database" });
     const fallback = await fallbackDocuments(actor, input, statuses);
     degradationReasons.push(error.code === "57014" || /abort|timeout/i.test(error.message) ? "search_timeout" : "search_failed");
-    return { results: fallback, degraded: true, degradationReasons };
+    return { results: await visiblePageResults(actor, fallback), degraded: true, degradationReasons };
   }
 
   let results: SearchResult[] = (data ?? []).map((row: Record<string, unknown>) => ({
@@ -143,5 +162,5 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
     results = [...results, ...sharedKeyword.filter((result) => !seen.has(result.documentId))].slice(0, input.topK);
     results = await addVersions(sharedActor.supabase, results);
   }
-  return { results, degraded, degradationReasons };
+  return { results: await visiblePageResults(actor, results), degraded, degradationReasons };
 }

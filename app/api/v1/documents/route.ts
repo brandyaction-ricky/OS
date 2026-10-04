@@ -4,7 +4,8 @@ import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import type { DocumentStatus } from "@/lib/types";
+import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
 export const runtime = "nodejs";
@@ -20,7 +21,8 @@ export async function GET(request: Request) {
     const owner = url.searchParams.get("owner");
     const folder = url.searchParams.get("folder");
     const query = url.searchParams.get("q")?.replace(/[%_,()]/g, " ").trim();
-    const includeContent = url.searchParams.get("view") !== "summary";
+    const view = url.searchParams.get("view");
+    const includeContent = view !== "summary" && view !== "page-summary";
 
     if (url.searchParams.get("view") === "folders") {
       const folders = new Set<string>();
@@ -35,9 +37,11 @@ export async function GET(request: Request) {
 
     // Scope is a workspace filter, not an access boundary. Authentication is
     // checked above; the server client avoids hiding another member's notes.
-    let builder = createServiceSupabase()
+    const summaryColumns = "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at";
+    const listDocuments = (columns: string) => {
+      let builder = createServiceSupabase()
       .from("os_documents")
-      .select(includeContent ? "*" : "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at", { count: "exact" })
+      .select(columns, { count: "exact" })
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .range(offset, offset + limit - 1);
@@ -55,9 +59,17 @@ export async function GET(request: Request) {
     else if (scope === "review") builder = builder.in("status", ["review", "reviewed"]);
     if (scope && scope !== "archived") builder = builder.neq("status", "archived");
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
-    const { data, count, error } = await builder;
+      return builder;
+    };
+    const requestedColumns = includeContent ? "*" : view === "page-summary" ? `${summaryColumns},parent_document_id,page_order` : summaryColumns;
+    let { data, count, error } = await listDocuments(requestedColumns);
+    // A Preview can run ahead of the additive DEV migration. Legacy clients
+    // and the existing tree must remain readable until that migration lands.
+    if (view === "page-summary" && error?.code === "42703") ({ data, count, error } = await listDocuments(summaryColumns));
     if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);
-    return NextResponse.json({ documents: data ?? [], total: count ?? 0 });
+    const rows = (data ?? []) as unknown as KnowledgeDocument[];
+    const allowed = await readableKnowledgePages(actor, rows);
+    return NextResponse.json({ documents: rows.filter(row => allowed.has(row.id)), total: count ?? 0 });
   } catch (error) { return apiErrorResponse(error); }
 }
 
@@ -65,6 +77,15 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = documentCreateSchema.parse(await parseJson(request));
+    if (input.parentDocumentId) {
+      const { data: parent, error: parentError } = await actor.supabase.from("os_documents")
+        .select("id,folder,status,owner_id,parent_document_id")
+        .eq("id", input.parentDocumentId)
+        .maybeSingle();
+      if (parentError || !parent || parent.status === "archived") throw new ApiError(404, "PAGE_PARENT_NOT_FOUND", "상위 페이지를 열 수 없습니다.");
+      if (!(await readableKnowledgePages(actor, [parent])).has(parent.id)) throw new ApiError(404, "PAGE_PARENT_NOT_FOUND", "상위 페이지를 열 수 없습니다.");
+      if (parent.folder !== input.folder) throw new ApiError(400, "PAGE_FOLDER_MISMATCH", "하위 페이지는 상위 페이지와 같은 폴더에서 시작해야 합니다.");
+    }
     if (input.sourceRef) {
       const { data: existing, error: duplicateCheckError } = await actor.supabase
         .from("os_documents")
@@ -86,6 +107,7 @@ export async function POST(request: Request) {
         tags: input.tags,
         source: input.source,
         source_ref: input.sourceRef,
+        ...(input.parentDocumentId ? { parent_document_id: input.parentDocumentId } : {}),
         status: "draft",
         owner_id: actor.id,
         created_by: actor.id,
