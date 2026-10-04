@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpen,
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
@@ -277,6 +278,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </Link>
                   </div>;
                 })}
+                {item.id === "automation" ? <Link className="page-link nav-canon-link" href="/knowledge?tab=canon" onClick={() => setMobileOpen(false)}><BookOpen size={15}/><span>정본 관리 열기</span></Link> : null}
               </div>
             </section>;
           })}

@@ -31,6 +31,8 @@ export function ConnectionEvidence() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [selectedId,setSelectedId]=useState("");
+  const [filter,setFilter]=useState("all");
   const generation = useRef(0);
   const load = useCallback(async () => {
     if (demo || profile?.role !== "admin") { setLoading(false); return; }
@@ -50,13 +52,16 @@ export function ConnectionEvidence() {
   };
   if (!demo && profile?.role !== "admin") return <p className="panel load-error">작동 상태 상세·연결 테스트·담당 지정은 관리자에게 요청해 주세요.</p>;
   const displayed = demo ? CONNECTIONS.map(({ id }): ConnectionCheck => ({ id, configured: false, lastOkAt: null, lastCheckedAt: null, failures24h: null, blockedJobs: null, latestFailed: false, historyAvailable: false, status: "missing", primaryOwner: null, backupOwner: null, ownerVersion: 0 })) : checks;
+  const visible=displayed.filter(check=>filter==="all"||filter==="error"&&check.status==="error"||filter==="unverified"&&check.status!=="verified");
+  const selected=visible.find(check=>check.id===selectedId)??visible[0];
   return <>
     <div className="p2-toolbar"><p>API 응답 확인 범위만 표시합니다. 최근 24시간 실패 = 연결 테스트 + 기록 시작 이후 색인 시도·광고 수집 실패.</p><button className="secondary-button" disabled={loading || busy || demo} onClick={load}>상태 새로고침</button></div>
     {demo ? <p className="field-hint">데모 모드 · 실제 연결·이력·담당자는 확인하지 않습니다.</p> : null}
     {error && checks.length ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     {notice ? <p role="status" className="inline-alert">{notice}</p> : null}
     <WorkspaceLoadState loading={loading} error={!checks.length && !demo ? error : undefined} retry={load}>
-      <section className="connection-evidence-grid">{displayed.map(check => <ConnectionCard key={`${check.id}-${check.ownerVersion}`} check={check} members={members} disabled={busy || demo} onTest={() => void perform(async () => { const result = await testConnection(accessToken, check.id); setChecks(result.checks); setNotice(result.ok ? "호출을 확인했습니다. 확인 범위와 남아 있는 실패 이력을 함께 확인하세요." : "호출에 실패했습니다. 관련 화면에서 설정과 작업을 확인해 주세요."); })} onSave={(primaryOwner, backupOwner) => void perform(async () => { await saveConnectionOwners(accessToken, { service: check.id, primaryOwner, backupOwner, expectedVersion: check.ownerVersion }); await load(); setNotice("담당자를 저장했습니다."); })} />)}</section>
+      <nav className="workspace-tabs" aria-label="연결 상태 필터">{[["all","전체"],["error","오류"],["unverified","확인 필요"]].map(([value,label])=><button key={value} aria-pressed={filter===value} className={filter===value?"active":""} onClick={()=>setFilter(value)}>{label}</button>)}</nav>
+      <section className="connection-evidence-grid fullscreen-connection-layout"><div className="panel fullscreen-connection-list"><table aria-label="연결 확인 근거"><thead><tr><th>서비스</th><th>실제 상태</th><th>마지막 성공</th><th>실패 · 막힘</th></tr></thead><tbody>{visible.map(check=><tr key={check.id} data-selected={selected?.id===check.id}><th scope="row"><button aria-pressed={selected?.id===check.id} onClick={()=>setSelectedId(check.id)}>{CONNECTIONS.find(item=>item.id===check.id)?.label??check.id}</button></th><td><span className={`status-pill status-${check.status==="error"?"blocked":check.status==="verified"?"ready":"waiting"}`}>{CONNECTION_STATE_LABELS[check.status]}</span></td><td>{time(check.lastOkAt)}</td><td>{check.failures24h??"—"} · {check.blockedJobs??"—"}</td></tr>)}</tbody></table>{!visible.length?<p className="quiet-state">이 상태에 해당하는 연결이 없습니다.</p>:null}</div><aside className="fullscreen-connection-detail" aria-label="선택한 연결 상세">{selected?<ConnectionCard key={`${selected.id}-${selected.ownerVersion}`} check={selected} members={members} disabled={busy || demo} onTest={() => void perform(async () => { const result = await testConnection(accessToken, selected.id); setChecks(result.checks); setNotice(result.ok ? "호출을 확인했습니다. 확인 범위와 남아 있는 실패 이력을 함께 확인하세요." : "호출에 실패했습니다. 관련 화면에서 설정과 작업을 확인해 주세요."); })} onSave={(primaryOwner, backupOwner) => void perform(async () => { await saveConnectionOwners(accessToken, { service: selected.id, primaryOwner, backupOwner, expectedVersion: selected.ownerVersion }); await load(); setNotice("담당자를 저장했습니다."); })} />:<div className="panel quiet-state">연결 항목을 선택해 주세요.</div>}</aside></section>
     </WorkspaceLoadState>
   </>;
 }

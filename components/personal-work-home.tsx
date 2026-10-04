@@ -43,9 +43,13 @@ export function PersonalWorkHome() {
     return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", refresh); };
   }, [load, revision]);
   const change = (key: string, value: string) => { const next = new URLSearchParams(params.toString()); next.set(key, value); window.history.replaceState(null, "", `/home?${next}`); };
+  const pendingItems=data?[...new Map([...data.tabs.received,...data.tabs.review,...data.tabs.requested].map(item=>[`${item.kind}:${item.id}`,item])).values()]:[];
+  const blocked=pendingItems.filter(item=>item.status==="막힘");
+  const nextDue=[...new Map((data?[...data.tabs.received,...data.tabs.review]:[]).map(item=>[`${item.kind}:${item.id}`,item])).values()].filter(item=>item.dueDate).sort((a,b)=>a.dueDate!.localeCompare(b.dueDate!)).slice(0,5);
   return <>
     <header className="page-header"><div className="page-title-group"><PageTitle /><p>나에게 배정된 일, 확인할 문서, 요청의 진행 상황을 확인합니다.</p></div></header>
-    <TodayContentOperations />
+    <section className="fullscreen-home-summary" aria-label="내 업무 요약">{TABS.map(([key,label])=><button key={key} className="panel" onClick={()=>change("tab",key)}><span>{label}</span><strong>{loading||!data?"…":data.tabs[key].length}</strong><small>내 권한으로 볼 수 있는 항목</small></button>)}<article className="panel"><span>막힌 일</span><strong>{loading||!data?"…":blocked.length}</strong><small>받은 일·검토·요청에서 중복 제외</small></article></section>
+    <div className="fullscreen-home-layout"><section className="fullscreen-home-main">
       <nav className="workspace-tabs" aria-label="내 할 일 보기">{TABS.map(([id,label]) => <button key={id} className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => change("tab",id)}>{label} <span>{loading || !data ? "…" : data.tabs[id].length}</span></button>)}</nav>
       {error ? <div className="inline-alert danger" role="alert">{error}<button className="secondary-button" onClick={() => setRevision(value => value + 1)}><RefreshCw size={14} /> 다시 불러오기</button></div> : loading || !data ? <WorkspaceSkeleton /> : <section className="panel personal-work-list" aria-label={TABS.find(([id])=>id===tab)?.[1]}>
         <header><span>{tab === "review" ? "현재 권한으로 검토할 수 있는 항목" : tab === "requested" ? "내가 등록한 요청·업무" : "기한이 빠른 순서"}</span><small>{demo ? "데모 · 실제 업무 연결 전" : "접속 중 1분마다 갱신"}</small></header>
@@ -53,7 +57,8 @@ export function PersonalWorkHome() {
         {data.tabs[tab].map(item => <Link key={`${item.kind}-${item.id}`} href={item.href}><div><strong>{item.title}</strong><p>{item.nextAction}</p></div><span>{item.status}</span><time>{item.dueDate || "기한 미정"}</time><ArrowRight size={15} /></Link>)}
         {!data.tabs[tab].length && <div className="empty-state"><div><CheckCircle2 /><h2>{tab === "received" ? "배정된 일이 없습니다" : tab === "review" ? "확인할 항목이 없습니다" : "남긴 요청이 없습니다"}</h2><p>업무가 생기면 이곳에서 바로 확인할 수 있습니다.</p></div></div>}
       </section>}
-      {data && !error && [...new Map([...data.tabs.received, ...data.tabs.requested].filter(item => item.status === "막힘").map(item => [item.id, item])).values()].length > 0 ? <section className="panel personal-work-blocked"><h2>막힌 일</h2>{[...new Map([...data.tabs.received, ...data.tabs.requested].filter(item => item.status === "막힘").map(item => [item.id, item])).values()].map(item => <Link key={item.id} href={item.href}><strong>{item.title}</strong><span>{item.nextAction}</span></Link>)}</section> : null}
+      {data && !error && blocked.length > 0 ? <section className="panel personal-work-blocked"><h2>막힌 일</h2>{blocked.map(item => <Link key={`${item.kind}:${item.id}`} href={item.href}><strong>{item.title}</strong><span>{item.nextAction}</span></Link>)}</section> : null}
       <div className="personal-work-links"><Link href="/organization/tasks">업무 열기 <ArrowRight size={14} /></Link><Link href="/knowledge/search">지식 찾기 <ArrowRight size={14} /></Link></div>
+    </section><aside className="fullscreen-home-side"><TodayContentOperations/><section className="panel fullscreen-home-due"><header><h2>가까운 기한</h2><Link href="/organization/schedule">일정 보기 →</Link></header>{loading?<p role="status">기한 확인 중…</p>:error?<p>내 할 일을 다시 불러오면 기한을 확인할 수 있습니다.</p>:nextDue.length?nextDue.map(item=><Link key={`${item.kind}:${item.id}`} href={item.href}><time>{item.dueDate}</time><strong>{item.title}</strong><small>{item.status}</small></Link>):<p>기한이 등록된 내 업무가 없습니다.</p>}<small>받은 일·검토 범위 · 기한순 최대 5건</small></section></aside></div>
   </>;
 }
