@@ -44,7 +44,7 @@ test("publishing and shorts enforce human gates before external work", async () 
 test("content studio ports planning, eight-step scripts and channel judgment", async () => {
   const [router, pipeline, generation, packageWorkspace, performance] = await Promise.all([
     Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
-    read("components/content-pipeline-workspaces.tsx"),
+    Promise.all([read("components/content-pipeline-workspaces.tsx"),read("lib/script-documents.ts")]).then(parts=>parts.join("\n")),
     read("lib/server/content-generation.ts"),
     read("components/content-studio-workspaces.tsx"),
     read("components/content-performance-dashboard.tsx"),

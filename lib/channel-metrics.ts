@@ -1,6 +1,26 @@
 export const CHANNEL_METRICS={instagram:["views","reach","likes","comments","saved","shares","total_interactions"],threads:["views","likes","replies","reposts","quotes","shares"]} as const;
 export const METRIC_LABELS:Record<string,string>={views:"조회",reach:"도달",likes:"좋아요",comments:"댓글",saved:"저장",shares:"공유",total_interactions:"총 반응",replies:"답글",reposts:"리포스트",quotes:"인용"};
 export type Snapshot="d1"|"d7"|"d28";
+type MetricRecord = { id: string; status: string; title: string; metadata: Record<string, unknown> };
+export function measuredValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+// A publication is one sample per snapshot. Never interpret missing values as zero.
+export function metricSamples<T extends MetricRecord>(records: T[], metric: string, from = "", to = ""): T[] {
+  const unique = new Map<string, T>();
+  for (const row of records) {
+    const m = row.metadata;
+    const published = typeof m.publishedAt === "string" ? m.publishedAt.slice(0, 10) : "";
+    if (row.status === "archived" || m.source !== "api" || m.metric !== metric || measuredValue(m.value) === null ||
+        !["d1", "d7", "d28"].includes(String(m.snapshot)) || !["instagram", "threads", "yt_long", "yt_shorts"].includes(String(m.platform)) ||
+        typeof m.publishId !== "string" || !m.publishId || !published || !Number.isFinite(Date.parse(String(m.publishedAt))) ||
+        (from && published < from) || (to && published > to)) continue;
+    const key = `${m.platform}:${m.publishId}:${m.snapshot}`;
+    const previous = unique.get(key);
+    if (!previous || String(m.measuredAt ?? "") > String(previous.metadata.measuredAt ?? "")) unique.set(key, row);
+  }
+  return [...unique.values()];
+}
 export function dueMetricSnapshot(publishedAt:string,now=new Date()):Snapshot|null{
   const age=(now.getTime()-Date.parse(publishedAt))/86400000;if(!Number.isFinite(age))return null;
   // Never relabel today's lifetime count as a missed historical measurement.

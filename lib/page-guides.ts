@@ -7,7 +7,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/content/packages": {steps:["‘검색’에서 시장 썸네일을 근거로 모읍니다","제목 · 썸네일 후보를 뽑습니다","채택한 안을 저장함에 넣습니다"],next:"/content/shorts"},
   "/content/shorts": {steps:["원본 영상과 스타일 템플릿을 정합니다","‘클립’에서 쓸 구간을 고릅니다","승인한 구간을 제작으로 넘깁니다"],next:"/content/publishing"},
   "/content/publishing": {steps:["‘파생 만들기’에서 최종 롱폼으로 쇼츠 · Threads · 카드뉴스를 만듭니다","‘검토·발행 대기’에서 검토하고 최종 승인합니다","게시 설정에서 계정 · 시각을 정해 예약합니다"],next:"/content/youtube"},
-  "/content/youtube": {steps:["영상을 고릅니다","발행 키트를 만듭니다","최종 확인 후 YouTube에 올립니다"],next:"/content/comments"},
+  "/content/youtube": {steps:["영상을 고릅니다","발행 키트를 만듭니다","최종 확인 후 YouTube에 올립니다"],next:"/content/performance"},
   "/content/comments": {steps:["‘답할 것’에서 질문부터 봅니다","초안을 받아 고친 뒤 답글을 보냅니다","좋은 질문은 ① 주제·기획으로 보냅니다"],next:"/content/performance"},
   "/content/performance": {steps:["플랫폼 탭을 고릅니다","같은 경과일(D+7 등)끼리 비교합니다","n<5면 결론을 미룹니다"],next:"/content/topics"},
   "/knowledge": {steps:["폴더에서 문서를 엽니다","정본을 고치면 변경 제안으로 저장되어 승인 전 원문은 그대로입니다","‘연결’ 탭에서 깨진 링크를 골라 수정하고 문서 담당을 확인합니다"],next:"/knowledge/review"},

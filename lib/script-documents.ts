@@ -9,6 +9,11 @@ export function scriptFileName(document: Pick<ScriptSummary, "source_ref" | "tit
   return (document.source_ref || document.title).split(/[\\/]/).at(-1) || document.title;
 }
 
+/** Existing filenames are an artifact classification, never an approval signal. */
+export function matchesScriptStep(document: Pick<ScriptSummary, "source_ref" | "title">, step: string) {
+  return step === "all" || (SCRIPT_STEPS as readonly string[]).includes(step) && scriptFileName(document).includes(step);
+}
+
 export function scriptVersionInfo(document: Pick<ScriptSummary, "source_ref" | "title">) {
   const name = scriptFileName(document).replace(/\.(?:md|markdown|txt)$/i, "");
   const match = name.match(/^(.*?)[\s_-]+v(\d+)$/i);
