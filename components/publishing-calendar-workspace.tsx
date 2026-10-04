@@ -10,7 +10,7 @@ import { useContentWork } from "./content-work-provider";
 import { PublishingTabs } from "./publishing-tabs";
 import { useSession } from "./session-provider";
 
-export function PublishingCalendarWorkspace(){
+export function PublishingCalendarWorkspace({ automationHub = false }: { automationHub?: boolean } = {}){
   const work=useContentWork(),{accessToken,demo}=useSession();
   const [mode,setMode]=useState<"week"|"month">("week"),[anchor,setAnchor]=useState(()=>localCalendarDate(new Date()));
   const [records,setRecords]=useState<OsRecord[]>([]),[error,setError]=useState(""),[loading,setLoading]=useState(!demo),[busy,setBusy]=useState(false);
@@ -38,10 +38,10 @@ export function PublishingCalendarWorkspace(){
   const due=visible.filter(row=>row.status==="scheduled"&&row.starts_at&&Date.parse(row.starts_at)<=Date.now());
   const manual=visible.filter(row=>row.status!=="published"&&row.metadata.publishMode==="manual");
   const failed=visible.filter(row=>row.metadata.publishError);
-  const href=(row:OsRecord)=>"/content/publishing?tab=review&publication="+encodeURIComponent(row.id)+(row.parent_id?"&sourceId="+encodeURIComponent(row.parent_id):"");
+  const href=(row:OsRecord)=>(automationHub?"/automation/review":"/content/publishing?tab=review")+(automationHub?"?":"&")+"publication="+encodeURIComponent(row.id)+(row.parent_id?"&sourceId="+encodeURIComponent(row.parent_id):"");
   return <>
     <header className="page-header"><div className="page-title-group"><PageTitle/><p>시각이 되면 알림을 받고, 사람이 확인한 뒤 게시합니다.</p></div></header>
-    <PublishingTabs view="calendar"/>
+    {!automationHub ? <PublishingTabs view="calendar"/> : null}
     {error?<div className="inline-alert danger" role="alert"><CircleAlert size={16}/>{error}</div>:null}
     <div className="period-toolbar panel"><button className="icon-button" aria-label="이전 기간" onClick={()=>shift(-1)}><ArrowLeft size={16}/></button><input aria-label="발행 캘린더 기준일" type="date" value={anchor} onChange={event=>{if(event.target.value)setAnchor(event.target.value);}}/><button className="icon-button" aria-label="다음 기간" onClick={()=>shift(1)}><ArrowRight size={16}/></button><button className="ghost-button" onClick={()=>setAnchor(localCalendarDate(new Date()))}>오늘</button><button className={mode==="week"?"primary-button":"secondary-button"} onClick={()=>setMode("week")}>주</button><button className={mode==="month"?"primary-button":"secondary-button"} onClick={()=>setMode("month")}>월</button></div>
     {loading?<div className="panel loading-state" role="status">일정 불러오는 중…</div>:<div className="channel-calendar-layout">

@@ -4,7 +4,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { publicationSettingsSchema } from "@/lib/channel-publishing";
 import { authenticateRequest } from "@/lib/server/auth";
 import { authorizeMetaConnection, assertMetaModeMatches } from "@/lib/server/meta-oauth";
-import { assertPublicationApproval, publicationSignature, publicationSourceVersion, publishChannelRecord, readPublication, savePublication, signPublicationMedia, validatePublicationSettings } from "@/lib/server/channel-publication";
+import { assertPublicationApprovalForEnvironment, invalidatePublicationApprovalCheckpoint, publicationSignature, publicationSourceVersion, publishChannelRecord, readPublication, savePublication, signPublicationMedia, storePublicationApprovalCheckpoint, validatePublicationSettings } from "@/lib/server/channel-publication";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,20 +30,23 @@ export async function POST(request:Request){
     if((current.metadata.publishOperation as {state?:string}|undefined)?.state==="running")throw new ApiError(409,"PUBLICATION_BUSY","게시 결과 처리 중에는 수정할 수 없습니다.");
     if(input.operation==="reschedule"){
       if(!input.startsAt||Date.parse(input.startsAt)<=Date.now())throw new ApiError(400,"PUBLICATION_TIME_REQUIRED","미래 예약 시각을 입력해 주세요.");
-      if(current.status==="scheduled")assertPublicationApproval(current,settings,await publicationSourceVersion(actor,current));
+      if(current.status==="scheduled")await assertPublicationApprovalForEnvironment(current,settings,await publicationSourceVersion(actor,current));
       current=await savePublication(actor,current,{starts_at:input.startsAt,metadata:{...current.metadata,confirmationDue:false}});
     }else if(input.operation==="edit"){
       if((current.metadata.externalIds as unknown[]|undefined)?.length)throw new ApiError(409,"PUBLICATION_PARTIAL","일부 게시된 글타래는 문안을 바꾸지 않고 남은 부분부터 처리해 주세요.");
       current=await savePublication(actor,current,{description:settings.caption,status:"review",metadata:{...current.metadata,...settings,channelWorkflowVersion:1,needsRecheck:true,publicationApproval:null,publishError:null,publishCheckpoint:{receipts:[]},externalIds:[]}});
+      await invalidatePublicationApprovalCheckpoint(current.id);
     }else{
       validatePublicationSettings(settings);
       const sourceVersion=await publicationSourceVersion(actor,current);
       if(input.operation==="approve"){
         if(input.confirm!==true)throw new ApiError(400,"HUMAN_CONFIRMATION_REQUIRED","문안·계정·파일을 확인한 뒤 승인해 주세요.");
         await signPublicationMedia(current,settings,false);
-        current=await savePublication(actor,current,{status:"ready",metadata:{...current.metadata,needsRecheck:false,publicationApproval:{signature:publicationSignature(current,settings,sourceVersion),sourceVersion,actorId:actor.id,at:new Date().toISOString()}}});
+        const signature=publicationSignature(current,settings,sourceVersion);
+        await storePublicationApprovalCheckpoint(current,signature,sourceVersion,actor.id);
+        current=await savePublication(actor,current,{status:"ready",metadata:{...current.metadata,needsRecheck:false,publicationApproval:{signature,sourceVersion,actorId:actor.id,at:new Date().toISOString()}}});
       }else{
-        assertPublicationApproval(current,settings,sourceVersion);
+        await assertPublicationApprovalForEnvironment(current,settings,sourceVersion);
         if(input.operation==="schedule"){
           if(!input.startsAt||Date.parse(input.startsAt)<=Date.now())throw new ApiError(400,"PUBLICATION_TIME_REQUIRED","미래 예약 시각을 입력해 주세요.");
           current=await savePublication(actor,current,{status:"scheduled",starts_at:input.startsAt,metadata:{...current.metadata,scheduledBy:actor.id,confirmationDue:false}});

@@ -5,9 +5,10 @@ import { assertActiveChannelOwner, assertConnectionAccess, auditChannelAction, t
 
 export const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
 export const YOUTUBE_READ_SCOPE = "https://www.googleapis.com/auth/youtube.readonly";
+export const YOUTUBE_ANALYTICS_SCOPE = "https://www.googleapis.com/auth/yt-analytics.readonly";
 export const YOUTUBE_OAUTH_COOKIE = "bos_youtube_oauth";
 
-type StoredConnection = {
+export type YoutubeStoredConnection = {
   owner_id: string;
   team_shared?: boolean;
   encrypted_refresh_token: string;
@@ -99,7 +100,7 @@ export function buildYoutubeAuthorizationUrl(state: string) {
   const params = new URLSearchParams({
     client_id: required("YOUTUBE_CLIENT_ID"), redirect_uri: youtubeRedirectUri(), response_type: "code",
     access_type: "offline", include_granted_scopes: "true", prompt: "consent select_account",
-    scope: `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_READ_SCOPE}`, state,
+    scope: `${YOUTUBE_UPLOAD_SCOPE} ${YOUTUBE_READ_SCOPE} ${YOUTUBE_ANALYTICS_SCOPE}`, state,
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
@@ -123,7 +124,7 @@ export async function exchangeYoutubeCode(code: string) {
 export async function loadYoutubeConnection(ownerId: string) {
   const { data, error } = await createServiceSupabase().from("os_youtube_connections").select("*").eq("owner_id", ownerId).maybeSingle();
   if (error) throw new ApiError(500, "YOUTUBE_CONNECTION_READ_FAILED", "YouTube 연결 정보를 불러오지 못했습니다.", error.message);
-  return data as StoredConnection | null;
+  return data as YoutubeStoredConnection | null;
 }
 
 export async function saveYoutubeConnection(ownerId: string, tokens: GoogleTokenResponse) {

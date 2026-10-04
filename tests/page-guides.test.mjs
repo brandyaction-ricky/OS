@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {PAGE_GUIDES,guideClosedKey} from '../lib/page-guides.ts';
 import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
-test('all 23 menus and account have three reviewed steps and a live next route',()=>{
-  assert.equal(Object.keys(PAGE_GUIDES).length,24);
+test('all 31 menus and account have three reviewed steps and a live next route',()=>{
+  assert.equal(Object.keys(PAGE_GUIDES).length,32);
   // Round two routes YouTube management to performance; comments are a separate group.
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).sort(([a],[b])=>a.localeCompare(b)));
-  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'abd7f9b934bc19d5474f6b7dac4f3c03bca21c8d84519ac56cb011309575fac5');
+  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'b8bf1d96a3df4fdbf66e5931cfa7b80977e81f2b1ae8bf029832ee025d4e624c');
   for(const page of [...NAV_STAGES.flatMap(stage=>stage.pages),ACCOUNT_PAGE]){
     const guide=PAGE_GUIDES[page.href];assert.ok(guide,page.href);assert.equal(guide.steps.length,3);
     for(const step of guide.steps)assert.ok(typeof step==='string'&&step.trim().length>0,page.href);

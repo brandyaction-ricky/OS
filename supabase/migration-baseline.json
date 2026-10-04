@@ -383,6 +383,13 @@
       "appliedEnvironments": [
         "development"
       ]
+    },
+    {
+      "file": "20261004131203_content_publication_approval_checkpoints.sql",
+      "sha256": "308ba5bcedc0d123206177fb7579830d21578e35e05cf090402268633e79f4d2",
+      "purpose": "add a service-only, signature-bound approval checkpoint required before live Meta publication without changing existing records",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

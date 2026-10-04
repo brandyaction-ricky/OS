@@ -27,6 +27,7 @@ import { WORKSPACE_CONFIGS } from "@/lib/workspace-config";
 import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gate";
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
+import { ContentAutomationDashboard, ContentAutomationLibrary, ContentAutomationSettings, ContentAutomationTemplates } from "@/components/content-automation-hub";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -69,6 +70,14 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   }
   if (href === "/content/performance") return <ContentPerformanceWorkspace />;
   if (href === "/content/comments") return <ContentCommentsWorkspace />;
+  if (href === "/automation/dashboard") return <ContentAutomationDashboard />;
+  if (href === "/automation/review") return <ContentAutomationWorkspace initialView="review" automationHub />;
+  if (href === "/automation/requests") return <AiOperationsWorkspace contentOnly />;
+  if (href === "/automation/library") return <ContentAutomationLibrary />;
+  if (href === "/automation/calendar") return <PublishingCalendarWorkspace automationHub />;
+  if (href === "/automation/performance") return <ContentPerformanceWorkspace />;
+  if (href === "/automation/templates") return <ContentAutomationTemplates />;
+  if (href === "/automation/settings") return <ContentAutomationSettings />;
   if (href === "/knowledge/development") return <ProjectHubWorkspace />;
   if (href === "/knowledge/graph") return <><KnowledgeTabs connections /><KnowledgeGraphWorkspace /></>;
   if (href === "/performance/connections") redirect("/settings/connections");

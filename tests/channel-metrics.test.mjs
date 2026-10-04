@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import * as crypto from "node:crypto";
 import ts from "typescript";
-import { CHANNEL_METRICS,dueMetricSnapshot,parseChannelMetrics,sampleSummary,compareMetricSamples,metricSamples,measuredValue } from "../lib/channel-metrics.ts";
+import { CHANNEL_METRICS,YOUTUBE_ANALYTICS_METRICS,dueMetricSnapshot,parseChannelMetrics,parseYoutubeAnalytics,sampleSummary,compareMetricSamples,metricSamples,measuredValue } from "../lib/channel-metrics.ts";
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),"utf8");
 test("cohort samples keep real zero, deduplicate publications and omit missing, manual or out-of-range measurements",()=>{
   const row=(id,value,extra={})=>({id,title:id,status:"active",metadata:{source:"api",metric:"views",platform:"threads",snapshot:"d7",publishId:id,publishedAt:"2026-10-01T00:00:00Z",measuredAt:"2026-10-08T00:00:00Z",value,...extra}});
@@ -24,6 +24,12 @@ test("metric parsing retains measured zero, omits missing/nonfinite values and e
   const result=parseChannelMetrics("instagram",[{name:"views",values:[{value:0}]},{name:"likes",total_value:{value:12}},{name:"reach",values:[]},{name:"comments",values:[{value:null}]},{name:"saved",values:[{value:Infinity}]},{name:"impressions",values:[{value:999}]}]);
   assert.deepEqual(result,{views:0,likes:12});
 });
+test("YouTube Analytics parser follows column headers and keeps real zero",()=>{
+  const result=parseYoutubeAnalytics([{name:"views"},{name:"likes"},{name:"subscribersGained"},{name:"unknown"}],[[120,0,4,999]]);
+  assert.deepEqual(result,{views:120,likes:0,subscribersGained:4});
+  assert.equal(YOUTUBE_ANALYTICS_METRICS.includes("estimatedMinutesWatched"),true);
+  assert.deepEqual(parseYoutubeAnalytics([],[]),{});
+});
 test("summary uses median/range/n and holds small or overlapping samples",()=>{
   assert.deepEqual(sampleSummary([5,1,9,3]),{n:4,median:4,min:1,max:9});
   assert.deepEqual(sampleSummary([]),{n:0,median:null,min:null,max:null});
@@ -33,7 +39,7 @@ test("summary uses median/range/n and holds small or overlapping samples",()=>{
 });
 test("automatic metric IDs are stable per publication/snapshot/metric and writes never overwrite manual data",async()=>{
   const source=await read("lib/server/channel-metrics.ts"),compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,mod={exports:{}};
-  const deps={"node:crypto":crypto,"@/lib/http":{},"@/lib/channel-metrics":{CHANNEL_METRICS,dueMetricSnapshot,parseChannelMetrics},"@/lib/supabase/server":{},"./meta-oauth":{assertMetaModeMatches:()=>{},metaMode:()=>"mock"},"./meta-collection":{}};
+  const deps={"node:crypto":crypto,"@/lib/http":{ApiError:class extends Error{}},"@/lib/channel-metrics":{CHANNEL_METRICS,YOUTUBE_ANALYTICS_METRICS,dueMetricSnapshot,parseChannelMetrics,parseYoutubeAnalytics},"@/lib/supabase/server":{},"./meta-oauth":{assertMetaModeMatches:()=>{},metaMode:()=>"mock"},"./meta-collection":{},"./youtube-oauth":{YOUTUBE_ANALYTICS_SCOPE:"analytics",getYoutubeAccessToken:async()=>"token"}};
   runInNewContext(`(function(require,module,exports){${compiled}\n})`,{})(name=>deps[name],mod,mod.exports);
   const api=mod.exports,id=api.channelMetricId("post","threads","d1","views");
   assert.equal(id,api.channelMetricId("post","threads","d1","views"));assert.notEqual(id,api.channelMetricId("post","threads","d7","views"));assert.notEqual(id,api.channelMetricId("post","threads","d1","likes"));

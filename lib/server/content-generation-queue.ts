@@ -2,13 +2,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import type { RequestActor } from "./auth";
 import type { OsRecord } from "@/lib/record-types";
+import type { ContentAutomationSettings } from "@/lib/content-automation-settings";
 
 export function generationJobId(key: string) {
   const hex = createHash("sha256").update(`os-content-generation:${key}`).digest("hex");
   return `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`;
 }
 
-export async function beginGenerationJob(actor: RequestActor, source: OsRecord, input: Record<string, unknown>, procedure: string, requestKey?: string) {
+export async function beginGenerationJob(actor: RequestActor, source: OsRecord, input: Record<string, unknown>, procedure: string, requestKey?: string, automation?: ContentAutomationSettings) {
   const mode = input.mode === "api" ? "api" : "queue";
   const procedureHash = createHash("sha256").update(procedure).digest("hex");
   const key = requestKey ?? createHash("sha256").update(JSON.stringify([source.id, source.version, input, procedureHash])).digest("hex");
@@ -20,7 +21,7 @@ export async function beginGenerationJob(actor: RequestActor, source: OsRecord, 
     status: mode === "queue" ? "backlog" : "active", stage: mode === "queue" ? "queued" : "running", priority: "normal",
     parent_id: source.id, brand: source.brand, team: source.team || actor.team,
     owner_id: actor.id, created_by: actor.id, updated_by: actor.id,
-    metadata: { contentAction: input.action, sourceId: source.id, sourceVersion: source.version, generationMode: mode, generationId: id, generationRequestKey: key, procedureHash, input, generatedBy: mode === "queue" ? "claude-queue" : "claude-api", finalApprovalRequired: true, requestedAt: new Date().toISOString(), costUsd: null },
+    metadata: { contentAction: input.action, sourceId: source.id, sourceVersion: source.version, generationMode: mode, generationId: id, generationRequestKey: key, procedureHash, input, automation: automation ? { retryLimit: automation.retryLimit, promptPrefix: automation.promptPrefix, shorts: automation.shorts } : undefined, retryLimit: automation?.retryLimit ?? 0, attempt: 0, generatedBy: mode === "queue" ? "claude-queue" : "claude-api", finalApprovalRequired: true, requestedAt: new Date().toISOString(), costUsd: null },
     tags: ["콘텐츠", "AI", mode === "queue" ? "구독대기열" : "바로받기"],
   };
   const { data, error } = await actor.supabase.from("os_records").insert(payload).select("*").single();

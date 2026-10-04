@@ -31,6 +31,41 @@ export function assertPublicationApproval(record: OsRecord, settings: Publicatio
   const approval=record.metadata.publicationApproval as {signature?:string;actorId?:string}|undefined;
   if(record.metadata.channelWorkflowVersion!==1 || record.metadata.needsRecheck!==false || !approval?.actorId || approval.signature!==publicationSignature(record,settings,sourceVersion)) throw new ApiError(409,"PUBLICATION_APPROVAL_REQUIRED","현재 문안·계정·기준 영상으로 최종 승인을 다시 받아 주세요.");
 }
+export function publicationApprovalCheckpointsEnabled() {
+  return process.env.PUBLICATION_APPROVAL_CHECKPOINTS_ENABLED === "true";
+}
+export async function storePublicationApprovalCheckpoint(record: OsRecord, signature: string, sourceVersion: number, actorId: string) {
+  if (!publicationApprovalCheckpointsEnabled()) return false;
+  const { error } = await createServiceSupabase().from("os_content_publication_approvals").upsert({
+    publication_id: record.id,
+    signature,
+    source_version: sourceVersion,
+    approved_by: actorId,
+    approved_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "publication_id" });
+  if (error) throw new ApiError(503, "PUBLICATION_APPROVAL_CHECKPOINT_FAILED", "게시 승인 증거를 저장하지 못했습니다. 게시물은 승인되지 않았습니다.");
+  return true;
+}
+export async function invalidatePublicationApprovalCheckpoint(publicationId: string) {
+  if (!publicationApprovalCheckpointsEnabled()) return;
+  const { error } = await createServiceSupabase().from("os_content_publication_approvals").delete().eq("publication_id", publicationId);
+  if (error) throw new ApiError(503, "PUBLICATION_APPROVAL_CHECKPOINT_FAILED", "이전 게시 승인 증거를 무효화하지 못했습니다. 다시 시도해 주세요.");
+}
+export async function assertPublicationApprovalForEnvironment(record: OsRecord, settings: PublicationSettings, sourceVersion: number) {
+  assertPublicationApproval(record, settings, sourceVersion);
+  if (metaMode() !== "live") return;
+  if (!publicationApprovalCheckpointsEnabled()) throw new ApiError(503, "PUBLICATION_APPROVAL_CHECKPOINTS_DISABLED", "실계정 게시 승인 저장소가 아직 활성화되지 않았습니다.");
+  const signature = publicationSignature(record, settings, sourceVersion);
+  const { data, error } = await createServiceSupabase().from("os_content_publication_approvals")
+    .select("signature,source_version,approved_by")
+    .eq("publication_id", record.id)
+    .maybeSingle();
+  const approval = record.metadata.publicationApproval as { actorId?: string } | undefined;
+  if (error || !data || data.signature !== signature || Number(data.source_version) !== sourceVersion || data.approved_by !== approval?.actorId) {
+    throw new ApiError(409, "PUBLICATION_APPROVAL_REQUIRED", "서버 승인 증거가 현재 문안·계정·기준 영상과 일치하지 않습니다. 최종 승인을 다시 받아 주세요.");
+  }
+}
 export function validatePublicationSettings(settings: PublicationSettings) {
   const problems=publicationProblems(settings);
   if(problems.length)throw new ApiError(400,"PUBLICATION_INVALID",problems.join(" "));
@@ -57,13 +92,12 @@ export async function publishChannelRecord(actor: RequestActor, record: OsRecord
   const settings=publicationSettingsSchema.parse(record.metadata);
   const connection=await authorizeMetaConnection(actor,settings.account.ownerId,settings.account.platform);
   assertMetaModeMatches(connection);
-  // This release is explicitly mock-only. Live publishing needs a separately
-  // reviewed database-enforced approval/checkpoint boundary and one-post QA.
   // Keep actor RLS writes; never elevate record updates to the service role.
-  if(metaMode()!=="mock")throw new ApiError(503,"LIVE_PUBLISH_NOT_RELEASED","실계정 게시는 아직 공개하지 않았습니다. 권한 검증과 실계정 1건 검수 후 별도로 활성화합니다.");
+  // Live dispatch is a separate environment gate even after checkpoints exist.
+  if(metaMode()==="live"&&process.env.META_LIVE_PUBLISH_ENABLED!=="true")throw new ApiError(503,"LIVE_PUBLISH_NOT_RELEASED","실계정 게시는 아직 공개하지 않았습니다. 연결 계정 1건 검수 후 별도로 활성화합니다.");
   if(record.status==="published")return record;
   validatePublicationSettings(settings);
-  assertPublicationApproval(record,settings,await publicationSourceVersion(actor,record));
+  await assertPublicationApprovalForEnvironment(record,settings,await publicationSourceVersion(actor,record));
   if(settings.publishMode==="manual")throw new ApiError(409,"MANUAL_PUBLICATION_REQUIRED","앱에서 직접 게시한 뒤 주소를 입력해 주세요.");
   if((record.metadata.publishOperation as {state?:string}|undefined)?.state==="running")throw new ApiError(409,"PUBLICATION_BUSY","게시 결과를 처리 중입니다. 중복 요청은 실행하지 않습니다.");
   const urls=await signPublicationMedia(record,settings,metaMode()==="live");

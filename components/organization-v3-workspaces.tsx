@@ -206,7 +206,18 @@ export function WeeklyScheduleWorkspace() {
   );
 }
 
-export function AiOperationsWorkspace() {
+function isContentAiJob(job: OsRecord) {
+  return Boolean(
+    meta(job, "contentAction") ||
+      meta(job, "sourceId") ||
+      meta(job, "contentId") ||
+      meta(job, "generationMode") ||
+      meta(job, "generatedBy") === "claude-queue" ||
+      job.tags.includes("콘텐츠"),
+  );
+}
+
+export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: boolean } = {}) {
   const { accessToken, demo } = useSession();
   const [jobs, setJobs] = useState<OsRecord[]>([]);
   const [health, setHealth] = useState<Awaited<
@@ -218,11 +229,11 @@ export function AiOperationsWorkspace() {
     if (demo) return;
     Promise.all([listRecords(accessToken, "ai_job", "limit=100&excludeKind=development_request"), getHealth()])
       .then(([result, status]) => {
-        setJobs(result.records);
+        setJobs(contentOnly ? result.records.filter(isContentAiJob) : result.records);
         setHealth(status);
       })
       .catch((reason) => setError(reason.message));
-  }, [accessToken, demo]);
+  }, [accessToken, contentOnly, demo]);
   const systems = [
     [
       "회의 녹음→전사·요약",
@@ -253,8 +264,9 @@ export function AiOperationsWorkspace() {
         <div className="page-title-group">
           <PageTitle />
           <p>
-            AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고
-            결정합니다.
+            {contentOnly
+              ? "콘텐츠 생성 요청의 대기·진행·검수 상태를 확인합니다."
+              : "AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고 결정합니다."}
           </p>
         </div>
       </header>
@@ -264,7 +276,7 @@ export function AiOperationsWorkspace() {
           {error}
         </div>
       ) : null}
-      <div className="section-intro"><div><span className="eyebrow">1단계</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
+      {!contentOnly ? <><div className="section-intro"><div><span className="eyebrow">1단계</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
       <section className="ai-system-grid">
         {systems.map(([title, status, description]) => (
           <article className="panel" key={title}>
@@ -278,12 +290,12 @@ export function AiOperationsWorkspace() {
           </article>
         ))}
       </section>
-      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div>
+      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div></> : null}
       <section className="panel">
         <div className="panel-header">
           <div>
             <h2>사람이 요청한 AI 작업</h2>
-            <p>GPT·Codex·Claude 요청서의 진행·검수 상태</p>
+            <p>{contentOnly ? "콘텐츠 생성 요청의 진행·검수 상태" : "GPT·Codex·Claude 요청서의 진행·검수 상태"}</p>
           </div>
           <span className="count-badge">{jobs.length}</span>
         </div>
@@ -310,7 +322,7 @@ export function AiOperationsWorkspace() {
             <div className="quiet-state">
               <Bot />
               <strong>등록된 AI 작업 없음</strong>
-              <span>AI 작업에서 요청서를 등록하면 여기에 모입니다.</span>
+              <span>{contentOnly ? "콘텐츠 화면에서 생성 요청을 보내면 여기에 모입니다." : "AI 작업에서 요청서를 등록하면 여기에 모입니다."}</span>
             </div>
           ) : null}
         </div>
@@ -325,7 +337,7 @@ export function AiOperationsWorkspace() {
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
             <div className="drawer-actions">
               {selectedJobSourceUrl ? <a className="secondary-button" href={selectedJobSourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> 결과·원본 링크</a> : null}
-              {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`/content/automation${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
+              {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`${contentOnly ? "/automation/review" : "/content/automation"}${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
               {selectedJob.status === "blocked" ? <Link className="secondary-button" href="/settings/connections">연결 상태 확인</Link> : null}
             </div>
             {!selectedJobSourceUrl && !meta(selectedJob, "contentAction") && !meta(selectedJob, "sourceId") && !meta(selectedJob, "contentId") ? <p className="inline-alert">연결된 원본이나 결과 링크가 없습니다. 요청 등록 화면에서 출처 링크를 추가해 주세요.</p> : null}

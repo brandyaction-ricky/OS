@@ -58,6 +58,14 @@ export const NAV_STAGES: NavStage[] = [
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 7, aliases: ["콘텐츠 성과"], ready: true },
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/content/comments", pages: [
+    { label: "대시보드", href: "/automation/dashboard", icon: LayoutDashboard, ready: true },
+    { label: "최종 점검", href: "/automation/review", icon: ListChecks, ready: true },
+    { label: "Claude 요청함", href: "/automation/requests", icon: Bot, ready: true },
+    { label: "라이브러리", href: "/automation/library", icon: BookOpen, ready: true },
+    { label: "발행 캘린더", href: "/automation/calendar", icon: CalendarRange, ready: true },
+    { label: "성과 기록", href: "/automation/performance", icon: BarChart3, ready: true },
+    { label: "카드뉴스 시안", href: "/automation/templates", icon: Film, ready: true },
+    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true },
     { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge", pages: [
