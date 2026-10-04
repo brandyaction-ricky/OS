@@ -58,6 +58,8 @@ test("automatic sync is disabled before any service or network access",async()=>
 });
 test("new workflow tables deny public access and all derived records remain drafts",()=>{
   const sql=read("supabase/migrations/20261004040710_canonical_source_workflow.sql");
+  const manifest=JSON.parse(read("supabase/migration-baseline.json"));
+  const entry=manifest.forwardMigrations.find(item=>item.file==="20261004040710_canonical_source_workflow.sql");
   for(const table of ["os_canonical_sources","os_canonical_runs"]){assert.match(sql,new RegExp(`alter table public\\.${table} enable row level security`));assert.match(sql,new RegExp(`revoke all on public\\.${table} from public, anon, authenticated`));}
   assert.doesNotMatch(sql,/\b(?:drop table|delete from|truncate|update public\.os_documents)\b/i);
   assert.match(sql,/d.current_version <> r.source_version/);
@@ -65,6 +67,7 @@ test("new workflow tables deny public access and all derived records remain draf
   assert.match(sql,/'draft',p_actor/);
   assert.match(sql,/for update/);assert.match(sql,/unique \(document_id, requested_by, kind, request_key\)/);
   assert.match(sql,/grant execute on function public.os_adopt_canonical_rule.*to service_role/);
+  assert.equal(entry?.developmentApprovedAt,"2026-10-04");assert.deepEqual(entry?.appliedEnvironments,["development"]);
 });
 test("source network requests are pinned, bounded and never forward credentials",()=>{
   const code=read("lib/server/canonical-source-fetch.ts");
