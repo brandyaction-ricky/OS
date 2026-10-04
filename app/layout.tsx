@@ -12,6 +12,7 @@ import "../components/os-ui.css";
 import "../components/fullscreen-shell.css";
 import "../components/fullscreen-content.css";
 import "../components/fullscreen-documents.css";
+import "../components/fullscreen-operations.css";
 
 export const metadata: Metadata = {
   title: "브랜디 OS",

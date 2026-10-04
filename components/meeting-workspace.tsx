@@ -2,6 +2,7 @@
 import { useRecordDeepLink } from "./use-record-deep-link";
 
 import { useSearchParams } from "next/navigation";
+import {meetingTabHref} from "@/lib/fullscreen-tabs";
 import { contentOrigin } from "@/lib/content-origin";
 import { demoRecord } from "@/lib/demo-record";
 import { makeMeetingReview, meetingReviewErrors, similarMeetings, readMeetingReview, normalizeMeetingTerms, matchMeetingAssignee, type MeetingReviewItem, type ReviewMember } from "@/lib/meeting-review";
@@ -484,7 +485,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
       ) : null}
       {notice&&<p className="inline-alert" role="status">{notice}</p>}
       {demo&&<p className="field-hint">데모 · 저장한 회의는 현재 화면에서만 유지됩니다.</p>}
-      <nav className="workspace-tabs" aria-label="회의·결정 보기">{[["meetings","회의"],["decisions","모든 결정"]].map(([tab,label])=><button key={tab} className={decisionsTab===(tab==="decisions")?"active":""} onClick={()=>{const next=new URLSearchParams(params.toString());next.set("tab",tab);next.delete(tab==="decisions"?"meeting":"record");window.history.replaceState(null,"",`/organization/meetings?${next}`);}}>{label}</button>)}</nav>
+      <nav className="workspace-tabs" aria-label="회의·결정 보기">{[["meetings","회의"],["decisions","모든 결정"]].map(([tab,label])=><button key={tab} aria-pressed={decisionsTab===(tab==="decisions")} className={decisionsTab===(tab==="decisions")?"active":""} onClick={()=>window.history.replaceState(null,"",meetingTabHref(tab,params.toString()))}>{label}</button>)}</nav>
       {decisionsTab ? <OperationsWorkspace config={WORKSPACE_CONFIGS["/home/decisions"]} demoRecords={decisions} embedded /> : <WorkspaceLoadState loading={loading} error={error&&!meetings.length?error:undefined} retry={load}>
       <section className="metric-grid compact-metrics">
         <div className="metric-card">

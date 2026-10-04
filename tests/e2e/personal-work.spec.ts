@@ -2,7 +2,7 @@ import {expect,test} from "@playwright/test";
 test("personal home defaults to received work and preserves tab/view URLs", async({page})=>{
  await page.goto("/home"); await expect(page.getByRole("heading",{name:"내 할 일",exact:true})).toBeVisible();
  await expect(page.getByRole("heading",{name:"배정된 일이 없습니다"})).toBeVisible();
- await page.getByRole("button",{name:/요청한 일/}).click();await page.reload();
+ await page.getByRole("navigation",{name:"내 할 일 보기"}).getByRole("button",{name:/요청한 일/}).click();await page.reload();
  await expect(page.getByRole("heading",{name:"남긴 요청이 없습니다"})).toBeVisible();
  await expect(page.getByRole("region",{name:"오늘 콘텐츠 운영"})).toBeVisible();
  await expect(page.locator(".revenue-band")).toHaveCount(0);
