@@ -2,8 +2,8 @@
 
 import {
   ChevronRight,
-  ChevronsUpDown,
   ChevronDown,
+  ChevronsUpDown,
   ChevronsLeft,
   ChevronsRight,
   NotebookPen,
@@ -18,11 +18,14 @@ import {
   Sun,
   X,
   UserRound,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
+import { CONTENTS_AUTO_SCREENS, contentsAutoLinks } from "@/lib/contents-auto-links";
+import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
 import { ServerConnectionStatus } from "./server-connection-status";
@@ -39,6 +42,7 @@ const GUIDANCE_STORAGE_KEY = "brandy-os-guidance";
 const GROUPS_STORAGE_KEY = "brandy-os-nav-groups";
 const COLLAPSED_STORAGE_KEY = "brandy-os-nav-collapsed";
 const MENU_GUIDE_STORAGE_KEY = "brandy-os-menu-guide-final";
+const externalLinks = contentsAutoLinks(process.env.NEXT_PUBLIC_CONTENTS_AUTO_LINKS);
 
 
 function Initials({ name }: { name: string }) {
@@ -51,6 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const navigationPath = `${pathname}?${params.toString()}`;
   const stage = useMemo(() => findStage(navigationPath), [navigationPath]);
   const page = useMemo(() => findPage(navigationPath), [navigationPath]);
+  const screen = fullscreenScreen(pathname, params.get("tab"));
   const { profile, loading, demo, signOut } = useSession();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -145,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
       const moved = previousStage.current !== stage.id;
       previousStage.current = stage.id;
-      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, stored?.[item.id] !== false])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
+      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === stage.id || (stage.id === "home" && item.id === "content")])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
       setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
       setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
     } catch { setOpenGroups({ [stage.id]: true }); }
@@ -241,33 +246,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`os-app linear-shell unified-shell${collapsed ? " nav-collapsed" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
-      <aside ref={sidebarRef} id="main-navigation" className={`unified-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
-        <div className="unified-sidebar-head">
-          <Link className="brand-mark" href="/home" aria-label="브랜디 OS 홈">BA</Link>
-          <strong className="sidebar-brand">브랜디 OS</strong>
-          <button className="icon-button sidebar-collapse" aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"} aria-expanded={!collapsed} onClick={toggleSidebar}>
+    <div className={`os-app linear-shell unified-shell shell-v2${collapsed ? " nav-collapsed" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
+      <aside ref={sidebarRef} id="main-navigation" data-ui="sidebar" className={`unified-sidebar page-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
+        <div className="unified-sidebar-head sidebar-head" data-ui="sidebar-head">
+          <Link className="brand-mark" data-ui="brand-mark" href="/home" aria-label="브랜디 OS 홈">BA</Link>
+          <div className="sidebar-brand brand-copy"><b>브랜디 OS</b><span>우리 팀의 작업 공간</span></div>
+          <button className="icon-button sidebar-collapse" data-ui="collapse-btn" aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"} aria-expanded={!collapsed} onClick={toggleSidebar}>
             {collapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
           </button>
           <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
         </div>
-        <nav className="unified-nav">
+        <nav className="unified-nav page-nav">
           {NAV_STAGES.map(item => {
             const Icon = item.icon;
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              <button className="nav-section-trigger" onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
-                <Icon size={18} /><span>{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}{item.id === "content" ? <small className="nav-process-caption">유튜브 공정 순서</small> : null}</span><ChevronDown size={14} className={openGroups[item.id] ? "expanded" : ""} />
-              </button>
-              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={!openGroups[item.id]}>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "콘텐츠 유튜브 공정 순서" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}{item.id === "content" ? <small className="nav-process-caption nav-group-note">유튜브 공정 순서</small> : null}</span>
+              </button> : null}
+              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !openGroups[item.id]}>
+                {item.id === "automation" ? <><div className="external-app-note">별도 앱 · 새 탭에서 열림</div>{CONTENTS_AUTO_SCREENS.map(([key, label]) => externalLinks[key] ? <a key={key} className="page-link external-app-link" href={externalLinks[key]} target="_blank" rel="noopener noreferrer" aria-label={`${label} · 콘텐츠 자동화 별도 앱`}><span>{label}</span><ExternalLink size={12} aria-hidden="true" /></a> : <span key={key} className="page-link external-app-link unavailable" aria-disabled="true" title="콘텐츠 자동화 앱의 연결 주소가 아직 등록되지 않았습니다."><span>{label}</span><span className="external-app-unconfigured">주소 미설정</span></span>)}</> : null}
                 {item.pages.map((entry, index) => {
                   const selected = entry.href === (page.navHref ?? page.href);
                   const PageIcon = entry.icon;
                   return <div key={entry.href}>
                     {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
-                    <Link href={entry.href} className={`page-link${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
-                      {entry.processNumber ? <span className="process-number" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦","⑧"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>
+                    <Link href={entry.href} data-ui={selected ? "nav-item-active" : item.id === "home" ? "nav-home" : "nav-item"} className={`page-link${item.id === "home" ? " nav-home" : ""}${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
+                      {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>
                     </Link>
                   </div>;
                 })}
@@ -275,12 +281,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </section>;
           })}
         </nav>
-        <div className="unified-sidebar-foot">
+        <div className="unified-sidebar-foot sidebar-foot" data-ui="sidebar-foot">
           <button className="sidebar-request" onClick={() => { setRequestOpen(true); setMobileOpen(false); }} title="수정 요청"><MessageSquarePlus size={17} /><span>수정 요청 남기기</span></button>
           <div className="sidebar-status"><ServerConnectionStatus demo={demo} onStatusChange={setServerOk} /></div>
-          <button ref={profileTriggerRef} className="profile-trigger" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
-            <span className="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
-            <span className="profile-copy"><strong>{profile?.displayName ?? "구성원"}</strong><small>내 계정 · 채널 연결</small></span><ChevronsUpDown size={14} />
+          <button ref={profileTriggerRef} className="profile-trigger" data-ui="profile-row" aria-label="내 계정 메뉴" aria-haspopup="dialog" aria-controls={profileOpen ? profileMenuId : undefined} aria-expanded={profileOpen} onClick={toggleProfileMenu}>
+            <span className="avatar" data-ui="avatar"><Initials name={profile?.displayName ?? "B"} /></span>
+            <span className="profile-copy"><b>{profile?.displayName ?? "구성원"}</b><span>내 계정 · 채널 연결</span></span><ChevronsUpDown size={14} />
           </button>
           {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
@@ -295,24 +301,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
       {mobileOpen ? <button className="mobile-scrim" aria-label="메뉴 배경 닫기" onClick={() => setMobileOpen(false)} /> : null}
       <div className="app-main">
-        <header className="topbar">
+        <header className="topbar" data-ui="topbar">
           <button ref={mobileTriggerRef} className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <nav className="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={stage.href}>{stage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{page.label}</span></nav>
+          <nav className="breadcrumbs" data-ui="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={stage.href}>{stage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{page.label}</span></nav>
           <div className="topbar-actions">
-            <button className="command-trigger" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd><Command size={11} />K</kbd></button>
-            <button type="button" className="display-control guidance-control" role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
+            <button className="command-trigger" data-ui="search" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd data-ui="kbd"><Command size={11} />K</kbd></button>
+            <button type="button" className={`display-control guidance-control${guidanceOn ? " active" : ""}`} data-ui={guidanceOn ? "guide-toggle-on" : "guide-toggle-off"} role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
             <div className="quick-record-menu" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setQuickOpen(false);}} onKeyDown={event=>{if(event.key==="Escape"){setQuickOpen(false);event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();}}}>
-              <button className="quick-record-link" aria-expanded={quickOpen} aria-controls="quick-record-options" onClick={()=>setQuickOpen(!quickOpen)}><NotebookPen size={16} /><span>빠른 기록</span></button>
+              <button className="quick-record-link quick-add" data-ui="quick-add" aria-label="빠른 기록" onClick={()=>{setQuickOpen(false);setRequestOpen(true);}}><NotebookPen size={16} /><span>빠른 기록</span></button>
+              <button className="quick-record-more" aria-label="기록 종류 선택" aria-expanded={quickOpen} aria-controls="quick-record-options" onClick={()=>setQuickOpen(!quickOpen)}><ChevronDown size={14}/></button>
               {quickOpen ? <div id="quick-record-options" className="quick-record-options"><Link href="/knowledge?new=1" onClick={()=>{setQuickOpen(false);window.dispatchEvent(new Event("brandy-quick-record"));}}>메모</Link><Link href="/organization/tasks?new=1" onClick={()=>setQuickOpen(false)}>업무</Link><button onClick={()=>{setRequestOpen(true);setQuickOpen(false);}}>수정 요청</button></div> : null}
             </div>
             <DevelopmentRequestNotifications open={notificationsOpen} onOpenChange={changeNotificationsOpen} />
           </div>
         </header>
-        <main className="page-content">
+        <ContentWorkProvider><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
-          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>내 할 일 · 콘텐츠 · 회사 문서 · 팀 · 개발 · 설정, 6묶음 23개 메뉴입니다. 채널 연결은 아래 프로필의 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
-          <ContentWorkProvider>{children}</ContentWorkProvider>
-        </main>
+          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 7단계에서, 별도 웹앱과 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
+          {children}
+        </main></ContentWorkProvider>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />
       <CommandPalette open={paletteOpen} onClose={closePalette} />

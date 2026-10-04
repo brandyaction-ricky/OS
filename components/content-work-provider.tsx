@@ -39,15 +39,16 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   },[path,search,storageKey]);
   const reload=useCallback(()=>setRevision(value=>value+1),[]);
   const page=findPage(path), content=NAV_STAGES.find(stage=>stage.id==="content")!;
+  const showProcess=enabled && Boolean(page.processNumber);
   const currentStep=selected?productionStep(selected,records):null;
   const completedThrough=currentStep?PRODUCTION_STEPS.findIndex(([key])=>key===currentStep):0;
   return <Context.Provider value={{topics,publications:records.filter(row=>row.record_type==="content_publish"),selected,topicId,loading,error,generationMode:defaultGenerationMode(records),select,reload}}>
-    {enabled?<section className="process-bar" aria-label="작업 중인 영상">
-      <label><span>작업 중인 영상</span><select aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
-      <nav aria-label="콘텐츠 공정 순서">{content.pages.map((item,index)=>{
+    {showProcess?<section className="process-bar" data-ui="process-bar" aria-label="작업 중인 영상">
+      <label><span className="process-bar-label">작업 중인 영상</span><select className="process-video" data-ui="process-video" aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+      <nav className="process-steps" aria-label="콘텐츠 공정 순서"><span className="process-bar-label">공정</span>{content.pages.map((item,index)=>{
         const current=(page.navHref??page.href)===item.href;
         const done=Boolean(selected)&&index<completedThrough;
-        return <Link key={item.href} href={workTopicHref(item.href,topicId)} aria-current={current?"step":undefined} className={current?"active":done?"done":""} title={`${item.label} · ${current?"현재 화면":done?"저장된 산출물 있음 · 승인 별도 확인":"이동"}`}><span aria-hidden="true">{done?"✓":current?"●":"○"}</span><span>{item.processNumber}{current?`. ${item.label}`:""}</span><span className="sr-only">{current?"":item.label}</span></Link>;
+        return <Link key={item.href} href={workTopicHref(item.href,topicId)} data-ui={current?"process-step-current":"process-step"} aria-label={`${item.processNumber}. ${item.label}`} aria-current={current?"step":undefined} className={`process-step${current?" active current":done?" done":""}`} title={`${item.label} · ${current?"현재 화면":done?"저장된 산출물 있음 · 승인 별도 확인":"이동"}`}><span className={`process-icon ${current?"now":done?"done":"todo"}`} aria-hidden="true">{!current&&done?"✓":null}</span><span>{item.processNumber}{current?`. ${item.label}`:""}</span></Link>;
       })}</nav>
       {error?<span role="alert">{error}<button onClick={reload}>다시 불러오기</button></span>:requested&&requested!=="all"&&!loading&&!selected?<span role="status">이 영상은 접근할 수 없거나 우리 콘텐츠가 아닙니다.</span>:null}
     </section>:null}

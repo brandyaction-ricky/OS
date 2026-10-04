@@ -26,16 +26,16 @@ test("login cannot redirect outside and preserves internal document links", asyn
 });
 
 for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
-  test(`hygiene screens at ${width}px in ${theme}`, async ({ page }) => {
+  test(`hygiene screens at ${width}px in ${theme}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 960 });
     await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
     await page.goto("/content/performance");
     await expect(page.getByRole("combobox", { name: "콘텐츠 종류", exact: true })).toHaveValue("own");
-    await page.screenshot({ path: `/private/tmp/uiux-hygiene-${theme}-${width}.png`, fullPage: true, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
+    await page.screenshot({ path: testInfo.outputPath(`uiux-hygiene-${theme}-${width}.png`), fullPage: true, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
     await page.goto("/settings/access");
     await page.getByRole("button", { name: "키 발급", exact: true }).click();
     await expect(page.getByRole("combobox", { name: "권한 범위", exact: true })).toHaveValue("draft");
-    await page.screenshot({ path: `/private/tmp/uiux-key-${theme}-${width}.png`, fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
+    await page.screenshot({ path: testInfo.outputPath(`uiux-key-${theme}-${width}.png`), fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: "#777777" });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

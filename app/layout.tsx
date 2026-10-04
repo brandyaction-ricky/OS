@@ -8,6 +8,8 @@ import "../components/meeting-tasks.css";
 import "../components/production-hub.css";
 import "../components/indexing-progress.css";
 import "./final-uiux.css";
+import "../components/os-ui.css";
+import "../components/fullscreen-shell.css";
 
 export const metadata: Metadata = {
   title: "브랜디 OS",

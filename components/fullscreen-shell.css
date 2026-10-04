@@ -1,0 +1,70 @@
+/* Adapt the supplied os-ui.css to the existing, accessible unified shell.
+   Keep the existing preference keys, mobile focus trap and data components. */
+.linear-shell.shell-v2 .unified-sidebar { z-index: 35; }
+.linear-shell.shell-v2 .sidebar-head { flex: none; }
+.linear-shell.shell-v2 .page-nav { min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+.linear-shell.shell-v2 .nav-section { margin: 0; }
+.linear-shell.shell-v2 .nav-section-trigger { min-height: 0; }
+.linear-shell.shell-v2 .nav-section-trigger > span { flex: none; }
+.linear-shell.shell-v2 .nav-section-trigger > .nav-group-label { flex: 1; }
+.linear-shell.shell-v2 .nav-process-caption { display: inline; }
+.linear-shell.shell-v2 .nav-section-pages .page-link { margin: 0; min-height: 0; }
+.linear-shell.shell-v2 .nav-section-pages .page-link.nav-home { padding: 8px 10px; }
+.linear-shell.shell-v2 .nav-section-pages .page-link.active { background: var(--surface-selected); color: var(--text); font-weight: 600; }
+.linear-shell.shell-v2 .page-link > span:last-child { min-width: 0; }
+.linear-shell.shell-v2 .external-app-note { font-size: 11px; color: var(--muted); padding: 4px 10px 4px 30px; }
+.linear-shell.shell-v2 .external-app-link { justify-content: space-between; }
+.linear-shell.shell-v2 .external-app-link.unavailable { color: var(--muted); cursor: default; }
+.linear-shell.shell-v2 .external-app-unconfigured { font-size: 11px; }
+.linear-shell.shell-v2 .sidebar-foot { position: relative; }
+.linear-shell.shell-v2 .sidebar-foot .profile-copy { flex: 1; }
+.linear-shell.shell-v2 .sidebar-request { width: 100%; background: none; border: 0; cursor: pointer; }
+.linear-shell.shell-v2 .sidebar-status { margin: 0; }
+.linear-shell.shell-v2 .quick-add { min-height: 0; height: 28px; display: inline-flex; align-items: center; gap: 6px; }
+.linear-shell.shell-v2 .quick-record-menu { display: flex; align-items: center; gap: 2px; }
+.linear-shell.shell-v2 .quick-record-more { display: flex; align-items: center; justify-content: center; width: 20px; height: 28px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-2); background: var(--card); cursor: pointer; }
+.linear-shell.shell-v2 .process-bar { margin: 0; min-height: 47px; gap: 10px; flex-wrap: nowrap; }
+.linear-shell.shell-v2 .process-bar > label { min-width: 0; flex: 0 1 auto; }
+.linear-shell.shell-v2 .process-bar .process-video { width: 220px; min-height: 0; }
+.linear-shell.shell-v2 .process-bar nav { flex: 0 0 auto; gap: 2px; }
+.linear-shell.shell-v2 .process-bar .process-step { min-width: 0; min-height: 0; border: 0; background: none; padding: 4px 8px; color: var(--text-2); }
+.linear-shell.shell-v2 .process-bar .process-step.current { background: var(--card); color: var(--text); }
+.linear-shell.shell-v2 .process-bar:has([role]) { height: auto; flex-wrap: wrap; padding-block: 8px; }
+.linear-shell.shell-v2 .guide-strip ol { display: flex; margin: 0; padding: 0; list-style: none; }
+.linear-shell.shell-v2 .guide-strip .guide-strip-close { width: auto; height: auto; min-height: 0; border: 0; background: transparent; }
+.linear-shell.shell-v2 .guide-strip-head { flex-wrap: wrap; }
+.linear-shell .page-content.ui-v2 > * { min-width: 0; }
+.linear-shell .ui-v2 .page-header:has(.guide-strip) { display: grid; }
+.linear-shell .ui-v2 .page-header:has(.guide-strip) .guide-strip { grid-area: guide; }
+.linear-shell .ui-v2 .page-header:has(.guide-strip) h1 { grid-area: title; }
+.linear-shell .ui-v2 .guide-strip { width: 100%; }
+.linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) > a { flex: none; font-size: 13px; line-height: normal; padding: 7px 10px; min-height: 0; border: 0; border-radius: 0; background: none; color: var(--muted); }
+.linear-shell .ui-v2 :is(.studio-tabs, .system-status-tabs) > a[aria-current="page"] { border-bottom: 2px solid var(--accent); color: var(--text); font-weight: 700; }
+.linear-shell .ui-v2 :is(.primary-button, .secondary-button):not(.sm):not(.xs) { min-height: 28px; }
+@media (min-width: 821px) {
+  .linear-shell.shell-v2.nav-collapsed .page-sidebar { width: 64px; padding: 12px 6px; }
+  .linear-shell.shell-v2.nav-collapsed .app-main { padding-left: 64px; }
+  .linear-shell.shell-v2.nav-collapsed .sidebar-head { padding: 0 0 10px; }
+  .linear-shell.shell-v2.nav-collapsed .sidebar-head .brand-copy { display: none; }
+  .linear-shell.shell-v2.nav-collapsed .page-nav { padding: 0; }
+  .linear-shell.shell-v2.nav-collapsed .nav-section-pages { display: none; }
+  .linear-shell.shell-v2.knowledge-focus .app-main { padding-left: 0; }
+}
+@media (max-width: 820px) {
+  .linear-shell.shell-v2 .app-main { padding-left: 0; }
+  .linear-shell.shell-v2 .page-sidebar { width: min(286px, 88vw); }
+  .linear-shell.shell-v2 .topbar { height: 48px; min-height: 48px; padding: 0 10px; }
+  .linear-shell.shell-v2 .topbar-actions { gap: 5px; min-width: 0; }
+  .linear-shell.shell-v2 .command-trigger { width: 28px; height: 28px; padding: 6px; }
+  .linear-shell.shell-v2 .quick-add { width: 28px; padding: 6px; }
+  .linear-shell.shell-v2 .guidance-control { padding: 5px; gap: 3px; }
+  .linear-shell .page-content.ui-v2 { padding: 18px 14px 80px; }
+  .linear-shell.shell-v2 .process-bar { padding-inline: 14px; }
+  .linear-shell.shell-v2 .process-bar > label { flex: none; }
+  .linear-shell.shell-v2 .process-bar-label { display: none; }
+  .linear-shell.shell-v2 .process-bar .process-video { width: 150px; }
+  .linear-shell.shell-v2 .process-bar nav { max-width: none; }
+  .linear-shell.shell-v2 .guide-strip-next { margin-left: 0; }
+  .linear-shell.shell-v2 .guide-strip-close { margin-left: auto; }
+}
