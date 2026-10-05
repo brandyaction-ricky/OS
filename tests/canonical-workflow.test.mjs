@@ -4,6 +4,7 @@ import {createRequire} from "node:module";
 import {runInNewContext} from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import { kosisInputSchema } from "../lib/kosis.ts";
 import {canonicalExtractionPrompt,validateCanonicalRules} from "../lib/canonical-workflow.ts";
 
 const require=createRequire(import.meta.url);
@@ -140,7 +141,7 @@ test("queue pagination advances past stale jobs without mutating their status",a
   assert.equal(next.nextAfter,null);assert.match(cursorFilter,/created_at.gt/);assert.match(cursorFilter,/id.gt/);
 });
 test("MCP queue listing passes the validated continuation cursor",async()=>{
-  const {callMcpTool}=load("lib/server/mcp.ts");
+  const {callMcpTool}=load("lib/server/mcp.ts", { "../kosis.ts": { kosisInputSchema } });
   const id="00000000-0000-4000-8000-000000000030";
   const path=await callMcpTool({name:"list_canonical_rule_jobs",arguments:{after_run_id:id}},"unused",async value=>value);
   assert.equal(path,`/api/v1/knowledge/canonical/worker?after=${id}`);

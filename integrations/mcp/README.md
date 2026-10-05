@@ -20,6 +20,8 @@ OS 관리자 화면의 `설정 → 권한 → AI 접근 키`에서 다음 값을
 
 ## 제공 도구
 
+- `query_statistics`: KOSIS 통계 검색·분류/항목/단위 확인·실제 수치 조회. 서버의 `KOSIS_API_KEY`가 필요하며 결과는 자동 저장하지 않습니다. [연결·검수 기준](../../docs/KOSIS_INTEGRATION.md)을 확인하세요.
+
 - `search_knowledge`: 회사 정본 및 해당 키 소유자의 초안 검색
 - `get_document`: 문서 원문과 현재 버전 읽기
 - `create_document`: 항상 개인 초안으로 생성
