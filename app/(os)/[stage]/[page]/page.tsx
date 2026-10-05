@@ -63,11 +63,11 @@ export default async function GenericPage({ params }: GenericPageProps) {
   if (href === "/content/packages") return <ContentStepWorkspace step="packages" showJevAssist={contentJevAssistEnabled} />;
   if (href === "/content/shorts") return <ContentStepWorkspace step="shorts" />;
   if (href === "/content/youtube") return <ContentStepWorkspace step="youtube" />;
-  if (href === "/content/publishing") return <ContentStepWorkspace step="youtube" />;
+  if (href === "/content/publishing") return <ContentStepWorkspace step="youtube" youtubeView="publish" />;
   if (href === "/content/automation") redirect("/automation/review?tab=create");
   if (href === "/content/review") redirect("/automation/review?tab=review");
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
-  if (href === "/content/performance") return <ContentPerformanceWorkspace />;
+  if (href === "/content/performance") return <ContentPerformanceWorkspace youtubeOnly />;
   if (href === "/content/comments") return <ContentCommentsWorkspace />;
   if (href === "/automation/dashboard") return <ContentAutomationDashboard />;
   if (href === "/automation/review") return <ContentAutomationWorkspace initialView="review" automationHub />;

@@ -115,13 +115,12 @@ function InboxContent() {
             {reviewTab === "preview" ? <div className="review-content"><KnowledgeInlineProvider documentId={selected.id} revision={selected.current_version}><MarkdownView content={selected.content_md} onOpenLink={() => {}} /></KnowledgeInlineProvider><Link href={`/knowledge?document=${selected.id}`}>원문에서 읽기·편집</Link></div> : null}
             {reviewTab === "comments" ? <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} /> : null}
             <div className="review-note"><MessageSquareText size={16} /><input aria-label="검토 사유" maxLength={500} disabled={busy} value={note} onChange={(event) => setNote(event.target.value)} placeholder="승인 또는 보완 이유를 남겨주세요" /></div>
-            {approvalLoaded && !canApprove ? <p className="inline-alert">{approvalError ? "승인 규칙을 확인할 수 없어 승인 동작을 잠갔습니다. 연결 상태를 확인해 주세요." : selected.owner_id === profile?.id ? "작성자는 자신의 문서를 승인할 수 없습니다." : "지정된 승인자 또는 유효한 위임자만 승인할 수 있습니다."}</p> : null}
+            {approvalLoaded && !canApprove ? <p className="review-approval-hint">{approvalError ? "승인 규칙을 확인할 수 없어 승인 동작을 잠갔습니다. 연결 상태를 확인해 주세요." : selected.owner_id === profile?.id ? "작성자는 자신의 문서를 승인할 수 없습니다." : "지정된 승인자 또는 유효한 위임자만 승인할 수 있습니다."}</p> : null}
             <footer>
               {selected.status === "review" ? <><button className="secondary-button" disabled={busy} onClick={() => move("team")}><RotateCcw size={15} /> 보완 요청</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} onClick={() => move("reviewed")}><Check size={15} /> 검토 완료</button></> : <><button className="secondary-button" disabled={busy} onClick={() => move("review")}><RotateCcw size={15} /> 검토로 되돌리기</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} title="작성자가 아닌 지정 승인자 또는 위임자만 공개할 수 있습니다" onClick={() => move("canonical")}><Send size={15} /> 회사 정본으로 공개</button></>}
             </footer>
           </> : <div className="empty-state"><div><span><BookCheck /></span><h3>검토할 문서가 없습니다</h3><p>팀원이 검토를 요청하면 문서 내용과 이력을 확인할 수 있습니다.</p></div></div>}
         </article>
-        <aside className="panel review-checklist"><div className="panel-header"><h3>정본 확인 기준</h3></div><ul><li><span><Check size={12} /></span>실제 업무에서 검증된 내용인가</li><li><span><Check size={12} /></span>누가 보아도 같은 의미로 이해되는가</li><li><span><Check size={12} /></span>현재 정책과 충돌하지 않는가</li><li><span><Check size={12} /></span>근거와 원본을 추적할 수 있는가</li></ul><p>작성자와 최종 검토자를 분리하면 정본의 신뢰도가 높아집니다.</p></aside>
       </section>}
     </>
   );
