@@ -42,12 +42,14 @@
 - `npx supabase db advisors --linked`: 실행 성공. 신규 테이블의 RLS 누락 없음. 의도된 인증 사용자용 `SECURITY DEFINER` RPC 19건과 DEV 유출 비밀번호 보호 비활성 경고는 남아 있다.
 - `npm run env:check -- --mode development --file /private/tmp/brandyaction-os-dev-preview.env`: DEV 핵심 환경 통과
 - production build 대상 Playwright: 87/87 통과, 실제 연결 계정 로그인 1건은 로컬 모의 실행에서 제외
+- 배포된 Preview 대상 Playwright: 전용 DEV 계정 로그인·`/home` 진입 1/1 통과
+- Preview `/api/v1/health`: HTTP 200, DB·인증·계정 비밀번호·Agent MCP 준비 상태 확인
 - 로컬 브라우저 모의 QA: 자동화·콘텐츠·문서·팀·개발·설정 화면의 데스크톱/모바일·라이트/다크 회귀 통과
 - 브라우저 오류 오버레이·콘솔 오류·가로 넘침 없음
 
 ## 미검증·남은 관문
 
-- 새 Vercel Preview의 실제 DEV 로그인 및 데이터 읽기·쓰기 최종 확인
+- 승인 체크포인트 등 신규 기능의 실제 DEV 데이터 쓰기 시나리오
 - 실제 YouTube Analytics 권한 재동의 및 D1/D7/D28 수집
 - 실제 Meta 게시·답글·숨김, Instagram 중첩 답글/첫 댓글 계약
 - 일반 직원 계정의 실제 권한 QA
@@ -59,9 +61,12 @@
 - 브랜치: `codex/content-automation-os-20261004`
 - 기준 커밋: `b9331c6d23f6d580f1190efaaf8f424d8aba1b57`
 - 구현 커밋: `3028629897e8ddc4ae3014330fa62602c3c8d27b`
+- DEV 마이그레이션 기록 커밋: `437bf487846f746caff554e86ab33d6fd1647e48`
 - PR: https://github.com/brandyaction-ricky/OS/pull/140
 - 기준 PR: #139 위 stacked PR
-- 실제 배포 상태: 이 기록 갱신 커밋을 푸시해 새 Vercel DEV Preview를 생성하고 연결 QA할 예정. 운영 배포 없음.
+- DEV Preview: https://brandyaction-evptmkyap-brandyaction-os.vercel.app/ (`437bf48`, READY)
+- 브랜치 고정 주소: https://brandyaction-os-git-codex-content-automa-4fad07-brandyaction-os.vercel.app/
+- GitHub PR #140: 충돌 없음, 3개 체크 모두 통과. 운영 병합·배포 없음.
 - 되돌리기: PR의 구현·기록 커밋을 되돌리고 신규 환경 스위치를 꺼진 기본값으로 유지한다.
 
 ## OS 동기화
