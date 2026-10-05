@@ -27,6 +27,7 @@
 - 마이그레이션은 추가형이며 `drop`, `delete`, `truncate`, 기존 데이터 갱신이 없다.
 - 2026-10-05 사용자 DEV 승인에 따라 원격 이력을 먼저 병합한 임시 작업 디렉터리에서 dry-run한 뒤, 이 브랜치 스택의 미적용 마이그레이션 11개를 `brandyaction-os-dev`에만 적용했다. 운영 DB는 변경하지 않았다.
 - DEV 원격 마이그레이션 이력은 총 38개이며, 현재 저장소의 활성 마이그레이션 30개가 모두 포함된다. 이 브랜치의 적용 사실은 `supabase/migration-baseline.json`에 기록했다.
+- DEV의 기존 프로필·운영기록·문서·OS 프로젝트는 유지하고, 개발 로그 API가 요구하지만 누락돼 있던 단일 `brandyaction` 조직 기본 행만 DEV에 추가했다. 운영 데이터 복사나 운영 조직 변경은 하지 않았다.
 - 기본값은 `META_MODE=mock`, `PUBLICATION_APPROVAL_CHECKPOINTS_ENABLED=false`, `META_LIVE_PUBLISH_ENABLED=false`, `CHANNEL_SYNC_ENABLED=false`, 자동 수집 꺼짐이다.
 - Vercel Preview의 이 브랜치에만 DEV Supabase 핵심 연결값과 위 안전 스위치를 설정했다. 실제 OS 운영 데이터와 외부 서비스 데이터는 변경하지 않았다.
 - 자동화 설정의 내부 요청 기준을 새 외부 전송 경로에 연결하지 않았다. API 직접 생성의 기존 전송 계약도 넓히지 않았다.
@@ -71,4 +72,4 @@
 
 ## OS 동기화
 
-로컬 환경 이전 기간의 운영 쓰기 금지 규칙에 따라 회사 OS 개발 관리에는 자동 기록하지 않았다. 이 파일을 로컬 완료 정본으로 보존하며 OS 동기화는 대기 상태다.
+DEV OS의 기존 `브랜디 OS` 프로젝트에 개발 로그(`dev_deployed`)와 배포 이력(`ready`)을 저장하고 같은 커밋·프로젝트·상태를 다시 읽어 검증했다. 운영 OS에는 쓰지 않았으며 운영 동기화는 별도 승인 전까지 대기 상태다.
