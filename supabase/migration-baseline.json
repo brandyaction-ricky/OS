@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "observedAt": "2026-09-22",
+  "observedAt": "2026-10-05",
   "status": "ready",
   "decision": "apply",
   "approval": {
@@ -214,7 +214,12 @@
     {
       "file": "20260922003000_telegram_team_workflow.sql",
       "sha256": "85f562a43cad146b780706c70092fe2e0269cb51b090e9b5e03a116d3705368a",
-      "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests"
+      "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20260922063605_knowledge_review_return.sql",
@@ -290,31 +295,47 @@
       "file": "20261002152810_connection_check_evidence.sql",
       "sha256": "0741f720a20adc91009d946ecb737165c051dd4ee6cbd91f1bd0233842548cde",
       "requiresApproval": true,
-      "description": "Add server-only connection probe history and versioned owners; not applied."
+      "description": "Add server-only connection probe history and versioned owners.",
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261002193500_agent_document_write_status_policy.sql",
       "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261002202443_personal_work_notifications.sql",
       "sha256": "812eb802241dd7743e097ff7ed329db34fedd8187d52b9263b9d671beb7123dc",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003044602_final_os_channel_connections.sql",
       "sha256": "104c11c2835b0af9fcbe7275c4a6b0c4dd6d25eea201d7b4e56140d5b2ff7eb1",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003054936_channel_publication_guards_and_comments.sql",
       "sha256": "f375cc4bcc135e13978677c939f90fa7272daf53c3d06a5ce1c1d1000e9632a2",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003122206_knowledge_page_tree.sql",
@@ -351,28 +372,40 @@
       "sha256": "44b5840481f3af10456e0e31f0101613a54ce81cd6c76e55a391354345648832",
       "purpose": "add append-only per-candidate appeal discussion without modifying prior decisions",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003174000_shared_agent_accounts.sql",
       "sha256": "a51ac7d2567ab6c4e2217661e8b4624b280029fc81f1a312ae5ffbffb3002dcd",
       "purpose": "mark shared OS accounts and audit changes or shared-key issuance without revoking existing keys",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003183000_document_steward.sql",
       "sha256": "1bb24006bf58b493f797d977edb1a4880eba68807fedabcc29349a5d081da5f8",
       "purpose": "assign an optional document steward with version and administrator checks while preserving existing documents",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261003190000_audit_version_time_index.sql",
       "sha256": "6dd5757d9c0c143208278c660ab9b8b584b62d72eb9561d220d05b907c8ba12b",
       "purpose": "index document versions for bounded audit history date and cursor queries",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     },
     {
       "file": "20261004040710_canonical_source_workflow.sql",
@@ -389,7 +422,10 @@
       "sha256": "308ba5bcedc0d123206177fb7579830d21578e35e05cf090402268633e79f4d2",
       "purpose": "add a service-only, signature-bound approval checkpoint required before live Meta publication without changing existing records",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-05",
+      "appliedEnvironments": [
+        "development"
+      ]
     }
   ],
   "legacyMigrations": [
