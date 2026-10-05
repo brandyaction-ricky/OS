@@ -18,7 +18,7 @@ test("all 36 original routes select the final menu or explain their retirement",
   expect(retained.length + merged.length + Object.keys(RETIRED_ROUTES).length).toBe(36);
   for (const entry of [...retained.map(entry => ({ ...entry, nav: entry.href })), ...merged]) {
     await page.goto(entry.href);
-    await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.label);
+    await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
     await expect(page.locator(`.page-link[href="${entry.nav}"]`)).toHaveAttribute("aria-current", "page");
   }
   for (const [href, label] of Object.entries(RETIRED_ROUTES)) {
@@ -39,7 +39,7 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
     for (const [index, entry] of pages.entries()) {
       if (width === 390 && !mobile.has(entry.href)) continue;
       await page.goto(entry.href);
-      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.label);
+      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".profile-trigger")).toBeAttached();
       if (entry.href.startsWith("/content/") && entry.href !== "/content/comments") await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
@@ -53,7 +53,9 @@ test("mock metrics preserve missing snapshots and show measured sample bounds", 
   await page.goto("/content/performance");
   const panel = page.getByRole("region", { name: "게시 후 경과일 비교" });
   await panel.getByRole("button", { name: "모의 성과 불러오기" }).click();
-  await expect(panel.getByText("차이 없음 · 관찰 범위 겹침", { exact: false })).toBeVisible();
+  await expect(panel.getByText("모의 수치 · 실제 API 호출 없음", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "인스타" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Threads" })).toHaveCount(0);
   await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(13);
   await panel.getByRole("combobox",{name:/^경과일/}).selectOption("d1");
   await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(1);

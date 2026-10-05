@@ -12,8 +12,8 @@ test("content stages retain existing controls and publishing links retain routes
   await page.getByRole("navigation",{name:"원고 공정 산출물"}).getByRole("button",{name:/^초안/}).click();
   await expect(page.getByRole("navigation",{name:"원고 공정 산출물"}).getByRole("button",{name:/^초안/})).toHaveAttribute("aria-pressed","true");
   await page.goto("/content/publishing");
-  await page.locator(".publishing-workspace-tabs").getByRole("link",{name:/캘린더/}).click();
-  await expect(page).toHaveURL(/\/content\/calendar/);
+  await expect(page.getByRole("heading",{name:"발행·업로드",level:1})).toBeVisible();
+  await expect(page.locator(".publishing-workspace-tabs")).toHaveCount(0);
 });
 test("comments show real scoped counts and require selection before composing",async({page})=>{
   await page.goto("/content/comments");

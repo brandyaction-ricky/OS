@@ -4,7 +4,7 @@ test("retired UI routes go home without changing underlying APIs", async ({ page
   for (const [old, label] of Object.entries(RETIRED_ROUTES)) {
     await page.goto(old);
     await expect(page).toHaveURL(url => url.pathname === "/home" && url.searchParams.get("moved") === label);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("내 할 일");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/확인할 일 \d+건/);
   }
 });
 test("one selected video remains across the seven process screens and reload", async ({ page }) => {
