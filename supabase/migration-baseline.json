@@ -217,8 +217,10 @@
       "purpose": "add Telegram follow-up receipts, confirmed OS actions, answer feedback, member links, and opt-in change-only team digests",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-09-22",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -297,8 +299,10 @@
       "requiresApproval": true,
       "description": "Add server-only connection probe history and versioned owners.",
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -306,8 +310,10 @@
       "sha256": "087361a07e94bb354752b60b291469de82c833da357061d62e4cf9b8aa490ee3",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -315,8 +321,10 @@
       "sha256": "812eb802241dd7743e097ff7ed329db34fedd8187d52b9263b9d671beb7123dc",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -324,8 +332,10 @@
       "sha256": "104c11c2835b0af9fcbe7275c4a6b0c4dd6d25eea201d7b4e56140d5b2ff7eb1",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -333,8 +343,10 @@
       "sha256": "f375cc4bcc135e13978677c939f90fa7272daf53c3d06a5ce1c1d1000e9632a2",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -343,8 +355,10 @@
       "purpose": "add ID-based knowledge page hierarchy and enforce folder, visibility, cycle, and archive invariants without changing existing Markdown documents",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-04",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -353,8 +367,10 @@
       "purpose": "add explicit approver and dated delegation assignments, deny self-approval, guard appeal decisions, and retain prior document transitions",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-04",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -363,8 +379,10 @@
       "purpose": "add reviewed canonical change proposals and line comments without replacing existing Markdown or versions",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-04",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -373,8 +391,10 @@
       "purpose": "add append-only per-candidate appeal discussion without modifying prior decisions",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -383,8 +403,10 @@
       "purpose": "mark shared OS accounts and audit changes or shared-key issuance without revoking existing keys",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -393,8 +415,10 @@
       "purpose": "assign an optional document steward with version and administrator checks while preserving existing documents",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -403,8 +427,10 @@
       "purpose": "index document versions for bounded audit history date and cursor queries",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -413,8 +439,10 @@
       "purpose": "service-only canonical source synchronization proposals and grounded rule extraction receipts; no automatic canonical promotion",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-04",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     },
     {
@@ -423,8 +451,10 @@
       "purpose": "add a service-only, signature-bound approval checkpoint required before live Meta publication without changing existing records",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-05",
+      "productionApprovedAt": "2026-10-05",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ]
     }
   ],
