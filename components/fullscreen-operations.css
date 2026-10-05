@@ -13,7 +13,28 @@
 .linear-shell .ui-v2 .fullscreen-home-summary strong { font-size: 24px; }
 .linear-shell .ui-v2 .fullscreen-home-summary small { font-size: 11px; color: var(--muted); }
 .linear-shell .ui-v2 .fullscreen-home-layout { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(0,1fr); gap: 12px; align-items: start; }
+.linear-shell .ui-v2 .personal-home-header { margin-bottom: 18px; }
+.linear-shell .ui-v2 .personal-home-header h1 { margin: 0; font-size: clamp(22px,2vw,28px); }
+.linear-shell .ui-v2 .personal-home-header p { margin: 5px 0 0; }
 .linear-shell .ui-v2 :is(.fullscreen-home-main,.fullscreen-home-side) { display: flex; flex-direction: column; min-width: 0; gap: 12px; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-operations { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-operations .panel-header { padding: 0 0 10px; border: 0; background: transparent; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-cards { grid-template-columns: repeat(4,minmax(0,1fr)); margin: 0; gap: 8px; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-cards a { min-width: 0; padding: 14px; gap: 5px; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-cards strong { font-size: 26px; line-height: 1.1; }
+.linear-shell .ui-v2 .fullscreen-home-main .today-content-cards :is(span,small) { font-size: 11.5px; line-height: 1.35; }
+.linear-shell .ui-v2 .fullscreen-home-side .workspace-tabs { justify-content: flex-end; gap: 3px; margin: 0; }
+.linear-shell .ui-v2 .fullscreen-home-side .workspace-tabs > button { white-space: nowrap; }
+.linear-shell .ui-v2 .fullscreen-home-side > .panel { min-width: 0; padding: 14px 16px; }
+.linear-shell .ui-v2 .fullscreen-home-side > .panel h2 { margin: 0 0 9px; font-size: 14px; }
+.linear-shell .ui-v2 .fullscreen-home-side > .panel h2 small { font-weight: 400; color: var(--muted); }
+.linear-shell .ui-v2 .fullscreen-home-side > .panel p { margin: 0; color: var(--muted); font-size: 12px; }
+.linear-shell .ui-v2 .fullscreen-home-side :is(.home-next-work,.home-week-issues,.home-recent-documents) { display: grid; gap: 8px; }
+.linear-shell .ui-v2 .home-next-work > a { display: grid; gap: 5px; color: var(--text); }
+.linear-shell .ui-v2 .home-next-work > a small { color: var(--muted); }
+.linear-shell .ui-v2 .home-next-work > a span,.linear-shell .ui-v2 .home-more-link { color: var(--accent-2); font-size: 12px; }
+.linear-shell .ui-v2 :is(.home-week-issues,.home-recent-documents) > a:not(.home-more-link) { padding: 7px 0; border-top: 1px solid var(--line-soft); color: var(--text); font-size: 12px; }
+.linear-shell .ui-v2 .home-recent-documents > a small { display: block; color: var(--muted); margin-top: 3px; }
 .linear-shell .ui-v2 .personal-work-list > header { padding: 10px 12px; }
 .linear-shell .ui-v2 .personal-work-list > a { grid-template-columns: minmax(0,1fr) 60px 76px 14px; padding: 10px 12px; gap: 8px; }
 .linear-shell .ui-v2 .personal-work-list > a strong { font-size: 13px; }
@@ -126,10 +147,27 @@
 .linear-shell .ui-v2 .system-status-details[open] > summary { border-bottom: 1px solid var(--line-soft); }
 .linear-shell .ui-v2 .system-status-details-body { padding: 12px 14px 14px; }
 .linear-shell .ui-v2 .company-settings-stack { display: grid; gap: 12px; }
+.linear-shell .ui-v2.screen-company .company-settings-stack > .panel { padding: 18px 20px; }
+.linear-shell .ui-v2.screen-company .company-settings-stack > .panel :is(h2,p) { margin-top: 0; }
+.linear-shell .ui-v2.screen-company .company-settings-stack > .panel > * + * { margin-top: 12px; }
+.linear-shell .ui-v2.screen-company .company-settings-stack > .studio-two { align-items: start; }
+.linear-shell .ui-v2.screen-company .company-settings-stack .company-block { padding: 0; overflow: hidden; }
+.linear-shell .ui-v2.screen-company .company-settings-stack .company-block > .panel-header { padding: 12px 16px; background: var(--panel-2); }
+.linear-shell .ui-v2.screen-company .company-settings-stack .company-block > .company-list-row { padding: 12px 16px; }
+.linear-shell .ui-v2.screen-company .company-settings-stack .company-block > :not(.panel-header):not(.company-list-row) { margin: 14px 16px; }
 .linear-shell .ui-v2 .company-settings-stack > * { min-width: 0; margin: 0; }
 .linear-shell .ui-v2 .company-settings-grid { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); gap: 12px; align-items: start; }
 .linear-shell .ui-v2 .company-settings-grid > * { min-width: 0; margin: 0; }
 .linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) { padding: 0 0 14px; overflow: hidden; }
+.linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) { padding: 0 0 16px; }
+.linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > :not(h2) { margin-inline: 18px; }
+.linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > h2 { padding: 12px 18px; }
+.linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > p { line-height: 1.6; }
+.linear-shell .ui-v2.screen-schedule > .studio-tabs { margin: 0 0 20px; padding: 5px; width: fit-content; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2); }
+.linear-shell .ui-v2.screen-schedule > .studio-tabs > a { padding: 9px 16px; border-radius: 6px; }
+.linear-shell .ui-v2.screen-schedule > .studio-tabs > a[aria-current="page"] { border: 0; background: var(--card); box-shadow: inset 0 0 0 1px var(--accent); }
+.linear-shell .ui-v2.screen-schedule .workspace-section > .page-header { margin: 0 0 22px; }
+.linear-shell .ui-v2.screen-schedule .workspace-section > .page-header .page-title-group { padding-bottom: 8px; }
 .linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) > :not(.panel-header) { margin-inline: 14px; }
 .linear-shell .ui-v2 .company-settings-stack .generation-settings { align-content: start; }
 .linear-shell .ui-v2 .company-settings-stack .generation-settings h2,
@@ -168,6 +206,7 @@
 }
 @media(max-width:820px) {
  .linear-shell .ui-v2 :is(.fullscreen-home-layout,.members-layout,.leave-layout,.dev-inbox-layout.has-detail,.account-channel-grid) { grid-template-columns: minmax(0,1fr); }
+ .linear-shell .ui-v2 .fullscreen-home-main .today-content-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .linear-shell .ui-v2 .fullscreen-home-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .linear-shell .ui-v2 :is(.week-board,.task-board,.service-grid) { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .linear-shell .ui-v2 .personal-work-list > a { grid-template-columns: minmax(0,1fr) auto; }
@@ -184,5 +223,8 @@
  .linear-shell .ui-v2 .company-settings-admin-links > header > button { width: 100%; justify-content: center; }
 }
 @media(max-width:520px) {
+ .linear-shell .ui-v2 .fullscreen-home-main .today-content-cards { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .linear-shell .ui-v2 .fullscreen-home-side .workspace-tabs { justify-content: flex-start; }
+ .linear-shell .ui-v2 .personal-work-list > a { gap: 5px; }
  .linear-shell .ui-v2 :is(.meeting-grid,.roster-grid,.ai-system-grid,.task-board,.week-board,.service-grid) { grid-template-columns: minmax(0,1fr); }
 }

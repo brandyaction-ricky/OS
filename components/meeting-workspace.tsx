@@ -92,6 +92,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   const [notice, setNotice] = useState("");
   const [comparison, setComparison] = useState<OsRecord | null>(null);
   const savingRef = useRef(false);
+  const reviewDetailsRef = useRef<HTMLDetailsElement>(null);
   const [meetings, setMeetings] = useState<OsRecord[]>([]);
   const [decisions, setDecisions] = useState<OsRecord[]>([]);
   const [tasks, setTasks] = useState<OsRecord[]>([]);
@@ -245,6 +246,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
       setSummaryMode(result.mode);
       setStructured(result);
       setReviewItems(makeMeetingReview(result,members,undefined,meetingTerms));
+      if (result.decisions.length || result.pending.length || result.todos.length) reviewDetailsRef.current?.setAttribute("open", "");
     } catch (reason) {
       setError(
         reason instanceof Error
@@ -697,12 +699,11 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 <X size={18} />
               </button>
             </div>
-            <p className="field-hint">회의 기록 순서 · 아래로 내려가며 작성하세요.</p>
-            <nav className="meeting-phase-progress" aria-label="회의 기록 순서">{[["meeting-prepare","1. 준비"],["meeting-transcript","2. 진행·전사"],["meeting-actions","3. 검수·확정"]].map(([id,label])=><button type="button" key={id} onClick={()=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"})}>{label}</button>)}</nav>
+            <p className="field-hint">회의명과 요약만으로 먼저 기록할 수 있습니다. 녹음·참석자·후속 업무는 필요한 경우 펼쳐 입력하세요.</p>
             {error&&<p role="alert" className="inline-alert danger">{error}</p>}
             {similar.length>0&&<section className="meeting-duplicates"><p>같은 날 비슷한 회의가 있습니다. 원문을 비교하고 같은 회의라면 기존 회의에 이어서 기록하세요.</p>{similar.map(meeting=><button type="button" key={meeting.id} onClick={()=>setComparison(meeting)}>비교 · {meeting.title}</button>)}</section>}
             {comparison&&<section className="meeting-comparison"><h3>회의 비교</h3><strong>현재 작성</strong><p>{transcript||"원문 없음"}</p><strong>{comparison.title}</strong><p>{String(comparison.metadata.transcript||comparison.description||"원문 없음")}</p>{!editing&&<button type="button" onClick={()=>{const draft=transcript, draftSummary=summary, draftItems=reviewItems;openEdit(comparison);setTranscript([String(comparison.metadata.transcript||""),draft].filter(Boolean).join("\n\n"));setSummary([String(comparison.metadata.summary||""),draftSummary].filter(Boolean).join("\n"));setReviewItems(previous=>[...previous,...draftItems]);setNotice("기존 회의에 새 원문을 이어 붙였습니다. 검수 후 저장하면 반영됩니다.");}}>기존 회의에 이어쓰기</button>}<button type="button" onClick={()=>setComparison(null)}>비교 닫기</button></section>}
-            <label id="meeting-prepare">
+            <label>
               <span>회의명</span>
               <input
                 name="title"
@@ -714,7 +715,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                   titleEditedRef.current = true;
                 }}
               />
-              <small className="field-hint">브랜드를 입력하면 자동으로 채워집니다 · 직접 수정해도 됩니다.</small>
+              <small className="field-hint">회의 이름을 입력하세요. 브랜드와 원문은 아래 상세 정보에서 추가할 수 있습니다.</small>
             </label>
             <div className="form-grid">
               <label>
@@ -738,6 +739,8 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 </select>
               </label>
             </div>
+            <details className="meeting-optional-section">
+              <summary>상세 정보 · 녹음 · 원문 입력</summary>
             <div className="form-grid">
               <label>
                 <span>브랜드</span>
@@ -761,7 +764,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 />
               </label>
             </div>
-            <label id="meeting-transcript">
+            <label>
               <span>참석자</span>
               <input
                 name="participants"
@@ -845,7 +848,8 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
               <Bot size={15} /> {busy ? "분석 중…" : "결정·미해결·업무 추출"}
             </button>
             {transcript.trim().length < 20 ? <small className="field-hint">회의 원문을 20자 이상 입력하면 결정·미해결·업무 추출을 사용할 수 있습니다.</small> : null}
-            <label id="meeting-actions">
+            </details>
+            <label>
               <span>
                 회의 요약{" "}
                 {summaryMode
@@ -859,6 +863,8 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 placeholder="핵심 회의 요약"
               />
             </label>
+            <details ref={reviewDetailsRef} className="meeting-optional-section">
+              <summary>결정·후속 업무 검수 {reviewItems.length ? `· ${reviewItems.length}건` : ""}</summary>
             <MeetingReviewEditor items={reviewItems} members={members} terms={meetingTerms} onChange={setReviewItems} disabled={busy}/>
             {reviewErrors.length>0&&<p className="field-hint" role="status">{reviewErrors[0]}</p>}
             {linkedDocuments ? (
@@ -889,6 +895,8 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
               </label>
             </div>
             <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members,undefined,meetingTerms)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검수에 추가</button>
+            </details>
+            {reviewErrors.length>0&&<p className="field-hint" role="status">후속 업무를 확인해 주세요: {reviewErrors[0]}</p>}
             <div className="drawer-actions">
               <button
                 type="button"
