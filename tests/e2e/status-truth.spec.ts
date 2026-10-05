@@ -20,7 +20,7 @@ test("unified status keeps old URLs and explains unverified demo evidence", asyn
 test("retired finance views do not display placeholder revenue on home", async ({ page }) => {
   for (const route of ["/home?view=management", "/performance/revenue", "/performance/ads"]) {
     await page.goto(route);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("내 할 일");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/확인할 일 \d+건/);
     await expect(page.locator(".revenue-band")).toHaveCount(0);
     await expect(page.getByRole("region", { name: "오늘 콘텐츠 운영" })).toBeVisible();
   }

@@ -10,13 +10,18 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   if (record.metadata.kind === "meta_tester_request") return `/settings/account?tester=${id}`;
   if (record.metadata.kind === "channel_expiry") return "/settings/account";
   if (record.metadata.kind === "agent_key_reissue_request") return "/settings/access";
-  if (record.record_type === "content_publish") return `/content/publishing?tab=review&publication=${id}`;
+  if (record.record_type === "content_publish") return `/automation/review?tab=review&publication=${id}`;
   if (record.record_type === "task") return `/organization/tasks?task=${id}`;
   if (record.record_type === "meeting") return `/organization/meetings?meeting=${id}`;
   if (record.record_type === "decision") return `/organization/meetings?tab=decisions&record=${id}`;
   if (record.record_type === "leave_request") return "/organization/leave";
   if (record.record_type === "content_package" && record.metadata.packageKind === "appeal_candidates") return "/content/topics?tab=niches";
-  if (record.record_type.startsWith("content_")) return `/content/publishing?sourceId=${encodeURIComponent(String(record.metadata.sourceId || record.id))}`;
+  if (record.record_type === "content_package" && record.metadata.packageKind === "youtube_kit") return `/content/publishing?sourceId=${encodeURIComponent(String(record.metadata.sourceId || record.metadata.contentId || record.id))}`;
+  if (record.record_type.startsWith("content_")) {
+    const sourceId = encodeURIComponent(String(record.metadata.sourceId || record.metadata.contentId || record.id));
+    const route = ({ content_topic: "/content/topics", content_script: "/content/scripts", content_package: "/content/packages", content_short: "/content/shorts", content_kit: "/content/publishing" } as Record<string, string>)[record.record_type] ?? "/automation/review";
+    return `${route}?sourceId=${sourceId}`;
+  }
   return `/organization/agents?job=${id}`;
 }
 const closed = new Set(["done", "completed", "cancelled", "published", "rejected"]);

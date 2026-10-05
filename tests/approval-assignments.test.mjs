@@ -5,7 +5,7 @@ import { changesAppealDecision, isAppealCandidatePackage } from "../lib/appeal-d
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("approval migration is additive, self-approval-safe, and recorded as DEV-only", async () => {
+test("approval migration is additive, self-approval-safe, and approval history is recorded", async () => {
   const [sql, manifest, devTest] = await Promise.all([
     read("supabase/migrations/20261003143000_document_approval_assignments.sql"),
     read("supabase/migration-baseline.json").then(JSON.parse),
@@ -23,7 +23,8 @@ test("approval migration is additive, self-approval-safe, and recorded as DEV-on
   const entry = manifest.forwardMigrations.find((item) => item.file === "20261003143000_document_approval_assignments.sql");
   assert.equal(entry?.requiresApproval, true);
   assert.equal(entry?.developmentApprovedAt, "2026-10-04");
-  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
+  assert.equal(entry?.productionApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development", "production"]);
 });
 
 test("generic record writes cannot replace candidate decisions or their history", () => {

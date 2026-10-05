@@ -29,8 +29,8 @@ test("project summary shows status labels beside counts",async({page})=>{
   const received=overview.getByRole("button",{name:"접수 0건 보기",exact:true}).first();
   await expect(received.getByText("접수",{exact:true})).toBeVisible();
   await received.click();
-  await expect(page.locator(".dev-inbox")).toBeVisible();
-  await expect(page.getByRole("button",{name:/^접수 0$/})).toHaveClass(/active/);
+  await expect(page.getByRole("button",{name:/^접수\s*0$/})).toHaveClass(/active/);
+  await expect(page.locator(".dev-inbox")).toHaveCount(0);
 });
 for(const width of [1280,390])for(const theme of ["light","dark"])test(`operations screens ${width}px ${theme}`,async({page},testInfo)=>{
   test.setTimeout(90000);

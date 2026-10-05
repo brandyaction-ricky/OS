@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
 import * as crypto from "node:crypto";
 import ts from "typescript";
-import { CHANNEL_METRICS,YOUTUBE_ANALYTICS_METRICS,dueMetricSnapshot,parseChannelMetrics,parseYoutubeAnalytics,sampleSummary,compareMetricSamples,metricSamples,measuredValue } from "../lib/channel-metrics.ts";
+import { CHANNEL_METRICS,YOUTUBE_ANALYTICS_METRICS,dueMetricSnapshot,parseChannelMetrics,parseYoutubeAnalytics,sampleSummary,compareMetricSamples,metricSamples,measuredValue,isYoutubeMetricPlatform } from "../lib/channel-metrics.ts";
 const read=path=>readFile(new URL(`../${path}`,import.meta.url),"utf8");
 test("cohort samples keep real zero, deduplicate publications and omit missing, manual or out-of-range measurements",()=>{
   const row=(id,value,extra={})=>({id,title:id,status:"active",metadata:{source:"api",metric:"views",platform:"threads",snapshot:"d7",publishId:id,publishedAt:"2026-10-01T00:00:00Z",measuredAt:"2026-10-08T00:00:00Z",value,...extra}});
@@ -29,6 +29,10 @@ test("YouTube Analytics parser follows column headers and keeps real zero",()=>{
   assert.deepEqual(result,{views:120,likes:0,subscribersGained:4});
   assert.equal(YOUTUBE_ANALYTICS_METRICS.includes("estimatedMinutesWatched"),true);
   assert.deepEqual(parseYoutubeAnalytics([],[]),{});
+});
+test("YouTube performance view accepts long-form and Shorts, not Instagram or Threads",()=>{
+  for(const value of ["yt_long","yt_shorts","YouTube","YouTube Shorts"])assert.equal(isYoutubeMetricPlatform(value),true);
+  for(const value of ["instagram","threads","Instagram","Threads",null])assert.equal(isYoutubeMetricPlatform(value),false);
 });
 test("summary uses median/range/n and holds small or overlapping samples",()=>{
   assert.deepEqual(sampleSummary([5,1,9,3]),{n:4,median:4,min:1,max:9});

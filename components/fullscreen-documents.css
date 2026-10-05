@@ -31,15 +31,12 @@
 .linear-shell .ui-v2.screen-search .search-result-card > header { padding: 10px 12px; }
 .linear-shell .ui-v2.screen-search .result-passages { padding: 0 12px; }
 .linear-shell .ui-v2.screen-search .search-side { position: sticky; top: 12px; }
-.linear-shell .ui-v2 .review-layout { grid-template-columns: 260px minmax(0,1fr) 240px; gap: 12px; }
+.linear-shell .ui-v2 .review-layout { grid-template-columns: 260px minmax(0,1fr); gap: 12px; }
 .linear-shell .ui-v2 .review-layout > * { min-width: 0; }
 .linear-shell .ui-v2 .review-layout .panel-header { padding: 10px 12px; }
 .linear-shell .ui-v2 .review-document > header { padding: 12px 14px; }
 .linear-shell .ui-v2 .review-document > header h2 { font-size: 18px; }
 .linear-shell .ui-v2 .review-queue > button { padding: 10px 12px; }
-.linear-shell .ui-v2 .review-checklist { display: block; padding: 0; }
-.linear-shell .ui-v2 .review-checklist ul { padding: 12px 14px; font-size: 12px; }
-.linear-shell .ui-v2 .review-checklist > p { padding: 0 14px 12px; }
 .linear-shell .ui-v2 .review-document footer { flex-wrap: wrap; padding: 12px 14px; }
 .linear-shell .ui-v2 .review-content { padding: 12px 14px; }
 .linear-shell .ui-v2 .fullscreen-canon-caption { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
@@ -61,7 +58,6 @@
 .linear-shell .ui-v2 .fullscreen-canon-detail .skills-grid { grid-template-columns: minmax(0,1fr); }
 @media(max-width:1100px) {
  .linear-shell .ui-v2 .review-layout { grid-template-columns: 240px minmax(0,1fr); }
- .linear-shell .ui-v2 .review-checklist { grid-column: 1/-1; }
 }
 @media(max-width:900px) {
  .linear-shell .ui-v2 .knowledge-workspace { height: auto; min-height: 560px; }

@@ -1,6 +1,9 @@
 export const CHANNEL_METRICS={instagram:["views","reach","likes","comments","saved","shares","total_interactions"],threads:["views","likes","replies","reposts","quotes","shares"]} as const;
 export const YOUTUBE_ANALYTICS_METRICS=["views","likes","comments","shares","estimatedMinutesWatched","averageViewDuration","subscribersGained","subscribersLost"] as const;
 export const METRIC_LABELS:Record<string,string>={views:"조회",reach:"도달",likes:"좋아요",comments:"댓글",saved:"저장",shares:"공유",total_interactions:"총 반응",replies:"답글",reposts:"리포스트",quotes:"인용",estimatedMinutesWatched:"시청 시간(분)",averageViewDuration:"평균 시청 시간(초)",subscribersGained:"구독자 증가",subscribersLost:"구독자 감소"};
+export function isYoutubeMetricPlatform(value: unknown) {
+  return ["yt_long", "yt_shorts", "YouTube", "YouTube Shorts", "youtube", "shorts"].includes(String(value ?? ""));
+}
 export type Snapshot="d1"|"d7"|"d28";
 type MetricRecord = { id: string; status: string; title: string; metadata: Record<string, unknown> };
 export function measuredValue(value: unknown): number | null {

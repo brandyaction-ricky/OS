@@ -19,7 +19,6 @@ export function KnowledgeProposalReview() {
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(requestedId);
   const [comments, setComments] = useState<DocumentProposalComment[]>([]);
-  const [incomingLinks, setIncomingLinks] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("changes");
   const [context, setContext] = useState(false);
   const [lineNo, setLineNo] = useState<number | null>(null);
@@ -60,7 +59,6 @@ export function KnowledgeProposalReview() {
       if (!active) return;
       setCanApprove(permission.canApprove && selected.author_id !== profile?.id);
       setComments(detail.comments);
-      setIncomingLinks(detail.incomingLinks ?? null);
     }).catch((reason) => { if (active) { setCanApprove(false); setError(reason instanceof Error ? reason.message : "제안을 확인하지 못했습니다."); } });
     return () => { active = false; };
   }, [selected, document, accessToken, demo, profile?.id]);
@@ -109,10 +107,9 @@ export function KnowledgeProposalReview() {
         {tab === "preview" ? <div className="review-content"><KnowledgeInlineProvider documentId={document.id} revision={selected.base_version}><MarkdownView content={selected.content_md} onOpenLink={() => {}} /></KnowledgeInlineProvider></div> : null}
         {tab === "comments" ? <div className="knowledge-proposal-comments"><label>줄 번호 <input type="number" min={1} max={selected.content_md.split("\n").length} value={lineNo ?? ""} onChange={(event) => setLineNo(Number(event.target.value) || null)} /></label><textarea aria-label="줄 댓글" placeholder="이 줄에서 확인할 내용을 적어주세요" value={comment} onChange={(event) => setComment(event.target.value)} /><button type="button" className="secondary-button" disabled={busy || !lineNo || !comment.trim()} onClick={() => void addComment()}>댓글 저장</button>{comments.map((item) => <p key={item.id}><strong>{item.line_no}줄</strong> · {item.body}</p>)}</div> : null}
         <div className="review-note"><input aria-label="승인 또는 보완 이유" placeholder="승인 또는 보완 이유" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} /></div>
-        {!canApprove ? <p className="inline-alert">작성자는 자신의 제안을 승인할 수 없습니다. 지정 승인자 또는 위임자에게 검토를 요청해 주세요.</p> : null}
+        {!canApprove ? <p className="review-approval-hint">작성자는 자신의 제안을 승인할 수 없습니다. 지정 승인자 또는 위임자에게 검토를 요청해 주세요.</p> : null}
         <footer><button type="button" className="secondary-button" disabled={busy || selected.author_id !== profile?.id} onClick={() => void decide("withdraw")}>제안 철회</button><button type="button" className="secondary-button" disabled={busy || !canApprove} onClick={() => void decide("return")}>보완 요청</button><button type="button" className="primary-button" disabled={busy || !canApprove || document.current_version !== selected.base_version} onClick={() => void decide("approve")}>승인하고 반영</button></footer>
       </> : <div className="empty-state"><div><h3>변경 제안을 선택해 주세요</h3><p>새 제안이 들어오면 현재 정본과 비교해 승인할 수 있습니다.</p></div></div>}
     </article>
-    <aside className="panel review-checklist"><div className="panel-header"><h3>정본 확인 기준</h3></div><ul><li>실제 업무에서 검증된 내용인가</li><li>의미가 분명한가</li><li>현재 정책과 충돌하지 않는가</li><li>근거와 원본을 추적할 수 있는가</li></ul><p>이 정본을 링크한 문서: {incomingLinks === null ? "확인 중" : `${incomingLinks}개`}</p><p>제안 승인 후 새 버전·검색 색인이 생성됩니다.</p></aside>
   </section>;
 }
