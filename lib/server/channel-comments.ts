@@ -21,7 +21,7 @@ export async function moderateChannelComment(actor:RequestActor,row:OsRecord,ope
   if(row.status==="hidden"||row.status==="replied")throw new ApiError(409,"COMMENT_ALREADY_HANDLED","이미 처리한 댓글입니다. 결과를 확인해 주세요.");
   return saveChannelComment(actor,row,{status:operation==="reply"?"replied":"hidden",metadata:{...row.metadata,...(operation==="reply"?{reply:text,replyExternalId:`mock-reply-${row.id}`}:{hidden:true}),handledBy:actor.id,handledAt:new Date().toISOString(),mockAction:true}});
 }
-export async function syncChannelComments(now=new Date()){
+export async function syncChannelComments(now=new Date(),enabledPlatforms:readonly string[]=["instagram","threads"]){
   const db=createServiceSupabase(),since=new Date(now.getTime()-14*86400000).toISOString();
   const {data:posts,error}=await db.from("os_records").select("*").eq("record_type","content_publish").eq("status","published").is("archived_at",null).gte("metadata->>publishedAt",since).order("metadata->>publishedAt").limit(100);
   if(error)throw new ApiError(503,"COMMENT_COLLECTION_UNAVAILABLE","댓글 수집 준비가 필요합니다.");
@@ -29,7 +29,7 @@ export async function syncChannelComments(now=new Date()){
   for(const post of (posts??[]) as OsRecord[]){
     try{
       const account=post.metadata.account as {ownerId?:string;platform?:string}|undefined;
-      if(!account?.ownerId||!["instagram","threads"].includes(account.platform??""))continue;
+      if(!account?.ownerId||!["instagram","threads"].includes(account.platform??"")||!enabledPlatforms.includes(account.platform??""))continue;
       const {data:connection,error:connectionError}=await db.from("os_meta_connections").select("*").eq("owner_id",account.ownerId).eq("platform",account.platform).maybeSingle();
       if(connectionError||!connection)throw Error("connection unavailable");
       const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",account.ownerId).maybeSingle();if(!owner?.is_active)continue;

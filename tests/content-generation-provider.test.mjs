@@ -30,7 +30,7 @@ function loadGeneration(fetchStub) {
     require(name) {
       if (name === "zod") return require("zod");
       if (name === "@/lib/http") return { ApiError };
-      if (name.startsWith("@/") || name === "./content-generation-queue") return {};
+      if (name.startsWith("@/") || name === "./content-generation-queue" || name === "./content-automation-settings") return {};
       throw new Error(`Unexpected import: ${name}`);
     },
   });

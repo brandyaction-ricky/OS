@@ -19,13 +19,11 @@ import {
   Sun,
   X,
   UserRound,
-  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
-import { CONTENTS_AUTO_SCREENS, contentsAutoLinks } from "@/lib/contents-auto-links";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -43,9 +41,6 @@ const GUIDANCE_STORAGE_KEY = "brandy-os-guidance";
 const GROUPS_STORAGE_KEY = "brandy-os-nav-groups";
 const COLLAPSED_STORAGE_KEY = "brandy-os-nav-collapsed";
 const MENU_GUIDE_STORAGE_KEY = "brandy-os-menu-guide-final";
-const externalLinks = contentsAutoLinks(process.env.NEXT_PUBLIC_CONTENTS_AUTO_LINKS);
-
-
 function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
 }
@@ -267,7 +262,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}{item.id === "content" ? <small className="nav-process-caption nav-group-note">유튜브 공정 순서</small> : null}</span>
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !openGroups[item.id]}>
-                {item.id === "automation" ? <><div className="external-app-note">별도 앱 · 새 탭에서 열림</div>{CONTENTS_AUTO_SCREENS.map(([key, label]) => externalLinks[key] ? <a key={key} className="page-link external-app-link" href={externalLinks[key]} target="_blank" rel="noopener noreferrer" aria-label={`${label} · 콘텐츠 자동화 별도 앱`}><span>{label}</span><ExternalLink size={12} aria-hidden="true" /></a> : <span key={key} className="page-link external-app-link unavailable" aria-disabled="true" title="콘텐츠 자동화 앱의 연결 주소가 아직 등록되지 않았습니다."><span>{label}</span><span className="external-app-unconfigured">주소 미설정</span></span>)}</> : null}
                 {item.pages.map((entry, index) => {
                   const selected = entry.href === (page.navHref ?? page.href);
                   const PageIcon = entry.icon;
@@ -319,7 +313,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
         <ContentWorkProvider><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
-          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 7단계에서, 별도 웹앱과 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
+          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 7단계에서, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
           {children}
         </main></ContentWorkProvider>
       </div>

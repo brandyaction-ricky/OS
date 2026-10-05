@@ -28,10 +28,11 @@ async function privateTelegramReminder(recipient:string) {
 
 // Only a separately enabled authenticated cron calls this function. It never
 // publishes, replies, hides, changes approvals or changes scheduled status.
-export async function syncChannelReminders(now=new Date()) {
+export async function syncChannelReminders(now=new Date(), publishLeadMinutes=0) {
   const db=createServiceSupabase();
+  const reminderThrough = new Date(now.getTime() + Math.min(10_080, Math.max(0, publishLeadMinutes)) * 60_000);
   const [{data:due,error:dueError},{data:connections,error:connectionError}]=await Promise.all([
-    db.from("os_records").select("id,metadata,starts_at").eq("record_type","content_publish").eq("status","scheduled").is("archived_at",null).lte("starts_at",now.toISOString()).order("starts_at").limit(200),
+    db.from("os_records").select("id,metadata,starts_at").eq("record_type","content_publish").eq("status","scheduled").is("archived_at",null).lte("starts_at",reminderThrough.toISOString()).order("starts_at").limit(200),
     db.from("os_meta_connections").select("owner_id,platform,team_shared,token_expires_at,status").limit(500),
   ]);
   if(dueError||connectionError)throw new ApiError(503,"CHANNEL_SYNC_SCHEMA_REQUIRED","채널 동기화 DB 준비 상태를 확인해 주세요.");

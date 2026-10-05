@@ -101,8 +101,8 @@ paths:
         "503": { description: 실계정 처리 미공개 또는 API 준비 필요 }
   /api/v1/content/publish:
     post:
-      summary: 사람 전용 채널 게시 편집·승인·예약·모의 게시
-      description: id/expectedVersion/operation 필요. operation은 edit, approve, schedule, reschedule, publish, manual_done. 선택한 계정의 본인 또는 팀 공유 사용자만 가능. edit은 settings를 받고 재승인 필요 상태로 저장합니다. approve/publish/manual_done은 confirm=true가 필요합니다. 실계정 API 게시는 별도 DB 보안 검수 전 503으로 잠겨 있습니다. 기존 사용자 RLS 쓰기 유지.
+      summary: 사람 전용 채널 게시 편집·승인·예약·게시
+      description: id/expectedVersion/operation 필요. operation은 edit, approve, schedule, reschedule, publish, manual_done. 선택한 계정의 본인 또는 팀 공유 사용자만 가능. edit은 settings를 받고 재승인 필요 상태로 저장합니다. approve/publish/manual_done은 confirm=true가 필요합니다. 실계정 API 게시는 서비스 전용 승인 체크포인트와 별도 환경 공개 스위치가 모두 켜진 승인 환경에서만 실행됩니다. 기존 사용자 RLS 쓰기 유지.
       responses:
         "200": { description: 갱신된 record }
         "400": { description: 입력·사람 확인·게시 파일 검증 실패 }
@@ -112,7 +112,7 @@ paths:
   /api/v1/content/channel-sync:
     get:
       summary: 인증된 예약 작업의 알림·댓글·성과 수집
-      description: CRON_SECRET Bearer 인증. CHANNEL_SYNC_ENABLED=true이고 demo가 아닐 때만 실행. 예약·만료 알림을 저장한 뒤 최근 14일 게시물 댓글과 D1/D7/D28 성과를 순서대로 수집합니다. 게시·답글·숨기기는 실행하지 않습니다. 기존 댓글·수기 성과를 덮어쓰지 않으며 범위 초과는 truncated로 반환합니다. Telegram 실패는 응답 수치로 남기고 OS 알림은 유지됩니다.
+      description: CRON_SECRET Bearer 인증. CHANNEL_SYNC_ENABLED=true이고 demo가 아닐 때 예약·만료 알림을 저장합니다. 자동화 설정에서 자동 수집을 켠 경우에만 선택한 Meta·YouTube 채널의 댓글과 D1/D7/D28 성과를 순서대로 수집합니다. 게시·답글·숨기기는 실행하지 않습니다. 기존 댓글·수기 성과를 덮어쓰지 않으며 범위 초과는 truncated로 반환합니다. Telegram 실패와 YouTube 재연결 필요 건수는 응답 수치로 남깁니다.
       responses:
         "200": { description: 활성 여부와 알림·댓글·성과 수집 및 실패·범위 초과 수치 }
         "401": { description: 예약 작업 인증 실패 }

@@ -5,6 +5,7 @@ export interface ChannelConnection {
   accountName: string;
   accountType: string;
   channelId?: string;
+  analyticsConnected?: boolean;
   teamShared: boolean;
   status: string;
   connectedAt: string;

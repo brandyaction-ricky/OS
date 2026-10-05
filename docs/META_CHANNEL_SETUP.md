@@ -21,15 +21,15 @@
 
 ## 게시·예약 검수 경계
 
-- 이번 후보의 자동 API 게시는 서버에서 모의 모드만 허용한다. `META_MODE=live`만 바꿔도 실게시가 켜지지 않는다. 범용 DB 경로에서 승인·중간 결과를 바꾸지 못하는 DB 수준 경계와 실계정 한 건 검수가 별도 선행 조건이다. 기록 쓰기를 service role로 바꾸는 제안은 보안 검토에서 거절되어 적용하지 않았다. 게시 레코드는 계속 사용자 RLS 클라이언트로 갱신한다.
+- 실계정 자동 게시 코드는 서비스 전용 승인 체크포인트와 별도 공개 스위치로 이중 잠금한다. `META_MODE=live`만으로는 켜지지 않는다. 정확한 체크포인트 마이그레이션 적용 뒤 `PUBLICATION_APPROVAL_CHECKPOINTS_ENABLED=true`, 연결 계정 한 건 검수 뒤 `META_LIVE_PUBLISH_ENABLED=true`를 각각 승인해 설정해야 한다. 게시 레코드는 계속 사용자 RLS 클라이언트로 갱신하며 service role은 브라우저가 접근할 수 없는 승인 증거에만 쓴다.
 - 카드 렌더는 폐기한 contents-auto를 복사하지 않고 OS 토큰·Pretendard를 사용하는 로컬 Canvas로 새로 구현했다. 1080×1350 PNG, 비공개 제작 저장소를 사용한다. 개발자 문서 접근이 제한된 IG API 어댑터는 실계정 검증 전 설계 초안이다.
 - 문안·계정·원본 버전이 바뀌면 재승인한다. 글타래는 각 게시 ID를 저장하고 남은 부분만 재시도한다. 응답이 불분명하거나 중간 저장에 실패하면 자동 재게시를 멈춘다. 결과 조정 UI는 실게시 공개 전 추가해야 한다.
-- `CHANNEL_SYNC_ENABLED=false` 기본값이며 인증된 cron만 호출한다. 별도 DB 적용 후에만 활성화한다. 예약 알림·7일 이내 만료 알림만 보내고 게시·답글·숨기기는 하지 않는다. Telegram은 OS 프로필에 매핑된 승인된 개인 대화에 제목 없이 안내한다. 최초 OS 알림 저장 때 한 번 시도하며 Telegram 실패 재전송은 아직 없다. 누락은 응답의 실패 수로 표시된다.
+- `CHANNEL_SYNC_ENABLED=false` 기본값이며 인증된 cron만 호출한다. 별도 DB 적용 후에만 활성화한다. 자동화 설정의 ‘성과·댓글 자동 수집’도 켜져 있어야 선택한 채널의 수집을 실행한다. 예약 알림·7일 이내 만료 알림은 설정과 무관하게 보내되 게시·답글·숨기기는 하지 않는다. Telegram은 OS 프로필에 매핑된 승인된 개인 대화에 제목 없이 안내한다. 최초 OS 알림 저장 때 한 번 시도하며 Telegram 실패 재전송은 아직 없다. 누락은 응답의 실패 수로 표시된다.
 - 공개 API의 계정 권한·기본값·모의 실패·중복 방지 시험과 별개로 실제 DB 트리거/RLS/알림 전달은 미검증이다. 새 댓글 제약·알림 함수 마이그레이션은 적용하지 않았다.
 
 ## 수행하지 않은 검증
 
-성과 수집은 D1/D7/D28 경과 후 각 24시간 창 안에서만 저장한다. 지나간 스냅샷은 현재 누적값으로 채우지 않는다. 수집하지 못한 지표는 제외하고 missingMetrics로 센다. 자동 기록은 기존 수기 기록과 별도 보존하며 일반/AI 기록 API로 덮어쓰거나 지울 수 없다. [Meta 공식 Threads 게시물 성과](https://www.postman.com/meta/threads/request/ndeeu6p/get-post-insights)를 참조했으며 Instagram 실제 지표 지원은 계정·게시 형식별 사전 확인이 남아 있다. 수집 API는 GET뿐이며 외부 게시 동작은 없다.
+성과 수집은 D1/D7/D28 경과 후 각 24시간 창 안에서만 저장한다. 지나간 스냅샷은 현재 누적값으로 채우지 않는다. 수집하지 못한 지표는 제외하고 missingMetrics로 센다. 자동 기록은 기존 수기 기록과 별도 보존하며 일반/AI 기록 API로 덮어쓰거나 지울 수 없다. YouTube는 새 OAuth 연결부터 `yt-analytics.readonly`를 요청하고, 기존 연결에 권한이 없으면 재연결 필요 건수로 남긴다. [Google YouTube Analytics reports.query](https://developers.google.com/youtube/analytics/reference/reports/query)와 [Meta 공식 Threads 게시물 성과](https://www.postman.com/meta/threads/request/ndeeu6p/get-post-insights)를 기준으로 했으며 Instagram 실제 지표 지원은 계정·게시 형식별 사전 확인이 남아 있다. 수집 API는 GET뿐이며 외부 게시 동작은 없다.
 
 댓글 수집은 최근 14일의 게시 완료 기록에서 외부 ID를 읽는다. 동일 플랫폼·계정·댓글은 결정적 ID와 유일 인덱스로 한 번만 넣고, 이미 담당/답글/숨김 처리된 기록을 덮어쓰지 않는다. 현재 한 번에 게시물 100개, 댓글 페이지 5개 한도이며 초과는 truncated로 표시한다. Instagram 중첩 답글 수집은 추가 검수가 필요하다. 실제 답글·숨기기는 실게시와 같은 이유로 서버에서 잠가 두었다.
 
@@ -42,6 +42,7 @@ Google 앱 게시 상태 역시 확인하지 않았다. 외부 테스트 앱의 
 ## 공식 참조
 
 - [Google OAuth 2.0 토큰 만료](https://developers.google.com/identity/protocols/oauth2#expiration)
+- [YouTube Analytics reports.query](https://developers.google.com/youtube/analytics/reference/reports/query)
 - [Meta Instagram Login 공식 컬렉션](https://www.postman.com/meta/instagram/folder/6raa77c/instagram-api-with-instagram-login)
 - [Meta Threads 공식 컬렉션](https://www.postman.com/meta/threads/folder/34203612-e0373e84-de6b-46f1-b90d-3fea76ba6782)
 

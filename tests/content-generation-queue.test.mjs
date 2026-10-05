@@ -41,7 +41,7 @@ function harness({ fail = false } = {}) {
     return q;
   } };
   const queue = compile("lib/server/content-generation-queue.ts", {"node:crypto":crypto,"@/lib/http":{ApiError}});
-  const api = compile("lib/server/content-generation.ts", {zod:require("zod"),"@/lib/http":{ApiError},"@/lib/content-input":contentInput,"@/lib/content-safety":safety,"@/lib/content-appeals":appeals,"@/lib/structure-borrow":{structureBorrowGuidance:()=>""},"./content-generation-queue":queue}, {
+  const api = compile("lib/server/content-generation.ts", {zod:require("zod"),"@/lib/http":{ApiError},"@/lib/content-input":contentInput,"@/lib/content-safety":safety,"@/lib/content-appeals":appeals,"@/lib/structure-borrow":{structureBorrowGuidance:()=>""},"./content-generation-queue":queue,"./content-automation-settings":{readContentAutomationSettings:async()=>({settings:{generationMode:"queue",promptPrefix:"내부 요청 기준",retryLimit:2,publishLeadMinutes:30,autoCollect:false,enabledChannels:["youtube","instagram","threads"],shorts:{voicePreset:"voice",bgmPreset:"bgm",captionPreset:"caption"}}})}}, {
     process:{env:{ANTHROPIC_API_KEY:"unit-test-only"}},
     fetch:async()=> { calls++; return {ok:!fail,status:fail?429:200,json:async()=>({content:[{type:"text",text:JSON.stringify({summary:"Example",titles:[],copies:[],designPrompts:[]})}],usage:{input_tokens:21,output_tokens:34}})}; },
   });
@@ -55,6 +55,7 @@ test("default generation enqueues one durable job with no provider call, includi
   assert.equal(h.calls(),0); assert.equal(h.rows.filter(row=>row.record_type==="ai_job").length,1);
   assert.equal(first.job.status,"backlog"); assert.equal(first.job.stage,"queued");
   assert.equal(first.job.metadata.generatedBy,"claude-queue");
+  assert.equal(first.job.metadata.retryLimit,2);assert.equal(first.job.metadata.automation.promptPrefix,"내부 요청 기준");
 });
 test("explicit API mode persists a request before calling and links saved results and usage",async()=>{
   const h=harness(); const input=h.api.generationSchema.parse({sourceId:h.sourceId,action:"title_package",mode:"api"});
@@ -75,6 +76,8 @@ test("API failures persist a safe failure code instead of changing legacy creden
 test("generation preference is queue by default and ignores unrelated or archived settings",()=>{
   assert.equal(defaultGenerationMode([]),"queue");
   assert.equal(defaultGenerationMode([{record_type:"company_setting",metadata:{settingKey:"content-generation",defaultGenerationMode:"api"}}]),"api");
+  assert.equal(defaultGenerationMode([{id:"ca000000-0000-4000-8000-000000000001",record_type:"company_setting",metadata:{kind:"content_automation_settings",settings:{generationMode:"api"}}}]),"api");
+  assert.equal(defaultGenerationMode([{record_type:"company_setting",metadata:{settingKey:"content-generation",defaultGenerationMode:"api"}},{id:"ca000000-0000-4000-8000-000000000001",record_type:"company_setting",metadata:{kind:"content_automation_settings",settings:{generationMode:"queue"}}}]),"queue");
   assert.equal(defaultGenerationMode([{record_type:"company_setting",archived_at:"yesterday",metadata:{settingKey:"content-generation",defaultGenerationMode:"api"}}]),"queue");
 });
 test("human-only publication gates reject agent reservation and publication with 403",()=>{

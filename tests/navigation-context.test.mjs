@@ -53,8 +53,8 @@ test("command palette finds both new labels and former menu labels", () => {
   }
 });
 
-test('final navigation has exactly 23 menus; account is outside them',()=>{
-  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,1,3,4,3,4]);
+test('final navigation has exactly 31 internal menus; account is outside them',()=>{
+  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,9,3,4,3,4]);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
   assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);

@@ -4,8 +4,10 @@ import { ApiError } from "@/lib/http";
 import { assembleYoutubeKit, BUNDLED_CHANNEL_PROCEDURE_VERSION, contentSourceText, parseTimedTranscript, resolveChannelProcedures, validateClipRanges } from "@/lib/content-input";
 import { PUBLIC_COPY_GUIDANCE, sanitizePublicCopyValue } from "@/lib/content-safety";
 import { appealApprovalMatches, researchBriefReady } from "@/lib/content-appeals";
+import type { ContentAutomationSettings } from "@/lib/content-automation-settings";
 import { type RequestActor } from "@/lib/server/auth";
 import { beginGenerationJob, finishGenerationJob } from "./content-generation-queue";
+import { readContentAutomationSettings } from "./content-automation-settings";
 
 
 export const generationSchema = z.object({
@@ -140,7 +142,7 @@ function scheduleDate(index: number) {
   return date.toISOString();
 }
 
-async function insertGenerated(actor: RequestActor, source: Record<string, unknown>, action: z.infer<typeof generationSchema>["action"], result: Record<string, unknown>, requestKey?: string, generationId?: string, procedureSource?: string) {
+async function insertGenerated(actor: RequestActor, source: Record<string, unknown>, action: z.infer<typeof generationSchema>["action"], result: Record<string, unknown>, requestKey?: string, generationId?: string, procedureSource?: string, automation?: ContentAutomationSettings) {
   const generatedAt = new Date().toISOString();
   const generationMetadata = { generationRequestKey: requestKey ?? null, generationId, contentId: source.id, generationMode: "api", procedureSource: procedureSource ?? "canonical" };
   const base = { parent_id: source.id, brand: source.brand ?? "", team: source.team ?? actor.team, owner_id: actor.id, created_by: actor.id, updated_by: actor.id, source_url: source.source_url ?? null };
@@ -161,7 +163,7 @@ async function insertGenerated(actor: RequestActor, source: Record<string, unkno
     const rows = items.slice(0, 12).map((raw, index) => { const item = raw as Record<string, unknown>; return {
       ...base, record_type: "content_short", title: String(item.title ?? `쇼츠 후보 ${index + 1}`).slice(0, 240), description: String(item.hook ?? item.reason ?? "").slice(0, 20_000),
       status: "review", priority: "normal", stage: "구간제안", progress: 25,
-      metadata: { ...generationMetadata, proposalOnly: true, renderState: "not_started", start: Number(item.start ?? 0), end: Number(item.end ?? 0), hook: String(item.hook ?? ""), selected: true, reframe: "pad", captions: false, tighten: false }, tags: ["쇼츠", "구간제안"],
+      metadata: { ...generationMetadata, proposalOnly: true, renderState: "not_started", start: Number(item.start ?? 0), end: Number(item.end ?? 0), hook: String(item.hook ?? ""), selected: true, reframe: "pad", captions: false, tighten: false, voicePreset: automation?.shorts.voicePreset, bgmPreset: automation?.shorts.bgmPreset, captionPreset: automation?.shorts.captionPreset }, tags: ["쇼츠", "구간제안"],
     }; });
     if (!rows.length) throw new ApiError(502, "CONTENT_GENERATION_EMPTY", "제안된 쇼츠 구간이 없습니다.");
     const { data, error } = await actor.supabase.from("os_records").insert(rows).select("*");
@@ -226,7 +228,8 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
     const cues = parseTimedTranscript(sourceText);
     if (input.action === "shorts_proposal" && !cues.length) throw new ApiError(409, "CONTENT_TIMING_REQUIRED", "실제 구간 제안에는 시간 정보가 있는 SRT 또는 VTT 자막이 필요합니다. 숏폼 편집의 원본·자막에서 저장해 주세요.");
     const procedure = await procedures(actor, input.action, platforms);
-    const job = await beginGenerationJob(actor, source, input, procedure, requestKey);
+    const { settings: automation } = await readContentAutomationSettings();
+    const job = await beginGenerationJob(actor, source, input, procedure, requestKey, automation);
     if (input.mode !== "api") return { queued: true, configured: true, records: [], job, generationId: job.id };
     try {
     const model = input.action === "youtube_kit" || (input.action === "derivatives" && platforms.includes("column"))
@@ -260,7 +263,7 @@ export async function executeGeneration(actor: RequestActor, input: z.infer<type
       const generated = Array.isArray(result.items) ? result.items.map((item: { platform?: string }) => item.platform) : [];
       if (platforms.some((platform) => !generated.includes(platform)) || generated.some((platform) => !platforms.includes(platform as typeof platforms[number]))) throw new ApiError(502, "CONTENT_CHANNEL_OUTPUT_MISSING", "요청한 채널의 산출물이 모두 생성되지 않았습니다. 결과를 저장하지 않았습니다.");
     }
-    const records = await insertGenerated(actor, source, input.action, result, requestKey, job.id, procedure.includes("· 기본 절차") ? "fallback" : "canonical");
+    const records = await insertGenerated(actor, source, input.action, result, requestKey, job.id, procedure.includes("· 기본 절차") ? "fallback" : "canonical", automation);
     await finishGenerationJob(actor, job, records, { model: generated.model, usage: generated.usage, costUsd: generated.costUsd });
     return { configured: true, queued: false, action: input.action, records, generationId: job.id };
     } catch (failure) {

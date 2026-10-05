@@ -97,6 +97,7 @@ test("company inventory rejects members before reading tokens; regular inventory
     "next/server":{NextResponse:Response},"@/lib/http":{ApiError,apiErrorResponse:error=>Response.json({code:error.code},{status:error.status??500})},
     "@/lib/server/auth":{authenticateRequest:async()=>actor},"@/lib/server/channel-access":access,
     "@/lib/server/meta-oauth":meta.module,
+    "@/lib/server/youtube-oauth":{YOUTUBE_ANALYTICS_SCOPE:"https://www.googleapis.com/auth/yt-analytics.readonly"},
     "@/lib/supabase/server":{createServiceSupabase:()=>({from:table=>{reads++;const builder={select:()=>builder,or:()=>builder,then:resolve=>Promise.resolve({data:table==="os_meta_connections"?[connection,{...connection,owner_id:"shared",team_shared:true}]:[],error:null}).then(resolve)};return builder;}})},
   },{URL,Response});
   assert.equal((await api.GET(new Request("https://os.example/api/v1/channels?scope=company"))).status,403);

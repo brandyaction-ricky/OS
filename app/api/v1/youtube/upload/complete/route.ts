@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       const { data: saved, error: syncError } = await actor.supabase.from("os_records").update({
         status: publication.status,
         stage: publication.stage,
-        metadata: { ...record.metadata, privacyStatus, publicationState: publication.publicationState, utmContent: video.id },
+        metadata: { ...record.metadata, privacyStatus, publicationState: publication.publicationState, utmContent: video.id, connectionOwnerId: ownerId, ...(publication.status === "published" ? { publishedAt: String(record.metadata?.publishedAt || new Date().toISOString()) } : {}) },
         updated_by: actor.id,
       }).eq("id", record.id).eq("record_type", "content_publish").eq("version", record.version).is("archived_at", null).select("id").maybeSingle();
       if (syncError || !saved) throw new ApiError(409, "YOUTUBE_PUBLISH_RECORD_CONFLICT", "영상은 확인했지만 업로드 기록이 변경됐습니다. 결과 확인을 다시 시도해 주세요.", syncError?.message);
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       record_type: "content_publish", title: video.snippet?.title || kit.title, description: "YouTube OAuth 업로드 완료",
       status: publication.status, priority: "normal", stage: publication.stage, brand: kit.brand || "", team: kit.team || actor.team,
       owner_id: actor.id, parent_id: kit.parent_id, source_url: videoUrl, tags: ["유튜브", "업로드완료"], created_by: actor.id, updated_by: actor.id,
-      metadata: { platform: "youtube", youtubeVideoId: video.id, privacyStatus, publicationState: publication.publicationState, channelId: connection.channelId, finalApproved: true, approvedBy: actor.id, uploadedAt, kitId: kit.id, utmContent: video.id },
+      metadata: { platform: "youtube", youtubeVideoId: video.id, privacyStatus, publicationState: publication.publicationState, channelId: connection.channelId, connectionOwnerId: ownerId, finalApproved: true, approvedBy: actor.id, uploadedAt, ...(publication.status === "published" ? { publishedAt: new Date().toISOString() } : {}), kitId: kit.id, utmContent: video.id },
     });
     if (recordError) {
       if (recordError.code !== "23505") throw new ApiError(500, "YOUTUBE_PUBLISH_RECORD_FAILED", "영상은 업로드됐지만 발행 기록을 저장하지 못했습니다. 영상 재업로드 없이 결과 확정을 다시 시도해 주세요.", recordError.message);

@@ -26,7 +26,8 @@ test("appeal comments are additive, service-only and current-set-scoped", async 
   assert.match(api, /actor\.supabase\.from\("os_records"\)/);
   const entry = manifest.forwardMigrations.find((item) => item.file === "20261003162000_appeal_candidate_comments.sql");
   assert.equal(entry?.requiresApproval, true);
-  assert.deepEqual(entry?.appliedEnvironments, []);
+  assert.equal(entry?.developmentApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
 });
 
 test("batch decision and notifications retain authorization and version gates", async () => {

@@ -11,7 +11,8 @@ test("steward migration is gated and existing documents are retained", async () 
   const entry = manifest.forwardMigrations.find((item) => item.file === file);
   assert.equal(entry?.sha256, createHash("sha256").update(sql).digest("hex"));
   assert.equal(entry?.requiresApproval, true);
-  assert.deepEqual(entry?.appliedEnvironments, []);
+  assert.equal(entry?.developmentApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
   assert.match(sql, /add column if not exists steward_id uuid/);
   assert.match(sql, /d\.current_version <> p_expected_version/);
   assert.doesNotMatch(sql, /\b(?:delete from|truncate|drop table)\b/i);

@@ -5,7 +5,9 @@ const pages = [...NAV_STAGES.flatMap(stage => stage.pages), ACCOUNT_PAGE];
 const mobile = new Set(["/home", "/content/publishing", "/content/comments", "/content/performance", "/settings/account"]);
 test("all 36 original routes select the final menu or explain their retirement", async ({ page }) => {
   test.setTimeout(90000);
-  const retained = NAV_STAGES.flatMap(stage => stage.pages).filter(entry => entry.href !== "/content/comments" && !entry.href.includes("?"));
+  const retained = NAV_STAGES.flatMap(stage => stage.pages).filter(
+    entry => entry.href !== "/content/comments" && !entry.href.includes("?") && !entry.href.startsWith("/automation/"),
+  );
   const merged = [
     { href: "/home/decisions", label: "회의·결정", nav: "/organization/meetings" },
     { href: "/knowledge/graph", label: "전체 문서", nav: "/knowledge" },

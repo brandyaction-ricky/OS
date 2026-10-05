@@ -45,7 +45,7 @@ test("expired containers clear only pending state and processing containers neve
   await assert.rejects(publishing.executePublication(settings,{receipts:[]},provider({status:"processing"}),async()=>{}),error=>error.code==="PUBLISH_MEDIA_PROCESSING");
 });
 
-const service=await moduleOf("lib/server/channel-publication.ts",{"node:crypto":crypto,"@/lib/http":{ApiError},"@/lib/channel-publishing":publishing,"@/lib/supabase/server":{},"./meta-oauth":{authorizeMetaConnection:async()=>({}),assertMetaModeMatches:()=>{},metaMode:()=>"live"},"./meta-publishing":{}});
+const service=await moduleOf("lib/server/channel-publication.ts",{"node:crypto":crypto,"@/lib/http":{ApiError},"@/lib/channel-publishing":publishing,"@/lib/supabase/server":{},"./meta-oauth":{authorizeMetaConnection:async()=>({}),assertMetaModeMatches:()=>{},metaMode:()=>"live"},"./meta-publishing":{}},{process:{env:{}}});
 test("approval binds source version, text, target channel and needs-recheck flag",()=>{
   const row={title:"title",description:"text",parent_id:"source",metadata:{channelWorkflowVersion:1,needsRecheck:false}};
   row.metadata.publicationApproval={actorId:"person",signature:service.publicationSignature(row,settings,2)};
@@ -61,7 +61,7 @@ test("live dispatch is locked before any record/storage/provider side effects",a
 });
 test("cron defaults off, authenticates first and only reminds instead of publishing",async()=>{
   let calls=0;const env={CRON_SECRET:"test-cron"};
-  const route=await moduleOf("app/api/v1/content/channel-sync/route.ts",{"next/server":{NextResponse:Response},"@/lib/http":{ApiError,apiErrorResponse:error=>Response.json({code:error.code},{status:error.status??500})},"@/lib/server/auth":{safeSecretMatch:(a,b)=>a===b},"@/lib/server/channel-metrics":{syncChannelMetrics:async()=>({metrics:0})},"@/lib/server/channel-comments":{syncChannelComments:async()=>({comments:0})},"@/lib/server/channel-sync":{syncChannelReminders:async()=>{calls++;return{notifications:1};}}},{process:{env},Response});
+  const route=await moduleOf("app/api/v1/content/channel-sync/route.ts",{"next/server":{NextResponse:Response},"@/lib/http":{ApiError,apiErrorResponse:error=>Response.json({code:error.code},{status:error.status??500})},"@/lib/server/auth":{safeSecretMatch:(a,b)=>a===b},"@/lib/server/channel-metrics":{syncChannelMetrics:async()=>({metrics:0})},"@/lib/server/channel-comments":{syncChannelComments:async()=>({comments:0})},"@/lib/server/channel-sync":{syncChannelReminders:async()=>{calls++;return{notifications:1};}},"@/lib/server/content-automation-settings":{readContentAutomationSettings:async()=>({settings:{autoCollect:true,enabledChannels:["youtube","instagram","threads"]}})}},{process:{env},Response});
   assert.equal((await route.GET(new Request("https://example.com"))).status,401);
   const request=new Request("https://example.com",{headers:{authorization:"Bearer test-cron"}});
   assert.equal((await(await route.GET(request)).json()).enabled,false);assert.equal(calls,0);

@@ -6,6 +6,13 @@ export function generationSetting(records: OsRecord[]) {
   return records.find(record => record.record_type === "company_setting" && !record.archived_at && record.metadata.settingKey === GENERATION_SETTING_KEY);
 }
 export function defaultGenerationMode(records: OsRecord[]): GenerationMode {
+  const automation = records.find(record =>
+    record.record_type === "company_setting" &&
+    !record.archived_at &&
+    record.metadata.kind === "content_automation_settings",
+  );
+  const automationMode = (automation?.metadata.settings as { generationMode?: unknown } | undefined)?.generationMode;
+  if (automationMode === "api" || automationMode === "queue") return automationMode;
   return generationSetting(records)?.metadata.defaultGenerationMode === "api" ? "api" : "queue";
 }
 export function generationJobLabel(job: Pick<OsRecord, "status" | "stage" | "metadata">) {
