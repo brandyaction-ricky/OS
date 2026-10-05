@@ -4,16 +4,16 @@ import { findPage, findStage, NAV_STAGES, searchNavigation, ACCOUNT_PAGE } from 
 import {RETIRED_ROUTES,retiredRoute} from "../lib/final-routes.ts";
 
 const cases = [
-  ["/content/automation", "멀티채널 자동화"],
-  ["/content/review", "검토·발행 대기목록"],
-  ["/content/calendar", "발행 캘린더"],
+  ["/content/automation", "최종 점검", "automation", "/automation/review"],
+  ["/content/review", "최종 점검", "automation", "/automation/review"],
+  ["/content/calendar", "발행·업로드", "content", "/content/publishing"],
 ];
 
-test("secondary content routes keep the content shell and publishing navigation active", () => {
-  for (const [pathname] of cases) {
-    assert.equal(findStage(pathname).id, "content");
-    assert.equal(findPage(pathname).label, "발행·업로드");
-    assert.equal(findPage(pathname).navHref, "/content/publishing");
+test("legacy content routes point to their separate YouTube and automation sections", () => {
+  for (const [pathname,label,stage,navHref] of cases) {
+    assert.equal(findStage(pathname).id, stage);
+    assert.equal(findPage(pathname).label, label);
+    assert.equal(findPage(pathname).navHref, navHref);
   }
 });
 
@@ -47,7 +47,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   assert.notEqual(findPage("/knowledge/development-extra").label, "수정 요청");
 });
 test("command palette finds both new labels and former menu labels", () => {
-  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["발행 일정","발행·업로드"],["문서 작업공간","전체 문서"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
+  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["유튜브 발행","발행·업로드"],["문서 작업공간","전체 문서"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
     assert.ok(searchNavigation(oldName).some(page => page.label === newName), oldName);
     assert.ok(searchNavigation(newName).some(page => page.label === newName), newName);
   }

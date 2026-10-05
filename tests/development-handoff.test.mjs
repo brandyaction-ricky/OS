@@ -10,7 +10,16 @@ const code = ts.transpileModule(source, {
 }).outputText;
 const loadedModule = { exports: {} };
 runInNewContext(`(function(module, exports) { ${code}\n})`, { URL })(loadedModule, loadedModule.exports);
-const { buildDevelopmentHandoff, recordText, repositoryUrl, safeWebUrl } = loadedModule.exports;
+const { buildDevelopmentHandoff, projectDashboardUrl, recordText, repositoryUrl, safeWebUrl } = loadedModule.exports;
+
+test("project dashboard links accept only their provider's HTTPS project pages", () => {
+  assert.equal(projectDashboardUrl("https://supabase.com/dashboard/project/test-project", "supabase"), "https://supabase.com/dashboard/project/test-project");
+  assert.equal(projectDashboardUrl("https://vercel.com/team/project", "vercel"), "https://vercel.com/team/project");
+  assert.equal(projectDashboardUrl("https://supabase.com.evil.example/dashboard/project/test", "supabase"), null);
+  assert.equal(projectDashboardUrl("https://vercel.com.evil.example/team/project", "vercel"), null);
+  assert.equal(projectDashboardUrl("javascript:alert(1)", "vercel"), null);
+  assert.equal(projectDashboardUrl("https://vercel.com/team/project?token=secret", "vercel"), null);
+});
 
 const project = {
   id: "1ec743ea-0437-4d9f-8b49-fca01b2ddbea",

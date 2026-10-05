@@ -14,7 +14,8 @@ test("shared account migration is gated, additive, and audited", async () => {
   assert.equal(entry?.sha256, createHash("sha256").update(sql).digest("hex"));
   assert.equal(entry?.requiresApproval, true);
   assert.equal(entry?.developmentApprovedAt, "2026-10-05");
-  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
+  assert.equal(entry?.productionApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development", "production"]);
   assert.match(sql, /add column if not exists is_shared_account boolean not null default false/);
   assert.match(sql, /member\.shared_account/);
   assert.match(sql, /revoke all on function public\.os_set_shared_account/);

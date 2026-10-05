@@ -258,8 +258,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "콘텐츠 유튜브 공정 순서" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}{item.id === "content" ? <small className="nav-process-caption nav-group-note">유튜브 공정 순서</small> : null}</span>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !openGroups[item.id]}>
                 {item.pages.map((entry, index) => {

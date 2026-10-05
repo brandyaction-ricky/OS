@@ -4,7 +4,7 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("canonical proposal migration is additive, service-only, version-checked and recorded as DEV-only", async () => {
+test("canonical proposal migration is additive, service-only, version-checked and approval history is recorded", async () => {
   const [sql, manifest, rollbackTest] = await Promise.all([
     read("supabase/migrations/20261003151000_document_change_proposals.sql"),
     read("supabase/migration-baseline.json").then(JSON.parse),
@@ -22,7 +22,8 @@ test("canonical proposal migration is additive, service-only, version-checked an
   const entry = manifest.forwardMigrations.find((item) => item.file === "20261003151000_document_change_proposals.sql");
   assert.equal(entry?.requiresApproval, true);
   assert.equal(entry?.developmentApprovedAt, "2026-10-04");
-  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
+  assert.equal(entry?.productionApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development", "production"]);
 });
 
 test("canonical human and new-key write paths create proposals before changing the document", async () => {

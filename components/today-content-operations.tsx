@@ -5,7 +5,7 @@ import { apiRequest, listRecords } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { summarizeTodayContent, type HomeChannel } from "@/lib/today-content";
 import { useSession } from "./session-provider";
-export function TodayContentOperations() {
+export function TodayContentOperations({ blockedCount = 0 }: { blockedCount?: number }) {
   const { accessToken, demo, profile } = useSession();
   const [summary, setSummary] = useState<ReturnType<typeof summarizeTodayContent> | null>(null);
   const [error, setError] = useState(""), [truncated, setTruncated] = useState(false), [revision, setRevision] = useState(0);
@@ -36,14 +36,15 @@ export function TodayContentOperations() {
     return () => { active = false; window.clearInterval(timer); };
   }, [accessToken, demo, profile?.id, revision]);
   return <section className="panel today-content-operations" aria-label="오늘 콘텐츠 운영">
-    <header className="panel-header"><div><h2>오늘 콘텐츠 운영</h2><p>게시 실행은 사람이 확인합니다. 요약은 접속 중 1분마다 갱신됩니다.</p></div><Link href="/content/publishing?tab=calendar">발행 일정 →</Link></header>
-    {demo ? <p>데모 · 실제 운영 데이터 연결 전입니다. 각 화면에서 모의 동작을 검수할 수 있습니다.</p>
+    <header className="panel-header"><div><h2>오늘 콘텐츠 운영</h2><p>게시 실행은 사람이 확인합니다. 요약은 접속 중 1분마다 갱신됩니다.</p></div></header>
+    {demo ? <div className="today-content-cards"><Link href="/content/publishing?tab=calendar"><span>오늘 올릴 게시물</span><strong>—</strong><small>데모 · 실제 일정 연결 전</small></Link><Link href="/content/comments"><span>답할 댓글·답글</span><strong>—</strong><small>데모 · 실제 댓글 연결 전</small></Link><Link href="/content/performance"><span>새 성과 기록</span><strong>—</strong><small>데모 · 실제 성과 연결 전</small></Link><Link href="/home?tab=received"><span>막힌 일</span><strong>{blockedCount}</strong><small>현재 검수 목록 기준</small></Link></div>
       : error ? <p role="alert">{error} <button className="ghost-button" onClick={() => setRevision(value => value + 1)}>다시 불러오기</button></p>
       : !summary ? <p role="status" aria-busy="true">오늘의 운영 정보를 확인하는 중…</p>
       : <><div className="today-content-cards">
         <Link href="/content/publishing?tab=calendar"><span>오늘까지 게시 확인</span><strong>{summary.due.length}</strong><small>기한 지난 항목 포함 · 본인/공유 계정</small></Link>
         <Link href="/content/comments"><span>답할 댓글</span><strong>{summary.unanswered.length}</strong><small>내 담당 또는 처리할 수 있는 댓글</small></Link>
         <Link href="/content/performance"><span>새 성과 기록</span><strong>{summary.measured}</strong><small>최근 24시간 저장된 게시물 수</small></Link>
+        <Link href="/home?tab=received"><span>막힌 일</span><strong>{blockedCount}</strong><small>현재 내 업무 기준</small></Link>
       </div>{summary.warnings.length ? <div className="inline-alert"><Link href="/settings/account">채널 연결 확인 {summary.warnings.length}건 · 만료 임박 또는 재연결 필요 →</Link></div> : null}
       {truncated ? <small>각 항목은 최근 최대 200건 기준이며 전체 수보다 적을 수 있습니다. 자세한 내용은 해당 화면을 확인하세요.</small> : null}</>}
   </section>;

@@ -30,7 +30,7 @@ test("toggle markdown keeps folded headings and fenced delimiters in one block",
   assert.equal(parseKnowledgeToggle(":::toggle{title=\"x\"}\n본문"), null);
 });
 
-test("page migration is additive, guarded, and recorded as DEV-only", async () => {
+test("page migration is additive, guarded, and approval history is recorded", async () => {
   const migration = await readFile(new URL("../supabase/migrations/20261003122206_knowledge_page_tree.sql", import.meta.url), "utf8");
   const manifest = JSON.parse(await readFile(new URL("../supabase/migration-baseline.json", import.meta.url), "utf8"));
   const entry = manifest.forwardMigrations.find(item => item.file === "20261003122206_knowledge_page_tree.sql");
@@ -43,7 +43,8 @@ test("page migration is additive, guarded, and recorded as DEV-only", async () =
   assert.doesNotMatch(migration, /\b(?:truncate|delete from|drop table)\b/i);
   assert.equal(entry?.requiresApproval, true);
   assert.equal(entry?.developmentApprovedAt, "2026-10-04");
-  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
+  assert.equal(entry?.productionApprovedAt, "2026-10-05");
+  assert.deepEqual(entry?.appliedEnvironments, ["development", "production"]);
 });
 
 test("page moves accept the offset timestamp returned by Supabase", async () => {

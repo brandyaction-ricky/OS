@@ -45,7 +45,7 @@ export function DevelopmentProjectOverview({ projects, token, demo, requests, on
     <header><div><h2>오늘 확인할 개발 작업</h2><p>프로젝트를 선택하면 해당 요청과 개발·배포 기록으로 이동합니다.</p></div><button className="dev-button" onClick={() => setRevision(value => value + 1)}>새로고침</button></header>
     <div className="dev-overview-grid">{projects.map(project => {
       const summary = summaries[project.id];
-      return <article key={project.id}><button className="dev-project-title" onClick={() => onChoose(project.id)}>{project.title}</button><p>{project.description || "프로젝트 목적을 확인해 주세요."}</p>
+      return <article key={project.id}><button className="dev-project-title" onClick={() => onChoose(project.id)}>{project.title}</button>
         {summary?.error ? <p role="alert">현황을 불러오지 못했습니다. 새로고침해 주세요.</p> : <div className="dev-project-counts">{STATES.map(([key, label]) => { const count = summary ? summary.counts[key] : "—"; return <button key={key} aria-label={`${label} ${count}건 보기`} title={`${label} 요청 보기`} onClick={() => onChoose(project.id, key)}><span>{label}</span><strong>{count}</strong></button>; })}</div>}
         <small>검수 대기·보류 항목부터 확인하세요.</small>
       </article>;

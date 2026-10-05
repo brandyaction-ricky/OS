@@ -5,7 +5,7 @@ for (const stage of NAV_STAGES) {
   test(`existing pages keep the ${stage.label} navigation and title`, async ({ page }) => {
     for (const entry of stage.pages) {
       await page.goto(entry.href);
-      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.label);
+      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
       await expect(page.locator(".breadcrumbs [aria-current=page]")).toHaveText(entry.label);
       await expect(page).toHaveTitle(`${entry.label} | 브랜디 OS`);
       await expect(page.locator(`.unified-nav a[href="${entry.href}"]`).last()).toHaveAttribute("aria-current", "page");
@@ -16,7 +16,7 @@ for (const stage of NAV_STAGES) {
 
 test("groups, collapse and display preferences persist, and old names remain searchable", async ({ page }) => {
   await page.goto("/home");
-  const content = page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true });
+  const content = page.getByRole("button", { name: "유튜브 공정", exact: true });
   await expect(content).toHaveAttribute("aria-expanded", "true");
   await page.reload(); await expect(content).toHaveAttribute("aria-expanded", "true");
   await content.click(); await page.reload(); await expect(content).toHaveAttribute("aria-expanded", "false");
@@ -51,7 +51,7 @@ for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
     await page.addInitScript(value => localStorage.setItem("brandy-os-theme", value), theme);
     await page.goto("/home");
     if (width === 390) await page.getByRole("button", { name: "메뉴 열기" }).click();
-    await expect(page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByRole("button", { name: "유튜브 공정", exact: true })).toHaveAttribute("aria-expanded", "true");
     await expect(page.getByRole("link", { name: "주제·기획", exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`uiux-navigation-${theme}-${width}.png`), fullPage: false, mask: [page.locator(".profile-trigger")], maskColor: await page.locator(".unified-sidebar").evaluate(element => getComputedStyle(element).backgroundColor) });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
