@@ -2,6 +2,8 @@
    Keep the existing preference keys, mobile focus trap and data components. */
 .linear-shell.shell-v2 .unified-sidebar { z-index: 35; }
 .linear-shell.shell-v2 .sidebar-head { flex: none; }
+.linear-shell.shell-v2 .sidebar-head .sidebar-collapse { flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; line-height: 1; }
+.linear-shell.shell-v2 .sidebar-head .sidebar-collapse svg { display: block; flex: none; }
 .linear-shell.shell-v2 .page-nav { min-height: 0; overflow-y: auto; padding-bottom: 8px; }
 .linear-shell.shell-v2 .nav-section { margin: 0; }
 .linear-shell.shell-v2 .nav-section-trigger { min-height: 0; }
@@ -15,10 +17,11 @@
 .linear-shell.shell-v2 .nav-section-trigger { padding: 9px 10px; font-size: 13px; font-weight: 700; }
 .linear-shell.shell-v2 .nav-section-pages { padding: 3px 0 7px 16px; border-left: 1px solid var(--line-soft); margin-left: 17px; }
 .linear-shell.shell-v2 .nav-section-pages .page-link { padding: 7px 10px; font-size: 12px; font-weight: 450; }
-.linear-shell.shell-v2 .nav-section-pages .page-link.active { box-shadow: inset 3px 0 var(--accent); font-weight: 700; }
-.linear-shell.shell-v2 .nav-section:first-child { padding-bottom: 9px; margin-bottom: 5px; border-bottom: 1px solid var(--line-soft); }
+.linear-shell.shell-v2 .nav-section-pages .page-link.active { border-radius: 0; box-shadow: inset 3px 0 var(--accent); font-weight: 700; }
+.linear-shell.shell-v2 .nav-section:first-child { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
+.linear-shell.shell-v2 .nav-section:first-child + .nav-section { border-top: 0; }
 .linear-shell.shell-v2 .nav-section:first-child .nav-section-pages { margin: 0; padding: 0; border: 0; }
-.linear-shell.shell-v2 .nav-section:first-child .page-link.nav-home { min-height: 36px; padding: 8px 12px; }
+.linear-shell.shell-v2 .nav-section:first-child .page-link.nav-home { min-height: 36px; padding: 8px 12px; font-size: 13px; }
 .linear-shell.shell-v2 .nav-section:first-child .page-link.nav-home.active { background: var(--surface-selected); box-shadow: none; }
 .linear-shell.shell-v2 .nav-section-trigger .nav-group-count { flex: none; margin-left: auto; }
 .linear-shell.shell-v2 .page-link > span:last-child { min-width: 0; }

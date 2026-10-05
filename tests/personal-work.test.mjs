@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {buildPersonalWork} from "../lib/personal-work.ts";
+import {buildPersonalWork,recordWorkHref} from "../lib/personal-work.ts";
 import {findPage,findStage} from "../lib/navigation.ts";
 const row=(id,fields={})=>({id,record_type:"task",title:id,status:"planned",metadata:{},archived_at:null,assignee_id:"me",created_by:"other",due_date:null,updated_at:"2026-10-03",description:"",...fields});
 test("personal tabs separate assigned work, review and requests without showing market or test rows",()=>{
@@ -17,4 +17,10 @@ test("reviewed documents are returned for owners and admins, never as approval a
 });
 test("update history query has a distinct navigation name while request URLs remain compatible",()=>{
  assert.equal(findPage("/knowledge/development?project=fixture&tab=history").label,"업데이트 내역");assert.equal(findStage("/knowledge/development?tab=history").id,"development");assert.equal(findPage("/knowledge/development?new=request").label,"수정 요청");
+});
+test("derivative review work links open content automation instead of YouTube upload",()=>{
+ assert.equal(recordWorkHref(row("publish-1",{record_type:"content_publish"})),"/automation/review?tab=review&publication=publish-1");
+ assert.equal(recordWorkHref(row("script-1",{record_type:"content_script",metadata:{sourceId:"topic-1"}})),"/content/scripts?sourceId=topic-1");
+ assert.equal(recordWorkHref(row("package-1",{record_type:"content_package",metadata:{packageKind:"youtube_kit",contentId:"topic-1"}})),"/content/publishing?sourceId=topic-1");
+ assert.equal(recordWorkHref(row("kit-1",{record_type:"content_kit",metadata:{sourceId:"topic-1"}})),"/content/publishing?sourceId=topic-1");
 });

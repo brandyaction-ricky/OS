@@ -53,7 +53,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "원고·스크립트", href: "/content/scripts", icon: FileText, processNumber: 2, ready: true },
     { label: "제목·썸네일", href: "/content/packages", icon: Film, processNumber: 3, aliases: ["패키징 스튜디오"], ready: true },
     { label: "숏폼 편집", href: "/content/shorts", icon: Scissors, processNumber: 4, ready: true },
-    { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, processNumber: 5, aliases: ["발행 일정", "멀티채널 자동화", "검토·발행 대기목록", "발행 캘린더"], ready: true },
+    { label: "발행·업로드", href: "/content/publishing", icon: UploadCloud, processNumber: 5, aliases: ["유튜브 발행", "유튜브 업로드", "발행 승인"], ready: true },
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 6, ready: true },
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 7, aliases: ["콘텐츠 성과"], ready: true },
   ] },
@@ -101,8 +101,8 @@ const NAV_ALIASES: Record<string, string> = {
   "/home/decisions": "/organization/meetings",
   "/settings/monitoring": "/settings/connections",
   "/settings/channels": "/settings/connections",
-  "/content/automation": "/content/publishing",
-  "/content/review": "/content/publishing",
+  "/content/automation": "/automation/review",
+  "/content/review": "/automation/review",
   "/content/calendar": "/content/publishing",
 };
 export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/account", icon: UserRound, aliases: ["채널 연결"], ready: true };
