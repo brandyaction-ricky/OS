@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { NAV_STAGES, ACCOUNT_PAGE } from "../../lib/navigation";
 import { RETIRED_ROUTES } from "../../lib/final-routes";
+import { expectNoHorizontalOverflow } from "./horizontal-overflow";
 const pages = [...NAV_STAGES.flatMap(stage => stage.pages), ACCOUNT_PAGE];
 const mobile = new Set(["/home", "/content/publishing", "/content/comments", "/content/performance", "/settings/account"]);
 test("all 36 original routes select the final menu or explain their retirement", async ({ page }) => {
@@ -43,7 +44,7 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".profile-trigger")).toBeAttached();
       if (entry.href.startsWith("/content/") && entry.href !== "/content/comments") await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();
-      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      await expectNoHorizontalOverflow(page, entry.href, 1);
       await page.screenshot({ path: testInfo.outputPath(`${String(index).padStart(2,"0")}-${theme}-${width}.png`), fullPage: true, mask: [page.locator(".profile-trigger")] });
     }
     expect(errors).toEqual([]);

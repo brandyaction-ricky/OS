@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { expectNoHorizontalOverflow } from "./horizontal-overflow";
 
 const routes = [
   "/content/scripts",
@@ -24,7 +25,7 @@ for (const width of [1280, 390]) {
     for (const route of routes) {
       await page.goto(route);
       await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
-      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await expectNoHorizontalOverflow(page, route);
       await page.screenshot({
         path: testInfo.outputPath(`${route.slice(1).replaceAll("/", "-")}-${width}.png`),
         mask: [page.locator(".profile-trigger")],
