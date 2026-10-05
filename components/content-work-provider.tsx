@@ -45,6 +45,7 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   return <Context.Provider value={{topics,publications:records.filter(row=>row.record_type==="content_publish"),selected,topicId,loading,error,generationMode:defaultGenerationMode(records),select,reload}}>
     {showProcess?<section className="process-bar" data-ui="process-bar" aria-label="작업 중인 영상">
       <label><span className="process-bar-label">작업 중인 영상</span><select className="process-video" data-ui="process-video" aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
+      <span className="process-scroll-hint" aria-hidden="true">← 좌우로 넘겨 단계 보기 →</span>
       <nav className="process-steps" aria-label="콘텐츠 공정 순서"><span className="process-bar-label">공정</span>{content.pages.map((item,index)=>{
         const current=(page.navHref??page.href)===item.href;
         const done=Boolean(selected)&&index<completedThrough;

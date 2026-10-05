@@ -183,7 +183,7 @@ test("knowledge tree keeps controls compact and mobile actions readable", async 
   await expect(page.getByRole("button", { name: "목록 새로고침" })).toBeVisible();
   const folder = page.getByRole("treeitem", { name: "회사 wiki 2" });
   const actions = page.getByRole("button", { name: "회사 wiki 폴더 작업" });
-  await expect(folder).toHaveCSS("height", "34px");
+  await expect(folder.locator(".folder-tree-row")).toHaveCSS("height", "34px");
   await expect(actions).toHaveCSS("opacity", "0");
   await folder.hover();
   await expect(actions).toHaveCSS("opacity", "1");
