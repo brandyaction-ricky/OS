@@ -60,6 +60,7 @@
 .dev-search-tools form button { display: flex; border: none; padding: 0; color: var(--muted); background: transparent; }
 .dev-inbox-layout { border: 1px solid var(--line); border-radius: 8px; overflow: clip; min-height: 410px; background: var(--panel); }
 .dev-inbox-layout.has-detail { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(340px, 410px); }
+.dev-no-results { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .dev-inbox { min-width: 0; }
 .dev-list-head { display: flex; justify-content: space-between; padding: 10px 18px; border-bottom: 1px solid var(--line-soft); background: var(--panel-2); color: var(--muted); font-size: 11px; }
 .dev-request-row { width: 100%; display: flex; align-items: center; gap: 12px; min-height: 87px; padding: 14px 18px; text-align: left; color: var(--text-2); background: none; border: none; border-bottom: 1px solid var(--line-soft); }

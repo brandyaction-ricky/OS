@@ -13,6 +13,19 @@ export function safeWebUrl(value: string | null | undefined): string | null {
   } catch { return null; }
 }
 
+export function projectDashboardUrl(value: string, provider: "supabase" | "vercel"): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    const segments = url.pathname.split("/").filter(Boolean);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) return null;
+    if (provider === "supabase") {
+      return url.hostname === "supabase.com" && segments[0] === "dashboard" && segments[1] === "project" && segments.length >= 3 ? url.href : null;
+    }
+    return url.hostname === "vercel.com" && segments.length >= 2 ? url.href : null;
+  } catch { return null; }
+}
+
 export function repositoryUrl(value: string): string | null {
   const name = value.replace(/^https:\/\/github\.com\//, "").replace(/\/$/, "").replace(/\.git$/, "");
   const [owner, repo] = name.split("/");
@@ -28,6 +41,8 @@ export function buildDevelopmentHandoff(project: OsRecord, request?: OsRecord | 
     `백엔드 저장소: ${recordText(project, "backendRepository") || "미지정"}`,
     `운영 주소: ${recordText(project, "productionUrl") || "미지정 — 먼저 확인"}`,
     `개발 주소: ${recordText(project, "developmentUrl") || recordText(project, "devUrl") || "미지정"}`,
+    `Supabase 프로젝트: ${recordText(project, "supabaseProjectUrl") || "미지정"}`,
+    `Vercel 프로젝트: ${recordText(project, "vercelProjectUrl") || "미지정"}`,
     `운영 브랜치: ${recordText(project, "productionBranch") || "미지정"}`,
     `개발 브랜치: ${recordText(project, "developmentBranch") || recordText(project, "devBranch") || "미지정"}`,
     `배포 규칙: ${recordText(project, "deploymentRule") || "프로젝트 지침에서 확인"}`,

@@ -127,6 +127,8 @@
 .linear-shell .ui-v2 .fullscreen-audit-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; align-items: start; }
 .linear-shell .ui-v2 .fullscreen-audit-layout.has-detail { grid-template-columns: minmax(0,1fr) 340px; }
 .linear-shell .ui-v2 .audit-panel { min-width: 0; }
+.linear-shell .ui-v2 .audit-panel > .empty-state { min-height: 180px; display: grid; place-items: center; border: 0; text-align: center; }
+.linear-shell .ui-v2 .audit-panel > .empty-state > div { display: grid; justify-items: center; gap: 6px; }
 .linear-shell .ui-v2 .audit-filters { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
 .linear-shell .ui-v2 .audit-filters > label { min-width: 0; }
 .linear-shell .ui-v2 .audit-filters > label > span { flex: none; white-space: nowrap; }
@@ -168,8 +170,7 @@
 .linear-shell .ui-v2.screen-schedule > .studio-tabs > a[aria-current="page"] { border: 0; background: var(--card); box-shadow: inset 0 0 0 1px var(--accent); }
 .linear-shell .ui-v2.screen-schedule .workspace-section > .page-header { margin: 0 0 22px; }
 .linear-shell .ui-v2.screen-schedule .workspace-section > .page-header .page-title-group { padding-bottom: 8px; }
-.linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) > :not(.panel-header) { margin-inline: 14px; }
-.linear-shell .ui-v2 .company-settings-stack .generation-settings { align-content: start; }
+.linear-shell .ui-v2 .company-settings-stack .generation-settings { display: grid; grid-template-columns: minmax(0,1fr); align-content: start; gap: 0; }
 .linear-shell .ui-v2 .company-settings-stack .generation-settings h2,
 .linear-shell .ui-v2 .company-settings-stack .meeting-term-settings h2 { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--panel-2); font-size: 14px; }
 .linear-shell .ui-v2 .company-settings-stack .generation-settings p,
@@ -184,10 +185,13 @@
 .linear-shell .ui-v2.screen-company .company-list-row { min-width: 0; flex-wrap: wrap; }
 .linear-shell .ui-v2.screen-company .company-list-row label { min-width: 150px; display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 .linear-shell .ui-v2.screen-company .company-list-row :is(input,select) { min-height: 34px; }
-.linear-shell .ui-v2.screen-company .category-grid { overflow: hidden; }
+.linear-shell .ui-v2.screen-company .company-settings-stack > .category-grid { padding: 0; overflow: hidden; }
+.linear-shell .ui-v2.screen-company .category-grid > .panel-header { margin: 0; padding: 12px 16px; background: var(--panel-2); }
 .linear-shell .ui-v2.screen-company .knowledge-folder-grid { padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; }
 .linear-shell .ui-v2.screen-company .knowledge-folder-grid span { min-width: 0; padding: 9px 10px; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .linear-shell .ui-v2.screen-company .category-grid > p { margin: 0; padding: 0 14px 14px; color: var(--muted); font-size: 11.5px; }
+.linear-shell .ui-v2.screen-company .commerce-admin-links > .empty-state { min-height: 150px; display: grid; place-items: center; text-align: center; }
+.linear-shell .ui-v2.screen-company .commerce-admin-links > .empty-state > div { display: grid; justify-items: center; gap: 6px; }
 .linear-shell .ui-v2 .account-layout { grid-template-columns: 250px minmax(0,1fr); gap: 12px; }
 .linear-shell .ui-v2 .account-channel-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .linear-shell .ui-v2 :is(.account-info,.account-shared,.account-channel-body) { padding: 12px 14px; }

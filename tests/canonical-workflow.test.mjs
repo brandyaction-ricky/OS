@@ -67,7 +67,7 @@ test("new workflow tables deny public access and all derived records remain draf
   assert.match(sql,/'draft',p_actor/);
   assert.match(sql,/for update/);assert.match(sql,/unique \(document_id, requested_by, kind, request_key\)/);
   assert.match(sql,/grant execute on function public.os_adopt_canonical_rule.*to service_role/);
-  assert.equal(entry?.developmentApprovedAt,"2026-10-04");assert.deepEqual(entry?.appliedEnvironments,["development"]);
+  assert.equal(entry?.developmentApprovedAt,"2026-10-04");assert.equal(entry?.productionApprovedAt,"2026-10-05");assert.deepEqual(entry?.appliedEnvironments,["development", "production"]);
 });
 test("source network requests are pinned, bounded and never forward credentials",()=>{
   const code=read("lib/server/canonical-source-fetch.ts");
