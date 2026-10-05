@@ -111,3 +111,5 @@
 - 독립된 로컬 데모 빌드에서 전체 Playwright E2E 92/92 통과, 연결된 DEV·QA 계정이 필요한 인증 테스트 1건은 비밀값 부재로 건너뛰었다. 1280px·390px 가로 넘침 검사를 포함한다.
 - `npm run verify` 통과: 환경 검사, ESLint(기존 `<img>` 경고 1건), 타입 검사, 단위 테스트 566/566, Next.js 빌드. `git diff --check` 통과.
 - 실제 계정·DEV 연결 통합 테스트 및 Production 데이터 쓰기·승인·업로드는 수행하지 않았다. PR CI와 Preview 재검증 뒤에만 병합·운영 배포한다. 운영 OS 개발 관리 동기화는 로컬 환경 이전 중으로 보류한다.
+- GitHub CI의 리눅스 브라우저에서 카드뉴스 시안(`/automation/templates`) 편집 필드가 1280px·1440px 화면 너비를 초과하는 실제 결함을 확인했다. 진단 결과 `.automation-template-copy`와 내부 2열 입력 그리드의 최소 너비가 원인이었다. 편집 폼·하위 입력의 최소 너비를 0으로 허용하고 모바일은 한 열로 바꿨다.
+- 최종 CSS 포함 로컬 `npm run verify` 재통과, 전체 Playwright E2E 92/92 재통과(인증 테스트 1건 건너뜀). 리눅스 CI 재검증은 진행 전이며, 통과 전까지 Production 미변경이다.
