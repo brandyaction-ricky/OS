@@ -103,7 +103,8 @@
 .linear-shell .ui-v2 .company-block { padding: 12px 14px; }
 .linear-shell .ui-v2 .company-block h2 { font-size: 14px; }
 .linear-shell .ui-v2 .policy-table th,.linear-shell .ui-v2 .policy-table td,.linear-shell .ui-v2 .member-role-table td { padding: 9px 12px; font-size: 12px; }
-.linear-shell .ui-v2 .fullscreen-audit-layout { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 12px; align-items: start; }
+.linear-shell .ui-v2 .fullscreen-audit-layout { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; align-items: start; }
+.linear-shell .ui-v2 .fullscreen-audit-layout.has-detail { grid-template-columns: minmax(0,1fr) 340px; }
 .linear-shell .ui-v2 .audit-panel { min-width: 0; }
 .linear-shell .ui-v2 .audit-filters { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
 .linear-shell .ui-v2 .audit-filters > label { min-width: 0; }
@@ -115,6 +116,40 @@
 .linear-shell .ui-v2 .audit-detail dd { margin: 0; overflow-wrap: anywhere; }
 .linear-shell .ui-v2 .fullscreen-audit-empty { padding: 12px 14px; color: var(--muted); font-size: 12px; }
 .linear-shell .ui-v2 .fullscreen-audit-empty h2 { color: var(--text); font-size: 14px; }
+.linear-shell .ui-v2 .system-status-stack { display: grid; gap: 12px; }
+.linear-shell .ui-v2 .system-status-channel-card { overflow: hidden; }
+.linear-shell .ui-v2 .system-status-channel-body { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px 14px; }
+.linear-shell .ui-v2 .system-status-channel-body > p { flex: 1 1 420px; margin: 0; color: var(--muted); font-size: 12px; }
+.linear-shell .ui-v2 .system-status-channel-body .inline-alert { flex-basis: 100%; }
+.linear-shell .ui-v2 .system-status-details { overflow: hidden; }
+.linear-shell .ui-v2 .system-status-details > summary { min-height: 42px; padding: 10px 14px; display: flex; align-items: center; cursor: pointer; color: var(--text-2); font-size: 12px; font-weight: 700; }
+.linear-shell .ui-v2 .system-status-details[open] > summary { border-bottom: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .system-status-details-body { padding: 12px 14px 14px; }
+.linear-shell .ui-v2 .company-settings-stack { display: grid; gap: 12px; }
+.linear-shell .ui-v2 .company-settings-stack > * { min-width: 0; margin: 0; }
+.linear-shell .ui-v2 .company-settings-grid { display: grid; grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr); gap: 12px; align-items: start; }
+.linear-shell .ui-v2 .company-settings-grid > * { min-width: 0; margin: 0; }
+.linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) { padding: 0 0 14px; overflow: hidden; }
+.linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) > :not(.panel-header) { margin-inline: 14px; }
+.linear-shell .ui-v2 .company-settings-stack .generation-settings { align-content: start; }
+.linear-shell .ui-v2 .company-settings-stack .generation-settings h2,
+.linear-shell .ui-v2 .company-settings-stack .meeting-term-settings h2 { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); background: var(--panel-2); font-size: 14px; }
+.linear-shell .ui-v2 .company-settings-stack .generation-settings p,
+.linear-shell .ui-v2 .company-settings-stack .meeting-term-settings > p { margin-top: 12px; margin-bottom: 0; }
+.linear-shell .ui-v2 .company-settings-stack .generation-settings .primary-button { width: fit-content; margin-top: 12px; }
+.linear-shell .ui-v2 .company-settings-admin-links { display: grid; gap: 10px; }
+.linear-shell .ui-v2 .company-settings-admin-links > header { min-width: 0; margin: 0; flex-wrap: wrap; }
+.linear-shell .ui-v2 .company-settings-admin-links > header .page-title-group { min-width: min(100%,420px); flex: 1 1 420px; }
+.linear-shell .ui-v2 .company-settings-admin-links > header > button { flex: 0 0 auto; }
+.linear-shell .ui-v2 .company-settings-admin-links > .panel { margin: 0; }
+.linear-shell .ui-v2.screen-company .studio-two { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.linear-shell .ui-v2.screen-company .company-list-row { min-width: 0; flex-wrap: wrap; }
+.linear-shell .ui-v2.screen-company .company-list-row label { min-width: 150px; display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.linear-shell .ui-v2.screen-company .company-list-row :is(input,select) { min-height: 34px; }
+.linear-shell .ui-v2.screen-company .category-grid { overflow: hidden; }
+.linear-shell .ui-v2.screen-company .knowledge-folder-grid { padding: 12px 14px; display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; }
+.linear-shell .ui-v2.screen-company .knowledge-folder-grid span { min-width: 0; padding: 9px 10px; overflow: hidden; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.linear-shell .ui-v2.screen-company .category-grid > p { margin: 0; padding: 0 14px 14px; color: var(--muted); font-size: 11.5px; }
 .linear-shell .ui-v2 .account-layout { grid-template-columns: 250px minmax(0,1fr); gap: 12px; }
 .linear-shell .ui-v2 .account-channel-grid { grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .linear-shell .ui-v2 :is(.account-info,.account-shared,.account-channel-body) { padding: 12px 14px; }
@@ -125,7 +160,9 @@
  .linear-shell .ui-v2 :is(.meeting-grid,.roster-grid,.ai-system-grid) { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .linear-shell .ui-v2 .task-board { grid-template-columns: repeat(3,minmax(0,1fr)); }
  .linear-shell .ui-v2 .week-board { grid-template-columns: repeat(4,minmax(0,1fr)); }
- .linear-shell .ui-v2 :is(.account-layout,.fullscreen-connection-layout,.fullscreen-audit-layout) { grid-template-columns: minmax(0,1fr); }
+ .linear-shell .ui-v2 :is(.account-layout,.fullscreen-connection-layout,.fullscreen-audit-layout,.fullscreen-audit-layout.has-detail) { grid-template-columns: minmax(0,1fr); }
+ .linear-shell .ui-v2 .company-settings-grid { grid-template-columns: minmax(0,1fr); }
+ .linear-shell .ui-v2.screen-company .studio-two { grid-template-columns: repeat(2,minmax(0,1fr)); }
  .linear-shell .ui-v2 .service-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }
  .linear-shell .ui-v2 .dev-inbox-layout.has-detail { grid-template-columns: minmax(0,1fr) 340px; }
 }
@@ -140,6 +177,11 @@
  .linear-shell .ui-v2 .dev-filters { flex-wrap: wrap; }
  .linear-shell .ui-v2 .dev-page-header { flex-direction: column; }
  .linear-shell .ui-v2 .dev-actions { flex-wrap: wrap; }
+ .linear-shell .ui-v2.screen-company .studio-two { grid-template-columns: minmax(0,1fr); }
+ .linear-shell .ui-v2 .system-status-channel-body { align-items: stretch; flex-direction: column; }
+ .linear-shell .ui-v2 .company-settings-admin-links > header { align-items: stretch; flex-direction: column; }
+ .linear-shell .ui-v2 .company-settings-admin-links > header .page-title-group { min-width: 0; flex-basis: auto; }
+ .linear-shell .ui-v2 .company-settings-admin-links > header > button { width: 100%; justify-content: center; }
 }
 @media(max-width:520px) {
  .linear-shell .ui-v2 :is(.meeting-grid,.roster-grid,.ai-system-grid,.task-board,.week-board,.service-grid) { grid-template-columns: minmax(0,1fr); }

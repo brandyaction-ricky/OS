@@ -336,11 +336,10 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
           ) : null}
 
           {page === "company" ? (
-            <>
+            <div className="company-settings-stack">
               <ApprovalSettings token={accessToken} members={members} actorId={profile?.id} isAdmin={profile?.role === "admin"} demo={demo} />
-              <ContentGenerationSettings />
-              <MeetingTermSettings />
-              <PerformanceFilterProvider><CommerceAdminLinks embedded /></PerformanceFilterProvider>
+              <div className="company-settings-grid"><ContentGenerationSettings /><MeetingTermSettings /></div>
+              <div className="company-settings-admin-links"><PerformanceFilterProvider><CommerceAdminLinks embedded /></PerformanceFilterProvider></div>
               <TelegramAccessPanel status={telegram} token={accessToken} admin={profile?.role === "admin"} members={members} onRefresh={load} />
               <section className="studio-two">
                 <article className="panel company-block">
@@ -380,7 +379,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
                 </article>
               </section>
               <KnowledgeClassificationSettings />
-            </>
+            </div>
           ) : null}
 
           {page === "channels" ? (
