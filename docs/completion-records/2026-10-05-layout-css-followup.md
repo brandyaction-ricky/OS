@@ -45,6 +45,14 @@
 
 ## 남은 관문
 
-- 로그인된 DEV 계정으로 Preview 데이터 화면을 사람이 최종 확인한다.
+- 로그인 없는 DEV Preview에서 화면별 사람이 최종 확인한다. 이 Preview는 데모 데이터만 사용하며 저장 동작이 비활성화된다.
 - 승인 후 PR 생성·병합과 운영 배포는 별도 단계로 진행한다.
 - 운영 OS 개발 관리에는 쓰지 않았으며 동기화 대기 상태다.
+
+## DEV 익명 검수 전환
+
+- `codex/os-layout-fixes-20261005` 브랜치의 Vercel Preview에만 `NEXT_PUBLIC_DEMO_MODE=true`를 적용했다.
+- Production 및 다른 Preview 브랜치의 인증 설정은 변경하지 않았다.
+- 재배포한 Preview가 로그인 화면으로 이동하지 않고 `/content/scripts`를 직접 여는 것을 실제 브라우저에서 확인했다.
+- 데모 세션에는 접근 토큰이 없고, 원고 작성·새로고침 등 저장 또는 서버 데이터 호출 동작은 비활성화된 상태임을 확인했다.
+- 고정 브랜치 Preview: `https://brandyaction-os-git-codex-os-layout-fixe-323e0f-brandyaction-os.vercel.app`
