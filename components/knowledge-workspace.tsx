@@ -1,6 +1,10 @@
 "use client";
 
+import { PageTitle } from "./page-title";
+
 import { markdownBlocks, markdownCodeBody, markdownSections, treeWidth, type MarkdownSection } from "@/lib/markdown-sections";
+import { parseKnowledgeToggle } from "@/lib/knowledge-toggle";
+import { canReparentKnowledgePage, knowledgePageDescendants } from "@/lib/knowledge-pages";
 
 import {
   Archive,
@@ -39,7 +43,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, prepareKnowledgeAssetUpload, restoreDocumentVersion, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -79,7 +83,7 @@ const OWNER_FILTERS = [
 ];
 
 interface FolderTreeNode { name: string; path: string; count: number; children: FolderTreeNode[]; documents: KnowledgeDocument[] }
-type TreeRow = { type: "folder"; folder: FolderTreeNode; depth: number } | { type: "document"; document: KnowledgeDocument; depth: number };
+type TreeRow = { type: "folder"; folder: FolderTreeNode; depth: number } | { type: "document"; document: KnowledgeDocument; depth: number; childCount: number };
 
 function documentFolder(document: KnowledgeDocument) {
   if (document.folder) return document.folder;
@@ -173,6 +177,8 @@ function MarkdownBlocks({ content, onOpenLink }: { content: string; onOpenLink: 
   return (
     <div className="markdown-view">
       {blocks.map((block, index) => {
+        const toggle = parseKnowledgeToggle(block);
+        if (toggle) return <details className="knowledge-toggle-block" key={index}><summary><WikiInline text={toggle.title} onOpenLink={onOpenLink} /></summary><MarkdownBlocks content={toggle.body} onOpenLink={onOpenLink} /></details>;
         const heading = block.match(/^(#{1,4})\s+(.+)/);
         if (heading) {
           const level = heading[1].length;
@@ -222,7 +228,7 @@ function MarkdownSectionView({ section, onOpenLink }: { section: MarkdownSection
   </details>;
 }
 
-function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
+export function MarkdownView({ content, onOpenLink }: { content: string; onOpenLink: (title: string) => void }) {
   const root = useMemo(() => markdownSections(content), [content]);
   const headings: MarkdownSection[] = [];
   const collect = (section: MarkdownSection) => { if (section.title) headings.push(section); section.children.forEach(collect); };
@@ -247,6 +253,10 @@ function WorkspaceContent() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [pendingNewAction, setPendingNewAction] = useState<(() => void) | null>(null);
   const [newValues, setNewValues] = useState({ title: "", content: "", brand: "", team: "", tags: "" });
+  const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
+  const [newImageAlt, setNewImageAlt] = useState<string[]>([]);
+  const [newImageCaptions, setNewImageCaptions] = useState<string[]>([]);
+  const newImageInputRef = useRef<HTMLInputElement | null>(null);
   const [newError, setNewError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>( {} );
   const [revision, setRevision] = useState(0);
@@ -254,8 +264,14 @@ function WorkspaceContent() {
   const [archivedCount, setArchivedCount] = useState(0);
   const [newOpen, setNewOpen] = useState(searchParams.get("new") === "1");
   const [newFolderPath, setNewFolderPath] = useState("");
+  const [newParentId, setNewParentId] = useState<string | null>(null);
+  const [pageMoveDocument, setPageMoveDocument] = useState<KnowledgeDocument | null>(null);
+  const [pageMoveFolder, setPageMoveFolder] = useState("");
+  const [pageMoveParentId, setPageMoveParentId] = useState<string | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [collapsedPages, setCollapsedPages] = useState<Set<string>>(new Set());
   const [moveIds, setMoveIds] = useState<string[]>([]);
   const [folderManagerOpen, setFolderManagerOpen] = useState(searchParams.get("folders") === "1");
   const [managedFolder, setManagedFolder] = useState("");
@@ -293,7 +309,7 @@ function WorkspaceContent() {
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
   const [hoverTree, setHoverTree] = useState(false);
-  const [paneWidth, setPaneWidth] = useState(280);
+  const [paneWidth, setPaneWidth] = useState(300);
   const [treeScroll, setTreeScroll] = useState(0);
   const [linkQuery, setLinkQuery] = useState<string | null>(null);
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
@@ -329,11 +345,17 @@ function WorkspaceContent() {
   useEffect(() => {
     const savedFocus = window.localStorage.getItem("brandy-knowledge-focus");
     setFocusMode(savedFocus === null ? true : savedFocus === "true");
-    setTreeOpen(window.localStorage.getItem("brandy-knowledge-tree") !== "false");
+    setTreeOpen(window.matchMedia("(max-width: 899px)").matches ? false : window.localStorage.getItem("brandy-knowledge-tree") !== "false");
     const savedWidth = window.localStorage.getItem("brandy-knowledge-width-v1");
     if (savedWidth) setPaneWidth(treeWidth(Number(savedWidth)));
     setPreferencesReady(true);
     return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
+  }, []);
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 899px)");
+    const closeDrawer = (event: MediaQueryListEvent) => { if (event.matches) setTreeOpen(false); };
+    narrow.addEventListener("change", closeDrawer);
+    return () => narrow.removeEventListener("change", closeDrawer);
   }, []);
   useEffect(() => {
     if (!treeContextMenu) return;
@@ -369,7 +391,7 @@ function WorkspaceContent() {
     try {
       const items: KnowledgeDocument[] = [];
       for (let offset = 0; ; offset += 200) {
-        const params = new URLSearchParams({view: "summary", limit: "200", offset: String(offset), folder: path, exactFolder: "true", scope: ownerFilter});
+        const params = new URLSearchParams({view: "page-summary", limit: "200", offset: String(offset), folder: path, exactFolder: "true", scope: ownerFilter});
         if (ownerFilter.startsWith("member:")) params.set("owner", ownerFilter.slice(7));
         const result = await listDocuments(accessToken, params.toString());
         items.push(...result.documents);
@@ -458,6 +480,7 @@ function WorkspaceContent() {
   }, [accessToken, demo, selected]);
 
   const filtered = useMemo(() => documents.filter(document => inKnowledgeScope(document, ownerFilter, profile?.id)), [documents, ownerFilter, profile?.id]);
+  const selectedChildren = useMemo(() => selected ? documents.filter(document => document.parent_document_id === selected.id && document.status !== "archived" && inKnowledgeScope(document, ownerFilter, profile?.id)) : [], [documents, selected, ownerFilter, profile?.id]);
   const galleryFolder = managedFolder || selected?.folder || "";
   const galleryDocuments = useMemo(() => filtered.filter((document) => documentFolder(document) === galleryFolder), [filtered, galleryFolder]);
   const openGallery = () => guardAction(() => {
@@ -474,10 +497,31 @@ function WorkspaceContent() {
       rows.push({ type: "folder", folder, depth });
       if (!expandedFolders.has(folder.path)) return;
       visit(folder.children, depth + 1);
-      folder.documents.forEach((document) => rows.push({ type: "document", document, depth: depth + 1 }));
+      const byId = new Map(folder.documents.map(document => [document.id, document]));
+      const children = new Map<string, KnowledgeDocument[]>();
+      for (const document of folder.documents) {
+        const parent = document.parent_document_id;
+        if (parent && parent !== document.id && byId.has(parent)) children.set(parent, [...(children.get(parent) ?? []), document]);
+      }
+      const seen = new Set<string>();
+      const markHidden = (document: KnowledgeDocument) => {
+        if (seen.has(document.id)) return;
+        seen.add(document.id);
+        (children.get(document.id) ?? []).forEach(markHidden);
+      };
+      const visitPage = (document: KnowledgeDocument, pageDepth: number) => {
+        if (seen.has(document.id)) return;
+        seen.add(document.id);
+        const childPages = children.get(document.id) ?? [];
+        rows.push({ type: "document", document, depth: pageDepth, childCount: childPages.length });
+        if (collapsedPages.has(document.id)) childPages.forEach(markHidden);
+        else childPages.forEach(child => visitPage(child, pageDepth + 1));
+      };
+      folder.documents.filter(document => !document.parent_document_id || !byId.has(document.parent_document_id)).forEach(document => visitPage(document, depth + 1));
+      folder.documents.filter(document => !seen.has(document.id)).forEach(document => visitPage(document, depth + 1));
     });
     visit(folderTree, 0); return rows;
-  }, [expandedFolders, folderTree]);
+  }, [collapsedPages, expandedFolders, folderTree]);
   const ownerNames = useMemo(() => new Map(members.map((member) => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
   const readingContent = useMemo(() => prepareReadingContent(dirty ? draft?.content ?? "" : selected?.content_md ?? ""), [selected?.content_md, dirty, draft?.content]);
   const existingFolderOptions = useMemo(() => knowledgeFolderOptions([
@@ -492,26 +536,38 @@ function WorkspaceContent() {
     if (!selectedId || !filtered.some((document) => document.id === selectedId)) setSelectedId(filtered[0].id);
   }, [filtered, searchParams, selectedId]);
 
-  const openNewDocument = (folder = managedFolder || selected?.folder || "") => guardAction(() => {
-    setNewFolderPath(folder); setNewError(""); setFieldErrors({}); setNewOpen(true);
+  const openNewDocument = (folder = managedFolder || selected?.folder || "", parentId: string | null = null) => guardAction(() => {
+    setNewFolderPath(folder); setNewParentId(parentId); setNewError(""); setFieldErrors({}); setWorkspaceView("document"); setNewOpen(true);
   });
-  const newDirty = Object.values(newValues).some(Boolean);
+  useEffect(() => {
+    const open = () => openNewDocument();
+    window.addEventListener("brandy-quick-record", open);
+    return () => window.removeEventListener("brandy-quick-record", open);
+  });
+  const newDirty = Object.values(newValues).some(Boolean) || newImageFiles.length > 0;
   const closeNewDocument = () => {
     if (busy) return;
-    const close = () => { setNewValues({ title: "", content: "", brand: "", team: "", tags: "" }); setNewOpen(false); setNewError(""); };
+    const close = () => { setNewValues({ title: "", content: "", brand: "", team: "", tags: "" }); setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]); setNewOpen(false); setNewParentId(null); setNewError(""); };
     if (newDirty) setPendingNewAction(() => close); else close();
   };
   function guardAction(action: () => void) {
     if (busy) return;
-    if (dirty) setPendingAction(() => action); else action();
+    if (newOpen && newDirty) setPendingNewAction(() => action);
+    else if (dirty) setPendingAction(() => action);
+    else action();
   }
   const selectDocument = (id: string) => { if (id !== selectedId) guardAction(() => selectDocumentNow(id)); };
   function commitDocument(document: KnowledgeDocument, previous?: KnowledgeDocument) {
     if (demo) saveDemoKnowledgeDocument(document);
     const before = previous ?? documentsRef.current.find(row => row.id === document.id);
-    documentsRef.current = [document, ...documentsRef.current.filter(row => row.id !== document.id)];
+    const movedChildren = before && before.folder !== document.folder
+      ? knowledgePageDescendants(documentsRef.current, document.id).map(child => ({ before: child, after: { ...child, folder: document.folder } }))
+      : [];
+    if (demo) movedChildren.forEach(child => saveDemoKnowledgeDocument(child.after));
+    const movedById = new Map(movedChildren.map(child => [child.after.id, child.after]));
+    documentsRef.current = [document, ...documentsRef.current.filter(row => row.id !== document.id).map(row => movedById.get(row.id) ?? row)];
     setDocuments(documentsRef.current);
-    setInventory(current => updateFolderInventory(current, before, document, ownerFilter, profile?.id));
+    setInventory(current => movedChildren.reduce((inventory, child) => updateFolderInventory(inventory, child.before, child.after, ownerFilter, profile?.id), updateFolderInventory(current, before, document, ownerFilter, profile?.id)));
     setAllFolders(current => knowledgeFolderOptions([...current, document.folder]));
     setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([document.folder || "분류 없음"])]));
     epoch.current += 1; setListLoading(false);
@@ -580,6 +636,27 @@ function WorkspaceContent() {
     finally { setBusy(false); }
   };
 
+  const openPageMove = (document: KnowledgeDocument) => guardAction(() => {
+    setError(""); setPageMoveDocument(document); setPageMoveFolder(document.folder);
+    setPageMoveParentId(document.parent_document_id ?? null);
+  });
+  const savePageMove = async () => {
+    if (!pageMoveDocument || busy) return;
+    setBusy(true); setError("");
+    try {
+      const folder = pageMoveFolder.trim() ? normalizeKnowledgeFolder(pageMoveFolder) : "";
+      if (!canReparentKnowledgePage(documentsRef.current, pageMoveDocument.id, pageMoveParentId)) throw new Error("페이지를 자신이나 하위 페이지 아래로 옮길 수 없습니다.");
+      const parent = pageMoveParentId ? documentsRef.current.find(document => document.id === pageMoveParentId) : null;
+      if (pageMoveParentId && (!parent || parent.status === "archived" || parent.folder !== folder)) throw new Error("상위 페이지와 같은 폴더를 선택해 주세요.");
+      if (pageMoveDocument.folder === folder && (pageMoveDocument.parent_document_id ?? null) === pageMoveParentId) { setPageMoveDocument(null); return; }
+      const updated = demo ? { ...pageMoveDocument, folder, parent_document_id: pageMoveParentId, updated_at: new Date().toISOString() }
+        : (await moveKnowledgePage(accessToken, { id: pageMoveDocument.id, folder, parentDocumentId: pageMoveParentId, expectedUpdatedAt: pageMoveDocument.updated_at })).document;
+      commitDocument(updated, pageMoveDocument); discard(updated.id); setPageMoveDocument(null);
+      setToast("페이지 위치를 옮겼습니다. 하위 페이지도 함께 이동합니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "페이지를 옮기지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
   const openTreeContextMenu = (event: React.MouseEvent, target: NonNullable<typeof treeContextMenu>["target"]) => {
     event.preventDefault(); event.stopPropagation();
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -599,8 +676,9 @@ function WorkspaceContent() {
     setBusy(true); setError("");
     try {
       const current = !demo && renameDocument.content_md === undefined ? (await getDocument(accessToken, renameDocument.id)).document : renameDocument;
-      const document = demo ? { ...current, title, current_version: current.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { id: current.id, expectedVersion: current.current_version, title, content: current.content_md, reason: "파일 트리에서 문서 이름 변경" })).document;
-      commitDocument(document, current); discard(document.id); setRenameDocument(null); setToast("문서 이름을 변경했습니다.");
+      const result = demo ? { document: { ...current, title, current_version: current.current_version + 1, updated_at: new Date().toISOString() }, proposal: undefined } : await updateDocument(accessToken, { id: current.id, expectedVersion: current.current_version, title, content: current.content_md, reason: "파일 트리에서 문서 이름 변경" });
+      if (!result.proposal) commitDocument(result.document, current);
+      discard(current.id); setRenameDocument(null); setToast(result.proposal ? "제목 변경 제안을 저장했습니다. 승인 전까지 정본 이름은 그대로입니다." : "문서 이름을 변경했습니다.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 이름을 변경하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -749,13 +827,14 @@ function WorkspaceContent() {
     setBusy(true); setError("");
     try {
       const input = documentCreateSchema.parse({ ...draft, folder: draft.folder.trim() ? normalizeKnowledgeFolder(draft.folder) : "", tags: draft.tags.split(",").map(tag => tag.trim()).filter(Boolean) });
-      const document = demo ? { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" })).document;
+      const result = demo ? { document: { ...selected, ...input, content_md: input.content, current_version: selected.current_version + 1, updated_at: new Date().toISOString() }, proposal: undefined } : await updateDocument(accessToken, { ...input, id: selected.id, expectedVersion: expectedVersion!, reason: "OS 문서 작업공간에서 수정" });
       const pending = [...(pendingAttachmentPaths.current.get(selected.id) ?? [])];
       const unused = pending.filter(path => !input.content.includes(encodeURIComponent(path)));
       if (unused.length) await cleanupPendingAttachments(selected.id, unused);
       pendingAttachmentPaths.current.delete(selected.id);
-      commitDocument(document); discard(document.id);
-      setMode("read"); setToast("새 버전으로 저장했습니다."); return true;
+      if (!result.proposal) commitDocument(result.document);
+      discard(selected.id);
+      setMode("read"); setToast(result.proposal ? "정본 변경 제안을 저장했습니다. 승인 전까지 기존 정본은 그대로입니다." : "새 버전으로 저장했습니다."); return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "저장하지 못했습니다. 작성 내용은 유지됩니다.");
       if (reason instanceof ApiRequestError && reason.code === "VERSION_CONFLICT") {
@@ -797,39 +876,81 @@ function WorkspaceContent() {
     else setMode("edit");
   };
 
+  const saveDocumentSteward = async (stewardId: string) => {
+    if (!selected || demo) return;
+    setBusy(true); setError("");
+    try {
+      const result = await setDocumentSteward(accessToken, selected.id, selected.current_version, stewardId || null);
+      commitDocument(result.document); setToast("문서 담당을 저장했습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "문서 담당을 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   const restoreVersion = async (version: DocumentVersion) => {
     if (!selected || !compareBase) return;
     setBusy(true); setError("");
     try {
       let restored: KnowledgeDocument;
+      let proposalCreated = false;
       const current = documentsRef.current.find(item => item.id === selected.id) ?? selected;
       if (demo) restored = { ...current, title: version.title, content_md: version.content_md, current_version: current.current_version + 1, updated_at: new Date().toISOString() };
-      else ({ document: restored } = await restoreDocumentVersion(accessToken, selected.id, version.version_no, compareBase.current_version));
+      else { const response = await restoreDocumentVersion(accessToken, selected.id, version.version_no, compareBase.current_version); restored = response.document; proposalCreated = Boolean(response.proposal); }
       setCompareVersion(null); setCompareBase(null);
-      commitDocument(restored); discard(restored.id); setToast(`v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
+      if (!proposalCreated) commitDocument(restored);
+      discard(restored.id); setToast(proposalCreated ? `v${version.version_no} 내용의 변경 제안을 저장했습니다. 승인 전까지 정본은 그대로입니다.` : `v${version.version_no} 내용을 새 버전으로 복원했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "버전을 되돌리지 못했습니다."); }
     finally { setBusy(false); }
   };
 
-  const create = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); if (busy) return;
+  const createPage = async (): Promise<KnowledgeDocument | null> => {
+    if (busy) return null;
     setBusy(true); setNewError(""); setFieldErrors({});
     try {
-      const parsed = documentCreateSchema.safeParse({ ...newValues, folder: newFolderPath.trim() ? normalizeKnowledgeFolder(newFolderPath) : "", tags: newValues.tags.split(",").map(tag => tag.trim()).filter(Boolean), source: "wiki" });
+      const parsed = documentCreateSchema.safeParse({ ...newValues, content: newValues.content || "\n", folder: newFolderPath.trim() ? normalizeKnowledgeFolder(newFolderPath) : "", tags: newValues.tags.split(",").map(tag => tag.trim()).filter(Boolean), source: "wiki", parentDocumentId: demo ? null : newParentId });
       if (!parsed.success) {
-        const labels: Record<string, string> = { title: "제목은 1~200자", content: "본문은 1~1,500,000자", folder: "폴더 경로는 160자 이하", brand: "브랜드는 120자 이하", team: "팀은 120자 이하", tags: "태그는 최대 30개, 각각 1~60자" };
+        const labels: Record<string, string> = { title: "제목은 1~200자", content: "본문은 1,500,000자 이하", folder: "폴더 경로는 160자 이하", brand: "브랜드는 120자 이하", team: "팀은 120자 이하", tags: "태그는 최대 30개, 각각 1~60자" };
         setFieldErrors(Object.fromEntries(parsed.error.issues.map(issue => [String(issue.path[0]), labels[String(issue.path[0])] || "입력값을 확인해 주세요."])));
-        setNewError("표시된 항목을 수정한 뒤 다시 저장해 주세요."); return;
+        setNewError("표시된 항목을 수정한 뒤 다시 저장해 주세요."); return null;
       }
       const input = parsed.data;
-      if (!input.content.trim()) { setFieldErrors({content: "본문을 입력해 주세요."}); return; }
+      if (demo && newImageFiles.length) { setNewError("데모 화면에서는 이미지를 저장할 수 없습니다. 이미지를 제외하거나 개발 환경에서 확인해 주세요."); return null; }
       const now = new Date().toISOString();
-      const document: KnowledgeDocument = demo ? { id: `demo-${Date.now()}`, ...input, content_md: input.content, status: "draft", source_ref: null, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now } : (await createDocument(accessToken, input)).document;
-      commitDocument(document); setOwnerFilter("all"); selectDocumentNow(document.id); setNewOpen(false);
-      setNewValues({title: "", content: "", brand: "", team: "", tags: ""}); setNewFolderPath("");
-      setToast("개인 초안으로 저장했습니다.");
-    } catch (reason) { setNewError(reason instanceof Error ? reason.message : "문서를 만들지 못했습니다. 입력 내용은 유지됩니다."); }
-    finally { setBusy(false); }
+      let document: KnowledgeDocument = demo ? { id: `demo-${Date.now()}`, ...input, parent_document_id: newParentId, content_md: input.content, status: "draft", source_ref: null, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now } : (await createDocument(accessToken, input)).document;
+      if (newImageFiles.length) {
+        try {
+          const attachments: string[] = [];
+          for (const [index, file] of newImageFiles.entries()) {
+            setAttachmentProgress(`이미지 ${index + 1}/${newImageFiles.length} 올리는 중 · ${file.name}`);
+            const signed = await createKnowledgeAttachmentUpload(accessToken, document.id, file);
+            await uploadKnowledgeAttachment(signed.path, signed.token, file, signed.type);
+            const alt = newImageAlt[index]?.trim() || file.name;
+            const caption = newImageCaptions[index]?.replace(/[\r\n]/g, " ").trim();
+            attachments.push(`${knowledgeAttachmentMarkdown({ ...signed, name: alt })}${caption ? `\n*${caption.replaceAll("*", "\\*")}*` : ""}`);
+          }
+          const content = `${input.content.trim()}\n\n${attachments.join("\n\n")}`.trim();
+          document = (await updateDocument(accessToken, { id: document.id, expectedVersion: document.current_version, content, reason: "새 페이지 이미지 첨부" })).document;
+        } catch (reason) {
+          commitDocument(document); setOwnerFilter("all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
+          setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]); setNewValues({ title: "", content: "", brand: "", team: "", tags: "" });
+          setError(`${reason instanceof Error ? reason.message : "이미지를 올리지 못했습니다."} 페이지는 초안으로 저장됐습니다. 자료 첨부에서 다시 시도해 주세요.`);
+          return document;
+        }
+      }
+      commitDocument(document); setOwnerFilter("all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
+      setNewValues({title: "", content: "", brand: "", team: "", tags: ""}); setNewFolderPath(""); setNewParentId(null); setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]);
+      setToast("페이지를 개인 초안으로 저장했습니다.");
+      return document;
+    } catch (reason) { setNewError(reason instanceof Error ? reason.message : "페이지를 만들지 못했습니다. 입력 내용은 유지됩니다."); return null; }
+    finally { setBusy(false); setAttachmentProgress(""); }
+  };
+  const create = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void createPage(); };
+  const queueNewImages = (files: File[]) => {
+    const images = files.filter(file => ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) && file.size > 0 && file.size <= 100 * 1024 * 1024);
+    if (images.length !== files.length) setNewError("JPG·PNG·WebP·GIF 이미지만 올릴 수 있으며 파일당 최대 100MB입니다.");
+    if (newImageFiles.length + images.length > 10) { setNewError("한 페이지에 이미지는 한 번에 최대 10개까지 올릴 수 있습니다."); return; }
+    if (!images.length) return;
+    setNewImageFiles(current => [...current, ...images]);
+    setNewImageAlt(current => [...current, ...images.map(file => file.name)]);
+    setNewImageCaptions(current => [...current, ...images.map(() => "")]);
   };
 
   const openWikiLink = async (title: string) => {
@@ -877,15 +998,15 @@ function WorkspaceContent() {
   return (
     <>
       <header className="page-header workspace-page-header">
-        <div className="page-title-group"><span className="eyebrow">지식 작업공간</span><h1>문서 작업공간</h1><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
-        <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 문서</button></div>
+        <div className="page-title-group"><PageTitle /><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
+        <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 페이지</button></div>
       </header>
 
 
       {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link aria-current="page" href="/knowledge">문서 작업공간</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/development">개발 관리</Link><Link href="/knowledge/skills">Skill 관리</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
 
       <div className="owner-chips">
-        {OWNER_FILTERS.map((item) => <button key={item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => guardAction(() => { setCheckedIds(new Set()); setOwnerFilter(item.id); })}>{item.label}</button>)}
+        {OWNER_FILTERS.map((item) => <button key={item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(item.id); })}>{item.label}</button>)}
         {members.length > 1 ? <label className={ownerFilter.startsWith("member:") ? "active" : ""}><UserRound size={13} /><select aria-label="문서 소유자" value={ownerFilter.startsWith("member:") ? ownerFilter : ""} onChange={(event) => { const value = event.target.value; if (value) guardAction(() => setOwnerFilter(value)); }}><option value="">소유자 선택</option>{members.map((member) => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]}</option>)}</select></label> : null}
       </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
@@ -896,21 +1017,23 @@ function WorkspaceContent() {
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
           <div className="pane-title knowledge-tree-heading"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0)}개</small></span><div className="knowledge-tree-heading-actions">{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={15} /></button><button aria-label="트리 안에서 접기" title="파일 트리 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={15} /></button></div></div>
-          <div className="knowledge-tree-controls"><span className="knowledge-tree-scope" title={treeScopeDetail}>{treeScopeLabel}</span><div className="knowledge-tree-control-actions"><button aria-label="폴더 안 문서 정렬" title="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button><button aria-label="목록 새로고침" title="목록 새로고침" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}><RefreshCw size={15} /></button></div></div>
-          {checkedIds.size ? <div className="knowledge-bulk-actions"><button className="secondary-button" disabled={busy} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>선택 {checkedIds.size}개 이동</button></div> : null}
+          <div className="knowledge-tree-controls"><span className="knowledge-tree-scope" title={treeScopeDetail}>{treeScopeLabel}</span><div className="knowledge-tree-control-actions"><button aria-label="폴더 안 문서 정렬" title="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button><button aria-label="여러 문서 선택" title="여러 문서 선택" aria-pressed={selectionMode} onClick={() => { setSelectionMode((value) => !value); setCheckedIds(new Set()); }}><MoveRight size={15} /></button><button aria-label="목록 새로고침" title="목록 새로고침" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}><RefreshCw size={15} /></button></div></div>
+          {selectionMode ? <div className="knowledge-bulk-actions"><span>문서를 눌러 선택 · {checkedIds.size}개</span><button className="secondary-button" disabled={busy || !checkedIds.size} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>이동</button><button className="ghost-button" onClick={() => { setSelectionMode(false); setCheckedIds(new Set()); }}>완료</button></div> : null}
           {draggedFolder ? <div className={`knowledge-root-dropzone${dropTargetFolder === "" ? " active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(""); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={() => setDropTargetFolder(null)} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/folder-path"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, ""); }}>최상위로 이동</div> : null}
-          <div className="knowledge-tree-scroll" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
+          <div className="knowledge-tree-scroll" role="tree" aria-label="문서와 하위 페이지" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
             {listLoading && !documents.length ? <div className="list-empty"><File size={22} /><span>문서 불러오는 중</span></div> : null}
             {treeStart > 0 ? <div style={{height: treeStart * TREE_ROW_HEIGHT}} /> : null}
             {visibleRows.map((row) => row.type === "folder" ? (
               <div className={`folder-tree-item${dropTargetFolder === row.folder.path ? " drop-target" : ""}`} key={`folder-${row.folder.path}`} onContextMenu={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(row.folder.path); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTargetFolder(null); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = event.dataTransfer.getData("text/folder-path"); const id = event.dataTransfer.getData("text/document-id"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, row.folder.path); else if (id) guardAction(() => { void moveDocument(id, row.folder.path); }); }}>
-                <button draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
+                <button role="treeitem" aria-level={row.depth + 1} aria-selected={managedFolder === row.folder.path} aria-expanded={expandedFolders.has(row.folder.path)} draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
                 <button className="folder-inline-action" title={`${row.folder.name} 폴더 작업`} aria-label={`${row.folder.path} 폴더 작업`} aria-haspopup="menu" onClick={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })}><MoreHorizontal size={16} /></button>
               </div>
             ) : (
-              <div className="document-tree-select-row" key={row.document.id} onContextMenu={(event) => openTreeContextMenu(event, { type: "document", document: row.document })}><input type="checkbox" aria-label={`${row.document.title} 선택`} checked={checkedIds.has(row.document.id)} disabled={busy} onChange={event => { const checked = event.target.checked; setCheckedIds(current => { const next = new Set(current); if (checked) next.add(row.document.id); else next.delete(row.document.id); return next; }); }} /><button draggable className={`folder-row document-tree-row${row.document.id === selectedId ? " active" : ""}`} style={{ paddingLeft: 20 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/document-id", row.document.id); }} onClick={() => { selectDocument(row.document.id); if (window.innerWidth < 900) setTreeOpen(false); }}>
-                <span className="tree-spacer" /><File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
-              </button></div>
+              <div className="document-tree-select-row" key={row.document.id} onContextMenu={(event) => openTreeContextMenu(event, { type: "document", document: row.document })} onDragOver={event => { if (event.dataTransfer.types.includes("text/document-id")) event.preventDefault(); }} onDrop={event => { event.preventDefault(); const id = event.dataTransfer.getData("text/document-id"); if (id && id !== row.document.id) { const source = documentsRef.current.find(document => document.id === id); if (source) { setPageMoveDocument(source); setPageMoveFolder(row.document.folder); setPageMoveParentId(row.document.id); } } }}>
+                {row.childCount ? <button type="button" className="knowledge-page-chevron" aria-label={`${row.document.title} 하위 페이지 ${collapsedPages.has(row.document.id) ? "펼치기" : "접기"}`} aria-expanded={!collapsedPages.has(row.document.id)} onClick={() => setCollapsedPages(current => { const next = new Set(current); if (next.has(row.document.id)) next.delete(row.document.id); else next.add(row.document.id); return next; })} style={{ marginLeft: 9 + row.depth * 16 }}>{collapsedPages.has(row.document.id) ? <ChevronRight size={13} /> : <ChevronDown size={13} />}</button> : null}
+                <button role="treeitem" aria-level={row.depth + 1} aria-selected={selectionMode ? checkedIds.has(row.document.id) : row.document.id === selectedId} aria-expanded={row.childCount ? !collapsedPages.has(row.document.id) : undefined} draggable={!selectionMode} className={`folder-row document-tree-row${row.document.id === selectedId && !selectionMode ? " active" : ""}${selectionMode && checkedIds.has(row.document.id) ? " selected-for-move" : ""}`} style={{ paddingLeft: row.childCount ? 3 : 22 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/document-id", row.document.id); }} onClick={() => { if (selectionMode) { setCheckedIds(current => { const next = new Set(current); if (next.has(row.document.id)) next.delete(row.document.id); else next.add(row.document.id); return next; }); return; } selectDocument(row.document.id); if (window.innerWidth < 900) setTreeOpen(false); }}>
+                <File size={14} /><span><strong>{row.document.title}</strong>{row.document.owner_id !== profile?.id && row.document.status !== "canonical" ? <em>{ownerNames.get(row.document.owner_id) || "소유자 미지정"}</em> : null}</span><i className={`mini-status status-${row.document.status}`} />
+                </button><button type="button" className="knowledge-page-inline-action" aria-label={`${row.document.title} 하위 페이지 추가`} title="하위 페이지 추가" onClick={() => openNewDocument(row.document.folder, row.document.id)}><FilePlus2 size={15} /></button><button type="button" className="knowledge-page-inline-action" aria-label={`${row.document.title} 페이지 작업`} title="페이지 작업" aria-haspopup="menu" onClick={event => openTreeContextMenu(event, { type: "document", document: row.document })}><MoreHorizontal size={15} /></button></div>
             ))}
             <div style={{height: Math.max(0, treeRows.length - treeStart - visibleRows.length) * TREE_ROW_HEIGHT}} />
             {!treeRows.length && !listLoading ? <div className="list-empty"><File size={22} /><span>조건에 맞는 문서가 없습니다.</span></div> : null}
@@ -920,7 +1043,16 @@ function WorkspaceContent() {
         </aside>
 
         <article className="editor-pane">
-          {workspaceView === "gallery" ? <KnowledgeGallery documents={galleryDocuments} folder={galleryFolder} token={accessToken} ownerNames={ownerNames} revision={revision} onOpen={selectDocumentNow} onRestore={() => setImageRecoveryOpen(true)} /> : selected && draft ? (
+          {newOpen ? <form className="knowledge-new-canvas" onSubmit={create}>
+            <div className="knowledge-new-canvas-top"><span>{newFolderPath || "분류 없음"}{newParentId ? ` / ${documents.find(item => item.id === newParentId)?.title ?? "상위 페이지"}` : ""} / 새 페이지</span><div><span role="status">{busy ? attachmentProgress || "저장 중…" : newDirty ? "저장 전 · 이 화면에만 유지" : "개인 초안"}</span><button type="button" className="ghost-button" onClick={closeNewDocument} disabled={busy}>닫기</button><button className="primary-button compact" disabled={busy || !newValues.title.trim()}>{busy ? "저장 중…" : "초안 저장"}</button></div></div>
+            <div className="knowledge-new-canvas-body"><input autoFocus className="knowledge-page-title" aria-label="새 페이지 제목" placeholder="제목 없음" maxLength={200} disabled={busy} value={newValues.title} onChange={event => setNewValues(current => ({ ...current, title: event.target.value }))} aria-invalid={Boolean(fieldErrors.title)} />
+              {newError ? <p className="inline-alert danger" role="alert">{newError}</p> : null}
+              <section aria-label="새 페이지 본문" onPasteCapture={event => { const files = Array.from(event.clipboardData.files); if (files.length) { event.preventDefault(); queueNewImages(files); } }} onDragOver={event => { if (event.dataTransfer.files.length) event.preventDefault(); }} onDrop={event => { const files = Array.from(event.dataTransfer.files); if (files.length) { event.preventDefault(); queueNewImages(files); } }}><KnowledgeRichEditor key={`new-${newParentId ?? "root"}`} markdown={newValues.content} accessToken={accessToken} disabled={busy} onChange={content => setNewValues(current => ({ ...current, content }))} onError={setNewError} onRequestImage={() => newImageInputRef.current?.click()} onCreateChildPage={() => setNewError("먼저 이 페이지를 저장한 뒤 하위 페이지를 추가해 주세요.")} /></section>
+              <input ref={newImageInputRef} className="knowledge-attachment-input" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" aria-label="새 페이지 이미지 선택" onChange={event => { queueNewImages(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
+              {newImageFiles.length ? <div className="knowledge-new-images" role="status"><strong>저장할 때 이미지를 올리고 본문 끝에 넣습니다 · {newImageFiles.length}개</strong>{newImageFiles.map((file, index) => <div key={`${file.name}-${index}`}><span>{file.name}<button type="button" onClick={() => { setNewImageFiles(current => current.filter((_, itemIndex) => itemIndex !== index)); setNewImageAlt(current => current.filter((_, itemIndex) => itemIndex !== index)); setNewImageCaptions(current => current.filter((_, itemIndex) => itemIndex !== index)); }}>제외</button></span><input aria-label={`${file.name} 대체 텍스트`} maxLength={200} placeholder="대체 텍스트" value={newImageAlt[index] ?? ""} onChange={event => setNewImageAlt(current => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /><input aria-label={`${file.name} 설명`} maxLength={300} placeholder="설명 (선택)" value={newImageCaptions[index] ?? ""} onChange={event => setNewImageCaptions(current => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /></div>)}</div> : null}
+              <details className="knowledge-page-properties"><summary>페이지 정보 · 폴더, 담당 팀, 브랜드, 태그</summary><div><KnowledgeFolderPicker options={folderOptions} value={newFolderPath} onChange={setNewFolderPath} disabled={busy || Boolean(newParentId)} /><label>담당 팀<input list="knowledge-team-options" maxLength={120} value={newValues.team} onChange={event => setNewValues(current => ({ ...current, team: event.target.value }))} /></label><label>브랜드<input list="knowledge-brand-options" maxLength={120} value={newValues.brand} onChange={event => setNewValues(current => ({ ...current, brand: event.target.value }))} /></label><label>태그<input maxLength={1859} placeholder="쉼표로 구분" value={newValues.tags} onChange={event => setNewValues(current => ({ ...current, tags: event.target.value }))} /></label></div></details>
+            </div>
+          </form> : workspaceView === "gallery" ? <KnowledgeGallery documents={galleryDocuments} folder={galleryFolder} token={accessToken} ownerNames={ownerNames} revision={revision} onOpen={selectDocumentNow} onRestore={() => setImageRecoveryOpen(true)} /> : selected && draft ? (
             <>
               <div className="editor-toolbar">
                 <div className="editor-tabs">
@@ -930,9 +1062,9 @@ function WorkspaceContent() {
                 </div>
                 <div className="editor-actions">
                   {mode === "edit" ? <button className="primary-button compact" onClick={save} disabled={busy}><Save size={14} /> 저장</button> : null}
-                  {selected.status !== "archived" ? <button className="secondary-button compact" onClick={() => { guardAction(() => { setError(""); setMoveIds(selected ? [selected.id] : []); setMoveOpen(true); }); }} disabled={busy}><MoveRight size={14} /> 위치 이동</button> : null}
+                  {selected.status !== "archived" ? <button className="secondary-button compact" onClick={() => openPageMove(selected)} disabled={busy}><MoveRight size={14} /> 위치 이동</button> : null}
                   {(selected.owner_id === profile?.id || profile?.role === "admin") && nextStatus(selected.status) && statusActionLabel(selected.status) ? <button className="secondary-button compact" onClick={() => guardAction(() => moveStatus(nextStatus(selected.status)!))} disabled={busy}><Send size={14} /> {statusActionLabel(selected.status)}</button> : null}
-                  {(selected.owner_id === profile?.id || profile?.role === "admin") && ["draft", "team", "review", "reviewed"].includes(selected.status) ? <button className="primary-button compact" onClick={() => guardAction(() => moveStatus("canonical"))} disabled={busy}><BookCheck size={14} /> 회사 정본으로</button> : null}
+                  {selected.status === "reviewed" ? <Link className="primary-button compact" href={`/knowledge/review?document=${selected.id}`}><BookCheck size={14} /> 승인 화면에서 공개</Link> : null}
                   {selected.status === "review" ? <><Link className="secondary-button compact" href={`/knowledge/review?document=${selected.id}`}>검토함에서 보기</Link>{selected.owner_id === profile?.id || profile?.role === "admin" ? <button className="secondary-button compact" disabled={busy} onClick={() => guardAction(() => moveStatus("draft"))}>검토 회수 (초안)</button> : null}</> : null}
                   <button className="icon-button" title="문서 정보" aria-label="문서 정보" onClick={() => setMode("info")}><MoreHorizontal size={17} /></button>
                 </div>
@@ -953,14 +1085,16 @@ function WorkspaceContent() {
                   {attachmentProgress ? <p className="knowledge-attachment-progress" role="status">{attachmentProgress}</p> : null}
                   <p className="knowledge-markdown-help"><strong>바로 서식이 적용되는 편집기</strong><span>줄 맨 앞에서 <code>##</code> 제목 · <code>###</code> 소제목 · <code>-</code> 목록 · <code>&gt;</code> 인용을 입력하고 공백을 누르세요. 이미지는 원하는 줄에 놓거나, 첨부 뒤 이미지를 끌어 문단 사이로 옮길 수 있습니다.</span></p>
                   <section className="knowledge-live-editor" aria-label="문서 바로 편집 영역">
-                    <KnowledgeRichEditor key={selected.id} ref={editorRef} markdown={draft.content} accessToken={accessToken} disabled={busy} onChange={(content) => setDraft({ ...draft, content })} onError={setError} />
+                    <KnowledgeRichEditor key={selected.id} ref={editorRef} markdown={draft.content} accessToken={accessToken} disabled={busy} onChange={(content) => setDraft({ ...draft, content })} onError={setError} onRequestImage={() => attachmentInputRef.current?.click()} onCreateChildPage={() => openNewDocument(selected.folder, selected.id)} />
                   </section>
+                  {selectedChildren.length ? <section className="knowledge-child-pages" aria-label="하위 페이지"><strong>하위 페이지</strong>{selectedChildren.map(child => <button type="button" key={child.id} onClick={() => selectDocument(child.id)}><File size={14} /> {child.title}</button>)}</section> : null}
                 </div>
               ) : mode === "info" ? (
                 <div className="document-info">
                   <h2>문서 정보</h2>
                   <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>소유자</dt><dd>{ownerNames.get(selected.owner_id) || "소유자 미지정"}</dd></div><div><dt>현재 버전</dt><dd>v{selected.current_version}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "전체"}</dd></div><div><dt>담당 팀</dt><dd>{selected.team || "전체"}</dd></div><div><dt>원본</dt><dd>{selected.source}</dd></div></dl>
-                  <h3>문서 상태 흐름</h3><p>동료 검토는 선택 사항입니다. 작성자는 기존처럼 정본으로 바로 공개할 수 있습니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
+                  {Object.hasOwn(selected, "steward_id") ? <label>문서 담당<select aria-label="문서 담당" value={selected.steward_id ?? ""} disabled={busy || demo || profile?.role !== "admin"} onChange={(event) => void saveDocumentSteward(event.target.value)}><option value="">담당 없음</option>{members.filter(member => member.is_active).map(member => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label> : <p className="inline-alert">문서 담당 기능은 개발 DB 적용 후 사용할 수 있습니다.</p>}
+                  <h3>문서 상태 흐름</h3><p>정본 공개는 작성자와 다른 지정 승인자 또는 위임자가 검토 후 처리합니다.</p><div className="status-flow">{STATUS_FLOW.map((status, index) => <div key={status} className={selected.status === "canonical" || STATUS_FLOW.indexOf(selected.status) >= index ? "done" : ""}><span>{index + 1}</span><small>{statusLabel(status)}</small></div>)}</div>
                   <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} />
                   <h3>변경 이력</h3>
                   <div className="version-history">{versionsLoading ? <div className="quiet-state">변경 이력을 불러오는 중입니다.</div> : versions.map((version) => <div key={version.version_no}><span><strong>v{version.version_no} · {version.author_name}</strong><small>{formatDate(version.created_at)}{version.reason ? ` · ${version.reason}` : ""}</small></span>{version.version_no !== selected.current_version ? <button className="ghost-button" disabled={busy} onClick={() => guardAction(() => {setError(""); setCompareBase(documentsRef.current.find(item => item.id === selected.id) ?? selected); setCompareVersion(version);})}><RotateCcw size={13} /> 비교·복원</button> : <em>현재</em>}</div>)}</div>
@@ -968,7 +1102,7 @@ function WorkspaceContent() {
                   {selected.status !== "archived" ? <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><Archive size={15} /> 휴지통으로 이동</button> : <button className="ghost-button archive-action" onClick={() => guardAction(() => {setError("");setArchiveConfirm(true);})}><RotateCcw size={15} /> 초안으로 복원</button>}
                 </div>
               ) : (
-                <KnowledgeInlineProvider documentId={selected.id} revision={revision} onRelink={requestImageRelink}><div className="document-reader">{dirty ? <p className="inline-alert">미저장 내용 미리보기 · 저장해야 다른 사람에게 반영됩니다.</p> : null}<h1>{dirty ? draft.title : selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} /><DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div></KnowledgeInlineProvider>
+                <KnowledgeInlineProvider documentId={selected.id} revision={revision} onRelink={requestImageRelink}><div className="document-reader">{dirty ? <p className="inline-alert">미저장 내용 미리보기 · 저장해야 다른 사람에게 반영됩니다.</p> : null}<h1>{dirty ? draft.title : selected.title}</h1><div className="reader-tags">{selected.tags.map((tag) => <span key={tag}><Hash size={11} />{tag}</span>)}</div>{readingContent.metadata.length ? <details className="reader-metadata"><summary>문서 속성 {readingContent.metadata.length}개</summary><dl>{readingContent.metadata.map((item) => <div key={item.label}><dt>{item.label}</dt><dd><WikiInline text={item.value} onOpenLink={openWikiLink} /></dd></div>)}</dl></details> : null}<MarkdownView key={selected.id} content={readingContent.body} onOpenLink={openWikiLink} />{selectedChildren.length || selected.status !== "archived" ? <section className="knowledge-child-pages" aria-label="하위 페이지"><strong>하위 페이지</strong>{selectedChildren.map(child => <button type="button" key={child.id} onClick={() => selectDocument(child.id)}><File size={14} /> {child.title}</button>)}{selected.status !== "archived" ? <button type="button" onClick={() => openNewDocument(selected.folder, selected.id)}><FilePlus2 size={14} /> 하위 페이지 추가</button> : null}</section> : null}<DevelopmentDocumentLiveLog token={accessToken} documentId={selected.id} demo={demo} /></div></KnowledgeInlineProvider>
               )}
             </>
           ) : (
@@ -983,12 +1117,13 @@ function WorkspaceContent() {
         {treeContextMenu.target.type === "folder" ? <>
           <strong>{treeContextMenu.target.path.split("/").at(-1)}</strong>
           <button role="menuitem" onClick={() => openFolderManager(treeContextMenu.target.type === "folder" ? treeContextMenu.target.path : "")}><Pencil size={14} /> 이름·위치 변경</button>
-          <button role="menuitem" onClick={() => { const path = treeContextMenu.target.type === "folder" ? treeContextMenu.target.path : ""; setTreeContextMenu(null); openNewDocument(path); }}><FilePlus2 size={14} /> 이 폴더에 새 문서</button>
+          <button role="menuitem" onClick={() => { const path = treeContextMenu.target.type === "folder" ? treeContextMenu.target.path : ""; setTreeContextMenu(null); openNewDocument(path); }}><FilePlus2 size={14} /> 이 폴더에 새 페이지</button>
           <button role="menuitem" className="danger" disabled={ownerFilter === "archived"} onClick={() => { if (treeContextMenu.target.type === "folder") { setError(""); setFolderDeletePath(treeContextMenu.target.path); setTreeContextMenu(null); } }}><Trash2 size={14} /> 폴더 문서 휴지통으로</button>
         </> : <>
           <strong>{treeContextMenu.target.document.title}</strong>
+          <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) openNewDocument(document.folder, document.id); }}><FilePlus2 size={14} /> 하위 페이지 추가</button>
           <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { setError(""); setRenameDocument(document); setRenameTitle(document.title); }); }}><Pencil size={14} /> 이름 변경</button>
-          <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { setMoveIds([document.id]); setMoveOpen(true); }); }}><MoveRight size={14} /> 위치 이동</button>
+          <button role="menuitem" onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) openPageMove(document); }}><MoveRight size={14} /> 페이지·폴더 이동</button>
           <button role="menuitem" className={treeContextMenu.target.document.status === "archived" ? "" : "danger"} onClick={() => { const document = treeContextMenu.target.type === "document" ? treeContextMenu.target.document : null; setTreeContextMenu(null); if (document) guardAction(() => { selectDocumentNow(document.id); setArchiveConfirm(true); }); }}>{treeContextMenu.target.document.status === "archived" ? <RotateCcw size={14} /> : <Trash2 size={14} />} {treeContextMenu.target.document.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</button>
         </>}
       </div> : null}
@@ -998,25 +1133,11 @@ function WorkspaceContent() {
         <input autoFocus aria-label="문서 찾기" value={linkQuery ?? ""} onChange={event => setLinkQuery(event.target.value)} placeholder="문서 이름 또는 원본 파일명" />
         {linkChoices.map(item => <button key={item.id} onClick={() => chooseLink(item)}><strong>{item.title}</strong><small>{item.source_ref || item.folder}</small></button>)}
       </div> : null}
-      {newOpen && !pendingNewAction ? <KnowledgeModal title="새 문서 만들기" onClose={closeNewDocument} busy={busy}>
-        <form className="form-modal new-document-modal" onSubmit={create}>
-          <header><h2>새 문서 만들기</h2><button type="button" aria-label="새 문서 닫기" disabled={busy} onClick={closeNewDocument}><X size={18} /></button></header>
-          <div className="form-fields">
-            {newError ? <div role="alert" className="inline-alert danger wide">{newError}</div> : null}
-            <div className="wide"><KnowledgeFolderPicker options={folderOptions} value={newFolderPath} onChange={setNewFolderPath} disabled={busy} /></div>
-            {(["title", "content", "team", "brand", "tags"] as const).map(field => <label key={field} className={["title", "content"].includes(field) ? "wide" : ""}>
-              <span>{{title: "문서 제목", content: "본문", team: "담당 팀", brand: "브랜드", tags: "태그 (쉼표로 구분)"}[field]}</span>
-              {field === "content" ? <textarea required maxLength={1500000} disabled={busy} value={newValues[field]} onChange={event => setNewValues(current => ({...current, [field]: event.target.value}))} aria-invalid={Boolean(fieldErrors[field])} /> : <input required={field === "title"} maxLength={field === "title" ? 200 : field === "tags" ? 1859 : 120} disabled={busy} value={newValues[field]} onChange={event => setNewValues(current => ({...current, [field]: event.target.value}))} aria-invalid={Boolean(fieldErrors[field])} />}
-              {fieldErrors[field] ? <small role="alert">{fieldErrors[field]}</small> : null}
-            </label>)}
-          </div>
-          <footer><span>개인 초안으로 저장됩니다.</span><div><button type="button" className="ghost-button" disabled={busy} onClick={closeNewDocument}>취소</button><button className="primary-button" disabled={busy}>{busy ? "저장 중…" : "초안 저장"}</button></div></footer>
-        </form>
-      </KnowledgeModal> : null}
       {pendingNewAction ? <KnowledgeModal title="작성 중인 새 문서" onClose={() => setPendingNewAction(null)}>
-        <div className="form-modal"><header><h2>작성 중인 새 문서가 있습니다</h2></header><div className="form-fields"><p>아직 저장하지 않았습니다. 계속 작성하거나 내용을 버리고 닫을 수 있습니다.</p></div><footer>
+        <div className="form-modal"><header><h2>작성 중인 새 페이지가 있습니다</h2></header><div className="form-fields"><p>아직 저장하지 않았습니다. 계속 작성하거나 내용을 저장·버리고 이동할 수 있습니다.</p>{newError ? <p role="alert" className="inline-alert danger">{newError}</p> : null}</div><footer>
           <button className="ghost-button" onClick={() => setPendingNewAction(null)}>계속 작성</button>
-          <button className="secondary-button" onClick={() => { const action = pendingNewAction; setPendingNewAction(null); action(); }}>버리고 닫기</button>
+          <button className="secondary-button" onClick={() => { const action = pendingNewAction; setPendingNewAction(null); setNewValues({ title: "", content: "", brand: "", team: "", tags: "" }); setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]); setNewOpen(false); action(); }}>버리고 이동</button>
+          <button className="primary-button" disabled={busy || !newValues.title.trim()} onClick={async () => { const action = pendingNewAction; if (await createPage()) { setPendingNewAction(null); action(); } }}>저장하고 이동</button>
         </footer></div>
       </KnowledgeModal> : null}
       {pendingAction ? <KnowledgeModal title="저장하지 않은 변경" onClose={() => setPendingAction(null)} busy={busy}>
@@ -1026,11 +1147,12 @@ function WorkspaceContent() {
           <button className="primary-button" disabled={busy} onClick={async () => { const action = pendingAction; if (await save()) { setPendingAction(null); action(); } }}>저장하고 계속</button>
         </footer></div>
       </KnowledgeModal> : null}
-      {moveOpen ? <KnowledgeDocumentMover documents={documents.filter(document => moveIds.includes(document.id))} options={folderOptions} token={accessToken} demo={demo} onSaved={(document, previous) => { commitDocument(document, previous); discard(document.id); }} onBusy={setBusy} onClose={() => { setMoveOpen(false); setCheckedIds(new Set()); }} /> : null}
+      {moveOpen ? <KnowledgeDocumentMover documents={documents.filter(document => moveIds.includes(document.id))} options={folderOptions} token={accessToken} demo={demo} onSaved={(document, previous) => { commitDocument(document, previous); discard(document.id); }} onBusy={setBusy} onClose={() => { setMoveOpen(false); setCheckedIds(new Set()); setSelectionMode(false); }} /> : null}
+      {pageMoveDocument ? <KnowledgeModal title="페이지 위치 이동" onClose={() => setPageMoveDocument(null)} busy={busy}><div className="form-modal folder-action-modal"><header><h2>페이지 위치 이동</h2></header><div className="form-fields"><p className="wide"><strong>{pageMoveDocument.title}</strong>와 하위 페이지를 함께 옮깁니다. 폴더와 상위 페이지는 별개입니다.</p><div className="wide"><KnowledgeFolderPicker options={folderOptions} label="이동할 폴더" value={pageMoveFolder} onChange={folder => { setPageMoveFolder(folder); setPageMoveParentId(null); }} disabled={busy} /></div><label className="wide">상위 페이지<select value={pageMoveParentId ?? ""} disabled={busy} onChange={event => setPageMoveParentId(event.target.value || null)}><option value="">없음 · 폴더 바로 아래</option>{documents.filter(document => document.id !== pageMoveDocument.id && document.status !== "archived" && document.folder === pageMoveFolder && canReparentKnowledgePage(documents, pageMoveDocument.id, document.id)).map(document => <option key={document.id} value={document.id}>{document.title}</option>)}</select></label>{error ? <p className="inline-alert danger wide" role="alert">{error}</p> : null}</div><footer><button className="ghost-button" disabled={busy} onClick={() => setPageMoveDocument(null)}>취소</button><button className="primary-button" disabled={busy} onClick={() => void savePageMove()}>{busy ? "이동 중…" : "위치 이동"}</button></footer></div></KnowledgeModal> : null}
       {folderManagerOpen ? <KnowledgeFolderManager source={managedFolder} initialParent={folderManagerParent} options={folderOptions} documents={documents} token={accessToken} demo={demo} onClose={() => { setFolderManagerOpen(false); setFolderManagerParent(undefined); }} onSaved={commitDocument} onBusy={setBusy} onNew={folder => { setFolderManagerOpen(false); setFolderManagerParent(undefined); openNewDocument(folder); }} /> : null}
       {renameDocument ? <KnowledgeModal title="문서 이름 변경" onClose={() => setRenameDocument(null)} busy={busy}><form className="form-modal knowledge-rename-modal" onSubmit={(event) => { event.preventDefault(); void renameContextDocument(); }}><header><h2>문서 이름 변경</h2></header><div className="form-fields"><label className="wide"><span>새 문서 이름</span><input autoFocus required maxLength={200} disabled={busy} value={renameTitle} onChange={event => setRenameTitle(event.target.value)} /></label>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button type="button" className="secondary-button" disabled={busy} onClick={() => setRenameDocument(null)}>취소</button><button className="primary-button" disabled={busy || !renameTitle.trim()}>{busy ? "변경 중…" : "이름 변경"}</button></footer></form></KnowledgeModal> : null}
       {folderDeletePath ? <KnowledgeModal title="폴더 문서 휴지통 이동" onClose={() => setFolderDeletePath("")} busy={busy}><div className="form-modal folder-delete-modal"><header><h2>폴더를 정리할까요?</h2></header><div className="form-fields"><p className="wide"><strong>{folderDeletePath}</strong><br/>이 폴더와 모든 하위 폴더의 활성 문서를 휴지통으로 옮깁니다. 본문과 변경 이력은 보존되며 문서별로 복원할 수 있습니다.</p>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setFolderDeletePath("")}>취소</button><button className="primary-button danger-button" disabled={busy} onClick={() => void archiveFolderDocuments()}>{busy ? "처리 중…" : "폴더 문서 휴지통으로"}</button></footer></div></KnowledgeModal> : null}
-      {canonicalGate ? <KnowledgeModal title="회사 정본 편집 안내" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>회사 정본을 편집합니다</h2><p>이 문서는 전 직원과 AI가 함께 사용하는 회사 기준입니다. 수정하면 검색 결과와 연결된 업무에 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>내용을 확인했고 편집하기</button></div></div></KnowledgeModal> : null}
+      {canonicalGate ? <KnowledgeModal title="회사 정본 변경 제안" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>정본에 변경을 제안합니다</h2><p>저장해도 기존 정본은 바로 바뀌지 않습니다. 작성자와 다른 승인자가 변경 내용을 확인하고 승인하면 새 버전으로 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>변경 제안 작성</button></div></div></KnowledgeModal> : null}
       {externalLinkOpen ? <KnowledgeModal title="웹 링크 넣기" onClose={() => setExternalLinkOpen(false)}><form className="form-modal knowledge-link-modal" onSubmit={addExternalLink}><header><h2>웹 링크 넣기</h2></header><div className="form-fields"><label className="wide"><span>표시할 이름</span><input name="label" maxLength={200} placeholder="예: 참고 자료" /></label><label className="wide"><span>웹 주소</span><input name="url" type="url" required maxLength={2000} placeholder="https://…" autoFocus /></label>{externalLinkError ? <p role="alert" className="inline-alert danger wide">{externalLinkError}</p> : null}</div><footer><button type="button" className="secondary-button" onClick={() => setExternalLinkOpen(false)}>취소</button><button className="primary-button">본문에 넣기</button></footer></form></KnowledgeModal> : null}
       {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(false);}} /> : null}
       {importOpen ? <KnowledgeImport token={accessToken} demo={demo} ownerId={profile?.id ?? "demo-ricky"} team={profile?.team ?? ""} options={folderOptions} onSaved={commitDocument} onBusy={setBusy} onClose={() => setImportOpen(false)} /> : null}

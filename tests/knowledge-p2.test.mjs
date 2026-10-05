@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as zod from 'zod';
 import { graphView, changedLineRange } from '../lib/knowledge-graph-view.ts';
-import { buildKnowledgeGraph, extractWikiLinks } from '../lib/knowledge-links.ts';
+import { buildKnowledgeGraph, extractWikiLinks, replaceWikiLinkTarget } from '../lib/knowledge-links.ts';
 import * as importing from '../lib/knowledge-import.ts';
 import * as diagnostics from '../lib/search-diagnostics.ts';
 import * as relevance from '../lib/search-relevance.ts';
@@ -42,6 +42,13 @@ test('broken links distinguish missing and ambiguous, exclude image embeds and r
   assert.equal(graph.broken[0].reason,'ambiguous');assert.equal(graph.broken[0].candidates.length,2);assert.equal(graph.broken[1].reason,'missing');
   assert.equal(buildKnowledgeGraph([{...source,content_md:'[[First/Same]]'},document('one',{title:'Same',folder:'First'})]).broken.length,0);
 });
+test('link repair changes only the chosen wiki target and preserves aliases, embeds and other links',()=>{
+  const original='[[Same]] [[Same#Heading|label]] ![[Same]] [[Other]]';
+  const repaired=replaceWikiLinkTarget(original,'Same','First/Same');
+  assert.equal(repaired.count,2);
+  assert.equal(repaired.content,'[[First/Same]] [[First/Same#Heading|label]] ![[Same]] [[Other]]');
+  assert.equal(buildKnowledgeGraph([document('source',{content_md:repaired.content}),document('one',{title:'Same',folder:'First'}),document('other',{title:'Other'})]).broken.length,0);
+});
 test('search excerpts include a distant actual hit and the containing heading',()=>{
   const body='# Intro\n'+ 'plain text '.repeat(150)+'\n## Answer\n'+ 'target answer '+ 'context '.repeat(150);
   const excerpt=diagnostics.matchingExcerpt(body,['target']);assert.match(excerpt.text,/target answer/);assert.equal(excerpt.heading,'Answer');assert.ok(excerpt.text.startsWith('…'));assert.ok(excerpt.text.length<=702);
@@ -62,16 +69,23 @@ test('imports compare normalized content and never reject different content sole
   for(const path of ['../Note.md','/Note.md','Folder/../Note.md','Folder//Note.md'])assert.throws(()=>importing.normalizeImportPath(path));
 });
 
-function searchModule({rpcRows=[],rpcError=null,fallbackRows=[],fallbackError=null,embeddingError=null,configured=false}={}){
+function searchModule({rpcRows=[],rpcError=null,fallbackRows=[],fallbackError=null,embeddingError=null,configured=false,visibleIds=null}={}){
   let fallbackCalls=0;
-  const builder={select(){return this;},in(){return this;},or(){return this;},order(){return this;},limit(){return this;},eq(){return this;},abortSignal(signal){assert.ok(signal);fallbackCalls++;return Promise.resolve({data:fallbackRows,error:fallbackError});},then(resolve){return Promise.resolve({data:[],error:null}).then(resolve);}};
+  let accessIds=[];
+  const builder={select(){return this;},in(field,ids){if(field==='id')accessIds=ids;return this;},or(){return this;},order(){return this;},limit(){return this;},eq(){return this;},abortSignal(signal){assert.ok(signal);fallbackCalls++;return Promise.resolve({data:fallbackRows,error:fallbackError});},then(resolve){return Promise.resolve({data:accessIds.map(id=>({id,owner_id:'owner',status:'canonical'})),error:null}).then(resolve);}};
   const db={from:()=>builder,rpc:()=>({abortSignal(signal){assert.ok(signal);return Promise.resolve({data:rpcRows,error:rpcError});}})};
-  const loaded=moduleFor('lib/server/search.ts',{'@/lib/http':http,'@/lib/search-diagnostics':diagnostics,'@/lib/search-relevance':relevance,'@/lib/supabase/server':{createServiceSupabase:()=>db},'./embeddings':{createEmbeddings:async(_text,timeout)=>{assert.equal(timeout,3000);if(embeddingError)throw embeddingError;return [[1]];},toPgVector:()=> '[1]'}},{process:{env:configured?{OPENAI_API_KEY:'synthetic'}:{}}});
+  const loaded=moduleFor('lib/server/search.ts',{'@/lib/http':http,'@/lib/search-diagnostics':diagnostics,'@/lib/search-relevance':relevance,'./knowledge-page-access':{readableKnowledgePages:async(_actor,rows)=>new Set(rows.filter(row=>!visibleIds||visibleIds.includes(row.id)).map(row=>row.id))},'./embeddings':{createEmbeddings:async(_text,timeout)=>{assert.equal(timeout,3000);if(embeddingError)throw embeddingError;return [[1]];},toPgVector:()=> '[1]'}},{process:{env:configured?{OPENAI_API_KEY:'synthetic'}:{}}});
   return {run:(mode='hybrid',topK=2)=>loaded.searchDocuments({type:'user',id:'owner',allowedStatuses:['canonical'],supabase:db},{query:'target',mode,topK,filters:{statuses:['canonical']}}),calls:()=>fallbackCalls};
 }
 const resultRow={document_id:'one',title:'target',chunk_text:'target result',status:'canonical',score:0.9};
 test('full keyword results avoid an unnecessary fallback query',async()=>{
   const search=searchModule({rpcRows:[resultRow]});const result=await search.run('keyword',1);assert.equal(result.results.length,1);assert.equal(search.calls(),0);assert.equal(result.degraded,false);
+});
+test('search excludes a child page when ancestor access denies it',async()=>{
+  const hidden=searchModule({rpcRows:[resultRow],visibleIds:[]});
+  assert.equal((await hidden.run('keyword',1)).results.length,0);
+  const hiddenQuick=searchModule({fallbackRows:[document('one',{title:'target',content_md:'target'})],visibleIds:[]});
+  assert.equal((await hiddenQuick.run('keyword',1)).results.length,0);
 });
 test('unconfigured semantic search returns useful keyword results with an explicit reason',async()=>{
   const search=searchModule({rpcRows:[resultRow]});const result=await search.run('semantic',1);assert.equal(result.degradationReasons[0],'embeddings_unconfigured');assert.equal(result.results.length,1);
@@ -122,7 +136,7 @@ test('partial import failure retains exact item identity and retries only unfini
 });
 
 test('version restore conflicts return 409 rather than implying the old version was restored',async()=>{
-  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
+  const api=moduleFor('app/api/v1/documents/[id]/versions/route.ts',{'next/server':{NextResponse:Response},zod,'@/lib/http':http,'@/lib/supabase/server':{createServiceSupabase:()=>({from:()=>({select(){return this;},eq(){return this;},maybeSingle:async()=>({data:{id:'test-document',owner_id:'owner',status:'draft'},error:null})})})},'@/lib/server/knowledge-page-access':{readableKnowledgePages:async()=>new Set(['test-document'])},'@/lib/server/document-proposals':{createCanonicalProposal:async()=>{throw Error('not reached');}},'@/lib/server/auth':{authenticateRequest:async()=>({supabase:{rpc:async()=>({data:null,error:{message:'OS_VERSION_CONFLICT:4'}})}})}});
   const response=await api.POST(new Request('http://localhost',{method:'POST',body:JSON.stringify({version:1,expectedVersion:3})}),{params:Promise.resolve({id:'test-document'})});
   assert.equal(response.status,409);assert.equal((await response.json()).error.code,'VERSION_CONFLICT');
 });

@@ -111,7 +111,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (demo || loading || session) return;
-    const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+    const destination = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const next = `?next=${encodeURIComponent(destination)}`;
     router.replace(`/login${next}`);
   }, [demo, loading, pathname, router, session]);
 

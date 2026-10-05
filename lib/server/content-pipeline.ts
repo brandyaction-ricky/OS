@@ -359,7 +359,7 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
   if (input.action === "script_draft" && !state.writing.ready)
     throw new ApiError(409, "WRITING_WORKFLOW_REQUIRED", `원고 전 작업을 순서대로 완료해 주세요: ${state.writing.nextAction}${state.writing.blocker ? ` · ${state.writing.blocker}` : ""}`);
   const procedureRevision = await generationProcedureRevision(actor, input.action);
-  const key = digest([procedureRevision, input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
+  const key = digest([procedureRevision, input.mode ?? "queue", input.action, sourceInput(state.source), input.count, input.platforms, input.marketEvidence,
     ...(["appeal_candidates", "topic_plan"].includes(input.action) ? [] : [reference(artifacts.research)]),
     ...(["script_draft", "shorts_proposal", "youtube_kit", "derivatives"].includes(input.action) ? [reference(artifacts.packaging)] : []),
     ...(input.action === "script_draft" ? [state.source.metadata.writingWorkflow] : []),
@@ -384,7 +384,7 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
     // Recover artifacts saved before an interrupted completion write without generating twice.
     const recovered = state.records.filter((record) => record.metadata.generationRequestKey === key);
     const result = recovered.length ? { queued: false, configured: true, records: recovered } : await executeGeneration(actor, input, key);
-    await finish({ state: result.queued ? "needs_input" : "succeeded", recordIds: result.records.map((record) => record.id), ...(result.queued ? { error: "Claude 연결 필요" } : {}) });
+    await finish({ state: result.queued ? "queued" : "succeeded", recordIds: result.records.map((record) => record.id), ...(result.queued ? { error: "구독 대기열 처리 대기" } : {}) });
     return result;
   } catch (error) {
     await finish({ state: error instanceof ApiError && [409, 503].includes(error.status) ? "needs_input" : "failed", error: error instanceof Error ? error.message : "생성 실패" });

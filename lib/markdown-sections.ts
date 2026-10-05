@@ -4,7 +4,10 @@ export function markdownSections(content: string) {
   const root: MarkdownSection = { title: "", level: 0, body: "", children: [] };
   const stack = [root];
   let fence = "";
+  let toggleDepth = 0;
   for (const line of content.split("\n")) {
+    if (!fence && /^:::toggle\{title=/.test(line)) toggleDepth += 1;
+    else if (!fence && toggleDepth && line.trim() === ":::") toggleDepth -= 1;
     const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
     if (marker) {
       if (!fence) fence = marker[1];
@@ -12,7 +15,7 @@ export function markdownSections(content: string) {
       stack.at(-1)!.body += `${line}\n`;
       continue;
     }
-    const heading = !fence && line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
+    const heading = !fence && !toggleDepth && line.match(/^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/);
     if (heading) {
       while (stack.length > 1 && stack.at(-1)!.level >= heading[1].length) stack.pop();
       const section: MarkdownSection = { title: heading[2], level: heading[1].length, body: "", children: [] };
@@ -23,9 +26,21 @@ export function markdownSections(content: string) {
 }
 
 export function markdownBlocks(content: string) {
-  const blocks: string[] = []; let block: string[] = []; let fence = "";
+  const blocks: string[] = []; let block: string[] = []; let fence = ""; let toggleDepth = 0;
   const flush = () => { if (block.length) blocks.push(block.join("\n")); block = []; };
   for (const line of content.split("\n")) {
+    if (!fence && /^:::toggle\{title=/.test(line)) { if (!toggleDepth) flush(); toggleDepth += 1; block.push(line); continue; }
+    if (toggleDepth) {
+      block.push(line);
+      const nestedFence = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+      if (nestedFence) {
+        if (!fence) fence = nestedFence[1];
+        else if (nestedFence[1][0] === fence[0] && nestedFence[1].length >= fence.length) fence = "";
+      } else if (!fence && line.trim() === ":::") {
+        toggleDepth -= 1; if (!toggleDepth) flush();
+      }
+      continue;
+    }
     const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/);
     if (marker) {
       if (!fence) { flush(); fence = marker[1]; block.push(line); }

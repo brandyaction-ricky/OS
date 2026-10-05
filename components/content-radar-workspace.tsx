@@ -1,4 +1,9 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
+
+import {useQueryTab} from "./use-query-tab";
+import { PageTitle } from "./page-title";
 
 import Link from "next/link";
 import {
@@ -20,14 +25,18 @@ import {
   Youtube,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, createRecord, generateContent, listAllRecordsOfType, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
+import { apiRequest, createRecord, generateContent, listAllRecordsOfType, listMembers, resolveYoutubeChannel, searchYoutubeMarket, updateRecord, type YoutubeChannelIdentity, type YoutubeMarketItem } from "@/lib/api-client";
 import { structureBorrowInput } from "@/lib/structure-borrow";
 import { discoveryResults, measureDiscovery } from "@/lib/discovery-results";
 import { isNicheQueueRecord } from "@/lib/content-radar";
-import { appealWorkflowState, approvedAppeals, decideAppealCandidate, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
+import { appealWorkflowState, approvedAppeals, normalizeAppealCandidates, researchBriefReady, type AppealDecision, type AppealResearchBrief } from "@/lib/content-appeals";
+import { appealReadinessMissing } from "@/lib/content-appeal-readiness";
 import { planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
+import { contentOrigin } from "@/lib/content-origin";
+import { summarizeContentSearchHistory } from "@/lib/content-search-history";
 import { useSession } from "./session-provider";
+import { ContentStageTabs } from "./content-stage-tabs";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
 import { ContentTopicJevAssist } from "./content-topic-jev-assist";
 
@@ -68,11 +77,15 @@ function compactNumber(value: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean } = {}) {
+export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJevAssist = false, lockedSource, productionMode=false }: { showPlanningHandoff?: boolean; showTopicJevAssist?: boolean; lockedSource?:OsRecord; productionMode?:boolean } = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [records, setRecords] = useState<OsRecord[]>([]);
+  const [allRecords, setRecords] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
+  const [includeTests, setIncludeTests] = useState(false);
+  const records = useMemo(() => allRecords.filter(record => includeTests || contentOrigin(record) !== "test"), [allRecords, includeTests]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
-  const [tab, setTab] = useState<RadarTab>("channels");
+  const [memberNames, setMemberNames] = useState<Record<string, string>>({});
+  const [queryTab, setTab] = useQueryTab<RadarTab>("tab",["channels","discovery","niches","planning"],"channels");
+  const tab=productionMode?"planning":queryTab;
   const [selectedId, setSelectedId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [resultQuery, setResultQuery] = useState("");
@@ -96,21 +109,35 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const [verifiedChannel, setVerifiedChannel] = useState<YoutubeChannelIdentity | null>(null);
   const [topicOpen, setTopicOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(!demo);
   const [error, setError] = useState("");
+  const [appealNote, setAppealNote] = useState("");
+  const [selectedAppeals, setSelectedAppeals] = useState<Set<number>>(new Set());
+  const [appealCanApprove, setAppealCanApprove] = useState(false);
+  const [appealApprovalLoaded, setAppealApprovalLoaded] = useState(false);
+  const [appealAssignments, setAppealAssignments] = useState<Array<{ user_id: string; kind: string }>>([]);
+  const [appealComments, setAppealComments] = useState<Array<{ id: string; candidate_index: number; body: string; author_id: string; created_at: string }>>([]);
+  const [appealCommentIndex, setAppealCommentIndex] = useState<number | null>(null);
+  const [appealCommentBody, setAppealCommentBody] = useState("");
+  const [appealCommentError, setAppealCommentError] = useState("");
 
   const load = useCallback(async () => {
-    if (demo) return;
+    if (demo) { setLoading(false); return; }
+    if (!accessToken) return;
+    setLoading(true);
     try {
-      const [topicResult, packageResult] = await Promise.all([
+      const [topicResult, packageResult, memberResult] = await Promise.all([
         listAllRecordsOfType(accessToken, "content_topic"),
         listAllRecordsOfType(accessToken, "content_package"),
+        listMembers(accessToken).catch(() => null),
       ]);
       setRecords(topicResult);
       setPackages(packageResult);
+      if (memberResult) setMemberNames(Object.fromEntries(memberResult.members.map(member => [member.id, member.display_name])));
       setError("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "콘텐츠 탐색 자료를 불러오지 못했습니다.");
-    }
+    } finally { setLoading(false); }
   }, [accessToken, demo]);
 
   useEffect(() => { load(); }, [load]);
@@ -131,11 +158,38 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     .filter((record) => meta<string>(record, "packageKind", "") === "appeal_candidates")
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()), [packages]);
   const searches = useMemo(() => packages.filter((record) => meta<string>(record, "packageKind", "") === "search_history"), [packages]);
-  const visibleTopics = tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
+  const searchSummaries = useMemo(() => summarizeContentSearchHistory(searches), [searches]);
+  const visibleTopics = lockedSource ? records.filter(row=>row.id===lockedSource.id) : tab === "planning" ? plannedTopics : tab === "niches" ? nicheTopics : topics;
   const selected = visibleTopics.find((topic) => topic.id === selectedId) ?? visibleTopics[0] ?? null;
   const plan = plans.filter((record) => record.parent_id === selected?.id)
     .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
   const appealSet = appealSets.find((record) => record.parent_id === selected?.id) ?? null;
+  useEffect(() => { setSelectedAppeals(new Set()); setAppealNote(""); }, [appealSet?.id, appealSet?.version, selected?.id]);
+  useEffect(() => {
+    if (!appealSet || demo) { setAppealComments([]); return; }
+    let active = true;
+    setAppealCommentIndex(null); setAppealCommentError("");
+    apiRequest<{ comments: typeof appealComments }>(`/api/v1/content/appeals/comments?packageId=${encodeURIComponent(appealSet.id)}`, { token: accessToken })
+      .then((result) => { if (active) setAppealComments(result.comments); })
+      .catch(() => { if (active) { setAppealComments([]); setAppealCommentError("댓글을 불러오지 못했습니다. 개발 DB의 댓글 기능 적용 상태를 확인해 주세요."); } });
+    return () => { active = false; };
+  }, [appealSet, accessToken, demo]);
+  useEffect(() => {
+    if (!appealSet) { setAppealCanApprove(false); setAppealApprovalLoaded(true); setAppealAssignments([]); return; }
+    if (demo) {
+      setAppealCanApprove(profile?.role === "admin" && appealSet.created_by !== profile?.id);
+      setAppealApprovalLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    setAppealApprovalLoaded(false);
+    apiRequest<{ canApprove: boolean; assignments: Array<{ user_id: string; kind: string }> }>(
+      `/api/v1/approvals?recordId=${encodeURIComponent(appealSet.id)}`, { token: accessToken })
+      .then((result) => { if (!cancelled) { setAppealCanApprove(result.canApprove); setAppealAssignments(result.assignments); } })
+      .catch(() => { if (!cancelled) { setAppealCanApprove(false); setAppealAssignments([]); } })
+      .finally(() => { if (!cancelled) setAppealApprovalLoaded(true); });
+    return () => { cancelled = true; };
+  }, [appealSet, accessToken, demo, profile?.id, profile?.role]);
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
   const planningReady = Boolean(selected && planningSelectionReady(selected, plan));
@@ -148,6 +202,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     && Number(researchBrief.appealPackageVersion) === appealSet.version);
   const researchReady = researchMatchesAppeals && researchBriefReady(researchBrief);
   const workflowState = appealWorkflowState(appealCandidates, researchReady);
+  const readinessMissing = appealReadinessMissing(selected);
 
   useEffect(() => {
     if ((tab === "niches" || tab === "planning") && !visibleTopics.some((topic) => topic.id === selectedId)) {
@@ -350,25 +405,49 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     } finally { setBusy(false); }
   };
 
-  const makePlan = async () => {
+  const saveReadiness = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) return;
+    const form = new FormData(event.currentTarget);
+    const evidence = formText(form, "evidence");
+    if (evidence) {
+      try { const url = new URL(evidence); if (!["http:", "https:"].includes(url.protocol)) throw Error(); }
+      catch { setError("시장 근거에는 탐색에서 연결한 영상 주소를 입력해 주세요."); return; }
+    }
+    setBusy(true); setError("");
+    try {
+      const { record } = await updateRecord(accessToken, {
+        id: selected.id, expectedVersion: selected.version, sourceUrl: evidence || null,
+        metadata: { ...selected.metadata,
+          audience: formText(form, "audience"), entryLanguage: formText(form, "entryLanguage"),
+          hierarchy: formText(form, "hierarchy"), evidence,
+        },
+      });
+      setRecords((current) => current.map((item) => item.id === record.id ? record : item));
+      setNotice("기획 준비도를 저장했습니다. 네 칸을 채우면 승인 요청을 보낼 수 있습니다.");
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "기획 준비도를 저장하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const makePlan = async (mode: GenerationMode = "queue") => {
     if (!selected) return;
     if (!researchReady) return setError("승인된 소구점의 레퍼런스 검증을 먼저 완료해 주세요.");
     setBusy(true); setError("");
     try {
-      const response = await generateContent(accessToken, { action: "topic_plan", sourceId: selected.id });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "topic_plan", sourceId: selected.id });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "기획 후보를 만들지 못했습니다.");
     } finally { setBusy(false); }
   };
 
-  const makeAppeals = async () => {
+  const makeAppeals = async (mode: GenerationMode = "queue") => {
     if (!selected) return;
     setBusy(true); setError(""); setNotice("");
     try {
-      const response = await generateContent(accessToken, { action: "appeal_candidates", sourceId: selected.id, count: 10 });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "appeal_candidates", sourceId: selected.id, count: 10 });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       else setNotice("설명과 레퍼런스 없이 소구점 후보 10개를 만들었습니다. 진행할 후보를 사람이 승인해 주세요.");
       await load();
     } catch (reason) {
@@ -376,29 +455,56 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     } finally { setBusy(false); }
   };
 
-  const decideAppeal = async (index: number, decision: AppealDecision) => {
-    if (!appealSet) return;
-    const decidedAt = new Date().toISOString();
-    const next = decideAppealCandidate(appealCandidates, index, decision, decidedAt);
-    const nextState = appealWorkflowState(next, false);
-    const history = Array.isArray(appealSet.metadata?.decisionHistory) ? appealSet.metadata.decisionHistory : [];
+  const decideAppeals = async (indices: number[], decision: AppealDecision) => {
+    if (!appealSet || !indices.length) return;
+    if (!appealCanApprove) return setError("작성자와 승인자를 분리해야 합니다. 회사 설정의 승인자 또는 위임자에게 요청해 주세요.");
+    if (decision === "revision" && !appealNote.trim()) return setError("수정 요청 사유를 적어 주세요.");
     setBusy(true); setError(""); setNotice("");
     try {
-      const { record } = await updateRecord(accessToken, {
+      const { record } = await apiRequest<{ record: OsRecord }>("/api/v1/content/appeals/decide", {
+        method: "POST", token: accessToken, body: JSON.stringify({
         id: appealSet.id,
         expectedVersion: appealSet.version,
-        metadata: {
-          ...appealSet.metadata,
-          workflowStage: nextState.stage,
-          result: { ...appealResult, candidates: next },
-          decisionHistory: [...history, { candidateIndex: index, text: next[index]?.text ?? "", decision, decidedAt }].slice(-100),
-        },
+        candidateSetVersion: String(appealSet.metadata?.candidateSetVersion ?? ""),
+        entries: indices.map((index) => ({ index, decision, note: appealNote.trim() })),
+        }),
       });
       setPackages((current) => current.map((item) => item.id === record.id ? record : item));
-      setNotice("소구점 판정을 저장했습니다. 승인 구성이 바뀌면 레퍼런스를 다시 검증해야 합니다.");
+      setAppealNote(""); setSelectedAppeals(new Set());
+      setNotice(`소구점 ${indices.length}개 판정을 저장했습니다. 승인 구성이 바뀌면 레퍼런스를 다시 검증해야 합니다.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "소구점 판정을 저장하지 못했습니다.");
     } finally { setBusy(false); }
+  };
+
+  const requestAppealApproval = async () => {
+    if (!appealSet || !selected) return;
+    if (readinessMissing.length) return setError(`승인 요청 전에 채워 주세요: ${readinessMissing.join(" · ")}`);
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await apiRequest<{ requested: boolean; recipientCount: number }>("/api/v1/content/appeals/request", {
+        method: "POST", token: accessToken,
+        body: JSON.stringify({ packageId: appealSet.id, expectedVersion: appealSet.version }),
+      });
+      setNotice(`승인자·위임자 ${result.recipientCount}명에게 알림을 보냈습니다.`);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "승인 요청을 보내지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const addAppealComment = async () => {
+    if (!appealSet || appealCommentIndex === null || !appealCommentBody.trim()) return;
+    setBusy(true); setAppealCommentError("");
+    try {
+      if (demo) throw new Error("데모에서는 댓글을 저장하지 않습니다.");
+      const result = await apiRequest<{ comment: (typeof appealComments)[number] }>("/api/v1/content/appeals/comments", {
+        method: "POST", token: accessToken,
+        body: JSON.stringify({ packageId: appealSet.id, expectedVersion: appealSet.version,
+          candidateSetVersion: String(appealSet.metadata?.candidateSetVersion ?? ""),
+          index: appealCommentIndex, body: appealCommentBody.trim() }),
+      });
+      setAppealComments((current) => [...current, result.comment]); setAppealCommentBody("");
+    } catch (reason) { setAppealCommentError(reason instanceof Error ? reason.message : "댓글을 저장하지 못했습니다."); }
+    finally { setBusy(false); }
   };
 
   const decideTopic = async (status: "planned" | "review" | "blocked") => {
@@ -498,24 +604,24 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   return <>
     <header className="page-header">
-      <div className="page-title-group"><span className="eyebrow">콘텐츠 레이더</span><h1>주제·기획</h1><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
+      <div className="page-title-group"><PageTitle /><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>
       <div className="header-actions">
+        <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
         {tab === "channels" ? <button className="primary-button" onClick={() => setChannelOpen(true)}><Plus size={15} /> 채널 추가</button> : null}
         {tab === "niches" ? <button className="primary-button" onClick={() => setTopicOpen(true)}><Plus size={15} /> 틈새 후보 추가</button> : null}
       </div>
     </header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-    <nav className="studio-tabs content-radar-tabs" aria-label="주제 탐색 단계">
-      {TABS.map((item) => <button key={item.key} className={tab === item.key ? "active" : ""} onClick={() => setTab(item.key)}><strong>{item.label}</strong><small>{item.hint}</small></button>)}
-    </nav>
+    {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
+    {!productionMode ? <ContentStageTabs label="주제 탐색 단계" value={tab} onChange={setTab} items={TABS.map(item => ({...item, count: loading ? null : ({channels:channels.length,discovery:outliers.length,niches:nicheTopics.length,planning:plannedTopics.length})[item.key]}))} /> : null}
 
     {tab === "channels" ? <>
       <section className="metric-grid compact-metrics">
-        <div className="metric-card"><div className="metric-top"><span>매일 보는 채널</span><Users size={16} /></div><div className="metric-value">{channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
-        <div className="metric-card"><div className="metric-top"><span>모은 영상</span><Youtube size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">OS에 저장한 근거 영상</div></div>
-        <div className="metric-card"><div className="metric-top"><span>발견 근거</span><Radar size={16} /></div><div className="metric-value">{outliers.length}</div><div className="metric-caption">저장한 시장 영상</div></div>
-        <div className="metric-card"><div className="metric-top"><span>기획 확정</span><Check size={16} /></div><div className="metric-value">{topics.filter((topic) => topic.status === "planned").length}</div><div className="metric-caption good">원고 공정 전달 가능</div></div>
+        <div className="metric-card"><div className="metric-top"><span>매일 보는 채널</span><Users size={16} /></div><div className="metric-value">{loading ? "…" : channels.length}</div><div className="metric-caption">승인된 관찰 채널</div></div>
+        <div className="metric-card"><div className="metric-top"><span>모은 영상</span><Youtube size={16} /></div><div className="metric-value">{loading ? "…" : outliers.length}</div><div className="metric-caption">OS에 저장한 근거 영상</div></div>
+        <div className="metric-card"><div className="metric-top"><span>발견 근거</span><Radar size={16} /></div><div className="metric-value">{loading ? "…" : outliers.length}</div><div className="metric-caption">저장한 시장 영상</div></div>
+        <div className="metric-card"><div className="metric-top"><span>기획 확정</span><Check size={16} /></div><div className="metric-value">{loading ? "…" : plannedTopics.length}</div><div className="metric-caption good">원고 공정 전달 가능</div></div>
       </section>
+      <div className="fullscreen-topics-grid">
       <section className="panel channel-dictionary">
         <div className="panel-header"><div><h2>채널 탐색 사전</h2><p>A–L 사람들이 찾는 말로 시장을 넓히되, 채널 승인에는 반복 근거를 남깁니다.</p></div><span>{ENTRY_CATEGORIES.length}개 분류</span></div>
         <div>{ENTRY_CATEGORIES.map(([letter, name, description]) => <button type="button" key={letter} onClick={() => { setSearchQuery(description.split(",")[0].trim()); setTab("discovery"); }}><b>{letter}</b><span><strong>{name}</strong><small>{description}</small></span></button>)}</div>
@@ -524,8 +630,9 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         <div className="panel-header"><div><h2>매일 보는 채널</h2><p>채널 URL·운영하는 곳·대표 형식을 함께 관리합니다.</p></div><button className="ghost-button" onClick={() => setChannelOpen(true)}><Plus size={14} /> 직접 추가</button></div>
         <div className="content-table-head"><span>채널</span><span>분류</span><span>운영하는 곳</span><span>기본 형식</span><span>상태</span><span /></div>
         {channels.map((channel) => <div className="content-table-row" key={channel.id}><span><strong>{channel.title}</strong><small>{channel.description || "승인 근거 미입력"}</small></span><span>{meta(channel, "category", "미분류")}</span><span>{meta(channel, "ownerGroup", "미입력")}</span><span>{meta(channel, "defaultFormat", "해설")}</span><span className="status-pill status-active">추적 중</span><span>{channel.source_url ? <a href={channel.source_url} target="_blank" rel="noreferrer" aria-label={`${channel.title} 열기`}><ExternalLink size={14} /></a> : null}</span></div>)}
-        {!channels.length ? <div className="compact-empty"><Youtube size={24} /><strong>아직 매일 보는 채널이 없습니다.</strong><span>캡처의 채널 사전 기준으로 첫 관찰 채널을 등록하세요.</span></div> : null}
+        {!channels.length ? <div className="compact-empty" role="status"><Youtube size={24} /><strong>{loading ? "채널을 불러오는 중입니다." : "아직 매일 보는 채널이 없습니다."}</strong><span>채널 탐색 사전에서 분류를 고르거나 URL로 직접 추가하세요.</span><button className="secondary-button" onClick={() => setChannelOpen(true)}>URL로 직접 추가</button></div> : null}
       </section>
+      </div>
     </> : null}
 
     {tab === "discovery" ? <>
@@ -548,7 +655,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
         return <article className="panel outlier-result" key={item.id}><label><input type="checkbox" checked={checkedVideos.has(item.id)} disabled={busy || saved || durationFilter === "short"} onChange={(event) => setCheckedVideos((current) => { const next = new Set(current); if (event.target.checked) next.add(item.id); else next.delete(item.id); return next; })} /> 근거 선택</label><a href={item.url} target="_blank" rel="noreferrer"><span className="outlier-thumb" style={{ backgroundImage: `url(${item.thumbnail})` }}><i><Eye size={13} /> {compactNumber(item.viewCount)}</i></span></a><div><small>{item.channelTitle}</small><h3>{item.title}</h3><div><span>조회 {item.viewCount.toLocaleString("ko-KR")}</span><span>반응 {engagement.toFixed(1)}%</span></div>{baselines[item.id] ? <p className="baseline-result">{baselines[item.id].ratio === null ? `비교 표본 ${baselines[item.id].sampleCount}/20` : `중앙값 ${baselines[item.id].ratio!.toFixed(2)}배 · ${baselines[item.id].outlier ? "이상치 후보" : "일반 범위"}`}<small>{baselines[item.id].reason}</small></p> : null}<button className="secondary-button" disabled={busy} onClick={() => measureBaseline(item)}>같은 채널 20개와 비교</button><button className={saved ? "secondary-button" : "primary-button"} disabled={busy || saved || durationFilter === "short"} onClick={() => saveOutlier(item)}><Star size={14} /> {saved ? "근거 저장됨" : "틈새 근거로 저장"}</button><button className="secondary-button" disabled={busy} onClick={() => setBorrowItem(item)}>구조 빌려오기</button><label>팀 검토 적합도<select value={Number(decisions.get(item.id)?.metadata.fitScore ?? 0)} disabled={busy} onChange={(event) => void reviewVideo(item, "review", Number(event.target.value))}><option value={0}>미검토</option><option value={1}>낮음</option><option value={2}>보통</option><option value={3}>높음</option></select></label><button className="ghost-button" disabled={busy} onClick={() => void reviewVideo(item, decisions.get(item.id)?.status === "blocked" ? "review" : "blocked", Number(decisions.get(item.id)?.metadata.fitScore ?? 0))}>{decisions.get(item.id)?.status === "blocked" ? "검토 제외 취소" : "팀 검토에서 제외"}</button></div></article>;
       })}</section> : <div className="panel compact-empty discovery-empty"><Radar size={28} /><strong>키워드로 시장 영상을 탐색하세요.</strong><span>검색 결과는 저장하기 전까지 운영 데이터에 들어가지 않습니다.</span></div>}
-      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>이전 키워드를 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>결과</span><span>최고 조회</span><span>실행 시각</span></div>{searches.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.id} onClick={() => setSearchQuery(meta(search, "query", search.title))}><span><strong>{meta(search, "query", search.title)}</strong></span><span>{Number(meta(search, "resultCount", 0))}개</span><span>{compactNumber(Number(meta(search, "topViewCount", 0)))}</span><span>{new Date(meta(search, "searchedAt", search.created_at)).toLocaleString("ko-KR")}</span></button>)}</section>
+      <section className="panel content-data-table search-history-table"><div className="panel-header"><div><h2>탐색 이력</h2><p>같은 키워드는 묶어 표시합니다. 누르면 검색창에 다시 채워집니다.</p></div></div><div className="content-table-head"><span>키워드</span><span>실행</span><span>마지막 실행자</span><span>마지막 실행</span></div>{searchSummaries.slice(0, 12).map((search) => <button type="button" className="content-table-row" key={search.key} onClick={() => setSearchQuery(search.query)}><span><strong>{search.query}</strong><small>최근 결과 {search.resultCount === null ? "미집계" : `${search.resultCount}개`} · 최고 조회 {search.topViewCount === null ? "미집계" : compactNumber(search.topViewCount)}</small></span><span>{search.count}회</span><span>{memberNames[search.latestActorId] ?? (search.latestActorId === profile?.id ? profile.displayName : "실행자 미확인")}</span><span>{new Date(search.latestAt).toLocaleString("ko-KR")}</span></button>)}</section>
     </> : null}
 
     {tab === "niches" || tab === "planning" ? <>
@@ -562,12 +669,24 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       <section className="content-planning-layout">
         <aside className="panel source-list niche-list"><div className="panel-header"><div><h2>{tab === "planning" ? "확정된 기획" : "틈새 후보"}</h2><p>{tab === "planning" ? "틈새 판정을 통과해 다음 공정으로 넘긴 주제" : "미정이거나 더 확인할 주제"}</p></div></div>{visibleTopics.map((topic) => <button className={selected?.id === topic.id ? "active" : ""} key={topic.id} onClick={() => setSelectedId(topic.id)}><span><strong>{topic.title}</strong><small>{topic.stage || "미정"} · 근거 {topic.source_url ? "있음" : "미입력"}</small></span><ArrowRight size={14} /></button>)}{!visibleTopics.length ? <div className="list-empty">{tab === "planning" ? "아직 확정된 기획이 없습니다." : "틈새 후보를 추가하거나 탐색 결과를 저장하세요."}</div> : null}</aside>
         <article className="panel planning-detail niche-detail">{selected ? <>
-          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><button className="primary-button" disabled={busy || !researchReady} title={researchReady ? "검증된 소구점으로 기획안을 만듭니다." : workflowState.blocker} onClick={makePlan}><Sparkles size={14} /> 기획안 만들기</button></header>
-          <dl className="planning-facts"><div><dt>대표 시청자</dt><dd>{meta(selected, "audience", "미입력")}</dd></div><div><dt>사람들이 찾는 말</dt><dd>{meta(selected, "entryLanguage", "미입력")}</dd></div><div><dt>콘텐츠 위계</dt><dd>{meta(selected, "hierarchy", "미정")}</dd></div><div><dt>시장 근거</dt><dd>{meta(selected, "evidence", selected.source_url || "미입력")}</dd></div></dl>
+          <header><div><span className={`status-pill status-${selected.status}`}>{selected.stage || "미정"}</span><h2>{selected.title}</h2><p>{selected.description}</p>{selected.metadata.structureBorrow ? <p><span className="status-pill">구조 차용</span> · <a href={selected.source_url || "#"} target="_blank" rel="noreferrer">원본 영상 미리보기</a> · 원문을 복사하지 않고 갚을 수 있는 약속만 검토하세요.</p> : null}</div><ContentGenerationButton className="primary-button" disabled={busy || !researchReady} title={researchReady ? "검증된 소구점으로 기획안을 만듭니다." : workflowState.blocker} onGenerate={makePlan}><Sparkles size={14} /> 기획안 만들기</ContentGenerationButton></header>
+          <form className="planning-facts planning-readiness" key={`${selected.id}-${selected.version}`} onSubmit={saveReadiness}>
+            <label>대표 시청자<input name="audience" defaultValue={meta(selected, "audience", "")} placeholder="이 콘텐츠를 가장 먼저 볼 사람" /></label>
+            <label>사람들이 찾는 말<input name="entryLanguage" defaultValue={meta(selected, "entryLanguage", "")} placeholder="실제로 찾는 질문·검색어" /></label>
+            <label>콘텐츠 위계<input name="hierarchy" defaultValue={meta(selected, "hierarchy", "")} placeholder="어떤 주제 아래에 속하나요?" /></label>
+            <label>시장 근거 영상 주소<input name="evidence" type="url" defaultValue={selected.source_url || ""} placeholder="https://youtube.com/…" /><Link href="/content/topics?tab=discovery">탐색에서 영상 연결</Link></label>
+            <div className="planning-readiness-footer"><small>{readinessMissing.length ? `미입력: ${readinessMissing.join(" · ")}` : "기획 준비도 4/4 완료"}</small><button type="submit" className="secondary-button" disabled={busy}>준비도 저장</button></div>
+          </form>
           <section className="appeal-workflow">
-            <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><button type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onClick={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</button></div>
-            <dl className="appeal-status-grid"><div><dt>content_id</dt><dd>{selected.id}</dd></div><div><dt>후보 세트 버전</dt><dd>{appealSet ? String(meta(appealSet, "candidateSetVersion", appealSet.created_at)) : "없음"}</dd></div><div><dt>승인</dt><dd>{approvedAppealItems.length}개</dd></div><div><dt>막힌 이유</dt><dd>{workflowState.blocker || "없음"}</dd></div></dl>
-            {appealCandidates.length ? <div className="appeal-candidate-list">{appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><span>{index + 1}</span><strong>{candidate.text}</strong><div><button type="button" className={candidate.decision === "approved" ? "active" : ""} aria-pressed={candidate.decision === "approved"} disabled={busy} onClick={() => decideAppeal(index, "approved")}>승인</button><button type="button" className={candidate.decision === "revision" ? "active" : ""} aria-pressed={candidate.decision === "revision"} disabled={busy} onClick={() => decideAppeal(index, "revision")}>수정 요청</button><button type="button" className={candidate.decision === "held" ? "active" : ""} aria-pressed={candidate.decision === "held"} disabled={busy} onClick={() => decideAppeal(index, "held")}>보류</button></div></article>)}</div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
+            <div className="appeal-workflow-head"><div><span className="eyebrow">현재 세부 단계</span><h3>{workflowState.stage}</h3><p>{workflowState.nextAction}</p></div><ContentGenerationButton type="button" className={appealSet ? "secondary-button" : "primary-button"} disabled={busy} onGenerate={makeAppeals}><Sparkles size={14} /> {appealSet ? "소구점 후보 다시 만들기" : "소구점 후보 약 10개 만들기"}</ContentGenerationButton></div>
+            <dl className="appeal-status-grid"><div><dt>승인</dt><dd>{approvedAppealItems.length}개</dd></div><div><dt>막힌 이유</dt><dd>{workflowState.blocker || "없음"}</dd></div></dl>
+            <details className="appeal-technical-details"><summary>기술 정보</summary><dl><div><dt>content_id</dt><dd>{selected.id}</dd></div><div><dt>후보 세트 버전</dt><dd>{appealSet ? String(meta(appealSet, "candidateSetVersion", appealSet.created_at)) : "없음"}</dd></div></dl></details>
+            {appealSet ? <p className="appeal-approvers">승인자 {appealAssignments.filter((item) => item.kind === "approver").map((item) => memberNames[item.user_id] ?? "구성원").join(", ") || "미지정 · 관리자"} · <Link href="/settings/company">위임 설정</Link>{appealApprovalLoaded && !appealCanApprove ? " · 내 승인 권한 없음" : ""}</p> : null}
+            {appealSet ? <button type="button" className="secondary-button" disabled={busy || readinessMissing.length > 0} title={readinessMissing.length ? `미입력: ${readinessMissing.join(" · ")}` : "승인자와 유효한 위임자에게 알림을 보냅니다."} onClick={() => void requestAppealApproval()}>승인 요청 보내기</button> : null}
+            {appealCandidates.length ? <div className="appeal-candidate-list">
+              {appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><label><input type="checkbox" aria-label={`${index + 1}번 소구점 선택`} checked={selectedAppeals.has(index)} onChange={(event) => setSelectedAppeals((current) => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} /> {index + 1}</label><strong>{candidate.text}</strong><span className="status-pill">{candidate.decision === "approved" ? "승인" : candidate.decision === "revision" ? "수정 요청" : candidate.decision === "held" ? "보류" : "미결정"}</span><button type="button" className="ghost-button" onClick={() => { setAppealCommentIndex(appealCommentIndex === index ? null : index); setAppealCommentBody(""); }}>댓글 {appealComments.filter((item) => item.candidate_index === index).length}</button>{appealCommentIndex === index ? <div className="appeal-candidate-comment">{appealComments.filter((item) => item.candidate_index === index).map((item) => <p key={item.id}><strong>{memberNames[item.author_id] ?? "구성원"}</strong> · {new Date(item.created_at).toLocaleString("ko-KR")}<br />{item.body}</p>)}<textarea aria-label={`${index + 1}번 소구점 댓글`} value={appealCommentBody} maxLength={2000} onChange={(event) => setAppealCommentBody(event.target.value)} placeholder="확인할 점이나 수정 의견" /><button type="button" className="secondary-button" disabled={busy || !appealCommentBody.trim()} onClick={() => void addAppealComment()}>댓글 저장</button>{appealCommentError ? <small role="alert">{appealCommentError}</small> : null}</div> : null}</article>)}
+              <div className="appeal-bulk-actions"><strong>{selectedAppeals.size}개 선택됨</strong><input aria-label="소구점 판정 메모" maxLength={500} value={appealNote} onChange={(event) => setAppealNote(event.target.value)} placeholder="수정 요청 사유 · 판정 메모" /><button type="button" className="primary-button" disabled={busy || !selectedAppeals.size || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "approved")}>승인</button><button type="button" className="secondary-button" disabled={busy || !selectedAppeals.size || !appealNote.trim() || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "revision")}>수정 요청</button><button type="button" className="secondary-button" disabled={busy || !selectedAppeals.size || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "held")}>보류</button><button type="button" className="ghost-button" disabled={busy || !selectedAppeals.size} onClick={() => setSelectedAppeals(new Set())}>선택 해제</button></div>
+            </div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
           </section>
           {approvedAppealItems.length ? <form className="research-brief" key={`${selected.id}-${selected.version}-${appealSet?.version ?? 0}`} onSubmit={saveResearchBrief}>
             <div><h3>승인 소구점 레퍼런스 검증</h3><p>YouTube와 Instagram Reels 출처를 남기고, 세 가지 적합성과 확인 한계를 각각 기록합니다. 확인하지 못한 수치는 비워 두세요.</p></div>

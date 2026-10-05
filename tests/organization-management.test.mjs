@@ -11,7 +11,7 @@ test("organization enters through meetings and keeps the legacy redirect", async
   ]);
   assert.match(
     navigation,
-    /id: "organization",[\s\S]*?href: "\/organization\/meetings"/,
+    /id: "team",[\s\S]*?href: "\/organization\/meetings"/,
   );
   assert.match(
     route,

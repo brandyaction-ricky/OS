@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "@/lib/html-entities";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { outlierBaseline, youtubeAgeCheckpoint, youtubeFormatBucket, youtubeMomentum, type BaselineVideo, type YoutubeViewSnapshot } from "@/lib/youtube-outliers";
@@ -19,8 +20,8 @@ function durationSeconds(value = "") {
 
 export function normalizeObservedVideo(item: YoutubeItem): BaselineVideo & { channelTitle: string; likes: number; comments: number; thumbnail: string } {
   return {
-    id: item.id ?? "", channelId: item.snippet?.channelId ?? "", channelTitle: item.snippet?.channelTitle ?? "YouTube 채널",
-    title: item.snippet?.title ?? "제목 없음", publishedAt: item.snippet?.publishedAt ?? "", views: Number(item.statistics?.viewCount ?? 0),
+    id: item.id ?? "", channelId: item.snippet?.channelId ?? "", channelTitle: decodeHtmlEntities(item.snippet?.channelTitle ?? "YouTube 채널"),
+    title: decodeHtmlEntities(item.snippet?.title ?? "제목 없음"), publishedAt: item.snippet?.publishedAt ?? "", views: Number(item.statistics?.viewCount ?? 0),
     likes: Number(item.statistics?.likeCount ?? 0), comments: Number(item.statistics?.commentCount ?? 0), durationSeconds: durationSeconds(item.contentDetails?.duration),
     live: !!item.liveStreamingDetails || ["live", "upcoming"].includes(item.snippet?.liveBroadcastContent ?? ""), categoryId: item.snippet?.categoryId,
     thumbnail: item.snippet?.thumbnails?.high?.url ?? item.snippet?.thumbnails?.medium?.url ?? "",

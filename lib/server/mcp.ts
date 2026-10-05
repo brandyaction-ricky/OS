@@ -4,6 +4,18 @@ const documentId = z.string().uuid();
 
 export const MCP_TOOLS = [
   {
+    name: "list_canonical_rule_jobs",
+    description: "이 키 소유자의 정본 규칙 추출 구독 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. nextAfter가 있으면 after_run_id로 전달해 다음 페이지를 확인합니다. runs가 비어 있어도 nextAfter가 있으면 계속 조회합니다.",
+    inputSchema: {type:"object",properties:{after_run_id:{type:"string",format:"uuid"}},additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+  },
+  {
+    name: "process_canonical_rule_job",
+    description: "정본 규칙 작업을 claim으로 선점하고 받은 원문 지시서로 규칙 JSON을 만든 뒤 complete로 저장합니다. 규칙은 자동 확정되지 않습니다. 실패 시 fail을 호출합니다.",
+    inputSchema: {type:"object",properties:{action:{type:"string",enum:["claim","complete","fail"]},run_id:{type:"string",format:"uuid"},result:{type:"object"},model:{type:"string"}},required:["action","run_id"],additionalProperties:false},
+    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+  },
+  {
     name: "search_knowledge",
     description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다.",
     inputSchema: {
@@ -311,6 +323,14 @@ type FetchApi = (path: string, init?: RequestInit) => Promise<unknown>;
 
 export async function callMcpTool(request: ToolRequest, organizationId: string, fetchApi: FetchApi) {
   const args = request.arguments ?? {};
+  if(request.name==="list_canonical_rule_jobs"){
+    const input=z.object({after_run_id:documentId.optional()}).strict().parse(args);
+    return fetchApi(`/api/v1/knowledge/canonical/worker${input.after_run_id?`?after=${encodeURIComponent(input.after_run_id)}`:""}`);
+  }
+  if(request.name==="process_canonical_rule_job"){
+    const input=z.object({action:z.enum(["claim","complete","fail"]),run_id:documentId,result:z.record(z.unknown()).optional(),model:z.string().trim().min(1).max(100).optional()}).strict().parse(args);
+    return fetchApi("/api/v1/knowledge/canonical/worker",{method:"POST",body:JSON.stringify({action:input.action,runId:input.run_id,result:input.result,model:input.model})});
+  }
   if (request.name === "list_record_versions") {
     const input = getRecordArgs.parse(args);
     return fetchApi(`/api/v1/records/${input.record_id}/versions?${new URLSearchParams({ organizationId })}`);

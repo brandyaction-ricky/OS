@@ -21,6 +21,8 @@ import {
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { registerPendingKnowledgeAttachment } from "@/lib/server/knowledge-attachment-lifecycle";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import type { KnowledgeDocument } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,9 +30,18 @@ const headers = { "Cache-Control": "private, no-store" };
 const documentIdsSchema = z.array(z.string().uuid()).min(1).max(100);
 
 async function readableDocument(actor: RequestActor, documentId: string) {
-  const { data, error } = await actor.supabase.from("os_documents").select("id,owner_id,status,source_ref").eq("id", documentId).maybeSingle();
-  if (error || !data) throw new ApiError(404, "KNOWLEDGE_ASSET_DOCUMENT_NOT_FOUND", "이미지가 연결된 문서를 열 수 없습니다.");
+  const { data, error } = await actor.supabase.from("os_documents").select("*").eq("id", documentId).maybeSingle();
+  if (error || !data || !(await readableKnowledgePages(actor, [data])).has(documentId)) {
+    throw new ApiError(404, "KNOWLEDGE_ASSET_DOCUMENT_NOT_FOUND", "이미지가 연결된 문서를 열 수 없습니다.");
+  }
   return data;
+}
+
+async function readableDocumentIds(actor: RequestActor, ids: string[]) {
+  if (!ids.length) return new Set<string>();
+  const { data, error } = await actor.supabase.from("os_documents").select("*").in("id", ids);
+  if (error) throw new ApiError(400, "KNOWLEDGE_ASSET_DOCUMENT_LIST_FAILED", "문서 접근 권한을 확인하지 못했습니다.");
+  return readableKnowledgePages(actor, data ?? []);
 }
 
 async function assertEditableDocument(actor: RequestActor, documentId: string) {
@@ -62,11 +73,11 @@ async function loadRows(actor: RequestActor, documentIds: string[]) {
 
 async function missingReferences(actor: RequestActor, url: URL) {
   const folder = (url.searchParams.get("folder") ?? "").trim();
-  const documents: Array<{ id: string; title: string; folder: string; source_ref: string | null; content_md: string }> = [];
+  const documents: KnowledgeDocument[] = [];
   const exactFolder = url.searchParams.has("folder");
   for (let offset = 0; offset < 10_000; offset += 200) {
     let builder = actor.supabase.from("os_documents")
-      .select("id,title,folder,source_ref,content_md")
+      .select("*")
       .neq("status", "archived")
       .order("updated_at", { ascending: false })
       .range(offset, offset + 199);
@@ -76,7 +87,9 @@ async function missingReferences(actor: RequestActor, url: URL) {
     documents.push(...(data ?? []));
     if (!data || data.length < 200) break;
   }
-  const ids = documents.map((document) => document.id);
+  const readable = await readableKnowledgePages(actor, documents);
+  const visibleDocuments = documents.filter((document) => readable.has(document.id));
+  const ids = visibleDocuments.map((document) => document.id);
   const linked = new Set<string>();
   const linkedRows = await loadRows(actor, ids);
   for (let offset = 0; offset < linkedRows.length; offset += 25) {
@@ -88,7 +101,7 @@ async function missingReferences(actor: RequestActor, url: URL) {
       if (objectExists) linked.add(`${row.document_id}:${row.reference_key}`);
     }
   }
-  return (documents ?? []).flatMap((document) => knowledgeAssetReferences(document.content_md).map((reference) => ({
+  return visibleDocuments.flatMap((document) => knowledgeAssetReferences(document.content_md).map((reference) => ({
     documentId: document.id,
     documentTitle: document.title,
     documentFolder: document.folder,
@@ -106,8 +119,10 @@ export async function GET(request: Request) {
     }
     const rawIds = url.searchParams.get("documentIds")?.split(",").filter(Boolean) ?? [url.searchParams.get("documentId") ?? ""];
     const documentIds = documentIdsSchema.parse(rawIds);
+    const readable = await readableDocumentIds(actor, documentIds);
+    const visibleIds = documentIds.filter((id) => readable.has(id));
     const reference = url.searchParams.get("reference") ? knowledgeAssetReferenceSchema.parse(url.searchParams.get("reference")) : "";
-    let rows = await loadRows(actor, documentIds);
+    let rows = await loadRows(actor, visibleIds);
     if (reference) {
       const key = normalizeKnowledgeAssetReference(reference);
       rows = rows.filter((row) => row.reference_key === key);
@@ -117,7 +132,9 @@ export async function GET(request: Request) {
     let assets = rows.map((row) => knowledgeAssetRow(row, urls.get(String(row.storage_path)) ?? "")).filter((asset) => asset.url);
 
     if (url.searchParams.get("covers") === "true") {
-      const { data: documents, error } = await actor.supabase.from("os_documents").select("id,content_md").in("id", documentIds);
+      const { data: documents, error } = visibleIds.length
+        ? await actor.supabase.from("os_documents").select("id,content_md").in("id", visibleIds)
+        : { data: [], error: null };
       if (error) throw new ApiError(400, "KNOWLEDGE_ASSET_COVER_FAILED", "문서 대표 이미지를 확인하지 못했습니다.", error.message);
       const mapped = new Map(assets.map((asset) => [`${asset.documentId}:${asset.referenceKey}`, asset]));
       const covers: KnowledgeAsset[] = [];

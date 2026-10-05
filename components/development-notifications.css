@@ -38,7 +38,7 @@
   border-radius: 9px;
   background: var(--accent);
   color: var(--text);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
 }
@@ -65,7 +65,7 @@
 .development-personal-alerts-title { min-height: 38px; padding: 9px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .development-personal-alerts-title>span { color: var(--text-2); font-size: 11px; }
 .development-personal-alerts-title>span>strong { margin-left: 5px; color: var(--accent-2); }
-.development-personal-alerts-title>button { padding: 4px 6px; display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--accent-2); font-size: 10px; cursor: pointer; }
+.development-personal-alerts-title>button { padding: 4px 6px; display: inline-flex; align-items: center; gap: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--accent-2); font-size: 11px; cursor: pointer; }
 .development-personal-alerts-title>button:hover { background: var(--panel-2); }
 .development-personal-alerts-title>button:disabled { opacity: .55; cursor: wait; }
 .development-personal-alerts>button { width: 100%; min-height: 63px; padding: 10px 14px; display: grid; grid-template-columns: 28px minmax(0,1fr) 14px; align-items: center; gap: 9px; border: 0; border-top: 1px solid var(--line-soft); background: var(--panel-2); color: var(--text); text-align: left; cursor: pointer; }
@@ -74,8 +74,8 @@
 .development-personal-alerts>button:disabled { cursor: wait; }
 .development-personal-alerts>button>span:nth-child(2) { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .development-personal-alerts>button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }
-.development-personal-alerts>button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 10px; }
-.development-personal-alerts>button time { color: var(--muted); font-size: 9px; }
+.development-personal-alerts>button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: 11px; }
+.development-personal-alerts>button time { color: var(--muted); font-size: 11px; }
 .development-personal-alerts>button>svg { color: var(--muted); }
 .development-alert-icon { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid var(--accent-soft); border-radius: 50%; background: var(--accent-soft); color: var(--accent-2); }
 .development-personal-alerts-empty { min-height: 84px; padding: 18px; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--muted); font-size: 11px; }
@@ -89,12 +89,12 @@
 .development-notifications-statuses span { color: var(--muted); }
 .development-notifications-statuses strong { font-size: 12px; font-weight: 600; }
 .development-notifications-list { border-top: 1px solid var(--line-soft); }
-.development-notifications-list > p { margin: 12px 16px 6px; color: var(--muted); font-size: 10px; }
+.development-notifications-list > p { margin: 12px 16px 6px; color: var(--muted); font-size: 11px; }
 .development-notifications-list > a { min-height: 46px; padding: 10px 16px; display: flex; align-items: center; gap: 9px; border-bottom: 1px solid var(--line-soft); }
 .development-notifications-list > a:hover { background: var(--panel-2); }
 .development-notifications-list > a > strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
 .development-notifications-list > a > svg { flex-shrink: 0; color: var(--muted); }
-.development-notifications-status { flex-shrink: 0; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.development-notifications-status { flex-shrink: 0; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .development-notifications-status.is-backlog { color: var(--text-2); }
 .development-notifications-status.is-active { color: var(--accent-2); border-color: var(--accent-soft); background: var(--accent-soft); }
 .development-notifications-status.is-review,
@@ -106,7 +106,7 @@
 .development-notifications-state > button { margin-top: 4px; padding: 6px 9px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); color: var(--text-2); font-size: 11px; cursor: pointer; }
 .development-notifications-state > button:disabled { opacity: .6; cursor: wait; }
 .development-notifications-panel > footer { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.development-notifications-panel > footer > span { color: var(--muted); font-size: 10px; }
+.development-notifications-panel > footer > span { color: var(--muted); font-size: 11px; }
 .development-notifications-panel > footer > a { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); font-size: 11px; }
 .development-notifications-panel > footer > a:hover { color: var(--accent-2); }
 

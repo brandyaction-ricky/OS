@@ -3,6 +3,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ApiError, getBearerToken } from "@/lib/http";
 import { createServiceSupabase, createUserSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, OsRole } from "@/lib/types";
+import { isMissingAgentWritePolicy } from "@/lib/agent-key-policy";
 import { agentReadableStatuses } from "./document-access";
 
 export interface RequestActor {
@@ -14,6 +15,8 @@ export interface RequestActor {
   team: string;
   brand: string | null;
   allowedStatuses: DocumentStatus[];
+  writableStatuses?: DocumentStatus[];
+  enforceWriteStatuses?: boolean;
   scopes: string[];
   organizationId: string | null;
   ownerId: string;
@@ -41,11 +44,19 @@ export async function authenticateRequest(
   if (token.startsWith("bos_pat_")) {
     if (!options.allowAgent) throw new ApiError(403, "AGENT_READ_ONLY", "에이전트 키는 이 작업을 수행할 수 없습니다.");
     const service = createServiceSupabase();
-    const { data, error } = await service
+    let { data, error } = await service
       .from("os_agent_keys")
-      .select("id,name,active,team,brand,allowed_statuses,scopes,organization_id,owner_user_id,expires_at")
+      .select("id,name,active,team,brand,allowed_statuses,enforce_write_statuses,scopes,organization_id,owner_user_id,expires_at")
       .eq("key_hash", hashAgentKey(token))
       .maybeSingle();
+    // A code-first rollout must keep existing keys usable before the additive migration.
+    if (isMissingAgentWritePolicy(error)) {
+      const legacy = await service.from("os_agent_keys")
+        .select("id,name,active,team,brand,allowed_statuses,scopes,organization_id,owner_user_id,expires_at")
+        .eq("key_hash", hashAgentKey(token)).maybeSingle();
+      data = legacy.data ? { ...legacy.data, enforce_write_statuses: false } : null;
+      error = legacy.error;
+    }
     if (error || !data || !data.active || (data.expires_at && new Date(data.expires_at) <= new Date())) {
       throw new ApiError(401, "INVALID_AGENT_KEY", "에이전트 키가 유효하지 않습니다.");
     }
@@ -70,7 +81,9 @@ export async function authenticateRequest(
       brand: data.brand,
       // Every active AI key with knowledge.read mirrors an active teammate:
       // team-shared documents are readable without granting write access.
-      allowedStatuses: agentReadableStatuses(data.allowed_statuses ?? ["canonical"]),
+      allowedStatuses: agentReadableStatuses(data.allowed_statuses ?? ["canonical"], data.enforce_write_statuses === true && scopes.includes("knowledge.write")),
+      writableStatuses: data.enforce_write_statuses === true ? data.allowed_statuses : ["draft", "team", "review", "reviewed", "canonical"],
+      enforceWriteStatuses: data.enforce_write_statuses === true,
       scopes,
       organizationId: data.organization_id,
       ownerId: data.owner_user_id,

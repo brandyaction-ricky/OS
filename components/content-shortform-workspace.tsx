@@ -1,4 +1,10 @@
 "use client";
+import { ContentGenerationButton } from "./content-generation-button";
+import { ContentStageTabs } from "./content-stage-tabs";
+import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
+
+import {useQueryTab} from "./use-query-tab";
+import { PageTitle } from "./page-title";
 
 import {
   Check,
@@ -16,9 +22,11 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, listAllRecordsOfType, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
+import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
+import { ContentOriginFilter } from "./content-origin-filter";
 import { useSession } from "./session-provider";
 
 type ShortsTab = "editor" | "clips";
@@ -71,12 +79,14 @@ function videoMime(file: File) {
   return ({ mp4: "video/mp4", mov: "video/quicktime", m4v: "video/x-m4v", webm: "video/webm", mkv: "video/x-matroska" } as Record<string, string>)[extension || ""] || "";
 }
 
-export function ContentShortformWorkspace() {
+export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceChange}:{lockedSource?:OsRecord;sourceOptions?:OsRecord[];onSourceChange?:(id:string)=>void} = {}) {
   const { accessToken, demo, profile } = useSession();
-  const [sources, setSources] = useState<OsRecord[]>([]);
+  const [allSources, setSources] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
+  const [origin, setOrigin] = useState<OriginFilter>("own");
+  const sources = sourceOptions ?? (lockedSource ? allSources.filter(row=>row.id===lockedSource.id) : filterContentOrigin(allSources, origin));
   const [clips, setClips] = useState<OsRecord[]>([]);
-  const [sourceId, setSourceId] = useState("");
-  const [tab, setTab] = useState<ShortsTab>("editor");
+  const [sourceId, setSourceId] = useState(lockedSource?.id??"");
+  const [tab, setTab] = useQueryTab<ShortsTab>("tab",["editor","clips"],"editor");
   const [style, setStyle] = useState<ShortsStyle>(DEFAULT_STYLE);
   const [count, setCount] = useState(5);
   const [localFile, setLocalFile] = useState<File | null>(null);
@@ -94,17 +104,17 @@ export function ContentShortformWorkspace() {
     if (demo) return;
     try {
       const [sourceResult, clipResult] = await Promise.all([
-        listRecords(accessToken, "content_topic", "limit=200"),
+        listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })),
         listRecords(accessToken, "content_short", "limit=200"),
       ]);
-      const usable = sourceResult.records.filter((record) => !["channel", "outlier"].includes(meta<string>(record, "studioKind", "")));
+      const usable = sourceResult.records;
       setSources(usable); setClips(clipResult.records);
-      setSourceId((current) => current || new URLSearchParams(window.location.search).get("sourceId") || usable[0]?.id || "");
+      setSourceId((current) => lockedSource ? (usable.some(row=>row.id===lockedSource.id)?lockedSource.id:"") : sourceOptions ? "" : sourceSelection(usable, current, new URLSearchParams(window.location.search).get("sourceId") ?? ""));
 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "숏폼 작업을 불러오지 못했습니다.");
     }
-  }, [accessToken, demo]);
+  }, [accessToken, demo, lockedSource, sourceOptions]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => () => { if (localUrl) URL.revokeObjectURL(localUrl); }, [localUrl]);
@@ -181,7 +191,7 @@ export function ContentShortformWorkspace() {
     setEditClip({ ...selectedSource, id: "", version: 0, record_type: "content_short", parent_id: sourceId, title: `${selectedSource.title} 수동 클립`, description: "", metadata: { proposalOnly: true, selected: true, start: 0, end: 30, renderState: "not_started", ...style } });
   };
 
-  const propose = async () => {
+  const propose = async (mode: GenerationMode = "queue") => {
     if (!sourceId || !selectedSource) return;
     if (!timedCueCount) {
       openManualClip();
@@ -190,8 +200,8 @@ export function ContentShortformWorkspace() {
     if (transcript !== meta(selectedSource, "transcriptSrt", "")) return setError("변경한 자막을 원본·스타일 저장으로 먼저 저장해 주세요.");
     setBusy(true); setError("");
     try {
-      const response = await generateContent(accessToken, { action: "shorts_proposal", sourceId, count });
-      if (response.queued) setError("Claude 연결 대기 작업으로 저장했습니다.");
+      const response = await generateContent(accessToken, { mode, action: "shorts_proposal", sourceId, count });
+      if (response.queued) setError(GENERATION_QUEUED_NOTICE);
       else setTab("clips");
       await load();
     } catch (reason) {
@@ -270,14 +280,15 @@ export function ContentShortformWorkspace() {
   const previewPosition = style.position === "top" ? "flex-start" : style.position === "bottom" ? "flex-end" : "center";
 
   return <>
-    <header className="page-header"><div className="page-title-group"><span className="eyebrow">숏폼 제작실</span><h1>숏폼 편집</h1><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions"><select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => setSourceId(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select>{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<button className="primary-button" disabled={!sourceId || busy} onClick={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</button></div></header>
-    {error ? <div className="inline-alert danger"><CircleAlert size={16} /> {error}</div> : null}
-    <nav className="studio-tabs content-radar-tabs" aria-label="숏폼 작업 단계"><button className={tab === "editor" ? "active" : ""} onClick={() => setTab("editor")}><strong>스타일·원본</strong><small>화면 템플릿</small></button><button className={tab === "clips" ? "active" : ""} onClick={() => setTab("clips")}><strong>클립</strong><small>구간·제작 관리</small></button></nav>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>원본과 화면 스타일을 정하고 구간만 먼저 제안한 뒤, 사람이 채택한 클립만 제작 워커로 넘깁니다.</p></div><div className="header-actions">{timedCueCount ? <input className="clip-count-input" type="number" min="1" max="12" aria-label="제안할 클립 수" value={count} onChange={(event) => setCount(Number(event.target.value))} /> : null}<ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={propose}><Scissors size={15} /> {timedCueCount ? "구간 제안" : "수동 편집"}</ContentGenerationButton></div></header>
+    <div className="fullscreen-source-row"><span>기준 콘텐츠</span>{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<select aria-label="기준 콘텐츠 선택" value={sourceId} onChange={(event) => (onSourceChange ?? setSourceId)(event.target.value)}><option value="">기준 콘텐츠 선택</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.title}</option>)}</select><span>작업 중인 영상과 같은 값</span></div>
+    {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
+    <ContentStageTabs label="숏폼 작업 단계" value={tab} onChange={setTab} items={[{key:"editor",label:"스타일·원본",hint:"화면 템플릿"},{key:"clips",label:"클립",hint:"구간·제작 관리",count:visible.length}]} />
 
     {tab === "editor" ? <section className="shorts-editor-layout">
       <article className="panel shorts-preview-panel"><div className="panel-header"><div><h2>세로 영상 미리보기</h2><p>원본 재생과 스타일 배치를 확인합니다. 최종 렌더 결과는 별도로 확인하세요.</p></div><span className="status-pill status-ready">1080 × 1920</span></div><div className="shorts-device" style={{ backgroundColor: style.backgroundColor }}>
         {previewUrl ? <video src={previewUrl} muted controls /> : <div className="shorts-placeholder"><Film size={42} /><span>원본 영상을 선택하면 미리보기가 표시됩니다.</span></div>}
-        <div className="shorts-overlay" style={{ justifyContent: previewPosition, fontFamily: style.font }}><div><strong style={{ color: style.titleColor, fontSize: `${Math.max(16, style.titleSize * .62)}px` }}>{style.titleText}</strong><span style={{ color: style.subtitleColor, fontSize: `${Math.max(10, style.subtitleSize * .62)}px` }}>{style.subtitleText}</span></div><small>{style.channelName}</small></div>
+        <div className="shorts-overlay" style={{ justifyContent: previewPosition, fontFamily: style.font }}><div><strong style={{ color: style.titleColor, fontSize: `${Math.max(16, style.titleSize * .62)}px` }}>{style.titleText}</strong><span style={{ color: style.subtitleColor, fontSize: `${Math.max(11, style.subtitleSize * .62)}px` }}>{style.subtitleText}</span></div><small>{style.channelName}</small></div>
       </div></article>
       <aside className="panel shorts-style-panel"><div className="panel-header"><div><h2>스타일 템플릿</h2><p>콘텐츠별로 저장되며 모든 채택 클립에 적용됩니다.</p></div><button className="primary-button" disabled={!selectedSource || busy} onClick={saveTemplate}><Save size={14} /> {busy ? "원본 저장 중…" : "원본·스타일 저장"}</button></div><div className="shorts-source-block"><label className="file-drop"><Upload size={18} /><span><strong>{localFile?.name || meta(selectedSource, "contentMediaName", "원본 영상 선택")}</strong><small>{meta(selectedSource, "contentMediaPath", "") ? "비공개 원본 저장됨 · 업로드 후 24시간 보관" : "선택 즉시 미리보기 · 저장 시 비공개 업로드"}</small></span><input type="file" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/x-matroska,.mkv" onChange={(event) => chooseFile(event.target.files?.[0])} /></label><label><span><Link2 size={13} /> 외부 원본 URL (선택)</span><input type="url" value={sourceUrlDraft} onChange={(event) => setSourceUrlDraft(event.target.value)} placeholder="https://… 워커가 읽을 수 있는 경로" /></label></div>{sourceUrlDraft && !previewUrl ? <p className="inline-alert warning" role="status">URL만 저장된 상태입니다. YouTube 페이지는 영상 파일이 아니어서 직접 재생·자동 전사할 수 없습니다. 원본 파일을 업로드하고 SRT/VTT 자막을 추가하거나 수동 구간으로 편집해 주세요.</p> : null}<section className="shorts-transcript"><div className="shorts-transcript-head"><span><strong>시간 자막 (SRT·VTT)</strong><small>선택 사항</small></span><div>{transcript ? <button type="button" className="ghost-button" onClick={() => { setTranscript(""); setError(""); }}>자막 비우기</button> : null}<label className="secondary-button caption-file-button"><Upload size={13} /> 파일 선택<input className="sr-only" type="file" accept=".srt,.vtt,text/vtt" onChange={(event) => { void importCaptions(event.target.files?.[0]); event.target.value = ""; }} /></label></div></div><textarea rows={6} aria-label="시간 자막 원문" value={transcript} onChange={(event) => { setTranscript(event.target.value); setError(""); }} placeholder={"00:00:00,000 --> 00:00:04,000\n자막 내용"} /><small>{timedCueCount ? `유효한 자막 ${timedCueCount}개 · 저장 후 자동 구간 제안에 사용합니다.` : "자막이 없으면 시작·종료 시간을 직접 정하는 수동 편집으로 진행합니다."}</small></section><div className="shorts-style-form"><label><span>메인 제목</span><input value={style.titleText} onChange={(event) => setStyle((current) => ({ ...current, titleText: event.target.value }))} /></label><label><span>보조 문구</span><input value={style.subtitleText} onChange={(event) => setStyle((current) => ({ ...current, subtitleText: event.target.value }))} /></label><div className="form-grid"><label><span>채널명</span><input value={style.channelName} onChange={(event) => setStyle((current) => ({ ...current, channelName: event.target.value }))} /></label><label><span>글꼴</span><select value={style.font} onChange={(event) => setStyle((current) => ({ ...current, font: event.target.value }))}><option>Pretendard</option><option>Noto Sans KR</option><option>system-ui</option></select></label></div><div className="form-grid"><label><span>제목 크기 {style.titleSize}</span><input type="range" min="22" max="58" value={style.titleSize} onChange={(event) => setStyle((current) => ({ ...current, titleSize: Number(event.target.value) }))} /></label><label><span>보조 크기 {style.subtitleSize}</span><input type="range" min="12" max="32" value={style.subtitleSize} onChange={(event) => setStyle((current) => ({ ...current, subtitleSize: Number(event.target.value) }))} /></label></div><div className="shorts-color-row"><label><span>제목</span><input type="color" value={style.titleColor} onChange={(event) => setStyle((current) => ({ ...current, titleColor: event.target.value }))} /></label><label><span>보조</span><input type="color" value={style.subtitleColor} onChange={(event) => setStyle((current) => ({ ...current, subtitleColor: event.target.value }))} /></label><label><span>배경</span><input type="color" value={style.backgroundColor} onChange={(event) => setStyle((current) => ({ ...current, backgroundColor: event.target.value }))} /></label></div><div className="form-grid"><label><span>문구 위치</span><select value={style.position} onChange={(event) => setStyle((current) => ({ ...current, position: event.target.value as ShortsStyle["position"] }))}><option value="top">상단</option><option value="center">중앙</option><option value="bottom">하단</option></select></label><label><span>세로 화면</span><select value={style.reframe} onChange={(event) => setStyle((current) => ({ ...current, reframe: event.target.value as ShortsStyle["reframe"] }))}><option value="pad">전체 보존 · 흐린 배경</option><option value="top">상단 확대 · 아래 여백</option><option value="crop">중앙 크롭 · 예외</option></select></label></div><div className="shorts-checks"><label><input type="checkbox" checked={style.captions} onChange={(event) => setStyle((current) => ({ ...current, captions: event.target.checked }))} /> 자동 자막</label><label><input type="checkbox" checked={style.tighten} onChange={(event) => setStyle((current) => ({ ...current, tighten: event.target.checked }))} /> 무음 줄이기</label></div></div></aside>
     </section> : null}

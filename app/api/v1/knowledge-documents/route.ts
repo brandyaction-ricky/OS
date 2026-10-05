@@ -3,9 +3,11 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { canReadKnowledgeDocument } from "@/lib/server/document-access";
+import { canReadKnowledgeDocument, canAgentWriteDocument } from "@/lib/server/document-access";
+import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
+import { createCanonicalProposal } from "@/lib/server/document-proposals";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -110,7 +112,7 @@ export async function GET(request: Request) {
     await assertOrganization(actor, parsedOrganizationId);
     const { data, error } = await createServiceSupabase().from("os_documents").select("*").eq("id", documentId).single();
     if (error || !data) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
-    if (!canReadKnowledgeDocument(actor, data)) {
+    if (!canReadKnowledgeDocument(actor, data) || !(await readableKnowledgePages(actor, [data])).has(data.id)) {
       throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 문서를 열 수 없습니다.");
     }
     return NextResponse.json({ document: data });
@@ -126,6 +128,7 @@ export async function POST(request: Request) {
     requireAgentScope(actor, "knowledge.write");
     const input = createSchema.parse(await parseJson(request));
     await assertOrganization(actor, input.organizationId);
+    if (!canAgentWriteDocument(actor, "draft")) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 초안을 만들 수 없습니다.");
     let document: KnowledgeDocument | null = null;
 
     if (actor.type === "agent") {
@@ -175,6 +178,7 @@ export async function PATCH(request: Request) {
     const service = createServiceSupabase();
     const { data: current, error: readError } = await service.from("os_documents").select("*").eq("id", input.documentId).single();
     if (readError || !current) throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+    if (!canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
     const expectedVersion = input.expectedVersion ?? current.current_version;
     const next = {
       title: input.title ?? current.title,
@@ -189,6 +193,21 @@ export async function PATCH(request: Request) {
       ["brand", input.brand], ["team", input.team], ["tags", input.tags],
     ] as const).filter(([, value]) => value !== undefined).map(([field]) => field);
     let document: KnowledgeDocument | null = null;
+
+    if (current.status === "canonical" && (next.title !== current.title || next.content !== current.content_md) && (actor.type === "user" || actor.enforceWriteStatuses)) {
+      if (!canReadKnowledgeDocument(actor, current) || !(await readableKnowledgePages(actor, [current])).has(current.id)) {
+        throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 정본에 변경 제안을 만들 수 없습니다.");
+      }
+      const proposal = await createCanonicalProposal(actor, current, expectedVersion, {
+        title: next.title,
+        content_md: next.content,
+        folder: next.folder,
+        brand: next.brand ?? "",
+        team: next.team,
+        tags: next.tags,
+      });
+      return NextResponse.json({ documentId: current.id, document: current, proposalId: proposal.id, proposal, indexing: "queued" }, { status: 202 });
+    }
 
     if (actor.type === "agent") {
       const { data, error } = await service.rpc("os_agent_update_document", {
@@ -248,6 +267,8 @@ export async function DELETE(request: Request) {
     let document: KnowledgeDocument | null = null;
 
     if (actor.type === "agent") {
+      const { data: current } = await createServiceSupabase().from("os_documents").select("status").eq("id", documentId).single();
+      if (current && current.status !== "archived" && !canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
       const { data, error } = await createServiceSupabase().rpc("os_agent_archive_document", {
         p_agent_key_id: actor.id,
         p_organization_id: parsedOrganizationId,

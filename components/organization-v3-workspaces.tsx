@@ -1,4 +1,9 @@
 "use client";
+import { generationJobLabel } from "@/lib/content-generation-mode";
+import { sampleSummary } from "@/lib/channel-metrics";
+import { useRecordDeepLink } from "./use-record-deep-link";
+
+import { PageTitle } from "./page-title";
 
 import {
   Bot,
@@ -96,8 +101,7 @@ export function WeeklyScheduleWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">이번 주 일정</span>
-          <h1>이번 주 일정</h1>
+          <PageTitle />
           <p>회의·휴가·업무 마감·발행·계약 만료를 한곳에서 확인합니다.</p>
         </div>
       </header>
@@ -202,7 +206,18 @@ export function WeeklyScheduleWorkspace() {
   );
 }
 
-export function AiOperationsWorkspace() {
+function isContentAiJob(job: OsRecord) {
+  return Boolean(
+    meta(job, "contentAction") ||
+      meta(job, "sourceId") ||
+      meta(job, "contentId") ||
+      meta(job, "generationMode") ||
+      meta(job, "generatedBy") === "claude-queue" ||
+      job.tags.includes("콘텐츠"),
+  );
+}
+
+export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: boolean } = {}) {
   const { accessToken, demo } = useSession();
   const [jobs, setJobs] = useState<OsRecord[]>([]);
   const [health, setHealth] = useState<Awaited<
@@ -214,11 +229,11 @@ export function AiOperationsWorkspace() {
     if (demo) return;
     Promise.all([listRecords(accessToken, "ai_job", "limit=100&excludeKind=development_request"), getHealth()])
       .then(([result, status]) => {
-        setJobs(result.records);
+        setJobs(contentOnly ? result.records.filter(isContentAiJob) : result.records);
         setHealth(status);
       })
       .catch((reason) => setError(reason.message));
-  }, [accessToken, demo]);
+  }, [accessToken, contentOnly, demo]);
   const systems = [
     [
       "회의 녹음→전사·요약",
@@ -241,26 +256,17 @@ export function AiOperationsWorkspace() {
       health?.embeddings === "ready" ? "저장 이벤트 처리" : "OpenAI 키 대기",
     ],
   ];
-  const jobStatusLabel: Record<string, string> = {
-    backlog: "대기",
-    draft: "초안",
-    active: "실행 중",
-    review: "검수 중",
-    ready: "승인 대기",
-    blocked: "막힘",
-    done: "완료",
-    failed: "실패",
-  };
+  useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
   const selectedJobSourceUrl = safeWebUrl(selectedJob?.source_url);
   return (
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">하나의 지식 · 여러 창구</span>
-          <h1>AI 작업</h1>
+          <PageTitle />
           <p>
-            AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고
-            결정합니다.
+            {contentOnly
+              ? "콘텐츠 생성 요청의 대기·진행·검수 상태를 확인합니다."
+              : "AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고 결정합니다."}
           </p>
         </div>
       </header>
@@ -270,7 +276,7 @@ export function AiOperationsWorkspace() {
           {error}
         </div>
       ) : null}
-      <div className="section-intro"><div><span className="eyebrow">1단계</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
+      {!contentOnly ? <><div className="section-intro"><div><span className="eyebrow">1단계</span><h2>회사 공용 자동 작업</h2><p>내부 정리는 자동으로 실행하고, 민감·대외 작업은 사람의 최종 확정을 기다립니다.</p></div></div>
       <section className="ai-system-grid">
         {systems.map(([title, status, description]) => (
           <article className="panel" key={title}>
@@ -284,12 +290,12 @@ export function AiOperationsWorkspace() {
           </article>
         ))}
       </section>
-      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div>
+      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div></> : null}
       <section className="panel">
         <div className="panel-header">
           <div>
             <h2>사람이 요청한 AI 작업</h2>
-            <p>GPT·Codex·Claude 요청서의 진행·검수 상태</p>
+            <p>{contentOnly ? "콘텐츠 생성 요청의 진행·검수 상태" : "GPT·Codex·Claude 요청서의 진행·검수 상태"}</p>
           </div>
           <span className="count-badge">{jobs.length}</span>
         </div>
@@ -306,9 +312,9 @@ export function AiOperationsWorkspace() {
               <span
                 className={`status-pill status-${job.status}`}
                 role="status"
-                aria-label={`작업 상태: ${jobStatusLabel[job.status] ?? job.status}`}
+                aria-label={`작업 상태: ${generationJobLabel(job)}`}
               >
-                {jobStatusLabel[job.status] ?? job.status}
+                {generationJobLabel(job)}
               </span>
             </button>
           ))}
@@ -316,7 +322,7 @@ export function AiOperationsWorkspace() {
             <div className="quiet-state">
               <Bot />
               <strong>등록된 AI 작업 없음</strong>
-              <span>AI 작업에서 요청서를 등록하면 여기에 모입니다.</span>
+              <span>{contentOnly ? "콘텐츠 화면에서 생성 요청을 보내면 여기에 모입니다." : "AI 작업에서 요청서를 등록하면 여기에 모입니다."}</span>
             </div>
           ) : null}
         </div>
@@ -325,13 +331,13 @@ export function AiOperationsWorkspace() {
         <aside className="record-drawer" role="dialog" aria-label="AI 작업 상세" onMouseDown={(event) => event.stopPropagation()}>
           <div className="drawer-head"><div><span className="eyebrow">AI 작업 상세</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
           <div className="ai-job-detail">
-            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{jobStatusLabel[selectedJob.status] ?? selectedJob.status}</span></div>
+            <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{generationJobLabel(selectedJob)}</span></div>
             <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
             {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
             <div className="drawer-actions">
               {selectedJobSourceUrl ? <a className="secondary-button" href={selectedJobSourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> 결과·원본 링크</a> : null}
-              {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`/content/automation${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
+              {meta(selectedJob, "contentAction") || meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") ? <Link className="primary-button" href={`${contentOnly ? "/automation/review" : "/content/automation"}${String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id || "") ? `?sourceId=${encodeURIComponent(String(meta(selectedJob, "sourceId") || meta(selectedJob, "contentId") || selectedJob.parent_id))}` : ""}`}><Sparkles size={14} /> 원본 콘텐츠 열기</Link> : null}
               {selectedJob.status === "blocked" ? <Link className="secondary-button" href="/settings/connections">연결 상태 확인</Link> : null}
             </div>
             {!selectedJobSourceUrl && !meta(selectedJob, "contentAction") && !meta(selectedJob, "sourceId") && !meta(selectedJob, "contentId") ? <p className="inline-alert">연결된 원본이나 결과 링크가 없습니다. 요청 등록 화면에서 출처 링크를 추가해 주세요.</p> : null}
@@ -436,12 +442,8 @@ export function LeaveWorkspace() {
     }
   };
   const pending = requests.filter((item) => item.status === "pending").length;
-  const avg = balances.length
-    ? balances.reduce(
-        (sum, item) => sum + Number(item.metric_current || 0),
-        0,
-      ) / balances.length
-    : 0;
+  const remaining = sampleSummary(balances.flatMap(item =>
+    typeof item.metric_current === "number" ? [item.metric_current] : []));
   const rosterBalances = BRANDYACTION_ROSTER.map((rosterMember) => {
     const account = members.find((member) =>
       memberMatchesRoster(member, rosterMember.name),
@@ -457,8 +459,7 @@ export function LeaveWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">연차·휴가 관리</span>
-          <h1>연차·휴가</h1>
+          <PageTitle />
           <p>잔여 연차와 신청·승인·자동 차감을 관리합니다.</p>
         </div>
         <button className="primary-button" onClick={() => setDrawer(true)}>
@@ -482,10 +483,11 @@ export function LeaveWorkspace() {
         </div>
         <div className="metric-card">
           <div className="metric-top">
-            <span>평균 잔여</span>
+            <span>잔여 연차 중앙값</span>
             <Plane size={16} />
           </div>
-          <div className="metric-value">{avg.toFixed(1)}일</div>
+          <div className="metric-value">{remaining.median === null ? "미등록" : `${remaining.median.toFixed(1)}일`}</div>
+          <small>{remaining.n ? `범위 ${remaining.min}–${remaining.max}일 · n=${remaining.n}개 등록 기록` : "등록된 잔여 연차 기록이 없습니다."}</small>
         </div>
         <div className="metric-card">
           <div className="metric-top">

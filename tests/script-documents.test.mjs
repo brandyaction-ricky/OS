@@ -4,6 +4,14 @@ import test from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as scripts from "../lib/script-documents.ts";
+import * as lineDiff from "../lib/line-diff.ts";
+test("script stage chips classify actual filenames without assigning approval state",()=>{
+  const row={title:"03_초안_v2.md",source_ref:"scripts/03_초안_v2.md"};
+  assert.equal(scripts.matchesScriptStep(row,"all"),true);
+  assert.equal(scripts.matchesScriptStep(row,"초안"),true);
+  assert.equal(scripts.matchesScriptStep(row,"자료"),false);
+  assert.equal(scripts.matchesScriptStep(row,"unknown"),false);
+});
 
 test("direct-edit variants outrank manuscript versions without requiring a specific suffix", () => {
   const doc = (title) => ({ title, folder: "scripts", status: "draft", updated_at: "2026-09-10" });
@@ -12,6 +20,20 @@ test("direct-edit variants outrank manuscript versions without requiring a speci
     assert.equal(rows[0].title, title);
     assert.equal(rows[1].title, "낭독본_최종.md");
   }
+});
+
+test("script filename versions share one family and show the highest version first", () => {
+  const docs = [
+    { id: "v1", title: "원고_v1.md", folder: "scripts", status: "draft", updated_at: "2026-10-03" },
+    { id: "v3", title: "원고_v3.md", folder: "scripts", status: "draft", updated_at: "2026-10-01" },
+    { id: "v2", title: "원고_v2.md", folder: "scripts", status: "draft", updated_at: "2026-10-02" },
+    { id: "other", title: "자료.md", folder: "scripts", status: "draft", updated_at: "2026-10-03" },
+  ];
+  const groups = scripts.groupScriptVersions(docs);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0].documents.map(doc => doc.id), ["v3", "v2", "v1"]);
+  assert.equal(groups[0].latest.id, "v3");
+  assert.equal(groups[1].latest.id, "other");
 });
 
 test("new scripts use the existing document API with a bounded video folder and default outline", () => {
@@ -76,9 +98,12 @@ function setup(overrides = {}, initialSession = {}) {
   };
   const jsx = (type, props) => ({ type, props });
   const modules = {
+    "./page-title": { PageTitle: () => null },
+    "./content-generation-button": { ContentGenerationButton: () => null },
+    "@/lib/content-generation-mode": { GENERATION_QUEUED_NOTICE: "구독 대기열에 저장했습니다." },
     react, "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, name) => String(name) }),
-    "@/lib/api-client": api, "@/lib/script-documents": scripts,
+    "@/lib/api-client": api, "@/lib/script-documents": scripts, "@/lib/line-diff": lineDiff,
     "./session-provider": { useSession: () => session },
     "./content-linked-scripts": { ContentLinkedScripts: "ContentLinkedScripts" },
   };

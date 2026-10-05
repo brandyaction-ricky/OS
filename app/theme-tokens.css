@@ -4,6 +4,7 @@
   --bg: #08090a;
   --panel: #0f1011;
   --panel-2: #141516;
+  --card: #141516;
   --panel-3: #1c1c1f;
   --surface-hover: #232326;
   --surface-selected: #28282c;
@@ -45,6 +46,7 @@ html[data-theme="light"] {
   --bg: #f7f7f8;
   --panel: #fafafa;
   --panel-2: #f4f4f5;
+  --card: #ffffff;
   --panel-3: #eeedef;
   --surface-hover: #e9e8ea;
   --surface-selected: #e4e2e6;

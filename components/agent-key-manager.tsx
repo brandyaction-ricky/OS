@@ -1,10 +1,12 @@
 "use client";
 
+import { agentKeyAccessLabel, defaultAgentExpiry } from "@/lib/agent-key-policy";
 import { Bot, Check, Copy, KeyRound, LoaderCircle, Plus, ShieldCheck, Trash2, X } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   createAgentKey,
   listAgentKeys,
+  requestAgentKeyReissue,
   revokeAgentKey,
   type AgentAccessKey,
   type AgentAccessResponse,
@@ -34,6 +36,9 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
   const [testStatus, setTestStatus] = useState("");
   const [issued, setIssued] = useState<{ token: string; organizationId: string } | null>(null);
   const [revokeId, setRevokeId] = useState<string | null>(null);
+  const [reissueKey, setReissueKey] = useState<AgentAccessKey | null>(null);
+  const [ownerId, setOwnerId] = useState(defaultOwnerId ?? "");
+  const [notice, setNotice] = useState("");
   const [copied, setCopied] = useState<"organization" | "token" | null>(null);
 
   const load = useCallback(async () => {
@@ -55,13 +60,15 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setNotice("");
     try {
       const response = await createAgentKey(accessToken, {
         name: String(form.get("name") || ""),
         ownerUserId: String(form.get("ownerUserId") || ""),
-        access: String(form.get("access")) === "write" ? "write" : "read",
+        access: String(form.get("access")) === "write" ? "write" : String(form.get("access")) === "draft" ? "draft" : "read",
+        expiresAt: new Date(`${String(form.get("expiresAt"))}T23:59:59`).toISOString(),
         team: String(form.get("team") || ""),
+        reason: String(form.get("reason") || ""),
       });
       setIssued({ token: response.token, organizationId: response.organization.id });
       setCreateOpen(false);
@@ -74,6 +81,19 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
     setBusy(true); setError("");
     try { await revokeAgentKey(accessToken, key.id); setRevokeId(null); await load(); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "AI 접근 키를 폐기하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
+
+  const requestReissue = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!reissueKey) return;
+    const form = new FormData(event.currentTarget);
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await requestAgentKeyReissue(accessToken, { keyId: reissueKey.id, recipientId: String(form.get("recipientId") || "") });
+      setNotice("선택한 구성원에게 개인 계정 키 재발급 요청 알림을 보냈습니다. 기존 키는 그대로 유지됩니다.");
+      setReissueKey(null);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "재발급 요청을 보내지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -149,6 +169,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
         <div className="header-actions"><button className="secondary-button" type="button" onClick={() => { setTestStatus(""); setTestOpen(true); }}><ShieldCheck size={14} />연결 검증</button><button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button></div>
       </div>
       {error ? <div className="inline-alert danger">{error}</div> : null}
+      {notice ? <div className="inline-alert success" role="status">{notice}</div> : null}
       {result ? (
         <div className="agent-organization-row">
           <span><strong>조직 UUID</strong><code>{result.organization.id}</code></span>
@@ -170,8 +191,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
           {(result?.keys ?? []).map((key) => (
             <div key={key.id}>
               <span className="document-symbol"><Bot size={15} /></span>
-              <span className="agent-key-main"><strong>{key.name}</strong><small>{key.owner?.display_name || key.owner?.email || "소유자 미확인"} · {key.key_prefix}… · 최근 사용 {dateLabel(key.last_used_at)}</small></span>
-              <em className={`status-pill status-${key.active ? "ready" : "waiting"}`}>{key.active ? (key.scopes.includes("knowledge.write") ? "읽기·쓰기" : "읽기 전용") : "폐기됨"}</em>
+              <span className="agent-key-main"><strong>{key.name} {key.owner?.is_shared_account ? <em className="status-pill status-waiting">공용 계정 · 사용자를 특정할 수 없음</em> : null}</strong><small>{key.owner?.display_name || key.owner?.email || "소유자 미확인"} · {key.key_prefix}… · 최근 사용 {dateLabel(key.last_used_at)} · 만료 {key.expires_at ? dateLabel(key.expires_at) : "없음(기존 키)"}</small>{key.active && key.owner?.is_shared_account ? <button type="button" className="secondary-button" onClick={() => setReissueKey(key)}>본인 계정으로 재발급 요청</button> : null}</span>
+              <em className={`status-pill status-${key.active ? "ready" : "waiting"}`}>{key.active ? agentKeyAccessLabel(key) : "폐기됨"}</em>
               {key.active ? (revokeId === key.id ? (
                 <span className="agent-revoke-actions"><button type="button" onClick={() => revoke(key)} disabled={busy}>폐기 확정</button><button type="button" onClick={() => setRevokeId(null)}>취소</button></span>
               ) : <button className="icon-button" type="button" aria-label={`${key.name} 키 폐기`} onClick={() => setRevokeId(key.id)}><Trash2 size={14} /></button>) : null}
@@ -185,11 +206,23 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
           <form className="side-drawer" onSubmit={submit}>
             <div className="drawer-header"><div><span className="eyebrow">MCP 권한</span><h2>AI 접근 키 발급</h2></div><button className="icon-button" type="button" aria-label="닫기" onClick={() => setCreateOpen(false)}><X /></button></div>
             <label>키 이름<input name="name" required maxLength={80} placeholder="예: 정호 Claude Code" /></label>
-            <label>귀속 구성원<select name="ownerUserId" required defaultValue={members.find((member) => member.is_active && member.id === defaultOwnerId)?.id ?? members.find((member) => member.is_active)?.id}>{members.filter((member) => member.is_active).map((member) => <option value={member.id} key={member.id}>{member.display_name || member.email}</option>)}</select></label>
-            <label>권한 범위<select name="access" defaultValue="write"><option value="write">읽기·쓰기</option><option value="read">읽기 전용</option></select></label>
+            <label>귀속 구성원<select name="ownerUserId" required value={ownerId || members.find((member) => member.is_active)?.id || ""} onChange={(event) => setOwnerId(event.target.value)}>{members.filter((member) => member.is_active).map((member) => <option value={member.id} key={member.id}>{member.display_name || member.email}{member.is_shared_account ? " · 공용 계정" : ""}</option>)}</select></label>
+            {members.find((member) => member.id === (ownerId || members.find((item) => item.is_active)?.id))?.is_shared_account ? <><div className="inline-alert danger">공용 계정의 키는 실제 사용자를 식별할 수 없습니다. 개인 계정으로 발급하는 것이 권장됩니다.</div><label>공용 계정 발급 사유<textarea name="reason" required maxLength={500} placeholder="개인 계정 대신 공용 계정에 발급해야 하는 이유" /></label></> : null}
+            <label>권한 범위<select name="access" defaultValue="draft"><option value="read">읽기</option><option value="draft">초안 쓰기 (정본 제외)</option><option value="write">정본 쓰기</option></select></label>
+            <label>만료일<input type="date" name="expiresAt" required min={new Date().toISOString().slice(0, 10)} defaultValue={defaultAgentExpiry()} /></label>
             <label>팀 범위<input name="team" maxLength={120} placeholder="비워두면 귀속 계정 기준" /></label>
             <div className="inline-alert"><ShieldCheck size={15} />새 문서는 개인 초안으로만 생성되고, 삭제는 휴지통 이동이며, 모든 쓰기는 감사 로그와 버전으로 남습니다.</div>
             <div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => setCreateOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <KeyRound />}발급</button></div>
+          </form>
+        </div>
+      ) : null}
+      {reissueKey ? (
+        <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setReissueKey(null); }}>
+          <form className="side-drawer" onSubmit={requestReissue}>
+            <div className="drawer-header"><div><span className="eyebrow">개인 계정 전환</span><h2>재발급 요청 알림</h2></div><button className="icon-button" type="button" aria-label="닫기" onClick={() => setReissueKey(null)}><X /></button></div>
+            <p>「{reissueKey.name}」 키의 실제 사용자를 선택하세요. 알림만 보내며 새 키 발급이나 기존 키 폐기는 실행하지 않습니다.</p>
+            <label>알림 받을 구성원<select name="recipientId" required defaultValue=""><option value="" disabled>개인 계정 선택</option>{members.filter((member) => member.is_active && !member.is_shared_account && member.id !== defaultOwnerId).map((member) => <option key={member.id} value={member.id}>{member.display_name || member.email}</option>)}</select></label>
+            <div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => setReissueKey(null)}>취소</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : null}알림 보내기</button></div>
           </form>
         </div>
       ) : null}

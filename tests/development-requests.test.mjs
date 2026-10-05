@@ -75,3 +75,12 @@ test("request attachments accept controlled private paths and reject arbitrary o
     assert.equal(developmentRequestCreateSchema.safeParse({ title: "요청", attachmentPath: path }).success, false);
   }
 });
+
+test("plain request summaries and hold follow-ups are admin-managed and preserve old metadata", () => {
+  const change = patch({plainSummary:"화면 수정",nextAction:"반영 확인",holdReason:"자료 대기",reviewDate:"2026-10-05"});
+  assert.throws(()=>validateDevelopmentRequestUpdate(current,change,reporter),{code:"REQUEST_ADMIN_REQUIRED"});
+  assert.doesNotThrow(()=>validateDevelopmentRequestUpdate(current,change,admin));
+  const result=developmentRequestUpdateFields(current,change);
+  assert.equal(result.metadata.pageUrl,"/home");assert.equal(result.metadata.reviewDate,"2026-10-05");assert.equal(result.metadata.nextAction,"반영 확인");
+  for (const values of [{plainSummary:"x".repeat(241)},{reviewDate:"2026-02-31"}])assert.equal(developmentRequestUpdateSchema.safeParse({id:current.id,expectedVersion:2,...values}).success,false);
+});

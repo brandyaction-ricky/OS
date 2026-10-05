@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import * as developmentStatus from "../lib/development-status.ts";
 
 const source = await readFile(new URL("../components/project-hub-workspace.tsx", import.meta.url), "utf8");
 const code = ts.transpileModule(source, {
@@ -48,6 +49,9 @@ function setup(initialQuery = "", { delayProjects = false } = {}) {
   const jsx = (type, props) => ({ type, props });
   const events = new EventTarget();
   const modules = {
+    "@/lib/development-status": developmentStatus,
+    "./development-request-drawer": { DevelopmentRequestDrawer:"request-drawer" },
+    "./page-title": { PageTitle: () => null },
     react,
     "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "fragment" },
     "lucide-react": new Proxy({}, { get: (_target, name) => name }),

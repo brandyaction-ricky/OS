@@ -7,7 +7,7 @@ import type { WritingWorkflowState } from "./content-writing-workflow.ts";
 export const PIPELINE_GATES = ["기획·근거 승인", "패키징·자료·설계·원고 승인", "최종 영상·발행키트 승인"] as const;
 export type PipelineAction = "topic_plan" | "script_draft" | "title_package" | "shorts_proposal" | "youtube_kit";
 export interface PipelineReview { gate: number; signature: string; approved: boolean; actorId: string; at: string; note: string }
-export interface PipelineRun { key: string; action: string; state: "running" | "succeeded" | "failed" | "needs_input"; at: string; finishedAt?: string; error?: string; recordIds?: string[] }
+export interface PipelineRun { key: string; action: string; state: "running" | "queued" | "succeeded" | "failed" | "needs_input"; at: string; finishedAt?: string; error?: string; recordIds?: string[] }
 
 export function pipelineArtifacts(records: OsRecord[]) {
   const latest = (match: (record: OsRecord) => boolean) => records.filter((record) => !record.archived_at && match(record)).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
@@ -91,7 +91,7 @@ export function hasCurrentApproval(reviews: PipelineReview[], gate: number, sign
   return latest?.approved === true && latest.signature === signature;
 }
 
-export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow", "releaseWorkflow"];
+export const PIPELINE_PROTECTED_KEYS = ["pipelineReviews", "pipelineRuns", "writingWorkflow", "scriptReviewWorkflow", "productionWorkflow", "releaseWorkflow", "channelWorkflowVersion", "publicationApproval", "publishCheckpoint", "publishOperation", "externalIds", "postedBy", "publishedAt", "mockPublished"];
 export function protectedPipelineChange(current: Record<string, unknown>, proposed?: Record<string, unknown>) {
   return !!proposed && ((current.pipelineEnabled === true && proposed.pipelineEnabled !== true) || PIPELINE_PROTECTED_KEYS.some((key) => JSON.stringify(current[key]) !== JSON.stringify(proposed[key])));
 }

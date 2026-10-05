@@ -4,21 +4,23 @@ import { ArrowRight, Bell, Check, CheckCircle2, RefreshCw, UserRoundCheck, X } f
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { developmentStatusLabel } from "@/lib/development-status";
+import { NOTIFICATION_REASONS, type WorkNotificationSummary } from "@/lib/notifications";
 import type { DevelopmentNotificationItem } from "@/lib/development-notifications";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import "./development-notifications.css";
 
 const OPEN_STATUSES = [
-  { id: "backlog", label: "접수" }, { id: "active", label: "진행" },
-  { id: "review", label: "검토" }, { id: "blocked", label: "보류" },
+  { id: "backlog", label: developmentStatusLabel("backlog") }, { id: "active", label: developmentStatusLabel("active") },
+  { id: "review", label: developmentStatusLabel("review") }, { id: "blocked", label: developmentStatusLabel("blocked") },
 ] as const;
 type RequestStatus = (typeof OPEN_STATUSES)[number]["id"] | "done";
 interface RequestSummary { requests: OsRecord[]; counts: Record<RequestStatus, number>; total: number; canManage: boolean }
 interface NotificationSummary { notifications: DevelopmentNotificationItem[]; unread: number; truncated: boolean }
 
 function statusLabel(status: string) {
-  return OPEN_STATUSES.find((item) => item.id === status)?.label ?? (status === "done" ? "완료" : "접수");
+  return developmentStatusLabel(status);
 }
 function notificationMessage(item: DevelopmentNotificationItem) {
   return item.reason === "assignment" ? `${item.actorName}님이 회원님을 담당자로 지정했습니다.` : `${item.actorName}님이 요청 대화에서 회원님을 언급했습니다.`;
@@ -32,6 +34,9 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
   const { accessToken, profile, demo, loading } = useSession();
   const [summary, setSummary] = useState<RequestSummary | null>(null);
   const [notificationSummary, setNotificationSummary] = useState<NotificationSummary | null>(null);
+  const [workSummary, setWorkSummary] = useState<WorkNotificationSummary | null>(null);
+  const [workError, setWorkError] = useState("");
+  const tokenRef = useRef(accessToken); tokenRef.current = accessToken;
   const [error, setError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [reading, setReading] = useState(false);
@@ -51,14 +56,18 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
     try {
       const query = new URLSearchParams({ summary: "1" });
       if (!canManage) query.set("scope", "mine");
-      const [summaryResponse, notificationResponse] = await Promise.all([
+      const [summaryResponse, notificationResponse, workResponse] = await Promise.all([
         fetch(`/api/v1/development-requests?${query}`, { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: controller.signal }),
         fetch("/api/v1/development-notifications", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: controller.signal }),
+        fetch("/api/v1/notifications", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: controller.signal }).catch(() => null),
       ]);
       if (!summaryResponse.ok || !notificationResponse.ok) throw new Error("Development notifications unavailable");
       const [summaryData, notificationData]: [RequestSummary, NotificationSummary] = await Promise.all([summaryResponse.json(), notificationResponse.json()]);
       if (!summaryData.counts || !Array.isArray(summaryData.requests) || OPEN_STATUSES.some(({ id }) => !Number.isFinite(summaryData.counts[id])) || !Array.isArray(notificationData.notifications) || !Number.isFinite(notificationData.unread)) throw new Error("Invalid notification summary");
+      const workData = workResponse ? await workResponse.json().catch(() => null) : null;
       if (controller.signal.aborted) return;
+      if (workResponse?.ok && Array.isArray(workData?.notifications) && Number.isFinite(workData?.unread)) { setWorkSummary(workData); setWorkError(""); }
+      else { setWorkSummary(null); setWorkError(workData?.error?.code === "NOTIFICATIONS_NOT_READY" ? "통합 알림 연결 준비 중 · 기존 개발 알림만 표시합니다." : "업무 알림을 불러오지 못했습니다. 기존 개발 알림만 표시합니다."); }
       setSummary(summaryData); setNotificationSummary(notificationData); setError(false);
     } catch { if (!controller.signal.aborted) setError(true); }
     finally { if (!controller.signal.aborted) setRefreshing(false); }
@@ -72,6 +81,7 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
         method: "PATCH", headers: { Authorization: `Bearer ${accessToken}`, "content-type": "application/json" }, body: JSON.stringify({ ids }),
       });
       if (!response.ok) throw new Error("Notification read failed");
+      if (tokenRef.current !== accessToken) return false;
       const readAt = new Date().toISOString();
       setNotificationSummary((previous) => previous ? {
         ...previous,
@@ -79,9 +89,23 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
         notifications: previous.notifications.map((item) => ids.includes(item.id) ? { ...item, readAt } : item),
       } : previous);
       return true;
-    } catch { setError(true); return false; }
-    finally { setReading(false); }
+    } catch { if (tokenRef.current === accessToken) setError(true); return false; }
+    finally { if (tokenRef.current === accessToken) setReading(false); }
   }, [accessToken, reading]);
+
+  const markWorkRead = async (ids: string[]) => {
+    if (!ids.length) return true;
+    if (reading || !accessToken) return false;
+    setReading(true);
+    try {
+      const response = await fetch("/api/v1/notifications", { method:"PATCH", headers:{Authorization:`Bearer ${accessToken}`,"Content-Type":"application/json"},body:JSON.stringify({ids}) });
+      if (!response.ok) throw new Error("read failed");
+      if (tokenRef.current !== accessToken) return false;
+      setWorkSummary(previous => previous ? {...previous, unread:previous.unread - previous.notifications.filter(item=>ids.includes(item.id)&&!item.readAt).length, notifications:previous.notifications.map(item=>ids.includes(item.id)?{...item,readAt:new Date().toISOString()}:item)} : previous);
+      return true;
+    } catch { if (tokenRef.current === accessToken) setWorkError("읽음 처리에 실패했습니다. 다시 시도해 주세요."); return false; }
+    finally { if (tokenRef.current === accessToken) setReading(false); }
+  };
 
   const openNotification = async (item: DevelopmentNotificationItem) => {
     if (!item.readAt && !(await markRead([item.id]))) return;
@@ -89,7 +113,7 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
   };
 
   useEffect(() => {
-    setSummary(null); setNotificationSummary(null); setError(false); void refresh();
+    setSummary(null); setNotificationSummary(null); setWorkSummary(null); setWorkError(""); setReading(false); setError(false); void refresh();
     const onRefresh = () => void refresh();
     const timer = window.setInterval(onRefresh, 60_000);
     window.addEventListener("focus", onRefresh); window.addEventListener("brandy-development-requests-changed", onRefresh); document.addEventListener("visibilitychange", onRefresh);
@@ -106,7 +130,7 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
   }, [onOpenChange, open, refresh]);
 
   const pending = summary && !error && ready ? OPEN_STATUSES.reduce((total, { id }) => total + summary.counts[id], 0) : null;
-  const unread = notificationSummary && !error && ready ? notificationSummary.unread : null;
+  const unread = notificationSummary && !error && ready ? notificationSummary.unread + (workSummary?.unread ?? 0) : null;
   const recentRequests = summary?.requests.filter((request) => !canManage || request.status !== "done").sort((a, b) => {
     if (canManage && (a.status === "backlog") !== (b.status === "backlog")) return a.status === "backlog" ? -1 : 1;
     return (b.updated_at ?? b.created_at).localeCompare(a.updated_at ?? a.created_at);
@@ -116,20 +140,22 @@ export function DevelopmentRequestNotifications({ open, onOpenChange }: { open: 
 
   return <div className="development-notifications" ref={wrapperRef} onBlur={(event) => { if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) onOpenChange(false); }}>
     <button ref={triggerRef} type="button" className="icon-button development-notifications-trigger"
-      aria-label={error ? "개발 알림, 불러오기 실패" : unread === null ? "개발 알림" : `개발 알림, 읽지 않음 ${unread}건`} title="개발 알림"
+      aria-label={error ? "알림, 불러오기 실패" : unread === null ? "알림" : `알림, 읽지 않음 ${unread}건`} title="알림"
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panelId : undefined} onClick={() => onOpenChange(!open)}>
       <Bell size={18} aria-hidden="true" />
       {unread !== null && unread > 0 ? <span className="development-notifications-badge" aria-hidden="true">{unread > 99 ? "99+" : unread}</span> : null}
-      {error ? <span className="development-notifications-unavailable" aria-hidden="true">!</span> : null}
+      {error || workError ? <span className="development-notifications-unavailable" aria-hidden="true">!</span> : null}
     </button>
     {open ? <section id={panelId} ref={panelRef} className="development-notifications-panel" role="dialog" aria-labelledby={`${panelId}-title`} tabIndex={-1}>
-      <header><div><h2 id={`${panelId}-title`}>개발 알림</h2><p>담당 지정과 요청 대화의 멘션을 확인하세요.</p></div><button type="button" className="icon-button" aria-label="개발 알림 닫기" onClick={() => { onOpenChange(false); triggerRef.current?.focus(); }}><X size={16} /></button></header>
+      <header><div><h2 id={`${panelId}-title`}>알림</h2><p>업무 배정·검토 요청과 개발 요청의 변화를 확인하세요.</p></div><button type="button" className="icon-button" aria-label="알림 닫기" onClick={() => { onOpenChange(false); triggerRef.current?.focus(); }}><X size={16} /></button></header>
       {demo ? <div className="development-notifications-state">데모 모드에서는 운영 알림을 확인할 수 없습니다.</div>
       : !ready ? <div className="development-notifications-state" role="status">로그인 정보를 확인하고 있습니다.</div>
-      : error ? <div className="development-notifications-state" role="status"><strong>개발 알림을 불러오지 못했습니다.</strong><p>연결을 확인한 뒤 다시 시도해 주세요.</p><button type="button" onClick={() => void refresh()} disabled={refreshing}><RefreshCw size={14} />{refreshing ? "확인 중…" : "다시 불러오기"}</button></div>
-      : summary === null || notificationSummary === null ? <div className="development-notifications-state" role="status">개발 알림을 불러오는 중입니다.</div>
+      : error ? <div className="development-notifications-state" role="status"><strong>알림을 불러오지 못했습니다.</strong><p>연결을 확인한 뒤 다시 시도해 주세요.</p><button type="button" onClick={() => void refresh()} disabled={refreshing}><RefreshCw size={14} />{refreshing ? "확인 중…" : "다시 불러오기"}</button></div>
+      : summary === null || notificationSummary === null ? <div className="development-notifications-state" role="status">알림을 불러오는 중입니다.</div>
       : <>
-        <div className="development-personal-alerts"><div className="development-personal-alerts-title"><span>내 알림 <strong>{unread}건</strong></span>{unreadIds.length > 0 && <button type="button" disabled={reading} onClick={() => void markRead(unreadIds)}><Check size={12} /> 모두 읽음</button>}</div>
+        {workError && <p className="development-notifications-state" role="status">{workError}<button onClick={() => void refresh()} disabled={refreshing}>다시 확인</button></p>}
+        {workSummary && <div className="development-personal-alerts"><div className="development-personal-alerts-title"><span>업무 알림 <strong>{workSummary.unread}건</strong></span>{workSummary.unread > 0 && <button disabled={reading} onClick={() => void markWorkRead(workSummary.notifications.filter(item=>!item.readAt).map(item=>item.id))}><Check size={12} />업무 알림 읽음</button>}</div>{workSummary.notifications.map(item=><button key={item.id} className={item.readAt ? "is-read" : ""} disabled={reading} onClick={async()=>{if(!item.readAt && !(await markWorkRead([item.id]))) return; onOpenChange(false); router.push(item.href);}}><Bell size={15}/><span><strong>{item.title}</strong><small>{NOTIFICATION_REASONS[item.reason]}</small><time dateTime={item.createdAt}>{notificationTime(item.createdAt)}</time></span><ArrowRight size={14}/></button>)}{!workSummary.notifications.length && <p className="development-personal-alerts-empty">새 업무 알림이 없습니다.</p>}{workSummary.truncated && <small>최근 100개 알림 범위입니다.</small>}</div>}
+        <div className="development-personal-alerts"><div className="development-personal-alerts-title"><span>개발 알림 <strong>{notificationSummary.unread}건</strong></span>{unreadIds.length > 0 && <button type="button" disabled={reading} onClick={() => void markRead(unreadIds)}><Check size={12} /> 모두 읽음</button>}</div>
           {notificationSummary.notifications.length ? notificationSummary.notifications.slice(0, 10).map((item) => <button type="button" key={item.id} className={item.readAt ? "is-read" : ""} disabled={reading} onClick={() => void openNotification(item)}><span className="development-alert-icon">{item.reason === "assignment" ? <UserRoundCheck size={15} /> : <Bell size={15} />}</span><span><strong>{item.requestTitle}</strong><small>{notificationMessage(item)}</small><time dateTime={item.createdAt}>{notificationTime(item.createdAt)}</time></span><ArrowRight size={14} /></button>)
           : <div className="development-personal-alerts-empty"><CheckCircle2 size={20} />새 담당 지정이나 멘션이 없습니다.</div>}
         </div>

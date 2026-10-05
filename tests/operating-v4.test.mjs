@@ -4,14 +4,16 @@ import test from "node:test";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
-test("fourth handoff exposes one advertising performance workspace", async () => {
+test("retired advertising UI retains its workspace and read-only integration", async () => {
   const [navigation, router, workspace] = await Promise.all([
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/workspace-tab-hub.tsx"),read("lib/workspace-tabs.ts")]).then(parts=>parts.join("\n")),
     read("components/ad-performance-workspace.tsx"),
   ]);
-  assert.match(navigation, /광고 성과/);
-  assert.match(navigation, /자사몰 어드민/);
+  assert.doesNotMatch(navigation, /href: "\/performance\/ads"/);
+  const retired = await read("lib/final-routes.ts");
+  assert.match(retired, /광고 성과/);
+  assert.match(retired, /자사몰 어드민/);
   assert.match(router, /AdPerformanceWorkspace/);
   for (const label of ["광고비", "전환 매출", "ROAS", "CPA", "Meta Ads", "Google Ads"]) assert.match(workspace, new RegExp(label));
   assert.doesNotMatch(workspace, /META_ADS_ACCESS_TOKEN|GOOGLE_ADS_CLIENT_SECRET/);

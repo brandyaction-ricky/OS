@@ -1,5 +1,8 @@
 "use client";
 
+import {useQueryTab} from "./use-query-tab";
+import { PageTitle } from "./page-title";
+
 import {
   CalendarClock,
   CircleAlert,
@@ -169,7 +172,7 @@ function downloadCsv(name: string, rows: string[][]) {
 
 export function FinanceWorkspace() {
   const { accessToken, demo, profile } = useSession();
-  const [tab, setTab] = useState<FinanceTab>("spend");
+  const [tab, setTab] = useQueryTab<FinanceTab>("tab",["spend","vat","contract","subscription","documents"],"spend");
   const [records, setRecords] = useState<OsRecord[]>([]);
   const [preview, setPreview] = useState<ExpenseRow[]>([]);
   const [query, setQuery] = useState("");
@@ -389,8 +392,7 @@ export function FinanceWorkspace() {
     <>
       <header className="page-header">
         <div className="page-title-group">
-          <span className="eyebrow">경영지원</span>
-          <h1>경영지원</h1>
+          <PageTitle />
           <p>
             법인카드 사용처 확인과 부가세 자료 준비에 드는 반복 시간을 줄입니다.
           </p>

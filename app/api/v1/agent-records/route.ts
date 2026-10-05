@@ -1,3 +1,5 @@
+import { isCommentDraftPatch } from "@/lib/content-comments";
+import { assertReviewedMeetingTask } from "@/lib/server/meeting-review";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -14,7 +16,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const organizationId = z.string().uuid();
-const protectedTypes = new Set<RecordType>(["access_rule", "development_comment", "development_notification"]);
+const protectedTypes = new Set<RecordType>(["access_rule", "development_comment", "development_notification", "notification"]);
 const columnMap = {
   recordType: "record_type", assigneeId: "assignee_id", parentId: "parent_id", dueDate: "due_date",
   startsAt: "starts_at", endsAt: "ends_at", metricTarget: "metric_target", metricCurrent: "metric_current",
@@ -72,18 +74,18 @@ export async function GET(request: Request) {
       const { data, error } = await service.from("os_records").select("*").eq("id", recordId).maybeSingle();
       if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
       if (data.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
-      if (data.record_type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
+      if ((data.record_type === "development_notification" || data.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
       return NextResponse.json({ record: data });
     }
     const type = url.searchParams.get("type") as RecordType | null;
     if (type && !RECORD_TYPES.includes(type)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
     if (type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
-    if (type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
+    if ((type === "development_notification" || type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     let query = service.from("os_records").select("*", { count: "exact" }).is("archived_at", null).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
     if (type) query = query.eq("record_type", type);
-    else query = query.neq("record_type", "development_comment").neq("record_type", "development_notification");
+    else query = query.neq("record_type", "development_comment").neq("record_type", "development_notification").neq("record_type", "notification");
     const { data, count, error } = await query;
     if (error) throw new ApiError(400, "RECORD_LIST_FAILED", "운영 기록을 불러오지 못했습니다.", error.message);
     return NextResponse.json({ records: data ?? [], total: count ?? 0 });
@@ -98,10 +100,14 @@ export async function POST(request: Request) {
     const organization = organizationId.parse(raw.organizationId);
     await assertOrganization(actor, organization);
     const input = recordCreateSchema.parse(raw);
+    await assertReviewedMeetingTask(actor,input);
+    if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 등록해 주세요.");
+    if (input.recordType === "content_metric" && input.metadata.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 수집 작업에서만 저장합니다.");
+    if (input.recordType === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 수집 기록은 전용 API에서만 만듭니다.");
     if (input.recordType === "development_comment" || input.metadata.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 작성해 주세요.");
-    if (input.recordType === "development_notification" || input.metadata.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
+    if ((input.recordType === "development_notification" || input.recordType === "notification") || (input.metadata.kind === "development_notification" || input.metadata.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 담당자 지정과 멘션으로만 생성됩니다.");
     enforceHumanGates(input.recordType, input.status);
     await assertDevelopmentRequestLink(actor.supabase, input);
     await rateLimit(actor, "record.create");
@@ -128,12 +134,17 @@ export async function PATCH(request: Request) {
     const service = createServiceSupabase();
     const { data: current } = await service.from("os_records").select("record_type,status,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if ([current.metadata?.kind, input.metadata?.kind].some(kind => ["meta_tester_request", "channel_audit"].includes(String(kind)))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 변경해 주세요.");
+    if ((current.record_type === "content_metric" && current.metadata?.channelSnapshotVersion === 1) || input.metadata?.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 변경하지 않습니다. 수기 기록을 따로 추가하세요.");
+    if (current.record_type === "content_comment" && !isCommentDraftPatch(current, input)) throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글은 초안만 변경할 수 있습니다. 전송·숨기기는 전용 사람 확인 API를 사용하세요.");
     if (current.record_type === "development_comment" || input.metadata?.kind === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 덮어쓰지 않습니다.");
-    if (current.record_type === "development_notification" || input.metadata?.kind === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 에이전트 API에서 변경할 수 없습니다.");
+    if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 에이전트 API에서 변경할 수 없습니다.");
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
+    if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "HUMAN_PUBLISH_GATE", "계정별 게시 승인·예약·발행은 사람이 게시 설정 패널에서 처리합니다.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     const recordType = (input.recordType ?? current.record_type) as RecordType;
+    await assertReviewedMeetingTask(actor,input,current);
     enforceHumanGates(recordType, input.status);
     await rateLimit(actor, "record.update");
     const payload = { ...databaseFields(input), updated_by: actor.ownerId };
@@ -161,9 +172,13 @@ export async function DELETE(request: Request) {
     const service = createServiceSupabase();
     const { data: current } = await service.from("os_records").select("id,title,record_type,version,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
+    if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "HUMAN_PUBLISH_GATE", "채널 게시 이력은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다.");
+    if (current.record_type === "content_metric" && current.metadata?.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 보존합니다.");
+    if (current.record_type === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 처리 이력은 보존합니다.");
     if (current.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 처리 이력을 위해 보존합니다.");
-    if (current.record_type === "development_notification") throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
+    if ((current.record_type === "development_notification" || current.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     enforceHumanGates(current.record_type as RecordType);
     await rateLimit(actor, "record.delete");
     const { data, error } = await service.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.ownerId }).eq("id", id).eq("version", current.version).select("id,title").maybeSingle();

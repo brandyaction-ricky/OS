@@ -8,6 +8,9 @@ export interface KnowledgeLinkSource {
   status: DocumentStatus;
   owner_id: string;
   source_ref?: string | null;
+  current_version?: number;
+  steward_id?: string | null;
+  parent_document_id?: string | null;
 }
 
 export interface KnowledgeGraphNode {
@@ -16,6 +19,8 @@ export interface KnowledgeGraphNode {
   folder: string;
   status: DocumentStatus;
   ownerId: string;
+  currentVersion?: number;
+  stewardId?: string | null;
   incoming: number;
   outgoing: number;
 }
@@ -37,6 +42,8 @@ export interface KnowledgeGraph {
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
   broken: BrokenKnowledgeLink[];
+  totalLinks?: number;
+  stewardReady?: boolean;
 }
 
 const TEMPLATE_LINK = "다른 문서 이름";
@@ -47,6 +54,16 @@ export function extractWikiLinks(content: string) {
       .map((match) => match[1].trim())
       .filter(Boolean),
   )];
+}
+
+export function replaceWikiLinkTarget(content: string, oldTarget: string, newTarget: string) {
+  let count = 0;
+  const next = content.replace(/(^|[^!])\[\[([^\]|#]+)((?:[#|][^\]]+)?)\]\]/gm, (whole, prefix: string, target: string, suffix: string) => {
+    if (wikiKey(target) !== wikiKey(oldTarget)) return whole;
+    count += 1;
+    return `${prefix}[[${newTarget}${suffix}]]`;
+  });
+  return { content: next, count };
 }
 
 export function wikiKey(raw: string) {
@@ -84,10 +101,12 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
   const edgeKeys = new Set<string>();
   const incoming = new Map<string, number>();
   const outgoing = new Map<string, number>();
+  let totalLinks = 0;
 
   for (const document of active) {
     for (const title of extractWikiLinks(document.content_md)) {
       if (title === TEMPLATE_LINK) continue;
+      totalLinks += 1;
       const target = resolveWikiLink(title, byTitle.get(wikiKey(title)) ?? [], document.folder);
       if (!target) {
         const candidates = byTitle.get(wikiKey(title)) ?? [];
@@ -111,10 +130,13 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
       folder: document.folder,
       status: document.status,
       ownerId: document.owner_id,
+      currentVersion: document.current_version,
+      stewardId: document.steward_id,
       incoming: incoming.get(document.id) ?? 0,
       outgoing: outgoing.get(document.id) ?? 0,
     })),
     edges,
     broken,
+    totalLinks,
   };
 }

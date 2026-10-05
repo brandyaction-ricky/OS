@@ -8,8 +8,8 @@ test("local demo renders the application shell and health contract", async ({ pa
 
   await page.goto("/home");
 
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("이번 주 핵심만 모았습니다");
-  await expect(page.getByText("데모 데이터", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("내 할 일");
+  await expect(page.getByText("데모 · 실제 업무 연결 전", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "지식 찾기" })).toBeVisible();
 
   const healthResponse = await request.get("/api/v1/health");
@@ -24,24 +24,24 @@ test("local demo renders the application shell and health contract", async ({ pa
 });
 
 test("secondary publishing pages keep the content navigation context", async ({ page }) => {
-  for (const [pathname, label] of [
+  for (const [pathname] of [
     ["/content/automation", "멀티채널 자동화"],
     ["/content/review", "검토·발행 대기목록"],
     ["/content/calendar", "발행 캘린더"],
   ]) {
     await page.goto(pathname);
-    await expect(page.locator(".sidebar-head h2")).toHaveText("콘텐츠");
-    await expect(page.locator(".breadcrumbs")).toContainText(label);
+    await expect(page.getByRole("button", { name: "콘텐츠 유튜브 공정 순서", exact: true })).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".breadcrumbs")).toContainText("발행·업로드");
     await expect(page.getByRole("link", { name: "발행·업로드", exact: true })).toHaveAttribute("aria-current", "page");
-    await expect(page).toHaveTitle(`${label} | 브랜디 OS`);
+    await expect(page).toHaveTitle("발행·업로드 | 브랜디 OS");
   }
 });
 
 test("knowledge editing applies Markdown shortcuts in one pane and exposes file drop", async ({ page }) => {
   await page.goto("/knowledge");
-  await page.getByRole("button", { name: "회사 wiki 2" }).click();
+  await page.getByRole("treeitem", { name: "회사 wiki 2" }).click();
   await page.getByRole("button", { name: "정본 편집" }).click();
-  await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
+  await page.getByRole("button", { name: "변경 제안 작성" }).click();
 
   const richEditor = page.getByRole("textbox", { name: "editable markdown" });
   const richToolbar = page.getByRole("toolbar");
@@ -110,11 +110,11 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
   await expect(page.getByRole("button", { name: "6대 욕구 정본" })).toBeVisible();
 });
 
-test("knowledge images can be dragged between document blocks", async ({ page }) => {
+test("knowledge image drop events move images between document blocks", async ({ page }) => {
   await page.goto("/knowledge");
-  await page.getByRole("button", { name: "회사 wiki 2" }).click();
+  await page.getByRole("treeitem", { name: "회사 wiki 2" }).click();
   await page.getByRole("button", { name: "정본 편집" }).click();
-  await page.getByRole("button", { name: "내용을 확인했고 편집하기" }).click();
+  await page.getByRole("button", { name: "변경 제안 작성" }).click();
 
   const richEditor = page.getByRole("textbox", { name: "editable markdown" });
   await richEditor.click();
@@ -135,9 +135,12 @@ test("knowledge images can be dragged between document blocks", async ({ page })
   const image = richEditor.getByRole("img", { name: "이동할 이미지" });
   await expect(image).toHaveAttribute("draggable", "true");
   await image.click();
-  await image.dragTo(richEditor.getByRole("heading", { name: "이동 기준", level: 2 }), {
-    targetPosition: { x: 40, y: 25 },
-  });
+  const target = await richEditor.getByRole("heading", { name: "이동 기준", level: 2 }).boundingBox();
+  expect(target).not.toBeNull();
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await image.dispatchEvent("dragstart", { dataTransfer });
+  await richEditor.getByRole("heading", { name: "이동 기준", level: 2 }).dispatchEvent("dragover", { dataTransfer, clientY: target!.y + target!.height });
+  await richEditor.getByRole("heading", { name: "이동 기준", level: 2 }).dispatchEvent("drop", { dataTransfer, clientY: target!.y + target!.height });
   await expect(page.getByText("여기에 놓아 자료 첨부", { exact: true })).toBeHidden();
   const blocks = await richEditor.locator(":scope > *").evaluateAll((elements) => elements.map((element) => ({
     tag: element.tagName,
@@ -152,8 +155,8 @@ test("knowledge images can be dragged between document blocks", async ({ page })
 
 test("knowledge gallery browses local demo documents and stops image recovery before upload", async ({ page }) => {
   await page.goto("/knowledge");
-  await page.getByRole("button", { name: "회사 wiki 2" }).click();
-  await page.getByRole("button", { name: "채널 운영 1" }).click();
+  await page.getByRole("treeitem", { name: "회사 wiki 2" }).click();
+  await page.getByRole("treeitem", { name: "채널 운영 1" }).click();
   await page.getByRole("button", { name: "갤러리 보기" }).click();
 
   await expect(page.getByRole("heading", { name: "회사 wiki/채널 운영" })).toBeVisible();
@@ -178,14 +181,14 @@ test("knowledge tree keeps controls compact and mobile actions readable", async 
 
   await expect(page.getByRole("button", { name: "폴더 안 문서 정렬" })).toBeVisible();
   await expect(page.getByRole("button", { name: "목록 새로고침" })).toBeVisible();
-  const folder = page.getByRole("button", { name: "회사 wiki 2" });
+  const folder = page.getByRole("treeitem", { name: "회사 wiki 2" });
   const actions = page.getByRole("button", { name: "회사 wiki 폴더 작업" });
   await expect(folder).toHaveCSS("height", "34px");
   await expect(actions).toHaveCSS("opacity", "0");
   await folder.hover();
   await expect(actions).toHaveCSS("opacity", "1");
   await actions.click();
-  await expect(page.getByRole("menu", { name: "회사 wiki 폴더 메뉴" }).getByRole("menuitem", { name: "이 폴더에 새 문서" })).toBeVisible();
+  await expect(page.getByRole("menu", { name: "회사 wiki 폴더 메뉴" }).getByRole("menuitem", { name: "이 폴더에 새 페이지" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".workspace-page-header .header-actions")).toHaveCSS("display", "grid");
@@ -201,37 +204,44 @@ test("knowledge tree keeps controls compact and mobile actions readable", async 
 test("knowledge tree supports context actions and direct drag moves", async ({ page }) => {
   await page.goto("/knowledge");
 
-  const companyFolder = page.getByRole("button", { name: "회사 wiki 2" });
-  await page.getByRole("button", { name: /회사 wiki/ }).first().dispatchEvent("contextmenu", { clientX: 240, clientY: 220 });
+  const companyFolder = page.getByRole("treeitem", { name: "회사 wiki 2" });
+  await companyFolder.dispatchEvent("contextmenu", { clientX: 240, clientY: 220 });
   const folderMenu = page.getByRole("menu", { name: "회사 wiki 폴더 메뉴" });
   await expect(folderMenu.getByRole("menuitem", { name: "이름·위치 변경" })).toBeVisible();
-  await expect(folderMenu.getByRole("menuitem", { name: "이 폴더에 새 문서" })).toBeVisible();
+  await expect(folderMenu.getByRole("menuitem", { name: "이 폴더에 새 페이지" })).toBeVisible();
   await expect(folderMenu.getByRole("menuitem", { name: "폴더 문서 휴지통으로" })).toBeVisible();
   await folderMenu.getByRole("menuitem", { name: "이름·위치 변경" }).click();
   await expect(page.getByRole("heading", { name: "폴더 관리", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "폴더 관리 닫기" }).click();
 
   await companyFolder.click();
-  await page.getByRole("button", { name: "채널 운영 1" }).click();
-  const documentRow = page.getByRole("button", { name: /패키징 원칙/ });
+  await page.getByRole("treeitem", { name: "채널 운영 1" }).click();
+  const documentRow = page.getByRole("treeitem", { name: "패키징 원칙" });
+  await expect(page.locator(".document-tree-select-row input[type=checkbox]")).toHaveCount(0);
+  await page.getByRole("button", { name: "여러 문서 선택" }).click();
+  await documentRow.click();
+  await expect(documentRow).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("문서를 눌러 선택 · 1개")).toBeVisible();
+  await page.getByRole("button", { name: "완료" }).click();
+  await expect(page.getByText("문서를 눌러 선택 · 1개")).toHaveCount(0);
   await documentRow.dispatchEvent("contextmenu", { clientX: 260, clientY: 300 });
   const documentMenu = page.getByRole("menu", { name: "패키징 원칙 문서 메뉴" });
   await expect(documentMenu.getByRole("menuitem", { name: "이름 변경" })).toBeVisible();
-  await expect(documentMenu.getByRole("menuitem", { name: "위치 이동" })).toBeVisible();
+  await expect(documentMenu.getByRole("menuitem", { name: "페이지·폴더 이동" })).toBeVisible();
   await expect(documentMenu.getByRole("menuitem", { name: "휴지통으로 이동" })).toBeVisible();
   await documentMenu.getByRole("menuitem", { name: "이름 변경" }).click();
   await page.getByRole("textbox", { name: "새 문서 이름" }).fill("패키징 원칙 변경");
   await page.getByRole("button", { name: "이름 변경", exact: true }).click();
-  const renamedRow = page.getByRole("button", { name: /패키징 원칙 변경/ });
+  const renamedRow = page.getByRole("treeitem", { name: /패키징 원칙 변경/ });
   await expect(renamedRow).toBeVisible();
 
-  await renamedRow.dragTo(page.getByRole("button", { name: "리키 1" }));
+  await renamedRow.dragTo(page.getByRole("treeitem", { name: "리키 1" }));
   await expect(page.getByText("문서를 리키\(으\)로 이동했습니다.")).toBeVisible();
 
-  const ipFolder = page.getByRole("button", { name: "핵심 IP 1" });
+  const ipFolder = page.getByRole("treeitem", { name: "핵심 IP 1" });
   const folderTransfer = await page.evaluateHandle(() => new DataTransfer());
   await ipFolder.dispatchEvent("dragstart", { dataTransfer: folderTransfer });
-  const rickyFolder = page.getByRole("button", { name: "리키 2" });
+  const rickyFolder = page.getByRole("treeitem", { name: "리키 2" });
   await rickyFolder.dispatchEvent("dragenter", { dataTransfer: folderTransfer });
   await rickyFolder.dispatchEvent("drop", { dataTransfer: folderTransfer });
   await expect(page.getByText("변경 후 위치 · 리키/핵심 IP", { exact: true })).toBeVisible();
@@ -244,9 +254,46 @@ test("knowledge tree supports context actions and direct drag moves", async ({ p
   await archiveDialog.getByRole("button", { name: "휴지통으로 이동" }).click();
   await expect(page.getByText(/휴지통으로 이동했습니다/)).toBeVisible();
 
-  await page.getByRole("button", { name: /회사 wiki/ }).first().dispatchEvent("contextmenu", { clientX: 240, clientY: 220 });
+  await page.getByRole("treeitem", { name: /회사 wiki/ }).first().dispatchEvent("contextmenu", { clientX: 240, clientY: 220 });
   await page.getByRole("menuitem", { name: "폴더 문서 휴지통으로" }).click();
   await expect(page.getByRole("heading", { name: "폴더를 정리할까요?" })).toBeVisible();
   await page.getByRole("button", { name: "폴더 문서 휴지통으로", exact: true }).click();
   await expect(page.getByText("2개 문서를 휴지통으로 옮겨 폴더를 정리했습니다.", { exact: true })).toBeVisible();
+});
+
+test("new page canvas keeps title, toggle and nested page actions in one workspace", async ({ page }) => {
+  await page.goto("/knowledge");
+  await page.getByRole("button", { name: "새 페이지", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "새 문서 만들기" })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "새 페이지 제목" }).fill("페이지 편집 QA");
+  const editor = page.getByRole("textbox", { name: "editable markdown" });
+  await editor.click();
+  await editor.pressSequentially("본문 문단");
+  await page.getByRole("button", { name: "블록 추가" }).click();
+  await page.getByRole("option", { name: /토글 목록/ }).click();
+  await page.getByRole("textbox", { name: "토글 제목" }).fill("접기 테스트");
+  await page.getByRole("button", { name: "초안 저장" }).click();
+  await expect(page.getByRole("treeitem", { name: "페이지 편집 QA" })).toBeVisible();
+  await page.getByRole("button", { name: "읽기", exact: true }).click();
+  const toggle = page.locator(".knowledge-toggle-block > summary").filter({ hasText: "접기 테스트" });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(page.getByText("내용을 입력하세요.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "하위 페이지 추가", exact: true }).click();
+  await page.getByRole("textbox", { name: "새 페이지 제목" }).fill("QA 하위 페이지");
+  await page.getByRole("textbox", { name: "editable markdown" }).pressSequentially("자식 본문");
+  await page.getByRole("button", { name: "초안 저장" }).click();
+  await expect(page.getByRole("treeitem", { name: "QA 하위 페이지" })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "페이지 편집 QA" })).toHaveAttribute("aria-expanded", "true");
+  await page.getByRole("button", { name: "페이지 편집 QA 하위 페이지 접기" }).click();
+  await expect(page.getByRole("treeitem", { name: "QA 하위 페이지" })).toHaveCount(0);
+  await page.getByRole("button", { name: "페이지 편집 QA 하위 페이지 펼치기" }).click();
+  await expect(page.getByRole("treeitem", { name: "QA 하위 페이지" })).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "새 페이지", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toBeVisible();
+  await page.getByRole("button", { name: "블록 추가" }).click();
+  await expect(page.getByRole("listbox", { name: "블록 종류" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });

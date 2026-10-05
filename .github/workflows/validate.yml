@@ -15,7 +15,7 @@ concurrency:
 jobs:
   app:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,3 +26,5 @@ jobs:
       - run: npm run verify
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+        env:
+          PLAYWRIGHT_SERVER_MODE: production

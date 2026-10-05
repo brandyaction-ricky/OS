@@ -5,11 +5,12 @@ import { finalizeYoutubeUpload } from "../lib/youtube-upload-flow.ts";
 test("failed OS confirmation retries the existing video without creating another upload session", async () => {
   let pending = null, uploads = 0, completions = 0;
   const options = {
-    kitId: "kit", privacyStatus: "private",
+    kitId: "kit", privacyStatus: "private", connectionOwnerId: "original-owner",
     upload: async () => { uploads += 1; return { id: "video" }; },
     complete: async (input) => {
       completions += 1;
       assert.equal(input.videoId, "video");
+      assert.equal(input.connectionOwnerId, "original-owner");
       assert.equal(input.privacyStatus, "private");
       if (completions === 1) throw new Error("OS record unavailable");
       return { videoUrl: "https://youtube.example/video" };
@@ -18,7 +19,7 @@ test("failed OS confirmation retries the existing video without creating another
   };
   await assert.rejects(finalizeYoutubeUpload({ ...options, pending }), /OS record unavailable/);
   assert.equal(pending.videoId, "video");
-  const result = await finalizeYoutubeUpload({ ...options, privacyStatus: "unlisted", pending });
+  const result = await finalizeYoutubeUpload({ ...options, privacyStatus: "unlisted", connectionOwnerId: "other-owner", pending });
   assert.equal(result.videoUrl, "https://youtube.example/video");
   assert.equal(uploads, 1);
   assert.equal(completions, 2);

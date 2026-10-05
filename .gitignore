@@ -1,4 +1,5 @@
 node_modules/
+node_modules
 .next/
 .vercel/
 .env
@@ -12,3 +13,11 @@ test-results/
 .DS_Store
 __pycache__/
 *.pyc
+
+# Private reference package: keep local, never publish with the implementation.
+docs/handoff/os-final-20261003/01_*
+docs/handoff/os-final-20261003/02_*
+docs/handoff/os-final-20261003/README.md
+docs/handoff/os-final-20261003/screens/
+.vercel
+.env*

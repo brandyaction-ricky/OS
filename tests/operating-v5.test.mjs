@@ -4,19 +4,22 @@ import test from "node:test";
 
 const read = (file) => readFile(new URL(`../${file}`, import.meta.url), "utf8");
 
-test("fifth handoff exposes seven content pages and six settings pages", async () => {
+test("fifth handoff exposes seven content pages and unified system status with existing setting URLs", async () => {
   const [navigation, router, settings] = await Promise.all([
-    read("lib/navigation.ts"), read("app/(os)/[stage]/[page]/page.tsx"), read("components/settings-workspaces.tsx"),
+    read("lib/navigation.ts"), Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")), read("components/settings-workspaces.tsx"),
   ]);
   for (const label of ["주제·기획", "원고·스크립트", "제목·썸네일", "숏폼 편집", "발행·업로드", "유튜브 관리", "영상 성과"]) assert.match(navigation, new RegExp(label));
-  for (const route of ["connections", "access", "company", "channels"]) assert.match(router, new RegExp(`SettingsWorkspace page=\\"${route}\\"`));
+  for (const route of ["access", "company"]) assert.match(router, new RegExp(`SettingsWorkspace page=\\"${route}\\"`));
+  assert.match(router, /SystemStatusWorkspace tab="monitoring"/);
+  assert.match(router, /SystemStatusWorkspace tab="channels"/);
   for (const label of ["Supabase", "Vercel", "OpenAI", "Telegram", "Meta·Google Ads", "KnowledgeClassificationSettings"]) assert.match(settings, new RegExp(label));
 });
 
-test("content generation reads canonical procedures and waits safely for credentials", async () => {
+test("content generation reads canonical procedures and defaults to a subscription queue", async () => {
   const route = await read("lib/server/content-generation.ts");
   assert.match(route, /document\.status === "canonical"/);
-  assert.match(route, /queueForCredentials/);
+  assert.match(route, /beginGenerationJob/);
+  assert.match(route, /input.mode !== "api"/);
   assert.match(route, /자가검수|score와 review/);
   assert.match(route, /finalApprovalRequired: true/);
   assert.match(route, /output_config/);
@@ -39,15 +42,17 @@ test("publishing and shorts enforce human gates before external work", async () 
 });
 
 test("content studio ports planning, eight-step scripts and channel judgment", async () => {
-  const [router, pipeline, generation, packageWorkspace] = await Promise.all([
-    read("app/(os)/[stage]/[page]/page.tsx"),
-    read("components/content-pipeline-workspaces.tsx"),
+  const [router, pipeline, generation, packageWorkspace, performance] = await Promise.all([
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
+    Promise.all([read("components/content-pipeline-workspaces.tsx"),read("lib/script-documents.ts")]).then(parts=>parts.join("\n")),
     read("lib/server/content-generation.ts"),
     read("components/content-studio-workspaces.tsx"),
+    read("components/content-performance-dashboard.tsx"),
   ]);
   for (const workspace of ["ContentTopicsWorkspace", "ContentScriptsWorkspace", "ContentPerformanceWorkspace"]) assert.match(router, new RegExp(workspace));
   for (const step of ["채널 모으기", "터진 영상 발굴", "틈새 확정", "축 확정", "설계표", "다듬기", "발행"]) assert.match(pipeline, new RegExp(step));
-  for (const metric of ["CTR", "시청지속", "전환"]) assert.match(pipeline, new RegExp(metric));
+  for (const metric of ["CTR", "시청지속", "전환"]) assert.match(performance, new RegExp(metric));
+  assert.doesNotMatch(pipeline, /export function ContentPerformanceWorkspace/);
   assert.match(generation, /topic_plan/);
   assert.match(generation, /script_draft/);
   assert.match(packageWorkspace, /candidate-pick/);
@@ -89,7 +94,7 @@ test("YouTube market evidence stays server-side and feeds title packaging", asyn
   assert.match(settings, /YouTube Data API/);
 });
 
-test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval gate", async () => {
+test("YouTube OAuth upload keeps tokens encrypted and requires owner or shared access and human approval", async () => {
   const [migration, oauth, callback, session, complete, client, workspace, health] = await Promise.all([
     read("supabase/migrations-legacy/202608300007_youtube_oauth.sql"),
     read("app/api/v1/youtube/oauth/route.ts"),
@@ -105,7 +110,8 @@ test("YouTube OAuth upload keeps tokens encrypted and requires an admin approval
   assert.match(oauth, /httpOnly: true/);
   assert.match(oauth, /sameSite: "lax"/);
   assert.match(callback, /verifyYoutubeOAuthState/);
-  assert.match(session, /actor\.role !== "admin"/);
+  assert.match(session, /authorizeYoutubeConnection/);
+  assert.match(complete, /authorizeYoutubeConnection/);
   assert.match(session, /finalApproval: z\.literal\(true\)/);
   assert.match(session, /RELEASE_APPROVAL_REQUIRED/);
   assert.match(session, /uploadType: "resumable"/);
@@ -122,7 +128,7 @@ test("knowledge focus mode is persistent and development management reuses the p
     read("components/knowledge-workspace.tsx"),
     read("components/app-shell.tsx"),
     read("lib/navigation.ts"),
-    read("app/(os)/[stage]/[page]/page.tsx"),
+    Promise.all([read("app/(os)/[stage]/[page]/page.tsx"),read("components/content-production-workspace.tsx")]).then(parts=>parts.join("\n")),
     read("lib/workspace-config.ts"),
   ]);
   assert.match(knowledge, /brandy-knowledge-focus/);
