@@ -22,8 +22,9 @@ export async function receiptAttach(actor:RequestActor,id:string,input:unknown){
     if(!new RegExp(`^cards/${id}/[0-9a-f-]{36}\\.(png|jpg|gif|webp|pdf)$`).test(body.path))throw new ApiError(400,'FINANCE_RECEIPT_PATH','이 거래의 영수증 파일만 연결할 수 있습니다.');
     const {data,error}=await actor.supabase.storage.from('finance-receipts').info(body.path);
     if(error||!data)throw new ApiError(400,'FINANCE_UPLOAD_INCOMPLETE','파일 업로드가 끝난 뒤 다시 저장해 주세요.');
-    const meta=data.metadata as {size?:number;mimetype?:string};
-    if(!meta?.size||meta.size>10485760||!allowed.includes(meta.mimetype||''))throw new ApiError(400,'FINANCE_RECEIPT_INVALID','영수증 파일 크기·형식을 확인해 주세요.');
+    // info() exposes trusted object attributes at the top level (camel-cased by the SDK).
+    // metadata is caller-supplied custom metadata, not authoritative file size/type.
+    if(!data.size||data.size>10485760||!allowed.includes(data.contentType||''))throw new ApiError(400,'FINANCE_RECEIPT_INVALID','영수증 파일 크기·형식을 확인해 주세요.');
   }
   const {data,error}=await actor.supabase.from('os_fin_card_transactions').update({receipt_path:body.path,updated_by:actor.id}).eq('id',id).eq('version',body.version).is('archived_at',null).select('*').maybeSingle();
   if(error)financeDbError(error);if(!data)throw new ApiError(409,'FINANCE_VERSION_CONFLICT','다른 사람이 먼저 고쳤습니다. 새로 불러와 주세요.');

@@ -50,6 +50,15 @@ test("real workspace starts empty, never copies mock money or employees into a n
   model.startBudgetDefaults();assert.equal(model.state.budget.length,14);
   for(const item of model.state.budget){assert.match(item.id,/^[\da-f-]{36}$/);assert.equal(item.amount,0);assert.equal(item.owner,"");}
 });
+test("mock refund completion never claims the original payment was canceled",()=>{
+  const data=workspaceFromLedger(ledger({
+    payments:[row(1,{biz:"edu",status:"DONE",paid_date:"2026-09-10",amount:100000,canceled_amount:0})],
+    refund_requests:[row(2,{payment_id:id(1),state:"done",mock:true,amount:10000,kind:"partial",result:{money_moved:false}})],
+  }),"2026-10-07");
+  assert.equal(data.DB.refunds[id(1)].state,"모의 승인 완료");
+  const model=mountFinanceWorkspace(null,{data,today:"2026-10-07"});
+  assert.equal(model.transactions[0].cancel,0);
+});
 test("all connected views render with an empty new ledger after the seventh day",()=>{
   const model=mountFinanceWorkspace(null,{data:workspaceFromLedger(ledger(),"2027-02-20"),today:"2027-02-20"});
   for(const page of ["overview","sales","settlements","bank","cards","recurring","budget"]){
@@ -121,11 +130,12 @@ test("JSON parser enforces actual bytes even when Content-Length is absent",asyn
 });
 test("receipt attachment rejects another transaction path, oversize data and stale writes",async()=>{
   const receipts=load("lib/server/finance-receipts.ts",{"./finance":{financeDbError:server.financeDbError}});
-  let writes=0;let meta={size:100,mimetype:"application/pdf"};
-  const actor={id:id(9),supabase:{storage:{from(){return {info:async()=>({data:{metadata:meta},error:null})};}},from(){return {update(){writes++;return this;},eq(){return this;},is(){return this;},select(){return this;},maybeSingle:async()=>({data:null,error:null})};}}};
+  let writes=0;let meta={size:100,contentType:"application/pdf"};
+  const actor={id:id(9),supabase:{storage:{from(){return {info:async()=>({data:meta,error:null})};}},from(){return {update(){writes++;return this;},eq(){return this;},is(){return this;},select(){return this;},maybeSingle:async()=>({data:null,error:null})};}}};
   await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(2)}/${id(3)}.pdf`}),e=>e.code==="FINANCE_RECEIPT_PATH");
-  meta={size:10485761,mimetype:"application/pdf"};await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(1)}/${id(3)}.pdf`}),e=>e.code==="FINANCE_RECEIPT_INVALID");assert.equal(writes,0);
-  meta={size:100,mimetype:"application/pdf"};await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(1)}/${id(3)}.pdf`}),e=>e.status===409);
+  meta={size:10485761,contentType:"application/pdf",metadata:{size:100,mimetype:"application/pdf"}};await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(1)}/${id(3)}.pdf`}),e=>e.code==="FINANCE_RECEIPT_INVALID");assert.equal(writes,0);
+  meta={metadata:{size:100,mimetype:"application/pdf"}};await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(1)}/${id(3)}.pdf`}),e=>e.code==="FINANCE_RECEIPT_INVALID");assert.equal(writes,0);
+  meta={size:100,contentType:"application/pdf"};await assert.rejects(receipts.receiptAttach(actor,id(1),{version:1,path:`cards/${id(1)}/${id(3)}.pdf`}),e=>e.status===409);assert.equal(writes,1);
 });
 test("link validation requires reciprocal transfer and unique active external deposit",()=>{
   const data=ledger({bank_accounts:[row(1,{name:"A"}),row(2,{name:"B"})],bank_transactions:[row(3,{account_id:id(1),tx_date:"2026-09-10",deposit:0,withdrawal:100,link_type:"transfer",link_ref:id(4)}),row(4,{account_id:id(2),tx_date:"2026-09-11",deposit:100,withdrawal:0,link_type:"transfer",link_ref:id(3)})]});
