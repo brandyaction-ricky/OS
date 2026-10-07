@@ -1,6 +1,13 @@
 export interface PageGuideDefinition { steps: readonly [string,string,string]; next: string }
 // Text is the final handoff's section 6; menu aliases resolve before this lookup.
 export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
+  "/finance/overview": {steps:["기간과 사업을 골라 매출·입금·순수익을 비교합니다","확인이 필요한 항목을 눌러 해당 메뉴로 이동합니다","현재는 모의 데이터이며 실제 거래·발송은 실행하지 않습니다"],next:"/finance/sales"},
+  "/finance/sales": {steps:["토스 결제와 외부 매출을 나누어 확인합니다","검색·필터로 주문을 찾고 상세에서 모의 환불 요청을 검토합니다","외부 매출을 추가하면 같은 기간 합계에 반영됩니다"],next:"/finance/settlements"},
+  "/finance/settlements": {steps:["지급일별 또는 거래별 정산을 고릅니다","미확인·금액 차이 항목의 상세를 확인합니다","확인 사유를 기록하고 연결된 통장 입금을 봅니다"],next:"/finance/bank"},
+  "/finance/bank": {steps:["통장을 고르고 CSV·XLSX 내역을 로컬에서 가져옵니다","중복·오류를 확인한 뒤 거래를 분류합니다","외부 매출·통장 간 이체는 후보를 확인해 연결합니다"],next:"/finance/cards"},
+  "/finance/cards": {steps:["카드별 CSV·XLSX를 가져와 열과 미리보기를 확인합니다","미분류·증빙 필요 내역에 사업·계정과목·사용 목적을 입력합니다","규칙을 관리하고 필요한 내역을 CSV로 내보냅니다"],next:"/finance/recurring"},
+  "/finance/recurring": {steps:["여러 달 반복된 카드지출에서 정기 결제 후보를 확인합니다","서비스별 담당과 유지·검토·해지 상태를 정합니다","해지 상태는 모의 기록이며 실제 구독을 해지하지 않습니다"],next:"/finance/budget"},
+  "/finance/budget": {steps:["월별 고정비·변동비·인건비 예산을 확인합니다","자동 합산 항목과 직접 입력할 실적을 구분합니다","누락·초과를 검토하고 개요와 같은 월 순수익을 확인합니다"],next:"/finance/overview"},
   "/home": {steps:["위에서부터 기한이 빠른 일을 처리합니다","‘검토·승인’ 탭에서 내 검토 차례를 확인합니다","막힌 일은 링크를 눌러 해결 화면으로 갑니다"],next:"/content/topics"},
   "/content/topics": {steps:["매일 보는 채널을 모읍니다 — 비어 있으면 채널 탐색 사전에서 시작","‘탐색’에서 근거 영상을 연결하고 준비도 네 칸을 채웁니다","‘틈새’에서 소구점을 선택해 승인 요청한 뒤 기획으로 넘깁니다"],next:"/content/scripts"},
   "/content/scripts": {steps:["위에서 작업 중인 영상을 고르면 그 폴더가 열립니다","단계 칩으로 지금 단계의 문서만 봅니다","다듬기가 끝나면 문서를 검토 요청합니다"],next:"/content/packages"},

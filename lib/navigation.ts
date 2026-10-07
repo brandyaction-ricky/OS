@@ -22,6 +22,11 @@ import {
   UserRound,
   Scissors,
   Youtube,
+  Wallet,
+  CreditCard,
+  Landmark,
+  Repeat,
+  Receipt,
 } from "lucide-react";
 
 export interface NavPage {
@@ -41,6 +46,7 @@ export interface NavStage {
   icon: typeof Home;
   href: string;
   pages: NavPage[];
+  requiresFinance?: boolean;
 }
 
 // Names live here so the navigation, page heading, breadcrumb and tab stay in sync.
@@ -78,6 +84,15 @@ export const NAV_STAGES: NavStage[] = [
     { label: "업무", href: "/organization/tasks", icon: ListChecks, aliases: ["업무 관리"], ready: true },
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정", "연차·휴가"], ready: true },
     { label: "팀원", href: "/organization/members", icon: Users, aliases: ["구성원"], ready: true },
+  ] },
+  { id: "finance", label: "재무관리", icon: Wallet, href: "/finance/overview", requiresFinance: true, pages: [
+    { label: "개요", href: "/finance/overview", icon: LayoutDashboard, aliases: ["재무 요약", "순수익"], ready: true },
+    { label: "매출내역", href: "/finance/sales", icon: Receipt, aliases: ["토스 결제", "외부 매출"], ready: true },
+    { label: "정산입금", href: "/finance/settlements", icon: ListChecks, aliases: ["지급", "입금 대조"], ready: true },
+    { label: "통장 내역", href: "/finance/bank", icon: Landmark, aliases: ["계좌", "입출금"], ready: true },
+    { label: "카드지출", href: "/finance/cards", icon: CreditCard, aliases: ["법인카드", "분류 규칙"], ready: true },
+    { label: "정기 결제", href: "/finance/recurring", icon: Repeat, aliases: ["구독 관리"], ready: true },
+    { label: "예산 관리", href: "/finance/budget", icon: BarChart3, aliases: ["고정비", "변동비", "인건비"], ready: true },
   ] },
   { id: "development", label: "개발", icon: Code2, href: "/knowledge/development", pages: [
     { label: "수정 요청", href: "/knowledge/development", icon: Code2, aliases: ["개발 관리", "개발·배포 기록"], ready: true },
@@ -130,8 +145,8 @@ export function findStage(pathname: string) {
   const page = findPage(pathname);
   return NAV_STAGES.find(stage => stage.pages.some(item => item.href === (page.navHref ?? page.href))) ?? NAV_STAGES[0];
 }
-export function searchNavigation(query: string) {
+export function searchNavigation(query: string, financeAccess = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
-  const pages = [...NAV_STAGES.flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { ...ACCOUNT_PAGE, stage: "내 계정" }];
+  const pages = [...NAV_STAGES.filter(stage => !stage.requiresFinance || financeAccess).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { ...ACCOUNT_PAGE, stage: "내 계정" }];
   return (normalized ? pages.filter(page => `${page.stage} ${page.group ?? ""} ${page.label} ${(page.aliases ?? []).join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) : pages).slice(0, 8);
 }

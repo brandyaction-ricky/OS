@@ -97,6 +97,8 @@ export interface SessionProfile {
   role: OsRole;
   team: string;
   mustChangePassword: boolean;
+  isActive?: boolean;
+  financeAccess?: boolean;
 }
 
 export interface ApiErrorBody {

@@ -4,14 +4,18 @@ import { ArrowRight, FileText, Search, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchNavigation } from "@/lib/navigation";
+import { canAccessFinance } from "@/lib/finance/access";
+import { useSession } from "./session-provider";
 
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState("");
+  const { profile } = useSession();
+  const financeAccess = canAccessFinance(profile);
 
-  const matches = useMemo(() => searchNavigation(query), [query]);
+  const matches = useMemo(() => searchNavigation(query, financeAccess), [query, financeAccess]);
 
   useEffect(() => {
     if (!open) return;
