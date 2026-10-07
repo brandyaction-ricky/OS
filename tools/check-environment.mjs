@@ -50,6 +50,7 @@ const integrationGroups = {
   telegram: ["TELEGRAM_BOT_TOKEN", "TELEGRAM_WEBHOOK_SECRET"],
   youtube: ["YOUTUBE_API_KEY", "YOUTUBE_CLIENT_ID", "YOUTUBE_CLIENT_SECRET"],
   advertising: ["META_ADS_ACCESS_TOKEN", "GOOGLE_ADS_DEVELOPER_TOKEN"],
+  finance: ["TOSS_SECRET_KEY_EDU", "TOSS_SECRET_KEY_MYIN", "TOSS_SECRET_KEY_HM"],
 };
 
 const configuredCore = coreKeys.filter((key) => Boolean(valueFor(key)));

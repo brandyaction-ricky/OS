@@ -25,6 +25,7 @@
     "@lexical/react": "^0.48.0",
     "@mdxeditor/editor": "^4.3.0",
     "@supabase/supabase-js": "^2.57.0",
+    "dompurify": "3.4.16",
     "exceljs": "4.4.0",
     "lexical": "^0.48.0",
     "lucide-react": "^0.468.0",

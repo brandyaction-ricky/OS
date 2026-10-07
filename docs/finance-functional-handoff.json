@@ -1,0 +1,78 @@
+{
+  "title": "재무관리 기능 개발 인계",
+  "date": "2026-10-07",
+  "status": "핵심 기능 코드 구현 및 로컬 QA 완료 / DEV DB 적용·통합 검증 대기",
+  "releaseReady": false,
+  "branch": "codex/finance-ledger-20261007",
+  "baseCommit": "dcb345bc16a445917bdad81e99094e016b2974a1",
+  "resultCommit": "이 인계 파일을 추가한 Git 커밋. 실제 해시는 Git 이력과 로컬 완료 기록에서 확인",
+  "scope": {
+    "overview": "저장 원장 기반 매출·취소 발생일·입금·예산 집계. 수수료·잔액·미입력 실적의 미확인 상태 구분",
+    "sales": "외부 매출 등록·수정·보관, 통장 입금 연결, 환불 요청·반려 저장. 실제 결제 취소는 미구현·비활성",
+    "settlements": "지급일·상점별 집계, 중복 후보 자동 연결 방지, 수동 분할 입금 연결, 차이 사유 저장",
+    "bank": "통장 설정·보관·복원, CSV/XLSX 가져오기, 중복 방지, 분류 규칙, 상호 이체 연결, 외부 매출·정산 연결",
+    "cards": "카드 관리, 열 매핑 저장, 파일 가져오기, 승인 중복·취소·환율 확정 금액 갱신, 수동 분류·메모 보존, 비공개 영수증 API",
+    "recurring": "반복 거래 후보 탐지, 담당·유지/해지 검토 상태 저장. 외부 서비스 해지는 실행하지 않음",
+    "budget": "예산 항목·월 실적 저장, 카드/통장 자동 집계, 0원과 미입력 구분, 연구비 포함 선택, 중복 비용 방지",
+    "shared": "활성 관리자/재무 권한 재확인, 사용자 RLS, 원자적 버전 비교 저장, 보관 처리, 감사 이벤트, HTML 정화, 오류 시 거짓 성공 표시 방지"
+  },
+  "architecture": {
+    "api": "/api/v1/finance/[...path]",
+    "contract": "업로드 문서의 항목별 저장 의도를 workspace 조회·batch 변경 API로 통합. 기존 API 계약은 변경하지 않음",
+    "migration": "20261007085710_finance_ledger.sql",
+    "migrationApplied": false,
+    "migrationPolicy": "새 os_fin_* 테이블·정책·함수·비공개 버킷을 추가하는 파일만 작성. 기존 자료 이관·시드·리셋 없음",
+    "demo": "모의 UI는 메모리 격리. 실데이터 모드에 예시 금액·직원·동기화 시각을 사용하지 않음",
+    "import": "파일 파싱은 브라우저에서 수행. 원본 파일·전체 카드번호 대신 선택한 열의 JSON만 전송. 1000행 단위 원자적 처리, 부분 실패 시 저장된 묶음을 명시",
+    "receipt": "10MB 이하 PNG/JPEG/GIF/WebP/PDF. 비공개 저장, 거래 경로 검증, 60초 조회 URL. 제거는 연결 해제로 파일 보존"
+  },
+  "verificationPerformed": [
+    "npm test: 604/604 통과; 재무 전용 38개 포함",
+    "npm run typecheck: 통과",
+    "npm run lint: 오류 0, 기존 비재무 img 경고 1",
+    "NEXT_PUBLIC_DEMO_MODE=true npm run build: 통과",
+    "npm run db:migrations:verify: 무결성 통과, 새 재무 파일은 적용 승인 대기",
+    "git diff --check: 통과",
+    "로컬 모의 브라우저 7개 메뉴 렌더·이동, 외부 매출 추가 후 합계 갱신, 가상 카드 CSV 2행 열 매핑·가져오기, 직접 입력 예산 추가 및 0원 실적 저장 확인",
+    "최종 빌드 새로고침 및 예산→통장 링크의 선택 월 유지 확인; 브라우저 콘솔 오류 없음",
+    "빈 원장과 가상 원장을 주입한 실데이터 모드의 7개 렌더 함수·저장 투영 스키마·API 집계 일치 단위 검사",
+    "익명 로컬 API workspace/overview 요청 401 AUTH_REQUIRED 확인",
+    "단위 검사: 권한 재확인, 오래된 버전 충돌, 실제 본문 크기 제한, 잘못된 영수증 경로·크기 차단, 환불 기본 비활성·운영 모의 승인 차단",
+    "npm audit --omit=dev: 기존 전이 의존성 high 3건. 해당 버전은 기준 커밋과 동일하고 DOMPurify는 경고 목록에 없음"
+  ],
+  "verificationNotPerformed": [
+    {"item":"DEV DB 마이그레이션 및 실제 CRUD·RLS·동시 수정·다중 사용자·재접속 유지·영수증 Storage 왕복", "reason":"별도 DB 적용 승인을 요청했으나 아직 응답 없음. SQL 실행 검증도 미수행"},
+    {"item":"토스/은행/텔레그램 실제 연결·웹훅·자동 동기화·실제 취소", "reason":"실제 취소와 서비스 계정 동기화 경로 추가가 안전 검토에서 차단됨. 해당 실행 경로를 우회하지 않고 제외"},
+    {"item":"실제 은행·카드사 파일별 매핑 확인", "reason":"실제 표본 파일 미제공. 가상 CSV/XLSX와 인코딩·중복·형식 검사까지만 수행"},
+    {"item":"전체 반응형·보조기기·복수 브라우저 회귀", "reason":"이번 기능 단계에서는 로컬 인앱 브라우저와 자동 테스트만 실행"},
+    {"item":"Preview 및 운영 배포·배포 후 검증", "reason":"현재 기능 개발의 배포 승인 없음"}
+  ],
+  "disabledOrPending": [
+    "실제 토스 결제 취소: 호출 메서드는 명시적 오류만 반환. 취소 엔드포인트 없음",
+    "서비스 계정 자동 수집·수동 동기화 실행 경로: 없음. 토스 읽기 전용 어댑터·응답 정규화만 작성, 실제 호출 미수행",
+    "은행 API: NOT_CONFIGURED 스캐폴드. 파일 가져오기만 구현",
+    "텔레그램 메모 요청: 모의 감사 이벤트만 저장, 메시지 전송 없음",
+    "모의 환불 승인: 명시적으로 설정된 DEV 모드에서만 동작하도록 코드 작성. 실제 원결제 금액은 변경하지 않음"
+  ],
+  "risks": [
+    "운영 전 DB 통합 QA가 필수이며 현재 상태는 운영 릴리스 후보가 아님",
+    "기존 npm 전이 의존성 brace-expansion, sharp, source-map-js high 경고 3건은 별도 검토 필요. 자동 업그레이드하지 않음",
+    "공통 OS 정본의 현재 문서는 로그인 만료로 읽지 못함. 세션 복구 후 현행 원문 및 운영 절차 재확인 필요",
+    "원장별 100000행 조회 상한과 전체 원장 읽기 방식은 대규모 운영 데이터에서 서버 집계·기간 페이지네이션으로 개선 필요"
+  ],
+  "delivery": {
+    "pullRequest": null,
+    "remotePush": false,
+    "previewDeployment": false,
+    "productionDeployment": false,
+    "productionDatabaseChanged": false,
+    "osRecordSync": "보류: 로컬 환경 이전 규칙에 따라 운영 OS DB/API 쓰기 금지. 로컬 완료 기록 보존"
+  },
+  "nextGates": [
+    "사용자가 특정 격리 DEV 대상을 확인하고 새 재무 마이그레이션 1개 적용·DEV QA 쓰기를 승인",
+    "DEV에서 역할별 차단·실제 저장/재접속·경합·영수증·취소 요청 상태 전이를 검증하고 실패 수정",
+    "실제 토스 취소·서비스 계정 동기화 개발은 대상과 영향이 명확한 별도 승인 및 테스트 상점 준비 후 진행",
+    "기존 보안 경고 검토, PR·Preview 검증, 별도 운영 배포 승인"
+  ],
+  "technicalReferences": ["https://docs.tosspayments.com/reference"]
+}

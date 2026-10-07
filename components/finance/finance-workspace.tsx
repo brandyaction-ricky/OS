@@ -10,7 +10,9 @@ import "./finance.css";
 
 /** A persistent, client-only adapter for the handoff's seven finance views. */
 export function FinanceWorkspace() {
-  const { profile, loading } = useSession();
+  const { profile, loading, demo, accessToken } = useSession();
+  const token=useRef(accessToken);
+  token.current=accessToken;
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
@@ -20,7 +22,8 @@ export function FinanceWorkspace() {
   const host = useRef<HTMLDivElement>(null);
   const controller = useRef<FinanceController | null>(null);
   const [revision, setRevision] = useState(0);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
+  const [fetching,setFetching]=useState(false);
   const validPage =
     /^\/finance\/(overview|sales|settlements|bank|cards|recurring|budget)$/.test(
       pathname,
@@ -31,28 +34,34 @@ export function FinanceWorkspace() {
   useEffect(() => {
     if (loading || !allowed || !validPage || !host.current) return;
     let cancelled = false;
+    const abort=new AbortController();
     const node = host.current;
-    setError(false);
-    void import("@/lib/finance/workspace.mjs")
-      .then(({ mountFinanceWorkspace }) => {
+    setError("");setFetching(true);
+    void Promise.all([import("@/lib/finance/workspace.mjs"),demo?Promise.resolve(undefined):import("@/lib/finance/client").then(({connectFinance})=>connectFinance(()=>token.current,abort.signal))])
+      .then(([{ mountFinanceWorkspace },connection]) => {
         if (cancelled) return;
         controller.current = mountFinanceWorkspace(node, {
+          ...connection,
+          actorId:demo?undefined:actor,
           url: currentUrl.current,
           navigate: (next) => router.push(next, { scroll: false }),
           replaceUrl: (next) =>
             window.history.replaceState(window.history.state, "", next),
           onReset: () => setRevision((value) => value + 1),
         });
+        setFetching(false);
       })
-      .catch(() => {
-        if (!cancelled) setError(true);
+      .catch((reason) => {
+        if (!cancelled){setError(reason instanceof Error?reason.message:"재무 화면을 불러오지 못했습니다.");setFetching(false);}
       });
     return () => {
       cancelled = true;
+      abort.abort();
       controller.current?.destroy();
       controller.current = null;
+      node.replaceChildren();
     };
-  }, [allowed, loading, actor, revision, router, validPage]);
+  }, [allowed, loading, actor, revision, router, validPage, demo]);
 
   useEffect(() => {
     controller.current?.setUrl(url);
@@ -72,16 +81,17 @@ export function FinanceWorkspace() {
     <>
       {error ? (
         <div className="inline-alert" role="alert">
-          재무 화면을 불러오지 못했습니다.{" "}
+          {error}{" "}
           <button onClick={() => setRevision((value) => value + 1)}>
             다시 시도
           </button>
         </div>
       ) : null}
+      {fetching?<p role="status">재무 내역을 불러오고 있습니다…</p>:null}
       <div
         ref={host}
         className="finance-workspace"
-        aria-label="재무관리 모의 작업공간"
+        aria-label={demo?"재무관리 모의 작업공간":"재무관리 작업공간"}
       />
     </>
   );

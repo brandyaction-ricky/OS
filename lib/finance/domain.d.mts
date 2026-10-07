@@ -1,0 +1,10 @@
+import type { FinanceData, FinanceRow } from './schema';
+export const DEFAULT_SETTINGS: {net_include_research:boolean;usd_krw_estimate:number;receipt_required_categories:string[];data_start_date:string|null};
+export function active(rows?:FinanceRow[]):FinanceRow[];
+export function settingsOf(data:FinanceData):typeof DEFAULT_SETTINGS;
+export function classifiedCards(data:FinanceData):FinanceRow[];
+export function classifiedBank(data:FinanceData):FinanceRow[];
+export function payoutsOf(data:FinanceData,today:string):Array<Record<string,unknown>>;
+export function budgetOf(data:FinanceData,month:string,biz?:string,today?:string):Record<string,unknown>;
+export function overviewOf(data:FinanceData,month:string,biz?:string,today?:string):Record<string,unknown>;
+export function validateLinks(data:FinanceData):void;
