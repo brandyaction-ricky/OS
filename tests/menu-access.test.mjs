@@ -90,6 +90,16 @@ test("admin cannot restrict administrators, inactive accounts, or elevate financ
   }
 });
 
+test("existing finance eligibility permits saving all seven finance menu choices", async () => {
+  const financeMenus = navigation.NAV_STAGES.find(stage => stage.id === "finance").pages.map(page => page.href);
+  assert.equal(financeMenus.length, 7);
+  const route = api({ finance: true });
+  const response = await route.PATCH(patch({ allowedMenus: financeMenus }));
+  assert.equal(response.status, 200);
+  assert.deepEqual([...route.writes[0].payload.allowed_menus], ["/home", ...financeMenus]);
+  assert.equal("finance_access" in route.writes[0].payload, false);
+});
+
 test("menu saves validate destinations and reject unrelated privileged fields", async () => {
   for (const input of [{ allowedMenus: ["https://example.test"] }, { role: "admin" }, { financeAccess: true }, { expectedVersion: -1 }]) {
     const route = api();

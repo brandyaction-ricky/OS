@@ -1096,6 +1096,10 @@ select option { background:var(--panel-2); color:var(--text); }
 .menu-access-group label { display: flex; align-items: center; gap: 7px; min-height: 25px; font-size: 12px; cursor: pointer; }
 .menu-access-group label small { color: var(--muted); font-size: 11px; }
 .menu-access-group:disabled label { cursor: default; }
+.menu-access-group-locked { background: var(--panel-2); }
+.menu-access-lock-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.menu-access-group-help { margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--line-soft); color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.menu-access-group-help a { display: block; width: fit-content; margin-top: 6px; color: var(--accent); }
 .menu-access-group-toggle { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line-soft); color: var(--muted); }
 .menu-access-info { padding: 10px 12px; background: var(--panel-2); border-radius: 7px; display: flex; align-items: flex-start; gap: 8px; color: var(--muted); }
 .menu-access-info svg { flex: none; margin-top: 2px; }
