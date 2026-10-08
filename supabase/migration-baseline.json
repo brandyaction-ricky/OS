@@ -464,6 +464,13 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-07",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008054911_finance_toss_sync.sql",
+      "sha256": "d4f67496065f5ac1a84a7041234b8deec808e166798e98411f988e99f14b4564",
+      "purpose": "add service-only EDU Toss page ingestion, durable cursors and leases; no cron or financial seed data",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [
