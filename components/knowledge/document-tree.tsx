@@ -5,7 +5,7 @@ import type {KnowledgeDocument} from "@/lib/types";
 import {documentHref,documentSpace,SPACE_LABELS,type Category} from "@/lib/knowledge/model";
 
 function TreeBranch({rows,selected}:{rows:KnowledgeDocument[];selected:string}) {
-  const [limit,setLimit]=useState(50);
+  const [limit,setLimit]=useState(50),[collapsed,setCollapsed]=useState<Set<string>>(new Set());
   const ids=new Set(rows.map(row=>row.id));
   const roots=rows.filter(row=>!row.parent_document_id||!ids.has(row.parent_document_id));
   const children=new Map<string,KnowledgeDocument[]>();
@@ -14,11 +14,11 @@ function TreeBranch({rows,selected}:{rows:KnowledgeDocument[];selected:string}) 
   const visit=(doc:KnowledgeDocument,depth:number)=>{
     if(visited.has(doc.id)||depth>63)return;
     visited.add(doc.id);visible.push({doc,depth});
-    for(const child of children.get(doc.id)??[])visit(child,depth+1);
+    if(!collapsed.has(doc.id))for(const child of children.get(doc.id)??[])visit(child,depth+1);
   };
   for(const root of roots)visit(root,0);
   // Cycle-only rows are never silently linked into an invalid hierarchy.
-  return <>{visible.slice(0,limit).map(({doc,depth})=><Link key={doc.id} style={{paddingLeft:8+Math.min(depth,8)*12}} aria-current={doc.id===selected?"page":undefined} href={documentHref(doc)}>{depth>0?"↳ ":""}{doc.title}</Link>)}{visible.length>limit&&<button onClick={()=>setLimit(value=>value+50)}>50개 더 보기 ({visible.length-limit}개 남음)</button>}</>;
+  return <>{visible.slice(0,limit).map(({doc,depth})=><div className="kw-tree-row" key={doc.id} style={{paddingLeft:Math.min(depth,8)*12}}>{children.has(doc.id)&&<button aria-label={`${doc.title} 하위 페이지 ${collapsed.has(doc.id)?"펼치기":"접기"}`} aria-expanded={!collapsed.has(doc.id)} onClick={()=>setCollapsed(current=>{const next=new Set(current);if(next.has(doc.id))next.delete(doc.id);else next.add(doc.id);return next;})}>{collapsed.has(doc.id)?"›":"⌄"}</button>}<Link aria-current={doc.id===selected?"page":undefined} href={documentHref(doc)}>{depth>0?"↳ ":""}{doc.title}</Link></div>)}{visible.length>limit&&<button onClick={()=>setLimit(value=>value+50)}>50개 더 보기 ({visible.length-limit}개 남음)</button>}</>;
 }
 
 export function DocumentTree({documents,categories,selected}:{documents:KnowledgeDocument[];categories:Category[];selected:string}) {

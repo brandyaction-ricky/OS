@@ -14,7 +14,8 @@ interface WorkspaceContext { state: KnowledgeState; actor: KnowledgeActor; loadi
 const Context = createContext<WorkspaceContext | null>(null);
 export function KnowledgeBoundary({children}:{children:ReactNode}) {
   const pathname=usePathname();
-  return pathname.startsWith("/knowledge/development") ? children : <KnowledgeProvider>{children}</KnowledgeProvider>;
+  const {profile,demo}=useSession();
+  return pathname.startsWith("/knowledge/development") ? children : <KnowledgeProvider key={`${demo ? "demo" : "connected"}:${profile?.id ?? "signed-out"}`}>{children}</KnowledgeProvider>;
 }
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const { profile, accessToken: token, demo, loading: sessionLoading } = useSession();
@@ -42,7 +43,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         setState(current => ({ ...result.state, documents: result.state.documents.map(doc => { const cached = current.documents.find(row => row.id === doc.id && row.current_version === doc.current_version); return cached?.content_md ? { ...doc, content_md: cached.content_md } : doc; }) }));
       }
       setError("");
-    } catch (e) { if (request === generation.current) setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); }
+    } catch (e) { if (request === generation.current) { if (!demo) { setState(emptyKnowledgeState()); setRemoteActor(null); } setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); } }
     finally { if (request === generation.current) setLoading(false); }
   }, [sessionLoading, profile, demo, storageKey, actor, token]);
   const refreshRef = useRef(refresh); refreshRef.current = refresh;

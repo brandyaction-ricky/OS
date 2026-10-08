@@ -6,7 +6,8 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { DEFAULT_TEMPLATES } from "@/lib/knowledge/default-templates";
-import { emptyKnowledgeState, type KnowledgeState, type Meeting } from "@/lib/knowledge/model";
+import { emptyKnowledgeState, type KnowledgeState } from "@/lib/knowledge/model";
+import { projectMeetings } from "@/lib/knowledge/meetings";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -40,21 +41,22 @@ export async function GET(request: Request) {
       db.from("os_note_inbox").select("*").eq("owner_id",user.ownerId).is("processed_at",null).order("created_at",{ascending:false}),
       db.from("os_document_pins").select("document_id").eq("user_id",user.ownerId).order("document_id"),
       db.from("os_document_drafts").select("*").eq("user_id",user.ownerId).order("document_id"),
-      db.from("os_records").select("*").eq("record_type","meeting").contains("metadata",{workspace:"knowledge"}).is("archived_at",null).order("starts_at",{ascending:false}),
+      db.from("os_records").select("*").eq("record_type","meeting").is("archived_at",null).order("starts_at",{ascending:false}),
       db.from("os_meeting_attendees").select("meeting_id,user_id").order("meeting_id").order("user_id"),
       db.from("os_document_candidates").select("*").order("submitted_at",{ascending:false}),
       db.from("os_knowledge_events").select("*").order("created_at",{ascending:false}).limit(500),
       service.from("os_profiles").select("id,display_name,role,member_kind").eq("is_active",true),
+      db.from("os_records").select("id,title,status,version,owner_id,created_by,created_at,updated_at,parent_id,metadata").eq("record_type","decision").eq("status","decided").is("archived_at",null).order("id"),
     ].map(async(builder,index)=>{
       // Each resource may exceed PostgREST's default row cap. Audit deliberately stays at 500.
       if(index===8)return await builder;
-      if(![3,4,6].includes(index))builder.order("id");
+      if(![3,4,6,10].includes(index))builder.order("id");
       const data: NonNullable<Awaited<typeof builder>["data"]>=[];
       for(let offset=0;;offset+=500){const page=await builder.range(offset,offset+499);if(page.error)return {data:null,error:page.error};data.push(...(page.data??[]));if(!page.data||page.data.length<500)break;}
       return {data,error:null};
     }));
     for(const result of resources) if(result.error) throw databaseError(result.error);
-    const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people]=resources.map(r=>r.data ?? []);
+    const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people,decisions]=resources.map(r=>r.data ?? []);
     state.categories=categories as KnowledgeState["categories"];
     state.templates=templates as KnowledgeState["templates"];
     state.templates=[...DEFAULT_TEMPLATES.filter(t=>!state.templates.some(row=>row.default_key===t.id)),...state.templates.filter(t=>!t.archived_at)];
@@ -62,7 +64,7 @@ export async function GET(request: Request) {
     const ids=new Set(state.documents.map(d=>d.id));
     state.pins=pins.map(row=>row.document_id).filter(id=>ids.has(id));
     state.drafts=(drafts as KnowledgeState["drafts"]).filter(d=>ids.has(d.document_id));
-    state.meetings=meetings.map(row=>({...row,attendees:attendees.filter(a=>a.meeting_id===row.id).map(a=>a.user_id)})) as Meeting[];
+    state.meetings=projectMeetings(meetings as Parameters<typeof projectMeetings>[0],decisions as Parameters<typeof projectMeetings>[1],attendees as Parameters<typeof projectMeetings>[2],access.actor);
     state.candidates=(candidates as KnowledgeState["candidates"]).filter(c=>ids.has(c.document_id));
     state.events=events as KnowledgeState["events"];
     state.people=await Promise.all(people.map(async row=>{
