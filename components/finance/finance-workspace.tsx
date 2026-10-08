@@ -6,6 +6,7 @@ import Link from "next/link";
 import { canAccessFinance } from "@/lib/finance/access";
 import type { FinanceController } from "@/lib/finance/workspace.mjs";
 import { useSession } from "../session-provider";
+import { TossReadPanel } from "./toss-read-panel";
 import "./finance.css";
 
 /** A persistent, client-only adapter for the handoff's seven finance views. */
@@ -79,6 +80,7 @@ export function FinanceWorkspace() {
     );
   return (
     <>
+      {!demo&&(pathname==="/finance/sales"||pathname==="/finance/settlements")?<TossReadPanel key={`${actor}:${pathname}`} token={accessToken} kind={pathname==="/finance/sales"?"transactions":"settlements"}/>:null}
       {error ? (
         <div className="inline-alert" role="alert">
           {error}{" "}

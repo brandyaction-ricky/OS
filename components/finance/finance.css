@@ -1,3 +1,18 @@
+.finance-toss-panel { margin-bottom: 16px; }
+.finance-toss-panel > summary { padding: 14px 16px; cursor: pointer; font-weight: 600; }
+.finance-toss-body { padding: 0 16px 16px; display: grid; gap: 12px; }
+.finance-toss-body p { margin: 0; color: var(--text-2); font-size: 13px; }
+.finance-toss-body [role="alert"] { color: var(--danger); }
+.finance-toss-body form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.finance-toss-body label { display: grid; gap: 6px; font-size: 13px; }
+.finance-toss-body input { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px; color: var(--text); }
+.finance-toss-table { overflow-x: auto; }
+.finance-toss-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.finance-toss-table caption { text-align: left; padding-bottom: 8px; color: var(--text-2); }
+.finance-toss-table th, .finance-toss-table td { padding: 9px; border-bottom: 1px solid var(--line-soft); text-align: left; white-space: nowrap; }
+.finance-toss-table th { background: var(--panel-2); }
+.finance-toss-body > button { justify-self: start; }
+
 /* Scoped finance prototype surfaces use the OS theme; no global resets. */
 .finance-workspace {
   --surface: var(--panel);

@@ -191,7 +191,7 @@ test("card preview handles FX update/cancel as updates instead of double-counted
   assert.equal(preview.valid.length,1);assert.equal(preview.valid[0].krw,-150);
 });
 test("Toss adapter validates integer settlement arithmetic and drops sensitive raw fields",()=>{
-  const provider=load("lib/finance/toss/provider.ts",{"../schema":schema});
+  const provider=load("lib/finance/toss/provider.ts",{"../schema":schema,"server-only":{}});
   const settlement={paymentKey:"p",transactionKey:"t",method:"카드",amount:1100,supplyAmount:90,vat:10,payOutAmount:1000,soldDate:"2026-09-10",paidOutDate:"2026-09-13",currency:"KRW",card:{number:"DO-NOT-STORE"}};
   assert.equal(provider.normalizeSettlement(settlement).fee,100);assert.equal(provider.normalizeSettlement(settlement).card,undefined);
   assert.throws(()=>provider.normalizeSettlement({...settlement,payOutAmount:999}),e=>e.code==="TOSS_INVALID_RESPONSE");
@@ -199,8 +199,8 @@ test("Toss adapter validates integer settlement arithmetic and drops sensitive r
   assert.equal(p.canceled_amount,50);assert.equal(p.cancels[0].cancel_date,"2026-10-01");assert.equal(p.customerName,undefined);
 });
 test("real cancellation remains absent even with live-looking configuration",async()=>{
-  const provider=load("lib/finance/toss/provider.ts",{"../schema":schema});let calls=0;
-  const toss=provider.tossProvider("edu",{FINANCE_TOSS_MODE:"test",TOSS_SECRET_KEY_EDU:"test_sk_synthetic"},async()=>{calls++;throw new Error("must not execute");});
+  const provider=load("lib/finance/toss/provider.ts",{"../schema":schema,"server-only":{}});let calls=0;
+  const toss=provider.tossProvider("edu",{FINANCE_TOSS_MODE:"test",TOSS_SECRET_KEY_EDU:"test_sk_synthetic",TOSS_MID_EDU:"synthetic"},async()=>{calls++;throw new Error("must not execute");});
   await assert.rejects(toss.cancel(),e=>e.code==="TOSS_CANCEL_DISABLED");assert.equal(calls,0);
 });
 test("refunds are disabled by default and mock approvals are denied in Production",async()=>{
