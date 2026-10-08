@@ -46,9 +46,42 @@ test("real workspace starts empty, never copies mock money or employees into a n
   const model=mountFinanceWorkspace(null,{data,today:"2027-01-07"});
   assert.equal(model.transactions.length,0);assert.equal(model.cards.length,0);assert.equal(model.bankRows().length,0);
   assert.equal(model.state.ext.length,0);assert.equal(model.state.accounts.length,0);
-  assert.equal(model.period.month,"2026-12");assert.equal(model.netOf("2026-12").net,0);
+  assert.equal(model.period.month,"2027-01");assert.equal(model.netOf("2027-01").net,0);
   model.startBudgetDefaults();assert.equal(model.state.budget.length,14);
   for(const item of model.state.budget){assert.match(item.id,/^[\da-f-]{36}$/);assert.equal(item.amount,0);assert.equal(item.owner,"");}
+});
+test("connected periods default to this month, including the first week and year boundary",()=>{
+  for(const today of ["2026-10-01","2026-10-07","2026-10-08","2027-01-01","2028-02-29"]){
+    const model=mountFinanceWorkspace(null,{data:workspaceFromLedger(ledger(),today),today});
+    assert.equal(model.period.month,today.slice(0,7));
+    assert.deepEqual(model.range(),[today.slice(0,7)+"-01",today]);
+    model.selectPeriodMode("all");
+    assert.deepEqual(model.range(),["2000-01-01",today],"all history remains available");
+    model.selectPeriodMode("custom");
+    assert.deepEqual(model.range(),[today.slice(0,7)+"-01",today],"date picker never inherits the all-history sentinel");
+    assert.equal(model.period.err,"");
+  }
+});
+test("September remains selectable while this-month shortcut resets an old custom range",()=>{
+  const today="2026-10-08",model=mountFinanceWorkspace(null,{data:workspaceFromLedger(ledger({payments:[row(1,{biz:"edu",status:"DONE",paid_date:"2026-09-10",amount:1000,canceled_amount:0})]}),today),today});
+  model.period.month="2026-09";
+  model.selectPeriodMode("custom");
+  assert.deepEqual(model.range(),["2026-09-01","2026-09-30"]);
+  assert.equal(model.salesRows().length,1,"historical sales remain visible");
+  model.period.from="2000-01-01";model.period.err="old validation error";
+  model.selectCurrentMonth();
+  assert.equal(model.period.mode,"custom","keep date inputs editable");
+  assert.deepEqual(model.range(),["2026-10-01",today]);
+  assert.equal(model.period.month,"2026-10");assert.equal(model.period.err,"");
+  for(const mode of ["month","week","all"]){
+    model.selectPeriodMode(mode);model.selectCurrentMonth();
+    assert.equal(model.period.mode,"month");assert.deepEqual(model.range(),["2026-10-01",today]);
+  }
+  model.selectPeriodMode("week");model.selectPeriodMode("custom");
+  assert.deepEqual(model.range(),["2026-10-02",today],"recent-week selection is preserved");
+  const sales=model.renderPage("sales");
+  assert.match(sales,/data-act="pcurrent">이번 달/);
+  assert.match(sales,/id="pfrom" value="2026-10-02" min="2000-01-01" max="2026-10-08"/);
 });
 test("mock refund completion never claims the original payment was canceled",()=>{
   const data=workspaceFromLedger(ledger({
@@ -79,6 +112,7 @@ test("connected populated views and editable projections agree with API schemas"
     external_revenues:[row(10,{kind:"lecture",biz:"ba",title:"QA 외부 매출",client:"",revenue_date:"2026-09-09",usd:null,supply:100,vat:10,due_date:null,invoice:"",memo:""})],
   });
   const workspace=workspaceFromLedger(data,"2026-10-07"),model=mountFinanceWorkspace(null,{data:workspace,today:"2026-10-07"});
+  model.period.month="2026-09";
   for(const page of ["overview","sales","settlements","bank","cards","recurring","budget"])assert.doesNotMatch(model.renderPage(page),/undefined|NaN|Invalid Date/,page);
   const projected=createLedgerProjection(data).project(workspace);
   for(const [resource,rows]of Object.entries(projected))for(const row of rows)assert.equal(schema.resourceSchemas[resource].safeParse(row).success,true,resource);
