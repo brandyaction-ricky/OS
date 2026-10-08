@@ -180,3 +180,19 @@ test("sync UI is labelled, disabled before status, requires consent and keeps pa
   const source=fs.readFileSync(new URL("../components/finance/toss-sync-panel.tsx",import.meta.url),"utf8");
   assert.match(source,/아직 전체 완료 아님/);assert.match(source,/저장분 유지/);assert.match(source,/sequence\.current\+\+/);assert.doesNotMatch(source,/setInterval\(|localStorage\.(getItem|setItem)|TOSS_SECRET/);
 });
+
+test("forward SQL fix keeps the applied migration immutable and separates composite names from query aliases",()=>{
+  const original=fs.readFileSync(new URL("../supabase/migrations/20261008054911_finance_toss_sync.sql",import.meta.url),"utf8");
+  assert.equal(crypto.createHash("sha256").update(original).digest("hex"),"d4f67496065f5ac1a84a7041234b8deec808e166798e98411f988e99f14b4564");
+  const fix=fs.readFileSync(new URL("../supabase/migrations/20261008063500_finance_toss_sync_store_alias.sql",import.meta.url),"utf8");
+  const start=original.indexOf("create function public.os_fin_toss_sync(");
+  let expected=original.slice(start).replace("create function public.os_fin_toss_sync(","create or replace function public.os_fin_toss_sync(").replace("s public.os_fin_stores;","store_row public.os_fin_stores;");
+  const begin=expected.indexOf("  if p_action='begin' then"),end=expected.indexOf("  select * into r from public.os_fin_toss_sync_runs where id=p_run");
+  assert.ok(begin>=0&&end>begin);
+  expected=expected.slice(0,begin)+expected.slice(begin,end).replace(/\bs\b/g,"store_row")+expected.slice(end);
+  assert.equal(fix.slice(fix.indexOf("create or replace function")).trimEnd(),expected.trimEnd());
+  const composites=[...fix.matchAll(/\b(\w+) public\.os_fin_\w+;/g)].map(m=>m[1]);
+  const aliases=[...fix.matchAll(/\b(?:from|join|update) public\.os_fin_\w+ (\w+)/g)].map(m=>m[1]);
+  assert.deepEqual(composites.filter(name=>aliases.includes(name)),[]);
+  assert.doesNotMatch(fix,/delete from|truncate |drop table|security definer/i);
+});

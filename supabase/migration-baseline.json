@@ -470,7 +470,16 @@
       "sha256": "d4f67496065f5ac1a84a7041234b8deec808e166798e98411f988e99f14b4564",
       "purpose": "add service-only EDU Toss page ingestion, durable cursors and leases; no cron or financial seed data",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-08",
+      "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008063500_finance_toss_sync_store_alias.sql",
+      "sha256": "c7ffb3ae07bce7d8152b4069c626e4da83ae419c8ea49a022f85e17f188752bc",
+      "purpose": "fix PL/pgSQL store composite shadowing the settlement alias without changing existing data or permissions",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-08",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [
