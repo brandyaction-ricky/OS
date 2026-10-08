@@ -20,6 +20,8 @@ from public.os_profiles where id in (
 
 do $$ begin
   assert (select relrowsecurity from pg_class where oid = 'public.os_member_menu_access'::regclass), 'RLS must be enabled';
+  assert exists(select 1 from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any(i.indkey)
+    where i.indrelid = 'public.os_member_menu_access'::regclass and a.attname = 'updated_by' and i.indisvalid), 'actor foreign key must be indexed';
   assert not has_table_privilege('anon', 'public.os_member_menu_access', 'SELECT'), 'anonymous reads denied';
   assert has_table_privilege('authenticated', 'public.os_member_menu_access', 'SELECT'), 'authenticated reads granted';
   assert not has_table_privilege('authenticated', 'public.os_member_menu_access', 'INSERT'), 'direct inserts denied';
