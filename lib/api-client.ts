@@ -715,3 +715,11 @@ export interface OsMember {
 export async function listMembers(token: string | null) {
   return apiRequest<{ members: OsMember[] }>("/api/v1/members", { token });
 }
+
+export async function getMenuAccess(token: string | null, all = false) {
+  return apiRequest<{ policies: import("./menu-access").MenuAccessPolicy[]; ready: boolean }>(`/api/v1/members/menu-access${all ? "?view=all" : ""}`, { token });
+}
+
+export async function saveMenuAccess(token: string | null, input: { memberId: string; allowedMenus: string[] | null; expectedVersion: number }) {
+  return apiRequest<{ policy: import("./menu-access").MenuAccessPolicy }>("/api/v1/members/menu-access", { token, method: "PATCH", body: JSON.stringify(input) });
+}

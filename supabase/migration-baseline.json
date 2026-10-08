@@ -480,6 +480,13 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-08",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008081909_member_menu_access.sql",
+      "sha256": "5eda6e5d99c40ce90740185aa69ea092305c1f0e5267d3cedaf73cb9e8212b79",
+      "purpose": "add per-account navigation preferences with self/admin reads and admin-only server writes; existing data permissions remain unchanged",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

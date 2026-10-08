@@ -47,6 +47,7 @@ import { useSession } from "./session-provider";
 import { AgentKeyManager } from "./agent-key-manager";
 import { CommerceAdminLinks } from "./performance-workspaces";
 import { PerformanceFilterProvider } from "./performance-filter-context";
+import { MemberMenuAccess } from "./member-menu-access";
 
 type Page = "connections" | "access" | "company" | "channels";
 type ConnectionStatus = "ready" | "warning" | "waiting";
@@ -320,17 +321,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
                   </div>
                 ))}
               </section>
-              <section className="panel member-role-table">
-                <div className="panel-header"><div><h2>실제 계정 역할</h2><p>로그인 계정과 OS 구성원 정보 기준</p></div></div>
-                {active.map((member) => (
-                  <div key={member.id}>
-                    <span><strong>{member.display_name || member.email.split("@")[0]}</strong><small>{member.email}</small></span>
-                    <em>{roleLabel(member.role)}</em>
-                    <span>{member.team || "팀 미지정"}</span>
-                    <span>{member.finance_access || member.role === "admin" ? "민감 허용" : "일반"}</span>
-                  </div>
-                ))}
-              </section>
+              <MemberMenuAccess members={members} token={accessToken} demo={demo} isAdmin={profile?.role === "admin"} />
               <AgentKeyManager accessToken={accessToken} demo={demo} isAdmin={profile?.role === "admin"} members={members} defaultOwnerId={profile?.id} />
             </>
           ) : null}
