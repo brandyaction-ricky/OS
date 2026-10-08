@@ -183,6 +183,7 @@ html[data-theme="light"] { --card: #ffffff; }
 }
 .linear-shell.shell-v2 .process-video svg { width: 13px; height: 13px; }
 .linear-shell.shell-v2 .process-steps { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.linear-shell.shell-v2 .process-scroll-hint { display: none; }
 .linear-shell.shell-v2 .process-step {
   display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 6px;
   font-size: 12px; color: var(--text-2); text-decoration: none; white-space: nowrap;
@@ -234,6 +235,7 @@ html[data-guidance="off"] .guide-strip, html[data-guidance="off"] .guide-no, htm
 .linear-shell .ui-v2 .page-tab[aria-selected="true"], .linear-shell .ui-v2 .page-tab.active { color: var(--text); font-weight: 700; border-bottom: 2px solid var(--accent); }
 /* F-2 주제·기획의 단계 탭(카드 모양) */
 .linear-shell .ui-v2 .step-tabs { display: flex; gap: 4px; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 10px; padding: 4px; }
+.linear-shell .ui-v2 .stage-scroll-hint { display: none; }
 .linear-shell .ui-v2 .step-tab {
   font: inherit; text-align: left; border: 0; border-radius: 8px; padding: 8px 12px; display: flex; flex-direction: column; gap: 1px;
   min-width: 116px; background: none; color: var(--text-2); cursor: pointer;
