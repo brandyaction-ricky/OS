@@ -74,7 +74,8 @@ const track = (resource, id) => { if (!owned.has(resource)) owned.set(resource, 
 async function insert(resource, row) { const id = row.id || randomUUID(); track(resource, id); return ok(await service.from(`os_fin_${resource}`).insert({ ...row, id, created_by: users[0], updated_by: users[0] }).select().single()); }
 async function api(actor, route, method = 'GET', body) {
   const r = await fetch(`${baseUrl}/api/v1/finance/${route}`, { method, headers: { ...(actor ? { Authorization: `Bearer ${actor.token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-  return { status: r.status, body: await r.json() };
+  const text = await r.text();
+  return { status: r.status, body: text ? JSON.parse(text) : {} };
 }
 async function batch(actor, changes, expected = 200) {
   for (const c of changes) if (c.row.version === 0) track(c.resource, c.row.id);
@@ -124,6 +125,18 @@ try {
     assert.equal((await api(member, 'cards')).status, 403);
     assert.equal((await api(inactive, 'cards')).status, 403);
     assert.equal((await api(admin, 'cards')).status, 200);
+  });
+  await check('Toss read routes enforce real profile authorization and disconnected mode', async () => {
+    for (const actor of [null, member, inactive]) {
+      assert.equal((await api(actor, 'toss/status?biz=edu')).status, actor ? 403 : 401);
+    }
+    const connected = await api(finance, 'toss/status?biz=edu');
+    assert.equal(connected.status, 200);
+    assert.equal(connected.body.configured, false);
+    assert.equal(connected.body.readOnly, true);
+    assert.equal((await api(finance, 'toss/transactions?biz=edu&from=2026-09-01&to=2026-09-02')).status, 409);
+    assert.equal((await api(finance, 'toss/transactions?biz=edu&from=2026-09-01&to=2026-09-02', 'POST')).status, 405);
+    assert.equal((await api(finance, 'toss/status?biz=unknown')).status, 400);
   });
   await check('Data API RLS denies unauthorized reads and writes', async () => {
     assert.ok((await anon.from('os_fin_cards').select('id')).error);
@@ -301,6 +314,7 @@ try {
   await check('Revoked finance permission takes effect with the existing token', async () => {
     ok(await service.from('os_profiles').update({ finance_access: false }).eq('id', finance.id));
     assert.equal((await api(finance, 'cards')).status, 403);
+    assert.equal((await api(finance, 'toss/status?biz=edu')).status, 403);
     assert.deepEqual(ok(await finance.client.from('os_fin_cards').select('id')), []);
     ok(await service.from('os_profiles').update({ finance_access: true }).eq('id', finance.id));
   });
