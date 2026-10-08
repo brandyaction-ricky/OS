@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { NAV_STAGES } from "../../lib/navigation";
 
-for (const stage of NAV_STAGES) {
+for (const stage of NAV_STAGES.filter(stage => !stage.requiresHr)) {
   test(`existing pages keep the ${stage.label} navigation and title`, async ({ page }) => {
     for (const entry of stage.pages) {
       await page.goto(entry.href);
@@ -70,3 +70,13 @@ for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {
     }
   });
 }
+
+test("HR routes and navigation stay disabled before rollout", async ({ page, request }) => {
+  await page.goto("/home");
+  await expect(page.getByRole("button", { name: "인사 노무 관리", exact: true })).toHaveCount(0);
+  const response = await request.get("/api/v1/hr/session");
+  expect(response.status()).toBe(404);
+  expect((await response.json()).error.code).toBe("HR_DISABLED");
+  await page.goto("/hr/employees");
+  await expect(page.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+});

@@ -28,3 +28,10 @@ jobs:
       - run: npm run test:e2e
         env:
           PLAYWRIGHT_SERVER_MODE: production
+      - name: Verify enabled HR demo workflows
+        run: npm run test:e2e -- tests/e2e/hr.spec.ts
+        env:
+          PLAYWRIGHT_SERVER_MODE: production
+          HR_WORKSPACE_ENABLED: "true"
+          HR_E2E_DEMO: "true"
+          NEXT_PUBLIC_DEMO_MODE: "true"
