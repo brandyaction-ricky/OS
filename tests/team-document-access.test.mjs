@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { agentReadableStatuses, canReadKnowledgeDocument } from "../lib/server/document-access.ts";
+import { agentReadableStatuses, canReadKnowledgeDocument, canAgentEditDraft } from "../lib/server/document-access.ts";
 
 const actor = (overrides = {}) => ({
   type: "agent",
@@ -11,6 +11,10 @@ const actor = (overrides = {}) => ({
   ...overrides,
 });
 const document = (status, owner_id = "owner-b") => ({ status, owner_id });
+test("AI keys can only edit their own generated draft, never human notes or team bodies",()=>{
+  assert.equal(canAgentEditDraft(actor(),{...document("draft","owner-a"),source:"mcp"}),true);
+  for(const doc of [{...document("draft","owner-a"),source:"manual"},{...document("team","owner-a"),source:"mcp"},{...document("draft"),source:"mcp"},{...document("canonical","owner-a"),source:"mcp"}])assert.equal(canAgentEditDraft(actor(),doc),false);
+});
 
 test("read-only AI keys always include team-shared documents", () => {
   assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team"]);
@@ -25,7 +29,7 @@ test("all members and AI keys can read another owner's team-shared document", ()
 test("another owner's draft and archived document stay private", () => {
   assert.equal(canReadKnowledgeDocument(actor({ allowedStatuses: ["draft", "team", "canonical"] }), document("draft")), false);
   assert.equal(canReadKnowledgeDocument(actor(), document("archived")), false);
-  assert.equal(canReadKnowledgeDocument(actor(), document("draft", "owner-a")), true);
+  assert.equal(canReadKnowledgeDocument(actor(), document("draft", "owner-a")), false);
 });
 
 test("the change does not expose another owner's review drafts to AI keys", () => {
@@ -42,7 +46,8 @@ test("routes, search, key defaults, and RLS migration share one team-read contra
     readFile(new URL("../supabase/migrations/20260929062422_share_team_documents_with_all_members.sql", import.meta.url), "utf8"),
   ]);
   assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);
-  assert.match(documentRoute, /canReadKnowledgeDocument\(actor, data\)/);
+  assert.match(documentRoute, /readableKnowledgePages\(actor, \[data\]\)/);
+  assert.match(documentRoute, /DOCUMENT_NOT_FOUND/);
   assert.match(search, /status\.eq\.canonical,status\.eq\.team,owner_id\.eq/);
   assert.match(search, /status === "canonical" \|\| status === "team"/);
   assert.match(keyRoute, /\["team", "canonical"\]/);

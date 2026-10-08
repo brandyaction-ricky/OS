@@ -25,7 +25,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (documentError || !document || !(await readableKnowledgePages(actor, [document])).has(id)) {
       throw new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
     }
-    const { data, error } = await service.from("os_document_versions").select("version_no,title,content_md,author_id,agent_key_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false });
+    const query=new URL(request.url).searchParams;
+    const page=z.object({limit:z.coerce.number().int().min(1).max(1000),offset:z.coerce.number().int().min(0).max(1_000_000)}).safeParse({limit:query.get("limit")??1000,offset:query.get("offset")??0});
+    if(!page.success)throw new ApiError(400,"INVALID_PAGE","버전 페이지 범위를 확인해 주세요.");
+    const {limit,offset}=page.data;
+    const { data, error } = await service.from("os_document_versions").select("version_no,title,content_md,author_id,agent_key_id,reason,created_at").eq("document_id", id).order("version_no", { ascending: false }).range(offset,offset+limit-1);
     if (error) throw new ApiError(400, "DOCUMENT_VERSIONS_FAILED", "변경 이력을 불러오지 못했습니다.", error.message);
     const authorIds = [...new Set((data ?? []).map((version) => version.author_id).filter(Boolean))];
     const { data: authors } = authorIds.length ? await service.from("os_profiles").select("id,display_name,email").in("id", authorIds) : { data: [] };
@@ -38,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       author_name: version.agent_key_id
         ? `${agentNames.get(version.agent_key_id) ?? "AI 에이전트"} · AI`
         : version.author_id ? names.get(version.author_id) ?? "구성원" : "초기 가져오기",
-    })) });
+    })), hasMore:(data??[]).length===limit },{headers:{"Cache-Control":"private, no-store"}});
   } catch (error) { return apiErrorResponse(error); }
 }
 

@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { forwardRef } from "react";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
+import type {InlineOptions} from "./knowledge/inline-picker-plugin";
 
 export type KnowledgeRichEditorMethods = MDXEditorMethods;
 
@@ -19,6 +20,8 @@ export interface KnowledgeRichEditorProps {
   onError: (message: string) => void;
   onRequestImage?: () => void;
   onCreateChildPage?: () => void;
+  onDocumentLink?: () => void;
+  inlineOptions?: InlineOptions;
 }
 
 export const KnowledgeRichEditor = forwardRef<MDXEditorMethods, KnowledgeRichEditorProps>((props, ref) => (

@@ -29,7 +29,8 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.doesNotMatch(writeMigration, /delete from public\.os_documents/i);
   assert.match(route, /status: "draft"/);
   assert.match(route, /os_agent_update_document/);
-  assert.match(route, /os_agent_archive_document/);
+  assert.doesNotMatch(route, /rpc\("os_agent_archive_document"/);
+  assert.match(route, /actor\.type === "agent"\) throw new ApiError\(403,"AGENT_WRITE_DENIED","AI 키로 문서를 삭제할 수 없습니다/);
   assert.match(mcp, /ORG_UUID/);
   for (const tool of ["search_knowledge", "get_document", "create_document", "edit_document", "delete_document"]) {
     assert.match(mcp, new RegExp(`"name": "${tool}"`));

@@ -7,10 +7,11 @@ import { parseKnowledgeAttachmentTarget, type KnowledgeAttachmentReference } fro
 import { markdownInlineTokens, safeMarkdownUrl } from "@/lib/knowledge-markdown";
 import { useSession } from "./session-provider";
 
-const KnowledgeInlineContext = createContext<{ documentId: string; revision: number; onRelink?: (reference: string) => void }>({ documentId: "", revision: 0 });
+type WikiResolver = (target:string)=>{label:string;href?:string};
+const KnowledgeInlineContext = createContext<{ documentId: string; revision: number; onRelink?: (reference: string) => void; resolveWiki?:WikiResolver }>({ documentId: "", revision: 0 });
 
-export function KnowledgeInlineProvider({ documentId, revision, onRelink, children }: { documentId: string; revision: number; onRelink?: (reference: string) => void; children: ReactNode }) {
-  return <KnowledgeInlineContext.Provider value={{ documentId, revision, onRelink }}>{children}</KnowledgeInlineContext.Provider>;
+export function KnowledgeInlineProvider({ documentId, revision, onRelink, resolveWiki, children }: { documentId: string; revision: number; onRelink?: (reference: string) => void; resolveWiki?:WikiResolver; children: ReactNode }) {
+  return <KnowledgeInlineContext.Provider value={{ documentId, revision, onRelink, resolveWiki }}>{children}</KnowledgeInlineContext.Provider>;
 }
 
 function fileSize(value?: number) {
@@ -91,10 +92,14 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 }
 
 export function WikiInline({ text, onOpenLink }: { text: string; onOpenLink: (title: string) => void }) {
+  const {resolveWiki}=useContext(KnowledgeInlineContext);
   return <>{markdownInlineTokens(text).map((part, index) => {
     if (part.type === "code") return <code key={index}>{part.text}</code>;
     if (part.type === "bold") return <strong key={index}>{part.text}</strong>;
-    if (part.type === "wiki") return <button key={index} className="wiki-link" type="button" onClick={() => onOpenLink(part.target!)}>{part.text}</button>;
+    if (part.type === "wiki") {
+      if(resolveWiki){const resolved=resolveWiki(part.target!);return resolved.href?<a key={index} className="wiki-link" href={resolved.href}>{resolved.label}</a>:<span key={index} className="kw-muted-link">{resolved.label}</span>;}
+      return <button key={index} className="wiki-link" type="button" onClick={() => onOpenLink(part.target!)}>{part.text}</button>;
+    }
     if (part.type === "image") {
       const attachment = parseKnowledgeAttachmentTarget(part.target!);
       return attachment ? <KnowledgeAttachment key={`${index}:${part.target}`} reference={attachment} /> : <MarkdownImage key={`${index}:${part.target}`} src={part.target!} alt={part.text} />;

@@ -30,6 +30,16 @@ export interface KnowledgeDocument {
   current_version: number;
   created_at: string;
   updated_at: string;
+  category_id?: string | null;
+  work_state?: "todo" | "doing" | "done";
+  due_on?: string | null;
+  daily_on?: string | null;
+  review_due_on?: string | null;
+  archived_at?: string | null;
+  archived_by?: string | null;
+  archived_from_status?: DocumentStatus | null;
+  retention_hold?: boolean;
+  meeting_record_id?: string | null;
 }
 
 export interface DocumentVersion {
@@ -99,6 +109,7 @@ export interface SessionProfile {
   mustChangePassword: boolean;
   isActive?: boolean;
   financeAccess?: boolean;
+  memberKind?: "staff" | "partner";
 }
 
 export interface ApiErrorBody {

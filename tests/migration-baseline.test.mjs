@@ -17,10 +17,15 @@ test("the active chain records production assets and knowledge image links with 
   assert.equal(result.decision, "apply");
   assert.equal(result.integrityValid, true);
   assert.equal(result.readyToApply, false);
-  assert.deepEqual(result.pendingApprovalMigrations, ["20260922003000_telegram_team_workflow.sql", "20260930234912_content_production_assets.sql", "20261001060319_knowledge_asset_links.sql", "20261002152810_connection_check_evidence.sql", "20261002193500_agent_document_write_status_policy.sql", "20261002202443_personal_work_notifications.sql", "20261003044602_final_os_channel_connections.sql", "20261003054936_channel_publication_guards_and_comments.sql", "20261003122206_knowledge_page_tree.sql", "20261003143000_document_approval_assignments.sql", "20261003151000_document_change_proposals.sql", "20261003162000_appeal_candidate_comments.sql", "20261003174000_shared_agent_accounts.sql", "20261003183000_document_steward.sql", "20261003190000_audit_version_time_index.sql", "20261004040710_canonical_source_workflow.sql", "20261004131203_content_publication_approval_checkpoints.sql", "20261007085710_finance_ledger.sql", "20261008054911_finance_toss_sync.sql", "20261008063500_finance_toss_sync_store_alias.sql", "20261008081909_member_menu_access.sql", "20261008105831_member_menu_access_index.sql"]);
+  assert.deepEqual(result.pendingApprovalMigrations, ["20260922003000_telegram_team_workflow.sql", "20260930234912_content_production_assets.sql", "20261001060319_knowledge_asset_links.sql", "20261002152810_connection_check_evidence.sql", "20261002193500_agent_document_write_status_policy.sql", "20261002202443_personal_work_notifications.sql", "20261003044602_final_os_channel_connections.sql", "20261003054936_channel_publication_guards_and_comments.sql", "20261003122206_knowledge_page_tree.sql", "20261003143000_document_approval_assignments.sql", "20261003151000_document_change_proposals.sql", "20261003162000_appeal_candidate_comments.sql", "20261003174000_shared_agent_accounts.sql", "20261003183000_document_steward.sql", "20261003190000_audit_version_time_index.sql", "20261004040710_canonical_source_workflow.sql", "20261004131203_content_publication_approval_checkpoints.sql", "20261007085710_finance_ledger.sql", "20261008054911_finance_toss_sync.sql", "20261008063500_finance_toss_sync_store_alias.sql", "20261008081909_member_menu_access.sql", "20261008105831_member_menu_access_index.sql", "20261008180414_knowledge_workspace.sql"]);
   assert.equal(result.baselinePresent, true);
-  assert.equal(result.activeMigrationCount, 35);
+  assert.equal(result.activeMigrationCount, 36);
   assert.equal(result.archivedMigrationCount, 14);
+  const workspace = manifest.forwardMigrations.find(entry => entry.file === "20261008180414_knowledge_workspace.sql");
+  assert.equal(workspace.requiresApproval, true);
+  assert.equal(workspace.developmentApprovedAt, null);
+  assert.equal(workspace.productionApprovedAt, null);
+  assert.deepEqual(workspace.appliedEnvironments, []);
   assert.deepEqual(lifecycle.appliedEnvironments, ["development", "production"]);
   assert.equal(lifecycle.requiresApproval, false);
   assert.deepEqual(teamSharing.appliedEnvironments, ["development", "production"]);

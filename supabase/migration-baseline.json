@@ -496,6 +496,15 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-08",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008180414_knowledge_workspace.sql",
+      "sha256": "b33f435e2b2a91dc5e0d38fb071c1a4c7cc8632a3e76267c8c45ba109a418c4f",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Company documents rebuild candidate; not applied. DEV SQL execution and production rollout require separate approval."
     }
   ],
   "legacyMigrations": [

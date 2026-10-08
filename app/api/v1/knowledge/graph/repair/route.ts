@@ -53,12 +53,7 @@ export async function POST(request: Request) {
           });
           results.push({ id: source.id, outcome: "proposal", count: next.count });
         } else {
-          const { data, error } = await actor.supabase.rpc("os_update_document", {
-            p_document_id: source.id, p_expected_version: source.expectedVersion,
-            p_title: current.title, p_content_md: next.content, p_folder: current.folder,
-            p_brand: current.brand, p_team: current.team, p_tags: current.tags,
-            p_reason: "깨진 지식 링크 복구",
-          });
+          const { data, error } = await actor.supabase.rpc("os_knowledge_command", {p:{action:"document.commit",id:source.id,expectedVersion:source.expectedVersion,title:current.title,content:next.content}});
           if (error?.message?.includes("OS_VERSION_CONFLICT")) throw new ApiError(409, "VERSION_CONFLICT", "원본 문서가 먼저 수정됐습니다.");
           if (error || !data) throw new ApiError(403, "LINK_REPAIR_DENIED", "이 문서의 링크를 수정할 권한이 없습니다.");
           try { await indexDocument(source.id); } catch { /* Saved content remains valid; indexing retries separately. */ }

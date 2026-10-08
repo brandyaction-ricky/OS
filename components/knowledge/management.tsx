@@ -1,0 +1,45 @@
+"use client";
+import { DocumentActionDialog } from "./editor";
+import {NoteAuditAccess} from "./note-audit-access";
+import { useState } from "react";
+import { useKnowledge } from "./provider";
+import { Header, Card, Empty, Modal, NewDocumentButton, SpaceBadge } from "./ui";
+import { daysLeft, documentSpace, kstTime, type Template } from "@/lib/knowledge/model";
+import type { KnowledgeDocument } from "@/lib/types";
+
+export function KnowledgeTemplates() {
+  const {state,actor,command,notify}=useKnowledge();
+  const [scope,setScope]=useState<"company"|"personal">("company"),[editing,setEditing]=useState<Partial<Template>|null>(null);
+  const [error,setError]=useState(""),[busy,setBusy]=useState(false);
+  const editable=scope==="personal"||actor.role==="admin";
+  async function save() {
+    if(!editing) return;
+    setBusy(true);setError("");
+    try { await command({action:"template.save",id:editing.id?.startsWith("default-")?undefined:editing.id,name:editing.name,description:editing.description,content:editing.body_md,defaultKey:editing.id?.startsWith("default-")?editing.id:editing.default_key,scope,defaultSpace:editing.default_space,kind:editing.kind});setEditing(null);notify("템플릿을 저장했습니다"); }
+    catch(e){setError((e as Error).message);}finally{setBusy(false);}
+  }
+  return <><Header title="템플릿" description="반복하는 기록은 틀에서 시작하세요. 템플릿을 골라도 문서를 만들 공간은 직접 선택합니다.">{editable&&<button className="kw-primary" onClick={()=>setEditing({name:"",body_md:"",description:"",default_space:"mine",kind:"doc"})}>템플릿 추가</button>}</Header>
+    <div className="kw-filter-row"><button aria-pressed={scope==="company"} onClick={()=>setScope("company")}>회사 템플릿</button><button aria-pressed={scope==="personal"} onClick={()=>setScope("personal")}>내 템플릿</button></div>
+    <div className="kw-gallery">{state.templates.filter(t=>t.scope===scope).map(t=><article className="kw-card" key={t.id}><h2>{t.name}</h2><small>{t.kind==="meeting"?"회의록":t.kind==="candidate"?"정본 후보용":"문서"}</small><p className="kw-template-body">{t.description||t.body_md.slice(0,160)}</p><div className="kw-actions"><NewDocumentButton space={t.default_space} template={t} label="이 템플릿 사용"/>{editable&&<button onClick={()=>setEditing(t)}>편집</button>}{editable&&<button onClick={()=>setEditing({...t,archived_at:"confirm"})}>삭제</button>}</div></article>)}</div>
+    {!state.templates.some(t=>t.scope===scope)&&<Empty>아직 템플릿이 없습니다</Empty>}
+    {editing&&<Modal title={editing.archived_at?"템플릿 삭제":"템플릿 편집"} onClose={()=>setEditing(null)} busy={busy}>{editing.archived_at?<div className="kw-modal-body"><p>템플릿을 삭제해도 이미 작성한 문서는 유지됩니다.</p><footer><button onClick={()=>setEditing(null)}>취소</button><button className="kw-danger" disabled={busy} onClick={()=>{setBusy(true);void command(editing.id?.startsWith("default-")?{action:"template.save",defaultKey:editing.id,name:editing.name,content:editing.body_md,scope:"company",defaultSpace:editing.default_space,kind:editing.kind,archived:true}:{action:"template.archive",id:editing.id}).then(()=>setEditing(null)).catch(e=>setError(e.message)).finally(()=>setBusy(false));}}>삭제</button></footer>{error&&<p role="alert">{error}</p>}</div>:<form onSubmit={e=>{e.preventDefault();void save();}}><label>이름<input required maxLength={40} value={editing.name??""} onChange={e=>setEditing({...editing,name:e.target.value})}/></label><label>설명<input value={editing.description??""} onChange={e=>setEditing({...editing,description:e.target.value})}/></label><label>기본 공간<select value={editing.default_space??"mine"} onChange={e=>setEditing({...editing,default_space:e.target.value as Template["default_space"],kind:e.target.value==="meeting"?"meeting":"doc"})}><option value="mine">내 노트</option><option value="team">팀 문서</option><option value="meeting">회의록</option></select></label><label>내용 (Markdown)<textarea rows={12} value={editing.body_md??""} onChange={e=>setEditing({...editing,body_md:e.target.value})}/></label>{editing.id?.startsWith("default-")&&<small>이 기본 회사 템플릿을 수정합니다. 다른 기본 템플릿은 그대로 유지됩니다.</small>}{error&&<p className="kw-error" role="alert">{error}</p>}<footer><button type="button" onClick={()=>setEditing(null)}>취소</button><button className="kw-primary" disabled={busy}>저장</button></footer></form>}</Modal>}
+  </>;
+}
+export function KnowledgeTrash() {
+  const {state,actor,command,notify}=useKnowledge();
+  const [restore,setRestore]=useState<KnowledgeDocument|null>(null);
+  const [space,setSpace]=useState("all"),[q,setQ]=useState(""),[page,setPage]=useState(0),[purge,setPurge]=useState<KnowledgeDocument|null>(null);
+  const [reason,setReason]=useState(""),[confirmed,setConfirmed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const rows=state.documents.filter(d=>d.status==="archived"&&(space==="all"||documentSpace(d)===space)&&d.title.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.archived_at??"").localeCompare(a.archived_at??""));
+  async function remove(){if(!purge)return;setBusy(true);try{await command({action:"trash.purge",id:purge.id,reason,confirm:confirmed});setPurge(null);notify("문서를 영구 삭제했습니다. 이 작업은 되돌릴 수 없습니다.");}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
+  return <><Header title="휴지통" description="삭제한 문서를 복원할 수 있습니다. 정본과 보존 문서는 자동 삭제 대상이 아닙니다."/><div className="kw-toolbar"><input aria-label="휴지통 검색" placeholder="문서 제목 검색" value={q} onChange={e=>{setQ(e.target.value);setPage(0);}}/><select aria-label="원래 공간" value={space} onChange={e=>{setSpace(e.target.value);setPage(0);}}><option value="all">전체 공간</option><option value="mine">내 노트</option><option value="team">팀 문서</option><option value="canon">회사 정본</option></select><small>{rows.length}개</small></div>
+    <div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>문서</th><th>원래 공간</th><th>삭제한 시각</th><th>보관 상태</th><th>작업</th></tr></thead><tbody>{rows.slice(page*50,(page+1)*50).map(d=><tr key={d.id}><td>{d.title}</td><td><SpaceBadge space={documentSpace(d)}/></td><td>{d.archived_at?kstTime(d.archived_at):"이전 기록 · 시각 미확인"}</td><td>{d.retention_hold?"보존":daysLeft(d)===null?"자동 삭제 제외":`보관 ${daysLeft(d)}일 남음 · 자동 실행 꺼짐`}</td><td><div className="kw-actions">{d.archived_from_status==="canonical"?<button disabled={actor.role!=="admin"} onClick={()=>setRestore(d)}>정본 복원 요청</button>:<button onClick={()=>void command({action:"trash.restore",id:d.id}).then(()=>notify("원래 공간으로 복원했습니다")).catch(e=>notify(e.message))}>복원</button>}{actor.role==="admin"&&!d.retention_hold&&d.archived_from_status!=="canonical"&&<button className="kw-danger" onClick={()=>{setPurge(d);setReason("");setConfirmed(false);setError("");}}>영구 삭제</button>}</div></td></tr>)}</tbody></table>{!rows.length&&<Empty>휴지통이 비었습니다</Empty>}</div><div className="kw-toolbar"><button disabled={!page} onClick={()=>setPage(page-1)}>이전</button><small>{page+1} / {Math.max(1,Math.ceil(rows.length/50))}</small><button disabled={(page+1)*50>=rows.length} onClick={()=>setPage(page+1)}>다음</button></div>
+    {restore&&<DocumentActionDialog kind="restore" document={restore} close={()=>setRestore(null)} onInsert={()=>{}}/>}{purge&&<Modal title="문서 영구 삭제" onClose={()=>setPurge(null)} busy={busy}><form onSubmit={e=>{e.preventDefault();void remove();}}><p>{purge.title}의 본문·버전·임시 저장을 삭제합니다. 복원할 수 없습니다.</p><label>삭제 사유<textarea required value={reason} maxLength={500} onChange={e=>setReason(e.target.value)}/></label><label className="kw-actions"><input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>복원할 수 없음을 확인했습니다</label>{error&&<p className="kw-error" role="alert">{error}</p>}<footer><button type="button" onClick={()=>setPurge(null)}>취소</button><button className="kw-danger" disabled={busy||!reason.trim()||!confirmed}>영구 삭제</button></footer></form></Modal>}
+  </>;
+}
+export function KnowledgeActivity() {
+  const {state}=useKnowledge(),[action,setAction]=useState(""),[q,setQ]=useState("");
+  const rows=state.events.filter(e=>(!action||e.action===action)&&(!q||e.action.includes(q)));
+  function csv(){const fields=[["시각","동작","유형"],...rows.map(e=>[e.created_at,e.action,e.target_type])];const blob=new Blob(["\ufeff"+fields.map(row=>row.map(value=>'"'+value.replaceAll('"','""')+'"').join(",")).join("\r\n")],{type:"text/csv;charset=utf-8"});const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="knowledge-activity.csv";a.click();URL.revokeObjectURL(url);}
+  return <><Header title="문서 활동 기록" description="권한에 맞는 기록만 표시합니다. 다른 설정 메뉴에는 영향을 주지 않습니다."><NoteAuditAccess/><button onClick={csv}>CSV 내보내기</button></Header><div className="kw-toolbar"><input aria-label="기록 검색" placeholder="동작 검색" value={q} onChange={e=>setQ(e.target.value)}/><select aria-label="기록 동작" value={action} onChange={e=>setAction(e.target.value)}><option value="">모든 동작</option>{[...new Set(state.events.map(e=>e.action))].map(a=><option key={a}>{a}</option>)}</select><small>최근 최대 500건</small></div><Card title="활동">{rows.map(e=><div className="kw-activity-row" key={e.id}><strong>{e.action}</strong><small>{kstTime(e.created_at)}</small></div>)}{!rows.length&&<Empty>표시할 활동이 없습니다</Empty>}</Card></>;
+}

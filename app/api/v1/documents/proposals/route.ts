@@ -89,6 +89,7 @@ export async function POST(request: Request) {
       throw new ApiError(404, "PROPOSAL_NOT_FOUND", "변경 제안을 열 수 없습니다.");
     }
     if (input.action === "comment") {
+      if(proposal.status!=="open") throw new ApiError(409,"PROPOSAL_NOT_OPEN","이미 처리된 제안에는 댓글을 추가할 수 없습니다.");
       const lines = proposal.content_md.split("\n").length;
       if (input.lineNo > lines) throw new ApiError(400, "PROPOSAL_LINE_INVALID", "댓글을 달 줄을 다시 선택해 주세요.");
       const { data, error: commentError } = await service.from("os_document_proposal_comments")
@@ -112,10 +113,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ proposal: { ...proposal, status: "approved", reviewer_id: actor.id }, document: data });
     }
     const status = input.action === "return" ? "returned" : "withdrawn";
-    const { data, error: updateError } = await service.from("os_document_proposals")
-      .update({ status, reviewer_id: input.action === "return" ? actor.id : null,
-        decided_at: new Date().toISOString(), note: input.action === "return" ? input.note : "", updated_at: new Date().toISOString() })
-      .eq("id", proposal.id).eq("status", "open").select("*").maybeSingle();
+    const result = await actor.supabase.rpc("os_knowledge_command",{p:{action:"proposal.decide",id:proposal.id,decision:status,reason:input.action==="return"?input.note:""}});
+    if(result.error)throw proposalError(result.error);
+    const { data, error: updateError } = await service.from("os_document_proposals").select("*").eq("id", proposal.id).maybeSingle();
     if (updateError) throw proposalError(updateError);
     if (!data) throw new ApiError(409, "PROPOSAL_NOT_OPEN", "이미 처리된 변경 제안입니다.");
     return NextResponse.json({ proposal: data });
