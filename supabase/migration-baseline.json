@@ -486,7 +486,8 @@
       "sha256": "5eda6e5d99c40ce90740185aa69ea092305c1f0e5267d3cedaf73cb9e8212b79",
       "purpose": "add per-account navigation preferences with self/admin reads and admin-only server writes; existing data permissions remain unchanged",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-08",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [

@@ -18,7 +18,9 @@ test("seven YouTube steps keep content selection; comments have a separate group
   await page.goto("/content/comments");
   await expect(page.locator(".breadcrumbs")).toContainText("콘텐츠 자동화");
   await expect(page.getByRole("navigation", { name: "콘텐츠 공정 순서" })).toHaveCount(0);
-  await expect(page.locator('a[href^="/automation/"]')).toHaveCount(8);
+  // The collapsed-group shortcut also points at the first allowed menu.
+  // Count the actual menu entries, not the hidden shortcut.
+  await expect(page.locator('#nav-automation a.page-link[href^="/automation/"]')).toHaveCount(8);
   await expect(page.locator(".external-app-link")).toHaveCount(0);
   await page.getByRole("link", { name: "대시보드", exact: true }).click();
   await expect(page).toHaveURL(/\/automation\/dashboard$/);
