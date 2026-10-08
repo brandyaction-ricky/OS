@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { date, won } from "../schema";
@@ -32,6 +33,11 @@ function config(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv){
   if((mode==="live"&&env.VERCEL_ENV!=="production")||(mode==="test"&&env.VERCEL_ENV==="production"))throw new ApiError(409,"TOSS_ENVIRONMENT_BLOCKED","라이브 키는 운영 서버에서만 사용할 수 있습니다. 개발·미리보기에는 테스트 키를 사용해 주세요.");
   return {mode:mode as "test"|"live",key,mid};
 }
+/** Server-only binding: never return this or the merchant identifier to the browser. */
+export function tossSyncIdentity(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=process.env){
+  const {mode,mid}=config(biz,env);
+  return {mode,binding:createHash("sha256").update(JSON.stringify([biz,mode,mid])).digest("hex")};
+}
 /** Configuration only: this does not claim that upstream authentication succeeded. */
 export function tossConnection(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=process.env){
   try {const {mode}=config(biz,env);return {biz,mode,configured:true,verified:false,readOnly:true,message:"서버 설정 완료 · 실제 조회 확인 전"};}
@@ -43,7 +49,7 @@ function range(from:string,to:string){
   if(days<0||days>30)throw new ApiError(400,"TOSS_DATE_RANGE","조회 기간은 시작일 이후 최대 31일로 설정해 주세요.");
 }
 function invalid():never {throw new ApiError(502,"TOSS_INVALID_RESPONSE","토스 조회 결과를 검증하지 못했습니다. 자료를 저장하지 않았습니다.");}
-export function tossProvider(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=process.env,fetcher:typeof fetch=fetch){
+export function tossProvider(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=process.env,fetcher:typeof fetch=fetch,signal?:AbortSignal){
   const {key,mid}=config(biz,env);
   const merchant=(value:unknown)=>{
     const result=z.object({mId:z.string().min(1).max(14)}).safeParse(value);
@@ -54,7 +60,8 @@ export function tossProvider(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=pr
   // Intentionally GET-only: no caller can choose a mutation method or upstream URL.
   const call=async(path:string):Promise<unknown>=>{
     try{
-      const response=await fetcher(`https://api.tosspayments.com/v1/${path}`,{method:"GET",headers:{Authorization:`Basic ${Buffer.from(key+":").toString("base64")}`,Accept:"application/json"},cache:"no-store",signal:AbortSignal.timeout(65000),redirect:"error"});
+      const timeout=AbortSignal.timeout(65000);
+      const response=await fetcher(`https://api.tosspayments.com/v1/${path}`,{method:"GET",headers:{Authorization:`Basic ${Buffer.from(key+":").toString("base64")}`,Accept:"application/json"},cache:"no-store",signal:signal?AbortSignal.any([signal,timeout]):timeout,redirect:"error"});
       if(!response.ok){
         await response.body?.cancel();
         if(response.status===429)throw new ApiError(429,"TOSS_RATE_LIMITED","토스 조회 요청이 많습니다. 잠시 후 다시 시도해 주세요.");
@@ -76,13 +83,13 @@ export function tossProvider(biz:keyof typeof TOSS_KEYS,env:NodeJS.ProcessEnv=pr
       if(row.payment_key!==paymentKey)invalid();
       return row;
     },
-    async transactions(from:string,to:string,cursor?:string){
-      range(from,to);if(cursor!==undefined)identifier.parse(cursor);
-      const q=new URLSearchParams({startDate:`${from}T00:00:00`,endDate:`${to}T23:59:59`,limit:String(TOSS_PAGE_SIZE)});if(cursor)q.set("startingAfter",cursor);
+    async transactions(from:string,to:string,cursor?:string,pageSize=TOSS_PAGE_SIZE){
+      range(from,to);if(cursor!==undefined)identifier.parse(cursor);z.number().int().min(1).max(TOSS_PAGE_SIZE).parse(pageSize);
+      const q=new URLSearchParams({startDate:`${from}T00:00:00`,endDate:`${to}T23:59:59`,limit:String(pageSize)});if(cursor)q.set("startingAfter",cursor);
       const raw=await call(`transactions?${q}`);
-      const rows=validated(()=>z.array(z.unknown()).max(TOSS_PAGE_SIZE).parse(raw).map(value=>{merchant(value);const t=transaction.parse(value);return {transaction_key:t.transactionKey,payment_key:t.paymentKey,order_id:t.orderId,method:t.method,status:t.status,transaction_at:t.transactionAt,amount:t.amount};}));
+      const rows=validated(()=>z.array(z.unknown()).max(pageSize).parse(raw).map(value=>{merchant(value);const t=transaction.parse(value);return {transaction_key:t.transactionKey,payment_key:t.paymentKey,order_id:t.orderId,method:t.method,status:t.status,transaction_at:t.transactionAt,amount:t.amount};}));
       if(rows.some(row=>row.transaction_key===cursor)||new Set(rows.map(row=>row.transaction_key)).size!==rows.length)invalid();
-      return {rows,keys:[...new Set(rows.map(x=>x.payment_key))],next:rows.length===TOSS_PAGE_SIZE?rows.at(-1)!.transaction_key:null};
+      return {rows,keys:[...new Set(rows.map(x=>x.payment_key))],next:rows.length===pageSize?rows.at(-1)!.transaction_key:null};
     },
     async settlements(from:string,to:string,page=1){
       range(from,to);z.number().int().min(1).max(10000).parse(page);

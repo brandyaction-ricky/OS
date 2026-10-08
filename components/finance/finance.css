@@ -2043,3 +2043,23 @@
     padding-top: 16px;
   }
 }
+.finance-toss-sync { margin-bottom: 16px; overflow: hidden; }
+.finance-toss-sync .panel-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+.finance-toss-sync h2 { margin: 0; font-size: 14px; }
+.finance-sync-mode { font-size: 12px; color: var(--muted, #626675); }
+.finance-sync-body { padding: 16px; display: grid; gap: 12px; }
+.finance-sync-body p { margin: 0; font-size: 13px; line-height: 1.6; }
+.finance-sync-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+.finance-sync-form label { display: grid; gap: 6px; font-size: 12px; }
+.finance-sync-form input[type="date"] { min-height: 36px; padding: 6px 8px; border: 1px solid var(--line, #dddfe7); border-radius: 6px; background: var(--panel, white); color: var(--text, #23252d); }
+.finance-sync-form .finance-sync-confirm { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.finance-sync-progress { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border, #dddfe7); border-radius: 8px; font-size: 13px; }
+.finance-sync-progress small,.finance-sync-note { color: var(--muted, #626675); }
+.finance-sync-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.finance-sync-warning { color: #9b4411; }
+@media (max-width: 600px) {
+  .finance-sync-form { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .finance-sync-form input { min-width: 0; width: 100%; }
+  .finance-sync-form input[type="checkbox"] { width: auto; }
+  .finance-sync-form .finance-sync-confirm,.finance-sync-form button { grid-column: 1/-1; }
+}

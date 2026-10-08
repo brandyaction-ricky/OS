@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import * as crypto from "node:crypto";
 import ts from "typescript";
 import * as zod from "zod";
 import * as React from "react";
@@ -12,7 +13,7 @@ class ApiError extends Error {constructor(status,code,message){super(message);Ob
 function load(file,imports={},env={}){
   const compiled={exports:{}};
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL(`../${file}`,import.meta.url),"utf8"),{fileName:file,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
-    module:compiled,exports:compiled.exports,require(name){if(name==="server-only")return {};if(name==="zod")return zod;if(name==="@/lib/http")return {ApiError};if(name in imports)return imports[name];throw new Error(`Unmocked import: ${name}`);},
+    module:compiled,exports:compiled.exports,require(name){if(name==="server-only")return {};if(name==="node:crypto")return crypto;if(name==="zod")return zod;if(name==="@/lib/http")return {ApiError};if(name in imports)return imports[name];throw new Error(`Unmocked import: ${name}`);},
     Buffer,AbortSignal,Response,URL,URLSearchParams,Date,process:{env},fetch:()=>{throw new Error("Real network is forbidden in tests");},
   });
   return compiled.exports;
