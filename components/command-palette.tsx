@@ -8,7 +8,7 @@ import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useSession } from "./session-provider";
 
-export function CommandPalette({ open, onClose, allowedMenus = null }: { open: boolean; onClose: () => void; allowedMenus?: string[] | null }) {
+export function CommandPalette({ open, onClose, allowedMenus = null, hrEnabled = false }: { open: boolean; onClose: () => void; allowedMenus?: string[] | null; hrEnabled?: boolean }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -16,7 +16,7 @@ export function CommandPalette({ open, onClose, allowedMenus = null }: { open: b
   const { profile } = useSession();
   const financeAccess = canAccessFinance(profile);
 
-  const matches = useMemo(() => searchNavigation(query, financeAccess, href => canOpenMenu(profile, href, allowedMenus)), [query, financeAccess, profile, allowedMenus]);
+  const matches = useMemo(() => searchNavigation(query, financeAccess, href => canOpenMenu(profile, href, allowedMenus), hrEnabled), [query, financeAccess, profile, allowedMenus, hrEnabled]);
   const knowledgeSearch = canOpenMenu(profile, "/knowledge/search", allowedMenus);
 
   useEffect(() => {

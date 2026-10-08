@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getMenuAccess, saveMenuAccess, type OsMember } from "@/lib/api-client";
 import { roleLabel } from "@/lib/company-settings";
 import { availableMenuGroups, canOpenMenu, type MenuAccessPolicy } from "@/lib/menu-access";
+import { useHrEnabled } from "./hr/feature-context";
 import { NAV_STAGES } from "@/lib/navigation";
 
 const DEMO_STORAGE = "brandy-os-demo-menu-access-v1";
@@ -20,6 +21,7 @@ function memberProfile(member: OsMember) {
 }
 
 export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: OsMember[]; token: string | null; demo: boolean; isAdmin: boolean }) {
+  const hrEnabled = useHrEnabled();
   const [policies, setPolicies] = useState<MenuAccessPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
@@ -59,7 +61,7 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
   const open = (member: OsMember, button: HTMLButtonElement) => {
     trigger.current = button;
     const policy = policies.find(item => item.member_id === member.id);
-    const eligibleMenus = availableMenuGroups(memberProfile(member)).flatMap(stage => stage.pages.map(page => page.href));
+    const eligibleMenus = availableMenuGroups(memberProfile(member), hrEnabled).flatMap(stage => stage.pages.map(page => page.href));
     setMode(policy?.allowed_menus ? "custom" : "default");
     setAllowed(policy?.allowed_menus?.filter(href => eligibleMenus.includes(href)) ?? eligibleMenus);
     setVersion(policy?.version ?? 0);
@@ -106,7 +108,7 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
         <div className="account-menu-row account-menu-columns" role="row"><span role="columnheader">계정</span><span role="columnheader">역할 / 팀</span><span role="columnheader">메뉴 권한</span><span role="columnheader">설정</span></div>
         {accounts.map(member => {
           const policy = policies.find(item => item.member_id === member.id);
-          const count = availableMenuGroups(memberProfile(member)).flatMap(stage => stage.pages).filter(page => canOpenMenu(memberProfile(member), page.href, policy?.allowed_menus ?? null)).length;
+          const count = availableMenuGroups(memberProfile(member), hrEnabled).flatMap(stage => stage.pages).filter(page => canOpenMenu(memberProfile(member), page.href, policy?.allowed_menus ?? null)).length;
           return <div className="account-menu-row" role="row" key={member.id}>
             <span role="cell"><strong>{member.display_name || member.email.split("@")[0]}</strong><small>{member.email}</small></span>
             <span role="cell"><em>{roleLabel(member.role)}</em><small>{member.team || "팀 미지정"}</small></span>
@@ -125,10 +127,11 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
   member: OsMember; allowed: string[]; mode: "default" | "custom"; saving: boolean; ready: boolean; error: string;
   onMode: (mode: "default" | "custom") => void; onAllowed: (menus: string[]) => void; onSave: () => void; onClose: () => void;
 }) {
+  const hrEnabled = useHrEnabled();
   const dialog = useRef<HTMLElement>(null);
   const isAdmin = member.role === "admin";
-  const eligibleGroups = availableMenuGroups(memberProfile(member));
-  const selected = mode === "default" || isAdmin ? eligibleGroups.flatMap(stage => stage.pages.map(page => page.href)) : allowed;
+  const eligibleGroups = availableMenuGroups(memberProfile(member), hrEnabled);
+  const selected = mode === "default" || isAdmin ? eligibleGroups.flatMap(stage => stage.pages.map(page => page.href)) : [...new Set([...allowed, ...(hrEnabled ? ["/hr/my-leave"] : [])])];
   const disabled = saving || isAdmin || mode === "default" || !ready;
 
   useEffect(() => {
@@ -156,15 +159,15 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
         <p id="menu-access-description">선택한 메뉴만 사이드바와 화면에서 사용할 수 있습니다. 내 할 일과 내 계정은 항상 사용할 수 있습니다.</p>
         {isAdmin ? <p className="menu-access-info"><ShieldCheck size={17} />관리자는 모든 메뉴를 사용합니다. 관리 기능에 접근할 수 있도록 메뉴 제한을 적용하지 않습니다.</p> : <fieldset className="menu-access-mode" disabled={saving || !ready}><legend>설정 방식</legend><label><input type="radio" name="menu-access-mode" checked={mode === "default"} onChange={() => onMode("default")} />기본 권한 사용<small>역할·민감자료 권한에 맞는 메뉴 전체</small></label><label><input type="radio" name="menu-access-mode" checked={mode === "custom"} onChange={() => onMode("custom")} />메뉴 직접 선택<small>이 계정에 필요한 메뉴만 허용</small></label></fieldset>}
         <div className="menu-access-groups">
-          {NAV_STAGES.filter(group => group.pages.length).map(group => {
+          {NAV_STAGES.filter(group => group.pages.length && (!group.requiresHr || hrEnabled)).map(group => group.requiresHr ? { ...group, pages: group.pages.filter(page => canOpenMenu(memberProfile(member), page.href)) } : group).map(group => {
             const hrefs = group.pages.map(page => page.href);
             const financeLocked = Boolean(group.requiresFinance && !member.finance_access && !isAdmin);
             const groupDisabled = disabled || financeLocked;
             const count = hrefs.filter(href => selected.includes(href)).length;
             return <fieldset key={group.id} disabled={groupDisabled} className={`menu-access-group${financeLocked ? " menu-access-group-locked" : ""}`} aria-describedby={financeLocked ? "menu-access-finance-help" : undefined}>
               <legend>{group.id === "content" ? "유튜브 공정" : group.label}<span>{count}/{hrefs.length}</span>{financeLocked ? <small className="menu-access-lock-badge"><LockKeyhole size={12} aria-hidden="true" />권한 필요</small> : null}</legend>
-              <label className="menu-access-group-toggle"><input type="checkbox" checked={count === hrefs.length} ref={input => { if (input) input.indeterminate = count > 0 && count < hrefs.length; }} onChange={event => toggleGroup(hrefs, event.target.checked)} disabled={groupDisabled || group.id === "home"} />그룹 전체 선택</label>
-              <div>{group.pages.map(page => <label key={page.href}><input type="checkbox" checked={selected.includes(page.href)} disabled={groupDisabled || page.href === "/home"} onChange={event => toggleGroup([page.href], event.target.checked)} />{page.label}{page.href === "/home" ? <small>항상 허용</small> : null}</label>)}</div>
+              <label className="menu-access-group-toggle"><input type="checkbox" checked={count === hrefs.length} ref={input => { if (input) input.indeterminate = count > 0 && count < hrefs.length; }} onChange={event => toggleGroup(hrefs, event.target.checked)} disabled={groupDisabled || group.id === "home" || (group.requiresHr && hrefs.length === 1)} />그룹 전체 선택</label>
+              <div>{group.pages.map(page => <label key={page.href}><input type="checkbox" checked={selected.includes(page.href)} disabled={groupDisabled || page.href === "/home" || page.href === "/hr/my-leave"} onChange={event => toggleGroup([page.href], event.target.checked)} />{page.label}{page.href === "/home" || page.href === "/hr/my-leave" ? <small>항상 허용</small> : null}</label>)}</div>
               {financeLocked ? <p id="menu-access-finance-help" className="menu-access-group-help">재무관리 메뉴를 선택하려면 팀원에서 이 계정의 ‘경영지원 민감정보 접근’을 먼저 허용해 주세요. 메뉴 선택만으로 재무자료 접근 권한이 부여되지는 않습니다.<Link href="/organization/members" onClick={onClose}>구성원 권한 관리 →</Link></p> : null}
             </fieldset>;
           })}

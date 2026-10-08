@@ -21,12 +21,14 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   const page = findPage(href);
   const canonical = page.navHref ?? page.href;
   if (profile.role === "admin") return true;
+  if (canonical === "/hr/my-leave") return true;
+  if (canonical.startsWith("/hr/") && !profile.financeAccess) return false;
   if (canonical.startsWith("/finance/") && !profile.financeAccess) return false;
   return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical);
 }
 
-export function availableMenuGroups(profile: MenuAccessProfile) {
-  return NAV_STAGES.map(stage => ({ ...stage, pages: stage.pages.filter(page => canOpenMenu(profile, page.href)) }));
+export function availableMenuGroups(profile: MenuAccessProfile, hrEnabled = false) {
+  return NAV_STAGES.filter(stage => !stage.requiresHr || hrEnabled).map(stage => ({ ...stage, pages: stage.pages.filter(page => canOpenMenu(profile, page.href)) }));
 }
 
 export function isMissingMenuAccessTable(error: { code?: string; message?: string } | null) {

@@ -31,7 +31,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.length, 8);
+  assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 8);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
   assert.equal(findStage("/content/comments").id, "automation");
   assert.equal(findPage("/content/comments").processNumber, undefined);
@@ -54,7 +54,7 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('navigation adds seven finance menus without changing the 31 existing menus',()=>{
-  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,9,3,4,7,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,3,4,7,3,4]);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);
@@ -72,4 +72,13 @@ test('ten approved retired menus get a data-preserved redirect',()=>{
   }
   assert.equal(retiredRoute('/organization/tasks'),null);
   assert.equal(retiredRoute('/performance/ads-other'),null);
+});
+
+test('HR navigation is additive and hidden unless rollout is enabled',()=>{
+ const stage=NAV_STAGES.find(s=>s.id==='hr');assert.equal(stage.requiresHr,true);assert.equal(stage.pages.length,5);
+ assert.equal(searchNavigation('인사',true).length,0);
+ assert.equal(searchNavigation('인사',true,()=>true,true).length,5);
+ assert.equal(findStage('/hr/employees/person').id,'hr');
+ assert.equal(findPage('/hr/my-leave').label,'내 휴가·연차');
+ assert.ok(NAV_STAGES.find(s=>s.id==='team').pages.some(p=>p.href==='/organization/members'));
 });

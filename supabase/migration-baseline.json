@@ -496,6 +496,13 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-08",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008180150_hr_labor.sql",
+      "sha256": "f20c5b3ed7ea925d2695b5f8340c2abdf9e24380fc33e71249e00d227465ae21",
+      "purpose": "add isolated HR people, leave ledger, document retention and audited commands",
+      "requiresApproval": true,
+      "appliedEnvironments": []
     }
   ],
   "legacyMigrations": [

@@ -32,6 +32,7 @@ import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
 import { ServerConnectionStatus } from "./server-connection-status";
+import { useHrShell } from "./hr/use-hr-shell";
 import { CommandPalette } from "./command-palette";
 import { DevelopmentRequestNotifications } from "./development-request-notifications";
 import {MovedMenuNotice} from "./moved-menu-notice";
@@ -49,7 +50,8 @@ function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, hrEnabled = false }: { children: React.ReactNode; hrEnabled?: boolean }) {
+  // The server owns the rollout flag; no environment values are read in the browser.
   const pathname = usePathname();
   const params = useSearchParams();
   const navigationPath = `${pathname}?${params.toString()}`;
@@ -57,8 +59,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const page = useMemo(() => findPage(navigationPath), [navigationPath]);
   const screen = fullscreenScreen(pathname, params.get("tab"));
   const { profile, accessToken, loading, demo, signOut } = useSession();
+  const hrShell = useHrShell(hrEnabled);
   const menuAccess = useMenuAccess(profile, accessToken, demo, navigationPath);
-  const visibleStages = NAV_STAGES.map(item => ({ ...item, pages: item.pages.filter(entry => canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
+  const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages.filter(entry => canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -243,6 +246,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (hrShell.blocked) return <div className="boot-screen"><p>퇴사일이 지난 계정은 사용할 수 없습니다.</p><button className="secondary-button" onClick={()=>void signOut()}>로그아웃</button></div>;
+
   if (!demo && profile?.mustChangePassword) {
     return <PasswordChangeForm forced />;
   }
@@ -274,7 +279,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   return <div key={entry.href}>
                     {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
                     <Link href={entry.href} data-ui={selected ? "nav-item-active" : item.id === "home" ? "nav-home" : "nav-item"} className={`page-link${item.id === "home" ? " nav-home" : ""}${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
-                      {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>
+                      {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>{hrShell.badges[entry.href] ? <small aria-label={`${hrShell.badges[entry.href]}건 확인 필요`} style={{marginLeft:"auto",color:"var(--danger)"}}>{hrShell.badges[entry.href]}</small> : null}
                     </Link>
                   </div>;
                 })}
@@ -324,7 +329,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main></ContentWorkProvider>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />
-      <CommandPalette open={paletteOpen} onClose={closePalette} allowedMenus={menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed} />
+      <CommandPalette hrEnabled={hrEnabled} open={paletteOpen} onClose={closePalette} allowedMenus={menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>
   );
