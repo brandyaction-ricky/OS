@@ -1,5 +1,12 @@
 // Stable OS routes, not the standalone prototype's hash-router addresses.
 export const FULLSCREEN_ROUTES = {
+  "/finance/overview": "finance-overview",
+  "/finance/sales": "finance-sales",
+  "/finance/settlements": "finance-settlements",
+  "/finance/bank": "finance-bank",
+  "/finance/cards": "finance-cards",
+  "/finance/recurring": "finance-recurring",
+  "/finance/budget": "finance-budget",
   "/home": "home",
   "/content/topics": "topics",
   "/content/scripts": "scripts",

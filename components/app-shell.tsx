@@ -24,6 +24,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
+import { canAccessFinance } from "@/lib/finance/access";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -253,7 +254,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
         </div>
         <nav className="unified-nav page-nav">
-          {NAV_STAGES.map(item => {
+          {NAV_STAGES.filter(item => !item.requiresFinance || canAccessFinance(profile)).map(item => {
             const Icon = item.icon;
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>

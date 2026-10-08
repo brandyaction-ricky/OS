@@ -31,7 +31,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.length, 7);
+  assert.equal(NAV_STAGES.length, 8);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
   assert.equal(findStage("/content/comments").id, "automation");
   assert.equal(findPage("/content/comments").processNumber, undefined);
@@ -53,8 +53,11 @@ test("command palette finds both new labels and former menu labels", () => {
   }
 });
 
-test('final navigation has exactly 31 internal menus; account is outside them',()=>{
-  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,9,3,4,3,4]);
+test('navigation adds seven finance menus without changing the 31 existing menus',()=>{
+  assert.deepEqual(NAV_STAGES.map(stage=>stage.pages.length),[1,7,9,3,4,7,3,4]);
+  assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
+  assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
+  assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
   assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);

@@ -12,7 +12,10 @@ test("content automation is implemented as internal OS routes", () => {
 });
 
 test("all full-screen routes have explicit styling without changing their URLs", () => {
-  assert.equal(Object.keys(FULLSCREEN_ROUTES).length, 39);
+  assert.equal(Object.keys(FULLSCREEN_ROUTES).length, 46);
+  for (const name of ["overview", "sales", "settlements", "bank", "cards", "recurring", "budget"]) {
+    assert.equal(fullscreenScreen("/finance/" + name), "finance-" + name);
+  }
   assert.equal(fullscreenScreen("/knowledge", "canon"), "canon");
   assert.equal(fullscreenScreen("/knowledge/development", "updates"), "updates");
   assert.equal(fullscreenScreen("/knowledge/development", "history"), "updates");

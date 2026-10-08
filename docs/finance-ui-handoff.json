@@ -1,0 +1,73 @@
+{
+  "task": "재무관리 7개 메뉴 — API 연결 전 UI 구현",
+  "date": "2026-10-07",
+  "branch": "codex/finance-ledger-20261007",
+  "base_commit": "8a54d5e4615f44472fc9fd583cbc11797c9eab0f",
+  "scope": {
+    "menus": ["개요", "매출내역", "정산입금", "통장 내역", "카드지출", "정기 결제", "예산 관리"],
+    "routes": ["/finance/overview", "/finance/sales", "/finance/settlements", "/finance/bank", "/finance/cards", "/finance/recurring", "/finance/budget"],
+    "reference": "사용자가 제공한 v0.6 HTML의 표·차트·필터·상세 패널·모달을 OS 셸 안에 이식",
+    "acceptance": [
+      "독립 작업 브랜치에서 기존 메뉴를 유지하고 재무관리 그룹을 추가",
+      "7개 메뉴의 조회·검색·상세·모의 편집·계산·내보내기 연결",
+      "CSV/XLSX 로컬 파싱, 열 연결, 오류·중복 제외, 새 카드 등록",
+      "활성 관리자 또는 finance_access 권한이 있는 구성원만 메뉴와 화면 노출",
+      "1440px/390px, 라이트/다크, 키보드, 전체 단위 검사와 빌드 확인"
+    ],
+    "excluded": [
+      "실거래 API, 신규 서버 엔드포인트, 데이터베이스 마이그레이션",
+      "실제 환불·계좌 연결·알림 발송·구독 해지",
+      "영구 원장·증빙 파일 저장, 운영 데이터 변경",
+      "main 병합, 원격 push, Preview·운영 배포"
+    ]
+  },
+  "implementation": {
+    "react_host": "components/finance/finance-workspace.tsx",
+    "view_controller_and_mock_model": "lib/finance/workspace.mjs",
+    "styles": "components/finance/finance.css",
+    "file_parser": "lib/finance/import-file.mjs",
+    "import_wizard": "lib/finance/upload-dialog.mjs",
+    "recurring_detection": "lib/finance/recurring.mjs",
+    "permission": "lib/finance/access.ts",
+    "ownership": "React owns the host; the lazy-loaded controller owns its descendants and cleans up events on unmount. Each mount owns isolated in-memory state.",
+    "persistence": "원장·편집·열 연결은 현재 모의 세션 메모리만 사용. 금액 숨김 선호만 localStorage에 저장. 새로고침 또는 재무관리 밖으로 이동하면 모의 변경이 초기화됨.",
+    "identity": "데모 인명·내부 회의 메모를 비식별 예시로 대체. 원본 ZIP·HTML·첨부 문서는 커밋하지 않음.",
+    "dependencies": "CSV는 자체 제한 파서, XLSX는 필요 시 exceljs 4.4.0 로드. 새로 유입되는 uuid 경고를 막기 위해 exceljs의 uuid를 11.1.1로 고정.",
+    "file_limits": "CSV/XLSX 5MB, 5000행, 100열, XLSX 확장 25MB/512항목. 수식·암호화 파일·잘못된 날짜·비정수 원화는 제외 또는 거부."
+  },
+  "verification": {
+    "result": "전체 단위 테스트 580/580 통과(재무 전용 14개), lint 오류 0·기존 경고 1, 타입 검사 및 로컬 빌드 통과",
+    "automated": ["npm test", "npm run lint", "npm run typecheck", "NEXT_PUBLIC_DEMO_MODE=true npm run build", "git diff --check"],
+    "browser_performed": [
+      "7개 메뉴 이동, 개요 링크와 뒤로 가기, 기간 연동",
+      "외부 매출 추가·부가세 자동 계산·합계 반영",
+      "모의 환불 승인 후 상태 변경, 실제 결제·안내 없음 표시",
+      "정산 금액 차이 상세·사유 저장",
+      "통장 CSV 예시 가져오기·중복 재가져오기 차단·이체 묶기",
+      "실제 예시 XLSX: 새 거래 2, 중복 1, 날짜 오류 1 분리 및 새 카드 등록",
+      "카드 수동 분류·완료 상태·기존 분류 규칙 적용",
+      "정기 결제 해지 상태 합계 제외·담당 변경",
+      "예산 직접 실적 15500000→14000000, 순수익 12970576→14470576 및 개요 연동",
+      "금액 숨김 새로고침 유지, 1440px/390px, 테마 전환",
+      "모바일 폼 겹침 제거·버튼 영역 고정, Tab 순환과 Escape 닫기"
+    ],
+    "not_performed": [
+      "운영 계정으로 재무 권한/RLS/서비스 API E2E — 이번 단계는 UI와 로컬 모의 데이터만",
+      "실제 카드사·은행 제공 파일 — 미제공, 합성 예시 CSV/XLSX로 검증",
+      "실거래 취소·발송·계좌 연결 — 사용자 요청상 API 후속 단계",
+      "모든 브라우저·모든 보조기기 — 현재 IAB Chromium 데스크톱/모바일 폭만"
+    ],
+    "known_existing_warning": "publication-settings-panel.tsx의 기존 no-img-element 경고 1건. 재무 UI lint 오류 없음.",
+    "dependency_risk": "저장소 기존 의존성 audit 경고가 남아 있음. 이번 기능과 무관한 전체 의존성 업데이트는 하지 않음."
+  },
+  "next_api_gates": [
+    "금융·개인정보 데이터는 현재 클라이언트 모의 모델에 연결하지 말고 인증된 서버 경계와 기존 금융 RLS를 통해 구현",
+    "실제 카드/통장 파일 양식과 계약별 정산 주기 확인",
+    "요청자와 다른 승인자 규칙을 서버에서 재검증; 멱등성·감사로그·실패 복구 추가",
+    "증빙은 비공개 저장소 및 짧은 서명 URL로 연동",
+    "연구비·세무 처리 정책은 확정 전 모의 기본값을 운영 판단으로 사용하지 않음",
+    "API 작업·원격 공유·병합·운영 배포는 후속 범위 및 승인을 별도로 확인"
+  ],
+  "deployment": "없음 — 로컬 모의 개발 및 로컬 production build만",
+  "os_sync": "보류 — 로컬 환경 이전 중 운영 OS 데이터베이스/API 쓰기 금지 지침 적용"
+}

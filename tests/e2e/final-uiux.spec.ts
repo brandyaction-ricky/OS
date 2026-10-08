@@ -4,7 +4,7 @@ import { RETIRED_ROUTES } from "../../lib/final-routes";
 import { expectNoHorizontalOverflow } from "./horizontal-overflow";
 const pages = [...NAV_STAGES.flatMap(stage => stage.pages), ACCOUNT_PAGE];
 const mobile = new Set(["/home", "/content/publishing", "/content/comments", "/content/performance", "/settings/account"]);
-test("all 36 original routes select the final menu or explain their retirement", async ({ page }) => {
+test("all 36 original routes and seven finance routes select their menu or explain retirement", async ({ page }) => {
   test.setTimeout(90000);
   const retained = NAV_STAGES.flatMap(stage => stage.pages).filter(
     entry => entry.href !== "/content/comments" && !entry.href.includes("?") && !entry.href.startsWith("/automation/"),
@@ -16,7 +16,9 @@ test("all 36 original routes select the final menu or explain their retirement",
     { href: "/settings/monitoring", label: "작동 상태", nav: "/settings/connections" },
     { href: "/settings/channels", label: "작동 상태", nav: "/settings/connections" },
   ];
-  expect(retained.length + merged.length + Object.keys(RETIRED_ROUTES).length).toBe(36);
+  const financeRoutes = retained.filter(entry => entry.href.startsWith("/finance/"));
+  expect(financeRoutes).toHaveLength(7);
+  expect(retained.length - financeRoutes.length + merged.length + Object.keys(RETIRED_ROUTES).length).toBe(36);
   for (const entry of [...retained.map(entry => ({ ...entry, nav: entry.href })), ...merged]) {
     await page.goto(entry.href);
     await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);

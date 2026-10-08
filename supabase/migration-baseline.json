@@ -456,6 +456,14 @@
         "development",
         "production"
       ]
+    },
+    {
+      "file": "20261007085710_finance_ledger.sql",
+      "sha256": "04e19670d15f2f728ed6d878b0e68e92e83faabd373d032c4f4c4b1a5a423326",
+      "purpose": "add isolated finance ledger tables, caller-RLS batch writes, private receipts, and mock-only refund review; no legacy data migration",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-07",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [

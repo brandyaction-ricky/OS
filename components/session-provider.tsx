@@ -24,6 +24,8 @@ const demoProfile: SessionProfile = {
   role: "admin",
   team: "경영",
   mustChangePassword: false,
+  isActive: true,
+  financeAccess: true,
 };
 
 function clientIsDemo() {
@@ -56,7 +58,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     async function hydrate(nextSession: Session, requestGeneration: number, controller: AbortController) {
       const { data } = await client
         .from("os_profiles")
-        .select("id,email,display_name,role,team,must_change_password")
+        .select("id,email,display_name,role,team,must_change_password,is_active,finance_access")
         .eq("id", nextSession.user.id)
         .abortSignal(controller.signal)
         .maybeSingle();
@@ -74,6 +76,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         role: data?.role ?? "member",
         team: data?.team ?? "전체",
         mustChangePassword: Boolean(data?.must_change_password),
+        isActive: data?.is_active === true,
+        financeAccess: data?.finance_access === true,
       });
       setLoading(false);
     }
