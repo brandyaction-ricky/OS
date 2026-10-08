@@ -19,12 +19,15 @@ import {
   Sun,
   X,
   UserRound,
+  ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { canAccessFinance } from "@/lib/finance/access";
+import { canOpenMenu } from "@/lib/menu-access";
+import { useMenuAccess } from "./use-menu-access";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -53,7 +56,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const stage = useMemo(() => findStage(navigationPath), [navigationPath]);
   const page = useMemo(() => findPage(navigationPath), [navigationPath]);
   const screen = fullscreenScreen(pathname, params.get("tab"));
-  const { profile, loading, demo, signOut } = useSession();
+  const { profile, accessToken, loading, demo, signOut } = useSession();
+  const menuAccess = useMenuAccess(profile, accessToken, demo, navigationPath);
+  const visibleStages = NAV_STAGES.map(item => ({ ...item, pages: item.pages.filter(entry => canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -254,11 +259,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
         </div>
         <nav className="unified-nav page-nav">
-          {NAV_STAGES.filter(item => !item.requiresFinance || canAccessFinance(profile)).map(item => {
+          {visibleStages.map(item => {
             const Icon = item.icon;
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
-              <Link className={`compact-group${active ? " active" : ""}`} href={item.href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
+              <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
                 <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
               </button> : null}
@@ -273,7 +278,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     </Link>
                   </div>;
                 })}
-                {item.id === "automation" ? <Link className="page-link nav-canon-link" href="/knowledge?tab=canon" onClick={() => setMobileOpen(false)}><BookOpen size={15}/><span>정본 관리 열기</span></Link> : null}
+                {item.id === "automation" && canOpenMenu(profile, "/knowledge", menuAccess.allowed) ? <Link className="page-link nav-canon-link" href="/knowledge?tab=canon" onClick={() => setMobileOpen(false)}><BookOpen size={15}/><span>정본 관리 열기</span></Link> : null}
               </div>
             </section>;
           })}
@@ -315,11 +320,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <ContentWorkProvider><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
           {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 7단계에서, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
-          {children}
+          {menuAccess.loading ? <section className="panel settings-loading-state" role="status">메뉴 권한을 확인하는 중입니다.</section> : menuAccess.error ? <section className="panel menu-access-denied" role="alert"><h1>메뉴 권한을 확인하지 못했습니다.</h1><p>{menuAccess.error}</p><button className="secondary-button" onClick={menuAccess.retry}>다시 확인</button></section> : canOpenMenu(profile, navigationPath, menuAccess.allowed) ? children : <section className="panel menu-access-denied"><ShieldCheck size={24} /><h1>이 메뉴에 접근 권한이 없습니다.</h1><p>관리자에게 메뉴 권한 설정을 요청해 주세요.</p><Link className="secondary-button" href="/home">내 할 일로 이동</Link></section>}
         </main></ContentWorkProvider>
       </div>
       <DevelopmentRequestDrawer open={requestOpen} onClose={() => setRequestOpen(false)} />
-      <CommandPalette open={paletteOpen} onClose={closePalette} />
+      <CommandPalette open={paletteOpen} onClose={closePalette} allowedMenus={menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed} />
       {passwordOpen ? <div className="modal-backdrop" onMouseDown={() => setPasswordOpen(false)}><div onMouseDown={(event) => event.stopPropagation()}><PasswordChangeForm onCancel={() => setPasswordOpen(false)} /></div></div> : null}
     </div>
   );

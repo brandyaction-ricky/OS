@@ -5,9 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchNavigation } from "@/lib/navigation";
 import { canAccessFinance } from "@/lib/finance/access";
+import { canOpenMenu } from "@/lib/menu-access";
 import { useSession } from "./session-provider";
 
-export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CommandPalette({ open, onClose, allowedMenus = null }: { open: boolean; onClose: () => void; allowedMenus?: string[] | null }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLElement>(null);
@@ -15,7 +16,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const { profile } = useSession();
   const financeAccess = canAccessFinance(profile);
 
-  const matches = useMemo(() => searchNavigation(query, financeAccess), [query, financeAccess]);
+  const matches = useMemo(() => searchNavigation(query, financeAccess, href => canOpenMenu(profile, href, allowedMenus)), [query, financeAccess, profile, allowedMenus]);
+  const knowledgeSearch = canOpenMenu(profile, "/knowledge/search", allowedMenus);
 
   useEffect(() => {
     if (!open) return;
@@ -78,7 +80,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             onKeyDown={(event) => {
               if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
               if (matches[0]) go(matches[0].href);
-              else if (query.trim()) go(`/knowledge/search?q=${encodeURIComponent(query.trim())}`);
+              else if (query.trim() && knowledgeSearch) go(`/knowledge/search?q=${encodeURIComponent(query.trim())}`);
             }}
             placeholder="페이지나 지식을 검색하세요"
           />
@@ -96,7 +98,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               </button>
             );
           })}
-          {query.trim() ? (
+          {query.trim() && knowledgeSearch ? (
             <button className="knowledge-command" onClick={() => go(`/knowledge/search?q=${encodeURIComponent(query.trim())}`)}>
               <span className="command-icon"><FileText size={17} /></span>
               <span><strong>“{query.trim()}” 지식에서 검색</strong><small>회사 정본과 내 문서</small></span>

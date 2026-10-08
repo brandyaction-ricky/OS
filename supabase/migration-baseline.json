@@ -480,6 +480,22 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-08",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008081909_member_menu_access.sql",
+      "sha256": "5eda6e5d99c40ce90740185aa69ea092305c1f0e5267d3cedaf73cb9e8212b79",
+      "purpose": "add per-account navigation preferences with self/admin reads and admin-only server writes; existing data permissions remain unchanged",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-08",
+      "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261008105831_member_menu_access_index.sql",
+      "sha256": "4b23c38f7bbd65d4595eb65419d01746a2fb0b1d4f9f2895a94805c403cbdb4e",
+      "purpose": "cover the menu policy actor foreign key without changing permissions or data",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-08",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [
