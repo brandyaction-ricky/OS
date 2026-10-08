@@ -584,7 +584,8 @@ kbd { display: inline-flex; align-items: center; gap: 2px; padding: 2px 6px; bor
 .monitoring-confirmation::backdrop { background:var(--overlay); }
 .monitoring-confirmation h2 { margin-top:0; font-size:18px; }
 .monitoring-confirmation p { color:var(--text-2); line-height:1.6; }
-.canonical-gate-modal { width:min(480px,calc(100vw - 28px)); padding:24px; border:1px solid var(--line); border-radius:14px; background:var(--panel-2); box-shadow:none; }
+.knowledge-modal.canonical-gate-dialog { width:min(480px,calc(100vw - 32px)); }
+.canonical-gate-modal { width:100%; padding:24px; border:0; border-radius:inherit; background:var(--panel-2); box-shadow:none; }
 .canonical-gate-modal > span { width:42px; height:42px; display:grid; place-items:center; margin-bottom:14px; border-radius:12px; color:var(--warning); background:var(--danger-soft); }
 .canonical-gate-modal h2 { margin:0 0 8px; }.canonical-gate-modal p { margin:0; color:var(--muted); line-height:1.65; }.canonical-gate-modal .drawer-actions { margin-top:22px; }
 
@@ -812,6 +813,8 @@ html[data-guidance="off"] :where(
 .knowledge-resize-handle { display: none; }
 @media(min-width:901px) {
   .knowledge-workspace:not(.tree-hidden) { grid-template-columns: var(--knowledge-tree-width, 280px) minmax(0, 1fr); }
+  .knowledge-workspace.tree-hidden { grid-template-columns:48px minmax(0,1fr); }
+  .knowledge-workspace.tree-hidden .editor-pane { grid-column:2; }
   .knowledge-resize-handle { display: block; position: absolute; z-index: 4; right: 0; top: 0; bottom: 0; width: 7px; cursor: col-resize; touch-action: none; }
   .knowledge-resize-handle:hover, .knowledge-resize-handle:focus-visible { background: var(--accent); }
 }
@@ -832,13 +835,16 @@ html[data-guidance="off"] :where(
 .folder-move-summary { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel-2); }
 .folder-move-summary span { min-width:0; display:grid; gap:3px; }.folder-move-summary strong,.folder-move-summary small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }.folder-move-summary small { color:var(--muted); }
 .folder-create-document { justify-self:start; }
-.tree-peek-handle { position:absolute; z-index:8; top:0; left:0; width:24px; height:100%; border:0; background:transparent; color:var(--muted); display:flex; align-items:flex-start; padding-top:12px; }
-.knowledge-workspace.tree-peek .knowledge-tree-pane { display:flex!important; position:absolute; inset:0 auto 0 0; z-index:10; width:300px; background:var(--panel); box-shadow:var(--shadow); }
+.tree-peek-handle { position:absolute; z-index:8; top:12px; left:6px; width:36px; height:100px; padding:10px 7px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); color:var(--text-2); display:flex; flex-direction:column; align-items:center; gap:8px; cursor:pointer; }
+.tree-peek-handle span { writing-mode:vertical-rl; font-size:12px; line-height:18px; white-space:nowrap; }
+.tree-peek-handle svg { flex:none; }
+.tree-peek-handle:hover,.tree-peek-handle:focus-visible { border-color:var(--accent); background:var(--accent-soft); color:var(--accent-2); }
+.knowledge-workspace.tree-peek .knowledge-tree-pane { display:flex!important; position:absolute; inset:0 auto 0 48px; z-index:10; width:var(--knowledge-tree-width,280px); background:var(--panel); box-shadow:var(--shadow); }
 .document-quick-open { position:fixed; z-index:100; top:18%; left:50%; transform:translateX(-50%); width:min(600px,90vw); max-height:65vh; overflow:auto; background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow); padding:18px; }
 .document-quick-open>input { width:90%; margin-bottom:12px; }
 .document-quick-open>button:not(.icon-button) { display:flex; flex-direction:column; text-align:left; width:100%; gap:4px; padding:10px; background:transparent; color:inherit; border:0; border-bottom:1px solid var(--line); }
 .document-quick-open small { color:var(--muted); overflow-wrap:anywhere; }
-@media(max-width:899px){.tree-peek-handle{display:none}.knowledge-workspace.tree-peek .knowledge-tree-pane{display:none!important}}
+@media(max-width:900px){.tree-peek-handle{display:none}.knowledge-workspace.tree-hidden .editor-pane{grid-column:auto}.knowledge-workspace.tree-peek .knowledge-tree-pane{display:none!important}}
 
 .pipeline-panel { padding:20px; display:grid; gap:16px; min-width:0; }
 .pipeline-panel h2 { margin:0; font-size:18px; }.pipeline-panel p,.pipeline-panel small { color:var(--muted); line-height:1.6; }

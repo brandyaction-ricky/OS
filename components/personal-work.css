@@ -17,6 +17,13 @@
 .request-drawer .form-grid {display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .request-evidence {display:grid;gap:12px}.request-evidence img {width:100%;height:auto;max-height:320px;object-fit:contain;border:1px solid var(--line);border-radius:8px}
 .request-evidence small {color:var(--text-2);line-height:1.6}
+.request-attachment-dropzone {display:grid;gap:16px;padding:18px;border:1px dashed var(--line);border-radius:10px;background:var(--panel-2);transition:border-color .15s,background .15s}
+.request-attachment-dropzone.drag-active,.request-attachment-dropzone:focus-within {border-color:var(--accent);background:var(--accent-soft)}
+.request-attachment-dropzone[aria-disabled=true] {opacity:.65}
+.request-drop-hint {display:grid;justify-items:center;gap:6px;text-align:center;color:var(--text-2);font-size:13px}
+.request-drop-hint svg {color:var(--accent-2)}
+.request-attachment-selection {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:0;overflow-wrap:anywhere;font-size:13px}
+.request-attachment-selection button {flex:none;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text-2);cursor:pointer}
 .request-drawer .drawer-actions {display:flex;justify-content:flex-end;gap:12px;padding-top:16px}
 .request-discard {position:sticky;bottom:0;padding:16px;background:var(--panel-2);border:1px solid var(--line);box-shadow:none}
 .request-discard button {margin:8px 12px 0 0}.dev-plain-summary p {overflow-wrap:anywhere}

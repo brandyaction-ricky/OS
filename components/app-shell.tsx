@@ -292,12 +292,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
           {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
-            <Link href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 계정 · 채널 연결</Link>
-            <div className="display-controls" role="group" aria-label="화면 설정">
-              <button type="button" className="display-control" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
+            <div className="profile-menu-actions">
+              <Link className="profile-menu-action" href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /><span>내 계정 · 채널 연결</span></Link>
+              <div className="display-controls" role="group" aria-label="화면 설정">
+                <button type="button" className="display-control profile-menu-action" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
+              </div>
+              <button className="profile-menu-action" onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /><span>메뉴 안내 다시 보기</span></button>
+              {!demo ? <><button className="profile-menu-action" onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /><span>비밀번호 변경</span></button><button className="profile-menu-action" onClick={signOut}><LogOut size={15} /><span>로그아웃</span></button></> : null}
             </div>
-            <button onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /> 메뉴 안내 다시 보기</button>
-            {!demo ? <><button onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button><button onClick={signOut}><LogOut size={15} /> 로그아웃</button></> : null}
           </div> : null}
         </div>
       </aside>

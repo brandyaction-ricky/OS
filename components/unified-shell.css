@@ -30,6 +30,14 @@
 .unified-shell .profile-menu .display-controls { display: grid; grid-template-columns: 1fr; }
 .unified-shell .profile-menu .display-control { display: flex; width: 100%; justify-content: flex-start; padding: 8px; }
 .unified-shell .profile-menu .display-control span { display: inline; }
+.unified-shell .profile-menu-actions { display: grid; gap: 0; margin-top: 8px; }
+.unified-shell .profile-menu-actions > * { position: relative; }
+.unified-shell .profile-menu-actions > * + *::before { content: ""; position: absolute; inset: 0 0 auto; border-top: 1px solid var(--line); pointer-events: none; }
+.unified-shell .profile-menu .profile-menu-action { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; height: 40px; min-height: 40px; margin: 0; padding: 9px 8px; border: 0; border-radius: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 13px; line-height: 20px; text-align: left; text-decoration: none; cursor: pointer; }
+.unified-shell .profile-menu .profile-menu-action > svg { flex: none; width: 15px; height: 15px; color: currentColor; }
+.unified-shell .profile-menu .profile-menu-action > span { display: inline; }
+.unified-shell .profile-menu .profile-menu-action:hover { background: var(--surface-hover); color: var(--text); }
+.unified-shell .profile-menu .profile-menu-action:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 5px; }
 .unified-shell .topbar { height: 58px; padding: 0 22px; }
 .unified-shell .command-trigger { width: 180px; }
 .unified-shell .quick-record-link { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-2); font-size: 12px; white-space: nowrap; }
