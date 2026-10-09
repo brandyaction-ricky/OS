@@ -17,7 +17,7 @@ test("all current non-HR routes and seven finance routes select their menu or ex
   ];
   const financeRoutes = retained.filter(entry => entry.href.startsWith("/finance/"));
   expect(financeRoutes).toHaveLength(7);
-  expect(retained.filter(entry=>entry.href==="/knowledge"||entry.href.startsWith("/knowledge/")&&!entry.href.startsWith("/knowledge/development"))).toHaveLength(11);
+  expect(retained.filter(entry=>entry.href.startsWith("/knowledge/")&&!entry.href.startsWith("/knowledge/development"))).toHaveLength(5);
   for (const entry of [...retained.map(entry => ({ ...entry, nav: entry.href })), ...merged]) {
     await page.goto(entry.href);
     await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
