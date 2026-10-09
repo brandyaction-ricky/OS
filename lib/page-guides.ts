@@ -26,6 +26,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/automation/settings": {steps:["기본 요청 방식을 선택합니다","검토·발행 안전 기준을 확인합니다","관리자가 저장한 설정을 모든 자동화 화면에서 사용합니다"],next:"/automation/dashboard"},
   "/content/performance": {steps:["플랫폼 탭을 고릅니다","같은 경과일(D+7 등)끼리 비교합니다","n<5면 결론을 미룹니다"],next:"/content/topics"},
   "/knowledge": {steps:["폴더에서 문서를 엽니다","정본을 고치면 변경 제안으로 저장되어 승인 전 원문은 그대로입니다","‘연결’ 탭에서 깨진 링크를 골라 수정하고 문서 담당을 확인합니다"],next:"/knowledge/review"},
+  "/knowledge/vault": {steps:["내 문서 또는 소유자를 선택해 원본 폴더 트리를 엽니다","기존 경로에 문서를 저장하고 고유 ID 연결로 이동합니다","02_Wiki에서 회사 기준으로 쓸 문서만 선정해 검토를 요청합니다"],next:"/knowledge/review"},
   "/knowledge/notes": {steps:["오늘 노트나 인박스에 생각을 기록합니다","카테고리와 상태로 내 노트를 정리합니다","팀에 필요한 내용만 공유합니다"],next:"/knowledge/docs"},
   "/knowledge/meetings": {steps:["회의와 참석자를 정하고 안건을 적습니다","회의 중 메모에서 결정과 할 일을 추출합니다","모든 항목을 검수한 뒤 확정합니다"],next:"/knowledge/decisions"},
   "/knowledge/decisions": {steps:["확정된 결정을 찾아봅니다","원래 회의와 확인 시각을 확인합니다","확정 대기는 회의에서 검수합니다"],next:"/knowledge/meetings"},

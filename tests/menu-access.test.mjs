@@ -18,6 +18,10 @@ const access = load("lib/menu-access.ts", { "./navigation": navigation });
 const member = { role: "member", isActive: true, financeAccess: false };
 
 test("company document detail follows an allowed list without opening other menus",()=>{
+  assert.equal(access.canOpenMenu(member,"/knowledge/vault",["/knowledge/vault"]),true);
+  assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",["/knowledge/vault"]),true);
+  assert.equal(access.canOpenMenu(member,"/knowledge/development",["/knowledge/vault"]),false);
+  assert.equal(access.canOpenMenu(member,"/knowledge/vault",[]),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",["/knowledge/notes"]),true);
   assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",[]),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/development",["/knowledge/notes"]),false);

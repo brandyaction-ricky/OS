@@ -1,6 +1,6 @@
 import { permanentRedirect } from "next/navigation";
 import { KnowledgeHome } from "@/components/knowledge/home";
-export const metadata = { title: "회사 문서 | 브랜디 OS" };
+export const metadata = { title: "문서 홈 | 브랜디 OS" };
 export default async function KnowledgePage({ searchParams }: { searchParams: Promise<{ tab?: string; document?: string; new?: string }> }) {
   const query = await searchParams;
   if (query.document) permanentRedirect(`/knowledge/doc/${encodeURIComponent(query.document)}`);
