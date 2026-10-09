@@ -138,3 +138,17 @@ test("missing migration disables saving while genuine read outages return errors
   assert.equal((await route.PATCH(patch())).status, 503);
   assert.equal((await api({ queryError: { code: "57014", message: "timeout" } }).GET(new Request("https://example.test"))).status, 503);
 });
+
+test("HR menu grants never override operator eligibility; own leave remains available", () => {
+  assert.equal(access.canOpenMenu(member, "/hr/employees", ["/hr/employees"]), false);
+  assert.equal(access.canOpenMenu(member, "/hr/my-leave", []), true);
+  assert.equal(access.canOpenMenu({...member, financeAccess:true}, "/hr/employees", []), false);
+  assert.equal(access.canOpenMenu({...member, financeAccess:true}, "/hr/employees", ["/hr/employees"]), true);
+  assert.equal(access.canOpenMenu({...member, isActive:false}, "/hr/my-leave", null), false);
+});
+
+test("disabled HR rollout leaves existing menu configuration choices unchanged", () => {
+  const profile = {...member, role:"admin"};
+  assert.ok(access.availableMenuGroups(profile).every(g => !g.requiresHr));
+  assert.equal(access.availableMenuGroups(profile, true).filter(g => g.requiresHr).length, 1);
+});

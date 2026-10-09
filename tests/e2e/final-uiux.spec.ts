@@ -2,11 +2,11 @@ import { expect, test } from "@playwright/test";
 import { NAV_STAGES, ACCOUNT_PAGE } from "../../lib/navigation";
 import { RETIRED_ROUTES } from "../../lib/final-routes";
 import { expectNoHorizontalOverflow } from "./horizontal-overflow";
-const pages = [...NAV_STAGES.flatMap(stage => stage.pages), ACCOUNT_PAGE];
+const pages = [...NAV_STAGES.filter(stage => !stage.requiresHr).flatMap(stage => stage.pages), ACCOUNT_PAGE];
 const mobile = new Set(["/home", "/content/publishing", "/content/comments", "/content/performance", "/settings/account"]);
-test("all current routes and seven finance routes select their menu or explain retirement", async ({ page }) => {
+test("all current non-HR routes and seven finance routes select their menu or explain retirement", async ({ page }) => {
   test.setTimeout(180000);
-  const retained = NAV_STAGES.flatMap(stage => stage.pages).filter(
+  const retained = NAV_STAGES.filter(stage => !stage.requiresHr).flatMap(stage => stage.pages).filter(
     entry => entry.href !== "/content/comments" && !entry.href.includes("?") && !entry.href.startsWith("/automation/"),
   );
   const merged = [

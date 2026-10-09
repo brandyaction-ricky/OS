@@ -20,7 +20,10 @@ async function visibleSources(actor: RequestActor, rows: OsRecord[]) {
     documentIds.length ? actor.supabase.from("os_documents").select("id,title").in("id",documentIds).neq("status","archived") : {data:[],error:null},
   ]);
   if (records.error || documents.error) throw new ApiError(500,"NOTIFICATION_SOURCE_FAILED","알림 원본의 접근 권한을 확인하지 못했습니다.");
+  const hrSources = rows.some(row => String(row.metadata.sourceType).startsWith("hr_"))
+    ? await (await import("@/lib/server/hr-notifications")).hrNotificationSources(actor,rows) : [];
   return new Map<string, Pick<OsRecord, "id" | "title" | "record_type" | "metadata">>([
+    ...hrSources,
     ...(records.data ?? []).map(row => [`record:${row.id}`,row] as const),
     ...(documents.data ?? []).map(row => [`document:${row.id}`,{...row,record_type:"task" as const,metadata:{}}] as const),
   ]);

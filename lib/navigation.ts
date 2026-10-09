@@ -47,6 +47,7 @@ export interface NavStage {
   href: string;
   pages: NavPage[];
   requiresFinance?: boolean;
+  requiresHr?: boolean;
 }
 
 // Names live here so the navigation, page heading, breadcrumb and tab stay in sync.
@@ -92,6 +93,13 @@ export const NAV_STAGES: NavStage[] = [
     { label: "업무", href: "/organization/tasks", icon: ListChecks, aliases: ["업무 관리"], ready: true },
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정", "연차·휴가"], ready: true },
     { label: "팀원", href: "/organization/members", icon: Users, aliases: ["구성원"], ready: true },
+  ] },
+  { id: "hr", label: "인사 노무 관리", icon: Users, href: "/hr/employees", requiresHr: true, pages: [
+    { label: "직원 명부", href: "/hr/employees", icon: Users, ready: true },
+    { label: "휴가·일정", href: "/hr/leave", icon: CalendarRange, ready: true },
+    { label: "연차 관리", href: "/hr/leave-ledger", icon: ListChecks, ready: true },
+    { label: "서류·계약", href: "/hr/documents", icon: FileText, ready: true },
+    { label: "내 휴가·연차", href: "/hr/my-leave", icon: UserRound, ready: true },
   ] },
   { id: "finance", label: "재무관리", icon: Wallet, href: "/finance/overview", requiresFinance: true, pages: [
     { label: "개요", href: "/finance/overview", icon: LayoutDashboard, aliases: ["재무 요약", "순수익"], ready: true },
@@ -154,8 +162,8 @@ export function findStage(pathname: string) {
   const page = findPage(pathname);
   return NAV_STAGES.find(stage => stage.pages.some(item => item.href === (page.navHref ?? page.href))) ?? NAV_STAGES[0];
 }
-export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true) {
+export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
-  const pages = [...NAV_STAGES.filter(stage => !stage.requiresFinance || financeAccess).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { label:"문서 찾기",href:"/knowledge/search",icon:Search,aliases:["지식 검색"],stage:"회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
+  const pages = [...NAV_STAGES.filter(stage => (!stage.requiresFinance || financeAccess) && (!stage.requiresHr || hrEnabled)).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
   return (normalized ? pages.filter(page => `${page.stage} ${page.group ?? ""} ${page.label} ${(page.aliases ?? []).join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) : pages).filter(page => canVisit(page.href)).slice(0, 8);
 }

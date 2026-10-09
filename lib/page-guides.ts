@@ -1,6 +1,11 @@
 export interface PageGuideDefinition { steps: readonly [string,string,string]; next: string }
 // Text is the final handoff's section 6; menu aliases resolve before this lookup.
 export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
+  "/hr/employees": {steps:["근로자·사업주·외부 협업·공용 계정을 나누어 봅니다","이름을 눌러 인사·근로 조건·계정·연차·서류를 확인합니다","등록·수정은 사유와 함께 이력에 남깁니다"],next:"/hr/leave"},
+  "/hr/leave": {steps:["날짜와 휴가 구분을 고르면 근무일·잔여를 계산합니다","대기 신청을 승인하거나 사유를 남겨 반려합니다","승인된 휴가는 캘린더와 연차 원장에 반영됩니다"],next:"/hr/leave-ledger"},
+  "/hr/leave-ledger": {steps:["입사일 기준 잔여와 사용 예정·대기를 나눠 봅니다","촉진 기한을 확인하고 서면·회신을 기록합니다","출근율 차이는 사유를 남겨 수동 조정합니다"],next:"/hr/documents"},
+  "/hr/documents": {steps:["빠진 서류를 눌러 처리 날짜와 파일을 남깁니다","근로 조건이 바뀌면 계약서 서명·교부를 다시 확인합니다","검토한 양식과 이전 파일은 이력으로 보존합니다"],next:"/hr/employees"},
+  "/hr/my-leave": {steps:["남은 연차와 승인 대기 내역을 확인합니다","휴가를 신청하고 처리 결과를 확인합니다","받은 촉진 서면을 읽고 사용 계획을 회신합니다"],next:"/hr/my-leave"},
   "/finance/overview": {steps:["기간과 사업을 골라 매출·입금·순수익을 비교합니다","확인이 필요한 항목을 눌러 해당 메뉴로 이동합니다","현재는 모의 데이터이며 실제 거래·발송은 실행하지 않습니다"],next:"/finance/sales"},
   "/finance/sales": {steps:["토스 결제와 외부 매출을 나누어 확인합니다","검색·필터로 주문을 찾고 상세에서 모의 환불 요청을 검토합니다","외부 매출을 추가하면 같은 기간 합계에 반영됩니다"],next:"/finance/settlements"},
   "/finance/settlements": {steps:["지급일별 또는 거래별 정산을 고릅니다","미확인·금액 차이 항목의 상세를 확인합니다","확인 사유를 기록하고 연결된 통장 입금을 봅니다"],next:"/finance/bank"},
