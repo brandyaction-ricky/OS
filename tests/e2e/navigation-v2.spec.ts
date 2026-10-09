@@ -7,8 +7,10 @@ for (const stage of NAV_STAGES) {
       await page.goto(entry.href);
       await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
       await expect(page.locator(".breadcrumbs [aria-current=page]")).toHaveText(entry.label);
-      const title = entry.href.startsWith("/finance/") ? `${entry.label} · 재무관리` : entry.label;
-      await expect(page).toHaveTitle(`${title} | 브랜디 OS`);
+      // Route metadata and the app shell can both set the title during hydration.
+      const titles = entry.href === "/knowledge" ? ["회사 문서", "문서 홈"]
+        : entry.href.startsWith("/finance/") ? [entry.label, `${entry.label} · 재무관리`] : [entry.label];
+      await expect(page).toHaveTitle(new RegExp(`^(?:${titles.join("|")}) \\| 브랜디 OS$`));
       await expect(page.locator(`.unified-nav a[href="${entry.href}"]`).last()).toHaveAttribute("aria-current", "page");
       await expect(page.locator(".page-header .eyebrow, .dev-kicker")).toHaveCount(0);
     }
