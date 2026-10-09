@@ -12,6 +12,8 @@ for (const width of [1440, 1024, 390]) test(`personal folder vault at ${width}px
   if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
   for (const root of ["00_Skills", "01_Raw", "02_Wiki", "03_Content", "04_개인", "05_Projects", "06_학습"])
     await expect(page.getByRole("treeitem", { name: `${root} 0`, exact: true })).toBeVisible();
+  // Wait for the mobile drawer transition and verify text isn't clipped off-screen.
+  await expect.poll(async () => (await page.getByRole("treeitem", {name:"00_Skills 0",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath(`vault-${width}.png`), fullPage: true });
   expect(errors).toEqual([]);
@@ -52,5 +54,8 @@ test("UUID links reopen the same document after folder move and title change", a
   await page.locator(".document-reader").getByRole("button", { name: "원본 열기", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`document=${id}`));
   await expect(page.locator(".document-reader h1")).toHaveText("QA 이름 변경 후");
+  if (await page.getByRole("button", {name:"파일 트리 보기",exact:true}).isVisible())
+    await page.getByRole("button", {name:"파일 트리 보기",exact:true}).click();
+  await expect(page.getByRole("treeitem").filter({hasText:"QA 이름 변경 후"})).toBeVisible();
   await page.screenshot({ path: info.outputPath("vault-id-link-after-move.png"), fullPage:true });
 });
