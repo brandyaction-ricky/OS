@@ -12,6 +12,13 @@ import type { KnowledgeDocument } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+function readError(error: { code?: string }, stage: string) {
+  // Never log database messages, request bodies, identities or document contents.
+  const code = /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(error.code ?? "") ? error.code : "UNKNOWN";
+  console.warn("knowledge.workspace.read_failed", { stage, code });
+  if (code === "42501") return new ApiError(403,"KNOWLEDGE_FORBIDDEN","회사 문서를 볼 권한을 확인해 주세요.");
+  return new ApiError(503,"KNOWLEDGE_READ_FAILED","회사 문서 목록을 불러오지 못했습니다. 잠시 후 다시 불러와 주세요.");
+}
 function databaseError(error: { code?: string; message?: string }) {
   if (["42P01","42703","PGRST202","PGRST204","PGRST205"].includes(error.code ?? "")) return new ApiError(503,"KNOWLEDGE_SCHEMA_REQUIRED","회사 문서 저장 구조의 배포가 아직 준비되지 않았습니다. 입력한 내용은 지우지 마세요.");
   if (error.code === "PT409" || error.code === "40001" || error.message?.includes("VERSION_CONFLICT")) return new ApiError(409,"VERSION_CONFLICT","다른 사람이 먼저 수정했습니다. 입력한 내용을 보존했습니다.");
@@ -29,7 +36,7 @@ export async function GET(request: Request) {
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
     for (let cursor="00000000-0000-0000-0000-000000000000";;) {
       const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(500);
-      if(result.error) throw databaseError(result.error);
+      if(result.error) throw readError(result.error,"documents");
       const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
       const readable = await readableKnowledgePages(user,batch);
       state.documents.push(...batch.filter(d=>readable.has(d.id)).map(d=>({...d,content_md:""})));
@@ -57,7 +64,8 @@ export async function GET(request: Request) {
       for(let offset=0;;offset+=500){const page=await builder.range(offset,offset+499);if(page.error)return {data:null,error:page.error};data.push(...(page.data??[]));if(!page.data||page.data.length<500)break;}
       return {data,error:null};
     }));
-    for(const result of resources) if(result.error) throw databaseError(result.error);
+    const stages=["categories","templates","inbox","pins","drafts","meetings","attendees","candidates","events","people","decisions"];
+    for(const [index,result] of resources.entries()) if(result.error) throw readError(result.error,stages[index]);
     const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people,decisions]=resources.map(r=>r.data ?? []);
     state.categories=categories as KnowledgeState["categories"];
     state.templates=templates as KnowledgeState["templates"];
@@ -71,7 +79,7 @@ export async function GET(request: Request) {
     state.events=events as KnowledgeState["events"];
     state.people=await Promise.all(people.map(async row=>{
       const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
-      if(result.error) throw databaseError(result.error);
+      if(result.error) throw readError(result.error,"approvers");
       return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:row.member_kind==="staff"&&result.data===true};
     }));
     access.actor.canApprove=state.people.find(p=>p.id===user.ownerId)?.can_approve===true;
@@ -79,7 +87,7 @@ export async function GET(request: Request) {
     for(let offset=0;offset<docIds.length;offset+=100) {
       for(let pageOffset=0;;pageOffset+=500){
         const result=await service.from("os_document_proposals").select("*").in("document_id",docIds.slice(offset,offset+100)).order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
-        if(result.error) throw databaseError(result.error);
+        if(result.error) throw readError(result.error,"proposals");
         state.proposals.push(...(result.data ?? []));if(!result.data||result.data.length<500)break;
       }
     }
@@ -87,14 +95,14 @@ export async function GET(request: Request) {
     const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];
     if(keyIds.length) {
       const result=await service.from("os_agent_keys").select("id,owner_user_id").in("id",keyIds);
-      if(result.error) throw databaseError(result.error);
+      if(result.error) throw readError(result.error,"agent-owners");
       state.proposals=state.proposals.map(p=>({...p,agent_owner_id:result.data?.find(k=>k.id===p.agent_key_id)?.owner_user_id ?? null}));
     }
     const visibleTargets=new Set([...ids,...state.categories.map(c=>c.id),...state.templates.map(t=>t.id),...state.meetings.map(m=>m.id),...state.candidates.map(c=>c.id),...state.proposals.map(p=>p.id)]);
     // Keep the audit fact without exposing an inaccessible target ID, title, reason or link.
     state.events=state.events.map(e=>visibleTargets.has(e.target_id)?e:{...e,target_id:"",detail:{title:"볼 수 없는 항목"}});
     return NextResponse.json({state,actor:access.actor,schemaReady:true},{headers:{"Cache-Control":"private, no-store"}});
-  } catch(error) { return apiErrorResponse(error); }
+  } catch(error) { return apiErrorResponse(error instanceof ApiError ? error : readError({}, "workspace")); }
 }
 const commandSchema=z.object({action:z.enum([
   "document.create","document.commit","document.draft","document.discard","document.properties","document.duplicate","document.export","document.share","document.archive",

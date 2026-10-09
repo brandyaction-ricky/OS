@@ -61,6 +61,10 @@
 .kw-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--kw-line); margin-bottom: 16px; padding-bottom: 8px; overflow-x: auto; }
 .kw-tabs a { padding: 7px 12px; border-radius: 8px; color: var(--kw-muted); white-space: nowrap; }.kw-tabs a[aria-current=page] { color: var(--kw-accent); background: var(--kw-accent-soft); font-weight: 600; }
 .kw-db { display: grid; grid-template-columns: 220px minmax(0,1fr); gap: 16px; align-items: start; }
+.kw-legacy-summary { margin-bottom: 16px; }
+.kw-legacy-summary label { min-width: 0; }
+.kw-legacy-summary select { max-width: 100%; min-width: 0; }
+.kw-legacy-path { display: block; max-width: 360px; white-space: normal; overflow-wrap: anywhere; margin-top: 4px; }
 .kw-categories { display: grid; gap: 4px; padding: 10px; }
 .kw-categories button { justify-content: flex-start; border: 0; background: transparent; white-space: normal; text-align: left; }
 .kw-categories button[aria-pressed=true] { background: var(--kw-accent-soft); color: var(--kw-accent); }
