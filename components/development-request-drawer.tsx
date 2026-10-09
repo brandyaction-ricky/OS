@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import Image from "next/image";
-import { Camera, Loader2, X } from "lucide-react";
+import { Camera, ImagePlus, Loader2, X } from "lucide-react";
 import type { OsRecord } from "@/lib/record-types";
 import { createDevelopmentAttachmentUpload, deleteDevelopmentAttachment, developmentAttachmentMimeType, listAllRecordsOfType, uploadDevelopmentAttachment } from "@/lib/api-client";
 import { useSession } from "./session-provider";
@@ -23,6 +23,7 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
@@ -35,7 +36,7 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
     if (!open) return;
     let active = true;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setError(""); setFile(null); setSaved(false); setDirty(false); setDiscard(false); setLoaded(false);
+    setError(""); setFile(null); setDragging(false); setSaved(false); setDirty(false); setDiscard(false); setLoaded(false);
     setPageUrl(initialPageUrl || window.location.href);
     const load = async () => {
       try {
@@ -50,7 +51,7 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
     return () => { active = false; document.body.style.overflow = bodyOverflow; if (previousFocus?.isConnected) previousFocus.focus(); };
   }, [open, profile?.id, demo, initialPageUrl, initialProjectId]);
   useEffect(() => {
-    if (!file || !file.type.startsWith("image/")) { setPreview(""); return; }
+    if (!file || !developmentAttachmentMimeType(file).startsWith("image/")) { setPreview(""); return; }
     const url = URL.createObjectURL(file); setPreview(url); return () => URL.revokeObjectURL(url);
   }, [file]);
   const close = () => { if (busyRef.current || capturing) return; if (dirty && !saved) setDiscard(true); else onClose(); };
@@ -70,6 +71,25 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
     if (!next) return;
     try { if (!next.size || next.size > 25 * 1024 * 1024) throw new Error("첨부는 0보다 크고 25MB 이하인 파일이어야 합니다."); developmentAttachmentMimeType(next); setFile(next); setDirty(true); setError(""); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "파일을 확인해 주세요."); }
+  };
+  const dragAttachment = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = busyRef.current || capturing ? "none" : "copy";
+    if (!busyRef.current && !capturing) setDragging(true);
+  };
+  const dropAttachment = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); event.stopPropagation(); setDragging(false);
+    if (busyRef.current || capturing) return;
+    const files = Array.from(event.dataTransfer.files);
+    if (!files.length) return;
+    if (files.length !== 1) { setError("이미지는 한 번에 한 개씩 첨부해 주세요."); return; }
+    const next = files[0];
+    try {
+      const mimeType = developmentAttachmentMimeType(next);
+      if (!["image/jpeg", "image/png"].includes(mimeType) || (next.type && !["image/jpeg", "image/png"].includes(next.type))) throw new Error();
+    } catch { setError("드래그앤드롭은 JPG·PNG 이미지만 지원합니다. 다른 자료는 파일 선택으로 첨부해 주세요."); return; }
+    attach(next);
   };
   const capture = async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) { setError("이 브라우저는 화면 캡처를 지원하지 않습니다. 캡처 파일을 첨부해 주세요."); return; }
@@ -119,7 +139,16 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
         <label>제목<input name="title" required maxLength={240} placeholder="어떤 점이 불편한가요?" /></label>
         <div className="form-grid"><label>요청 종류<select name="category"><option value="bug">오류 신고</option><option value="usability">사용성 개선</option><option value="feature">기능 제안</option><option value="question">사용 문의</option></select></label><label>업무 영향<select name="priority"><option value="normal">보통</option><option value="high">업무 지연</option><option value="urgent">업무 불가</option><option value="low">낮음</option></select></label></div>
         <label>현재 문제<textarea name="description" required maxLength={10000} rows={4} /></label><label>기대하는 결과<textarea name="expectedResult" maxLength={8000} rows={2} /></label>
-        <div className="request-evidence"><button type="button" className="secondary-button" disabled={capturing || busy} onClick={() => void capture()}><Camera size={15} /> {capturing ? "화면 확인 중…" : "화면 캡처"}</button><label>자료 첨부<input type="file" disabled={busy} onChange={event => attach(event.target.files?.[0] ?? null)} /></label><small>캡처할 화면을 선택한 뒤 아래 미리보기를 확인하세요. 등록을 눌러야 첨부가 전송됩니다.</small>{file && <p>{file.name} · {Math.ceil(file.size / 1024)}KB <button type="button" onClick={() => setFile(null)}>첨부 해제</button></p>}{preview && <Image src={preview} alt="첨부할 화면 캡처 미리보기" width={560} height={360} unoptimized />}</div>
+        <div className="request-evidence">
+          <button type="button" className="secondary-button" disabled={capturing || busy} onClick={() => void capture()}><Camera size={15} /> {capturing ? "화면 확인 중…" : "화면 캡처"}</button>
+          <div className={`request-attachment-dropzone${dragging ? " drag-active" : ""}`} role="group" aria-label="이미지 드래그앤드롭 첨부" aria-disabled={busy || capturing} onDragEnter={dragAttachment} onDragOver={dragAttachment} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }} onDrop={dropAttachment}>
+            <div className="request-drop-hint"><ImagePlus size={22} aria-hidden="true" /><strong>{dragging ? "여기에 이미지를 놓으세요" : "JPG·PNG 이미지를 끌어놓으세요"}</strong><small>이미지 1개 · 최대 25MB · 또는 파일 선택</small></div>
+            <label>자료 첨부<input type="file" disabled={busy || capturing} onChange={event => { attach(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} /></label>
+          </div>
+          <small>첨부 후 아래 미리보기를 확인하세요. 등록을 눌러야 첨부가 전송됩니다.</small>
+          {file && <p className="request-attachment-selection" role="status">{file.name} · {Math.ceil(file.size / 1024)}KB <button type="button" disabled={busy || capturing} onClick={() => setFile(null)}>첨부 해제</button></p>}
+          {preview && <Image src={preview} alt="첨부할 이미지 미리보기" width={560} height={360} unoptimized />}
+        </div>
         <footer className="drawer-actions"><button className="secondary-button" type="button" disabled={busy} onClick={close}>취소</button><button className="primary-button" disabled={busy || capturing || !loaded || !projectId}>{busy ? <><Loader2 size={15} /> 저장 중…</> : "수정 요청 등록"}</button></footer>
       </form>}
       {discard && <section className="inline-alert request-discard" role="alert"><p>작성 중인 내용을 닫을까요?</p><button type="button" onClick={() => setDiscard(false)}>계속 작성</button><button type="button" onClick={() => { setDirty(false); onClose(); }}>내용 버리고 닫기</button></section>}
