@@ -5,7 +5,7 @@ const optionalTrimmed = z.string().trim().max(160).optional().default("");
 
 export const documentCreateSchema = z.object({
   title: z.string().trim().min(1).max(200),
-  content: z.string().min(1).max(1_500_000),
+  content: z.string().max(1_500_000),
   folder: optionalTrimmed,
   brand: z.string().trim().max(120).optional().default(""),
   team: z.string().trim().max(120).optional().default(""),

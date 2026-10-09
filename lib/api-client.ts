@@ -1,6 +1,7 @@
 import { decodeHtmlEntities } from "./html-entities";
 import type { DocumentProposal, DocumentVersion, KnowledgeDocument, SearchResult } from "./types";
 import type { KnowledgeGraph } from "./knowledge-links";
+import { unpackKnowledgeGraph, type CompactKnowledgeGraph } from "./knowledge/graph-transport";
 import type { OsRecord, RecordType } from "./record-types";
 import type { ProductionWorkflowStep } from "./content-production-workflow";
 import { developmentAttachmentUploadBody } from "./development-attachments";
@@ -45,7 +46,7 @@ export async function listDocumentFolders(token: string | null) {
 }
 
 export async function getKnowledgeGraph(token: string | null) {
-  return apiRequest<KnowledgeGraph>("/api/v1/knowledge/graph", { token });
+  return unpackKnowledgeGraph(await apiRequest<KnowledgeGraph | CompactKnowledgeGraph>("/api/v1/knowledge/graph?format=compact", { token }));
 }
 
 export async function repairKnowledgeLinks(token: string | null, input: {

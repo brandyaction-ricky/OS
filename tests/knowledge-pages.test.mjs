@@ -7,6 +7,7 @@ import { knowledgePageDescendants, canReparentKnowledgePage } from "../lib/knowl
 import { knowledgeToggleMarkdown, parseKnowledgeToggle } from "../lib/knowledge-toggle.ts";
 import { markdownBlocks, markdownSections } from "../lib/markdown-sections.ts";
 import { canReadKnowledgeDocument } from "../lib/server/document-access.ts";
+import { canReadDocument } from "../lib/knowledge/access.ts";
 
 const page = (id, parent_document_id = null) => ({ id, parent_document_id });
 
@@ -72,11 +73,12 @@ test("a private parent hides its otherwise shared child from members and agents"
   const vmModule = { exports: {} };
   const parent = { id: "parent", parent_document_id: null, owner_id: "other", status: "draft" };
   const child = { id: "child", parent_document_id: "parent", owner_id: "reader", status: "team" };
-  const service = { from() { return { select() { return this; }, in: async () => ({ data: [parent], error: null }) }; } };
+  const service = { from() { return { select() { return this; }, in: async (_field, ids) => ({ data: [child, parent].filter(row => ids.includes(row.id)), error: null }) }; } };
   runInNewContext(compiled, {
     module: vmModule, exports: vmModule.exports,
     require: (name) => name === "./document-access"
       ? { canReadKnowledgeDocument }
+      : name === "./knowledge-access" ? { canReadDocument, knowledgeAccessContext: async actor => ({ actor, context: {} }) }
       : { createServiceSupabase: () => service },
   });
   const { readableKnowledgePages } = vmModule.exports;
@@ -84,5 +86,10 @@ test("a private parent hides its otherwise shared child from members and agents"
   const agent = { ...member, type: "agent" };
   assert.equal((await readableKnowledgePages(member, [child])).has("child"), false);
   assert.equal((await readableKnowledgePages(agent, [child])).has("child"), false);
-  assert.equal((await readableKnowledgePages({ ...member, role: "admin" }, [child])).has("child"), true);
+  assert.equal((await readableKnowledgePages({ ...member, role: "admin" }, [child])).has("child"), false);
+  parent.owner_id = "reader";
+  assert.equal((await readableKnowledgePages(member, [child])).has("child"), true);
+  assert.equal((await readableKnowledgePages(agent, [child])).has("child"), false);
+  child.parent_document_id = null;
+  assert.equal((await readableKnowledgePages(agent, [child])).has("child"), true);
 });

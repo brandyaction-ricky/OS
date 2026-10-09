@@ -37,6 +37,7 @@ import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
 import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
+import {KnowledgeInlineOptions, knowledgeInlinePickerPlugin, type InlineOptions} from "./knowledge/inline-picker-plugin";
 
 const KOREAN_LABELS: Record<string, string> = {
   "Select block type": "문단 형식",
@@ -100,6 +101,13 @@ const BLOCKS = [
   { id: "toggle", label: "토글 목록", hint: "접고 펼치는 내용", markdown: knowledgeToggleMarkdown() },
   { id: "image", label: "이미지", hint: "사진 첨부", markdown: "" },
   { id: "page", label: "하위 페이지", hint: "이 페이지 아래 생성", markdown: "" },
+  { id: "quote", label: "인용", hint: "출처와 함께 인용", markdown: "> 인용\n" },
+  { id: "code", label: "코드", hint: "코드 블록", markdown: "\n```text\n코드\n```\n" },
+  { id: "rule", label: "구분선", hint: "섹션 구분", markdown: "\n---\n" },
+  { id: "table", label: "표", hint: "행과 열로 정리", markdown: "| 항목 | 내용 |\n| --- | --- |\n|  |  |\n" },
+  { id: "callout", label: "콜아웃", hint: "눈에 띄는 안내 · callout", markdown: "> 💡 안내\n" },
+  { id: "decision", label: "결정", hint: "눈에 띄게 적는 결정 · decision", markdown: "> ✅ 결정: \n" },
+  { id: "document", label: "문서 연결", hint: "다른 문서 가리키기 · link", markdown: "" },
 ] as const;
 
 export default function KnowledgeRichEditorInitialized({
@@ -111,6 +119,8 @@ export default function KnowledgeRichEditorInitialized({
   onError,
   onRequestImage,
   onCreateChildPage,
+  onDocumentLink,
+  inlineOptions,
 }: {
   editorRef: ForwardedRef<MDXEditorMethods> | null;
   markdown: string;
@@ -120,11 +130,14 @@ export default function KnowledgeRichEditorInitialized({
   onError: (message: string) => void;
   onRequestImage?: () => void;
   onCreateChildPage?: () => void;
+  onDocumentLink?: () => void;
+  inlineOptions?: InlineOptions;
 }) {
   const localRef = useRef<MDXEditorMethods | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const hasInlineOptions=Boolean(inlineOptions);
   const [picker, setPicker] = useState<{ query: string; index: number; top: number; left: number } | null>(null);
-  const choices = BLOCKS.filter(block => block.label.toLocaleLowerCase("ko-KR").includes(picker?.query.toLocaleLowerCase("ko-KR") ?? ""));
+  const choices = BLOCKS.filter(block => (inlineOptions || !["quote","code","rule","table","callout","decision","document"].includes(block.id)) && (inlineOptions ? `${block.label} ${block.hint} ${block.id}` : block.label).toLocaleLowerCase("ko-KR").includes(picker?.query.toLocaleLowerCase("ko-KR") ?? ""));
   const openPicker = () => {
     if (disabled) return;
     const rect = wrapperRef.current?.getBoundingClientRect();
@@ -136,6 +149,7 @@ export default function KnowledgeRichEditorInitialized({
     setPicker(null);
     if (id === "image") { onRequestImage?.(); return; }
     if (id === "page") { onCreateChildPage?.(); return; }
+    if (id === "document") { onDocumentLink?.(); return; }
     const block = BLOCKS.find(item => item.id === id);
     if (block?.markdown) localRef.current?.focus(() => localRef.current?.insertMarkdown(block.markdown));
   };
@@ -144,7 +158,7 @@ export default function KnowledgeRichEditorInitialized({
     if (picker) {
       if (event.key === "Escape") { event.preventDefault(); setPicker(null); return; }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setPicker(value => value && ({ ...value, index: Math.max(0, Math.min(choices.length - 1, value.index + (event.key === "ArrowDown" ? 1 : -1))) })); return; }
-      if (event.key === "Enter") { event.preventDefault(); const choice = choices[picker.index]; if (choice) insertBlock(choice.id); return; }
+      if (event.key === "Enter" || inlineOptions && event.key === "Tab") { event.preventDefault(); const choice = choices[picker.index]; if (choice) insertBlock(choice.id); return; }
       if (event.key === "Backspace") { event.preventDefault(); setPicker(value => value && ({ ...value, query: value.query.slice(0, -1), index: 0 })); return; }
       if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); setPicker(value => value && ({ ...value, query: value.query + event.key, index: 0 })); return; }
     }
@@ -152,7 +166,8 @@ export default function KnowledgeRichEditorInitialized({
     const selection = window.getSelection();
     const node = selection?.anchorNode;
     const paragraph = node instanceof Element ? node.closest("p") : node?.parentElement?.closest("p");
-    if (selection?.isCollapsed && paragraph?.closest(".knowledge-rich-content") && !paragraph.textContent?.trim()) {
+    const prefix = node?.nodeType === Node.TEXT_NODE ? node.textContent?.slice(0,selection?.anchorOffset) : "";
+    if (selection?.isCollapsed && paragraph?.closest(".knowledge-rich-content") && (!paragraph.textContent?.trim() || inlineOptions && /\s$/.test(prefix??""))) {
       event.preventDefault(); openPicker();
     }
   };
@@ -176,6 +191,7 @@ export default function KnowledgeRichEditorInitialized({
     }),
     directivesPlugin({ directiveDescriptors: [toggleDescriptor] }),
     knowledgeImageDragPlugin(),
+    ...(hasInlineOptions ? [knowledgeInlinePickerPlugin()] : []),
     maxLengthPlugin(1_500_000),
     markdownShortcutPlugin(),
     toolbarPlugin({
@@ -191,9 +207,9 @@ export default function KnowledgeRichEditorInitialized({
         <InsertTable />
       </>,
     }),
-  ], [accessToken]);
+  ], [accessToken, hasInlineOptions]); // Options themselves update through context without resetting the editor.
 
-  return <div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey}>
+  return <KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
     {!disabled ? <button type="button" className="knowledge-block-add" aria-label="블록 추가" onMouseDown={event => event.preventDefault()} onClick={openPicker}>＋ 블록 추가</button> : null}
     <MDXEditor
     ref={instance => { localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance; }}
@@ -221,5 +237,5 @@ export default function KnowledgeRichEditorInitialized({
       <small>블록 찾기 {picker.query ? `· ${picker.query}` : "· / 입력 후 검색"} · ↑↓ 선택 · Enter 추가</small>
       {choices.length ? choices.map((block, index) => <button type="button" key={block.id} role="option" aria-selected={picker.index === index} onMouseDown={event => event.preventDefault()} onClick={() => insertBlock(block.id)}><strong>{block.label}</strong><span>{block.hint}</span></button>) : <p>일치하는 블록이 없습니다.</p>}
     </div> : null}
-  </div>;
+  </div></KnowledgeInlineOptions.Provider>;
 }

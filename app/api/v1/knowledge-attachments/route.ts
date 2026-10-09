@@ -14,6 +14,7 @@ import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { claimPendingKnowledgeAttachment, forgetKnowledgeAttachment, registerPendingKnowledgeAttachment } from "@/lib/server/knowledge-attachment-lifecycle";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { canEditDocument, knowledgeAccessContext } from "@/lib/server/knowledge-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,10 @@ async function readableDocument(actor: RequestActor, documentId: string) {
 
 async function assertEditableDocument(actor: RequestActor, documentId: string) {
   const document = await readableDocument(actor, documentId);
-  const editable = actor.role === "admin" || document.status === "canonical" || (document.owner_id === actor.id && document.status !== "archived");
+  const access = await knowledgeAccessContext(actor, [document]);
+  // Canonical uploads are staged for a proposal; the published body stays locked.
+  // A temporary admin read grant must not become permission to upload into a note.
+  const editable = canEditDocument(access.actor, document, access.context) || document.status === "canonical";
   if (!editable) throw new ApiError(403, "KNOWLEDGE_ATTACHMENT_FORBIDDEN", "이 문서에 자료를 첨부할 권한이 없습니다.");
 }
 

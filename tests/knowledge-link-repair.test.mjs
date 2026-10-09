@@ -27,8 +27,9 @@ test("repair API checks visibility and version before changing each source, and 
   assert.match(route, /readableKnowledgePages\(actor, \[current\]\)/);
   assert.match(route, /current\.current_version !== source\.expectedVersion/);
   assert.match(route, /createCanonicalProposal\(actor, current/);
-  assert.match(route, /actor\.supabase\.rpc\("os_update_document"/);
-  assert.match(graph, /readableKnowledgePages\(actor, rows\)/);
+  assert.match(route, /actor\.supabase\.rpc\("os_knowledge_command"/);
+  assert.match(route, /action:\s*"document.commit"/);
+  assert.match(graph, /readableKnowledgePages\(actor, documents\)/);
   assert.match(ui, /같은 링크/);
   assert.match(ui, /전체 연결/);
 });

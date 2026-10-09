@@ -33,7 +33,7 @@ test("canonical human and new-key write paths create proposals before changing t
     read("app/api/v1/documents/proposals/route.ts"),
   ]);
   assert.match(documents, /current\.status === "canonical"[\s\S]*createCanonicalProposal[\s\S]*status: 202/);
-  assert.match(agentDocuments, /actor\.enforceWriteStatuses[\s\S]*createCanonicalProposal[\s\S]*status: 202/);
+  assert.match(agentDocuments, /current\.status === "canonical"[\s\S]*createCanonicalProposal[\s\S]*status: 202/);
   assert.match(versions, /document\.status === "canonical"[\s\S]*createCanonicalProposal[\s\S]*status: 202/);
   assert.match(sync, /counts\.proposed/);
   assert.match(proposalApi, /actor\.supabase\.rpc\("os_apply_document_proposal"/);

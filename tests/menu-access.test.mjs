@@ -17,6 +17,13 @@ function load(file, imports) {
 const access = load("lib/menu-access.ts", { "./navigation": navigation });
 const member = { role: "member", isActive: true, financeAccess: false };
 
+test("company document detail follows an allowed list without opening other menus",()=>{
+  assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",["/knowledge/notes"]),true);
+  assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",[]),false);
+  assert.equal(access.canOpenMenu(member,"/knowledge/development",["/knowledge/notes"]),false);
+  assert.equal(access.canOpenMenu(member,"/finance/sales",["/knowledge"]),false);
+});
+
 test("menu selection preserves role/data boundaries and always-available destinations", () => {
   assert.equal(access.canOpenMenu(member, "/home", []), true);
   assert.equal(access.canOpenMenu(member, "/settings/account", []), true);

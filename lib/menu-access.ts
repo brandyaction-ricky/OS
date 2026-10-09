@@ -12,7 +12,7 @@ export interface MenuAccessProfile {
   financeAccess?: boolean;
 }
 
-export const MENU_HREFS = NAV_STAGES.flatMap(stage => stage.pages.map(page => page.href));
+export const MENU_HREFS = [...NAV_STAGES.flatMap(stage => stage.pages.map(page => page.href)), "/knowledge/search"];
 export const REQUIRED_MENUS = ["/home", ACCOUNT_PAGE.href];
 
 /** Navigation preferences never grant document, finance, or mutation privileges. */
@@ -22,7 +22,11 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   const canonical = page.navHref ?? page.href;
   if (profile.role === "admin") return true;
   if (canonical.startsWith("/finance/") && !profile.financeAccess) return false;
-  return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical);
+  const companyDocument = href.split(/[?#]/)[0].startsWith("/knowledge/") && !href.startsWith("/knowledge/development");
+  // A document opened from a permitted company-document list still uses the same
+  // detail route. This is navigation only: document-level authorization stays server-side.
+  if (href.split(/[?#]/)[0].startsWith("/knowledge/doc/") && allowed?.some(menu => ["/knowledge/notes", "/knowledge/docs", "/knowledge/canon", "/knowledge/review", "/knowledge/search", "/knowledge/graph"].includes(menu))) return true;
+  return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
 }
 
 export function availableMenuGroups(profile: MenuAccessProfile) {

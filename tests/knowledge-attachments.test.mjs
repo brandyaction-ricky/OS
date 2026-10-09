@@ -45,6 +45,8 @@ test("knowledge attachment API checks document access and keeps storage private"
     assert.match(body, /authenticateRequest\(request\)/, handler);
   }
   assert.match(route, /assertEditableDocument\(actor, input\.documentId\)/);
+  assert.match(route, /canEditDocument\(access\.actor, document, access\.context\)/);
+  assert.doesNotMatch(route, /const editable = actor\.role === "admin"/);
   assert.match(route, /readableDocument\(actor, knowledgeAttachmentDocumentId\(path\)\)/);
   assert.match(route, /createSignedUploadUrl\(path\)/);
   assert.match(route, /registerPendingKnowledgeAttachment\(\{ path, documentId: input\.documentId, uploaderId: actor\.id \}\)/);
