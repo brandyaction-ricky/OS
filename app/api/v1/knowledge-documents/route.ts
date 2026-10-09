@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { canReadKnowledgeDocument, canAgentWriteDocument } from "@/lib/server/document-access";
+import { canReadKnowledgeDocument, canAgentWriteDocument, canAgentEditDraft } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
@@ -194,7 +194,7 @@ export async function PATCH(request: Request) {
     ] as const).filter(([, value]) => value !== undefined).map(([field]) => field);
     let document: KnowledgeDocument | null = null;
 
-    if (current.status === "canonical" && (next.title !== current.title || next.content !== current.content_md) && (actor.type === "user" || actor.enforceWriteStatuses)) {
+    if (current.status === "canonical") {
       if (!canReadKnowledgeDocument(actor, current) || !(await readableKnowledgePages(actor, [current])).has(current.id)) {
         throw new ApiError(403, "DOCUMENT_FORBIDDEN", "이 정본에 변경 제안을 만들 수 없습니다.");
       }
@@ -210,6 +210,7 @@ export async function PATCH(request: Request) {
     }
 
     if (actor.type === "agent") {
+      if(!canAgentEditDraft(actor,current)) throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키는 자신이 만든 AI 초안만 직접 수정할 수 있습니다. 정본은 변경 제안으로 검토합니다.");
       const { data, error } = await service.rpc("os_agent_update_document", {
         p_agent_key_id: actor.id,
         p_organization_id: input.organizationId,
@@ -259,6 +260,7 @@ export async function DELETE(request: Request) {
   try {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "knowledge.write" });
     requireAgentScope(actor, "knowledge.write");
+    if(actor.type === "agent") throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키로 문서를 삭제할 수 없습니다.");
     const url = new URL(request.url);
     const parsedOrganizationId = organizationId.parse(url.searchParams.get("organizationId"));
     const documentId = z.string().uuid().parse(url.searchParams.get("documentId"));
@@ -266,18 +268,7 @@ export async function DELETE(request: Request) {
     await assertOrganization(actor, parsedOrganizationId);
     let document: KnowledgeDocument | null = null;
 
-    if (actor.type === "agent") {
-      const { data: current } = await createServiceSupabase().from("os_documents").select("status").eq("id", documentId).single();
-      if (current && current.status !== "archived" && !canAgentWriteDocument(actor, current.status)) throw new ApiError(403, "DOCUMENT_STATUS_FORBIDDEN", "이 키로 변경할 수 없는 문서 상태입니다.");
-      const { data, error } = await createServiceSupabase().rpc("os_agent_archive_document", {
-        p_agent_key_id: actor.id,
-        p_organization_id: parsedOrganizationId,
-        p_document_id: documentId,
-        p_reason: reason,
-      });
-      document = rpcRow(data) as KnowledgeDocument | null;
-      if (error || !document) throw writeError(error, "DOCUMENT_ARCHIVE_FAILED", "문서를 휴지통으로 옮기지 못했습니다.");
-    } else {
+    {
       const { data, error } = await actor.supabase.rpc("os_set_document_status", {
         p_document_id: documentId,
         p_to: "archived",

@@ -1,11 +1,10 @@
-import { findPage } from "@/lib/navigation";
-import { KnowledgeWorkspace } from "@/components/knowledge-workspace";
-import {KnowledgeTabs} from "@/components/knowledge-tabs";
-import {KnowledgeCanonWorkspace} from "@/components/knowledge-canon-workspace";
-
-export const metadata = { title: `${findPage("/knowledge").label} | 브랜디 OS` };
-
-export default async function KnowledgePage({searchParams}:{searchParams:Promise<{tab?:string}>}) {
-  const {tab}=await searchParams;
-  return <><KnowledgeTabs />{tab==="canon"?<KnowledgeCanonWorkspace />:<KnowledgeWorkspace />}</>;
+import { permanentRedirect } from "next/navigation";
+import { KnowledgeHome } from "@/components/knowledge/home";
+export const metadata = { title: "회사 문서 | 브랜디 OS" };
+export default async function KnowledgePage({ searchParams }: { searchParams: Promise<{ tab?: string; document?: string; new?: string }> }) {
+  const query = await searchParams;
+  if (query.document) permanentRedirect(`/knowledge/doc/${encodeURIComponent(query.document)}`);
+  if (query.tab === "canon") permanentRedirect("/knowledge/canon");
+  if (query.new === "1") permanentRedirect("/knowledge/notes?new=1&tab=all");
+  return <KnowledgeHome/>;
 }

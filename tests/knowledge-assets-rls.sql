@@ -139,7 +139,15 @@ begin
   if (select updated_at from public.os_knowledge_assets where id = fixture.id) < transaction_timestamp() then
     raise exception 'QA: updated_at trigger did not run';
   end if;
+  begin
+    delete from public.os_documents where id = fixture.document_id;
+    raise exception 'QA: unguarded document purge was allowed';
+  exception when insufficient_privilege then null;
+  end;
+  -- Exercise the FK cascade as the fixture owner only, after checking the guard.
+  perform set_config('os.workspace_purge_ok', '1', true);
   delete from public.os_documents where id = fixture.document_id;
+  perform set_config('os.workspace_purge_ok', '', true);
   if exists (select 1 from public.os_knowledge_assets where id = fixture.id) then
     raise exception 'QA: deleted document left an orphan mapping';
   end if;

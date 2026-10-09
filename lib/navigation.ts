@@ -76,9 +76,16 @@ export const NAV_STAGES: NavStage[] = [
     { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge", pages: [
-    { label: "전체 문서", href: "/knowledge", icon: FileText, aliases: ["지식", "문서 작업공간"], ready: true },
-    { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], ready: true },
-    { label: "검토 요청", href: "/knowledge/review", icon: ListChecks, aliases: ["검토함", "지식 검토함"], ready: true },
+    { label: "문서 홈", href: "/knowledge", icon: Home, aliases: ["전체 문서", "지식", "문서 작업공간"], ready: true },
+    { label: "내 노트", href: "/knowledge/notes", icon: FileText, ready: true },
+    { label: "회의록", href: "/knowledge/meetings", icon: CalendarRange, ready: true },
+    { label: "결정 모음", href: "/knowledge/decisions", icon: ListChecks, ready: true },
+    { label: "팀 문서", href: "/knowledge/docs", icon: Users, ready: true },
+    { label: "회사 정본", href: "/knowledge/canon", icon: BookOpen, ready: true },
+    { label: "연결", href: "/knowledge/graph", icon: Link2, ready: true },
+    { label: "검토함", href: "/knowledge/review", icon: ListChecks, aliases: ["검토 요청", "지식 검토함"], ready: true },
+    { label: "템플릿", href: "/knowledge/templates", icon: LayoutDashboard, ready: true },
+    { label: "휴지통", href: "/knowledge/trash", icon: ScrollText, ready: true },
   ] },
   { id: "team", label: "팀", icon: Users, href: "/organization/meetings", pages: [
     { label: "회의·결정", href: "/organization/meetings", icon: MessageSquareText, aliases: ["조직운영", "회의", "의사결정"], ready: true },
@@ -117,7 +124,6 @@ export const NAV_STAGES: NavStage[] = [
 
 const NAV_ALIASES: Record<string, string> = {
   "/content/production": "/content/topics",
-  "/knowledge/graph": "/knowledge",
   "/performance/connections": "/settings/connections",
   "/organization/leave": "/organization/schedule",
 
@@ -132,6 +138,8 @@ export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/acc
 const matchesPath = (pathname: string, href: string) => pathname === href || (href !== "/home" && pathname.startsWith(`${href}/`));
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
+  if (pathname === "/knowledge/search") return { label: "문서 찾기", href: "/knowledge/search", navHref: "/knowledge", icon: Search, ready: true };
+  if (pathname.startsWith("/knowledge/doc/")) return { label: "문서", href: pathname, navHref: "/knowledge", icon: FileText, ready: true };
   if (pathname === ACCOUNT_PAGE.href) return ACCOUNT_PAGE;
   const pages = NAV_STAGES.flatMap(stage => stage.pages);
   const query = new URLSearchParams(path.split("?")[1]?.split("#")[0] ?? "");
@@ -155,6 +163,6 @@ export function findStage(pathname: string) {
 }
 export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
-  const pages = [...NAV_STAGES.filter(stage => (!stage.requiresFinance || financeAccess) && (!stage.requiresHr || hrEnabled)).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { ...ACCOUNT_PAGE, stage: "내 계정" }];
+  const pages = [...NAV_STAGES.filter(stage => (!stage.requiresFinance || financeAccess) && (!stage.requiresHr || hrEnabled)).flatMap(stage => stage.pages.map(page => ({ ...page, stage: stage.label }))), { label: "문서 찾기", href: "/knowledge/search", icon: Search, aliases: ["지식 검색"], stage: "회사 문서" }, { ...ACCOUNT_PAGE, stage: "내 계정" }];
   return (normalized ? pages.filter(page => `${page.stage} ${page.group ?? ""} ${page.label} ${(page.aliases ?? []).join(" ")}`.toLocaleLowerCase("ko-KR").includes(normalized)) : pages).filter(page => canVisit(page.href)).slice(0, 8);
 }

@@ -4,24 +4,23 @@ import { RETIRED_ROUTES } from "../../lib/final-routes";
 import { expectNoHorizontalOverflow } from "./horizontal-overflow";
 const pages = [...NAV_STAGES.filter(stage => !stage.requiresHr).flatMap(stage => stage.pages), ACCOUNT_PAGE];
 const mobile = new Set(["/home", "/content/publishing", "/content/comments", "/content/performance", "/settings/account"]);
-test("all 36 original routes and seven finance routes select their menu or explain retirement", async ({ page }) => {
-  test.setTimeout(90000);
+test("all current non-HR routes and seven finance routes select their menu or explain retirement", async ({ page }) => {
+  test.setTimeout(180000);
   const retained = NAV_STAGES.filter(stage => !stage.requiresHr).flatMap(stage => stage.pages).filter(
     entry => entry.href !== "/content/comments" && !entry.href.includes("?") && !entry.href.startsWith("/automation/"),
   );
   const merged = [
     { href: "/home/decisions", label: "회의·결정", nav: "/organization/meetings" },
-    { href: "/knowledge/graph", label: "전체 문서", nav: "/knowledge" },
     { href: "/organization/leave", label: "일정·휴가", nav: "/organization/schedule" },
     { href: "/settings/monitoring", label: "작동 상태", nav: "/settings/connections" },
     { href: "/settings/channels", label: "작동 상태", nav: "/settings/connections" },
   ];
   const financeRoutes = retained.filter(entry => entry.href.startsWith("/finance/"));
   expect(financeRoutes).toHaveLength(7);
-  expect(retained.length - financeRoutes.length + merged.length + Object.keys(RETIRED_ROUTES).length).toBe(36);
+  expect(retained.filter(entry=>entry.href==="/knowledge"||entry.href.startsWith("/knowledge/")&&!entry.href.startsWith("/knowledge/development"))).toHaveLength(10);
   for (const entry of [...retained.map(entry => ({ ...entry, nav: entry.href })), ...merged]) {
     await page.goto(entry.href);
-    await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
+    await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
     await expect(page.locator(`.page-link[href="${entry.nav}"]`)).toHaveAttribute("aria-current", "page");
   }
   for (const [href, label] of Object.entries(RETIRED_ROUTES)) {
@@ -31,7 +30,7 @@ test("all 36 original routes and seven finance routes select their menu or expla
 });
 for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
   test(`final screens ${width}px ${theme}`, async ({ page }, testInfo) => {
-    test.setTimeout(90000);
+    test.setTimeout(180000);
     await page.setViewportSize({ width, height: 960 });
     await page.addInitScript(theme => {
       localStorage.setItem("brandy-os-theme", theme);
@@ -42,7 +41,7 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
     for (const [index, entry] of pages.entries()) {
       if (width === 390 && !mobile.has(entry.href)) continue;
       await page.goto(entry.href);
-      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
+      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
       await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
       await expect(page.locator(".profile-trigger")).toBeAttached();
       if (entry.href.startsWith("/content/") && entry.href !== "/content/comments") await expect(page.getByLabel("작업 중인 영상 선택")).toBeEnabled();

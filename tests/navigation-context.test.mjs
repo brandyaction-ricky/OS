@@ -47,14 +47,14 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   assert.notEqual(findPage("/knowledge/development-extra").label, "수정 요청");
 });
 test("command palette finds both new labels and former menu labels", () => {
-  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["유튜브 발행","발행·업로드"],["문서 작업공간","전체 문서"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
+  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["유튜브 발행","발행·업로드"],["문서 작업공간","문서 홈"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
     assert.ok(searchNavigation(oldName).some(page => page.label === newName), oldName);
     assert.ok(searchNavigation(newName).some(page => page.label === newName), newName);
   }
 });
 
-test('navigation adds seven finance menus without changing the 31 existing menus',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,3,4,7,3,4]);
+test('company documents and finance menus coexist with gated HR navigation',()=>{
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,10,4,7,3,4]);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);

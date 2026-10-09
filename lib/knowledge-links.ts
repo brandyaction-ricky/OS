@@ -11,6 +11,9 @@ export interface KnowledgeLinkSource {
   current_version?: number;
   steward_id?: string | null;
   parent_document_id?: string | null;
+  source?: string;
+  meeting_record_id?: string | null;
+  updated_at?: string;
 }
 
 export interface KnowledgeGraphNode {
@@ -23,6 +26,8 @@ export interface KnowledgeGraphNode {
   stewardId?: string | null;
   incoming: number;
   outgoing: number;
+  space?: "mine" | "team" | "canon" | "meet" | "ai";
+  updatedAt?: string;
 }
 
 export interface KnowledgeGraphEdge {
@@ -44,6 +49,7 @@ export interface KnowledgeGraph {
   broken: BrokenKnowledgeLink[];
   totalLinks?: number;
   stewardReady?: boolean;
+  hiddenTargets?: number;
 }
 
 const TEMPLATE_LINK = "다른 문서 이름";
@@ -52,7 +58,7 @@ export function extractWikiLinks(content: string) {
   return [...new Set(
     [...content.matchAll(/(?<!!)\[\[([^\]|#]+)(?:[#|][^\]]+)?\]\]/g)]
       .map((match) => match[1].trim())
-      .filter(Boolean),
+      .filter(value => Boolean(value) && !/\.(?:png|jpe?g|gif|webp|svg|pdf|mp4|mov|zip|csv|xlsx|docx|pptx|hwp)$/i.test(value)),
   )];
 }
 
@@ -81,6 +87,8 @@ export function documentLinkKeys(document: Pick<KnowledgeLinkSource, "title" | "
 
 export function resolveWikiLink<T extends Pick<KnowledgeLinkSource, "id" | "title" | "folder" | "status" | "source_ref">>(raw: string, documents: T[], sourceFolder = "") {
   const key = wikiKey(raw);
+  const byId = documents.find(document => document.id === raw && document.status !== "archived");
+  if (byId) return byId;
   const candidates = documents.filter((document) => document.status !== "archived" && documentLinkKeys(document).includes(key));
   if (candidates.length === 1) return candidates[0];
   const nearby = candidates.filter((document) => wikiKey(document.folder) === wikiKey(sourceFolder));
@@ -89,10 +97,14 @@ export function resolveWikiLink<T extends Pick<KnowledgeLinkSource, "id" | "titl
   return canonical.length === 1 ? canonical[0] : undefined;
 }
 
-export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): KnowledgeGraph {
+export function buildKnowledgeGraph(documents: KnowledgeLinkSource[], visibleIds?: ReadonlySet<string>): KnowledgeGraph {
   const active = documents.filter((document) => document.status !== "archived");
+  const visible = (id: string) => !visibleIds || visibleIds.has(id);
+  const byId = new Map(active.map(document=>[document.id,document]));
+  const compactTitle = new Map<string, KnowledgeLinkSource[]>();
   const byTitle = new Map<string, KnowledgeLinkSource[]>();
   for (const document of active) {
+    const compact=wikiKey(document.title).replace(/\s/g,"");compactTitle.set(compact,[...(compactTitle.get(compact)??[]),document]);
     for (const key of documentLinkKeys(document)) byTitle.set(key, [...(byTitle.get(key) ?? []), document]);
   }
 
@@ -102,17 +114,22 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
   const incoming = new Map<string, number>();
   const outgoing = new Map<string, number>();
   let totalLinks = 0;
+  let hiddenTargets = 0;
 
   for (const document of active) {
+    if (!visible(document.id)) continue;
     for (const title of extractWikiLinks(document.content_md)) {
       if (title === TEMPLATE_LINK) continue;
       totalLinks += 1;
-      const target = resolveWikiLink(title, byTitle.get(wikiKey(title)) ?? [], document.folder);
+      const target = byId.get(title) ?? resolveWikiLink(title, byTitle.get(wikiKey(title)) ?? [], document.folder);
       if (!target) {
         const candidates = byTitle.get(wikiKey(title)) ?? [];
-        broken.push({ sourceId: document.id, sourceTitle: document.title, targetTitle: title, reason: candidates.length > 1 ? "ambiguous" : "missing", candidates: candidates.map(item => ({id: item.id, title: item.title, folder: item.folder})) });
+        if (candidates.some(item => !visible(item.id))) { hiddenTargets += 1; continue; }
+        const suggestions = candidates.length ? candidates : (compactTitle.get(wikiKey(title).replace(/\s/g, ""))??[]).filter(item => visible(item.id));
+        broken.push({ sourceId: document.id, sourceTitle: document.title, targetTitle: title, reason: candidates.length > 1 ? "ambiguous" : "missing", candidates: suggestions.map(item => ({id: item.id, title: item.title, folder: item.folder})) });
         continue;
       }
+      if (!visible(target.id)) { hiddenTargets += 1; continue; }
       if (target.id === document.id) continue;
       const edgeKey = `${document.id}:${target.id}`;
       if (edgeKeys.has(edgeKey)) continue;
@@ -124,7 +141,7 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
   }
 
   return {
-    nodes: active.map((document) => ({
+    nodes: active.filter(document => visible(document.id)).map((document) => ({
       id: document.id,
       title: document.title,
       folder: document.folder,
@@ -134,9 +151,12 @@ export function buildKnowledgeGraph(documents: KnowledgeLinkSource[]): Knowledge
       stewardId: document.steward_id,
       incoming: incoming.get(document.id) ?? 0,
       outgoing: outgoing.get(document.id) ?? 0,
+      space: document.meeting_record_id ? "meet" : document.status === "canonical" ? "canon" : document.source === "mcp" ? "ai" : document.status === "draft" ? "mine" : "team",
+      updatedAt: document.updated_at,
     })),
     edges,
     broken,
     totalLinks,
+    hiddenTargets,
   };
 }

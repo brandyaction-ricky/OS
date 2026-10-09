@@ -17,7 +17,7 @@ export async function GET(request: Request) {
       !(scope.startsWith("member:") && z.string().uuid().safeParse(scope.slice(7)).success)) {
       throw new ApiError(400, "INVALID_SCOPE", "문서 조회 범위를 확인해 주세요.");
     }
-    const rows = await documentIndex(scope, actor.id);
+    const rows = await documentIndex(scope, actor);
     if (url.searchParams.get("facets") === "true") return NextResponse.json(knowledgeFacets(rows));
     const target = url.searchParams.get("target");
     if (target) return NextResponse.json({ document: resolveWikiLink(target, rows, url.searchParams.get("folder") ?? "") ?? null });

@@ -7,19 +7,22 @@ test("search progress and retry APIs reject unauthenticated callers and agent ke
  }
  expect((await request.post("/api/v1/indexing",{data:{action:"retry_failed",limit:1}})).status()).toBe(401);
 });
-test("demo search keeps applied criteria visible and empty results distinct from loading",async({page})=>{
+test("demo search keeps applied space and query visible and empty results distinct from loading",async({page})=>{
  await page.goto("/knowledge/search?q=unlikely-fixture-empty");
- await expect(page.locator(".index-progress")).toContainText("데모");
- await expect(page.getByRole("heading",{name:"관련 지식을 찾지 못했습니다"})).toBeVisible();
- await page.getByRole("button",{name:"정확한 단어",exact:true}).click();
- await expect(page.getByText(/조건 변경됨/)).toBeVisible();
- await page.getByRole("button",{name:"지식 검색",exact:true}).click();
- await expect(page.getByText(/조건 변경됨/)).toHaveCount(0);
- await expect(page.locator(".results-summary")).toContainText("정확한 단어");
+ await expect(page.getByText("검색 결과가 없습니다. 검색 범위나 단어를 바꿔 보세요.",{exact:true})).toBeVisible();
+ await page.getByRole("textbox",{name:"문서 검색어"}).fill("문서 작성");
+ await page.getByRole("button",{name:"검색",exact:true}).click();
+ await expect(page.getByRole("heading",{name:"제목 일치",exact:true})).toBeVisible();
+ await expect(page.locator(".kw-search-result").getByRole("link",{name:"문서 작성 기준"})).toBeVisible();
+ await page.getByRole("combobox",{name:"검색 공간"}).selectOption("team");
+ await expect(page).toHaveURL(/space=team/);
+ await expect(page.getByText("검색 결과가 없습니다. 검색 범위나 단어를 바꿔 보세요.",{exact:true})).toBeVisible();
+ await page.reload();await expect(page.getByRole("combobox",{name:"검색 공간"})).toHaveValue("team");
+ await expect(page.getByRole("textbox",{name:"문서 검색어"})).toHaveValue("문서 작성");
 });
 for(const theme of ["dark","light"])for(const width of [1440,390])test(`search and indexing at ${width}px ${theme}`,async({page},testInfo)=>{
  await page.setViewportSize({width,height:960});await page.addInitScript(value=>localStorage.setItem("brandy-os-theme",value),theme);
  const capture=async(name:string)=>{expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:testInfo.outputPath(`uiux-${name}-${theme}-${width}.png`),mask:[page.locator(".profile-trigger")],maskColor:"#777777"});};
- await page.goto("/knowledge/search");await expect(page.locator(".index-progress")).toContainText("데모");expect(await page.getByRole("button",{name:"균형 검색",exact:true}).evaluate(e=>e.getBoundingClientRect().height)).toBeLessThanOrEqual(40);await capture("search-index");
+ await page.goto("/knowledge/search");await expect(page.getByRole("textbox",{name:"문서 검색어"})).toBeVisible();await expect(page.getByRole("checkbox",{name:"내 노트 포함"})).not.toBeChecked();expect(await page.getByRole("button",{name:"검색",exact:true}).evaluate(e=>e.getBoundingClientRect().height)).toBeLessThanOrEqual(40);await capture("search-index");
  await page.goto("/settings/monitoring");await expect(page.getByRole("heading",{level:1,name:"작동 상태",exact:true})).toBeVisible();if(width===390)await page.getByRole("heading",{name:"지식 검색 준비 작업",exact:true}).scrollIntoViewIfNeeded();await capture("index-queue");
 });

@@ -28,24 +28,24 @@ export async function GET(request: Request) {
     if (url.searchParams.get("view") === "folders") {
       const folders = new Set<string>();
       for (let offset = 0; offset < 10_000; offset += 1_000) {
-        const { data, error } = await createServiceSupabase().from("os_documents").select("folder").neq("status", "archived").order("id").range(offset, offset + 999);
+        const { data, error } = await createServiceSupabase().from("os_documents").select("id,owner_id,status,folder,parent_document_id").neq("status", "archived").order("id").range(offset, offset + 999);
         if (error) throw new ApiError(400, "DOCUMENT_FOLDER_LIST_FAILED", "지식 폴더 목록을 불러오지 못했습니다.", error.message);
-        for (const row of data ?? []) if (row.folder) folders.add(row.folder);
+        const visible = await readableKnowledgePages(actor, data ?? []);
+        for (const row of data ?? []) if (visible.has(row.id) && row.folder) folders.add(row.folder);
         if (!data || data.length < 1_000) break;
       }
       return NextResponse.json({ folders: [...folders].sort((a, b) => a.localeCompare(b, "ko", { numeric: true })) });
     }
 
-    // Scope is a workspace filter, not an access boundary. Authentication is
-    // checked above; the server client avoids hiding another member's notes.
+    // Pagination and totals are computed only after access filtering.
     const summaryColumns = "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at";
-    const listDocuments = (columns: string) => {
+    const listDocuments = (columns: string, scanOffset: number) => {
       let builder = createServiceSupabase()
       .from("os_documents")
       .select(columns, { count: "exact" })
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
-      .range(offset, offset + limit - 1);
+      .range(scanOffset, scanOffset + 999);
     if (statuses?.length) builder = builder.in("status", statuses);
     if (owner) builder = builder.eq("owner_id", owner);
     if (url.searchParams.get("exactFolder") === "true") builder = builder.eq("folder", folder === "분류 없음" ? "" : folder ?? "");
@@ -62,15 +62,29 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
       return builder;
     };
-    const requestedColumns = includeContent ? "*" : view === "page-summary" ? `${summaryColumns},parent_document_id,page_order` : summaryColumns;
-    let { data, count, error } = await listDocuments(requestedColumns);
-    // A Preview can run ahead of the additive DEV migration. Legacy clients
-    // and the existing tree must remain readable until that migration lands.
-    if (view === "page-summary" && error?.code === "42703") ({ data, count, error } = await listDocuments(summaryColumns));
-    if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.", error.message);
-    const rows = (data ?? []) as unknown as KnowledgeDocument[];
-    const allowed = await readableKnowledgePages(actor, rows);
-    return NextResponse.json({ documents: rows.filter(row => allowed.has(row.id)), total: count ?? 0 });
+    void summaryColumns;
+    const rows: KnowledgeDocument[] = [];
+    for (let scanOffset = 0; ; scanOffset += 1000) {
+      const { data, error } = await listDocuments("*", scanOffset);
+      if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.");
+      const batch = (data ?? []) as unknown as KnowledgeDocument[];
+      const allowed = await readableKnowledgePages(actor, batch);
+      rows.push(...batch.filter(row => allowed.has(row.id)));
+      if (batch.length < 1000) break;
+    }
+    const space = url.searchParams.get("space");
+    const filtered = rows.filter(row => {
+      if (space === "mine" && !(row.status === "draft" && row.owner_id === actor.ownerId)) return false;
+      if (space === "team" && (!["team", "review", "reviewed"].includes(row.status) || row.meeting_record_id || row.source === "mcp")) return false;
+      if (space === "canon" && row.status !== "canonical") return false;
+      if (space === "meet" && !row.meeting_record_id) return false;
+      const category = url.searchParams.get("category");
+      if (category && (row.category_id ?? "uncategorized") !== category) return false;
+      const state = url.searchParams.get("workState");
+      return !state || row.work_state === state;
+    });
+    if (url.searchParams.get("sort") === "title") filtered.sort((a, b) => a.title.localeCompare(b.title, "ko"));
+    return NextResponse.json({ documents: filtered.slice(offset, offset + limit).map(row => includeContent ? row : { ...row, content_md: undefined }), total: filtered.length });
   } catch (error) { return apiErrorResponse(error); }
 }
 
@@ -139,7 +153,7 @@ export async function PATCH(request: Request) {
       throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.", { currentVersion: current.current_version });
     }
 
-    if (current.status === "canonical" && (input.title !== undefined && input.title !== current.title || input.content !== undefined && input.content !== current.content_md)) {
+    if (current.status === "canonical") {
       const proposal = await createCanonicalProposal(actor, current, input.expectedVersion, {
         title: input.title ?? current.title,
         content_md: input.content ?? current.content_md,

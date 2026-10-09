@@ -1,9 +1,12 @@
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { ApiError } from "@/lib/http";
 import type { KnowledgeDocument } from "@/lib/types";
+import type { RequestActor } from "./auth";
+import { readableKnowledgePages } from "./knowledge-page-access";
 
 // Only lightweight metadata crosses this boundary. Bodies are fetched on open.
-export async function documentIndex(scope: string, ownerId: string) {
+export async function documentIndex(scope: string, actor: RequestActor) {
+  const ownerId = actor.ownerId;
   const rows: KnowledgeDocument[] = [];
   for (let offset = 0; ; offset += 1000) {
     let query = createServiceSupabase().from("os_documents")
@@ -20,5 +23,6 @@ export async function documentIndex(scope: string, ownerId: string) {
     rows.push(...(data ?? []) as KnowledgeDocument[]);
     if (!data || data.length < 1000) break;
   }
-  return rows;
+  const readable = await readableKnowledgePages(actor, rows);
+  return rows.filter(row => readable.has(row.id));
 }

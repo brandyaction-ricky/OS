@@ -5,7 +5,7 @@ for (const stage of NAV_STAGES.filter(stage => !stage.requiresHr)) {
   test(`existing pages keep the ${stage.label} navigation and title`, async ({ page }) => {
     for (const entry of stage.pages) {
       await page.goto(entry.href);
-      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.label);
+      await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText(entry.href === "/home" ? /확인할 일 \d+건/ : entry.href === "/knowledge" ? "회사 문서" : entry.label);
       await expect(page.locator(".breadcrumbs [aria-current=page]")).toHaveText(entry.label);
       const title = entry.href.startsWith("/finance/") ? `${entry.label} · 재무관리` : entry.label;
       await expect(page).toHaveTitle(`${title} | 브랜디 OS`);
@@ -41,9 +41,13 @@ test("quick record works when already in the document workspace", async ({ page 
   await page.goto("/knowledge");
   await page.getByRole("button", { name: "기록 종류 선택", exact: true }).click();
   await page.getByRole("link", { name: "메모", exact: true }).click();
-  await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toBeVisible();
-  await expect(page.getByRole("dialog", { name: "새 문서 만들기" })).toHaveCount(0);
-  await expect(page.getByRole("region", { name: "새 페이지 본문" })).toBeVisible();
+  const dialog=page.getByRole("dialog",{name:"새 문서",exact:true});
+  await expect(dialog.getByRole("radio",{name:"내 노트 나만 봅니다. 메모·초안"})).toBeChecked();
+  await dialog.getByRole("textbox",{name:"제목",exact:true}).fill("QA 빠른 기록 진입");
+  await dialog.getByRole("button",{name:"만들기",exact:true}).click();
+  await expect(page.getByRole("textbox",{name:"문서 제목"})).toHaveValue("QA 빠른 기록 진입");
+  await expect(page.getByRole("textbox",{name:"editable markdown"})).toBeVisible();
+  await expect(page.locator(".kw-editor-card .kw-badge").first()).toContainText("내 노트");
 });
 
 for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {

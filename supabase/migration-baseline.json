@@ -506,12 +506,30 @@
       "appliedEnvironments": ["development"]
     },
     {
+      "file": "20261008180414_knowledge_workspace.sql",
+      "sha256": "8bd9a936ce4170946a0bc19f7b6855a59f19e433f9d9a3b29ec61dafe07cc141",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Applied alone to the confirmed isolated DEV project on 2026-10-09 after rollback-only RLS validation. Exact SQL checksum and migration history read back; preserves pre-existing HR notification types. Production remains unapproved and unapplied."
+    },
+    {
       "file": "20261009022419_hr_single_read_policies.sql",
       "sha256": "4ed1deee14fe1337694996d08f40799803569307aa4d40c8d37861962430aca4",
       "purpose": "combine equivalent HR operator and self-read RLS predicates without changing access",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-09",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261009023548_knowledge_conflict_response.sql",
+      "sha256": "e20bff10cbf3206b86e58a0402ec9b60d7a8df58bbf33790ac972971579a98d4",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Hosted DEV QA fix: use PT409 for company-document business version conflicts instead of PostgREST 14 retryable SQLSTATE 40001. Six explicit function definitions only; no data, grants or signature changes."
     }
   ],
   "legacyMigrations": [
