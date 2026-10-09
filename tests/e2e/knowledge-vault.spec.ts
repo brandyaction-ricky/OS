@@ -3,20 +3,31 @@ import { expect, test, type Page } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("brandy-os-menu-guide-final", "seen"));
 });
-for (const width of [1440, 1024, 390]) test(`personal folder vault at ${width}px`, async ({ page }, info) => {
+for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/knowledge/vault");
   await expect(page.getByRole("heading", { name: "문서 보관함", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "내 문서", exact: true })).toHaveAttribute("aria-pressed", "true");
-  if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
-  for (const root of ["00_Skills", "01_Raw", "02_Wiki", "03_Content", "04_개인", "05_Projects", "06_학습"])
-    await expect(page.getByRole("treeitem", { name: `${root} 0`, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "전체", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "전체 문서 4개" })).toBeVisible();
+  if (width < 900) await page.locator(".empty-state").getByRole("button", { name: "파일 트리 보기" }).click();
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "리키 1", exact: true })).toBeVisible();
   // Wait for the mobile drawer transition and verify text isn't clipped off-screen.
-  await expect.poll(async () => (await page.getByRole("treeitem", {name:"00_Skills 0",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+  await expect.poll(async () => (await page.getByRole("treeitem", {name:"회사 wiki 3",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath(`vault-${width}.png`), fullPage: true });
   expect(errors).toEqual([]);
+});
+
+test("saved hidden tree still shows the document count and a way to reopen it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("brandy-knowledge-vault-tree", "false"));
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("button", { name: "전체", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "전체 문서 4개" })).toBeVisible();
+  await page.locator(".empty-state").getByRole("button", { name: "파일 트리 보기" }).click();
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
 });
 
 async function create(page: Page, title: string, content: string) {
