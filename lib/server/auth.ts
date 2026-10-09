@@ -1,3 +1,4 @@
+import { hrWorkspaceEnabled } from "@/lib/hr/gate";
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { ApiError, getBearerToken } from "@/lib/http";
@@ -69,6 +70,11 @@ export async function authenticateRequest(
       .select("id,is_active,must_change_password")
       .eq("id", data.owner_user_id).maybeSingle();
     if (ownerError || !owner?.is_active) throw new ApiError(403, "AGENT_OWNER_INACTIVE", "AI 키 소유자의 활성 계정을 확인할 수 없습니다.");
+    if(hrWorkspaceEnabled()){
+      const {data: active,error: activeError}=await service.rpc("os_hr_owner_active",{p_profile:owner.id});
+      if(activeError)throw new ApiError(503,"HR_SETUP_REQUIRED","인사 계정 상태를 확인하지 못했습니다.");
+      if(active!==true)throw new ApiError(403,"AGENT_OWNER_INACTIVE","AI 키 소유자의 계정은 사용할 수 없습니다.");
+    }
     if (owner.must_change_password) throw new ApiError(403, "PASSWORD_CHANGE_REQUIRED", "AI 키 소유자가 먼저 비밀번호를 변경해야 합니다.");
     await service.from("os_agent_keys").update({ last_used_at: new Date().toISOString() }).eq("id", data.id);
     return {
@@ -101,6 +107,11 @@ export async function authenticateRequest(
     .eq("id", userData.user.id)
     .maybeSingle();
   if (profileError || !profile?.is_active) throw new ApiError(403, "ACCOUNT_DISABLED", "활성 구성원 계정을 확인할 수 없습니다.");
+  if (hrWorkspaceEnabled()) {
+    const { data: active, error } = await supabase.rpc("os_hr_session_active");
+    if (error) throw new ApiError(503, "HR_SESSION_UNAVAILABLE", "계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    if (active !== true) throw new ApiError(403, "ACCOUNT_DISABLED", "퇴사일이 지난 계정은 사용할 수 없습니다.");
+  }
   if (profile?.must_change_password && !options.allowPasswordChangeRequired) {
     throw new ApiError(403, "PASSWORD_CHANGE_REQUIRED", "비밀번호를 먼저 변경해야 합니다.");
   }

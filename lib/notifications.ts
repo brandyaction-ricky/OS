@@ -10,8 +10,10 @@ export function presentNotification(row: OsRecord, source: Pick<OsRecord, "id" |
   const reason = row.metadata.reason;
   if (typeof reason !== "string" || !Object.hasOwn(NOTIFICATION_REASONS, reason)) return null;
   return { id: row.id, title: source.title, reason: reason as WorkNotification["reason"],
-    href: row.metadata.sourceType === "document"
-      ? reason === "knowledge_review" || !reason.startsWith("knowledge_") ? `/knowledge/review?document=${encodeURIComponent(source.id)}` : `/knowledge/doc/${encodeURIComponent(source.id)}`
-      : source.record_type === "meeting" && source.metadata.workspace === "knowledge" ? `/knowledge/meetings/${encodeURIComponent(source.id)}` : recordWorkHref(source),
+    href: String(row.metadata.sourceType).startsWith("hr_") && typeof source.metadata.hrHref === "string" && source.metadata.hrHref.startsWith("/hr/")
+      ? source.metadata.hrHref
+      : row.metadata.sourceType === "document"
+        ? reason === "knowledge_review" || !reason.startsWith("knowledge_") ? `/knowledge/review?document=${encodeURIComponent(source.id)}` : `/knowledge/doc/${encodeURIComponent(source.id)}`
+        : source.record_type === "meeting" && source.metadata.workspace === "knowledge" ? `/knowledge/meetings/${encodeURIComponent(source.id)}` : recordWorkHref(source),
     createdAt: row.created_at, readAt: typeof row.metadata.readAt === "string" ? row.metadata.readAt : "" };
 }

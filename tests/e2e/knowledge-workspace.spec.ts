@@ -33,6 +33,30 @@ test("mobile document tree is visible on demand and editing remains within viewp
  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.screenshot({path:info.outputPath("mobile-editor.png"),fullPage:true});
 });
+test("document properties keep long headings and tags inside the panel",async({page})=>{
+ await page.setViewportSize({width:1440,height:900});
+ await createNote(page,"QA 긴 문서 속성");
+ await page.evaluate(()=>{
+  const key=Object.keys(localStorage).find(value=>value.startsWith("brandyos:knowledge:v1:"))!;
+  const state=JSON.parse(localStorage.getItem(key)!);
+  const document=state.documents.find((row:{id:string})=>location.pathname.endsWith(row.id));
+  document.content_md="# BRANDYACTION-VERY-LONG-UNBROKEN-DOCUMENT-HEADING-THAT-MUST-WRAP\n## 긴 제목과 속성이 함께 표시되는 문서";
+  localStorage.setItem(key,JSON.stringify(state));
+ });
+ await page.reload();
+ await page.getByRole("textbox",{name:"태그 검색 또는 새 태그"}).fill("long-unbroken-document-property-tag-that-must-wrap");
+ await page.locator(".kw-tag-picker").getByRole("button",{name:"추가",exact:true}).click();
+ for(const width of [1862,1440,1024,390]){
+  await page.setViewportSize({width,height:900});
+  const panel=page.locator(".kw-properties");
+  await expect(panel.getByRole("navigation",{name:"편집 문서 목차"}).getByRole("button").first()).toBeVisible();
+  await expect.poll(()=>panel.evaluate(element=>{
+   const rect=element.getBoundingClientRect();
+   return element.scrollWidth<=element.clientWidth+1&&rect.right<=innerWidth+1;
+  })).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ }
+});
 test("large document database paginates without dropping search or view filters",async({page})=>{
  await createNote(page,"QA 목록 원본");
  await page.evaluate(()=>{

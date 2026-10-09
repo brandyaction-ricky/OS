@@ -55,7 +55,7 @@ test('legacy keys remain usable before migration but unrelated database errors f
   if(fields.includes('enforce_write_statuses'))return {data:null,error:{code:missing?'42703':'XX000',message:'enforce_write_statuses unavailable'}};
   return {data:{id,active:true,owner_user_id:id,scopes:['knowledge.read','knowledge.write'],allowed_statuses:['team','canonical']},error:null};
  }};return q;}};
- const auth=await load('lib/server/auth.ts',{'@/lib/agent-key-policy':policy,'./document-access':access,'@/lib/http':{...http,getBearerToken:()=> 'bos_pat_fixture'},'@/lib/supabase/server':{createServiceSupabase:()=>db}},{Buffer});
+ const auth=await load('lib/server/auth.ts',{'@/lib/hr/gate':{hrWorkspaceEnabled:()=>false},'@/lib/agent-key-policy':policy,'./document-access':access,'@/lib/http':{...http,getBearerToken:()=> 'bos_pat_fixture'},'@/lib/supabase/server':{createServiceSupabase:()=>db}},{Buffer});
  const actor=await auth.authenticateRequest(request('GET'),{allowAgent:true});
  assert.ok(actor.writableStatuses.includes('canonical'));assert.equal(lookups,2);
  missing=false;lookups=0;

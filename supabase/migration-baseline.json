@@ -498,6 +498,14 @@
       "appliedEnvironments": ["development"]
     },
     {
+      "file": "20261008180150_hr_labor.sql",
+      "sha256": "f20c5b3ed7ea925d2695b5f8340c2abdf9e24380fc33e71249e00d227465ae21",
+      "purpose": "add isolated HR people, leave ledger, document retention and audited commands",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "appliedEnvironments": ["development"]
+    },
+    {
       "file": "20261008180414_knowledge_workspace.sql",
       "sha256": "8bd9a936ce4170946a0bc19f7b6855a59f19e433f9d9a3b29ec61dafe07cc141",
       "requiresApproval": true,
@@ -505,6 +513,14 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied alone to the confirmed isolated DEV project on 2026-10-09 after rollback-only RLS validation. Exact SQL checksum and migration history read back; preserves pre-existing HR notification types. Production remains unapproved and unapplied."
+    },
+    {
+      "file": "20261009022419_hr_single_read_policies.sql",
+      "sha256": "4ed1deee14fe1337694996d08f40799803569307aa4d40c8d37861962430aca4",
+      "purpose": "combine equivalent HR operator and self-read RLS predicates without changing access",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "appliedEnvironments": ["development"]
     },
     {
       "file": "20261009023548_knowledge_conflict_response.sql",

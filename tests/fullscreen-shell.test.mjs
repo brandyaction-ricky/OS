@@ -12,7 +12,7 @@ test("content automation is implemented as internal OS routes", () => {
 });
 
 test("all full-screen routes have explicit styling without changing their URLs", () => {
-  assert.equal(Object.keys(FULLSCREEN_ROUTES).length, 46);
+  assert.equal(Object.keys(FULLSCREEN_ROUTES).filter(path=>!path.startsWith("/hr")).length, 46);
   for (const name of ["overview", "sales", "settlements", "bank", "cards", "recurring", "budget"]) {
     assert.equal(fullscreenScreen("/finance/" + name), "finance-" + name);
   }
@@ -28,3 +28,5 @@ test("all full-screen routes have explicit styling without changing their URLs",
   assert.equal(fullscreenScreen("/settings/channels"), "channels");
   assert.equal(fullscreenScreen("/unknown"), undefined);
 });
+
+test("HR screens are scoped without replacing existing destinations",()=>{assert.equal(fullscreenScreen('/hr/employees'),'hr-employees');assert.equal(fullscreenScreen('/hr/employees/person'),'hr-person');assert.equal(fullscreenScreen('/hr/my-leave'),'hr-self');});

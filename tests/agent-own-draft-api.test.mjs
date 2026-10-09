@@ -89,7 +89,8 @@ async function fixture(documents, options = {}) {
   const http = await load("lib/http.ts");
   const service = { createServiceSupabase: () => db, createUserSupabase() { throw Error("No human credentials in fixture"); } };
   const common = { "@/lib/http": http, "@/lib/supabase/server": service };
-  const auth = await load("lib/server/auth.ts", { ...common, "@/lib/agent-key-policy": keyPolicy, "./document-access": documentAccess });
+  const auth = await load("lib/server/auth.ts", { ...common, "@/lib/agent-key-policy": keyPolicy,
+    "@/lib/hr/gate": { hrWorkspaceEnabled: () => false }, "./document-access": documentAccess });
   const organization = await load("lib/server/organization.ts", common);
   const context = await load("lib/server/knowledge-access.ts", { ...common, "@/lib/knowledge/access": access });
   const pages = await load("lib/server/knowledge-page-access.ts", { ...common, "./knowledge-access": context });

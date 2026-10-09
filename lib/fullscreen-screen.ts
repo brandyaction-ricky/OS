@@ -1,5 +1,11 @@
 // Stable OS routes, not the standalone prototype's hash-router addresses.
 export const FULLSCREEN_ROUTES = {
+  "/hr": "hr-employees",
+  "/hr/employees": "hr-employees",
+  "/hr/leave": "hr-leave",
+  "/hr/leave-ledger": "hr-ledger",
+  "/hr/documents": "hr-documents",
+  "/hr/my-leave": "hr-self",
   "/finance/overview": "finance-overview",
   "/finance/sales": "finance-sales",
   "/finance/settlements": "finance-settlements",
@@ -49,6 +55,7 @@ export const FULLSCREEN_ROUTES = {
 } as const;
 
 export function fullscreenScreen(path: string, tab?: string | null) {
+  if (path.startsWith("/hr/employees/")) return "hr-person";
   if (path === "/knowledge" && tab === "canon") return "canon";
   if (path === "/knowledge/development" && (tab === "updates" || tab === "history")) return "updates";
   if (path === "/organization/schedule" && tab === "leave") return "leave";

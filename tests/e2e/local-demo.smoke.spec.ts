@@ -218,7 +218,7 @@ test("categories support rename, direct drag, undo and archive without deleting 
 });
 
 test("new page keeps title, toggle and nested page actions in one workspace", async ({ page }) => {
-  await page.goto("/knowledge?new=1");
+  await page.goto("/knowledge/notes?new=1&tab=all");
   await page.getByRole("textbox",{name:"제목",exact:true}).fill("페이지 편집 QA");
   await page.getByRole("button",{name:"만들기",exact:true}).click();
   const editor=page.getByRole("textbox",{name:"editable markdown"});

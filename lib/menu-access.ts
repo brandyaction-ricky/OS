@@ -21,6 +21,8 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   const page = findPage(href);
   const canonical = page.navHref ?? page.href;
   if (profile.role === "admin") return true;
+  if (canonical === "/hr/my-leave") return true;
+  if (canonical.startsWith("/hr/") && !profile.financeAccess) return false;
   if (canonical.startsWith("/finance/") && !profile.financeAccess) return false;
   const companyDocument = href.split(/[?#]/)[0].startsWith("/knowledge/") && !href.startsWith("/knowledge/development");
   // A document opened from a permitted company-document list still uses the same
@@ -29,8 +31,8 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
 }
 
-export function availableMenuGroups(profile: MenuAccessProfile) {
-  return NAV_STAGES.map(stage => ({ ...stage, pages: stage.pages.filter(page => canOpenMenu(profile, page.href)) }));
+export function availableMenuGroups(profile: MenuAccessProfile, hrEnabled = false) {
+  return NAV_STAGES.filter(stage => !stage.requiresHr || hrEnabled).map(stage => ({ ...stage, pages: stage.pages.filter(page => canOpenMenu(profile, page.href)) }));
 }
 
 export function isMissingMenuAccessTable(error: { code?: string; message?: string } | null) {
