@@ -502,7 +502,8 @@
       "sha256": "f20c5b3ed7ea925d2695b5f8340c2abdf9e24380fc33e71249e00d227465ae21",
       "purpose": "add isolated HR people, leave ledger, document retention and audited commands",
       "requiresApproval": true,
-      "appliedEnvironments": []
+      "developmentApprovedAt": "2026-10-09",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [

@@ -1048,8 +1048,7 @@ export function HrFormDrawer({
                 <FileInput label="서명본 사진 또는 PDF" required />
               ) : (
                 <p className="hr-muted">
-                  OS 알림으로 전달합니다. 이메일 발송 연결은 별도이며 이메일이
-                  발송됐다고 기록하지 않습니다.
+                  OS 알림으로 전달하고 열람 시각을 기록합니다.
                 </p>
               )}
               <p className="hr-muted">
