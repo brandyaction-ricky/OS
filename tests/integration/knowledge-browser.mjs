@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { chromium, expect as baseExpect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { accounts, appUrl, localEnvironment } from '../../tools/knowledge-local-qa.mjs';
+
+const local = localEnvironment(), users = await accounts(local);
+const expect = baseExpect.configure({ timeout: 20000 });
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
+const errors = [];
+page.on('pageerror', error => errors.push(error.message));
+try {
+  await page.goto(appUrl + '/login?next=%2Fknowledge');
+  await page.getByLabel('이메일').fill(users.author.email);
+  await page.locator('input[type="password"]').fill(users.author.password);
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await expect(page).toHaveURL(/\/knowledge$/);
+  await expect(page.getByRole('heading', { name: '회사 문서', exact: true })).toBeVisible();
+  await expect(page.getByText('API·DB 응답 확인', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '새 문서', exact: true }).click();
+  const modal = page.getByRole('dialog', { name: '새 문서', exact: true });
+  await modal.getByRole('radio', { name: /내 노트/ }).check();
+  const title = `QA browser ${randomUUID().slice(0, 8)}`;
+  await modal.getByRole('textbox', { name: '제목', exact: true }).fill(title);
+  await modal.getByRole('button', { name: '만들기', exact: true }).click();
+  await expect(page).toHaveURL(/\/knowledge\/doc\/[0-9a-f-]{36}$/);
+  const id = page.url().split('/').pop();
+  await expect(page.getByRole('textbox', { name: '문서 제목', exact: true })).toHaveValue(title);
+  const editor = page.getByRole('textbox', { name: 'editable markdown' });
+  await editor.fill('QA browser autosave survives reload');
+  await expect(page.getByText('임시 저장됨 · Ctrl/⌘S로 확정', { exact: true })).toBeVisible({ timeout: 15000 });
+  let result = await local.service.from('os_document_drafts').select('content_md').eq('document_id', id).eq('user_id', users.author.id).single();
+  assert.equal(result.error, null); assert.match(result.data.content_md, /survives reload/);
+  await page.reload();
+  await expect(editor).toContainText('QA browser autosave survives reload');
+  await page.getByRole('button', { name: '저장', exact: true }).click();
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible();
+  result = await local.service.from('os_documents').select('content_md,current_version').eq('id', id).single();
+  assert.equal(result.error, null); assert.match(result.data.content_md, /survives reload/); assert.ok(result.data.current_version > 1);
+  await page.reload();
+  await expect(editor).toContainText('QA browser autosave survives reload');
+  await page.screenshot({ path: join(local.directory, 'connected-editor-desktop.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(appUrl + '/knowledge/review');
+  await expect(page.getByRole('heading', { name: '검토함', exact: true })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  assert.equal(overflow, false, 'mobile review horizontal overflow');
+  await page.screenshot({ path: join(local.directory, 'connected-review-mobile.png'), fullPage: true });
+  assert.deepEqual(errors, [], 'browser runtime errors');
+  console.log('PASS connected browser: login → create → autosave → reload → commit → DB readback; desktop/mobile QA');
+} catch (error) {
+  await page.screenshot({ path: join(local.directory, 'connected-browser-failure.png'), fullPage: true });
+  console.error((await page.locator('body').innerText()).slice(-5000));
+  throw error;
+} finally { await context.close(); await browser.close(); }

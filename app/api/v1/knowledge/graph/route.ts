@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { withIgnoredLinks } from "@/lib/knowledge/ignored-links";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { packKnowledgeGraph } from "@/lib/knowledge/graph-transport";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +55,8 @@ export async function GET(request: Request) {
         ignored.push(...(result.data??[]));if(!result.data||result.data.length<500)break;
       }
     }
-    return NextResponse.json({ ...withIgnoredLinks(buildKnowledgeGraph(documents, readable),ignored), stewardReady },{headers:{"Cache-Control":"private, no-store"}});
+    const graph = { ...withIgnoredLinks(buildKnowledgeGraph(documents, readable),ignored), stewardReady };
+    return NextResponse.json(new URL(request.url).searchParams.get("format") === "compact" ? packKnowledgeGraph(graph) : graph,{headers:{"Cache-Control":"private, no-store"}});
   } catch (error) {
     return apiErrorResponse(error);
   }

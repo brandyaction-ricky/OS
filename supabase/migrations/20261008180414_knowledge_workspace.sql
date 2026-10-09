@@ -592,7 +592,7 @@ begin
         status='open',return_kind=null,reviewer_id=null,decided_at=null,note='',updated_at=now() where id=prop.id returning id into rid;
     else
       insert into public.os_document_proposals(document_id,base_version,title,content_md,folder,brand,team,tags,author_id,requested_approver_id,author_note,ai_assist,review_due_on)
-        values(d.id,expected,coalesce(p->>'title',d.title),coalesce(p->>'content',d.content_md),coalesce(p->>'folder',d.folder),d.brand,d.team,
+        values(d.id,expected,coalesce(p->>'title',d.title),coalesce(p->>'content',d.content_md),coalesce(p->>'folder',d.folder),coalesce(d.brand,''),d.team,
           case when p?'tags' then array(select jsonb_array_elements_text(p->'tags')) else d.tags end,u,approver,btrim(p->>'reason'),coalesce(p->>'aiAssist',''),coalesce(nullif(p->>'reviewDueOn','')::date,d.review_due_on)) returning id into rid;
     end if;
     delete from public.os_document_drafts where document_id=d.id and user_id=u and updated_at<=now();

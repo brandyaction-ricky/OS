@@ -16,7 +16,7 @@ update public.os_profiles set role='admin' where id='96000000-0000-4000-8000-000
 update public.os_profiles set member_kind='partner' where id='96000000-0000-4000-8000-000000000004';
 insert into public.os_doc_categories(id,space,name,partner_ids,created_by) values
  ('97000000-0000-4000-8000-000000000001','team','QA shared category',array['96000000-0000-4000-8000-000000000004'::uuid],'96000000-0000-4000-8000-000000000001'),
- ('97000000-0000-4000-8000-000000000002','team','QA restricted category','{}','96000000-0000-4000-8000-000000000001');
+ ('97000000-0000-4000-8000-000000000002','team','QA restricted','{}','96000000-0000-4000-8000-000000000001');
 insert into public.os_documents(id,title,content_md,status,owner_id,category_id,steward_id) values
  ('98000000-0000-4000-8000-000000000001','QA private A','private','draft','96000000-0000-4000-8000-000000000001',null,null),
  ('98000000-0000-4000-8000-000000000002','QA shared','team','team','96000000-0000-4000-8000-000000000001','97000000-0000-4000-8000-000000000001',null),

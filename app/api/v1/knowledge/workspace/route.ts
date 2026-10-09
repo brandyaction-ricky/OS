@@ -26,13 +26,15 @@ export async function GET(request: Request) {
     const db = user.supabase, service = createServiceSupabase();
     const state = emptyKnowledgeState();
     // RLS filters each page; do not accept client supplied actor or permissions.
-    for (let offset=0;;offset+=500) {
-      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").order("id").range(offset,offset+499);
+    // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
+    for (let cursor="00000000-0000-0000-0000-000000000000";;) {
+      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(500);
       if(result.error) throw databaseError(result.error);
       const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
       const readable = await readableKnowledgePages(user,batch);
       state.documents.push(...batch.filter(d=>readable.has(d.id)).map(d=>({...d,content_md:""})));
       if(batch.length<500) break;
+      cursor=batch[batch.length-1].id;
     }
     const access = await knowledgeAccessContext(user,state.documents);
     const resources = await Promise.all([
