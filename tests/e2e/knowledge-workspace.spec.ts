@@ -62,6 +62,43 @@ async function createNote(page:import("@playwright/test").Page,title:string){
  await expect(page.getByRole("textbox",{name:"문서 제목"})).toHaveValue(title);
  return page.getByRole("textbox",{name:"editable markdown",exact:true});
 }
+for(const width of [1440,390])test(`legacy knowledge is discoverable with original permissions and history at ${width}px`,async({page},info)=>{
+ await page.setViewportSize({width,height:900});
+ await createNote(page,"QA 이전 기준");
+ const before=await page.evaluate(()=>{
+  const key=Object.keys(localStorage).find(key=>key.startsWith("brandyos:knowledge:v1:"))!;
+  const state=JSON.parse(localStorage.getItem(key)!);
+  const base=state.documents.find((d:{title:string})=>d.title==="QA 이전 기준");
+  const make=(id:string,title:string,status:string,extra={})=>({...base,id,title,status,source:"markdown",created_at:"2026-09-01T00:00:00Z",updated_at:"2026-10-08T00:00:00Z",folder:"기존 자료/MD",content_md:"# 보존된 원문\n기록 내용",category_id:null,current_version:39,...extra});
+  state.documents=[make("qa-old-md","QA 기존 MD","draft"),make("qa-old-mcp","QA 기존 작업 기록","draft",{source:"mcp",folder:"기존 자료/MD/기록"}),make("qa-old-team","QA 기존 공유","team"),make("qa-old-canon","QA 기존 정본","canonical"),make("qa-old-trash","QA 휴지통 원본","archived",{archived_from_status:"draft"}),make("qa-hidden","QA 타인의 개인 자료","draft",{owner_id:"other-owner"}),make("qa-new-private","QA 새 개인 노트","draft",{created_at:"2026-10-10T00:00:00Z"})];
+  state.versions={"qa-old-md":[{...state.documents[0],version_no:39,author_id:base.owner_id,author_name:"QA 작성자",reason:"기존 기록"}]};
+  localStorage.setItem(key,JSON.stringify(state));
+  return JSON.stringify({documents:state.documents,versions:state.versions});
+ });
+ await page.goto("/knowledge/docs");
+ await expect(page.getByLabel("기존 지식 자료")).toContainText("기존 지식 자료 3개");
+ await expect(page.locator(".kw-table tbody tr")).toHaveCount(3);
+ const md=page.locator(".kw-table tbody tr").filter({hasText:"QA 기존 MD"});
+ await expect(md).toContainText("개인 열람 유지");await expect(md.getByRole("combobox",{name:"QA 기존 MD 카테고리"})).toBeDisabled();
+ await page.getByRole("combobox",{name:"기존 폴더"}).selectOption("기존 자료/MD/기록");
+ await expect(page.locator(".kw-table tbody tr")).toHaveCount(1);
+ await expect(page.getByRole("link",{name:"QA 기존 작업 기록",exact:true})).toBeVisible();
+ await page.reload();await expect(page.getByRole("combobox",{name:"기존 폴더"})).toHaveValue("기존 자료/MD/기록");
+ await page.getByRole("combobox",{name:"기존 폴더"}).selectOption("");
+ await page.getByRole("button",{name:"갤러리 보기"}).click();await expect(page.locator(".kw-gallery article")).toHaveCount(3);
+ await page.getByRole("button",{name:"보드 보기"}).click();await expect(page.locator(".kw-board article")).toHaveCount(3);
+ await page.getByRole("button",{name:"표 보기"}).click();
+ await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.screenshot({path:info.outputPath(`legacy-team-${width}.png`),fullPage:true});
+ await page.getByRole("link",{name:"QA 기존 MD",exact:true}).click();
+ await expect(page.getByRole("textbox",{name:"editable markdown",exact:true})).toContainText("보존된 원문");
+ await page.getByRole("button",{name:"버전 기록",exact:true}).click();
+ await expect(page.getByRole("dialog")).toContainText("v39");
+ await page.goto("/knowledge/canon");await expect(page.locator(".kw-table tbody tr")).toHaveCount(1);await expect(page.locator(".kw-table")).toContainText("QA 기존 정본");
+ await page.goto("/knowledge/trash");await expect(page.getByText("QA 휴지통 원본",{exact:true})).toBeVisible();
+ const after=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>key.startsWith("brandyos:knowledge:v1:"))!;const state=JSON.parse(localStorage.getItem(key)!);return JSON.stringify({documents:state.documents,versions:state.versions});});
+ expect(after).toBe(before);
+});
 test("create, draft, save, reopen, link insertion and version restore are persistent",async({page})=>{
  const editor=await createNote(page,"QA 저장 노트");
  await editor.fill("첫 번째 본문");

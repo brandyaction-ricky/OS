@@ -2,12 +2,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Info, LockKeyhole, Users, ShieldCheck, CalendarDays } from "lucide-react";
-import { Header, Card, DocumentRows, NewDocumentButton } from "./ui";
+import { Header, Card, DocumentRows, NewDocumentButton, Empty } from "./ui";
 import { useKnowledge } from "./provider";
 import { kstDay } from "@/lib/knowledge/model";
 import {useWorkspaceGraph} from "./use-graph";
 export function KnowledgeHome() {
-  const { state, actor, loading } = useKnowledge(); const [recent, setRecent] = useState<string[]>([]);
+  const { state, actor, loading, error } = useKnowledge(); const [recent, setRecent] = useState<string[]>([]);
   useEffect(() => { try { setRecent(JSON.parse(localStorage.getItem(`kw:recent:${actor.ownerId}`) ?? "[]")); } catch { setRecent([]); } }, [actor.ownerId]);
   const active = state.documents.filter(d => d.status !== "archived"), today = kstDay();
   const due = active.filter(d => d.status === "canonical" && d.review_due_on && d.review_due_on < today);
@@ -16,6 +16,7 @@ export function KnowledgeHome() {
   const weekStart = new Date(today+"T00:00:00+09:00");
   weekStart.setUTCDate(weekStart.getUTCDate()-((new Date(today+"T12:00:00+09:00").getUTCDay()+6)%7));
   const weekEnd = weekStart.getTime()+7*86400000;
+  if(error)return <Empty>문서 현황을 확인하지 못했습니다. 위의 다시 불러오기를 눌러 주세요.</Empty>;
   return <><Header title="회사 문서" description={`회사 정본 · 회의록 · 내 노트를 한곳에서 씁니다. 오늘 ${today}`}><Link href="/knowledge/activity">활동 기록</Link><NewDocumentButton/><Link className="kw-primary" href="/knowledge/notes?tab=today">오늘 노트</Link></Header><div className="kw-space-guide"><strong><Info size={16}/>문서는 세 공간 중 하나에 있습니다</strong><div><span><LockKeyhole size={16}/>내 노트 <small>나만 봄</small></span><b>→</b><span><Users size={16}/>팀 문서 <small>팀이 같이 고침</small></span><b>→</b><span><ShieldCheck size={16}/>회사 정본 <small>승인된 기준 (읽기 전용)</small></span><span><CalendarDays size={16}/>회의록 <small>팀원 또는 참석자만 봅니다</small></span></div></div><div className="kw-metrics">{[
     ["오늘 노트", active.some(d => d.daily_on === today && d.owner_id === actor.ownerId) ? "작성 중" : "시작하기", "/knowledge/notes?tab=today"],
     ["내가 볼 검토", todo, "/knowledge/review"], ["이번 주 회의", state.meetings.filter(m => m.starts_at && Date.parse(m.starts_at) >= weekStart.getTime() && Date.parse(m.starts_at) < weekEnd).length, "/knowledge/meetings"], ["검토일 지난 정본", due.length, "/knowledge/canon?filter=overdue"],
