@@ -117,7 +117,12 @@
 [data-theme=dark] .kw-inline-suggestions small{color:#9c9ca8}
 [data-theme=dark] .kw-inline-suggestions button[aria-selected=true]{background:#25234a}
 .kw-inline-suggestions button:disabled{opacity:.5;cursor:not-allowed}
-.kw-outline{display:grid;gap:3px}.kw-outline button{text-align:left;justify-content:flex-start;border:0;background:transparent}
+.kw-properties{grid-template-columns:minmax(0,1fr)}
+.kw-properties > *{min-width:0;max-width:100%}
+.kw-properties > a{overflow-wrap:anywhere}
+.kw-properties .kw-tag-picker button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.kw-outline{display:grid;grid-template-columns:minmax(0,1fr);gap:3px}
+.kw-outline button{min-width:0;width:100%;text-align:left;justify-content:flex-start;border:0;background:transparent;white-space:normal;overflow-wrap:anywhere}
 .kw-neighborhood{width:100%;height:auto;overflow:visible}.kw-neighborhood line{stroke:var(--kw-line)}.kw-neighborhood circle{fill:var(--kw-accent)}.kw-neighborhood text{fill:currentColor;font-size:11px}
 .kw-tree .kw-tree-group{margin:4px 0 8px 8px}.kw-tree .kw-tree-group>summary{font-size:12px;color:var(--text-secondary)}
 .kw-muted-link{color:var(--kw-muted);background:var(--kw-soft);padding:1px 5px;border-radius:4px}
