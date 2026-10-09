@@ -90,5 +90,18 @@ do $$ begin
  if has_function_privilege('authenticated','public.os_workspace_purge_expired()','EXECUTE') or has_function_privilege('anon','public.os_knowledge_command(jsonb)','EXECUTE') then raise exception 'QA overbroad execution grants'; end if;
 end $$;
 reset role;
+-- The shared DEV schema can contain HR from another release. Keep its existing
+-- notification types working without installing or modifying that feature.
+do $$ declare source_type text; begin
+ if to_regclass('public.os_hr_employees') is not null then
+  foreach source_type in array array['hr_employee','hr_leave','hr_promotion'] loop
+   insert into public.os_records(record_type,title,description,status,owner_id,created_by,metadata)
+   values('notification','업무 알림','','unread','96000000-0000-4000-8000-000000000002',
+    '96000000-0000-4000-8000-000000000001',jsonb_build_object('sourceType',source_type,
+    'sourceId','98000000-0000-4000-8000-000000000002','reason','assignment','readAt','',
+    'dedupeKey','knowledge-qa-preserve-'||source_type));
+  end loop;
+ end if;
+end $$;
 rollback;
 select 'knowledge workspace RLS integration passed; synthetic fixtures rolled back' as result;

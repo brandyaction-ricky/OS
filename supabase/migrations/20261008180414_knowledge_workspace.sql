@@ -936,7 +936,11 @@ begin
     or new.owner_id is null
     or (new.owner_id=new.created_by and coalesce(new.metadata->>'reason','') not in ('scheduled','token_expiring','knowledge_review','knowledge_update','knowledge_access','knowledge_reminder','knowledge_mention'))
     or not exists(select 1 from public.os_profiles where id=new.owner_id and is_active)
-    or coalesce(new.metadata->>'sourceType','') not in ('record','document')
+    -- Preserve the already-deployed HR notification contract when that optional
+    -- schema is present; installing this workspace must not disable other menus.
+    or (coalesce(new.metadata->>'sourceType','') not in ('record','document')
+      and not (to_regclass('public.os_hr_employees') is not null
+        and coalesce(new.metadata->>'sourceType','') in ('hr_employee','hr_leave','hr_promotion')))
     or coalesce(new.metadata->>'sourceId','') !~ '^[0-9a-f-]{36}$'
     or coalesce(new.metadata->>'reason','') not in ('assignment','review','approval','blocked','status_change','scheduled','token_expiring','knowledge_review','knowledge_update','knowledge_access','knowledge_reminder','knowledge_mention')
     or coalesce(new.metadata->>'dedupeKey','')=''

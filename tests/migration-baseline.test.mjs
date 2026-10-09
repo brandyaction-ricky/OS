@@ -23,9 +23,9 @@ test("the active chain records production assets and knowledge image links with 
   assert.equal(result.archivedMigrationCount, 14);
   const workspace = manifest.forwardMigrations.find(entry => entry.file === "20261008180414_knowledge_workspace.sql");
   assert.equal(workspace.requiresApproval, true);
-  assert.equal(workspace.developmentApprovedAt, null);
+  assert.equal(workspace.developmentApprovedAt, "2026-10-09");
   assert.equal(workspace.productionApprovedAt, null);
-  assert.deepEqual(workspace.appliedEnvironments, []);
+  assert.deepEqual(workspace.appliedEnvironments, ["development"]);
   assert.deepEqual(lifecycle.appliedEnvironments, ["development", "production"]);
   assert.equal(lifecycle.requiresApproval, false);
   assert.deepEqual(teamSharing.appliedEnvironments, ["development", "production"]);

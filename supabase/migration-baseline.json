@@ -499,12 +499,12 @@
     },
     {
       "file": "20261008180414_knowledge_workspace.sql",
-      "sha256": "7b7c5fb1c528244e9e819d5c41b04334d7054d4b5e3c4ba6b704da7fde26de8b",
+      "sha256": "8bd9a936ce4170946a0bc19f7b6855a59f19e433f9d9a3b29ec61dafe07cc141",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-09",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Company documents rebuild candidate; validated in an explicitly approved disposable localhost stack with synthetic data. Not applied to shared DEV or Production; those targets require separate approval."
+      "appliedEnvironments": ["development"],
+      "notes": "Applied alone to the confirmed isolated DEV project on 2026-10-09 after rollback-only RLS validation. Exact SQL checksum and migration history read back; preserves pre-existing HR notification types. Production remains unapproved and unapplied."
     }
   ],
   "legacyMigrations": [
