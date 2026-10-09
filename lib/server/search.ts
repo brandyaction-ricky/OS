@@ -66,7 +66,7 @@ async function fallbackDocuments(actor: RequestActor, input: SearchInput, status
     .limit(Math.min(Math.max(input.topK * 6, 24), 60));
   if (input.filters.folder) builder = builder.eq("folder", input.filters.folder);
   if (actor.type === "agent" && statuses.some((status) => status !== "canonical")) {
-    builder = builder.or(`status.eq.canonical,status.eq.team,owner_id.eq.${actor.ownerId}`);
+    builder = builder.or(`status.eq.canonical,status.eq.team,and(status.eq.draft,owner_id.eq.${actor.ownerId},source.eq.mcp)`);
   }
   const brand = actor.brand ?? input.filters.brand;
   if (brand) builder = builder.eq("brand", brand);
@@ -152,14 +152,19 @@ export async function searchDocuments(actor: RequestActor, input: SearchInput): 
   if (degraded) results = results.filter((result) => hasLexicalEvidence(result, input.query));
   const sharedActor = actor; // Supplemental reads retain the requesting user’s RLS scope.
   let sharedKeyword: SearchResult[] = [];
-  if (results.length < input.topK) {
+  const includeAgentDrafts = actor.type === "agent" && statuses.includes("draft");
+  if (results.length < input.topK || includeAgentDrafts) {
     try { sharedKeyword = await fallbackDocuments(sharedActor, input, statuses); }
     catch (error) { if (!results.length) throw error; degraded = true; degradationReasons.push("supplement_failed"); }
   }
   if (!results.length) results = sharedKeyword;
   else {
     const seen = new Set(results.map((result) => result.documentId));
-    results = [...results, ...sharedKeyword.filter((result) => !seen.has(result.documentId))].slice(0, input.topK);
+    results = [...results, ...sharedKeyword.filter((result) => !seen.has(result.documentId))];
+    // The vector RPC deliberately excludes drafts. A full shared result page
+    // must not prevent an explicitly requested own draft from competing for rank.
+    if (includeAgentDrafts) results.sort((left, right) => right.score - left.score);
+    results = results.slice(0, input.topK);
     results = await addVersions(sharedActor.supabase, results);
   }
   return { results: await visiblePageResults(actor, results), degraded, degradationReasons };

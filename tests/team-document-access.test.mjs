@@ -16,9 +16,21 @@ test("AI keys can only edit their own generated draft, never human notes or team
   for(const doc of [{...document("draft","owner-a"),source:"manual"},{...document("team","owner-a"),source:"mcp"},{...document("draft"),source:"mcp"},{...document("canonical","owner-a"),source:"mcp"}])assert.equal(canAgentEditDraft(actor(),doc),false);
 });
 
-test("read-only AI keys always include team-shared documents", () => {
-  assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team"]);
-  assert.deepEqual(agentReadableStatuses(["team", "canonical"]), ["team", "canonical"]);
+test("read-only AI keys include team documents and own AI drafts without granting writes", () => {
+  assert.deepEqual(agentReadableStatuses(["canonical"]), ["canonical", "team", "draft"]);
+  assert.deepEqual(agentReadableStatuses(["team", "canonical"]), ["team", "canonical", "draft"]);
+});
+
+test("AI draft read requires explicit read status, same owner and MCP provenance", () => {
+  const reader = actor({ allowedStatuses: agentReadableStatuses(["canonical"]) });
+  const ownDraft = { ...document("draft", "owner-a"), source: "mcp" };
+  assert.equal(canReadKnowledgeDocument(reader, ownDraft), true);
+  assert.equal(canReadKnowledgeDocument(actor(), ownDraft), false);
+  for (const source of [undefined, "manual", "obsidian_vault"]) {
+    assert.equal(canReadKnowledgeDocument(reader, { ...ownDraft, source }), false);
+  }
+  assert.equal(canReadKnowledgeDocument(reader, { ...ownDraft, owner_id: "owner-b" }), false);
+  assert.equal(canReadKnowledgeDocument(reader, { ...ownDraft, status: "archived" }), false);
 });
 
 test("all members and AI keys can read another owner's team-shared document", () => {
@@ -48,7 +60,7 @@ test("routes, search, key defaults, and RLS migration share one team-read contra
   assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);
   assert.match(documentRoute, /readableKnowledgePages\(actor, \[data\]\)/);
   assert.match(documentRoute, /DOCUMENT_NOT_FOUND/);
-  assert.match(search, /status\.eq\.canonical,status\.eq\.team,owner_id\.eq/);
+  assert.match(search, /status\.eq\.canonical,status\.eq\.team,and\(status\.eq\.draft,owner_id\.eq\.\$\{actor.ownerId\},source\.eq\.mcp\)/);
   assert.match(search, /status === "canonical" \|\| status === "team"/);
   assert.match(keyRoute, /\["team", "canonical"\]/);
   assert.match(migration, /when p_status = 'team' then public\.os_is_active_member\(\)/);
