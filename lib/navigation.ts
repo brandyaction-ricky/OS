@@ -75,7 +75,8 @@ export const NAV_STAGES: NavStage[] = [
     { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge", pages: [
-    { label: "문서 홈", href: "/knowledge", icon: Home, aliases: ["전체 문서", "지식", "문서 작업공간"], ready: true },
+    { label: "문서 홈", href: "/knowledge", icon: Home, aliases: ["지식"], ready: true },
+    { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
     { label: "내 노트", href: "/knowledge/notes", icon: FileText, ready: true },
     { label: "회의록", href: "/knowledge/meetings", icon: CalendarRange, ready: true },
     { label: "결정 모음", href: "/knowledge/decisions", icon: ListChecks, ready: true },

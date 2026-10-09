@@ -87,7 +87,7 @@ export function documentLinkKeys(document: Pick<KnowledgeLinkSource, "title" | "
 
 export function resolveWikiLink<T extends Pick<KnowledgeLinkSource, "id" | "title" | "folder" | "status" | "source_ref">>(raw: string, documents: T[], sourceFolder = "") {
   const key = wikiKey(raw);
-  const byId = documents.find(document => document.id === raw && document.status !== "archived");
+  const byId = documents.find(document => wikiKey(document.id) === key && document.status !== "archived");
   if (byId) return byId;
   const candidates = documents.filter((document) => document.status !== "archived" && documentLinkKeys(document).includes(key));
   if (candidates.length === 1) return candidates[0];

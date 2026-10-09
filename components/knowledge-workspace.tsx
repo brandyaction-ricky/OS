@@ -47,6 +47,7 @@ import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, crea
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
+import { PERSONAL_VAULT_ROOTS, stableWikiLink } from "@/lib/knowledge-vault";
 import { documentCreateSchema } from "@/lib/validation";
 import { updateFolderInventory, inKnowledgeScope } from "@/lib/knowledge-workspace-state";
 import { useKnowledgeDraft } from "@/hooks/use-knowledge-draft";
@@ -90,9 +91,9 @@ function documentFolder(document: KnowledgeDocument) {
   return "분류 없음";
 }
 
-function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean, inventory: Array<{path: string; count: number}> = []) {
+function buildFolderTree(documents: KnowledgeDocument[], sortAscending: boolean, inventory: Array<{path: string; count: number}> = [], defaults: readonly string[] = []) {
   const roots: FolderTreeNode[] = [];
-  const entries = inventory.length ? inventory : documents.map(document => ({path: documentFolder(document), count: 1}));
+  const entries = [...defaults.map(path => ({path, count: 0})), ...(inventory.length ? inventory : documents.map(document => ({path: documentFolder(document), count: 1})))];
   for (const entry of entries) {
     const parts = entry.path.split("/").filter(Boolean);
     let level = roots; let path = "";
@@ -236,12 +237,12 @@ export function MarkdownView({ content, onOpenLink }: { content: string; onOpenL
   return <>{headings.length ? <details className="document-outline"><summary>문서 목차 · {headings.length}개</summary><nav aria-label="문서 목차">{headings.map((heading, index) => <button key={index} className="ghost-button" style={{ paddingLeft: heading.level * 10 }} onClick={() => revealHeading(`wiki-heading-${heading.title.normalize("NFC").trim()}`)}>{heading.title}</button>)}</nav></details> : null}<MarkdownBlocks content={root.body} onOpenLink={onOpenLink} />{root.children.map((section, index) => <MarkdownSectionView key={index} section={section} onOpenLink={onOpenLink} />)}</>;
 }
 
-function WorkspaceContent() {
+function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const searchParams = useSearchParams();
   const { demo, accessToken, profile } = useSession();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(() => demo ? getDemoKnowledgeDocuments() : []);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("document"));
-  const [ownerFilter, setOwnerFilter] = useState(searchParams.get("document") ? "all" : "mine_company");
+  const [ownerFilter, setOwnerFilter] = useState(searchParams.get("document") ? "all" : vault ? "mine" : "mine_company");
   const [members, setMembers] = useState<OsMember[]>([]);
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
   const [workspaceView, setWorkspaceView] = useState<"document" | "gallery">("document");
@@ -304,7 +305,7 @@ function WorkspaceContent() {
   const [sortAscending, setSortAscending] = useState(false);
   const [listLoading, setListLoading] = useState(!demo);
   const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
-  const [focusMode, setFocusMode] = useState(true);
+  const [focusMode, setFocusMode] = useState(!vault);
   const [treeOpen, setTreeOpen] = useState(true);
   const [preferencesReady, setPreferencesReady] = useState(false);
   const [inventory, setInventory] = useState<Array<{path: string; count: number}>>([]);
@@ -343,14 +344,15 @@ function WorkspaceContent() {
   }, [searchParams]);
 
   useEffect(() => {
-    const savedFocus = window.localStorage.getItem("brandy-knowledge-focus");
-    setFocusMode(savedFocus === null ? true : savedFocus === "true");
-    setTreeOpen(window.matchMedia("(max-width: 899px)").matches ? false : window.localStorage.getItem("brandy-knowledge-tree") !== "false");
-    const savedWidth = window.localStorage.getItem("brandy-knowledge-width-v1");
+    const prefix = vault ? "brandy-knowledge-vault" : "brandy-knowledge";
+    const savedFocus = window.localStorage.getItem(`${prefix}-focus`);
+    setFocusMode(savedFocus === null ? !vault : savedFocus === "true");
+    setTreeOpen(window.matchMedia("(max-width: 899px)").matches ? false : window.localStorage.getItem(`${prefix}-tree`) !== "false");
+    const savedWidth = window.localStorage.getItem(`${prefix}-width-v1`);
     if (savedWidth) setPaneWidth(treeWidth(Number(savedWidth)));
     setPreferencesReady(true);
     return () => { window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: false })); };
-  }, []);
+  }, [vault]);
   useEffect(() => {
     const narrow = window.matchMedia("(max-width: 899px)");
     const closeDrawer = (event: MediaQueryListEvent) => { if (event.matches) setTreeOpen(false); };
@@ -369,11 +371,12 @@ function WorkspaceContent() {
 
   useEffect(() => {
     if (!preferencesReady) return;
-    window.localStorage.setItem("brandy-knowledge-focus", String(focusMode));
-    window.localStorage.setItem("brandy-knowledge-tree", String(treeOpen));
-    window.localStorage.setItem("brandy-knowledge-width-v1", String(paneWidth));
+    const prefix = vault ? "brandy-knowledge-vault" : "brandy-knowledge";
+    window.localStorage.setItem(`${prefix}-focus`, String(focusMode));
+    window.localStorage.setItem(`${prefix}-tree`, String(treeOpen));
+    window.localStorage.setItem(`${prefix}-width-v1`, String(paneWidth));
     window.dispatchEvent(new CustomEvent("brandy-knowledge-focus", { detail: focusMode }));
-  }, [focusMode, preferencesReady, treeOpen, paneWidth]);
+  }, [focusMode, preferencesReady, treeOpen, paneWidth, vault]);
 
   useEffect(() => {
     if (demo) {
@@ -404,6 +407,13 @@ function WorkspaceContent() {
       setError(reason instanceof Error ? reason.message : "폴더를 열지 못했습니다.");
     }
   }, [accessToken, demo, ownerFilter]);
+
+  const selectedFolder = selected?.folder;
+  useEffect(() => {
+    if (!vault || listLoading || !selectedId || !selectedFolder) return;
+    setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([selectedFolder])]));
+    void loadFolder(selectedFolder);
+  }, [vault, listLoading, selectedId, selectedFolder, loadFolder]);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -490,7 +500,7 @@ function WorkspaceContent() {
     void loadFolder(folder);
   });
 
-  const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending, demo ? [] : inventory), [filtered, sortAscending, inventory, demo]);
+  const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending, demo ? [] : inventory, vault && ownerFilter === "mine" ? PERSONAL_VAULT_ROOTS : []), [filtered, sortAscending, inventory, demo, vault, ownerFilter]);
   const treeRows = useMemo(() => {
     const rows: TreeRow[] = [];
     const visit = (nodes: FolderTreeNode[], depth: number) => nodes.forEach((folder) => {
@@ -529,12 +539,12 @@ function WorkspaceContent() {
     ...inventory.map((item) => item.path),
     ...documents.map((document) => documentFolder(document)),
   ].filter((path) => path !== "분류 없음")), [documents, inventory, allFolders, demo]);
-  const folderOptions = useMemo(() => existingFolderOptions, [existingFolderOptions]);
+  const folderOptions = useMemo(() => vault ? knowledgeFolderOptions([...PERSONAL_VAULT_ROOTS, ...existingFolderOptions]) : existingFolderOptions, [existingFolderOptions, vault]);
 
   useEffect(() => {
-    if (searchParams.get("document") || selectedId || !filtered.length) return;
+    if (vault || searchParams.get("document") || selectedId || !filtered.length) return;
     if (!selectedId || !filtered.some((document) => document.id === selectedId)) setSelectedId(filtered[0].id);
-  }, [filtered, searchParams, selectedId]);
+  }, [filtered, searchParams, selectedId, vault]);
 
   const openNewDocument = (folder = managedFolder || selected?.folder || "", parentId: string | null = null) => guardAction(() => {
     setNewFolderPath(folder); setNewParentId(parentId); setNewError(""); setFieldErrors({}); setWorkspaceView("document"); setNewOpen(true);
@@ -914,7 +924,7 @@ function WorkspaceContent() {
       const input = parsed.data;
       if (demo && newImageFiles.length) { setNewError("데모 화면에서는 이미지를 저장할 수 없습니다. 이미지를 제외하거나 개발 환경에서 확인해 주세요."); return null; }
       const now = new Date().toISOString();
-      let document: KnowledgeDocument = demo ? { id: `demo-${Date.now()}`, ...input, parent_document_id: newParentId, content_md: input.content, status: "draft", source_ref: null, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now } : (await createDocument(accessToken, input)).document;
+      let document: KnowledgeDocument = demo ? { id: crypto.randomUUID(), ...input, parent_document_id: newParentId, content_md: input.content, status: "draft", source_ref: null, owner_id: profile?.id ?? "demo-ricky", created_by: profile?.id ?? "demo-ricky", current_version: 1, created_at: now, updated_at: now } : (await createDocument(accessToken, input)).document;
       if (newImageFiles.length) {
         try {
           const attachments: string[] = [];
@@ -935,7 +945,7 @@ function WorkspaceContent() {
           return document;
         }
       }
-      commitDocument(document); setOwnerFilter("all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
+      commitDocument(document); setOwnerFilter(vault ? "mine" : "all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
       setNewValues({title: "", content: "", brand: "", team: "", tags: ""}); setNewFolderPath(""); setNewParentId(null); setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]);
       setToast("페이지를 개인 초안으로 저장했습니다.");
       return document;
@@ -965,7 +975,7 @@ function WorkspaceContent() {
   };
   const chooseLink = (document: KnowledgeDocument) => {
     if (quickOpen) { selectDocument(document.id); setQuickOpen(false); }
-    else if (draft && editorRef.current) editorRef.current.insertMarkdown(`[[${document.source_ref?.replace(/\\/g, "/").replace(/\.md$/i, "") || document.title}]]`);
+    else if (draft && editorRef.current) editorRef.current.insertMarkdown(stableWikiLink(document));
     setLinkQuery(null);
   };
 
@@ -998,15 +1008,15 @@ function WorkspaceContent() {
   return (
     <>
       <header className="page-header workspace-page-header">
-        <div className="page-title-group"><PageTitle /><p>개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다.</p></div>
+        <div className="page-title-group"><PageTitle /><p>{vault ? "개인별 원본 폴더에서 문서를 관리합니다. 02_Wiki 중 승인할 문서만 회사 정본으로 선정합니다." : "개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다."}</p></div>
         <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 페이지</button></div>
       </header>
 
 
-      {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link aria-current="page" href="/knowledge">문서 작업공간</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/development">개발 관리</Link><Link href="/knowledge/skills">Skill 관리</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
+      {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link href="/knowledge">문서 홈</Link><Link aria-current="page" href="/knowledge/vault">문서 보관함</Link><Link href="/knowledge/canon">회사 정본</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
 
       <div className="owner-chips">
-        {OWNER_FILTERS.map((item) => <button key={item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(item.id); })}>{item.label}</button>)}
+        {OWNER_FILTERS.map((item) => <button key={item.id} aria-pressed={ownerFilter === item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(item.id); })}>{item.label}</button>)}
         {members.length > 1 ? <label className={ownerFilter.startsWith("member:") ? "active" : ""}><UserRound size={13} /><select aria-label="문서 소유자" value={ownerFilter.startsWith("member:") ? ownerFilter : ""} onChange={(event) => { const value = event.target.value; if (value) guardAction(() => setOwnerFilter(value)); }}><option value="">소유자 선택</option>{members.map((member) => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]}</option>)}</select></label> : null}
       </div>
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
@@ -1166,6 +1176,6 @@ function WorkspaceContent() {
   );
 }
 
-export function KnowledgeWorkspace() {
-  return <Suspense><WorkspaceContent /></Suspense>;
+export function KnowledgeWorkspace({ vault = false }: { vault?: boolean }) {
+  return <Suspense><WorkspaceContent vault={vault} /></Suspense>;
 }

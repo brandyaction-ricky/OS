@@ -15,7 +15,7 @@ const Context = createContext<WorkspaceContext | null>(null);
 export function KnowledgeBoundary({children}:{children:ReactNode}) {
   const pathname=usePathname();
   const {profile,demo}=useSession();
-  return pathname.startsWith("/knowledge/development") ? children : <KnowledgeProvider key={`${demo ? "demo" : "connected"}:${profile?.id ?? "signed-out"}`}>{children}</KnowledgeProvider>;
+  return pathname.startsWith("/knowledge/development") || pathname === "/knowledge/vault" ? children : <KnowledgeProvider key={`${demo ? "demo" : "connected"}:${profile?.id ?? "signed-out"}`}>{children}</KnowledgeProvider>;
 }
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const { profile, accessToken: token, demo, loading: sessionLoading } = useSession();

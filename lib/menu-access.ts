@@ -25,7 +25,7 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   const companyDocument = href.split(/[?#]/)[0].startsWith("/knowledge/") && !href.startsWith("/knowledge/development");
   // A document opened from a permitted company-document list still uses the same
   // detail route. This is navigation only: document-level authorization stays server-side.
-  if (href.split(/[?#]/)[0].startsWith("/knowledge/doc/") && allowed?.some(menu => ["/knowledge/notes", "/knowledge/docs", "/knowledge/canon", "/knowledge/review", "/knowledge/search", "/knowledge/graph"].includes(menu))) return true;
+  if (href.split(/[?#]/)[0].startsWith("/knowledge/doc/") && allowed?.some(menu => ["/knowledge/vault", "/knowledge/notes", "/knowledge/docs", "/knowledge/canon", "/knowledge/review", "/knowledge/search", "/knowledge/graph"].includes(menu))) return true;
   return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
 }
 
