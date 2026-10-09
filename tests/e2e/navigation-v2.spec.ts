@@ -44,6 +44,7 @@ test("groups, collapse and display preferences persist, and old names remain sea
 
 test("quick record works when already in the document workspace", async ({ page }) => {
   await page.goto("/knowledge");
+  await expect(page).toHaveURL(/\/knowledge\/vault$/);
   await page.getByRole("button", { name: "기록 종류 선택", exact: true }).click();
   await page.getByRole("link", { name: "메모", exact: true }).click();
   const dialog=page.getByRole("dialog",{name:"새 문서",exact:true});

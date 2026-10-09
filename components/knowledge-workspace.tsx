@@ -20,6 +20,7 @@ import {
   Folder,
   FolderCog,
   FolderOpen,
+  FolderPlus,
   Hash,
   Images,
   Link2,
@@ -32,6 +33,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Search,
   Send,
   ShieldAlert,
   Tag,
@@ -72,6 +74,17 @@ import { useSession } from "./session-provider";
 
 const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "review", "reviewed", "canonical"];
 const TREE_ROW_HEIGHT = 38;
+const KOREAN_INITIALS = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+function matchesVaultName(value: string, query: string) {
+  const normalized = value.normalize("NFC").toLocaleLowerCase("ko-KR");
+  const needle = query.normalize("NFC").trim().toLocaleLowerCase("ko-KR");
+  if (!needle || normalized.includes(needle)) return true;
+  const initials = [...normalized].map(char => {
+    const index = char.charCodeAt(0) - 0xac00;
+    return index >= 0 && index < 11172 ? KOREAN_INITIALS[Math.floor(index / 588)] : char;
+  }).join("");
+  return initials.includes(needle);
+}
 
 const OWNER_FILTERS = [
   { id: "mine_company", label: "내 문서 + 회사 정본" },
@@ -245,7 +258,11 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [ownerFilter, setOwnerFilter] = useState(vault || Boolean(searchParams.get("document")) ? "all" : "mine_company");
   const [members, setMembers] = useState<OsMember[]>([]);
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
-  const [workspaceView, setWorkspaceView] = useState<"document" | "gallery">("document");
+  const [workspaceView, setWorkspaceView] = useState<"document" | "folder" | "gallery">(vault && !searchParams.get("document") ? "folder" : "document");
+  const [treeFilter, setTreeFilter] = useState("");
+  const [folderSort, setFolderSort] = useState<"recent" | "name" | "old">("recent");
+  const [vaultPanelOpen, setVaultPanelOpen] = useState(true);
+  const [vaultPanelTab, setVaultPanelTab] = useState<"toc" | "info" | "links" | "versions">("toc");
   const selected = documents.find((document) => document.id === selectedId) ?? null;
   const { draft, setDraft, dirty, discard, rebase, expectedVersion } = useKnowledgeDraft(selected);
   const documentsRef = useRef(documents);
@@ -275,7 +292,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [collapsedPages, setCollapsedPages] = useState<Set<string>>(new Set());
   const [moveIds, setMoveIds] = useState<string[]>([]);
   const [folderManagerOpen, setFolderManagerOpen] = useState(searchParams.get("folders") === "1");
-  const [managedFolder, setManagedFolder] = useState("");
+  const [managedFolder, setManagedFolder] = useState(searchParams.get("folder") ?? "");
   const [folderManagerParent, setFolderManagerParent] = useState<string | undefined>();
   const [draggedFolder, setDraggedFolder] = useState("");
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
@@ -316,6 +333,17 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [linkChoices, setLinkChoices] = useState<KnowledgeDocument[]>([]);
   const [pendingAnchor, setPendingAnchor] = useState<{ id: string; heading: string } | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  useEffect(() => {
+    const query = treeFilter.trim();
+    if (!vault || !query || demo) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      apiRequest<{documents: KnowledgeDocument[]}>(`/api/v1/documents/index?q=${encodeURIComponent(query)}&scope=${encodeURIComponent(ownerFilter)}`, {token: accessToken})
+        .then(result => { if (active) setDocuments(current => [...current, ...result.documents.filter(item => !current.some(row => row.id === item.id))]); })
+        .catch(() => { /* Existing folder results remain usable when search is unavailable. */ });
+    }, 220);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [treeFilter, ownerFilter, vault, demo, accessToken]);
   const openFinderRef = useRef<() => void>(() => {});
   openFinderRef.current = () => guardAction(() => setFinderOpen(true));
   const selectedIdRef = useRef(selectedId);
@@ -335,6 +363,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     setSelectedId(id);
     const params = new URLSearchParams(window.location.search);
     params.set("document", id);
+    params.delete("folder");
     if (window.location.search !== `?${params.toString()}`) window.history.pushState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
   }, []);
 
@@ -347,7 +376,8 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     const prefix = vault ? "brandy-knowledge-vault" : "brandy-knowledge";
     const savedFocus = window.localStorage.getItem(`${prefix}-focus`);
     setFocusMode(savedFocus === null ? !vault : savedFocus === "true");
-    setTreeOpen(window.matchMedia("(max-width: 899px)").matches ? false : window.localStorage.getItem(`${prefix}-tree`) !== "false");
+    setTreeOpen(window.matchMedia("(max-width: 899px)").matches ? false : vault || window.localStorage.getItem(`${prefix}-tree`) !== "false");
+    if (vault) setVaultPanelOpen(window.matchMedia("(min-width: 1280px)").matches);
     const savedWidth = window.localStorage.getItem(`${prefix}-width-v1`);
     if (savedWidth) setPaneWidth(treeWidth(Number(savedWidth)));
     setPreferencesReady(true);
@@ -407,6 +437,17 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       setError(reason instanceof Error ? reason.message : "폴더를 열지 못했습니다.");
     }
   }, [accessToken, demo, ownerFilter]);
+  const openFolderView = (path: string) => guardAction(() => {
+    setManagedFolder(path);
+    setWorkspaceView("folder");
+    setSelectedId(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete("document");
+    if (path) params.set("folder", path); else params.delete("folder");
+    window.history.pushState(window.history.state, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+    void loadFolder(path);
+    if (window.innerWidth < 900) setTreeOpen(false);
+  });
 
   const selectedFolder = selected?.folder;
   useEffect(() => {
@@ -469,7 +510,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   }, [accessToken, demo, selected, selectedId]);
 
   useEffect(() => {
-    if (!selected || mode !== "info") return;
+    if (!selected || (mode !== "info" && !(vault && vaultPanelOpen && vaultPanelTab === "versions"))) return;
     if (demo) { setVersions(getDemoKnowledgeVersions(selected.id)); return; }
     let active = true;
     setVersions([]);
@@ -479,7 +520,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       .catch((reason) => setError(reason instanceof Error ? reason.message : "변경 이력을 불러오지 못했습니다."))
       .finally(() => { if (active) setVersionsLoading(false); });
     return () => { active = false; };
-  }, [accessToken, demo, mode, selected]);
+  }, [accessToken, demo, mode, selected, vault, vaultPanelOpen, vaultPanelTab]);
 
   useEffect(() => {
     if (!selected || demo) { setBacklinks([]); return; }
@@ -496,16 +537,26 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const openGallery = () => guardAction(() => {
     const folder = managedFolder || selected?.folder || "";
     setManagedFolder(folder);
-    setWorkspaceView((value) => value === "gallery" ? "document" : "gallery");
+    setWorkspaceView((value) => value === "gallery" ? vault ? "folder" : "document" : "gallery");
     void loadFolder(folder);
   });
 
   const folderTree = useMemo(() => buildFolderTree(filtered, sortAscending, demo ? [] : inventory, vault && ownerFilter === "mine" ? PERSONAL_VAULT_ROOTS : []), [filtered, sortAscending, inventory, demo, vault, ownerFilter]);
   const treeRows = useMemo(() => {
     const rows: TreeRow[] = [];
+    const query = vault ? treeFilter.trim() : "";
+    const folderMatches = new Set<string>();
+    if (query) {
+      for (const path of [...inventory.map(item => item.path), ...filtered.filter(item => matchesVaultName(item.title, query)).map(item => documentFolder(item))]) {
+        if (!matchesVaultName(path, query) && !filtered.some(item => documentFolder(item) === path && matchesVaultName(item.title, query))) continue;
+        const parts = path.split("/");
+        for (let index = 1; index <= parts.length; index++) folderMatches.add(parts.slice(0, index).join("/"));
+      }
+    }
     const visit = (nodes: FolderTreeNode[], depth: number) => nodes.forEach((folder) => {
+      if (query && !folderMatches.has(folder.path)) return;
       rows.push({ type: "folder", folder, depth });
-      if (!expandedFolders.has(folder.path)) return;
+      if (!query && !expandedFolders.has(folder.path)) return;
       visit(folder.children, depth + 1);
       const byId = new Map(folder.documents.map(document => [document.id, document]));
       const children = new Map<string, KnowledgeDocument[]>();
@@ -523,7 +574,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
         if (seen.has(document.id)) return;
         seen.add(document.id);
         const childPages = children.get(document.id) ?? [];
-        rows.push({ type: "document", document, depth: pageDepth, childCount: childPages.length });
+        if (!query || matchesVaultName(document.title, query) || matchesVaultName(folder.path, query)) rows.push({ type: "document", document, depth: pageDepth, childCount: childPages.length });
         if (collapsedPages.has(document.id)) childPages.forEach(markHidden);
         else childPages.forEach(child => visitPage(child, pageDepth + 1));
       };
@@ -531,7 +582,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       folder.documents.filter(document => !seen.has(document.id)).forEach(document => visitPage(document, depth + 1));
     });
     visit(folderTree, 0); return rows;
-  }, [collapsedPages, expandedFolders, folderTree]);
+  }, [collapsedPages, expandedFolders, folderTree, treeFilter, vault, inventory, filtered]);
   const ownerNames = useMemo(() => new Map(members.map((member) => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
   const readingContent = useMemo(() => prepareReadingContent(dirty ? draft?.content ?? "" : selected?.content_md ?? ""), [selected?.content_md, dirty, draft?.content]);
   const existingFolderOptions = useMemo(() => knowledgeFolderOptions([
@@ -548,11 +599,6 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
 
   const openNewDocument = (folder = managedFolder || selected?.folder || "", parentId: string | null = null) => guardAction(() => {
     setNewFolderPath(folder); setNewParentId(parentId); setNewError(""); setFieldErrors({}); setWorkspaceView("document"); setNewOpen(true);
-  });
-  useEffect(() => {
-    const open = () => openNewDocument();
-    window.addEventListener("brandy-quick-record", open);
-    return () => window.removeEventListener("brandy-quick-record", open);
   });
   const newDirty = Object.values(newValues).some(Boolean) || newImageFiles.length > 0;
   const closeNewDocument = () => {
@@ -1005,30 +1051,43 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const treeScopeLabel = ownerFilter === "mine_company" ? "내 문서 + 회사 정본" : ownerFilter === "mine" ? "내 문서" : ownerFilter === "canonical" ? "회사 정본" : ownerFilter === "team" ? "팀 공유" : ownerFilter === "review" ? "검토 문서" : ownerFilter === "archived" ? "휴지통 문서" : ownerFilter.startsWith("member:") ? `${ownerNames.get(ownerFilter.slice(7)) || "선택한 소유자"} 문서` : "전체 문서";
   const treeScopeDetail = ownerFilter === "mine_company" ? "내 문서 + 회사 정본 · 휴지통 제외" : ownerFilter === "all" ? "모든 활성 문서 · 휴지통 제외" : ownerFilter === "archived" ? treeScopeLabel : `${treeScopeLabel} · 휴지통 제외`;
   const visibleDocumentCount = demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0);
+  const activeFolderPath = workspaceView === "folder" || workspaceView === "gallery" ? managedFolder : selected?.folder || "";
+  const folderSegments = activeFolderPath.split("/").filter(Boolean);
+  const folderNode = folderSegments.reduce<FolderTreeNode | null>((nodes, part) => {
+    const candidates = nodes ? nodes.children : folderTree;
+    return candidates.find(item => item.name === part) ?? null;
+  }, null);
+  const folderChildren = managedFolder ? folderNode?.children ?? [] : folderTree;
+  const folderDocuments = filtered.filter(item => documentFolder(item) === (managedFolder || "분류 없음")).sort((a, b) => folderSort === "name" ? a.title.localeCompare(b.title, "ko") : folderSort === "old" ? a.updated_at.localeCompare(b.updated_at) : b.updated_at.localeCompare(a.updated_at));
+  const outline = [...(dirty ? draft?.content ?? "" : selected?.content_md ?? "").matchAll(/^#{1,3}\s+(.+)$/gm)].map(match => match[1].trim()).filter(Boolean);
+  const chooseScope = (value: string) => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(value); });
 
   return (
     <>
-      <header className="page-header workspace-page-header">
+      {vault ? <header className="vault-toolbar" aria-label="문서 보관함 도구">
+        <div className="vault-toolbar-tree"><button className="vault-mobile-tree" aria-label="파일 트리 보기" onClick={() => setTreeOpen(true)}><PanelLeftOpen size={18} /></button><label className="vault-scope"><span className="sr-only">보기 범위</span><select aria-label="보기 범위" value={ownerFilter} onChange={event => chooseScope(event.target.value)}>{OWNER_FILTERS.filter(item => item.id !== "archived").map(item => <option key={item.id} value={item.id}>{item.label}</option>)}{members.map(member => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]} 문서</option>)}</select></label><span className="vault-count" aria-live="polite">{visibleDocumentCount}</span><button aria-label="새 페이지" title="새 페이지" onClick={() => openNewDocument()}><FilePlus2 size={17} /></button><button aria-label="폴더 관리" title="폴더 관리" onClick={() => openFolderManager(managedFolder || folderTree[0]?.path || "")}><FolderPlus size={17} /></button></div>
+        <nav className="vault-breadcrumbs" aria-label="문서 경로"><div className="vault-root-crumb"><button onClick={() => openFolderView("")}>문서 보관함</button></div>{folderSegments.map((part, index) => <span key={`${index}-${part}`}><ChevronRight size={13} /><button onClick={() => openFolderView(folderSegments.slice(0, index + 1).join("/"))}>{part}</button></span>)}{workspaceView === "document" && selected ? <span><ChevronRight size={13} /><strong>{selected.title}</strong></span> : null}</nav>
+        <div className="vault-toolbar-actions"><button aria-label="문서·폴더 찾기" title="문서·폴더 찾기" onClick={() => setFinderOpen(true)}><Search size={17} /></button>{selected?.status === "canonical" ? <Link className="vault-proposal" href={`/knowledge/canon/${selected.id}/propose`}>변경 제안 작성</Link> : selected && workspaceView === "document" && mode !== "edit" ? <button className="vault-edit" onClick={beginEdit}><Pencil size={15} /> 편집</button> : null}{mode === "edit" && selected ? <><button onClick={() => setMode("read")}><Eye size={15} /> 읽기</button><button className="vault-save" disabled={busy} onClick={save}><Save size={15} /> 저장</button></> : null}<button aria-label="목차·정보 패널" title="목차·정보 패널" aria-pressed={vaultPanelOpen} onClick={() => setVaultPanelOpen(value => !value)}><PanelLeftOpen size={17} /></button><details className="vault-more"><summary role="button" aria-label="더 보기"><MoreHorizontal size={18} /></summary><div>{workspaceView === "folder" || workspaceView === "gallery" ? <button onClick={openGallery}><Images size={15} /> {workspaceView === "gallery" ? "목록 보기" : "갤러리 보기"}</button> : null}{selected && selected.status !== "archived" ? <button onClick={() => openPageMove(selected)}><MoveRight size={15} /> 위치 이동</button> : null}{selected && (selected.owner_id === profile?.id || profile?.role === "admin") && nextStatus(selected.status) && statusActionLabel(selected.status) ? <button onClick={() => guardAction(() => moveStatus(nextStatus(selected.status)!))}><Send size={15} /> {statusActionLabel(selected.status)}</button> : null}{selected?.status === "review" || selected?.status === "reviewed" ? <Link href={`/knowledge/review?document=${selected.id}`}>검토 내역 보기</Link> : null}<button onClick={() => setImportOpen(true)}><Upload size={15} /> Markdown 가져오기</button><button onClick={() => void reload()}><RefreshCw size={15} /> 새로고침</button></div></details></div>
+      </header> : <header className="page-header workspace-page-header">
         <div className="page-title-group"><PageTitle /><p>{vault ? "개인별 원본 폴더에서 문서를 관리합니다. 02_Wiki 중 승인할 문서만 회사 정본으로 선정합니다." : "개인의 경험을 쌓고, 검토를 거쳐 회사가 함께 쓰는 정본으로 만듭니다."}</p></div>
         <div className="header-actions"><button className={`secondary-button${workspaceView === "gallery" ? " active" : ""}`} aria-pressed={workspaceView === "gallery"} onClick={openGallery}><Images size={16} /> {workspaceView === "gallery" ? "문서 보기" : "갤러리 보기"}</button><button className="secondary-button" onClick={() => guardAction(() => setFinderOpen(true))}>문서 찾기</button><button className="secondary-button knowledge-tree-toggle" aria-pressed={treeOpen} onClick={() => setTreeOpen((value) => !value)}>{treeOpen ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />} {treeOpen ? "파일 트리 숨기기" : "파일 트리 보기"}</button><button className="secondary-button" aria-pressed={focusMode} onClick={() => setFocusMode((value) => !value)}>{focusMode ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />} {focusMode ? "전체 메뉴 보기" : "집중 모드"}</button><button className="secondary-button" onClick={() => guardAction(() => { setImportOpen(true); })}><Upload size={16} /> Markdown 가져오기</button><button className="primary-button" onClick={() => openNewDocument()}><FilePlus2 size={16} /> 새 페이지</button></div>
-      </header>
+      </header>}
 
 
-      {focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link href="/knowledge">문서 홈</Link><Link aria-current="page" href="/knowledge/vault">문서 보관함</Link><Link href="/knowledge/canon">회사 정본</Link><Link href="/knowledge/search">지식 검색</Link><Link href="/knowledge/review">검토함</Link><Link href="/knowledge/graph">지식 연결</Link></nav> : null}
+      {!vault && focusMode ? <nav className="knowledge-focus-tabs" aria-label="지식 메뉴"><Link aria-current="page" href="/knowledge/vault">문서 보관함</Link><Link href="/knowledge/canon">회사 정본</Link><Link href="/knowledge/search">지식 검색</Link></nav> : null}
 
-      <div className="owner-chips">
+      {!vault ? <div className="owner-chips">
         {OWNER_FILTERS.map((item) => <button key={item.id} aria-pressed={ownerFilter === item.id} className={ownerFilter === item.id ? "active" : ""} onClick={() => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(item.id); })}>{item.label}</button>)}
         {members.length > 1 ? <label className={ownerFilter.startsWith("member:") ? "active" : ""}><UserRound size={13} /><select aria-label="문서 소유자" value={ownerFilter.startsWith("member:") ? ownerFilter : ""} onChange={(event) => { const value = event.target.value; if (value) guardAction(() => setOwnerFilter(value)); }}><option value="">소유자 선택</option>{members.map((member) => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]}</option>)}</select></label> : null}
-      </div>
+      </div> : null}
       {error ? <div className="inline-alert danger">{error}<button onClick={() => setError("")}><X size={14} /></button></div> : null}
 
-      <section style={{ "--knowledge-tree-width": `${paneWidth}px` } as React.CSSProperties} className={`knowledge-workspace${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
+      <section style={{ "--knowledge-tree-width": `${paneWidth}px` } as React.CSSProperties} className={`knowledge-workspace${vault ? " vault-workspace" : ""}${vaultPanelOpen && vault ? " vault-panel-open" : ""}${!treeOpen ? " tree-hidden" : ""}${hoverTree ? " tree-peek" : ""}`}>
         {!treeOpen ? <button className="tree-peek-handle" aria-label="파일 트리 잠시 보기" onMouseEnter={() => setHoverTree(true)} onFocus={() => setHoverTree(true)} onClick={() => setTreeOpen(true)}><PanelLeftOpen size={16} /></button> : null}
         {treeOpen ? <button className="knowledge-tree-scrim" aria-label="파일 트리 닫기" onClick={() => setTreeOpen(false)} /> : null}
         <aside onMouseLeave={() => setHoverTree(false)} className={`folder-pane knowledge-tree-pane${treeOpen ? " mobile-open" : ""}`}>
           <div role="separator" aria-label="파일 트리 폭" aria-orientation="vertical" aria-valuemin={220} aria-valuemax={460} aria-valuenow={paneWidth} tabIndex={0} className="knowledge-resize-handle" onPointerDown={(event) => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) setPaneWidth(treeWidth(event.clientX - (event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0))); }} onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)} onKeyDown={(event) => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); setPaneWidth((width) => event.key === "Home" ? 220 : event.key === "End" ? 460 : treeWidth(width + (event.key === "ArrowRight" ? 20 : -20))); } }} />
-          <div className="pane-title knowledge-tree-heading"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{visibleDocumentCount}개</small></span><div className="knowledge-tree-heading-actions">{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={15} /></button><button aria-label="트리 안에서 접기" title="파일 트리 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={15} /></button></div></div>
-          <div className="knowledge-tree-controls"><span className="knowledge-tree-scope" title={treeScopeDetail}>{treeScopeLabel}</span><div className="knowledge-tree-control-actions"><button aria-label="폴더 안 문서 정렬" title="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button><button aria-label="여러 문서 선택" title="여러 문서 선택" aria-pressed={selectionMode} onClick={() => { setSelectionMode((value) => !value); setCheckedIds(new Set()); }}><MoveRight size={15} /></button><button aria-label="목록 새로고침" title="목록 새로고침" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}><RefreshCw size={15} /></button></div></div>
+          {vault ? <div className="vault-tree-top"><label><Search size={15} /><input aria-label="폴더·문서 이름으로 거르기" placeholder="이름으로 거르기" value={treeFilter} onChange={event => { setTreeFilter(event.target.value); setTreeScroll(0); }} />{treeFilter ? <button aria-label="거르기 지우기" onClick={() => setTreeFilter("")}><X size={14} /></button> : null}</label><button aria-label="여러 문서 선택" title="여러 문서 선택" aria-pressed={selectionMode} onClick={() => { setSelectionMode(value => !value); setCheckedIds(new Set()); }}><MoveRight size={15} /></button></div> : <><div className="pane-title knowledge-tree-heading"><span><FolderOpen size={15} /><strong>파일 트리</strong><small>{visibleDocumentCount}개</small></span><div className="knowledge-tree-heading-actions">{hoverTree && !treeOpen ? <button onClick={() => { setTreeOpen(true); setHoverTree(false); }} aria-label="파일 트리 고정">고정</button> : null}<button title="폴더 관리" aria-label="폴더 관리" onClick={() => guardAction(() => { setError(""); setManagedFolder((current) => existingFolderOptions.includes(current) ? current : existingFolderOptions[0] ?? ""); setFolderManagerOpen(true); })}><FolderCog size={15} /></button><button aria-label="트리 안에서 접기" title="파일 트리 접기" onClick={() => { setTreeOpen(false); setHoverTree(false); }}><PanelLeftClose size={15} /></button></div></div><div className="knowledge-tree-controls"><span className="knowledge-tree-scope" title={treeScopeDetail}>{treeScopeLabel}</span><div className="knowledge-tree-control-actions"><button aria-label="폴더 안 문서 정렬" title="폴더 안 문서 정렬" onClick={() => setSortAscending((value) => !value)}>{sortAscending ? "오래된 순" : "최근 순"} <ChevronDown size={12} /></button><button aria-label="여러 문서 선택" title="여러 문서 선택" aria-pressed={selectionMode} onClick={() => { setSelectionMode((value) => !value); setCheckedIds(new Set()); }}><MoveRight size={15} /></button><button aria-label="목록 새로고침" title="목록 새로고침" disabled={busy} onClick={() => { void reload(); setRevision(value => value + 1); }}><RefreshCw size={15} /></button></div></div></>}
           {selectionMode ? <div className="knowledge-bulk-actions"><span>문서를 눌러 선택 · {checkedIds.size}개</span><button className="secondary-button" disabled={busy || !checkedIds.size} onClick={() => guardAction(() => { setMoveIds([...checkedIds]); setMoveOpen(true); })}>이동</button><button className="ghost-button" onClick={() => { setSelectionMode(false); setCheckedIds(new Set()); }}>완료</button></div> : null}
           {draggedFolder ? <div className={`knowledge-root-dropzone${dropTargetFolder === "" ? " active" : ""}`} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(""); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={() => setDropTargetFolder(null)} onDrop={(event) => { event.preventDefault(); const source = event.dataTransfer.getData("text/folder-path"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, ""); }}>최상위로 이동</div> : null}
           <div className="knowledge-tree-scroll" role="tree" aria-label="문서와 하위 페이지" onScroll={event => setTreeScroll(event.currentTarget.scrollTop)}>
@@ -1036,7 +1095,8 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
             {treeStart > 0 ? <div style={{height: treeStart * TREE_ROW_HEIGHT}} /> : null}
             {visibleRows.map((row) => row.type === "folder" ? (
               <div className={`folder-tree-item${dropTargetFolder === row.folder.path ? " drop-target" : ""}`} key={`folder-${row.folder.path}`} onContextMenu={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })} onDragEnter={(event) => { event.preventDefault(); setDropTargetFolder(row.folder.path); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropTargetFolder(null); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const source = event.dataTransfer.getData("text/folder-path"); const id = event.dataTransfer.getData("text/document-id"); setDraggedFolder(""); setDropTargetFolder(null); if (source) openFolderManager(source, row.folder.path); else if (id) guardAction(() => { void moveDocument(id, row.folder.path); }); }}>
-                <button role="treeitem" aria-level={row.depth + 1} aria-selected={managedFolder === row.folder.path} aria-expanded={expandedFolders.has(row.folder.path)} draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path ? " active" : ""}`} style={{ paddingLeft: 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
+                {vault ? <button className="vault-folder-expand" aria-label={`${row.folder.path} ${expandedFolders.has(row.folder.path) ? "접기" : "펼치기"}`} aria-expanded={expandedFolders.has(row.folder.path)} style={{ marginLeft: 9 + row.depth * 16 }} onClick={() => { const opening = !expandedFolders.has(row.folder.path); setExpandedFolders(current => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} />}</button> : null}
+                <button role="treeitem" aria-level={row.depth + 1} aria-selected={managedFolder === row.folder.path && workspaceView === "folder"} aria-expanded={expandedFolders.has(row.folder.path)} draggable className={`folder-row folder-tree-row${managedFolder === row.folder.path && workspaceView === "folder" ? " active" : ""}`} style={{ paddingLeft: vault ? 0 : 10 + row.depth * 16 }} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/folder-path", row.folder.path); setDraggedFolder(row.folder.path); }} onDragEnd={() => { setDraggedFolder(""); setDropTargetFolder(null); }} onClick={() => { if (vault) { openFolderView(row.folder.path); return; } const opening = !expandedFolders.has(row.folder.path); setManagedFolder(row.folder.path); setExpandedFolders((current) => { const next = new Set(current); if (opening) next.add(row.folder.path); else next.delete(row.folder.path); return next; }); if (opening) void loadFolder(row.folder.path); }}>{!vault ? expandedFolders.has(row.folder.path) ? <ChevronDown size={13} /> : <ChevronRight size={13} /> : null}<Folder size={15} /><span>{row.folder.name}</span><small>{row.folder.count}</small></button>
                 <button className="folder-inline-action" title={`${row.folder.name} 폴더 작업`} aria-label={`${row.folder.path} 폴더 작업`} aria-haspopup="menu" onClick={(event) => openTreeContextMenu(event, { type: "folder", path: row.folder.path })}><MoreHorizontal size={16} /></button>
               </div>
             ) : (
@@ -1063,9 +1123,9 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
               {newImageFiles.length ? <div className="knowledge-new-images" role="status"><strong>저장할 때 이미지를 올리고 본문 끝에 넣습니다 · {newImageFiles.length}개</strong>{newImageFiles.map((file, index) => <div key={`${file.name}-${index}`}><span>{file.name}<button type="button" onClick={() => { setNewImageFiles(current => current.filter((_, itemIndex) => itemIndex !== index)); setNewImageAlt(current => current.filter((_, itemIndex) => itemIndex !== index)); setNewImageCaptions(current => current.filter((_, itemIndex) => itemIndex !== index)); }}>제외</button></span><input aria-label={`${file.name} 대체 텍스트`} maxLength={200} placeholder="대체 텍스트" value={newImageAlt[index] ?? ""} onChange={event => setNewImageAlt(current => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /><input aria-label={`${file.name} 설명`} maxLength={300} placeholder="설명 (선택)" value={newImageCaptions[index] ?? ""} onChange={event => setNewImageCaptions(current => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} /></div>)}</div> : null}
               <details className="knowledge-page-properties"><summary>페이지 정보 · 폴더, 담당 팀, 브랜드, 태그</summary><div><KnowledgeFolderPicker options={folderOptions} value={newFolderPath} onChange={setNewFolderPath} disabled={busy || Boolean(newParentId)} /><label>담당 팀<input list="knowledge-team-options" maxLength={120} value={newValues.team} onChange={event => setNewValues(current => ({ ...current, team: event.target.value }))} /></label><label>브랜드<input list="knowledge-brand-options" maxLength={120} value={newValues.brand} onChange={event => setNewValues(current => ({ ...current, brand: event.target.value }))} /></label><label>태그<input maxLength={1859} placeholder="쉼표로 구분" value={newValues.tags} onChange={event => setNewValues(current => ({ ...current, tags: event.target.value }))} /></label></div></details>
             </div>
-          </form> : workspaceView === "gallery" ? <KnowledgeGallery documents={galleryDocuments} folder={galleryFolder} token={accessToken} ownerNames={ownerNames} revision={revision} onOpen={selectDocumentNow} onRestore={() => setImageRecoveryOpen(true)} /> : selected && draft ? (
+          </form> : workspaceView === "folder" && vault ? <div className="vault-folder-view"><header><FolderOpen size={25} /><div><h1>{managedFolder.split("/").at(-1) || "문서 보관함"}</h1><p>{managedFolder || "전체 폴더"} · 하위 폴더 {folderChildren.length}개 · 이 폴더 문서 {folderDocuments.length}개</p></div></header><div className="vault-folder-tools"><button className="primary-button compact" onClick={() => openNewDocument(managedFolder)}><FilePlus2 size={15} /> 새 페이지</button><button className="secondary-button compact" onClick={openGallery}><Images size={15} /> 갤러리</button><label>정렬 <select aria-label="폴더 안 정렬" value={folderSort} onChange={event => setFolderSort(event.target.value as typeof folderSort)}><option value="recent">최근 수정순</option><option value="name">이름순</option><option value="old">오래된 순</option></select></label></div><div className="vault-folder-list" role="list" aria-label="폴더 내용">{folderChildren.map(folder => <button key={folder.path} role="listitem" onClick={() => openFolderView(folder.path)}><Folder size={16} /><strong>{folder.name}</strong><span>폴더</span><small>문서 {folder.count}개</small></button>)}{folderDocuments.map(document => <button key={document.id} role="listitem" onClick={() => selectDocumentNow(document.id)}><File size={16} /><strong>{document.title}</strong><span>{statusLabel(document.status)}</span><small>{ownerNames.get(document.owner_id) || "소유자 미지정"}</small></button>)}{!folderChildren.length && !folderDocuments.length && !listLoading ? <p>이 폴더에 표시할 문서가 없습니다.</p> : null}</div></div> : workspaceView === "gallery" ? <KnowledgeGallery documents={galleryDocuments} folder={galleryFolder} token={accessToken} ownerNames={ownerNames} revision={revision} onOpen={selectDocumentNow} onRestore={() => setImageRecoveryOpen(true)} /> : selected && draft ? (
             <>
-              <div className="editor-toolbar">
+              {!vault ? <div className="editor-toolbar">
                 <div className="editor-tabs">
                   <button className={mode === "read" ? "active" : ""} onClick={() => setMode("read")}><Eye size={15} /> 읽기</button>
                   <button className={mode === "edit" ? "active" : ""} onClick={beginEdit}><Pencil size={15} /> {selected.status === "canonical" ? "정본 편집" : "편집"}</button>
@@ -1079,7 +1139,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
                   {selected.status === "review" ? <><Link className="secondary-button compact" href={`/knowledge/review?document=${selected.id}`}>검토함에서 보기</Link>{selected.owner_id === profile?.id || profile?.role === "admin" ? <button className="secondary-button compact" disabled={busy} onClick={() => guardAction(() => moveStatus("draft"))}>검토 회수 (초안)</button> : null}</> : null}
                   <button className="icon-button" title="문서 정보" aria-label="문서 정보" onClick={() => setMode("info")}><MoreHorizontal size={17} /></button>
                 </div>
-              </div>
+              </div> : null}
               <div className="document-meta-line"><span className={`status-pill status-${selected.status}`}>{statusLabel(selected.status)}</span><span>v{selected.current_version}</span><span>마지막 수정 {formatDate(selected.updated_at)}</span>{dirty ? <strong role="status">저장하지 않은 변경 있음</strong> : null}</div>
               {mode === "edit" ? (
                 <div className={`document-editor${attachmentDragActive ? " attachment-drag-active" : ""}`} onDragEnter={enterAttachmentDrop} onDragLeave={leaveAttachmentDrop} onDragOver={(event) => { if (editorDragHasFiles(event)) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; placeAttachmentDrop(event); } }} onDrop={dropAttachments}>
@@ -1120,6 +1180,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
             <div className="empty-state"><div><span><FilePenLine /></span><h3>{listLoading ? "문서를 불러오는 중입니다" : visibleDocumentCount ? `${treeScopeLabel} ${visibleDocumentCount}개` : "이 범위에 문서가 없습니다"}</h3><p>{listLoading ? "문서 목록을 확인하고 있습니다." : visibleDocumentCount ? treeOpen ? "왼쪽 파일 트리에서 문서를 선택하세요." : "파일 트리를 열면 문서를 볼 수 있습니다." : ownerFilter === "all" ? "새 문서를 만들어 시작할 수 있습니다." : "전체 문서에서 다른 범위의 문서를 확인할 수 있습니다."}</p>{!listLoading && !treeOpen && visibleDocumentCount > 0 ? <button className="primary-button" onClick={() => setTreeOpen(true)}>파일 트리 보기</button> : null}{!listLoading && !visibleDocumentCount && ownerFilter !== "all" ? <button className="primary-button" onClick={() => setOwnerFilter("all")}>전체 문서 보기</button> : null}<button className="secondary-button" onClick={() => openNewDocument()}>새 문서</button></div></div>
           )}
         </article>
+        {vault && vaultPanelOpen ? <aside className="vault-side-panel" aria-label="목차와 문서 정보"><div className="vault-side-tabs" role="tablist" aria-label="문서 상세">{([ ["toc", "목차"], ["info", "정보"], ["links", "연결"], ["versions", "버전"] ] as const).map(([key, label]) => <button key={key} role="tab" aria-selected={vaultPanelTab === key} onClick={() => setVaultPanelTab(key)}>{label}</button>)}<button className="vault-side-close" aria-label="패널 닫기" onClick={() => setVaultPanelOpen(false)}><X size={16} /></button></div><div className="vault-side-body">{selected && workspaceView === "document" ? vaultPanelTab === "toc" ? outline.length ? outline.map((title, index) => <button className="vault-outline-link" key={`${title}-${index}`} onClick={() => revealHeading(`wiki-heading-${title.normalize("NFC")}`)}>{title}</button>) : <p>본문의 제목이 여기에 표시됩니다.</p> : vaultPanelTab === "info" ? <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>소유자</dt><dd>{ownerNames.get(selected.owner_id) || "소유자 미지정"}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>버전</dt><dd>v{selected.current_version}</dd></div><div><dt>수정</dt><dd>{formatDate(selected.updated_at)}</dd></div><div><dt>팀</dt><dd>{selected.team || "미지정"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "미지정"}</dd></div></dl> : vaultPanelTab === "links" ? <><h3>나가는 연결</h3>{wikiLinks(selected.content_md ?? "").length ? wikiLinks(selected.content_md ?? "").map(link => <button key={link} onClick={() => void openWikiLink(link)}>{link}</button>) : <p>연결된 문서가 없습니다.</p>}<h3>이 문서를 가리킴</h3>{backlinks.length ? backlinks.map(item => <button key={item.id} onClick={() => selectDocument(item.id)}>{item.title}</button>) : <p>아직 없습니다.</p>}</> : <>{versionsLoading ? <p>버전을 불러오는 중입니다.</p> : versions.map(version => <div className="vault-version" key={version.version_no}><span>v{version.version_no} · {formatDate(version.created_at)}</span>{version.version_no !== selected.current_version ? <button onClick={() => guardAction(() => { setCompareBase(selected); setCompareVersion(version); })}>비교·복원</button> : <em>현재</em>}</div>)}</> : <><h3>폴더 정보</h3><p>{managedFolder || "전체 폴더"}</p><p>하위 폴더 {folderChildren.length}개</p><p>이 폴더 문서 {folderDocuments.length}개</p></>}</div></aside> : null}
       </section>
       <input ref={relinkInputRef} className="knowledge-attachment-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" tabIndex={-1} aria-hidden="true" onChange={(event) => void connectOriginalImage(event.target.files?.[0])} />
       {imageRecoveryOpen ? <KnowledgeImageRecovery token={accessToken} folder={galleryFolder} onClose={() => setImageRecoveryOpen(false)} onChanged={() => setRevision((value) => value + 1)} /> : null}

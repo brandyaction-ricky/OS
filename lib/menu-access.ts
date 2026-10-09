@@ -14,6 +14,7 @@ export interface MenuAccessProfile {
 
 export const MENU_HREFS = [...NAV_STAGES.flatMap(stage => stage.pages.map(page => page.href)), "/knowledge/search"];
 export const REQUIRED_MENUS = ["/home", ACCOUNT_PAGE.href];
+const LEGACY_DOCUMENT_MENUS = ["/knowledge", "/knowledge/decisions", "/knowledge/docs", "/knowledge/graph", "/knowledge/review", "/knowledge/templates"];
 
 /** Navigation preferences never grant document, finance, or mutation privileges. */
 export function canOpenMenu(profile: MenuAccessProfile | null, href: string, allowed: string[] | null = null) {
@@ -28,6 +29,7 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   // A document opened from a permitted company-document list still uses the same
   // detail route. This is navigation only: document-level authorization stays server-side.
   if (href.split(/[?#]/)[0].startsWith("/knowledge/doc/") && allowed?.some(menu => ["/knowledge/vault", "/knowledge/notes", "/knowledge/docs", "/knowledge/canon", "/knowledge/review", "/knowledge/search", "/knowledge/graph"].includes(menu))) return true;
+  if (canonical === "/knowledge/vault" && allowed?.some(menu => LEGACY_DOCUMENT_MENUS.includes(menu))) return true;
   return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
 }
 
