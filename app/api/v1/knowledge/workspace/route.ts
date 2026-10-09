@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 function databaseError(error: { code?: string; message?: string }) {
   if (["42P01","42703","PGRST202","PGRST204","PGRST205"].includes(error.code ?? "")) return new ApiError(503,"KNOWLEDGE_SCHEMA_REQUIRED","회사 문서 저장 구조의 배포가 아직 준비되지 않았습니다. 입력한 내용은 지우지 마세요.");
-  if (error.code === "40001" || error.message?.includes("VERSION_CONFLICT")) return new ApiError(409,"VERSION_CONFLICT","다른 사람이 먼저 수정했습니다. 입력한 내용을 보존했습니다.");
+  if (error.code === "PT409" || error.code === "40001" || error.message?.includes("VERSION_CONFLICT")) return new ApiError(409,"VERSION_CONFLICT","다른 사람이 먼저 수정했습니다. 입력한 내용을 보존했습니다.");
   if (error.code === "42501") return new ApiError(403,"KNOWLEDGE_FORBIDDEN","이 작업을 수행할 권한이 없습니다.");
   if (error.code === "P0002") return new ApiError(404,"KNOWLEDGE_NOT_FOUND","이 항목을 볼 권한이 없습니다.");
   if (error.code === "23505") return new ApiError(409,"KNOWLEDGE_DUPLICATE","같은 이름이나 날짜의 항목이 이미 있습니다. 새로 불러온 뒤 확인해 주세요.");

@@ -505,6 +505,15 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied alone to the confirmed isolated DEV project on 2026-10-09 after rollback-only RLS validation. Exact SQL checksum and migration history read back; preserves pre-existing HR notification types. Production remains unapproved and unapplied."
+    },
+    {
+      "file": "20261009023548_knowledge_conflict_response.sql",
+      "sha256": "e20bff10cbf3206b86e58a0402ec9b60d7a8df58bbf33790ac972971579a98d4",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Hosted DEV QA fix: use PT409 for company-document business version conflicts instead of PostgREST 14 retryable SQLSTATE 40001. Six explicit function definitions only; no data, grants or signature changes."
     }
   ],
   "legacyMigrations": [

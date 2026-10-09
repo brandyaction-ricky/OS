@@ -12,7 +12,7 @@ for (const [name, user] of Object.entries(users)) {
 }
 let checks = 0;
 async function api(who, path, body, expected = 200, method = body ? 'POST' : 'GET') {
-  const response = await fetch(appUrl + path, { method, headers: { ...(who ? { authorization: `Bearer ${sessions[who].token}` } : {}), 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const response = await fetch(appUrl + path, { method, signal: AbortSignal.timeout(20000), headers: { ...(who ? { authorization: `Bearer ${sessions[who].token}` } : {}), 'content-type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
   const data = await response.json();
   assert.equal(response.status, expected, `${method} ${path.split('?')[0].replace(/[a-f0-9-]{36}/g, ':id')} ${body?.action ?? ''}: ${data.error?.code ?? ''}`);
   checks++; return data;
