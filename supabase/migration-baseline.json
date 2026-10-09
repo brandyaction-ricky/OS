@@ -504,6 +504,14 @@
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-09",
       "appliedEnvironments": ["development"]
+    },
+    {
+      "file": "20261009022419_hr_single_read_policies.sql",
+      "sha256": "4ed1deee14fe1337694996d08f40799803569307aa4d40c8d37861962430aca4",
+      "purpose": "combine equivalent HR operator and self-read RLS predicates without changing access",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-09",
+      "appliedEnvironments": ["development"]
     }
   ],
   "legacyMigrations": [
