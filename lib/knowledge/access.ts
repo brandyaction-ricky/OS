@@ -33,7 +33,13 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
     if (!meeting || actor.type !== "user") return false;
     if (!meeting.attendees.includes(actor.ownerId) && !(actor.memberKind !== "partner" && meeting.visibility === "team")) return false;
   }
-  if (status === "draft") return actor.type === "user" && (doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id)));
+  if (status === "draft") {
+    // AI keys can read their owner's AI-generated work, not that owner's human
+    // notes or imported vault. Archived drafts remain unavailable to agents.
+    if (actor.type === "agent") return doc.status === "draft" && doc.source === "mcp"
+      && doc.owner_id === actor.ownerId && actor.allowedStatuses.includes("draft");
+    return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id));
+  }
   if (doc.status === "archived") return actor.type === "user" && (actor.role === "admin" || doc.owner_id === actor.ownerId || doc.archived_by === actor.ownerId);
   if (doc.meeting_record_id) return true;
   if (actor.type === "agent") return actor.allowedStatuses.includes(doc.status) && ["team", "canonical"].includes(doc.status);
