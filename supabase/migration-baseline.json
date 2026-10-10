@@ -530,6 +530,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Hosted DEV QA fix: use PT409 for company-document business version conflicts instead of PostgREST 14 retryable SQLSTATE 40001. Six explicit function definitions only; no data, grants or signature changes."
+    },
+    {
+      "file": "20261010012228_notification_guard_workspace_compatibility.sql",
+      "sha256": "8ffb85e25cd610c24e10423a775f83aae8af712715359da1e536a3a2d9c2d2b9",
+      "purpose": "restore the union of knowledge and optional HR notification contracts after out-of-order application",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-10",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Applied only to confirmed DEV after rollback-only compatibility and privilege-preservation tests. Exact migration SQL and history checksum read back. Function-only change; no document data or policy changes. Production application requires separate approval."
     }
   ],
   "legacyMigrations": [
