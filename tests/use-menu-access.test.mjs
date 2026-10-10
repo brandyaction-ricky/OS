@@ -67,6 +67,18 @@ test("a new page waits for its own policy and account switches discard old respo
   app.unmount();
 });
 
+test("vault folder query changes keep the approved workspace mounted", async () => {
+  const app = setup();
+  assert.equal(app.render(profile("one"), "one-token", false, "/knowledge/vault").loading, true);
+  app.requests[0].resolve({ policies: [{ member_id: "one", allowed_menus: ["/knowledge/vault"] }], ready: true });
+  await turn();
+  const folder = app.render(profile("one"), "one-token", false, "/knowledge/vault?folder=02_Wiki");
+  assert.equal(folder.loading, false);
+  assert.deepEqual(Array.from(folder.allowed), ["/knowledge/vault"]);
+  assert.equal(app.requests.length, 1, "query-only navigation must not refetch menu policy");
+  app.unmount();
+});
+
 test("focus and token refresh preserve mounted forms, latest response wins, failures are closed and retryable", async () => {
   const app = setup();
   app.render();

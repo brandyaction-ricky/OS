@@ -1,14 +1,3 @@
-.linear-shell.vault-shell .page-sidebar { width:56px; }
-.linear-shell.vault-shell .app-main { padding-left:56px; }
-.linear-shell.shell-v2.vault-shell .sidebar-head .sidebar-collapse { display:none; }
-.linear-shell.vault-shell .nav-section { position:relative; }
-.linear-shell.vault-shell .vault-nav-flyout { position:absolute; left:48px; top:-4px; z-index:100; width:174px; display:none; padding:7px; border:1px solid var(--line); border-radius:9px; background:var(--panel); box-shadow:var(--shadow); }
-.linear-shell.vault-shell .nav-section:hover .vault-nav-flyout,.linear-shell.vault-shell .nav-section:focus-within .vault-nav-flyout { display:grid; }
-.linear-shell.vault-shell .vault-nav-flyout strong { padding:5px 7px; color:var(--muted); font-size:11px; }
-.linear-shell.vault-shell .vault-nav-flyout a { padding:7px 8px; border-radius:6px; color:var(--text-2); text-decoration:none; font-size:12px; white-space:nowrap; }
-.linear-shell.vault-shell .vault-nav-flyout a:hover,.linear-shell.vault-shell .vault-nav-flyout a[aria-current=page] { background:var(--accent-soft); color:var(--accent-2); }
-.linear-shell.vault-shell .topbar .breadcrumbs { display:none; }
-.linear-shell.vault-shell .topbar { justify-content:flex-end; }
 .linear-shell .page-content.ui-v2.screen-vault { display:flex; flex-direction:column; height:calc(100dvh - 48px); min-height:0; padding:0; overflow:hidden; }
 .screen-vault .menu-guide { display:none; }
 .screen-vault .vault-toolbar { height:48px; flex:none; display:grid; grid-template-columns:var(--knowledge-tree-width, 300px) minmax(0,1fr) auto; align-items:center; border-bottom:1px solid var(--line-soft); background:var(--panel); color:var(--text); }
@@ -92,8 +81,6 @@
   .screen-vault .vault-side-panel { position:absolute; right:0; top:0; bottom:0; z-index:12; width:min(320px,80vw); box-shadow:var(--shadow); }
 }
 @media(max-width:899px){
-  .linear-shell.vault-shell .page-sidebar { width:min(286px,88vw); }
-  .linear-shell.vault-shell .app-main { padding-left:0; }
   .screen-vault .vault-toolbar { grid-template-columns:minmax(0,1fr) auto; }
   .screen-vault .vault-toolbar-tree { width:190px; border:0; }
   .screen-vault .vault-mobile-tree { display:grid!important; }

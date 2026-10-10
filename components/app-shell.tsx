@@ -253,12 +253,12 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   }
 
   return (
-    <div className={`os-app linear-shell unified-shell shell-v2${collapsed || pathname === "/knowledge/vault" ? " nav-collapsed" : ""}${pathname === "/knowledge/vault" ? " vault-shell" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
+    <div className={`os-app linear-shell unified-shell shell-v2${collapsed ? " nav-collapsed" : ""}${pathname.startsWith("/knowledge") && knowledgeFocus ? " knowledge-focus" : ""}`}>
       <aside ref={sidebarRef} id="main-navigation" data-ui="sidebar" className={`unified-sidebar page-sidebar${mobileOpen ? " mobile-open" : ""}`} aria-label="주요 메뉴">
         <div className="unified-sidebar-head sidebar-head" data-ui="sidebar-head">
           <Link className="brand-mark" data-ui="brand-mark" href="/home" aria-label="브랜디 OS 홈">BA</Link>
           <div className="sidebar-brand brand-copy"><b>브랜디 OS</b><span>우리 팀의 작업 공간</span></div>
-          <button className="icon-button sidebar-collapse" data-ui="collapse-btn" aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"} aria-expanded={!collapsed} onClick={toggleSidebar} hidden={pathname === "/knowledge/vault"}>
+          <button className="icon-button sidebar-collapse" data-ui="collapse-btn" aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"} aria-expanded={!collapsed} onClick={toggleSidebar}>
             {collapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
           </button>
           <button className="icon-button mobile-only" aria-label="메뉴 닫기" onClick={() => setMobileOpen(false)}><X size={18} /></button>
@@ -269,7 +269,6 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {pathname === "/knowledge/vault" && item.id === "knowledge" ? <div className="vault-nav-flyout" aria-label="회사 문서 메뉴"><strong>회사 문서</strong>{item.pages.map(entry => <Link href={entry.href} key={entry.href} aria-current={entry.href === pathname ? "page" : undefined}>{entry.label}</Link>)}</div> : null}
               {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
                 <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
               </button> : null}

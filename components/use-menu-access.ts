@@ -7,6 +7,9 @@ import { type MenuAccessProfile } from "@/lib/menu-access";
 export function useMenuAccess(profile: (MenuAccessProfile & { id: string }) | null, token: string | null, demo: boolean, path: string) {
   const id = profile?.id;
   const bypass = demo || profile?.role === "admin";
+  // Menu policy is route-based. Vault folder/document query changes must not
+  // remount the workspace while an identical policy is fetched again.
+  const accessPath = path.split(/[?#]/, 1)[0];
   const [state, setState] = useState<{ id?: string; path: string; allowed: string[] | null; error: string; loading: boolean }>({ path: "", allowed: null, error: "", loading: true });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -17,20 +20,20 @@ export function useMenuAccess(profile: (MenuAccessProfile & { id: string }) | nu
       const currentGeneration = ++generation;
       // Refresh in place so returning to the browser does not erase an open form.
       // A different identity/path still waits for its own settings before rendering.
-      setState(previous => previous.id === id && previous.path === path && !previous.error
-        ? previous : { id, path, allowed: null, error: "", loading: true });
+      setState(previous => previous.id === id && previous.path === accessPath && !previous.error
+        ? previous : { id, path: accessPath, allowed: null, error: "", loading: true });
       try {
         const result = await getMenuAccess(token);
-        if (active && currentGeneration === generation) setState({ id, path, allowed: result.policies.find(policy => policy.member_id === id)?.allowed_menus ?? null, error: "", loading: false });
+        if (active && currentGeneration === generation) setState({ id, path: accessPath, allowed: result.policies.find(policy => policy.member_id === id)?.allowed_menus ?? null, error: "", loading: false });
       } catch (reason) {
-        if (active && currentGeneration === generation) setState({ id, path, allowed: [], error: reason instanceof Error ? reason.message : "메뉴 권한을 확인하지 못했습니다.", loading: false });
+        if (active && currentGeneration === generation) setState({ id, path: accessPath, allowed: [], error: reason instanceof Error ? reason.message : "메뉴 권한을 확인하지 못했습니다.", loading: false });
       }
     };
     void load();
     window.addEventListener("focus", load);
     return () => { active = false; window.removeEventListener("focus", load); };
-  }, [bypass, id, token, path, attempt]);
-  const current = state.id === id && state.path === path;
+  }, [bypass, id, token, accessPath, attempt]);
+  const current = state.id === id && state.path === accessPath;
   return {
     allowed: bypass ? null : state.allowed,
     loading: !bypass && (!current || state.loading),

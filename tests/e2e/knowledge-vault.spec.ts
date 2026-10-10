@@ -31,6 +31,18 @@ test("desktop vault keeps its tree visible even with a saved hidden-tree prefere
   await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
 });
 
+test("entering the vault keeps the company document menu visible while opening a folder", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/knowledge/vault");
+  const sidebar = page.getByRole("complementary", { name: "주요 메뉴" });
+  await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "사이드바 접기" })).toBeVisible();
+  await page.getByRole("treeitem", { name: "회사 wiki 3", exact: true }).click();
+  await expect(page).toHaveURL(/folder=/);
+  await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "폴더 내용" })).toBeVisible();
+});
+
 async function create(page: Page, title: string, content: string) {
   await page.locator(".vault-toolbar").getByRole("button", { name: "새 페이지", exact: true }).click();
   await page.getByRole("textbox", { name: "새 페이지 제목" }).fill(title);
