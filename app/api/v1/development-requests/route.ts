@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { DEVELOPMENT_REQUEST_STATUSES, DevelopmentRequestPolicyError, developmentRequestCreateSchema, developmentRequestMetadata, developmentRequestUpdateFields, developmentRequestUpdateSchema, validateDevelopmentRequestUpdate } from "@/lib/development-requests";
 import type { OsRecord } from "@/lib/record-types";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { developmentRequestDbSignal } from "@/lib/development-request-db-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,12 +81,24 @@ export async function POST(request: Request) {
     const input = developmentRequestCreateSchema.parse(await parseJson(request, 64_000));
     await assertProject(actor, input.parentId);
     assertAttachmentOwner(actor, input.attachmentPath);
-    const { data, error } = await actor.supabase.from("os_records").insert({
-      record_type: "ai_job", title: input.title, description: input.description, priority: input.priority,
+    const id = randomUUID();
+    // A restrictive SELECT policy reads the inserted row through a STABLE function.
+    // INSERT ... RETURNING evaluates it before the row is visible to that function.
+    const { error } = await actor.supabase.from("os_records").insert({
+      id, record_type: "ai_job", title: input.title, description: input.description, priority: input.priority,
       status: "backlog", parent_id: input.parentId, team: actor.team, metadata: developmentRequestMetadata(input),
       owner_id: actor.id, created_by: actor.id, updated_by: actor.id,
-    }).select("*").single();
-    if (error || !data) throw new ApiError(500, "REQUEST_CREATE_FAILED", "수정 요청을 저장하지 못했습니다.");
+    });
+    if (error) {
+      console.error("development_request_insert_failed", developmentRequestDbSignal(error));
+      throw new ApiError(500, "REQUEST_CREATE_FAILED", "수정 요청을 저장하지 못했습니다.");
+    }
+    const { data, error: readError } = await actor.supabase.from("os_records").select("*")
+      .eq("id", id).eq("record_type", "ai_job").eq("metadata->>kind", "development_request").single();
+    if (readError || !data) {
+      console.error("development_request_created_read_failed", developmentRequestDbSignal(readError));
+      throw new ApiError(503, "REQUEST_CREATED_READ_FAILED", "요청이 저장됐지만 확인하지 못했습니다. 목록을 새로고침해 확인해 주세요.");
+    }
     return NextResponse.json({ record: data }, { status: 201, headers });
   } catch (error) { return respondError(error); }
 }

@@ -137,7 +137,7 @@ export function findPage(path: string): NavPage {
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
     "/knowledge/decisions": "결정 모음", "/knowledge/docs": "팀 문서", "/knowledge/graph": "연결",
-    "/knowledge/review": "검토함", "/knowledge/templates": "템플릿",
+    "/knowledge/review": "정본 검토·등록", "/knowledge/templates": "템플릿",
   };
   if (legacyDocuments[pathname]) return { label: legacyDocuments[pathname], href: pathname, navHref: "/knowledge/vault", icon: FileText, ready: true };
   if (pathname === "/knowledge/search") return { label: "문서 찾기", href: "/knowledge/search", navHref: "/knowledge/vault", icon: Search, ready: true };
