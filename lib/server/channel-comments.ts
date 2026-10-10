@@ -30,6 +30,7 @@ export async function syncChannelComments(now=new Date(),enabledPlatforms:readon
     try{
       const account=post.metadata.account as {ownerId?:string;platform?:string}|undefined;
       if(!account?.ownerId||!["instagram","threads"].includes(account.platform??"")||!enabledPlatforms.includes(account.platform??""))continue;
+      if(post.metadata.space==="personal"&&post.owner_id!==account.ownerId)continue;
       const {data:connection,error:connectionError}=await db.from("os_meta_connections").select("*").eq("owner_id",account.ownerId).eq("platform",account.platform).maybeSingle();
       if(connectionError||!connection)throw Error("connection unavailable");
       const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",account.ownerId).maybeSingle();if(!owner?.is_active)continue;
@@ -40,7 +41,7 @@ export async function syncChannelComments(now=new Date(),enabledPlatforms:readon
         const result=await collectPostComments(connection as MetaConnection,externalId);counts.truncated ||= result.truncated;
         for(const comment of result.rows){
           const id=collectedCommentId(String(account.platform),account.ownerId,comment.externalId);
-          const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_comment",title:comment.text.slice(0,200)||"댓글",description:comment.text,status:"unanswered",parent_id:post.id,owner_id:account.ownerId,created_by:account.ownerId,updated_by:account.ownerId,metadata:{sourceTopicId:post.parent_id,postTitle:post.title,platform:account.platform,connectionOwnerId:account.ownerId,externalId:comment.externalId,author:comment.author,kind:"unclassified",topLevel:comment.topLevel,commentedAt:comment.createdAt,mock:metaMode()==="mock"}},{onConflict:"id",ignoreDuplicates:true}).select("id");
+          const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_comment",title:comment.text.slice(0,200)||"댓글",description:comment.text,status:"unanswered",parent_id:post.id,owner_id:account.ownerId,created_by:account.ownerId,updated_by:account.ownerId,metadata:{...(post.metadata.space==="personal"?{space:"personal"}:{}),sourceTopicId:post.parent_id,postTitle:post.title,platform:account.platform,connectionOwnerId:account.ownerId,externalId:comment.externalId,author:comment.author,kind:"unclassified",topLevel:comment.topLevel,commentedAt:comment.createdAt,mock:metaMode()==="mock"}},{onConflict:"id",ignoreDuplicates:true}).select("id");
           if(writeError)throw Error("comment save failed");counts.comments+=inserted?.length??0;
         }
       }

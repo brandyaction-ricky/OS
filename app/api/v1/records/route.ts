@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const CONTENT_PUBLISH_TRANSITIONS: Record<string, string[]> = {
-  draft: ["review", "blocked"], review: ["ready", "blocked"], blocked: ["review"],
+  draft: ["review", "blocked"], review: ["ready", "blocked"], blocked: ["draft", "review"],
   ready: ["scheduled", "review", "blocked"], scheduled: ["published", "ready"], published: [],
 };
 
@@ -97,6 +97,8 @@ export async function POST(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const input = recordCreateSchema.parse(await parseJson(request));
+    if (input.recordType === "content_publish" && input.metadata.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 만들고 확인해 주세요.");
     await assertLegacyLeaveWritable(actor.supabase, input.recordType);
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
@@ -140,6 +142,10 @@ export async function PATCH(request: Request) {
     const input = recordUpdateSchema.parse(await parseJson(request));
     const { data: current } = await actor.supabase.from("os_records").select("record_type,status,metadata,assignee_id,due_date,parent_id").eq("id", input.id).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.record_type === "content_publish" && current.metadata?.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 수정해 주세요.");
+    if (current.metadata?.space === "personal" && input.metadata && input.metadata.space !== "personal")
+      throw new ApiError(403,"PERSONAL_SPACE_IMMUTABLE","개인 기록의 공간을 바꿀 수 없습니다.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if ([current.metadata?.kind, input.metadata?.kind].some(kind => ["meta_tester_request", "channel_audit"].includes(String(kind)))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 변경해 주세요.");
@@ -194,6 +200,8 @@ export async function DELETE(request: Request) {
     if (!id) throw new ApiError(400, "RECORD_ID_REQUIRED", "기록 ID가 필요합니다.");
     const { data: current } = await actor.supabase.from("os_records").select("version,record_type,metadata").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.record_type === "content_publish" && current.metadata?.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 관리해 주세요.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");

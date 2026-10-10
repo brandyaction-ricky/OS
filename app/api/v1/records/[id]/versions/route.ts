@@ -29,6 +29,8 @@ async function authorize(request: Request, id: string, write = false) {
   const service = createServiceSupabase();
   const { data, error } = await service.from("os_records").select("*").eq("id", id).maybeSingle();
   if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+  if(data.metadata?.space==="personal" && data.owner_id!==actor.ownerId)
+    throw new ApiError(404,"RECORD_NOT_FOUND","운영 기록을 찾지 못했습니다.");
   if (data.record_type === "notification") throw new ApiError(403,"NOTIFICATION_API_REQUIRED","알림 전용 화면을 이용해 주세요.");
   if (actor.role !== "admin" && ![data.owner_id, data.created_by, data.assignee_id].includes(actor.ownerId)) {
     throw new ApiError(403, "RECORD_RESTORE_FORBIDDEN", "이 운영 기록의 버전을 복원할 권한이 없습니다.");
@@ -57,6 +59,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const id = z.string().uuid().parse((await context.params).id);
     const input = restoreSchema.parse(await parseJson(request, 16_000));
     const { actor, service, current } = await authorize(request, id, true);
+    if(current.record_type==="content_publish" && current.metadata?.space==="personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠 확인본은 버전 복원으로 변경하지 않습니다.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 복원 대신 요청 화면에서 다시 열어 주세요.");
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.");

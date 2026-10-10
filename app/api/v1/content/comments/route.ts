@@ -17,7 +17,7 @@ export async function GET(request:Request){
     const actor=await authenticateRequest(request);
     const {data,error}=await actor.supabase.from("os_records").select("*").eq("record_type","content_comment").is("archived_at",null).order("created_at",{ascending:false}).limit(200);
     if(error)throw new ApiError(503,"COMMENT_READ_FAILED","댓글 저장소 준비 상태를 확인해 주세요.");
-    const rows=(data??[]) as OsRecord[],owners=[...new Set(rows.map(row=>String(row.metadata.connectionOwnerId)))];
+    const rows=((data??[]) as OsRecord[]).filter(row=>row.metadata.space!=="personal"),owners=[...new Set(rows.map(row=>String(row.metadata.connectionOwnerId)))];
     const connections=owners.length?await createServiceSupabase().from("os_meta_connections").select("owner_id,platform,team_shared").in("owner_id",owners):{data:[],error:null};
     if(connections.error)throw new ApiError(503,"COMMENT_CHANNELS_UNAVAILABLE","댓글 처리 권한을 확인하지 못했습니다.");
     return NextResponse.json({comments:rows.map(row=>{const connection=connections.data?.find(item=>item.owner_id===row.metadata.connectionOwnerId&&item.platform===row.metadata.platform);return {...row,canRespond:!!connection&&canUseConnection(actor,connection),teamShared:connection?.team_shared===true};}),truncated:rows.length===200},{headers:{"Cache-Control":"private, no-store"}});
@@ -27,6 +27,7 @@ export async function POST(request:Request){
   try{
     const actor=await authenticateRequest(request),input=inputSchema.parse(await parseJson(request,8000));
     const row=await readChannelComment(actor,input.id);
+    if(row.metadata.space==="personal")throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠 댓글은 콘텐츠 자동화에서 처리해 주세요.");
     if(row.version!==input.expectedVersion)throw new ApiError(409,"COMMENT_CHANGED","댓글이 변경되었습니다. 다시 불러와 주세요.");
     if(input.operation==="reply"||input.operation==="hide"){
       if(input.confirm!==true)throw new ApiError(400,"HUMAN_CONFIRMATION_REQUIRED","답글·숨기기는 사람이 확인해야 합니다.");

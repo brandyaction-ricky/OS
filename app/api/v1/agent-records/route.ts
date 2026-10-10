@@ -73,6 +73,7 @@ export async function GET(request: Request) {
       const recordId = z.string().uuid().parse(id);
       const { data, error } = await service.from("os_records").select("*").eq("id", recordId).maybeSingle();
       if (error || !data) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+      if (data.metadata?.space === "personal" && data.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
       if (data.record_type === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 요청별 대화 API에서 확인해 주세요.");
       if ((data.record_type === "development_notification" || data.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 사람 계정의 알림 화면에서 확인해 주세요.");
       return NextResponse.json({ record: data });
@@ -84,6 +85,7 @@ export async function GET(request: Request) {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     let query = service.from("os_records").select("*", { count: "exact" }).is("archived_at", null).order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
+    query = query.or(`metadata->>space.is.null,metadata->>space.neq.personal,owner_id.eq.${actor.ownerId}`);
     if (type) query = query.eq("record_type", type);
     else query = query.neq("record_type", "development_comment").neq("record_type", "development_notification").neq("record_type", "notification");
     const { data, count, error } = await query;
@@ -100,6 +102,8 @@ export async function POST(request: Request) {
     const organization = organizationId.parse(raw.organizationId);
     await assertOrganization(actor, organization);
     const input = recordCreateSchema.parse(raw);
+    if (input.recordType === "content_publish" && input.metadata.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 만들고 확인해 주세요.");
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
@@ -132,8 +136,13 @@ export async function PATCH(request: Request) {
     await assertOrganization(actor, organization);
     const input = recordUpdateSchema.parse(raw);
     const service = createServiceSupabase();
-    const { data: current } = await service.from("os_records").select("record_type,status,metadata").eq("id", input.id).is("archived_at", null).maybeSingle();
+    const { data: current } = await service.from("os_records").select("record_type,status,metadata,owner_id").eq("id", input.id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if ((current.metadata?.space === "personal" || input.metadata?.space === "personal") && current.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.record_type === "content_publish" && current.metadata?.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 확인·수정해 주세요.");
+    if (current.metadata?.space === "personal" && input.metadata && input.metadata.space !== "personal")
+      throw new ApiError(403,"PERSONAL_SPACE_IMMUTABLE","개인 기록의 공간을 바꿀 수 없습니다.");
     if ([current.metadata?.kind, input.metadata?.kind].some(kind => ["meta_tester_request", "channel_audit"].includes(String(kind)))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (isDevelopmentRequest(current) || input.metadata?.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 OS 수정 요청 화면에서 변경해 주세요.");
     if ((current.record_type === "content_metric" && current.metadata?.channelSnapshotVersion === 1) || input.metadata?.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 변경하지 않습니다. 수기 기록을 따로 추가하세요.");
@@ -148,7 +157,9 @@ export async function PATCH(request: Request) {
     enforceHumanGates(recordType, input.status);
     await rateLimit(actor, "record.update");
     const payload = { ...databaseFields(input), updated_by: actor.ownerId };
-    const { data, error } = await service.from("os_records").update(payload).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null).select("*").maybeSingle();
+    let update = service.from("os_records").update(payload).eq("id", input.id).eq("version", input.expectedVersion).is("archived_at", null);
+    if (current.metadata?.space === "personal" || input.metadata?.space === "personal") update = update.eq("owner_id", actor.ownerId);
+    const { data, error } = await update.select("*").maybeSingle();
     if (error) throw new ApiError(400, "RECORD_UPDATE_FAILED", "운영 기록을 수정하지 못했습니다.", error.message);
     if (!data) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전으로 다시 시도해 주세요.");
     await audit(actor, organization, "record.update", data, Object.keys(databaseFields(input)), String(raw.reason ?? "MCP 운영 기록 수정"));
@@ -170,8 +181,11 @@ export async function DELETE(request: Request) {
     void confirm;
     await assertOrganization(actor, organization);
     const service = createServiceSupabase();
-    const { data: current } = await service.from("os_records").select("id,title,record_type,version,metadata").eq("id", id).is("archived_at", null).maybeSingle();
+    const { data: current } = await service.from("os_records").select("id,title,record_type,version,metadata,owner_id").eq("id", id).is("archived_at", null).maybeSingle();
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.metadata?.space === "personal" && current.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
+    if (current.record_type === "content_publish" && current.metadata?.space === "personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠 발행 기록은 보존합니다.");
     if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
     if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "HUMAN_PUBLISH_GATE", "채널 게시 이력은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다.");
@@ -181,7 +195,9 @@ export async function DELETE(request: Request) {
     if ((current.record_type === "development_notification" || current.record_type === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 처리 이력을 위해 보존합니다.");
     enforceHumanGates(current.record_type as RecordType);
     await rateLimit(actor, "record.delete");
-    const { data, error } = await service.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.ownerId }).eq("id", id).eq("version", current.version).select("id,title").maybeSingle();
+    let archive = service.from("os_records").update({ archived_at: new Date().toISOString(), updated_by: actor.ownerId }).eq("id", id).eq("version", current.version);
+    if (current.metadata?.space === "personal") archive = archive.eq("owner_id", actor.ownerId);
+    const { data, error } = await archive.select("id,title").maybeSingle();
     if (error || !data) throw new ApiError(409, "RECORD_ARCHIVE_FAILED", "운영 기록을 휴지통으로 옮기지 못했습니다.", error?.message);
     await audit(actor, organization, "record.delete", data, ["archived_at"], url.searchParams.get("reason") ?? "MCP 휴지통 이동");
     return NextResponse.json({ deleted: true, permanent: false, recordId: id });

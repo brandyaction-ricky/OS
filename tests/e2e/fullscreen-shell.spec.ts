@@ -20,11 +20,11 @@ test("seven YouTube steps keep content selection; comments have a separate group
   await expect(page.getByRole("navigation", { name: "콘텐츠 공정 순서" })).toHaveCount(0);
   // The collapsed-group shortcut also points at the first allowed menu.
   // Count the actual menu entries, not the hidden shortcut.
-  await expect(page.locator('#nav-automation a.page-link[href^="/automation/"]')).toHaveCount(8);
+  await expect(page.locator('#nav-automation a.page-link[href^="/automation/"]')).toHaveCount(10);
   await expect(page.locator(".external-app-link")).toHaveCount(0);
-  await page.getByRole("link", { name: "대시보드", exact: true }).click();
+  await page.getByRole("link", { name: "자동화 현황", exact: true }).click();
   await expect(page).toHaveURL(/\/automation\/dashboard$/);
-  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText("대시보드");
+  await expect(page.getByRole("heading", { level: 1 }).first()).toHaveText("자동화 현황");
 });
 
 test("quick record opens the request drawer without leaving the current screen", async ({ page }) => {

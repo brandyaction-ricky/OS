@@ -13,6 +13,7 @@ const skillId = z.string().uuid();
 const scopeSchema = z.enum(["all", "company", "personal"]);
 
 function canReadSkill(actor: Awaited<ReturnType<typeof authenticateRequest>>, skill: { owner_id: string | null; status: string; metadata: Record<string, unknown> | null }) {
+  if (skill.metadata?.space === "personal" && skill.owner_id !== actor.ownerId) return false;
   const companyReady = skill.metadata?.scope === "company" && skill.status === "ready";
   return companyReady || (actor.type === "agent" && skill.owner_id === actor.ownerId);
 }
@@ -39,9 +40,10 @@ export async function GET(request: Request) {
     const q = (url.searchParams.get("q") ?? "").replace(/[^\p{L}\p{N} _-]/gu, " ").trim().slice(0, 200);
     let query = service.from("os_records").select("*", { count: "exact" }).eq("record_type", "skill").is("archived_at", null);
     if (actor.type !== "agent") throw new ApiError(403, "AGENT_REQUIRED", "AI 접근 키로 요청해 주세요.");
-    if (scope === "company") query = query.eq("metadata->>scope", "company").eq("status", "ready");
+    if (scope === "company") query = query.eq("metadata->>scope", "company").eq("status", "ready")
+      .or(`metadata->>space.is.null,metadata->>space.neq.personal,owner_id.eq.${actor.ownerId}`);
     else if (scope === "personal") query = query.eq("owner_id", actor.ownerId);
-    else query = query.or(`and(metadata->>scope.eq.company,status.eq.ready),owner_id.eq.${actor.ownerId}`);
+    else query = query.or(`and(metadata->>scope.eq.company,status.eq.ready,metadata->>space.is.null),and(metadata->>scope.eq.company,status.eq.ready,metadata->>space.neq.personal),owner_id.eq.${actor.ownerId}`);
     if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
     const { data, count, error } = await query.order("updated_at", { ascending: false }).range(offset, offset + limit - 1);
     if (error) throw new ApiError(400, "SKILL_LIST_FAILED", "Skill 목록을 불러오지 못했습니다.", error.message);
