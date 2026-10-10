@@ -35,7 +35,7 @@ begin
   select * into d from public.os_documents where id=c.document_id for update;
   select * into c from public.os_document_candidates where id=p_id for update;
   if c.status<>'open' then raise exception 'OS_CANDIDATE_NOT_OPEN' using errcode='P0002'; end if;
-  if d.current_version<>p_expected_version then raise exception 'OS_VERSION_CONFLICT' using errcode='40001'; end if;
+  if d.current_version is distinct from p_expected_version then raise exception 'OS_VERSION_CONFLICT' using errcode='40001'; end if;
   if not public.os_is_staff() or not public.os_workspace_page_read(d.id)
     or not public.os_can_approve(auth.uid(),d.owner_id) or not public.os_can_approve(auth.uid(),c.submitted_by)
     or (c.requested_approver_id<>auth.uid() and not(public.os_is_admin() and length(btrim(p_note))>0))
@@ -57,7 +57,7 @@ begin
   if not found or c.status<>'approved' then raise exception 'OS_CANDIDATE_NOT_APPROVED' using errcode='42501'; end if;
   select * into d from public.os_documents where id=c.document_id for update;
   select * into c from public.os_document_candidates where id=p_id for update;
-  if not found or c.status<>'approved' or d.status<>'reviewed' or d.current_version<>p_expected_version
+  if not found or c.status<>'approved' or d.status<>'reviewed' or d.current_version is distinct from p_expected_version
     then raise exception 'OS_CANDIDATE_CHANGED' using errcode='40001'; end if;
   if not public.os_workspace_page_read(d.id) or not exists (
     select 1 from public.os_profiles p where p.id=u and p.is_active

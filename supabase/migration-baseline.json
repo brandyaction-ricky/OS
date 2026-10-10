@@ -543,7 +543,7 @@
     },
     {
       "file": "20261010024855_canonical_publisher_gate.sql",
-      "sha256": "99d8dbfad80e6b7ec341562e5f21dad831d7a9e523c258a6e6e077bc93de7708",
+      "sha256": "a90e8686c3f5c2a7d6c1f7b31308c3facffa7a1af53d1c34457dbacb25ccebe6",
       "purpose": "require independent candidate approval followed by a single designated administrator for final canonical publication",
       "requiresApproval": true,
       "developmentApprovedAt": null,
