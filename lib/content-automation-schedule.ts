@@ -1,6 +1,12 @@
 export type ScheduleRules={enabled:boolean;days:string;times:string[];grace_minutes:number};
 export type ScheduleRun={via:string;slot:string|null;started_at:string;browser_id:string};
 
+export function loginExpiredNearSlot(loginExpiredAt:string|null|undefined,slotAt:string){
+  const expired=Date.parse(loginExpiredAt??""),slot=Date.parse(slotAt);
+  return Number.isFinite(expired)&&Number.isFinite(slot)
+    &&expired>=slot-5*60_000&&expired<=slot+60*60_000;
+}
+
 export function kstScheduleDate(now=new Date()){
   return new Date(now.getTime()+9*3_600_000).toISOString().slice(0,10);
 }

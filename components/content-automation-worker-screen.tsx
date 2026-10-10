@@ -42,7 +42,14 @@ export function ContentAutomationWorkerScreen(){
   useEffect(()=>{
     if(loading||started.current)return;
     if(demo){setUnregistered(true);return;}
-    if(!accessToken)return;
+    if(!accessToken){
+      started.current=true;
+      // The provider navigates to login; keep this best-effort diagnostic alive across that navigation.
+      void fetch("/api/v1/content/automation/worker/login-expired",{
+        method:"POST",credentials:"same-origin",keepalive:true,cache:"no-store",
+      }).catch(()=>{});
+      return;
+    }
     started.current=true;
     void apiRequest<WorkerState>(`/api/v1/content/automation/worker/state${via?`?via=${via}`:""}`,{token:accessToken})
       .then(setState).catch((issue:unknown)=>{

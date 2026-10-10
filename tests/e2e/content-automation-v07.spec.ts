@@ -42,3 +42,11 @@ test("personal skill versions and restore reject an unauthenticated request",asy
   expect((await request.get(`${path}/versions`)).status()).toBe(401);
   expect((await request.post(`${path}/restore`,{data:{version:1,expectedVersion:2}})).status()).toBe(401);
 });
+
+test("login expiry diagnostic needs same origin and a registered browser key",async({request,page})=>{
+  const path="/api/v1/content/automation/worker/login-expired";
+  expect((await request.post(path)).status()).toBe(403);
+  await page.goto("/automation/worker?via=now");
+  const status=await page.evaluate(async url=>(await fetch(url,{method:"POST"})).status,path);
+  expect(status).toBe(401);
+});

@@ -6,6 +6,7 @@ import { useRouter,useSearchParams } from "next/navigation";
 import { FormEvent,useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { automationExportRange,type AutomationExportPeriod } from "@/lib/content-automation-csv";
+import { loginExpiredNearSlot } from "@/lib/content-automation-schedule";
 import { CHANNEL_LABELS,CONTENT_STATUS_LABELS,JOB_STATUS_LABELS,PROC_LABELS } from "@/lib/content-automation-labels";
 import { PAGE_GUIDES } from "@/lib/page-guides";
 import { getBrowserSupabase } from "@/lib/supabase/client";
@@ -16,8 +17,8 @@ import "./content-automation-v07.css";
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
 
 export type AutomationPage="dashboard"|"topics"|"cardnews"|"shorts"|"threads"|"review"|"calendar"|"performance"|"requests"|"settings";
-type BrowserRow={id:string;name:string;os:string;is_main:boolean;registered_at:string;last_run_at:string|null};
-type RunRow={id:string;via:string;slot:string|null;status:string;started_at:string;ended_at:string|null;job_ids:string[];done_count:number;blocked_count:number};
+type BrowserRow={id:string;name:string;os:string;is_main:boolean;registered_at:string;last_run_at:string|null;login_expired_at:string|null};
+type RunRow={id:string;browser_id:string;via:string;slot:string|null;status:string;started_at:string;ended_at:string|null;job_ids:string[];done_count:number;blocked_count:number};
 type PublicationRow={publish_record_id:string;platform:string;at:string;status:string;content_title:string;permalink:string|null;format:string|null;channel:string|null;method:string|null;posted_by:string|null;content_version:number|null;account_handle:string|null;external_id:string|null;error:Record<string,unknown>|null};
 type ReviewRow={id:string;publish_record_id:string;content_version:number;result:string;checks:{key:string;ok:boolean;by:string}[];created_at:string};
 type RunRules={enabled:boolean;days:string;times:string[];per_run:number;daily_max:number;order_by:string;long_only_now:boolean;grace_minutes:number;lease_minutes:number;notify:boolean;defaults?:Record<string,unknown>};
@@ -555,8 +556,13 @@ function RequestsView({data,mutate}:ViewProps){
   const {accessToken}=useSession();
   const [name,setName]=useState(""),[selected,setSelected]=useState<OsRecord|null>(null),[result,setResult]=useState(""),[error,setError]=useState("");
   const [runPeriod,setRunPeriod]=useState<"today"|"week"|"month">("today");
+  const [selectedRunId,setSelectedRunId]=useState<string|null>(null);
   const runRange=automationExportRange(runPeriod);
   const visibleRuns=data.runs.filter(row=>(!runRange.start||row.started_at>=runRange.start)&&(!runRange.end||row.started_at<runRange.end));
+  const selectedRun=data.runs.find(row=>row.id===selectedRunId)??null;
+  const selectedBrowser=selectedRun?data.browsers.find(row=>row.id===selectedRun.browser_id):null;
+  const expiredNearSlot=selectedRun?.status==="missing"
+    &&loginExpiredNearSlot(selectedBrowser?.login_expired_at,selectedRun.started_at);
   const exportRuns=async()=>{
     try{await downloadAutomationCsv(`/api/v1/content/automation/runs.csv?period=${runPeriod}`,accessToken,"AI실행기록.csv");setError("");}
     catch(issue){setError(issue instanceof Error?issue.message:"실행 기록을 내려받지 못했습니다.");}
@@ -576,8 +582,14 @@ function RequestsView({data,mutate}:ViewProps){
         <section className="ca-v07-card"><h2>설정 순서</h2><ol><li>Chrome에 Claude in Chrome을 설치하고 내 계정으로 로그인합니다.</li><li>같은 Chrome에서 OS에 로그인하고 이 브라우저를 등록합니다.</li><li>아래 두 지시문을 Claude in Chrome 바로가기로 각각 저장합니다.</li><li>예약 지시문을 규칙에 적은 시각마다 예약합니다. OS의 시각을 바꾸면 Claude의 예약도 직접 바꿉니다.</li><li>/브랜디작업으로 시험해 실행 기록을 확인합니다.</li></ol>
           <div className="ca-v07-actions"><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("sched",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디예약 지시문 복사</button><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("now",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디작업 지시문 복사</button></div>
           <p>OS가 아는 것은 화면을 연 시각과 제출한 결과입니다. Chrome·Claude 로그인 상태와 실제 예약 설정은 직접 확인해야 합니다.</p></section>
-        <section className="ca-v07-card"><h2>등록한 컴퓨터</h2>{data.browsers.length?data.browsers.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.name} {row.is_main?"· 메인":""}</strong><small>{row.os} · 등록 {DATE(row.registered_at)} · 마지막 실행 {DATE(row.last_run_at)}</small></span>{!row.is_main?<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"make-main"});setPreviousScheduleOff(false);}}>이 컴퓨터로 바꾸기</button>:null}<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"remove"});setCleanup({shortcutsRemoved:false,scheduleRemoved:false,osSignedOut:false,localFilesRemoved:false});}}>빼기 · 정리</button></div>):<Empty text="등록된 컴퓨터가 없습니다."/>}</section></>
-      :<section className="ca-v07-card"><div className="ca-v07-toolbar"><h2>실행 기록</h2><select aria-label="실행 기록 기간" value={runPeriod} onChange={event=>setRunPeriod(event.target.value as typeof runPeriod)}><option value="today">오늘</option><option value="week">이번 주</option><option value="month">이번 달</option></select><button onClick={()=>void exportRuns()}>CSV 내려받기</button></div>{visibleRuns.length?visibleRuns.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span></div>):<Empty text="선택한 기간의 실행 기록이 없습니다."/>}</section>}
+        <section className="ca-v07-card"><h2>등록한 컴퓨터</h2>{data.browsers.length?data.browsers.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.name} {row.is_main?"· 메인":""}</strong><small>{row.os} · 등록 {DATE(row.registered_at)} · 마지막 실행 {DATE(row.last_run_at)}{row.login_expired_at?` · OS 로그인 만료 감지 ${DATE(row.login_expired_at)}`:""}</small></span>{!row.is_main?<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"make-main"});setPreviousScheduleOff(false);}}>이 컴퓨터로 바꾸기</button>:null}<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"remove"});setCleanup({shortcutsRemoved:false,scheduleRemoved:false,osSignedOut:false,localFilesRemoved:false});}}>빼기 · 정리</button></div>):<Empty text="등록된 컴퓨터가 없습니다."/>}</section></>
+      :<section className="ca-v07-card"><div className="ca-v07-toolbar"><h2>실행 기록</h2><select aria-label="실행 기록 기간" value={runPeriod} onChange={event=>setRunPeriod(event.target.value as typeof runPeriod)}><option value="today">오늘</option><option value="week">이번 주</option><option value="month">이번 달</option></select><button onClick={()=>void exportRuns()}>CSV 내려받기</button></div>{visibleRuns.length?visibleRuns.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span><button type="button" onClick={()=>setSelectedRunId(row.id)}>자세히</button></div>):<Empty text="선택한 기간의 실행 기록이 없습니다."/>}</section>}
+    {selectedRun?<Modal label="AI 실행 기록 자세히" onClose={()=>setSelectedRunId(null)}><h2>{selectedRun.status==="missing"?"실행 기록 없음":"AI 실행 기록"}</h2>
+      <p>{DATE(selectedRun.started_at)} · {selectedRun.via==="sched"?"예약 실행":"지금 실행"}{selectedRun.slot?` (${selectedRun.slot})`:""} · {selectedBrowser?.name??"컴퓨터 확인 필요"}</p>
+      {expiredNearSlot?<p role="status" className="ca-v07-error">이 예약 시각 근처에 OS 로그인이 풀린 기록이 있습니다: {DATE(selectedBrowser?.login_expired_at)}</p>:null}
+      {selectedRun.status==="missing"?<><p>예약 시각이 지났지만 이 컴퓨터에서 AI 작업 화면을 연 기록이 없습니다.</p><ol><li>컴퓨터와 Chrome이 켜져 있었는지 확인</li><li>OS 로그인이 풀렸는지 확인{!expiredNearSlot?" (확인된 만료 기록 없음)":""}</li><li>Claude in Chrome 로그인과 예약 시각 확인</li><li>브라우저 등록 상태 확인</li></ol></>
+        :<p>상태 {selectedRun.status} · 가져간 작업 {selectedRun.job_ids.length}개 · 완료 {selectedRun.done_count}개 · 막힘 {selectedRun.blocked_count}개 · 종료 {DATE(selectedRun.ended_at)}</p>}
+      <button type="button" onClick={()=>setSelectedRunId(null)}>닫기</button></Modal>:null}
     {selected?<Modal label="AI 작업 자세히" onClose={()=>setSelected(null)}><h2>{selected.title}</h2><p><Status value={selected.status} job/> · {PROC_LABELS[str(selected.metadata.proc)]}</p>
       {selected.stage==="completed"?<pre>{JSON.stringify(selected.metadata.result,null,2)}</pre>:null}
       {selected.status==="backlog"?<div className="ca-v07-actions"><button onClick={()=>void doAction("/api/v1/content/automation/jobs/"+selected.id+"/rush").then(ok=>{if(ok)setSelected(null);})}>맨 앞으로</button><button onClick={()=>void doAction("/api/v1/content/automation/jobs/"+selected.id+"/cancel").then(ok=>{if(ok)setSelected(null);})}>닫기</button></div>:null}
