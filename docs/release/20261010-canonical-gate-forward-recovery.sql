@@ -8,6 +8,9 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
 
+-- Hold candidate writes while checking pending approvals and changing the gate.
+lock table public.os_document_candidates in share row exclusive mode;
+
 do $preflight$
 begin
   if to_regprocedure('public.os_decide_candidate(uuid,integer,text,text)') is null
