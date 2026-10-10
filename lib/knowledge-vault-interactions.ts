@@ -1,4 +1,4 @@
-import { normalizeKnowledgeFolder } from "./knowledge-folders";
+import { normalizeKnowledgeFolder, planFolderMove } from "./knowledge-folders.ts";
 import type { KnowledgeDocument } from "./types";
 
 export const vaultFolderKey = (path: string) => `folder:${path}`;
@@ -31,4 +31,15 @@ export function selectedVaultDocuments(documents: KnowledgeDocument[], keys: Set
 }
 export function canEditVaultDocument(document: KnowledgeDocument, profile?: { id: string; role: string } | null) {
   return ["draft", "team"].includes(document.status) && Boolean(profile && (document.owner_id === profile.id || profile.role === "admin"));
+}
+
+export function planVaultSelectionMove(documents: KnowledgeDocument[], folders: string[], destination: string, options: string[]) {
+  const roots = folders.filter(path => !folders.some(parent => path !== parent && path.startsWith(`${parent}/`)));
+  if (roots.some(path => destination === path || destination.startsWith(`${path}/`))) throw Error("자신이나 하위 폴더로 이동할 수 없습니다.");
+  const targets = roots.map(from => ({ from, to: normalizeKnowledgeFolder([destination, from.split("/").at(-1)].filter(Boolean).join("/")) })).filter(item => item.from !== item.to);
+  if (new Set(targets.map(item => item.to)).size !== targets.length || targets.some(item => options.includes(item.to))) throw Error("이동할 위치에 같은 이름의 폴더가 있습니다.");
+  const folderPlan = targets.flatMap(item => planFolderMove(documents, item.from, item.to));
+  const folderIds = new Set(documents.filter(item => roots.some(path => item.folder === path || item.folder.startsWith(`${path}/`))).map(item => item.id));
+  const plan = [...folderPlan, ...documents.filter(item => !folderIds.has(item.id) && item.folder !== destination).map(item => ({id: item.id, title: item.title, from: item.folder, to: destination, version: item.current_version}))];
+  return { plan, targets };
 }

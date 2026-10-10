@@ -24,7 +24,7 @@ export function KnowledgeVaultFolderChooser({ options, value, onChange, label = 
   const paths = knowledgeFolderOptions(options);
   return <section className="vault-folder-chooser" aria-label={label}>
     <label>{label}<input aria-label={`${label} 검색`} placeholder="폴더 이름·초성으로 찾기" value={query} disabled={disabled} onChange={event => setQuery(event.target.value)} /></label>
-    {recent.length ? <div className="vault-recent-folders"><small>최근</small>{recent.filter(path => !blocked(path) && (!path || paths.includes(path))).map(path => <button type="button" key={path} disabled={disabled} onClick={() => choose(path)}>{path.split("/").at(-1) || "최상위"}</button>)}</div> : null}
+    <div className="vault-recent-folders"><small>최근</small>{recent.filter(path => !blocked(path) && (!path || paths.includes(path))).map(path => <button type="button" key={path} disabled={disabled} onClick={() => choose(path)}>{path.split("/").at(-1) || "최상위"}</button>)}</div>
     <div role="tree" aria-label="이동 위치" className="vault-chooser-tree">
       <button type="button" role="treeitem" aria-level={1} aria-selected={value === ""} disabled={disabled} onClick={() => choose("")} onDoubleClick={() => choose("", true)}><Folder size={15} /> 최상위</button>
       {paths.filter(path => query ? matchesVaultName(path, query) : path.split("/").slice(0, -1).every((_, index, parts) => expanded.has(parts.slice(0, index + 1).join("/")))).map(path => {

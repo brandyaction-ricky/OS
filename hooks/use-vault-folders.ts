@@ -20,6 +20,6 @@ export function useVaultFolders(account: string | undefined, enabled: boolean) {
   };
   const materialize = (path: string) => update(current => current.filter(item => item !== path && !path.startsWith(`${item}/`)));
   const remove = (path: string) => update(current => current.filter(item => item !== path && !item.startsWith(`${path}/`)));
-  const rename = (path: string, destination: string) => update(current => current.map(item => item === path || item.startsWith(`${path}/`) ? destination + item.slice(path.length) : item));
+  const rename = (path: string, destination: string) => update(current => [...new Set(current.map(item => item === path || item.startsWith(`${path}/`) ? destination + item.slice(path.length) : item))]);
   return { paths, create, materialize, remove, rename };
 }
