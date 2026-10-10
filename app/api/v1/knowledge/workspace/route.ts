@@ -116,6 +116,10 @@ export async function POST(request: Request) {
     const actor=await authenticateRequest(request);
     const parsed=commandSchema.safeParse(await parseJson(request,2_000_000));
     if(!parsed.success) throw new ApiError(400,"INVALID_COMMAND","요청 형식을 확인해 주세요.");
+    if(parsed.data.action==="candidate.decide"||parsed.data.action==="candidate.publish"){
+      const {error: gateError}=await actor.supabase.from("os_profiles").select("canonical_publisher").limit(1);
+      if(gateError) throw new ApiError(503,"CANONICAL_GATE_NOT_READY","정본 승인 절차를 준비 중입니다. 관리자에게 문의해 주세요.");
+    }
     const {data,error}=parsed.data.action==="candidate.publish"
       ? await actor.supabase.rpc("os_publish_candidate",{p_id:parsed.data.id,p_expected_version:parsed.data.expectedVersion})
       : await actor.supabase.rpc("os_knowledge_command",{p:parsed.data});
