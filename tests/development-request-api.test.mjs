@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as zod from "zod";
 import * as requests from "../lib/development-requests.ts";
+import * as dbError from "../lib/development-request-db-error.ts";
 
 const projectId = "80950395-23b2-4b5a-bd0f-c3d8b8b78d92";
 const requestId = "28e1749d-92b9-476b-a17c-eb5be59d2822";
@@ -66,6 +67,7 @@ function setup(rows = [], profiles = []) {
   const modules = {
     "next/server": { NextResponse: Response }, zod,
     "@/lib/development-requests": requests,
+    "@/lib/development-request-db-error": dbError,
     "@/lib/server/auth": { authenticateRequest: async (request) => {
       if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
       return actor;
