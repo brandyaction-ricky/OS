@@ -60,7 +60,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   const screen = fullscreenScreen(pathname, params.get("tab"));
   const { profile, accessToken, loading, demo, signOut } = useSession();
   const hrShell = useHrShell(hrEnabled);
-  const menuAccess = useMenuAccess(profile, accessToken, demo, navigationPath);
+  const menuAccess = useMenuAccess(profile, accessToken, demo);
   const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages.filter(entry => entry.href !== "/hr/my-leave" && !(hrShell.legacyHidden && ["/organization/schedule", "/organization/members"].includes(entry.href)) && canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
