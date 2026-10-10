@@ -10,7 +10,7 @@ for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, asyn
   await expect(page.getByRole("heading", { name: "문서 보관함", exact: true }).first()).toHaveCount(1);
   await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
   await expect(page.locator(".vault-count")).toHaveText("4");
-  await expect(page.getByRole("list", { name: "폴더 내용" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(width >= 1280 ? 1 : 0);
   if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
@@ -40,7 +40,76 @@ test("entering the vault keeps the company document menu visible while opening a
   await page.getByRole("treeitem", { name: "회사 wiki 3", exact: true }).click();
   await expect(page).toHaveURL(/folder=/);
   await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "폴더 내용" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
+});
+
+for (const width of [1024, 1440]) test(`vault restores its desktop columns after a mobile transition at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/knowledge/vault");
+  await expect(page.locator(".vault-count")).toHaveText("4");
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.locator(".vault-workspace")).toHaveClass(/tree-hidden/);
+  await page.setViewportSize({ width, height: 900 });
+  await expect(page.locator(".vault-workspace")).not.toHaveClass(/tree-hidden/);
+  const tree = page.locator(".knowledge-tree-pane");
+  const editor = page.locator(".editor-pane");
+  await expect.poll(async () => {
+    const [treeBox, editorBox] = await Promise.all([tree.boundingBox(), editor.boundingBox()]);
+    return Boolean(treeBox && editorBox && editorBox.x >= treeBox.x + treeBox.width - 1 && editorBox.width > 300);
+  }).toBe(true);
+  await page.getByRole("table", { name: "폴더 내용" }).getByRole("button", { name: "회사 wiki 폴더 열기", exact: true }).click();
+  await expect(page).toHaveURL(/folder=/);
+  await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
+  await page.screenshot({ path: info.outputPath(`vault-restored-${width}.png`), fullPage: true });
+});
+
+test("desktop document finder keeps the vault tree beside the document", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/knowledge/vault");
+  await page.getByRole("button", { name: "문서·폴더 찾기", exact: true }).click();
+  const finder = page.getByRole("dialog", { name: "문서 찾기" });
+  await finder.locator(".p2-document-list > button").first().click();
+  await expect(finder).toHaveCount(0);
+  await expect(page).toHaveURL(/document=/);
+  await expect(page.locator(".vault-workspace")).not.toHaveClass(/tree-hidden/);
+  await expect(page.locator(".document-reader h1")).toBeVisible();
+  await expect.poll(async () => {
+    const [treeBox, editorBox] = await Promise.all([page.locator(".knowledge-tree-pane").boundingBox(), page.locator(".editor-pane").boundingBox()]);
+    return Boolean(treeBox && editorBox && editorBox.x >= treeBox.x + treeBox.width - 1);
+  }).toBe(true);
+});
+
+test("folder table matches the reference and reuses selection, menus and folder creation", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1804, height: 960 });
+  await page.addInitScript(() => localStorage.setItem("brandy-os-theme", "light"));
+  await page.goto("/knowledge/vault");
+  await page.getByRole("table", { name: "폴더 내용" }).getByRole("button", { name: "회사 wiki 폴더 열기", exact: true }).click();
+  await page.getByRole("button", { name: "운영 원칙 폴더 열기", exact: true }).click();
+  const table = page.getByRole("table", { name: "폴더 내용" });
+  for (const name of ["이름", "상태", "소유자", "수정"]) await expect(table.getByRole("columnheader", { name, exact: true })).toBeVisible();
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(table.locator("time").first()).toHaveAttribute("datetime", /\d{4}-/);
+  await table.locator("tbody input[type=checkbox]").first().check();
+  await expect(page.getByRole("region", { name: "선택한 문서 작업" })).toContainText("1개 선택");
+  await table.getByRole("checkbox", { name: "이 폴더 문서 전체 선택" }).check();
+  await expect(page.getByRole("region", { name: "선택한 문서 작업" })).toContainText("1개 선택");
+  await page.getByRole("button", { name: "선택 해제", exact: true }).click();
+  await table.getByRole("button", { name: /문서 추가 작업$/ }).first().click();
+  await expect(page.getByRole("menuitem", { name: "이름 변경", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.locator(".vault-folder-tools").getByRole("button", { name: "새 폴더", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "새 폴더", exact: true });
+  await dialog.getByRole("textbox", { name: "새 폴더 이름" }).fill("QA 하위 폴더");
+  await dialog.getByRole("button", { name: "새 폴더에 페이지 만들기" }).click();
+  await expect(page.locator(".knowledge-new-canvas-top")).toContainText("회사 wiki/운영 원칙/QA 하위 폴더");
+  await page.locator(".knowledge-new-canvas-top").getByRole("button", { name: "닫기", exact: true }).click();
+  await expect(page.locator(".vault-count")).toHaveText("4");
+  const switcher = page.getByRole("group", { name: "폴더 보기 방식" });
+  await switcher.getByRole("button", { name: "갤러리", exact: true }).click();
+  await expect(switcher.getByRole("button", { name: "갤러리", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await switcher.getByRole("button", { name: "목록", exact: true }).click();
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await page.screenshot({ path: info.outputPath("vault-folder-table-light.png"), fullPage: true, mask: [page.locator(".profile-trigger")] });
 });
 
 async function create(page: Page, title: string, content: string) {
