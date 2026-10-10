@@ -153,7 +153,7 @@ test("empty folder move changes only this browser and rejects self descendants",
   expect(writes).toEqual([]);
 });
 
-test("drag document into a folder offers one undo and restores the original location", async ({page}) => {
+test("drag move undo protects later unsaved edits before restoring the original location", async ({page}) => {
   const writes=trackWrites(page);
   await page.goto("/knowledge/vault?document=demo-workflow");
   // Headless macOS native drag can stall in Chromium; dispatch the same HTML5
@@ -166,9 +166,18 @@ test("drag document into a folder offers one undo and restores the original loca
   await expect(page.getByText("리키 안으로",{exact:true})).toBeVisible();
   await target.dispatchEvent("drop",{dataTransfer:transfer});
   await expect(page.locator(".vault-move-undo")).toBeVisible();
+  const title=page.getByRole("textbox",{name:"문서 제목",exact:true});
+  await title.fill("QA 이동 후 미저장 제목");
   await page.locator(".vault-move-undo").getByRole("button",{name:"되돌리기",exact:true}).click();
+  const confirmation=page.getByRole("dialog",{name:"저장하지 않은 변경",exact:true});
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button",{name:"계속 편집",exact:true}).click();
+  await expect(title).toHaveValue("QA 이동 후 미저장 제목");
+  await page.locator(".vault-move-undo").getByRole("button",{name:"되돌리기",exact:true}).click();
+  await confirmation.getByRole("button",{name:"저장하고 계속",exact:true}).click();
   await expect(page.locator(".vault-move-undo")).toHaveCount(0);
   await expect(page.getByRole("navigation",{name:"문서 경로"})).toContainText("운영 원칙");
+  await expect(title).toHaveValue("QA 이동 후 미저장 제목");
   expect(writes).toEqual([]);
 });
 
