@@ -556,15 +556,24 @@ function RequestsView({data,mutate}:ViewProps){
   const {accessToken}=useSession();
   const [name,setName]=useState(""),[selected,setSelected]=useState<OsRecord|null>(null),[result,setResult]=useState(""),[error,setError]=useState("");
   const [runPeriod,setRunPeriod]=useState<"today"|"week"|"month">("today");
+  const [runMethod,setRunMethod]=useState<"all"|"sched"|"now"|"missing">("all");
   const [selectedRunId,setSelectedRunId]=useState<string|null>(null);
   const runRange=automationExportRange(runPeriod);
-  const visibleRuns=data.runs.filter(row=>(!runRange.start||row.started_at>=runRange.start)&&(!runRange.end||row.started_at<runRange.end));
+  const periodRuns=data.runs.filter(row=>(!runRange.start||row.started_at>=runRange.start)&&(!runRange.end||row.started_at<runRange.end));
+  const visibleRuns=periodRuns.filter(row=>runMethod==="all"||runMethod==="missing"&&row.status==="missing"
+    ||runMethod!=="missing"&&row.via===runMethod&&row.status!=="missing");
+  const runSummary={executed:periodRuns.filter(row=>row.status!=="missing").length,
+    taken:periodRuns.reduce((sum,row)=>sum+row.job_ids.length,0),
+    done:periodRuns.filter(row=>row.status==="done").length,
+    running:periodRuns.filter(row=>row.status==="running").length,
+    empty:periodRuns.filter(row=>row.status==="empty").length,
+    missing:periodRuns.filter(row=>row.status==="missing").length};
   const selectedRun=data.runs.find(row=>row.id===selectedRunId)??null;
   const selectedBrowser=selectedRun?data.browsers.find(row=>row.id===selectedRun.browser_id):null;
   const expiredNearSlot=selectedRun?.status==="missing"
     &&loginExpiredNearSlot(selectedBrowser?.login_expired_at,selectedRun.started_at);
   const exportRuns=async()=>{
-    try{await downloadAutomationCsv(`/api/v1/content/automation/runs.csv?period=${runPeriod}`,accessToken,"AI실행기록.csv");setError("");}
+    try{await downloadAutomationCsv(`/api/v1/content/automation/runs.csv?period=${runPeriod}&method=${runMethod}`,accessToken,"AI실행기록.csv");setError("");}
     catch(issue){setError(issue instanceof Error?issue.message:"실행 기록을 내려받지 못했습니다.");}
   };
   const [browserAction,setBrowserAction]=useState<{id:string;name:string;kind:"make-main"|"remove"}|null>(null);
@@ -583,7 +592,9 @@ function RequestsView({data,mutate}:ViewProps){
           <div className="ca-v07-actions"><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("sched",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디예약 지시문 복사</button><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("now",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디작업 지시문 복사</button></div>
           <p>OS가 아는 것은 화면을 연 시각과 제출한 결과입니다. Chrome·Claude 로그인 상태와 실제 예약 설정은 직접 확인해야 합니다.</p></section>
         <section className="ca-v07-card"><h2>등록한 컴퓨터</h2>{data.browsers.length?data.browsers.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.name} {row.is_main?"· 메인":""}</strong><small>{row.os} · 등록 {DATE(row.registered_at)} · 마지막 실행 {DATE(row.last_run_at)}{row.login_expired_at?` · OS 로그인 만료 감지 ${DATE(row.login_expired_at)}`:""}</small></span>{!row.is_main?<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"make-main"});setPreviousScheduleOff(false);}}>이 컴퓨터로 바꾸기</button>:null}<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"remove"});setCleanup({shortcutsRemoved:false,scheduleRemoved:false,osSignedOut:false,localFilesRemoved:false});}}>빼기 · 정리</button></div>):<Empty text="등록된 컴퓨터가 없습니다."/>}</section></>
-      :<section className="ca-v07-card"><div className="ca-v07-toolbar"><h2>실행 기록</h2><select aria-label="실행 기록 기간" value={runPeriod} onChange={event=>setRunPeriod(event.target.value as typeof runPeriod)}><option value="today">오늘</option><option value="week">이번 주</option><option value="month">이번 달</option></select><button onClick={()=>void exportRuns()}>CSV 내려받기</button></div>{visibleRuns.length?visibleRuns.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span><button type="button" onClick={()=>setSelectedRunId(row.id)}>자세히</button></div>):<Empty text="선택한 기간의 실행 기록이 없습니다."/>}</section>}
+      :<section className="ca-v07-card"><div className="ca-v07-toolbar"><h2>실행 기록</h2><select aria-label="실행 기록 기간" value={runPeriod} onChange={event=>setRunPeriod(event.target.value as typeof runPeriod)}><option value="today">오늘</option><option value="week">이번 주</option><option value="month">이번 달</option></select><select aria-label="실행 방법" value={runMethod} onChange={event=>setRunMethod(event.target.value as typeof runMethod)}><option value="all">전체</option><option value="sched">예약 실행</option><option value="now">지금 실행</option><option value="missing">기록 없음</option></select><button onClick={()=>void exportRuns()}>CSV 내려받기</button></div>
+        <p>실행 {runSummary.executed}번 · 가져간 작업 {runSummary.taken}개 · 끝남 {runSummary.done} · 처리 중 {runSummary.running} · 대기 없음 {runSummary.empty} · 기록 없음 {runSummary.missing}</p>
+        {visibleRuns.length?visibleRuns.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span><button type="button" onClick={()=>setSelectedRunId(row.id)}>자세히</button></div>):<Empty text="선택한 기간과 실행 방법에 맞는 기록이 없습니다."/>}</section>}
     {selectedRun?<Modal label="AI 실행 기록 자세히" onClose={()=>setSelectedRunId(null)}><h2>{selectedRun.status==="missing"?"실행 기록 없음":"AI 실행 기록"}</h2>
       <p>{DATE(selectedRun.started_at)} · {selectedRun.via==="sched"?"예약 실행":"지금 실행"}{selectedRun.slot?` (${selectedRun.slot})`:""} · {selectedBrowser?.name??"컴퓨터 확인 필요"}</p>
       {expiredNearSlot?<p role="status" className="ca-v07-error">이 예약 시각 근처에 OS 로그인이 풀린 기록이 있습니다: {DATE(selectedBrowser?.login_expired_at)}</p>:null}

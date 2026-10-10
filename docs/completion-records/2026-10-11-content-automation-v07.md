@@ -8,7 +8,7 @@
 
 ## 구현 및 검증
 
-10개 콘텐츠 자동화 메뉴, 개인 주제·채널 콘텐츠·AI 작업함, Chrome 전용 AI 작업 화면, 최종 확인 기록, 수동 게시 기록, 댓글·성과 화면, 예약 알림, 개인 공간 API·RLS 경계를 추가했다. 화면의 기간·필터에 맞는 서버 CSV와 여러 채널 초안의 부분 저장을 막는 단일 트랜잭션 경로도 준비했다. 개인 스킬은 기록을 조회해 이전 내용을 새 버전으로 저장하고, 저장된 Markdown을 내려받을 수 있다. 회사 문서의 본문·소유자·폴더·상태를 변경하는 코드는 없다. 새 SQL은 `20261011002800_content_automation_v07.sql`, `20261011002900_content_automation_atomic_topic.sql` 2건이며 기존 행의 이관·백필을 자동 실행하지 않는다. 각 SHA-256은 `migration-baseline.json`에 등록했다.
+10개 콘텐츠 자동화 메뉴, 개인 주제·채널 콘텐츠·AI 작업함, Chrome 전용 AI 작업 화면, 최종 확인 기록, 수동 게시 기록, 댓글·성과 화면, 예약 알림, 개인 공간 API·RLS 경계를 추가했다. 화면의 기간·실행 방법 필터에 맞는 서버 CSV와 여러 채널 초안의 부분 저장을 막는 단일 트랜잭션 경로도 준비했다. 개인 스킬은 기록을 조회해 이전 내용을 새 버전으로 저장하고, 저장된 Markdown을 내려받을 수 있다. 회사 문서의 본문·소유자·폴더·상태를 변경하는 코드는 없다. 새 SQL은 `20261011002800_content_automation_v07.sql`, `20261011002900_content_automation_atomic_topic.sql` 2건이며 기존 행의 이관·백필을 자동 실행하지 않는다. 각 SHA-256은 `migration-baseline.json`에 등록했다.
 
 - `npm run verify`: 통과. 단위검사 768건 통과, 빌드 통과. 기존 `publication-settings-panel.tsx`의 이미지 요소 경고 1건은 남았다.
 - `npx playwright test --workers=3` (빌드된 로컬 서버): 152건 통과, 외부 로그인·DB가 필요한 8건 건너뜀.
@@ -18,7 +18,7 @@
 
 ## 환경과 출시 상태
 
-GitHub 브랜치는 원격에 올라갔고 `bcf64f1`의 Vercel Preview는 READY이며 PR 전체 CI도 통과했다. 이후 로그인 만료 진단 보완 커밋의 Preview·CI는 별도로 확인한다. DEV 고정 주소와 DEV Supabase에는 반영하지 않았다. 운영 DB·운영 앱에도 변경이 없다. BrandyAction DEV Supabase 프로젝트가 현재 연결된 Supabase 도구 목록에 없으므로, 대상 식별과 별도 승인 전에는 SQL을 적용하지 않는다. 선행 PR #165가 열려 있으므로 병합 순서도 유지해야 한다.
+GitHub 브랜치는 원격에 올라갔고 `bcf64f1`의 Vercel Preview는 READY이며 PR 전체 CI도 통과했다. `09d1a15`의 로그인 만료 진단 Preview는 READY이며 전체 CI는 진행 중이다. 이후 실행 기록 필터 보완 커밋의 Preview·CI도 별도로 확인한다. DEV 고정 주소와 DEV Supabase에는 반영하지 않았다. 운영 DB·운영 앱에도 변경이 없다. BrandyAction DEV Supabase 프로젝트가 현재 연결된 Supabase 도구 목록에 없으므로, 대상 식별과 별도 승인 전에는 SQL을 적용하지 않는다. 선행 PR #165가 열려 있으므로 병합 순서도 유지해야 한다.
 
 ## 남은 검증과 기능 범위
 

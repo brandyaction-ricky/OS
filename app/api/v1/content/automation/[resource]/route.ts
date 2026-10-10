@@ -55,9 +55,13 @@ function csvResponse(filename:string,headers:readonly string[],rows:readonly (re
 }
 async function exportRuns(ownerId:string,url:URL){
   const range=exportParams(url),db=createServiceSupabase(),runs:Record<string,unknown>[]=[];
-  for(let offset=0;offset<=EXPORT_MAX;offset+=EXPORT_BATCH){
+  const method=url.searchParams.get("method")??"all";
+  if(!["all","sched","now","missing"].includes(method))
+    throw new ApiError(400,"INVALID_EXPORT_FILTER","실행 방법을 확인해 주세요.");
+  for(let offset=0;method!=="missing"&&offset<=EXPORT_MAX;offset+=EXPORT_BATCH){
     let query=db.from("os_ai_runs").select("*").eq("owner_id",ownerId)
       .order("started_at",{ascending:false}).range(offset,offset+EXPORT_BATCH-1);
+    if(method==="sched"||method==="now")query=query.eq("via",method);
     if(range.start)query=query.gte("started_at",range.start);
     if(range.end)query=query.lt("started_at",range.end);
     const {data,error}=await query;
@@ -72,7 +76,7 @@ async function exportRuns(ownerId:string,url:URL){
   const names=new Map((browsers??[]).map(browser=>[browser.id,browser.name]));
   const today=kstScheduleDate(new Date()),todayStart=new Date(`${today}T00:00:00+09:00`).toISOString();
   const main=(browsers??[]).find(browser=>browser.is_main&&!browser.removed_at);
-  if((!range.end||range.end>todayStart)&&main){
+  if((method==="all"||method==="missing")&&(!range.end||range.end>todayStart)&&main){
     const {data:todayRuns,error}=await db.from("os_ai_runs")
       .select("via,slot,started_at,browser_id").eq("owner_id",ownerId)
       .gte("started_at",todayStart).order("started_at",{ascending:false}).limit(1000);
