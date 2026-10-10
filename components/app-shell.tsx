@@ -74,6 +74,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   const [guidanceOn, setGuidanceOn] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [stage.id]: true });
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const [menuGuide, setMenuGuide] = useState(false);
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
@@ -272,12 +273,21 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !openGroups[item.id]}>
                 {item.pages.map((entry, index) => {
                   const selected = entry.href === (page.navHref ?? page.href);
+                  const submenuOpen = selected || Boolean(openSubmenus[entry.href]);
                   const PageIcon = entry.icon;
                   return <div key={entry.href}>
                     {entry.group && entry.group !== item.pages[index - 1]?.group ? <div className="temporary-nav-group">{entry.group}<small>임시 하위 메뉴</small></div> : null}
-                    <Link href={entry.href} data-ui={selected ? "nav-item-active" : item.id === "home" ? "nav-home" : "nav-item"} className={`page-link${item.id === "home" ? " nav-home" : ""}${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
-                      {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>{hrShell.badges[entry.href] ? <small aria-label={`${hrShell.badges[entry.href]}건 확인 필요`} style={{marginLeft:"auto",color:"var(--danger)"}}>{hrShell.badges[entry.href]}</small> : null}
-                    </Link>
+                    <div className="page-link-row">
+                      <Link href={entry.href} data-ui={selected ? "nav-item-active" : item.id === "home" ? "nav-home" : "nav-item"} className={`page-link${item.id === "home" ? " nav-home" : ""}${selected ? " active" : ""}${entry.group ? " temporary-child" : ""}`} aria-current={selected ? "page" : undefined} onClick={() => setMobileOpen(false)}>
+                        {entry.processNumber ? <span className="process-number nav-step-no" aria-hidden="true">{["①","②","③","④","⑤","⑥","⑦"][entry.processNumber-1]}</span> : <PageIcon size={15} />}<span>{entry.label}</span>{hrShell.badges[entry.href] ? <small aria-label={`${hrShell.badges[entry.href]}건 확인 필요`} style={{marginLeft:"auto",color:"var(--danger)"}}>{hrShell.badges[entry.href]}</small> : null}
+                      </Link>
+                      {entry.children?.length ? <button type="button" className="page-submenu-toggle" aria-label={`${entry.label} 하위 메뉴`} aria-expanded={submenuOpen} aria-controls={`submenu-${item.id}-${index}`} onClick={() => setOpenSubmenus(current => ({ ...current, [entry.href]: !submenuOpen }))}><ChevronRight size={14} className={submenuOpen ? "expanded" : ""} /></button> : null}
+                    </div>
+                    {entry.children?.length ? <div id={`submenu-${item.id}-${index}`} className="page-submenu" hidden={!submenuOpen}>{entry.children.map(child => {
+                      const childTab = new URLSearchParams(child.href.split("?")[1] ?? "").get("tab");
+                      const childSelected = selected && params.get("tab") === childTab;
+                      return <Link key={child.href} href={child.href} className={`page-sublink${childSelected ? " active" : ""}`} aria-current={childSelected ? "page" : undefined} onClick={() => setMobileOpen(false)}>{child.label}</Link>;
+                    })}</div> : null}
                   </div>;
                 })}
                 {item.id === "automation" && canOpenMenu(profile, "/knowledge", menuAccess.allowed) ? <Link className="page-link nav-canon-link" href="/knowledge?tab=canon" onClick={() => setMobileOpen(false)}><BookOpen size={15}/><span>정본 관리 열기</span></Link> : null}

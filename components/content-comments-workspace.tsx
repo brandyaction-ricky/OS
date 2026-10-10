@@ -11,7 +11,7 @@ import { useContentWork } from "./content-work-provider";
 import { ContentGenerationButton } from "./content-generation-button";
 type CommentRow=OsRecord&{canRespond:boolean;teamShared:boolean};
 const tabs=[["unanswered","답할 것"],["question","질문"],["spam","스팸 의심"],["mine","내 담당"],["replied","답함"],["hidden","숨김"]];
-export function ContentCommentsWorkspace(){
+export function ContentCommentsWorkspace({embedded=false}:{embedded?:boolean}={}){
   const {accessToken,profile,demo}=useSession();
   const work=useContentWork();
   const [rows,setRows]=useState<CommentRow[]>([]),[members,setMembers]=useState<{id:string;display_name:string}[]>([]),[tab,setTab]=useState("unanswered"),[account,setAccount]=useState("all");
@@ -40,7 +40,7 @@ export function ContentCommentsWorkspace(){
   const filtered=scoped.filter(row=>matchesTab(row,tab));
   const groups=[...new Set(filtered.map(row=>row.parent_id))];
   function examples(){const owner=profile?.id??"demo";setRows([0,1,2].map(index=>({...demoRecord({recordType:"content_comment",title:"모의 댓글",description:index===2?"답글의 답글입니다.":"첫 단계부터 적용하려면 무엇을 준비하면 될까요?",status:"unanswered",parentId:`demo-post-${index===1?2:1}`,metadata:{sourceTopicId:"demo-final-topic",platform:index===1?"instagram":"threads",connectionOwnerId:index===1?"demo-other":owner,author:"모의 시청자",postTitle:index===1?"다른 계정의 카드뉴스":"예시 콘텐츠",kind:"question",topLevel:index!==2}},owner),canRespond:index!==1,teamShared:false})));setSelected("");}
-  return <><header className="page-header"><div className="page-title-group"><PageTitle/><p>최근 14일 게시물의 댓글을 확인하고, 답변은 사람이 검토한 뒤 보냅니다.</p></div><Link className="secondary-button" href="/settings/account">채널 연결</Link></header>
+  return <>{!embedded?<header className="page-header"><div className="page-title-group"><PageTitle/><p>최근 14일 게시물의 댓글을 확인하고, 답변은 사람이 검토한 뒤 보냅니다.</p></div><Link className="secondary-button" href="/settings/account">채널 연결</Link></header>:null}
     {demo?<button className="secondary-button" onClick={examples}>모의 댓글 불러오기 · 외부 저장 없음</button>:<button className="secondary-button" disabled={loading||busy} onClick={()=>void load()}>새로고침</button>}
     {error?<p className="inline-alert danger" role="alert">{error}</p>:null}{notice?<p className="inline-alert" role="status">{notice}</p>:null}
     <nav className="studio-tabs" aria-label="댓글 보기">{tabs.map(([value,label])=><button key={value} aria-pressed={tab===value} className={tab===value?"active":""} onClick={()=>{setTab(value);setSelected("");}}>{label}<span className="comment-tab-count">{loading?"…":scoped.filter(row=>matchesTab(row,value)).length}</span></button>)}</nav>

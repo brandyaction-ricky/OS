@@ -580,6 +580,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Follow-up to the DEV canonical publisher gate, applied after separate approval: replace two newly introduced SQLSTATE 40001 business conflicts with PT409 without changing function logic, grants, or document rows. DEV function definitions and existing row counts verified. Production requires separate approval."
+    },
+    {
+      "file": "20261011002800_content_automation_v07.sql",
+      "sha256": "c082e6850edf4798ba1b337f9f507c55a034b5fa6c0fbc73d498197c0a801a30",
+      "purpose": "add personal content automation state, append-only review and publication history, and owner isolation without changing existing rows",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Local proposal only. No existing company document rows are modified. DEV and Production migration application each require explicit environment-specific approval."
     }
   ],
   "legacyMigrations": [

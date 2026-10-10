@@ -4,8 +4,8 @@ import { findPage, findStage, NAV_STAGES, searchNavigation, ACCOUNT_PAGE } from 
 import {RETIRED_ROUTES,retiredRoute} from "../lib/final-routes.ts";
 
 const cases = [
-  ["/content/automation", "최종 점검", "automation", "/automation/review"],
-  ["/content/review", "최종 점검", "automation", "/automation/review"],
+  ["/content/automation", "주제 기획", "automation", "/automation/topics"],
+  ["/content/review", "최종 확인", "automation", "/automation/review"],
   ["/content/calendar", "발행·업로드", "content", "/content/publishing"],
 ];
 
@@ -34,7 +34,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 8);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
   assert.equal(findStage("/content/comments").id, "automation");
-  assert.equal(findPage("/content/comments").processNumber, undefined);
+  assert.equal(findPage("/content/comments").processNumber, 7);
   for (const [group, paths] of Object.entries(groups)) for (const path of paths) {
     assert.equal(findStage(path).id, group, path);
     assert.equal(findPage(path).href, path);
@@ -54,7 +54,7 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,5,4,7,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,10,5,4,7,3,4]);
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
