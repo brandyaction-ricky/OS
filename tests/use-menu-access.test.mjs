@@ -49,14 +49,16 @@ function setup() {
   };
 }
 
-test("a new page waits for its own policy and account switches discard old responses", async () => {
+test("route changes reuse the policy and account switches discard old responses", async () => {
   const app = setup();
   assert.equal(app.render().loading, true);
   app.requests[0].resolve({ policies: [{ member_id: "one", allowed_menus: ["/home"] }], ready: true });
   await turn();
   assert.equal(app.render().loading, false);
   assert.deepEqual(Array.from(app.render().allowed), ["/home"]);
-  assert.equal(app.render(profile("one"), "one-token", false, "/knowledge").loading, true);
+  assert.equal(app.render(profile("one"), "one-token", false, "/knowledge").loading, false);
+  assert.equal(app.requests.length, 1);
+  app.focus();
   assert.equal(app.render(profile("two"), "two-token", false, "/knowledge").loading, true);
   app.requests[2].resolve({ policies: [{ member_id: "two", allowed_menus: ["/knowledge"] }], ready: true });
   app.requests[1].resolve({ policies: [{ member_id: "one", allowed_menus: null }], ready: true });

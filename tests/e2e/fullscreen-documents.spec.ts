@@ -6,8 +6,10 @@ test("canonical list reads existing documents and keeps promotion in review",asy
   await expect(page.getByRole("heading",{name:"회사 정본",level:1})).toBeVisible();
   await expect(page.getByRole("link",{name:"문서 작성 기준",exact:true})).toBeVisible();
   await page.getByLabel("정본 검색").fill("일치하지않는검색어-qa");
+  await page.getByRole("button",{name:"검색",exact:true}).click();
   await expect(page.getByText("조건에 맞는 정본이 없습니다",{exact:true})).toBeVisible();
   await page.getByLabel("정본 검색").fill("");
+  await page.getByLabel("정본 검색").press("Enter");
   await page.getByRole("link",{name:"문서 작성 기준",exact:true}).click();
   await expect(page.locator(".document-reader")).toContainText("목적과 근거");
   await expect(page.getByRole("textbox",{name:"editable markdown"})).toHaveCount(0);
@@ -15,6 +17,18 @@ test("canonical list reads existing documents and keeps promotion in review",asy
   await expect(page).toHaveURL(/\/propose$/);
   await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("목적과 근거");
   await expect(page.getByText("작성자·문서 소유자는 이 제안을 승인할 수 없습니다.",{exact:true})).toBeVisible();
+});
+test("canonical folders and result count remain inside their columns",async({page})=>{
+  await page.setViewportSize({width:1280,height:900});
+  await page.goto("/knowledge/canon");
+  const sidebar=page.locator(".kw-categories");
+  const table=page.locator(".kw-table-wrap");
+  await expect(sidebar).toBeVisible();
+  await expect.poll(async()=>{
+    const [left,right]=await Promise.all([sidebar.boundingBox(),table.boundingBox()]);
+    return Boolean(left&&right&&left.x+left.width<=right.x);
+  }).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 test("a canonical proposal deep link opens its comparison without granting approval",async({page})=>{
   await page.goto("/knowledge/canon/example-canonical/propose");

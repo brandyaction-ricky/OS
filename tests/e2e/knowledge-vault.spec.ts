@@ -11,7 +11,11 @@ for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, asyn
   await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
   await expect(page.locator(".vault-count")).toHaveText("4");
   await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
-  await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(width >= 1280 ? 1 : 0);
+  await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(0);
+  await page.getByRole("button", { name: "목차·정보 패널" }).click();
+  await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toBeVisible();
+  await page.getByRole("button", { name: "패널 닫기" }).click();
+  await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(0);
   if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
   await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "리키 1", exact: true })).toBeVisible();
@@ -29,6 +33,42 @@ test("desktop vault keeps its tree visible even with a saved hidden-tree prefere
   await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
   await expect(page.locator(".vault-count")).toHaveText("4");
   await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+});
+
+test("vault toolbar tracks the resized tree and keeps its count next to the scope", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/knowledge/vault");
+  const resize = page.getByRole("separator", { name: "파일 트리 폭" });
+  await resize.focus();
+  await resize.press("ArrowRight");
+  await expect.poll(async () => {
+    const [top, tree, scope, count] = await Promise.all([
+      page.locator(".vault-toolbar-tree").boundingBox(),
+      page.locator(".knowledge-tree-pane").boundingBox(),
+      page.getByRole("combobox", { name: "보기 범위" }).boundingBox(),
+      page.locator(".vault-count").boundingBox(),
+    ]);
+    return Boolean(top && tree && scope && count && Math.abs(top.width-tree.width)<2 && count.x-scope.x-scope.width<8);
+  }).toBe(true);
+});
+
+test("vault reader and new-page editor share a bounded writing column", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("brandy-os-theme", "dark"));
+  await page.goto("/knowledge/vault?document=demo-packaging");
+  await expect(page.locator(".document-reader h1")).toHaveText("패키징 원칙");
+  await expect(page.locator(".vault-reader-meta")).toContainText("회사 wiki/채널 운영");
+  await expect.poll(async () => {
+    const [title, body] = await Promise.all([page.locator(".document-reader h1").boundingBox(), page.locator(".vault-reader-content").boundingBox()]);
+    return Boolean(title && body && Math.abs(title.x-body.x)<2 && body.width<=721);
+  }).toBe(true);
+  await page.screenshot({ path: info.outputPath("vault-reader-column.png"), fullPage: true, mask: [page.locator(".profile-trigger")] });
+  await page.locator(".vault-toolbar").getByRole("button", { name: "새 페이지", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "새 페이지 제목" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "editable markdown", exact: true })).toBeVisible();
+  await expect.poll(() => page.locator(".knowledge-page-title").evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(26);
+  await expect.poll(async () => (await page.locator(".knowledge-new-canvas-body").boundingBox())?.width ?? Infinity).toBeLessThanOrEqual(821);
+  await page.screenshot({ path: info.outputPath("vault-new-page-column.png"), fullPage: true, mask: [page.locator(".profile-trigger")] });
 });
 
 test("entering the vault keeps the company document menu visible while opening a folder", async ({ page }) => {
