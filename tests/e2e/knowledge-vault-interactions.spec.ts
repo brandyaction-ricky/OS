@@ -242,5 +242,6 @@ test("admin demo allows every enabled OS menu including finance and settings",as
   }
   expect(writes).toEqual([]);expect(failures).toEqual([]);
   await page.goto("/knowledge/vault");
+  await expect(page.getByRole("tree", {name:"문서와 하위 페이지"})).toBeVisible();
   await page.screenshot({path:info.outputPath("admin-all-menus.png"),fullPage:true});
 });
