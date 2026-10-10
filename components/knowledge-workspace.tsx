@@ -294,6 +294,8 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [moveIds, setMoveIds] = useState<string[]>([]);
   const [folderManagerOpen, setFolderManagerOpen] = useState(searchParams.get("folders") === "1");
   const [managedFolder, setManagedFolder] = useState(searchParams.get("folder") ?? "");
+  const managedFolderRef = useRef(managedFolder);
+  managedFolderRef.current = managedFolder;
   const [folderManagerParent, setFolderManagerParent] = useState<string | undefined>();
   const [draggedFolder, setDraggedFolder] = useState("");
   const [dropTargetFolder, setDropTargetFolder] = useState<string | null>(null);
@@ -471,13 +473,20 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       if (revision !== epoch.current) return;
       setInventory(result.folders);
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
-      await Promise.all([...expandedFolders].map(loadFolder));
+      // A direct nested-folder URL starts with only the default roots expanded.
+      // Load its ancestors and exact folder as well, including after scope reloads.
+      const foldersToLoad = new Set(expandedFolders);
+      if (vault && managedFolderRef.current) {
+        for (const path of knowledgeFolderOptions([managedFolderRef.current])) foldersToLoad.add(path);
+        setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
+      }
+      await Promise.all([...foldersToLoad].map(loadFolder));
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다."); }
     finally { if (revision === epoch.current) setListLoading(false); }
   // Selection and expansion do not reload the folder inventory.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, demo, ownerFilter, loadFolder]);
+  }, [accessToken, demo, ownerFilter, loadFolder, vault]);
   useEffect(() => { void reload(); }, [reload]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
