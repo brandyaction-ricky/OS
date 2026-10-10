@@ -165,7 +165,7 @@ function SearchContent() {
             })}
             {!grouped.length ? <div className="panel empty-state"><div><span><Search /></span><h3>관련 지식을 찾지 못했습니다</h3><p>단어를 줄이거나 팀 공유 문서까지 검색 범위를 넓혀보세요.</p></div></div> : null}
           </div>
-          <aside className="search-side panel"><h3>검색 품질 확인</h3><p>답을 만들 때는 아래 근거를 먼저 확인하세요.</p><ul><li><Check size={13} /> 문서 상태가 정본인지</li><li><Check size={13} /> 현재 업무와 같은 브랜드인지</li><li><Check size={13} /> 최근 버전인지</li></ul><Link href="/knowledge/review">검토함 열기 <ChevronRight size={13} /></Link></aside>
+          <aside className="search-side panel"><h3>검색 품질 확인</h3><p>답을 만들 때는 아래 근거를 먼저 확인하세요.</p><ul><li><Check size={13} /> 문서 상태가 정본인지</li><li><Check size={13} /> 현재 업무와 같은 브랜드인지</li><li><Check size={13} /> 최근 버전인지</li></ul><Link href="/knowledge/review">정본 검토·등록 열기 <ChevronRight size={13} /></Link></aside>
         </section>
       ) : null}
     </>

@@ -540,6 +540,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied only to confirmed DEV after rollback-only compatibility and privilege-preservation tests. Exact migration SQL and history checksum read back. Function-only change; no document data or policy changes. Production application requires separate approval."
+    },
+    {
+      "file": "20261010024855_canonical_publisher_gate.sql",
+      "sha256": "a90e8686c3f5c2a7d6c1f7b31308c3facffa7a1af53d1c34457dbacb25ccebe6",
+      "purpose": "require independent candidate approval followed by a single designated administrator for final canonical publication",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive profile flag and publication guard. No document rows, owner, folder, content, or current status changed by the migration. Configure the designated account separately after DEV verification."
     }
   ],
   "legacyMigrations": [
