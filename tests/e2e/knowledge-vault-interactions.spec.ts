@@ -87,7 +87,9 @@ test("automatic edit, local draft recovery, explicit save, slash 17 and initial 
   await editor.click();
   await editor.press("ControlOrMeta+a");
   await editor.press("Backspace");
-  await editor.pressSequentially("임시 복구 본문");
+  await expect(editor).toHaveText("");
+  // Korean IME commits text through input, not synthesized per-character keypresses.
+  await page.keyboard.insertText("임시 복구 본문");
   await expect(editor).toContainText("임시 복구 본문");
   await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem(`brandy-vault-v2-draft:${id}`) || "null")?.draft.title,id)).toBe("QA 복구 제목");
   await expect.poll(() => page.evaluate(id => JSON.parse(localStorage.getItem(`brandy-vault-v2-draft:${id}`) || "null")?.draft.content,id)).toContain("임시 복구 본문");
