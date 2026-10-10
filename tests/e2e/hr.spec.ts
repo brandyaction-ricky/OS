@@ -112,3 +112,15 @@ test("a synthetic form upload keeps the previous file in version history", async
   await row.getByRole("button", { name: "버전 이력" }).click();
   await expect(page.getByRole("dialog")).toContainText("이전 파일 · v1.0");
 });
+
+test("reviewed legacy Team menus can be hidden and restored in demo", async ({ page }) => {
+  await page.goto("/hr/employees?migrate=1");
+  await expect(page.getByRole("button", { name: "옛 메뉴 끄기" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: /이관을 마쳤고 옛 일정·휴가 화면을 숨겨도 됨/ }).check();
+  await page.getByRole("button", { name: "옛 메뉴 끄기" }).click();
+  await expect(page.getByRole("button", { name: "옛 메뉴 다시 켜기" })).toBeVisible();
+  await expect(page.locator('a[href="/organization/members"]')).toHaveCount(0);
+  await expect(page.locator('a[href="/organization/schedule"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "옛 메뉴 다시 켜기" }).click();
+  await expect(page.locator('a[href="/organization/members"]')).toHaveCount(1);
+});

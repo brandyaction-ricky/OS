@@ -553,7 +553,7 @@
     },
     {
       "file": "20261010083100_hr_legacy_team_menu_control.sql",
-      "sha256": "48889055dbc75ad51023a41f39fee2578157361d727051bfadf06f71f8658e89",
+      "sha256": "27dae542ce479d58ba18d8225521379588fc05d44e7addee7a4c7ee0ac51ea03",
       "purpose": "allow audited and reversible closure of the old Team leave menu after HR migration review",
       "requiresApproval": true,
       "developmentApprovedAt": null,

@@ -36,7 +36,9 @@ export function LegacyImport({ open }: { open: OpenDrawer }) {
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const hidden = hr.data.settings.some((setting) => setting.key === "legacy_team_menus" && setting.value === "hidden");
-  const unset = hr.data.profiles.filter((profile) => !profile.is_shared_account && !profile.person_kind).length;
+  const remaining = hr.data.profiles.filter((profile) => !profile.is_shared_account && (
+    !profile.person_kind || (profile.person_kind === "employee" && !hr.data.employees.some((employee) => employee.profile_id === profile.id))
+  )).length;
   async function setLegacyMenuState(nextHidden: boolean) {
     setBusy(true);
     setError("");
@@ -330,10 +332,10 @@ export function LegacyImport({ open }: { open: OpenDrawer }) {
           <p>현재: <b>{hidden ? "숨김 · 새 인사 메뉴만 사용" : "표시 중 · 옛 휴가 기록 읽기 가능"}</b></p>
           <p className="hr-muted">옛 팀 휴가 기록은 보존합니다. 메뉴를 끄면 옛 주소는 새 인사 화면으로 이동하고 옛 휴가의 등록·수정·복원은 막힙니다. 다시 켤 수 있습니다.</p>
           {!hidden ? <label className="hr-check"><input type="checkbox" checked={menuAck} onChange={(event) => setMenuAck(event.target.checked)} /> 이관을 마쳤고 옛 일정·휴가 화면을 숨겨도 됨을 확인했습니다.</label> : null}
-          <Button disabled={busy || (!hidden && (!menuAck || unset > 0))} onClick={() => void setLegacyMenuState(!hidden)}>
+          <Button disabled={busy || (!hidden && (!menuAck || remaining > 0))} onClick={() => void setLegacyMenuState(!hidden)}>
             {hidden ? "옛 메뉴 다시 켜기" : "옛 메뉴 끄기"}
           </Button>
-          {!hidden && unset > 0 ? <p className="hr-danger">구분 미설정 {unset}명을 먼저 확인해 주세요.</p> : null}
+          {!hidden && remaining > 0 ? <p className="hr-danger">구분 미설정 또는 인사 정보가 없는 계정 {remaining}명을 먼저 확인해 주세요.</p> : null}
         </div>
       </Panel>
     </>
