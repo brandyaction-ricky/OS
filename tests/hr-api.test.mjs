@@ -238,6 +238,14 @@ test("closed legacy leave blocks old writes while the HR flag is active", async 
   await assertLegacyLeaveWritable(h.actor.supabase, "task");
   assert.equal(h.calls.filter((call) => call.name === "os_hr_legacy_team_menus_hidden").length, 1);
 });
+test("code-first HR Preview keeps legacy menus usable only when the new getter is absent", async () => {
+  const missing = harness({ rpcResults: { os_hr_legacy_team_menus_hidden: { data: null, error: { code: "PGRST202" } } } });
+  const { assertLegacyLeaveWritable } = missing.load("lib/server/hr-legacy-menus.ts");
+  assert.equal((await (await call(missing, "GET", "session")).json()).legacyTeamMenusHidden, false);
+  await assertLegacyLeaveWritable(missing.actor.supabase, "leave_request");
+  const broken = harness({ rpcResults: { os_hr_legacy_team_menus_hidden: { data: null, error: { code: "42501" } } } });
+  assert.equal((await call(broken, "GET", "session")).status, 503);
+});
 test("promotion designations pass half-day choices to the new RPC", async () => {
   const h = harness({ rpcResults: { os_hr_send_promotion_v2: { data: id(7), error: null } } });
   const response = await call(h, "POST", "leave-promotions", {

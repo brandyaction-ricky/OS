@@ -36,6 +36,7 @@ import {
   todayKst,
 } from "@/lib/hr/domain";
 import { RETIRE_LABELS, type Employee, type HrEvent } from "@/lib/hr/types";
+import { readLegacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -71,7 +72,7 @@ async function handle(request: Request, context: Context) {
         );
       if (action === "session") return json({
         active: true,
-        legacyTeamMenusHidden: await hrRpc<boolean>(actor, "os_hr_legacy_team_menus_hidden"),
+        legacyTeamMenusHidden: await readLegacyTeamMenusHidden(actor.supabase),
       });
       if (action === "badges") {
         return json({ badges: hrBadges(await hrWorkspace(actor), today) });
