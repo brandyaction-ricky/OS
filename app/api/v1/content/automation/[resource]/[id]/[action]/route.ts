@@ -29,6 +29,34 @@ const topicStartSchema=z.object({
   }).strict().refine(channels=>Object.keys(channels).length>0),
 }).strict();
 const checks=["shortcutsRemoved","scheduleRemoved","osSignedOut","localFilesRemoved"] as const;
+const savedSkillSchema=z.object({
+  record_type:z.literal("skill"),owner_id:z.string().uuid(),title:z.string().trim().min(1).max(240),
+  description:z.string().max(20_000),version:z.number().int().positive(),
+  metadata:z.object({space:z.literal("personal"),process:z.enum(AUTOMATION_PROCS),
+    slug:z.string().regex(/^([a-z0-9]+)(-[a-z0-9]+)*$/)}).passthrough(),
+}).passthrough();
+
+export async function GET(request:Request,{params}:Params){
+  try{
+    const actor=await authenticateRequest(request),ownerId=assertHumanOwner(actor);
+    const {resource,id,action}=await params;
+    if(resource!=="skills"||action!=="versions"||!z.string().uuid().safeParse(id).success)
+      throw new ApiError(404,"AUTOMATION_ROUTE_NOT_FOUND","찾을 수 없는 요청입니다.");
+    const current=await getPersonalRecord(actor,id,"skill");
+    const {data,error}=await createServiceSupabase().from("os_record_events")
+      .select("id,created_at,snapshot").eq("record_id",id).order("id",{ascending:false}).limit(200);
+    if(error)throw new ApiError(503,"SKILL_VERSIONS_FAILED","스킬 버전을 불러오지 못했습니다.");
+    const seen=new Set<number>();
+    const versions=(data??[]).flatMap(event=>{
+      const parsed=savedSkillSchema.safeParse(event.snapshot);
+      if(!parsed.success||parsed.data.owner_id!==ownerId||parsed.data.metadata.process!==current.metadata.process
+        ||seen.has(parsed.data.version))return [];
+      seen.add(parsed.data.version);
+      return [{version:parsed.data.version,title:parsed.data.title,createdAt:event.created_at}];
+    });
+    return NextResponse.json({versions});
+  }catch(error){return apiErrorResponse(error);}
+}
 
 export async function POST(request:Request,{params}:Params){
   try{
@@ -219,11 +247,31 @@ export async function POST(request:Request,{params}:Params){
           metadata:{...job.metadata,result,via:"copy",completedAt:new Date().toISOString(),space:"personal"}})});
       }
     }
-    if(resource==="skills"&&action==="activate"){
-      await getPersonalRecord(actor,id,"skill");
-      const {data,error}=await db.rpc("os_activate_personal_skill",{p_owner:ownerId,p_skill:id});
-      if(error||!data)throw new ApiError(error?.code==="PT404"?404:503,"SKILL_ACTIVATE_FAILED","내 스킬을 사용 중으로 바꾸지 못했습니다.");
-      return NextResponse.json({record:data});
+    if(resource==="skills"){
+      const current=await getPersonalRecord(actor,id,"skill");
+      if(action==="activate"){
+        const {data,error}=await db.rpc("os_activate_personal_skill",{p_owner:ownerId,p_skill:id});
+        if(error||!data)throw new ApiError(error?.code==="PT404"?404:503,"SKILL_ACTIVATE_FAILED","내 스킬을 사용 중으로 바꾸지 못했습니다.");
+        return NextResponse.json({record:data});
+      }
+      if(action==="restore"){
+        const input=z.object({version:z.number().int().positive(),expectedVersion:z.number().int().positive()})
+          .strict().parse(await parseJson(request,1000));
+        if(current.version!==input.expectedVersion)throw new ApiError(409,"AUTOMATION_CHANGED","최신 스킬을 다시 불러와 주세요.");
+        if(input.version>=current.version)throw new ApiError(422,"SKILL_VERSION_INVALID","이전 버전을 선택해 주세요.");
+        const {data:event,error}=await db.from("os_record_events").select("snapshot")
+          .eq("record_id",id).eq("snapshot->>version",String(input.version))
+          .order("id",{ascending:false}).limit(1).maybeSingle();
+        if(error)throw new ApiError(503,"SKILL_VERSION_READ_FAILED","이전 스킬을 불러오지 못했습니다.");
+        const saved=savedSkillSchema.safeParse(event?.snapshot);
+        if(!saved.success||saved.data.owner_id!==ownerId||saved.data.metadata.process!==current.metadata.process)
+          throw new ApiError(404,"SKILL_VERSION_NOT_FOUND","이전 스킬 버전을 찾을 수 없습니다.");
+        const record=await updatePersonalRecord(actor,current,{
+          title:saved.data.title,description:saved.data.description,
+          metadata:{...current.metadata,slug:saved.data.metadata.slug,space:"personal"},
+        });
+        return NextResponse.json({record});
+      }
     }
     if(resource==="browsers"){
       const {data:browser,error}=await db.from("os_ai_browsers").select("*").eq("id",id)

@@ -36,3 +36,9 @@ test("automation CSV routes reject an unauthenticated download",async({request})
     expect(response.headers()["content-type"]).toContain("application/json");
   }
 });
+
+test("personal skill versions and restore reject an unauthenticated request",async({request})=>{
+  const path="/api/v1/content/automation/skills/00000000-0000-4000-8000-000000000001";
+  expect((await request.get(`${path}/versions`)).status()).toBe(401);
+  expect((await request.post(`${path}/restore`,{data:{version:1,expectedVersion:2}})).status()).toBe(401);
+});

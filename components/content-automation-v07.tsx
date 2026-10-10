@@ -596,14 +596,26 @@ function RequestsView({data,mutate}:ViewProps){
 }
 
 function SkillSettings({data,mutate}:ViewProps){
+  const {accessToken}=useSession();
   const search=useSearchParams();
   const requested=search.get("proc")??"topic",proc=Object.hasOwn(PROC_LABELS,requested)?requested:"topic";
   const skills=data.skills.filter(row=>row.metadata.process===proc);
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const selected=selectedId==="new"?null:skills.find(row=>row.id===selectedId)??skills.find(row=>row.metadata.active===true)??skills[0]??null;
   const [title,setTitle]=useState(""),[slug,setSlug]=useState(""),[body,setBody]=useState(""),[error,setError]=useState(""),[preview,setPreview]=useState(false);
+  const [versions,setVersions]=useState<{version:number;title:string;createdAt:string}[]>([]);
+  const [versionError,setVersionError]=useState(""),[restoring,setRestoring]=useState(false);
   useEffect(()=>{setSelectedId(null);},[proc]);
   useEffect(()=>{setTitle(selected?.title??"");setSlug(str(selected?.metadata.slug));setBody(selected?.description??"");},[selected]);
+  useEffect(()=>{
+    if(!selected||!accessToken){setVersions([]);return;}
+    let active=true;
+    void apiRequest<{versions:{version:number;title:string;createdAt:string}[]}>(
+      `/api/v1/content/automation/skills/${selected.id}/versions`,{token:accessToken})
+      .then(response=>{if(active){setVersions(response.versions);setVersionError("");}})
+      .catch(issue=>{if(active){setVersions([]);setVersionError(issue instanceof Error?issue.message:"버전을 불러오지 못했습니다.");}});
+    return()=>{active=false;};
+  },[accessToken,selected]);
   const save=async()=>{
     if(!title.trim()||!slug.trim()||!body.trim()){setError("이름·영문 스킬 이름·본문을 입력해 주세요.");return;}
     try{
@@ -620,6 +632,24 @@ function SkillSettings({data,mutate}:ViewProps){
     try{await mutate(`/api/v1/content/automation/skills/${selected.id}/activate`,"POST",{});setError("");}
     catch(issue){setError(issue instanceof Error?issue.message:"사용 중 스킬을 바꾸지 못했습니다.");}
   };
+  const restore=async(version:number)=>{
+    if(!selected||restoring||!window.confirm(`v${version}의 내용을 새 버전으로 저장할까요? 현재 편집 중인 내용은 바뀝니다.`))return;
+    setRestoring(true);
+    try{
+      await mutate(`/api/v1/content/automation/skills/${selected.id}/restore`,"POST",
+        {version,expectedVersion:selected.version});
+      setError("");
+    }catch(issue){setError(issue instanceof Error?issue.message:"이전 버전을 되돌리지 못했습니다.");}
+    finally{setRestoring(false);}
+  };
+  const download=()=>{
+    if(!selected)return;
+    const url=URL.createObjectURL(new Blob([selected.description],{type:"text/markdown;charset=utf-8"}));
+    const link=document.createElement("a");
+    link.href=url;link.download=`${str(selected.metadata.slug)||"skill"}-v${selected.version}.md`;
+    document.body.append(link);link.click();link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
   const sections=["언제 쓰나","입력","절차","결과 형식","자가검수","하지 말 것"];
   return <div className="ca-v07-grid-two"><section className="ca-v07-card"><h2>공정마다 내 스킬 하나</h2><p>AI 작업을 만들 때 사용 중 버전을 고정합니다.</p>
     <div className="ca-v07-process-list">{Object.entries(PROC_LABELS).map(([key,label])=><Link key={key} className={proc===key?"active":""} href={`/automation/settings?tab=skills&proc=${key}`} onClick={()=>setSelectedId(null)}>{label}<small>{data.skills.find(row=>row.metadata.process===key&&row.metadata.active===true)?"사용 중":"기본 절차"}</small></Link>)}</div>
@@ -631,8 +661,14 @@ function SkillSettings({data,mutate}:ViewProps){
     <label>본문(SKILL.md)<textarea rows={18} value={body} onChange={event=>setBody(event.target.value)}/></label>
     <small>{body.length}자 · {body.split("\n").length}줄</small><div className="ca-v07-checks">{sections.map(section=><span key={section}>{body.includes(section)?"✓":"○"} {section}</span>)}</div>
     <div className="ca-v07-actions"><label className="ca-v07-file">.md 올리기<input type="file" accept=".md,text/markdown,text/plain" onChange={async event=>{const file=event.target.files?.[0];if(file)setBody((await file.text()).slice(0,20_000));}}/></label>
+      {selected?<button type="button" onClick={download}>저장된 .md 내려받기</button>:null}
       <button type="button" onClick={()=>setPreview(true)}>시험해 보기</button><button type="button" onClick={()=>void save()}>저장 {selected?`(v${selected.version+1})`:""}</button>
       {selected&&selected.metadata.active!==true?<button type="button" className="primary" onClick={()=>void activate()}>사용 중으로</button>:null}</div>
+    {selected?<div className="ca-v07-note"><h3>버전 기록</h3><p>이전 내용을 선택하면 현재 스킬에 새 버전으로 저장합니다. 이미 만든 AI 작업에 붙은 버전은 유지됩니다.</p>
+      {versions.map(item=><div className="ca-v07-row" key={item.version}><span>v{item.version} · {item.title}<small>{DATE(item.createdAt)}</small></span>
+        {item.version===selected.version?<small>현재</small>:<button type="button" disabled={restoring} onClick={()=>void restore(item.version)}>되돌리기</button>}</div>)}
+      {versionError?<p role="alert" className="ca-v07-error">{versionError}</p>:null}
+    </div>:null}
     {preview?<div className="ca-v07-note"><h3>AI 작업 화면에 보이는 지시문 예시</h3><pre>{`공정: ${PROC_LABELS[proc]}\n예시 주제: 고객 질문에 답하기\n승인·예약·게시·삭제하지 마세요.\n\n스킬 ${title} (${slug})\n${body}`}</pre><button onClick={()=>void navigator.clipboard.writeText(`공정: ${PROC_LABELS[proc]}\n${body}`)}>지시문 복사</button><button onClick={()=>setPreview(false)}>닫기</button></div>:null}
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}
   </section></div>;
