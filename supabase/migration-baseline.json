@@ -530,6 +530,15 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Hosted DEV QA fix: use PT409 for company-document business version conflicts instead of PostgREST 14 retryable SQLSTATE 40001. Six explicit function definitions only; no data, grants or signature changes."
+    },
+    {
+      "file": "20261010052000_agent_private_document_read_grants.sql",
+      "sha256": "51ac65460d7c5098b89b867f51adb183c25d99d56b6b66202081d8869c5dba3f",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Additive, owner-authorized read delegation for one private document and one existing AI key. No document content or status changes. DEV and Production require separate approval and verification."
     }
   ],
   "legacyMigrations": [

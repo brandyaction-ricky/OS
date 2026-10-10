@@ -22,6 +22,7 @@ export interface KnowledgeAccessContext {
   categories?: ReadonlyMap<string, { partner_ids: readonly string[]; archived_at?: string | null }>;
   meetings?: ReadonlyMap<string, { visibility: string; attendees: readonly string[] }>;
   noteGrants?: ReadonlySet<string>;
+  agentDocumentGrants?: ReadonlySet<string>;
 }
 export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, context: KnowledgeAccessContext = {}) {
   if (actor.active === false) return false;
@@ -34,10 +35,12 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
     if (!meeting.attendees.includes(actor.ownerId) && !(actor.memberKind !== "partner" && meeting.visibility === "team")) return false;
   }
   if (status === "draft") {
-    // AI keys can read their owner's AI-generated work, not that owner's human
-    // notes or imported vault. Archived drafts remain unavailable to agents.
-    if (actor.type === "agent") return doc.status === "draft" && doc.source === "mcp"
-      && doc.owner_id === actor.ownerId && actor.allowedStatuses.includes("draft");
+    // An agent can read its owner's AI work or an individually delegated draft.
+    // Neither path permits archived drafts or meeting notes.
+    if (actor.type === "agent") return doc.status === "draft" && actor.allowedStatuses.includes("draft") && (
+      (doc.source === "mcp" && doc.owner_id === actor.ownerId)
+      || Boolean(actor.memberKind !== "partner" && doc.id && context.agentDocumentGrants?.has(doc.id))
+    );
     return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id));
   }
   if (doc.status === "archived") return actor.type === "user" && (actor.role === "admin" || doc.owner_id === actor.ownerId || doc.archived_by === actor.ownerId);
