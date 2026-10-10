@@ -542,16 +542,6 @@
       "notes": "Applied only to confirmed DEV after rollback-only compatibility and privilege-preservation tests. Exact migration SQL and history checksum read back. Function-only change; no document data or policy changes. Production application requires separate approval."
     },
     {
-      "file": "20261010024855_canonical_publisher_gate.sql",
-      "sha256": "a90e8686c3f5c2a7d6c1f7b31308c3facffa7a1af53d1c34457dbacb25ccebe6",
-      "purpose": "require independent candidate approval followed by a single designated administrator for final canonical publication",
-      "requiresApproval": true,
-      "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Additive profile flag and publication guard. No document rows, owner, folder, content, or current status changed by the migration. Configure the designated account separately after DEV verification."
-    },
-    {
       "file": "20261010111824_hr_legacy_team_menu_control.sql",
       "sha256": "27dae542ce479d58ba18d8225521379588fc05d44e7addee7a4c7ee0ac51ea03",
       "purpose": "allow audited and reversible closure of the old Team leave menu after HR migration review",
@@ -570,6 +560,26 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied to confirmed brandyaction-os-dev only after explicit DEV deployment request. Nullable column and v2 RPC verified, existing document/HR row counts unchanged. Production requires separate approval."
+    },
+    {
+      "file": "20261010134233_canonical_publisher_gate.sql",
+      "sha256": "a90e8686c3f5c2a7d6c1f7b31308c3facffa7a1af53d1c34457dbacb25ccebe6",
+      "purpose": "require independent candidate approval followed by a single designated administrator for final canonical publication",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-10",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev after explicit approval. Designated active staff administrator assigned separately in DEV. Rollback-only synthetic candidate QA verified independent review, unauthorized and direct-publication denial, and final publication. Existing document rows unchanged. Production requires separate approval."
+    },
+    {
+      "file": "20261010135038_canonical_conflict_response.sql",
+      "sha256": "6055fa905ef948f1d111aef9bab1f430588c05550d3c242bcb9b3800a3be9e5a",
+      "purpose": "preserve the existing immediate 409 conflict response for canonical review and final registration",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-10",
+      "productionApprovedAt": null,
+      "appliedEnvironments": ["development"],
+      "notes": "Follow-up to the DEV canonical publisher gate, applied after separate approval: replace two newly introduced SQLSTATE 40001 business conflicts with PT409 without changing function logic, grants, or document rows. DEV function definitions and existing row counts verified. Production requires separate approval."
     }
   ],
   "legacyMigrations": [
