@@ -219,6 +219,44 @@ test("HR self service uses self RPC and gracefully handles a non-worker", async 
   assert.deepEqual((await r.json()).data.employees, []);
   assert.ok(h.calls.some((x) => x.name === "os_hr_me"));
 });
+test("HR session reports legacy menu state and only operators can request a toggle", async () => {
+  const member = harness({ access: false, role: "member", rpcResults: { os_hr_legacy_team_menus_hidden: { data: true, error: null } } });
+  const session = await call(member, "GET", "session");
+  assert.equal(session.status, 200);
+  assert.equal((await session.json()).legacyTeamMenusHidden, true);
+  assert.equal((await call(member, "POST", "legacy-menu-state", { hidden: true })).status, 403);
+  assert.ok(!member.calls.some((call) => call.name === "os_hr_set_legacy_team_menus"));
+  const operator = harness({ rpcResults: { os_hr_set_legacy_team_menus: { data: true, error: null } } });
+  assert.equal((await call(operator, "POST", "legacy-menu-state", { hidden: true })).status, 200);
+  assert.equal(operator.calls.at(-1).name, "os_hr_set_legacy_team_menus");
+  assert.equal(operator.calls.at(-1).args.p_hidden, true);
+});
+test("closed legacy leave blocks old writes while the HR flag is active", async () => {
+  const h = harness({ rpcResults: { os_hr_legacy_team_menus_hidden: { data: true, error: null } } });
+  const { assertLegacyLeaveWritable } = h.load("lib/server/hr-legacy-menus.ts");
+  await assert.rejects(assertLegacyLeaveWritable(h.actor.supabase, "leave_request"), (error) => error.status === 409 && error.code === "LEGACY_LEAVE_CLOSED");
+  await assertLegacyLeaveWritable(h.actor.supabase, "task");
+  assert.equal(h.calls.filter((call) => call.name === "os_hr_legacy_team_menus_hidden").length, 1);
+});
+test("code-first HR Preview keeps legacy menus usable only when the new getter is absent", async () => {
+  const missing = harness({ rpcResults: { os_hr_legacy_team_menus_hidden: { data: null, error: { code: "PGRST202" } } } });
+  const { assertLegacyLeaveWritable } = missing.load("lib/server/hr-legacy-menus.ts");
+  assert.equal((await (await call(missing, "GET", "session")).json()).legacyTeamMenusHidden, false);
+  await assertLegacyLeaveWritable(missing.actor.supabase, "leave_request");
+  const broken = harness({ rpcResults: { os_hr_legacy_team_menus_hidden: { data: null, error: { code: "42501" } } } });
+  assert.equal((await call(broken, "GET", "session")).status, 503);
+});
+test("promotion designations pass half-day choices to the new RPC", async () => {
+  const h = harness({ rpcResults: { os_hr_send_promotion_v2: { data: id(7), error: null } } });
+  const response = await call(h, "POST", "leave-promotions", {
+    employee: id(3), step: "designation_2", days: 1.5,
+    dates: ["2026-10-12", "2026-10-13"], halfDay: "am",
+    channel: "os_email", body: "가상 QA 지정",
+  });
+  assert.equal(response.status, 200);
+  assert.equal(h.calls.at(-1).name, "os_hr_send_promotion_v2");
+  assert.equal(h.calls.at(-1).args.p_half_day, "am");
+});
 test("HR validates real dates, unknown fields and approval versions before mutations", async () => {
   const h = harness();
   for (const body of [

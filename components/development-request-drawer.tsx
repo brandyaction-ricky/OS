@@ -101,7 +101,14 @@ export function DevelopmentRequestDrawer({ open, onClose, initialPageUrl = "", i
       const body = { title:String(form.get("title") || "").trim(), description:String(form.get("description") || "").trim(), category:String(form.get("category")), priority:String(form.get("priority")), expectedResult:String(form.get("expectedResult") || "").trim(), parentId:projectId, pageUrl, ...attachment };
       if (!demo) {
         const response = await fetch("/api/v1/development-requests", { method:"POST",headers:{Authorization:`Bearer ${token}`,"Content-Type":"application/json"},body:JSON.stringify(body) });
-        const result = await response.json(); if (!response.ok) throw new Error(result.error?.message || "요청을 저장하지 못했습니다.");
+        const result = await response.json();
+        if (result.error?.code === "REQUEST_CREATED_READ_FAILED") {
+          uploaded = "";
+          window.dispatchEvent(new Event("brandy-development-requests-changed"));
+          setSaved(true); setDirty(false); setError(result.error.message);
+          return;
+        }
+        if (!response.ok) throw new Error(result.error?.message || "요청을 저장하지 못했습니다.");
         uploaded = ""; onCreated?.(result.record); window.dispatchEvent(new Event("brandy-development-requests-changed"));
       }
       setSaved(true); setDirty(false);

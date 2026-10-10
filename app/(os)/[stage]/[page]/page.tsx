@@ -28,6 +28,7 @@ import { canUseContentPlanningHandoff } from "@/lib/content-planning-handoff-gat
 import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 import { ContentAutomationDashboard, ContentAutomationLibrary, ContentAutomationSettings, ContentAutomationTemplates } from "@/components/content-automation-hub";
+import { legacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -41,6 +42,9 @@ export async function generateMetadata({ params, searchParams }: GenericPageProp
 export default async function GenericPage({ params }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
+  if (["/organization/members", "/organization/leave", "/organization/schedule"].includes(href) && await legacyTeamMenusHidden()) {
+    redirect(href === "/organization/members" ? "/hr/employees" : href === "/organization/schedule" ? "/hr/leave?tab=calendar" : "/hr/leave");
+  }
   const legacy = retiredRoute(href);
   if(legacy)redirect(legacy);
   const contentPlanningHandoffEnabled = canUseContentPlanningHandoff(process.env);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {addDays,addMonths,todayKst,validDate,periodOf,balance,leavePreview,promotion,retirement,accruals,workDays,headcount,calendarRange,hrBadges,leaveMetrics} from '../lib/hr/domain.ts';
+import {addDays,addMonths,todayKst,validDate,periodOf,balance,leavePreview,promotion,retirement,accruals,workDays,headcount,calendarRange,hrBadges,leaveMetrics,missingHolidayYears,nextWorkday} from '../lib/hr/domain.ts';
 import {emptyHrData} from '../lib/hr/types.ts';
 const today='2026-10-09';
 const employee=(id,hire_date)=>({id,hire_date,retire_date:null,status:'active',profile_id:null});
@@ -66,9 +66,17 @@ test('HR headcount excludes nonworkers, shared accounts and already-effective re
  const d=data();d.employees=[employee('a','2023-01-01'),{...employee('b','2023-01-01'),profile_id:'p'}, {...employee('c','2023-01-01'),retire_date:'2026-10-08'}];d.profiles=[{id:'p',person_kind:'owner',is_shared_account:false}];assert.equal(headcount(d,today).count,1);
 });
 
+test('unclassified accounts suspend legal headcount and missing holiday years are explicit', () => {
+ const d=data(); d.profiles=[{id:'unset',person_kind:null,is_shared_account:false},{id:'shared',person_kind:null,is_shared_account:true}];
+ assert.equal(headcount(d,today).label,'판단 보류 · 구분 미설정 1명');
+ assert.equal(headcount(d,today).unset,1);
+ assert.deepEqual(missingHolidayYears(d,'2026-12-30','2027-01-02'),['2027']);
+ assert.equal(nextWorkday('2026-10-09',d.holidays),'2026-10-12');
+});
+
 test('HR calendar bounds remain six complete weeks across month and year changes', () => {
-  assert.deepEqual(calendarRange('2026-10-09', 'month'), {from:'2026-09-27',to:'2026-11-07',count:42});
-  assert.deepEqual(calendarRange('2027-01-01', 'week'), {from:'2026-12-27',to:'2027-01-02',count:7});
+  assert.deepEqual(calendarRange('2026-10-09', 'month'), {from:'2026-09-28',to:'2026-11-08',count:42});
+  assert.deepEqual(calendarRange('2027-01-01', 'week'), {from:'2026-12-28',to:'2027-01-03',count:7});
 });
 test('HR action badges reflect pending requests, actionable letters and document completeness', () => {
   const d=data(),e=employee('a','2023-04-03'); d.employees=[e];

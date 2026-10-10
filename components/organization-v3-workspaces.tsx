@@ -467,6 +467,10 @@ export function LeaveWorkspace() {
           휴가 신청
         </button>
       </header>
+      <div className="inline-alert warning" role="status">
+        인사 노무 관리로 옮기는 중입니다. 새 휴가는 인사 노무 관리에서 입력하세요.{" "}
+        <Link href="/hr/leave">휴가 관리로 이동</Link>
+      </div>
       {error ? (
         <div className="inline-alert danger">
           <CircleAlert size={16} />

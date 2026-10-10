@@ -6,6 +6,7 @@ import { assertOrganization } from "@/lib/server/organization";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { isDevelopmentRequest } from "@/lib/development-requests";
+import { assertLegacyLeaveWritable } from "@/lib/server/hr-legacy-menus";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const id = z.string().uuid().parse((await context.params).id);
     const input = restoreSchema.parse(await parseJson(request, 16_000));
     const { actor, service, current } = await authorize(request, id, true);
+    await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 복원 대신 요청 화면에서 다시 열어 주세요.");
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.");
     const { data: events, error: versionError } = await service.from("os_record_events").select("snapshot").eq("record_id", id).eq("snapshot->>version", String(input.version)).limit(1);

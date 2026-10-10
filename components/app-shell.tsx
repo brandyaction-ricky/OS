@@ -61,7 +61,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   const { profile, accessToken, loading, demo, signOut } = useSession();
   const hrShell = useHrShell(hrEnabled);
   const menuAccess = useMenuAccess(profile, accessToken, demo, navigationPath);
-  const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages.filter(entry => canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
+  const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages.filter(entry => entry.href !== "/hr/my-leave" && !(hrShell.legacyHidden && ["/organization/schedule", "/organization/members"].includes(entry.href)) && canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -78,7 +78,6 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   const [serverOk, setServerOk] = useState<boolean | null>(null);
   const mobileTriggerRef = useRef<HTMLButtonElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
-  const previousStage = useRef(stage.id);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileTriggerRef = useRef<HTMLButtonElement>(null);
   const profileReturnFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -153,9 +152,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
   useEffect(() => {
     try {
       const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
-      const moved = previousStage.current !== stage.id;
-      previousStage.current = stage.id;
-      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === stage.id || (stage.id === "home" && item.id === "content")])), [stage.id]: moved || stored?.[stage.id] === undefined ? true : stored[stage.id] === true });
+      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === stage.id || (stage.id === "home" && item.id === "content")])), [stage.id]: true });
       setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
       setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
     } catch { setOpenGroups({ [stage.id]: true }); }
@@ -269,10 +266,10 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
             const active = pathname !== "/settings/account" && item.id === stage.id;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(openGroups[item.id])} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || openGroups[item.id])} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || openGroups[item.id] ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
               </button> : null}
-              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !openGroups[item.id]}>
+              <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !openGroups[item.id]}>
                 {item.pages.map((entry, index) => {
                   const selected = entry.href === (page.navHref ?? page.href);
                   const PageIcon = entry.icon;
@@ -298,6 +295,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
           {profileOpen ? <div ref={profileMenuRef} id={profileMenuId} className="profile-menu" role="dialog" aria-label="내 계정" tabIndex={-1}>
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
             <Link href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 계정 · 채널 연결</Link>
+            {hrEnabled && canOpenMenu(profile, "/hr/my-leave", menuAccess.allowed) ? <Link href="/hr/my-leave" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 휴가</Link> : null}
             <div className="display-controls" role="group" aria-label="화면 설정">
               <button type="button" className="display-control" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
             </div>
