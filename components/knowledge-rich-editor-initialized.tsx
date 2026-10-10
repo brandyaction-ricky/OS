@@ -36,6 +36,7 @@ import type { ContainerDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
+import { matchesVaultName } from "@/lib/knowledge-vault-interactions";
 import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
 import {KnowledgeInlineOptions, knowledgeInlinePickerPlugin, type InlineOptions} from "./knowledge/inline-picker-plugin";
 
@@ -62,6 +63,10 @@ const KOREAN_LABELS: Record<string, string> = {
   "Heading 3": "제목 3",
   "Heading {{level}}": "제목 {{level}}",
   "Block quote": "인용",
+  Quote: "인용",
+  Blockquote: "인용",
+  "Code block": "코드 블록",
+  "Thematic break": "구분선",
   "Bulleted list": "글머리 목록",
   "Numbered list": "번호 목록",
   "Check list": "할 일 목록",
@@ -137,7 +142,7 @@ export default function KnowledgeRichEditorInitialized({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const hasInlineOptions=Boolean(inlineOptions);
   const [picker, setPicker] = useState<{ query: string; index: number; top: number; left: number } | null>(null);
-  const choices = BLOCKS.filter(block => (inlineOptions || !["quote","code","rule","table","callout","decision","document"].includes(block.id)) && (inlineOptions ? `${block.label} ${block.hint} ${block.id}` : block.label).toLocaleLowerCase("ko-KR").includes(picker?.query.toLocaleLowerCase("ko-KR") ?? ""));
+  const choices = BLOCKS.filter(block => (inlineOptions || !["quote","code","rule","table","callout","decision","document"].includes(block.id)) && matchesVaultName(inlineOptions ? `${block.label} ${block.hint} ${block.id}` : block.label, picker?.query ?? ""));
   const openPicker = () => {
     if (disabled) return;
     const rect = wrapperRef.current?.getBoundingClientRect();
@@ -159,13 +164,14 @@ export default function KnowledgeRichEditorInitialized({
       if (event.key === "Escape") { event.preventDefault(); setPicker(null); return; }
       if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setPicker(value => value && ({ ...value, index: Math.max(0, Math.min(choices.length - 1, value.index + (event.key === "ArrowDown" ? 1 : -1))) })); return; }
       if (event.key === "Enter" || inlineOptions && event.key === "Tab") { event.preventDefault(); const choice = choices[picker.index]; if (choice) insertBlock(choice.id); return; }
+      if (event.target instanceof HTMLInputElement) return;
       if (event.key === "Backspace") { event.preventDefault(); setPicker(value => value && ({ ...value, query: value.query.slice(0, -1), index: 0 })); return; }
       if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) { event.preventDefault(); setPicker(value => value && ({ ...value, query: value.query + event.key, index: 0 })); return; }
     }
     if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey || disabled) return;
     const selection = window.getSelection();
     const node = selection?.anchorNode;
-    const paragraph = node instanceof Element ? node.closest("p") : node?.parentElement?.closest("p");
+    const paragraph = node instanceof Element ? node.closest("p,h1,h2,h3,h4,h5,h6,li") : node?.parentElement?.closest("p,h1,h2,h3,h4,h5,h6,li");
     const prefix = node?.nodeType === Node.TEXT_NODE ? node.textContent?.slice(0,selection?.anchorOffset) : "";
     if (selection?.isCollapsed && paragraph?.closest(".knowledge-rich-content") && (!paragraph.textContent?.trim() || inlineOptions && /\s$/.test(prefix??""))) {
       event.preventDefault(); openPicker();
@@ -234,6 +240,7 @@ export default function KnowledgeRichEditorInitialized({
     }}
   />
     {picker ? <div className="knowledge-block-picker" role="listbox" aria-label="블록 종류" style={{ top: picker.top, left: picker.left }}>
+      <input autoFocus aria-label="블록 찾기" placeholder="블록 이름·초성으로 찾기" value={picker.query} onChange={event => setPicker(value => value && ({...value, query: event.target.value, index: 0}))} />
       <small>블록 찾기 {picker.query ? `· ${picker.query}` : "· / 입력 후 검색"} · ↑↓ 선택 · Enter 추가</small>
       {choices.length ? choices.map((block, index) => <button type="button" key={block.id} role="option" aria-selected={picker.index === index} onMouseDown={event => event.preventDefault()} onClick={() => insertBlock(block.id)}><strong>{block.label}</strong><span>{block.hint}</span></button>) : <p>일치하는 블록이 없습니다.</p>}
     </div> : null}
