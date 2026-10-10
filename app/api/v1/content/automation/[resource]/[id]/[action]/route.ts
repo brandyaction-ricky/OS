@@ -18,6 +18,16 @@ const reviewSchema=z.object({
   note:z.string().trim().max(3000).optional(),
 }).strict();
 const resultSchema=z.object({result:z.unknown()}).strict();
+const topicStartSchema=z.object({
+  version:z.number().int().positive(),
+  brief:z.object({one:z.string().max(5000),who:z.string().max(5000),message:z.string().max(5000),
+    sources:z.string().max(5000),warn:z.string().max(5000)}).strict(),
+  channels:z.object({
+    card:z.object({due:z.string().date().optional(),templateId:z.string().uuid().optional()}).strict().optional(),
+    shorts:z.object({due:z.string().date().optional()}).strict().optional(),
+    threads:z.object({due:z.string().date().optional()}).strict().optional(),
+  }).strict().refine(channels=>Object.keys(channels).length>0),
+}).strict();
 const checks=["shortcutsRemoved","scheduleRemoved","osSignedOut","localFilesRemoved"] as const;
 
 export async function POST(request:Request,{params}:Params){
@@ -27,6 +37,20 @@ export async function POST(request:Request,{params}:Params){
     const {resource,id,action}=await params;
     if(!z.string().uuid().safeParse(id).success)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
     const db=createServiceSupabase();
+    if(resource==="topics"&&action==="start"){
+      const input=topicStartSchema.parse(await parseJson(request,30_000));
+      const selected=Object.entries(input.channels).map(([channel,options])=>({channel,...options}));
+      const {data,error}=await db.rpc("os_start_personal_content_topic",{
+        p_owner:ownerId,p_topic:id,p_expected_version:input.version,
+        p_brief:input.brief,p_channels:selected,
+      });
+      if(error){
+        const status=error.code==="PT404"?404:error.code==="PT409"?409:error.code==="PT422"?422:503;
+        throw new ApiError(status,"TOPIC_START_FAILED",status===409?"주제가 이미 바뀌었거나 제작이 시작됐습니다. 다시 불러와 주세요.":
+          status===422?"채널과 마감 날짜를 확인해 주세요.":"제작을 시작하지 못했습니다.");
+      }
+      return NextResponse.json(data);
+    }
     if(resource==="comments"){
       const comment=await getPersonalRecord(actor,id,"content_comment");
       const publication=await getPersonalRecord(actor,String(comment.parent_id??""),"content_publish");

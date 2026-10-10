@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
+import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
   createJob,createPersonalRecord,getPersonalRecord,getRunRules,listPersonalRecords,
@@ -37,10 +38,113 @@ function limitFrom(request:Request) {
   const limit=Number(new URL(request.url).searchParams.get("limit")??100);
   return Number.isFinite(limit)?Math.min(Math.max(Math.trunc(limit),1),500):100;
 }
+const EXPORT_BATCH=500,EXPORT_MAX=5000;
+function exportParams(url:URL){
+  const period=url.searchParams.get("period")??"month";
+  if(!["today","week","month","last","all"].includes(period))
+    throw new ApiError(400,"INVALID_EXPORT_PERIOD","내려받을 기간을 확인해 주세요.");
+  return automationExportRange(period as AutomationExportPeriod);
+}
+function csvResponse(filename:string,headers:readonly string[],rows:readonly (readonly unknown[])[]){
+  return new Response(automationCsv(headers,rows),{headers:{
+    "Content-Type":"text/csv; charset=utf-8",
+    "Content-Disposition":`attachment; filename="${filename}"`,
+    "Cache-Control":"private, no-store",
+    "X-Content-Type-Options":"nosniff",
+  }});
+}
+async function exportRuns(ownerId:string,url:URL){
+  const range=exportParams(url),db=createServiceSupabase(),runs:Record<string,unknown>[]=[];
+  for(let offset=0;offset<=EXPORT_MAX;offset+=EXPORT_BATCH){
+    let query=db.from("os_ai_runs").select("*").eq("owner_id",ownerId)
+      .order("started_at",{ascending:false}).range(offset,offset+EXPORT_BATCH-1);
+    if(range.start)query=query.gte("started_at",range.start);
+    if(range.end)query=query.lt("started_at",range.end);
+    const {data,error}=await query;
+    if(error)throw new ApiError(503,"RUNS_EXPORT_FAILED","실행 기록을 내려받지 못했습니다.");
+    runs.push(...(data??[]));
+    if(runs.length>EXPORT_MAX)throw new ApiError(413,"EXPORT_TOO_LARGE","내려받을 기록이 많습니다. 기간을 좁혀 주세요.");
+    if((data??[]).length<EXPORT_BATCH)break;
+  }
+  const {data:browsers,error:browserError}=await db.from("os_ai_browsers")
+    .select("id,name,is_main,removed_at").eq("owner_id",ownerId);
+  if(browserError)throw new ApiError(503,"RUNS_EXPORT_FAILED","컴퓨터 이름을 확인하지 못했습니다.");
+  const names=new Map((browsers??[]).map(browser=>[browser.id,browser.name]));
+  const today=kstScheduleDate(new Date()),todayStart=new Date(`${today}T00:00:00+09:00`).toISOString();
+  const main=(browsers??[]).find(browser=>browser.is_main&&!browser.removed_at);
+  if((!range.end||range.end>todayStart)&&main){
+    const {data:todayRuns,error}=await db.from("os_ai_runs")
+      .select("via,slot,started_at,browser_id").eq("owner_id",ownerId)
+      .gte("started_at",todayStart).order("started_at",{ascending:false}).limit(1000);
+    if(error||todayRuns?.length===1000)throw new ApiError(503,"RUNS_EXPORT_FAILED","오늘 예약 실행을 확인하지 못했습니다.");
+    const rules=await getRunRules(ownerId);
+    for(const missing of missedScheduleSlots(rules,todayRuns??[],main.id,new Date())){
+      const started_at=missing.at.toISOString();
+      if((!range.start||started_at>=range.start)&&(!range.end||started_at<range.end))
+        runs.push({started_at,ended_at:null,via:"sched",slot:missing.slot,browser_id:main.id,
+          job_ids:[],done_count:0,blocked_count:0,status:"missing"});
+    }
+  }
+  runs.sort((a,b)=>String(b.started_at).localeCompare(String(a.started_at)));
+  return csvResponse("ai-runs.csv",["시작","끝","실행방법","예약시각","컴퓨터","가져간작업수","끝남","못함","상태"],
+    runs.map(row=>[
+      formatKstCsvDate(row.started_at),formatKstCsvDate(row.ended_at),
+      row.via==="sched"?"예약 실행":"지금 실행",row.slot??"",
+      names.get(String(row.browser_id))??"",
+      Array.isArray(row.job_ids)?row.job_ids.length:0,row.done_count??0,row.blocked_count??0,
+      row.status==="missing"?"기록 없음":row.status??"",
+    ]));
+}
+async function exportPublications(ownerId:string,url:URL){
+  const range=exportParams(url),db=createServiceSupabase(),rows:Record<string,unknown>[]=[];
+  const channel=url.searchParams.get("channel")??"all",platform=url.searchParams.get("platform")??"all";
+  const status=url.searchParams.get("status")??"all",search=(url.searchParams.get("q")??"").trim().toLocaleLowerCase();
+  if(channel!=="all"&&!AUTOMATION_CHANNELS.includes(channel as typeof AUTOMATION_CHANNELS[number])
+    ||platform!=="all"&&! ["instagram","threads","youtube"].includes(platform)
+    ||status!=="all"&&! ["published","nourl","failed","deleted"].includes(status)
+    ||search.length>200)throw new ApiError(400,"INVALID_EXPORT_FILTER","내려받을 필터를 확인해 주세요.");
+  for(let offset=0;offset<=EXPORT_MAX;offset+=EXPORT_BATCH){
+    let query=db.from("os_publication_log_v").select("*").eq("owner_id",ownerId)
+      .order("at",{ascending:false}).range(offset,offset+EXPORT_BATCH-1);
+    if(range.start)query=query.gte("at",range.start);
+    if(range.end)query=query.lt("at",range.end);
+    if(channel!=="all")query=query.eq("channel",channel);
+    if(platform!=="all")query=query.eq("platform",platform);
+    if(status!=="all")query=query.eq("status",status);
+    const {data,error}=await query;
+    if(error)throw new ApiError(503,"PUBLICATIONS_EXPORT_FAILED","발행 기록을 내려받지 못했습니다.");
+    rows.push(...(data??[]));
+    if(rows.length>EXPORT_MAX)throw new ApiError(413,"EXPORT_TOO_LARGE","내려받을 기록이 많습니다. 기간을 좁혀 주세요.");
+    if((data??[]).length<EXPORT_BATCH)break;
+  }
+  const filtered=search?rows.filter(row=>String(row.content_title??"").toLocaleLowerCase().includes(search)
+    ||String(row.publish_record_id??"").toLocaleLowerCase().includes(search)):rows;
+  const reviews=new Map<string,{content_version:number;created_by:string;created_at:string}[]>();
+  const ids=[...new Set(filtered.map(row=>String(row.publish_record_id)))];
+  for(let offset=0;offset<ids.length;offset+=100){
+    const {data,error}=await db.from("os_content_review_log")
+      .select("publish_record_id,content_version,result,created_by,created_at")
+      .eq("owner_id",ownerId).eq("result","ready").in("publish_record_id",ids.slice(offset,offset+100))
+      .order("created_at",{ascending:false}).limit(1000);
+    if(error||data?.length===1000)throw new ApiError(503,"PUBLICATIONS_EXPORT_FAILED","최종 확인 기록을 확인하지 못했습니다.");
+    for(const review of data??[])reviews.set(review.publish_record_id,
+      [...(reviews.get(review.publish_record_id)??[]),review]);
+  }
+  return csvResponse("publications.csv",["게시시각","콘텐츠번호","제목","채널","플랫폼","형식","계정","게시방법","게시한사람","확인자","확인시각","확인본버전","URL","외부ID","상태","오류"],
+    filtered.map(row=>{
+      const review=reviews.get(String(row.publish_record_id))?.find(candidate=>
+        candidate.content_version<=Number(row.content_version??0));
+      return [formatKstCsvDate(row.at),row.publish_record_id,row.content_title,row.channel,row.platform,row.format,
+        row.account_handle,row.method,row.posted_by,review?.created_by??"",formatKstCsvDate(review?.created_at),
+        row.content_version,row.permalink,row.external_id,row.status,row.error?JSON.stringify(row.error):""];
+    }));
+}
 export async function GET(request:Request,{params}:Params) {
   try {
     const actor=await authenticateRequest(request),ownerId=assertHumanOwner(actor);
     const {resource}=await params,url=new URL(request.url),limit=limitFrom(request),db=createServiceSupabase();
+    if(resource==="runs.csv")return exportRuns(ownerId,url);
+    if(resource==="publications.csv")return exportPublications(ownerId,url);
     if(resource==="topics")return NextResponse.json({topics:await listPersonalRecords(actor,"content_topic",limit)});
     if(resource==="items"){
       const channel=url.searchParams.get("channel");

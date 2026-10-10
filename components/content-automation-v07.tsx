@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter,useSearchParams } from "next/navigation";
 import { FormEvent,useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
+import { automationExportRange,type AutomationExportPeriod } from "@/lib/content-automation-csv";
 import { CHANNEL_LABELS,CONTENT_STATUS_LABELS,JOB_STATUS_LABELS,PROC_LABELS } from "@/lib/content-automation-labels";
 import { PAGE_GUIDES } from "@/lib/page-guides";
 import { getBrowserSupabase } from "@/lib/supabase/client";
@@ -49,6 +50,17 @@ const DEFAULT_RUN_RULES:RunRules={enabled:true,days:"daily",times:["09:00","13:0
   defaults:{channels:["card","shorts","threads"],templateId:null,sendMode:"queue",leadMinutes:30,expiryDays:[7,3],minImageShortSide:1080}};
 const DATE=(value:string|null|undefined)=>value?new Date(value).toLocaleString("ko-KR"):"—";
 const str=(value:unknown)=>typeof value==="string"?value:"";
+async function downloadAutomationCsv(path:string,token:string|null,filename:string){
+  if(!token)throw new Error("로그인이 필요합니다.");
+  const response=await fetch(path,{headers:{authorization:`Bearer ${token}`,accept:"text/csv"},cache:"no-store"});
+  if(!response.ok){
+    const body=await response.json().catch(()=>null);
+    throw new Error(body?.error?.message??"CSV를 내려받지 못했습니다.");
+  }
+  const objectUrl=URL.createObjectURL(await response.blob()),link=document.createElement("a");
+  link.href=objectUrl;link.download=filename;document.body.append(link);link.click();link.remove();
+  window.setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+}
 function workerInstruction(via:"sched"|"now",name="내 컴퓨터"){
   const label=via==="sched"?"예약 실행":"지금 실행";
   return `[브랜디 OS · AI 작업 · ${label} · ${name}]\n1) 새 탭에서 브랜디 OS의 AI 작업 화면을 연다: ${location.origin}/automation/worker?via=${via}\n2) 화면 맨 위 ‘Claude에게’ 규칙을 그대로 따른다.\n3) [다음 작업 가져오기] → 지시·스킬·결과 형식을 읽고 결과 칸에 쓴다 → [결과 제출]. 못 하면 [못 함] → 이유 → [못 함으로 남기기].\n4) ‘이번 실행 끝’이 나오면 [실행 끝내기]를 누르고 마친다.\n5) 이 화면 밖으로 이동하지 않는다. 승인·예약·게시·삭제를 하지 않는다. 로그인 화면이 나오면 아무것도 입력하지 않고, 비밀번호 관리자·로그인 요청도 하지 않고 마친다.`;
@@ -225,14 +237,12 @@ function TopicsView({data,mutate}:ViewProps){
     if(start&&!channels.length){setLocalError("만들 채널을 하나 이상 선택해 주세요.");return;}
     setLocalError("");
     try{
-      await mutate(`/api/v1/content/automation/topics/${selected.id}`,"PATCH",{
-        expectedVersion:selected.version,stage:start?"confirmed":"brief",
-        metadata:{brief,channels,dues}});
-      if(start)for(const channel of channels){
-        await mutate("/api/v1/content/automation/items","POST",{
-          title:selected.title,topicId:selected.id,brand:selected.brand,channel,
-          ...(dues[channel]?{dueDate:dues[channel]}:{})});
-      }
+      if(start){
+        const channelOptions=Object.fromEntries(channels.map(channel=>[channel,dues[channel]?{due:dues[channel]}:{}]));
+        await mutate(`/api/v1/content/automation/topics/${selected.id}/start`,"POST",{
+          version:selected.version,brief,channels:channelOptions});
+      }else await mutate(`/api/v1/content/automation/topics/${selected.id}`,"PATCH",{
+        expectedVersion:selected.version,stage:"brief",metadata:{brief,channels,dues}});
     }catch(issue){setLocalError(issue instanceof Error?issue.message:"주제를 저장하지 못했습니다.");}
   };
   const createJob=async(rush:boolean)=>{
@@ -454,6 +464,7 @@ function ReviewView({data,mutate}:ViewProps){
 
 function CalendarView({data,mutate}:ViewProps){
   const search=useSearchParams(),router=useRouter(),tab=search.get("tab")==="history"?"history":"schedule";
+  const {accessToken}=useSession();
   const selected=data.items.find(row=>row.id===search.get("pub"))??null;
   const [date,setDate]=useState(""),[time,setTime]=useState("09:00"),[url,setUrl]=useState(""),[platform,setPlatform]=useState("instagram"),[error,setError]=useState("");
   const postedPlatforms=(id:string)=>new Set(data.publications.filter(row=>row.publish_record_id===id).map(row=>row.platform));
@@ -475,15 +486,15 @@ function CalendarView({data,mutate}:ViewProps){
   const schedule=data.items.filter(row=>["ready","scheduled"].includes(row.status)||
     row.status==="published"&&row.metadata.channel==="shorts"&&availablePlatforms(row).length>0);
   const [period,setPeriod]=useState("month"),[status,setStatus]=useState("all"),[channelFilter,setChannelFilter]=useState("all"),[platformFilter,setPlatformFilter]=useState("all"),[query,setQuery]=useState("");
-  const periodStart=period==="all"?0:period==="week"?Date.now()-7*86400000:period==="last"?new Date(new Date().getFullYear(),new Date().getMonth()-1,1).getTime():new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
-  const periodEnd=period==="last"?new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime():Infinity;
-  const history=data.publications.filter(row=>Date.parse(row.at)>=periodStart&&Date.parse(row.at)<periodEnd
+  const range=automationExportRange(period as AutomationExportPeriod);
+  const history=data.publications.filter(row=>(!range.start||row.at>=range.start)&&(!range.end||row.at<range.end)
     &&(status==="all"||row.status===status)&&(channelFilter==="all"||row.channel===channelFilter)
     &&(platformFilter==="all"||row.platform===platformFilter)&&row.content_title.toLowerCase().includes(query.toLowerCase()));
-  const exportCsv=()=>{const csv=["게시시각,제목,채널,플랫폼,형식,계정,게시방법,게시한사람,확인본버전,URL,외부ID,상태,오류",...history.map(row=>[
-    row.at,row.content_title,row.channel??"",row.platform,row.format??"",row.account_handle??"",row.method??"",row.posted_by??"",row.content_version??"",row.permalink??"",row.external_id??"",row.status,JSON.stringify(row.error??""),
-  ].map(value=>'"'+String(value).replaceAll('"','""')+'"').join(","))].join("\r\n");
-    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download="발행기록.csv";link.click();URL.revokeObjectURL(link.href);};
+  const exportCsv=async()=>{
+    const params=new URLSearchParams({period,channel:channelFilter,platform:platformFilter,status,q:query});
+    try{await downloadAutomationCsv(`/api/v1/content/automation/publications.csv?${params}`,accessToken,"발행기록.csv");setError("");}
+    catch(issue){setError(issue instanceof Error?issue.message:"발행 기록을 내려받지 못했습니다.");}
+  };
   const reserve=async()=>{
     if(!selected||!date)return;
     try{await mutate("/api/v1/content/automation/items/"+selected.id+"/schedule","POST",{
@@ -502,7 +513,7 @@ function CalendarView({data,mutate}:ViewProps){
     {tab==="schedule"?<><div className="ca-v07-card"><h2>발행 준비</h2><p>게시 시각에 알림을 받고 직접 게시합니다. 자동 게시는 없습니다.</p>{schedule.length?schedule.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/calendar?tab=schedule&pub="+row.id)}><strong>{row.title}</strong><span>{row.due_date??"날짜 미정"} · <Status value={row.status}/></span></button>):<Empty text="발행을 기다리는 내 콘텐츠가 없습니다."/>}</div>
       {selected?<section className="ca-v07-card ca-v07-detail"><h2>{selected.title}</h2><p>확인된 버전 v{selected.version} · 게시하는 사람: 나</p>{selected.status!=="published"?<><label>게시 날짜<input type="date" value={date} onChange={event=>setDate(event.target.value)}/></label><label>시각<input type="time" value={time} onChange={event=>setTime(event.target.value)}/></label><button onClick={()=>void reserve()} disabled={!date}>알림 예약</button></>:null}
         <h3>앱에서 직접 게시했나요?</h3><p>실제로 게시한 뒤 기록해 주세요. URL이 없으면 성과 수집에 필요한 게시물 식별자를 확인할 수 없습니다. 연결된 계정과 게시물 식별자까지 확인되어야 자동 수집됩니다.</p><label>플랫폼<select value={platform} onChange={event=>setPlatform(event.target.value)}>{availablePlatforms(selected).map(value=><option key={value} value={value}>{value==="instagram"?"인스타그램":value==="youtube"?"YouTube":"Threads"}</option>)}</select></label><label>게시물 URL<input type="url" value={url} onChange={event=>setUrl(event.target.value)} placeholder="선택 입력"/></label><div className="ca-v07-actions"><button onClick={()=>router.replace("/automation/calendar?tab=schedule")}>닫기</button><button className="primary" disabled={!availablePlatforms(selected).length} onClick={()=>{if(window.confirm("앱에 실제로 게시했습니까? 해당 플랫폼의 게시 기록을 남깁니다."))void manualDone();}}>앱에서 직접 게시함</button></div></section>:null}</>
-    :<><div className="ca-v07-toolbar"><select value={period} onChange={event=>setPeriod(event.target.value)} aria-label="기간"><option value="month">이번 달</option><option value="week">최근 7일</option><option value="last">지난달</option><option value="all">전체</option></select><select value={channelFilter} onChange={event=>setChannelFilter(event.target.value)} aria-label="채널"><option value="all">전체 채널</option>{CHANNELS.map(value=><option key={value} value={value}>{CHANNEL_LABELS[value]}</option>)}</select><select value={platformFilter} onChange={event=>setPlatformFilter(event.target.value)} aria-label="플랫폼"><option value="all">전체 플랫폼</option><option value="instagram">인스타그램</option><option value="threads">Threads</option><option value="youtube">YouTube</option></select><select value={status} onChange={event=>setStatus(event.target.value)} aria-label="상태"><option value="all">전체 상태</option><option value="published">게시됨</option><option value="nourl">URL 없음</option><option value="failed">게시 실패</option><option value="deleted">삭제됨</option></select><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="제목 찾기" aria-label="발행 제목 찾기"/><button onClick={exportCsv}>CSV 내려받기</button></div>
+    :<><div className="ca-v07-toolbar"><select value={period} onChange={event=>setPeriod(event.target.value)} aria-label="기간"><option value="month">이번 달</option><option value="week">이번 주</option><option value="last">지난달</option><option value="all">전체</option></select><select value={channelFilter} onChange={event=>setChannelFilter(event.target.value)} aria-label="채널"><option value="all">전체 채널</option>{CHANNELS.map(value=><option key={value} value={value}>{CHANNEL_LABELS[value]}</option>)}</select><select value={platformFilter} onChange={event=>setPlatformFilter(event.target.value)} aria-label="플랫폼"><option value="all">전체 플랫폼</option><option value="instagram">인스타그램</option><option value="threads">Threads</option><option value="youtube">YouTube</option></select><select value={status} onChange={event=>setStatus(event.target.value)} aria-label="상태"><option value="all">전체 상태</option><option value="published">게시됨</option><option value="nourl">URL 없음</option><option value="failed">게시 실패</option><option value="deleted">삭제됨</option></select><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="제목 찾기" aria-label="발행 제목 찾기"/><button onClick={()=>void exportCsv()}>CSV 내려받기</button></div>
       <div className="ca-v07-stat-grid"><div className="ca-v07-stat">게시 <strong>{history.filter(row=>["published","nourl"].includes(row.status)).length}</strong></div><div className="ca-v07-stat">URL 없음 <strong>{history.filter(row=>row.status==="nourl").length}</strong></div><div className="ca-v07-stat">게시 실패 <strong>{history.filter(row=>row.status==="failed").length}</strong></div></div>
       <section className="ca-v07-card"><h2>발행 기록</h2>{history.length?history.map(row=><div className="ca-v07-row" key={row.publish_record_id+row.platform+row.at}><span><strong>{row.content_title}</strong><small>{DATE(row.at)} · {row.platform}</small></span><Status value={row.status}/>{row.permalink?<a href={row.permalink} target="_blank" rel="noopener noreferrer">게시물 ↗</a>:null}
         {["nourl","failed"].includes(row.status)?<button onClick={()=>{const value=window.prompt("실제로 올라간 게시물 URL을 입력해 주세요.");if(value)void mutate("/api/v1/content/automation/publications/"+row.publish_record_id+"/url","POST",{platform:row.platform,permalink:value});}}>URL 기록</button>:null}
@@ -541,7 +552,15 @@ function PerformanceView({data,mutate}:ViewProps){
 
 function RequestsView({data,mutate}:ViewProps){
   const search=useSearchParams(),tab=["jobs","browsers","runs"].includes(search.get("tab")??"")?search.get("tab")!:"jobs";
+  const {accessToken}=useSession();
   const [name,setName]=useState(""),[selected,setSelected]=useState<OsRecord|null>(null),[result,setResult]=useState(""),[error,setError]=useState("");
+  const [runPeriod,setRunPeriod]=useState<"today"|"week"|"month">("today");
+  const runRange=automationExportRange(runPeriod);
+  const visibleRuns=data.runs.filter(row=>(!runRange.start||row.started_at>=runRange.start)&&(!runRange.end||row.started_at<runRange.end));
+  const exportRuns=async()=>{
+    try{await downloadAutomationCsv(`/api/v1/content/automation/runs.csv?period=${runPeriod}`,accessToken,"AI실행기록.csv");setError("");}
+    catch(issue){setError(issue instanceof Error?issue.message:"실행 기록을 내려받지 못했습니다.");}
+  };
   const [browserAction,setBrowserAction]=useState<{id:string;name:string;kind:"make-main"|"remove"}|null>(null);
   const [cleanup,setCleanup]=useState({shortcutsRemoved:false,scheduleRemoved:false,osSignedOut:false,localFilesRemoved:false});
   const [previousScheduleOff,setPreviousScheduleOff]=useState(false);
@@ -558,7 +577,7 @@ function RequestsView({data,mutate}:ViewProps){
           <div className="ca-v07-actions"><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("sched",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디예약 지시문 복사</button><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("now",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디작업 지시문 복사</button></div>
           <p>OS가 아는 것은 화면을 연 시각과 제출한 결과입니다. Chrome·Claude 로그인 상태와 실제 예약 설정은 직접 확인해야 합니다.</p></section>
         <section className="ca-v07-card"><h2>등록한 컴퓨터</h2>{data.browsers.length?data.browsers.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.name} {row.is_main?"· 메인":""}</strong><small>{row.os} · 등록 {DATE(row.registered_at)} · 마지막 실행 {DATE(row.last_run_at)}</small></span>{!row.is_main?<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"make-main"});setPreviousScheduleOff(false);}}>이 컴퓨터로 바꾸기</button>:null}<button onClick={()=>{setBrowserAction({id:row.id,name:row.name,kind:"remove"});setCleanup({shortcutsRemoved:false,scheduleRemoved:false,osSignedOut:false,localFilesRemoved:false});}}>빼기 · 정리</button></div>):<Empty text="등록된 컴퓨터가 없습니다."/>}</section></>
-      :<section className="ca-v07-card"><h2>실행 기록</h2>{data.runs.length?data.runs.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span></div>):<Empty text="아직 실행 기록이 없습니다."/>}</section>}
+      :<section className="ca-v07-card"><div className="ca-v07-toolbar"><h2>실행 기록</h2><select aria-label="실행 기록 기간" value={runPeriod} onChange={event=>setRunPeriod(event.target.value as typeof runPeriod)}><option value="today">오늘</option><option value="week">이번 주</option><option value="month">이번 달</option></select><button onClick={()=>void exportRuns()}>CSV 내려받기</button></div>{visibleRuns.length?visibleRuns.map(row=><div className="ca-v07-row" key={row.id}><span><strong>{row.status==="missing"?"기록 없음":row.via==="sched"?"예약 실행":"지금 실행"} · {row.status==="missing"?row.slot:row.status}</strong><small>{DATE(row.started_at)} {row.status==="missing"?"· 예약 시각이 지났지만 작업 화면 실행이 확인되지 않았습니다.":`→ ${DATE(row.ended_at)} · 완료 ${row.done_count} · 막힘 ${row.blocked_count}`}</small></span></div>):<Empty text="선택한 기간의 실행 기록이 없습니다."/>}</section>}
     {selected?<Modal label="AI 작업 자세히" onClose={()=>setSelected(null)}><h2>{selected.title}</h2><p><Status value={selected.status} job/> · {PROC_LABELS[str(selected.metadata.proc)]}</p>
       {selected.stage==="completed"?<pre>{JSON.stringify(selected.metadata.result,null,2)}</pre>:null}
       {selected.status==="backlog"?<div className="ca-v07-actions"><button onClick={()=>void doAction("/api/v1/content/automation/jobs/"+selected.id+"/rush").then(ok=>{if(ok)setSelected(null);})}>맨 앞으로</button><button onClick={()=>void doAction("/api/v1/content/automation/jobs/"+selected.id+"/cancel").then(ok=>{if(ok)setSelected(null);})}>닫기</button></div>:null}

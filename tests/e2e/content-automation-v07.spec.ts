@@ -28,3 +28,11 @@ test("worker demo exposes rules but no shell, navigation links or registration a
   await expect(page.locator(".app-sidebar,.app-topbar,.ca-worker a,.ca-worker button")).toHaveCount(0);
   await expect(page.getByText("등록되지 않은 브라우저입니다.")).toBeVisible();
 });
+
+test("automation CSV routes reject an unauthenticated download",async({request})=>{
+  for(const name of ["runs","publications"]){
+    const response=await request.get(`/api/v1/content/automation/${name}.csv?period=month`);
+    expect(response.status()).toBe(401);
+    expect(response.headers()["content-type"]).toContain("application/json");
+  }
+});

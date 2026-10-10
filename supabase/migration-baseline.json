@@ -590,6 +590,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": [],
       "notes": "Local proposal only. No existing company document rows are modified. DEV and Production migration application each require explicit environment-specific approval."
+    },
+    {
+      "file": "20261011002900_content_automation_atomic_topic.sql",
+      "sha256": "fc89900b6c21232e1004e5c031ced59d049f90a97d67631f793bd26aa5649597",
+      "purpose": "start a personal topic and selected channel drafts atomically without changing existing rows on apply",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Local proposal only. Requires the preceding content automation migration. DEV and Production application each require separate approval."
     }
   ],
   "legacyMigrations": [

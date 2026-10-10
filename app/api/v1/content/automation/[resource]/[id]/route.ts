@@ -37,6 +37,9 @@ export async function PATCH(request:Request,{params}:Params){
     const input=patchSchema.parse(await parseJson(request,250_000));
     const current=await getPersonalRecord(actor,id,types[resource as keyof typeof types]);
     if(current.version!==input.expectedVersion)throw new ApiError(409,"AUTOMATION_CHANGED","최신 내용으로 다시 불러와 주세요.");
+    if(resource==="topics"&&(current.stage==="confirmed"||input.status!==undefined
+      ||input.stage==="confirmed"||input.stage!==undefined&&! ["candidate","brief"].includes(input.stage)))
+      throw new ApiError(409,"TOPIC_START_REQUIRED","제작 시작은 주제 화면에서 진행해 주세요.");
     if(resource==="items"&&["ready","scheduled","published","review"].includes(current.status))
       throw new ApiError(409,"PERSONAL_REVIEW_GATE","확인 중이거나 확인된 콘텐츠는 다시 고치기로 제작 상태로 돌린 뒤 수정해 주세요.");
     if(resource==="items"&&(input.status!==undefined||input.stage!==undefined))
