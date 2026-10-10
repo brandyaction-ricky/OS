@@ -59,8 +59,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const id = z.string().uuid().parse((await context.params).id);
     const input = restoreSchema.parse(await parseJson(request, 16_000));
     const { actor, service, current } = await authorize(request, id, true);
-    if(current.record_type==="content_publish" && current.metadata?.space==="personal")
-      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠 확인본은 버전 복원으로 변경하지 않습니다.");
+    if(current.metadata?.space==="personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 자동화 기록은 전용 화면에서만 복원할 수 있습니다.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 복원 대신 요청 화면에서 다시 열어 주세요.");
     if (current.version !== input.expectedVersion) throw new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 작업이 먼저 수정했습니다. 최신 버전을 다시 불러와 주세요.");

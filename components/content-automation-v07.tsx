@@ -66,6 +66,11 @@ function Tabs({base,tabs,active}:{base:string;tabs:{id:string;label:string}[];ac
 function Status({value,job=false}:{value:string;job?:boolean}){
   return <span className="ca-v07-status" data-status={value}>{job?JOB_STATUS_LABELS[value]??value:CONTENT_STATUS_LABELS[value]??value}</span>;
 }
+function queueLabel(job:OsRecord){
+  const info=(job as OsRecord & {queueInfo?:{position:number;slotLabel:string;runIndex:number|null;late:boolean;nowOnly:boolean}|null}).queueInfo;
+  if(!info)return "";
+  return ` · 대기 ${info.position}번째 · ${info.slotLabel}${info.runIndex?` (${info.runIndex}번째)`:""}${info.late?" · 마감 늦음":""}`;
+}
 function Empty({text}:{text:string}){return <div className="ca-v07-empty">{text}</div>;}
 function Modal({label,onClose,children}:{label:string;onClose:()=>void;children:ReactNode}){
   const ref=useRef<HTMLDivElement>(null);
@@ -547,7 +552,7 @@ function RequestsView({data,mutate}:ViewProps){
   return <><div className="ca-v07-toolbar"><Link href="/automation/worker?via=now" target="_blank">AI 작업 화면 ↗</Link><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("now"))}>/브랜디작업 지시문 복사</button></div>
     {data.silent?<div className="ca-v07-error" role="status">내 컴퓨터 응답 없음 · 예약 시각 뒤 실행 기록이 없습니다. Chrome·OS 로그인을 확인하고 지금 실행해 주세요.</div>:null}
     <Tabs base="/automation/requests" active={tab} tabs={[{id:"jobs",label:"작업 목록 "+data.jobs.length},{id:"browsers",label:"내 컴퓨터 "+data.browsers.length},{id:"runs",label:"실행 기록 "+data.runs.length}]}/>
-    {tab==="jobs"?<section className="ca-v07-card"><h2>내 AI 작업</h2><p>내 Chrome의 Claude in Chrome이 초안을 만들고, 채택과 게시 결정은 사람이 합니다.</p>{data.jobs.length?data.jobs.map(row=><div key={row.id} className="ca-v07-row"><span><strong>{row.title}</strong><small>J-{String(row.metadata.jobNo??"—")} · {PROC_LABELS[str(row.metadata.proc)]??str(row.metadata.proc)} · {DATE(row.created_at)}</small></span><Status value={row.status} job/><button onClick={()=>{setSelected(row);setResult(JSON.stringify(row.metadata.result??{},null,2));}}>자세히</button></div>):<Empty text="아직 내 AI 작업이 없습니다. 주제나 콘텐츠 화면에서 만들 수 있습니다."/>}</section>
+    {tab==="jobs"?<section className="ca-v07-card"><h2>내 AI 작업</h2><p>내 Chrome의 Claude in Chrome이 초안을 만들고, 채택과 게시 결정은 사람이 합니다.</p>{data.jobs.length?data.jobs.map(row=><div key={row.id} className="ca-v07-row"><span><strong>{row.title}</strong><small>J-{String(row.metadata.jobNo??"—")} · {PROC_LABELS[str(row.metadata.proc)]??str(row.metadata.proc)} · {DATE(row.created_at)}{queueLabel(row)}</small></span><Status value={row.status} job/><button onClick={()=>{setSelected(row);setResult(JSON.stringify(row.metadata.result??{},null,2));}}>자세히</button></div>):<Empty text="아직 내 AI 작업이 없습니다. 주제나 콘텐츠 화면에서 만들 수 있습니다."/>}</section>
       :tab==="browsers"?<><section className="ca-v07-card"><h2>내 컴퓨터 등록</h2><p>등록한 Chrome에만 작업을 전달합니다. 회사 서버는 Claude를 호출하지 않습니다.</p><div className="ca-v07-actions"><input aria-label="컴퓨터 이름" placeholder="이 컴퓨터 이름" value={name} onChange={event=>setName(event.target.value)}/><button className="primary" disabled={!name.trim()} onClick={()=>void doAction("/api/v1/content/automation/browsers/register",{name}).then(ok=>{if(ok)setName("");})}>+ 컴퓨터 추가</button></div></section>
         <section className="ca-v07-card"><h2>설정 순서</h2><ol><li>Chrome에 Claude in Chrome을 설치하고 내 계정으로 로그인합니다.</li><li>같은 Chrome에서 OS에 로그인하고 이 브라우저를 등록합니다.</li><li>아래 두 지시문을 Claude in Chrome 바로가기로 각각 저장합니다.</li><li>예약 지시문을 규칙에 적은 시각마다 예약합니다. OS의 시각을 바꾸면 Claude의 예약도 직접 바꿉니다.</li><li>/브랜디작업으로 시험해 실행 기록을 확인합니다.</li></ol>
           <div className="ca-v07-actions"><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("sched",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디예약 지시문 복사</button><button onClick={()=>void navigator.clipboard.writeText(workerInstruction("now",name||data.browsers.find(row=>row.is_main)?.name))}>/브랜디작업 지시문 복사</button></div>

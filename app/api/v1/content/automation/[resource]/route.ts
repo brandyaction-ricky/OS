@@ -4,7 +4,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
-import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot } from "@/lib/content-automation-schedule";
+import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
   createJob,createPersonalRecord,getPersonalRecord,getRunRules,listPersonalRecords,
@@ -53,7 +53,19 @@ export async function GET(request:Request,{params}:Params) {
       const rules=await getRunRules(ownerId);
       const status=url.searchParams.get("status");
       const filtered=status?jobs.filter(job=>job.status===status||job.stage===status):jobs;
-      return NextResponse.json({jobs:orderedJobs(filtered,rules,"now")});
+      const queue=orderedJobs(filtered.filter(job=>job.status==="backlog"&&job.stage==="queued"),rules,"now");
+      const scheduled=orderedJobs(queue,rules,"sched"),slots=upcomingScheduleSlots(rules);
+      const queueInfo=new Map(queue.map((job,index)=>{
+        const scheduledIndex=scheduled.findIndex(candidate=>candidate.id===job.id);
+        const slot=scheduledIndex>=0?slots[Math.floor(scheduledIndex/rules.per_run)]:null;
+        const due=job.due_date?Date.parse(`${job.due_date}T23:59:59+09:00`):NaN;
+        return [job.id,{position:index+1,slotLabel:scheduledIndex<0?"지금 실행에서만":
+          slot?slot.at.toLocaleString("ko-KR",{timeZone:"Asia/Seoul",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):"예정 미정",
+          runIndex:scheduledIndex<0?null:scheduledIndex%rules.per_run+1,
+          late:slot&&Number.isFinite(due)?slot.at.getTime()>due:false,nowOnly:scheduledIndex<0}] as const;
+      }));
+      return NextResponse.json({jobs:[...queue,...filtered.filter(job=>!queueInfo.has(job.id))]
+        .map(job=>({...job,queueInfo:queueInfo.get(job.id)??null}))});
     }
     if(resource==="run-rules")return NextResponse.json({rules:await getRunRules(ownerId)});
     if(resource==="browsers"){

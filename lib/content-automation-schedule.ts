@@ -14,6 +14,15 @@ export function scheduledTimes(rules:ScheduleRules,now=new Date()){
     .sort().map(slot=>({slot,at:new Date(`${kstScheduleDate(now)}T${slot}:00+09:00`)}));
 }
 
+export function upcomingScheduleSlots(rules:ScheduleRules,now=new Date(),days=21){
+  const slots:{slot:string;at:Date}[]=[];
+  for(let offset=0;offset<days;offset++){
+    const day=new Date(now.getTime()+offset*86_400_000);
+    slots.push(...scheduledTimes(rules,day).filter(({at})=>at>now));
+  }
+  return slots.sort((a,b)=>a.at.getTime()-b.at.getTime());
+}
+
 export function missedScheduleSlots(rules:ScheduleRules,runs:ScheduleRun[],mainBrowserId:string,now=new Date()){
   return scheduledTimes(rules,now).filter(({slot,at})=>
     now.getTime()>at.getTime()+rules.grace_minutes*60_000
