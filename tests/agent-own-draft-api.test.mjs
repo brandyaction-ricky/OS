@@ -56,7 +56,8 @@ async function fixture(documents, options = {}) {
   const tier = keyPolicy.agentKeyPolicy(options.tier ?? "read");
   const agentKey = { id: key, name: "fixture", active: true, owner_user_id: owner, organization_id: org,
     scopes: tier.scopes, allowed_statuses: tier.allowedStatuses, enforce_write_statuses: true, ...options.agentKey };
-  const tables = { os_documents: documents, os_profiles: [profile], os_agent_keys: [agentKey], os_records: [], os_meeting_attendees: [] };
+  const tables = { os_documents: documents, os_profiles: [profile, { id: other, is_active: options.grantOwnerActive ?? true, member_kind: "staff" }], os_agent_keys: [agentKey],
+    os_agent_document_read_grants: options.documentGrants ?? [], os_records: [], os_meeting_attendees: [] };
   const db = {
     from(table) {
       let fields = "*", limit = Infinity;
@@ -150,6 +151,29 @@ test("detail denies other owners, human/imported notes, archived/review drafts a
     assert.equal(response.status, 403, JSON.stringify(overrides));
     assert.equal((await response.json()).error.code, "DOCUMENT_FORBIDDEN");
   }
+});
+test("an exact active grant lets one key read an imported private document without changing its status", async () => {
+  const doc = draft(10, { owner_id: other, source: "obsidian_vault" });
+  const grant = { document_id: doc.id, agent_key_id: key, grantee_owner_id: owner, granted_by: other, expires_at: new Date(Date.now() + 3600000).toISOString(), revoked_at: null };
+  const allowed = await fixture([doc], { documentGrants: [grant] });
+  const result = await allowed.call("get_document", { document_id: doc.id });
+  assert.notEqual(result.isError, true);
+  assert.deepEqual(JSON.parse(result.content[0].text).document, doc);
+  assert.equal(doc.status, "draft");
+  for (const override of [
+    { agent_key_id: other },
+    { expires_at: new Date(Date.now() - 3600000).toISOString() },
+    { revoked_at: new Date().toISOString() },
+    { granted_by: owner },
+    { grantee_owner_id: other },
+  ]) {
+    const denied = await fixture([doc], { documentGrants: [{ ...grant, ...override }] });
+    assert.equal((await denied.call("get_document", { document_id: doc.id })).isError, true);
+  }
+  const archived = await fixture([{ ...doc, status: "archived", archived_from_status: "draft" }], { documentGrants: [grant] });
+  assert.equal((await archived.call("get_document", { document_id: doc.id })).isError, true);
+  const inactiveOwner = await fixture([doc], { documentGrants: [grant], grantOwnerActive: false });
+  assert.equal((await inactiveOwner.call("get_document", { document_id: doc.id })).isError, true);
 });
 test("ancestor hydration cannot bypass a private parent, missing parent or cycle", async () => {
   for (const parent of [draft(11, { source: "wiki" }), null, draft(11, { parent_document_id: uuid(10) })]) {

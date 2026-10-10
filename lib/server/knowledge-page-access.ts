@@ -8,7 +8,7 @@ const POLICY_FIELDS="id,owner_id,status,parent_document_id,category_id,meeting_r
 
 // A child's own status is not enough: a team-visible child beneath a private
 // draft must not reveal its parent's hierarchy or content by direct URL.
-export async function readableKnowledgePages(actor: RequestActor, rows: PageAccessRow[]) {
+export async function readableKnowledgePages(actor: RequestActor, rows: PageAccessRow[], options: { allowAgentPrivateGrant?: boolean } = {}) {
   if (!rows.length) return new Set<string>();
   // Callers may pass summaries without category/meeting/private-archive metadata.
   // Re-fetch the policy projection so a missing field cannot turn into access.
@@ -32,7 +32,7 @@ export async function readableKnowledgePages(actor: RequestActor, rows: PageAcce
     for (const row of parents) byId.set(row.id, row);
     pending = [...new Set(parents.map(row => row.parent_document_id).filter((id): id is string => Boolean(id)))];
   }
-  const access = await knowledgeAccessContext(actor, [...byId.values()]);
+  const access = await knowledgeAccessContext(actor, [...byId.values()], options.allowAgentPrivateGrant === true);
   const readable = (row: PageAccessRow) => {
     const visited = new Set<string>();
     let current: PageAccessRow | undefined = byId.get(row.id);

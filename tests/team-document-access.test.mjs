@@ -57,7 +57,7 @@ test("routes, search, key defaults, and RLS migration share one team-read contra
     readFile(new URL("../lib/agent-key-policy.ts", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/20260929062422_share_team_documents_with_all_members.sql", import.meta.url), "utf8"),
   ]);
-  assert.match(knowledgeRoute, /canReadKnowledgeDocument\(actor, data\)/);
+  assert.match(knowledgeRoute, /readableKnowledgePages\(actor, \[data\], \{ allowAgentPrivateGrant: true \}\)/);
   assert.match(documentRoute, /readableKnowledgePages\(actor, \[data\]\)/);
   assert.match(documentRoute, /DOCUMENT_NOT_FOUND/);
   assert.match(search, /status\.eq\.canonical,status\.eq\.team,and\(status\.eq\.draft,owner_id\.eq\.\$\{actor.ownerId\},source\.eq\.mcp\)/);
