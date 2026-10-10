@@ -5,6 +5,7 @@ import { DEVELOPMENT_REQUEST_STATUSES, DevelopmentRequestPolicyError, developmen
 import type { OsRecord } from "@/lib/record-types";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { developmentRequestDbSignal } from "@/lib/development-request-db-error";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -84,7 +85,10 @@ export async function POST(request: Request) {
       status: "backlog", parent_id: input.parentId, team: actor.team, metadata: developmentRequestMetadata(input),
       owner_id: actor.id, created_by: actor.id, updated_by: actor.id,
     }).select("*").single();
-    if (error || !data) throw new ApiError(500, "REQUEST_CREATE_FAILED", "수정 요청을 저장하지 못했습니다.");
+    if (error || !data) {
+      console.error("development_request_insert_failed", developmentRequestDbSignal(error));
+      throw new ApiError(500, "REQUEST_CREATE_FAILED", "수정 요청을 저장하지 못했습니다.");
+    }
     return NextResponse.json({ record: data }, { status: 201, headers });
   } catch (error) { return respondError(error); }
 }
