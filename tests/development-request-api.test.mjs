@@ -16,19 +16,21 @@ class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
-function createDatabase(rows, profiles = [], insertError = null) {
+function createDatabase(rows, profiles = [], insertError = null, rejectInsertReturning = false, readErrorAfterInsert = false) {
   return {
     from(table) {
       assert.ok(["os_records", "os_profiles"].includes(table));
       const records = table === "os_records" ? rows : profiles;
       const conditions = [], ordering = [];
-      let action = "read", fields, head = false, range;
+      let action = "read", fields, head = false, range, selected = false;
       const value = (row, key) => key === "metadata->>kind" ? row.metadata?.kind : row[key];
       const execute = () => {
         let matches = records.filter((row) => conditions.every((matchesRow) => matchesRow(row)));
         if (action === "insert" && insertError) return { data: null, count: 0, error: insertError };
+        if (action === "insert" && selected && rejectInsertReturning) return { data: null, count: 0, error: { code: "42501", message: "new row violates row-level security policy" } };
+        if (action === "read" && readErrorAfterInsert && records.some((row) => row.id === requestId) && conditions.length === 3) return { data: null, count: 0, error: { code: "42501", message: "permission denied" } };
         if (action === "insert") {
-          const row = { ...structuredClone(fields), id: requestId, version: 1, archived_at: null, created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z" };
+          const row = { ...structuredClone(fields), version: 1, archived_at: null, created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z" };
           records.push(row); matches = [row];
         } else if (action === "update") {
           matches.forEach((row) => Object.assign(row, structuredClone(fields), { version: row.version + 1 }));
@@ -45,7 +47,7 @@ function createDatabase(rows, profiles = [], insertError = null) {
         return { data: head ? null : structuredClone(matches), count, error: null };
       };
       const builder = {
-        select(_columns, options = {}) { head = options.head ?? false; return builder; },
+        select(_columns, options = {}) { selected = true; head = options.head ?? false; return builder; },
         eq(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
         neq(key, expected) { conditions.push((row) => value(row, key) !== expected); return builder; },
         is(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
@@ -63,10 +65,11 @@ function createDatabase(rows, profiles = [], insertError = null) {
   };
 }
 
-function setup(rows = [], profiles = [], { insertError = null, logger = console } = {}) {
-  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows, profiles, insertError) };
+function setup(rows = [], profiles = [], { insertError = null, rejectInsertReturning = false, readErrorAfterInsert = false, logger = console } = {}) {
+  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows, profiles, insertError, rejectInsertReturning, readErrorAfterInsert) };
   const modules = {
     "next/server": { NextResponse: Response }, zod,
+    "node:crypto": { randomUUID: () => requestId },
     "@/lib/development-requests": requests,
     "@/lib/development-request-db-error": dbError,
     "@/lib/server/auth": { authenticateRequest: async (request) => {
@@ -110,6 +113,26 @@ test("request API creates linked backlog request with server-owned identity and 
   rows[0].archived_at = "2026-09-05T13:00:00Z";
   assert.equal((await routes.POST(request("POST", { title: "다른 요청", parentId: projectId }))).status, 404);
   assert.equal(rows.length, 2);
+});
+
+test("request API saves and reads in separate statements when INSERT RETURNING is blocked by RLS", async () => {
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }], [], { rejectInsertReturning: true });
+  const response = await routes.POST(request("POST", { title: "저장 오류", parentId: projectId }));
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).record.id, requestId);
+  assert.equal(rows.length, 2);
+});
+
+test("request API distinguishes a saved request from a failed confirmation read", async () => {
+  const logged = [];
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }], [], {
+    readErrorAfterInsert: true, logger: { error: (...args) => logged.push(args) },
+  });
+  const response = await routes.POST(request("POST", { title: "저장 오류", parentId: projectId }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "REQUEST_CREATED_READ_FAILED");
+  assert.equal(rows.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(logged[0][1])), { sqlstate: "42501", signal: "PERMISSION_DENIED" });
 });
 
 test("request API reports a database rejection without logging request content", async () => {
