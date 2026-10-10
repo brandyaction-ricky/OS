@@ -8,22 +8,24 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("approval, cancellation and manual adjustment update the same balance", async ({ page }) => {
-  const row = page.getByRole("row").filter({ hasText: "직원 A" });
+  const row = page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "확인", exact: true }) });
   await row.getByRole("button", { name: "확인", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("14일");
-  await page.getByRole("button", { name: "승인", exact: true }).click();
-  await row.getByRole("button", { name: "상세", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "승인", exact: true }).click();
+  const historyRow = page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "상세", exact: true }) });
+  await historyRow.getByRole("button", { name: "상세", exact: true }).click();
   await page.getByRole("button", { name: "휴가 취소", exact: true }).click();
   await page.getByRole("button", { name: "취소 확인", exact: true }).click();
-  await expect(row).toContainText("취소");
-  await page.getByRole("navigation", { name: "인사·노무 메뉴" }).getByRole("link", { name: "연차 관리", exact: true }).click();
-  await expect(row).toContainText("16일");
-  await row.getByRole("button", { name: "원장 보기" }).click();
+  await expect(historyRow).toContainText("취소");
+  await page.locator('a[href="/hr/leave-ledger"]').first().click();
+  const ledgerRow = page.getByRole("row").filter({ hasText: "직원 A" });
+  await expect(ledgerRow).toContainText("16일");
+  await ledgerRow.getByRole("button", { name: "원장 보기" }).click();
   await page.getByRole("button", { name: "＋ 수동 조정" }).click();
   await page.getByRole("spinbutton", { name: /조정 일수/ }).fill("-0.5");
   await page.getByRole("textbox", { name: "사유", exact: true }).fill("가상 QA 조정");
   await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
-  await expect(row).toContainText("15.5일");
+  await expect(ledgerRow).toContainText("15.5일");
 });
 
 test("calendar switches between bounded month and week views and filters people", async ({ page }) => {
@@ -49,29 +51,27 @@ test("mobile drawer has no page overflow and Escape restores focus", async ({ pa
 });
 
 test("rejection requires a reason and a new holiday blocks approval", async ({ page }) => {
-  const row = page.getByRole("row").filter({ hasText: "직원 A" });
+  const row = page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "확인", exact: true }) });
   await row.getByRole("button", { name: "확인", exact: true }).click();
-  await page.getByRole("button", { name: "반려", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "반려", exact: true }).click();
   await expect(page.getByRole("button", { name: "반려 확인" })).toBeDisabled();
   await page.getByRole("textbox", { name: "반려 사유", exact: true }).fill("가상 일정 변경");
   await page.getByRole("button", { name: "반려 확인" }).click();
-  await expect(row).toContainText("반려");
-  const nav = page.getByRole("navigation", { name: "인사·노무 메뉴" });
-  await nav.getByRole("link", { name: "연차 관리", exact: true }).click();
+  await expect(page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "상세", exact: true }) })).toContainText("반려");
+  await page.locator('a[href="/hr/leave-ledger"]').first().click();
   await page.getByRole("link", { name: "부여 규칙·공휴일" }).click();
   await page.getByRole("textbox", { name: "날짜", exact: true }).fill("2026-10-14");
   await page.getByRole("textbox", { name: "휴일 이름", exact: true }).fill("가상 휴일");
   await page.getByRole("button", { name: "＋ 휴일 등록" }).click();
   await expect(page.getByRole("row").filter({ hasText: "2026-10-14" })).toContainText("가상 휴일");
-  await nav.getByRole("link", { name: "휴가·일정", exact: true }).click();
-  await page.getByRole("row").filter({ hasText: "직원 C" }).getByRole("button", { name: "확인", exact: true }).click();
-  await expect(page.getByRole("button", { name: "승인", exact: true })).toBeDisabled();
+  await page.locator('a[href="/hr/leave"]').first().click();
+  await page.getByRole("row").filter({ hasText: "직원 C", has: page.getByRole("button", { name: "확인", exact: true }) }).getByRole("button", { name: "확인", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("button", { name: "승인", exact: true })).toBeDisabled();
   await expect(page.getByRole("dialog")).toContainText("고른 날이 모두 쉬는 날입니다");
 });
 
 test("document completion, contract replacement and retirement preserve previous records", async ({ page }) => {
-  const nav = page.getByRole("navigation", { name: "인사·노무 메뉴" });
-  await nav.getByRole("link", { name: "서류·계약", exact: true }).click();
+  await page.locator('a[href="/hr/documents"]').first().click();
   await page.getByRole("button", { name: "직원 A 근로계약서 교부 처리", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
   await expect(page.getByRole("button", { name: "직원 A 근로계약서 교부 처리" })).toContainText("완료");
@@ -87,7 +87,7 @@ test("document completion, contract replacement and retirement preserve previous
   await page.getByRole("button", { name: "퇴사 처리", exact: true }).click();
   await page.getByRole("textbox", { name: "퇴사일 마지막 근무일", exact: true }).fill("2026-10-08");
   await page.getByRole("dialog").getByRole("button", { name: "저장", exact: true }).click();
-  await nav.getByRole("link", { name: "서류·계약", exact: true }).click();
+  await page.locator('a[href="/hr/documents"]').first().click();
   await page.getByRole("link", { name: "퇴사자 보존", exact: true }).click();
   await expect(page.getByRole("row").filter({ hasText: "직원 A" })).toContainText("2029-10-08");
   await expect(page.getByRole("row").filter({ hasText: "직원 A" })).toContainText("자진 퇴사");
@@ -95,7 +95,7 @@ test("document completion, contract replacement and retirement preserve previous
 
 test("a synthetic form upload keeps the previous file in version history", async ({ page }) => {
   const file = { name: "qa.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRz0AAAAASUVORK5CYII=", "base64") };
-  await page.getByRole("navigation", { name: "인사·노무 메뉴" }).getByRole("link", { name: "서류·계약", exact: true }).click();
+  await page.goto("/hr/documents");
   await page.getByRole("link", { name: "양식 보관함", exact: true }).click();
   await page.getByRole("button", { name: "＋ 양식 올리기", exact: true }).click();
   await page.getByRole("textbox", { name: "양식 이름", exact: true }).fill("가상 QA 양식");

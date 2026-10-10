@@ -10,6 +10,7 @@ import {
   calendarRange,
   leavePreview,
   leaveMetrics,
+  missingHolidayYears,
   weekday,
 } from "@/lib/hr/domain";
 import { LEAVE_LABELS, STATUS_LABELS, type LeaveRequest } from "@/lib/hr/types";
@@ -28,6 +29,8 @@ import {
 } from "./ui";
 import { LedgerRows } from "./ledger";
 import type { OpenDrawer } from "./people";
+import { MissingHolidayNotice, MissingWorkersMessage } from "./notices";
+import { useSession } from "../session-provider";
 export function Leave({
   open,
   self = false,
@@ -36,9 +39,11 @@ export function Leave({
   self?: boolean;
 }) {
   const hr = useHr(),
+    session = useSession(),
     params = useSearchParams(),
     tab = params.get("tab") || "requests";
   const [detail, setDetail] = useState<LeaveRequest | null>(null),
+    [decisionMode, setDecisionMode] = useState(""),
     [status, setStatus] = useState(params.get("status") || "all"),
     [person, setPerson] = useState(params.get("person") || ""),
     [demoPerson, setDemoPerson] = useState(hr.data.employees[0]?.id || ""),
@@ -85,11 +90,11 @@ export function Leave({
     <>
       <div className="hr-head">
         <div>
-          <h1>{self ? "내 휴가·연차" : "휴가·일정"}</h1>
+          <h1>{self ? "내 휴가" : "휴가 관리"}</h1>
           <p>
             {self
               ? "내 연차와 신청 결과를 확인하고 사용 계획을 회신합니다."
-              : "휴가 신청을 승인하고 팀 일정을 함께 확인합니다."}
+              : "휴가 신청을 확인·승인하고 캘린더로 누가 쉬는지 봅니다."}
           </p>
         </div>
         <Button
@@ -100,6 +105,13 @@ export function Leave({
           ＋ {self ? "휴가 신청" : "휴가 입력"}
         </Button>
       </div>
+      {!self && !activeEmployees(hr.data, hr.today).length ? (
+        <p className="hr-muted">
+          {hr.data.profiles.some((p) => !p.person_kind && !p.is_shared_account)
+            ? <>근로자 구분이 없어 입력할 수 없습니다 · <Link href="/hr/employees?migrate=1">이관하기</Link></>
+            : "근로자가 없어 입력할 수 없습니다."}
+        </p>
+      ) : self && !me ? <p className="hr-muted">휴가 신청은 근로자 인사 정보가 연결된 뒤 사용할 수 있습니다.</p> : null}
       {self && hr.demo ? (
         <label className="hr-check">
           체험할 근로자{" "}
@@ -120,9 +132,13 @@ export function Leave({
         </label>
       ) : null}
       {self && !me ? (
-        <Empty title="인사 정보가 연결되지 않았습니다">
-          인사 담당자에게 계정과 근로자 정보 연결을 요청해 주세요.
-        </Empty>
+        session.profile?.isSharedAccount || ["owner", "contractor"].includes(session.profile?.personKind || "") ? (
+          <Empty title="연차 비대상">{session.profile?.isSharedAccount ? "공용 계정" : session.profile?.personKind === "owner" ? "사업주" : "외부 협업"}은 근로자 연차를 쓰지 않습니다.</Empty>
+        ) : !session.profile?.personKind ? (
+          <Empty title="구분이 정해지지 않았습니다">관리자에게 계정 구분을 요청해 주세요.</Empty>
+        ) : (
+          <Empty title="인사 정보가 연결되지 않았습니다">인사 담당자에게 계정과 근로자 정보 연결을 요청해 주세요.</Empty>
+        )
       ) : (
         <>
           {b ? (
@@ -188,6 +204,9 @@ export function Leave({
               ]}
             />
           )}
+          {!self && !activeEmployees(hr.data, hr.today).length ? (
+            <Empty title="휴가 대상 근로자가 없습니다"><MissingWorkersMessage /></Empty>
+          ) : null}
           <Tabs
             current={tab}
             items={
@@ -209,18 +228,13 @@ export function Leave({
           {tab === "requests" ? (
             <>
               <div className="hr-toolbar">
-                <select
-                  aria-label="휴가 상태"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                >
-                  <option value="all">모든 상태</option>
-                  {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
+                <div className="hr-filter-chips" role="group" aria-label="휴가 상태">
+                  {[["all", "전체"], ...Object.entries(STATUS_LABELS)].map(([value, label]) => (
+                    <Button key={value} aria-pressed={status === value} onClick={() => setStatus(value)}>
+                      {label} {all.filter((r) => value === "all" || r.status === value).length}
+                    </Button>
                   ))}
-                </select>
+                </div>
                 {!self ? (
                   <select
                     aria-label="휴가 대상"
@@ -236,11 +250,17 @@ export function Leave({
                   </select>
                 ) : null}
               </div>
-              <RequestTable rows={rows} onSelect={setDetail} />
+              {!self && all.some((r) => r.status === "pending" && (!person || r.hr_employee_id === person)) ? (
+                <PendingApprovals
+                  rows={all.filter((r) => r.status === "pending" && (!person || r.hr_employee_id === person))}
+                  onSelect={(request, mode) => { setDecisionMode(mode); setDetail(request); }}
+                />
+              ) : null}
+              <RequestTable rows={rows} onSelect={(request) => { setDecisionMode(""); setDetail(request); }} />
             </>
           ) : null}
           {tab === "calendar" && !self ? (
-            <Calendar onSelect={setDetail} />
+            <Calendar onSelect={(request) => { setDecisionMode(""); setDetail(request); }} />
           ) : null}
           {tab === "ledger" && me ? <LedgerRows employee={me} /> : null}
           {tab === "letters" && me ? (
@@ -324,12 +344,61 @@ export function Leave({
           key={detail.id}
           request={detail}
           self={self}
+          initialMode={decisionMode}
           onClose={() => setDetail(null)}
         />
       ) : null}
     </>
   );
 }
+function PendingApprovals({
+  rows,
+  onSelect,
+}: {
+  rows: LeaveRequest[];
+  onSelect: (request: LeaveRequest, mode: string) => void;
+}) {
+  const hr = useHr();
+  const ordered = [...rows].sort((a, b) =>
+    (a.requested_at || a.created_at || a.start_date).localeCompare(
+      b.requested_at || b.created_at || b.start_date,
+    ),
+  );
+  return (
+    <Panel title={`승인 대기 ${ordered.length}`}>
+      <Table head={["신청자", "구분·기간", "일수", "남은 연차", "같은 날 휴가", "처리"]}>
+        {ordered.map((request) => {
+          const employee = hr.data.employees.find((e) => e.id === request.hr_employee_id);
+          const preview = employee && leavePreview(
+            { ...hr.data, requests: hr.data.requests.filter((r) => r.id !== request.id) },
+            employee, request.leave_type, request.start_date, request.end_date, hr.today,
+          );
+          return (
+            <tr key={request.id}>
+              <td>{employee?.display_name || "근로자"}</td>
+              <td>{LEAVE_LABELS[request.leave_type]}<small>
+                {request.start_date} ({"일월화수목금토"[weekday(request.start_date)]}) ~ {request.end_date} ({"일월화수목금토"[weekday(request.end_date)]})
+              </small></td>
+              <td>{request.days}일</td>
+              <td className={preview && preview.after < 0 ? "hr-danger" : ""}>
+                {preview ? `${preview.balance.left} → ${preview.after}일` : "—"}
+              </td>
+              <td>{preview?.overlaps.length ? preview.overlaps.map((overlap) => {
+                const name = hr.data.employees.find((e) => e.id === overlap.hr_employee_id)?.display_name || "근로자";
+                return <Pill key={overlap.id} tone="warn">{name} {overlap.start_date}~{overlap.end_date}{overlap.status === "pending" ? " (대기)" : ""}</Pill>;
+              }) : "—"}</td>
+              <td><div className="hr-actions">
+                <Button onClick={() => onSelect(request, "reject")}>반려</Button>
+                <Button primary onClick={() => onSelect(request, "approve")}>승인</Button>
+              </div></td>
+            </tr>
+          );
+        })}
+      </Table>
+    </Panel>
+  );
+}
+
 export function RequestTable({
   rows,
   onSelect,
@@ -392,14 +461,17 @@ export function RequestTable({
 function RequestDrawer({
   request: r,
   self,
+  initialMode,
   onClose,
 }: {
   request: LeaveRequest;
   self: boolean;
+  initialMode: string;
   onClose: () => void;
 }) {
   const hr = useHr(),
-    [mode, setMode] = useState(""),
+    [mode, setMode] = useState(initialMode),
+    [holidayAcknowledged, setHolidayAcknowledged] = useState(false),
     [reason, setReason] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -420,6 +492,10 @@ function RequestDrawer({
       : null;
   async function act(action: string) {
     if (busy) return;
+    if (action === "approved" && missingHolidayYears(hr.data, r.start_date, r.end_date).length && !holidayAcknowledged) {
+      setError("공휴일 미등록 안내를 확인해 주세요.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -501,7 +577,15 @@ function RequestDrawer({
                 {HR_MESSAGES[x]}
               </p>
             ))}
+            {preview.overlaps.length ? <p>같은 날 다른 사람 휴가: {preview.overlaps.map((overlap) => {
+              const name = hr.data.employees.find((employee) => employee.id === overlap.hr_employee_id)?.display_name || "근로자";
+              return `${name} ${overlap.start_date}~${overlap.end_date}${overlap.status === "pending" ? " (대기)" : ""}`;
+            }).join(", ")}</p> : null}
           </div>
+        ) : null}
+        <MissingHolidayNotice start={r.start_date} end={r.end_date} />
+        {missingHolidayYears(hr.data, r.start_date, r.end_date).length ? (
+          <label className="hr-check"><input type="checkbox" checked={holidayAcknowledged} onChange={(event) => setHolidayAcknowledged(event.target.checked)} /> 공휴일 미등록으로 일수가 달라질 수 있음을 확인했습니다.</label>
         ) : null}
         {mode === "reject" ? (
           <Field label="반려 사유" required>
@@ -525,11 +609,12 @@ function RequestDrawer({
               돌아가기
             </Button>
             <Button
-              danger
-              disabled={busy || (mode === "reject" && !reason.trim())}
-              onClick={() => act(mode === "cancel" ? "cancel" : "rejected")}
+              danger={mode !== "approve"}
+              primary={mode === "approve"}
+              disabled={busy || (mode === "reject" && !reason.trim()) || (mode === "approve" && !!preview?.errors.length)}
+              onClick={() => act(mode === "cancel" ? "cancel" : mode === "approve" ? "approved" : "rejected")}
             >
-              {mode === "cancel" ? "취소 확인" : "반려 확인"}
+              {mode === "cancel" ? "취소 확인" : mode === "approve" ? "승인 확인" : "반려 확인"}
             </Button>
           </>
         ) : (
@@ -660,6 +745,7 @@ function Calendar({ onSelect }: { onSelect: (r: LeaveRequest) => void }) {
           {error}
         </p>
       ) : null}
+      <MissingHolidayNotice start={from} end={to} />
       <Panel>
         <div
           className="hr-table-scroll"
@@ -670,7 +756,7 @@ function Calendar({ onSelect }: { onSelect: (r: LeaveRequest) => void }) {
           tabIndex={0}
         >
           <div className={`hr-calendar ${mode}`}>
-            {["일", "월", "화", "수", "목", "금", "토"].map((x) => (
+            {["월", "화", "수", "목", "금", "토", "일"].map((x) => (
               <div key={x} className="hr-calendar-weekday">
                 {x}
               </div>
@@ -691,7 +777,7 @@ function Calendar({ onSelect }: { onSelect: (r: LeaveRequest) => void }) {
               return (
                 <div
                   key={day}
-                  className={`hr-day${mode === "month" && day.slice(0, 7) !== month ? " other" : ""}${day === hr.today ? " today" : ""}${holiday || weekend ? " holiday" : ""}`}
+                  className={`hr-day${mode === "month" && day.slice(0, 7) !== month ? " other" : ""}${day === hr.today ? " today" : ""}${holiday ? " holiday" : weekend ? " weekend" : ""}`}
                 >
                   <header>
                     <time dateTime={day}>{Number(day.slice(-2))}</time>

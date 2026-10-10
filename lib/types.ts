@@ -110,6 +110,8 @@ export interface SessionProfile {
   isActive?: boolean;
   financeAccess?: boolean;
   memberKind?: "staff" | "partner";
+  personKind?: "employee" | "owner" | "contractor" | null;
+  isSharedAccount?: boolean;
 }
 
 export interface ApiErrorBody {

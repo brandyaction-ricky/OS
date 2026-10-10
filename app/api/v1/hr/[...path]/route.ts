@@ -69,7 +69,10 @@ async function handle(request: Request, context: Context) {
             p_employee: uuid.parse(query.get("employee")),
           }),
         );
-      if (action === "session") return json({ active: true });
+      if (action === "session") return json({
+        active: true,
+        legacyTeamMenusHidden: await hrRpc<boolean>(actor, "os_hr_legacy_team_menus_hidden"),
+      });
       if (action === "badges") {
         return json({ badges: hrBadges(await hrWorkspace(actor), today) });
       }
@@ -293,6 +296,10 @@ async function handle(request: Request, context: Context) {
       return json({ saved: true });
     }
     const input = await hrJson(request);
+    if (request.method === "POST" && action === "legacy-menu-state") {
+      const { hidden } = z.object({ hidden: z.boolean() }).strict().parse(input);
+      return json({ hidden: await hrRpc<boolean>(actor, "os_hr_set_legacy_team_menus", { p_hidden: hidden }) });
+    }
     if (request.method === "POST" && action === "legacy-person")
       return json(
         await hrRpc(actor, "os_hr_legacy_person", {
@@ -558,11 +565,12 @@ async function handle(request: Request, context: Context) {
     if (request.method === "POST" && action === "leave-promotions") {
       const b = promotionSchema.parse(input);
       return json({
-        id: await hrRpc(actor, "os_hr_send_promotion", {
+        id: await hrRpc(actor, "os_hr_send_promotion_v2", {
           p_employee: b.employee,
           p_step: b.step,
           p_days: b.days,
           p_dates: b.dates,
+          p_half_day: b.halfDay || null,
           p_channel: b.channel,
           p_body: b.body,
           p_paper: b.paper || null,

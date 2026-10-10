@@ -102,6 +102,7 @@ export const promotionSchema = z
     ]),
     days: z.number().nonnegative().max(999),
     dates: z.array(date).max(366).default([]),
+    halfDay: z.enum(["am", "pm"]).nullable().optional(),
     channel: z.enum(["os_email", "paper"]),
     body: z.string().trim().min(1).max(16000),
     paper: z.string().max(200).nullable().optional(),

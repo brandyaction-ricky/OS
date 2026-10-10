@@ -9,6 +9,7 @@ import {
   Film,
   Home,
   KeyRound,
+  IdCard,
   LayoutDashboard,
   Link2,
   ListChecks,
@@ -88,12 +89,12 @@ export const NAV_STAGES: NavStage[] = [
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정", "연차·휴가"], ready: true },
     { label: "팀원", href: "/organization/members", icon: Users, aliases: ["구성원"], ready: true },
   ] },
-  { id: "hr", label: "인사 노무 관리", icon: Users, href: "/hr/employees", requiresHr: true, pages: [
+  { id: "hr", label: "인사 노무 관리", icon: IdCard, href: "/hr/employees", requiresHr: true, pages: [
     { label: "직원 명부", href: "/hr/employees", icon: Users, ready: true },
-    { label: "휴가·일정", href: "/hr/leave", icon: CalendarRange, ready: true },
-    { label: "연차 관리", href: "/hr/leave-ledger", icon: ListChecks, ready: true },
+    { label: "휴가 관리", href: "/hr/leave", icon: CalendarRange, aliases: ["휴가·일정"], ready: true },
+    { label: "연차 원장·촉진", href: "/hr/leave-ledger", icon: ListChecks, aliases: ["연차 관리"], ready: true },
     { label: "서류·계약", href: "/hr/documents", icon: FileText, ready: true },
-    { label: "내 휴가·연차", href: "/hr/my-leave", icon: UserRound, ready: true },
+    { label: "내 휴가", href: "/hr/my-leave", icon: UserRound, aliases: ["내 휴가·연차"], ready: true },
   ] },
   { id: "finance", label: "재무관리", icon: Wallet, href: "/finance/overview", requiresFinance: true, pages: [
     { label: "개요", href: "/finance/overview", icon: LayoutDashboard, aliases: ["재무 요약", "순수익"], ready: true },

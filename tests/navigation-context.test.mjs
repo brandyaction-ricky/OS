@@ -80,6 +80,6 @@ test('HR navigation is additive and hidden unless rollout is enabled',()=>{
  assert.equal(searchNavigation('인사',true).length,0);
  assert.equal(searchNavigation('인사',true,()=>true,true).length,5);
  assert.equal(findStage('/hr/employees/person').id,'hr');
- assert.equal(findPage('/hr/my-leave').label,'내 휴가·연차');
+ assert.equal(findPage('/hr/my-leave').label,'내 휴가');
  assert.ok(NAV_STAGES.find(s=>s.id==='team').pages.some(p=>p.href==='/organization/members'));
 });

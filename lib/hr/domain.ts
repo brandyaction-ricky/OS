@@ -453,11 +453,33 @@ export function todos(data: HrData, e: Employee, today: string) {
 }
 export function headcount(data: HrData, today: string) {
   const count = activeEmployees(data, today).length;
+  const unset = data.profiles.filter(
+    (profile) => !profile.is_shared_account && !profile.person_kind,
+  ).length;
   return {
     count,
-    label: count >= 5 ? "5인 이상 (추정)" : "5인 미만 (추정)",
-    boundary: count === 5,
+    unset,
+    label: unset
+      ? `판단 보류 · 구분 미설정 ${unset}명`
+      : count >= 5 ? "5인 이상 (추정)" : "5인 미만 (추정)",
+    boundary: !unset && count === 5,
   };
+}
+
+export function missingHolidayYears(data: HrData, start: string, end = start) {
+  const years = new Set([start.slice(0, 4), end.slice(0, 4)]);
+  return [...years].filter(
+    (year) => /^\d{4}$/.test(year) && !data.holidays.some((h) => h.day.startsWith(`${year}-`)),
+  );
+}
+
+export function nextWorkday(today: string, holidays: Holiday[]) {
+  let day = today;
+  for (let i = 0; i < 370; i++) {
+    day = addDays(day, 1);
+    if (workDays(day, day, holidays).days) return day;
+  }
+  return today;
 }
 export function retirement(
   data: HrData,
@@ -582,7 +604,7 @@ export function hrBadges(data: HrData, today: string): Record<string, number> {
 
 export function calendarRange(anchor: string, mode: "month" | "week") {
   const first = mode === "month" ? `${anchor.slice(0, 7)}-01` : anchor;
-  const from = addDays(first, -weekday(first));
+  const from = addDays(first, -(weekday(first) + 6) % 7);
   const count = mode === "month" ? 42 : 7;
   return { from, to: addDays(from, count - 1), count };
 }

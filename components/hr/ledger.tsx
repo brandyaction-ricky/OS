@@ -14,6 +14,7 @@ import type { Employee } from "@/lib/hr/types";
 import { useHr } from "./context";
 import { Button, Cards, Empty, Field, Panel, Pill, Table, Tabs } from "./ui";
 import type { OpenDrawer } from "./people";
+import { MissingWorkersMessage } from "./notices";
 
 export function LedgerRows({
   employee,
@@ -78,6 +79,7 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
     b: balance(hr.data, e, hr.today),
     p: promotion(hr.data, e, hr.today),
   }));
+  const monthDay = (day: string) => `${Number(day.slice(5, 7))}/${Number(day.slice(8, 10))}`;
   const chosen = people.find((e) => e.id === selected);
   async function markSettlement(id: string) {
     setBusy(true);
@@ -96,7 +98,7 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
     <>
       <div className="hr-head">
         <div>
-          <h1>연차 관리</h1>
+          <h1>연차 원장·촉진</h1>
           <p>입사일 기준 잔여·원장과 사용 촉진 기한을 확인합니다.</p>
         </div>
         <Button
@@ -130,14 +132,14 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
                 description: "재직 · 휴직 근로자",
               },
               {
-                label: "남은 연차",
-                value: `${rows.reduce((s, r) => s + r.b.left, 0)}일`,
-                description: "승인된 사용 예정 포함 차감",
+                label: "이번 달 소멸 예정",
+                value: `${rows.filter((r) => r.b.left > 0 && r.b.period.end.slice(0, 7) === hr.today.slice(0, 7)).length}명`,
+                description: "남은 연차가 있는 사람",
               },
               {
-                label: "사용 예정",
-                value: `${rows.reduce((s, r) => s + r.b.scheduled, 0)}일`,
-                description: "오늘 이후 승인 휴가",
+                label: "촉진 서면 보낼 사람",
+                value: `${rows.filter((r) => r.p.action || r.p.extra?.action).length}명`,
+                description: <Link href="/hr/leave-ledger?tab=promo">사용 촉진에서 보기</Link>,
               },
               {
                 label: "승인 대기",
@@ -158,10 +160,12 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
                   "예정",
                   "대기",
                   "잔여",
+                  "소멸",
+                  "촉진",
                   "원장",
                 ]}
               >
-                {rows.map(({ e, b }) => (
+                {rows.map(({ e, b, p }) => (
                   <tr
                     key={e.id}
                     className={selected === e.id ? "selected" : ""}
@@ -190,6 +194,8 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
                     <td>
                       <b>{b.left}일</b>
                     </td>
+                    <td>{b.left > 0 ? <Pill tone={b.period.end.slice(0, 7) === hr.today.slice(0, 7) ? "warn" : "muted"}>{dlabel(b.period.end, hr.today)}</Pill> : "—"}</td>
+                    <td><Pill tone={p.rank <= 1 ? "danger" : p.action || p.extra?.action ? "warn" : "muted"}>{p.text}</Pill></td>
                     <td>
                       <Button
                         aria-expanded={selected === e.id}
@@ -205,7 +211,7 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
               </Table>
             ) : (
               <Empty title="연차 대상 근로자가 없습니다">
-                직원 명부에서 근로자를 등록해 주세요.
+                <MissingWorkersMessage />
               </Empty>
             )}
           </Panel>
@@ -305,7 +311,9 @@ export function LeaveLedger({ open }: { open: OpenDrawer }) {
                       </td>
                       <td>
                         {p.one?.reply_at ? (
-                          <Pill tone="good">{p.one.reply_days}일 회신</Pill>
+                          <Pill tone="good">{p.one.reply_days}일 회신 · {monthDay(p.one.reply_at.slice(0, 10))}</Pill>
+                        ) : p.replyDue && p.replyDue < hr.today ? (
+                          <Pill tone="danger">회신 없음 · {monthDay(p.replyDue)} 기한 지남</Pill>
                         ) : p.replyDue ? (
                           <>
                             {shortDate(p.replyDue)}까지
@@ -526,6 +534,12 @@ function Rules() {
           </p>
         ) : null}
         <div className="hr-body">
+          <div className="hr-actions" aria-label="공휴일 등록 현황">
+            {[Number(hr.today.slice(0, 4)), Number(hr.today.slice(0, 4)) + 1].map((value) => {
+              const count = hr.data.holidays.filter((holiday) => holiday.day.startsWith(`${value}-`)).length;
+              return <span key={value} className={count ? "hr-muted" : "hr-danger"}>{value}년 등록 {count}건{count ? "" : " · 등록 필요"}</span>;
+            })}
+          </div>
           <form onSubmit={add} className="hr-actions">
             <Field label="날짜" required>
               <input name="day" type="date" required />
