@@ -107,7 +107,7 @@ export async function GET(request: Request) {
 const commandSchema=z.object({action:z.enum([
   "document.create","document.commit","document.draft","document.discard","document.properties","document.duplicate","document.export","document.share","document.archive",
   "note.capture","note.access","link.ignore","pin.toggle","category.save","category.archive","category.batch","inbox.create","inbox.delete","inbox.process",
-  "template.save","template.archive","candidate.submit","candidate.decide","candidate.withdraw","canon.keep","canon.demote","canon.steward",
+  "template.save","template.archive","candidate.submit","candidate.decide","candidate.publish","candidate.withdraw","canon.keep","canon.demote","canon.steward",
   "proposal.create","proposal.decide","proposal.rebase","meeting.create","meeting.save","meeting.start","meeting.finish","meeting.review","meeting.correct",
   "trash.restore","trash.purge"
 ]),id:z.string().uuid().optional(),expectedVersion:z.number().int().positive().optional()}).passthrough();
@@ -116,7 +116,9 @@ export async function POST(request: Request) {
     const actor=await authenticateRequest(request);
     const parsed=commandSchema.safeParse(await parseJson(request,2_000_000));
     if(!parsed.success) throw new ApiError(400,"INVALID_COMMAND","요청 형식을 확인해 주세요.");
-    const {data,error}=await actor.supabase.rpc("os_knowledge_command",{p:parsed.data});
+    const {data,error}=parsed.data.action==="candidate.publish"
+      ? await actor.supabase.rpc("os_publish_candidate",{p_id:parsed.data.id,p_expected_version:parsed.data.expectedVersion})
+      : await actor.supabase.rpc("os_knowledge_command",{p:parsed.data});
     if(error) throw databaseError(error);
     return NextResponse.json(data,{headers:{"Cache-Control":"no-store"}});
   }catch(error){return apiErrorResponse(error);}
