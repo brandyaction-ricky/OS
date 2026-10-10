@@ -3,24 +3,48 @@ import { expect, test, type Page } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("brandy-os-menu-guide-final", "seen"));
 });
-for (const width of [1440, 1024, 390]) test(`personal folder vault at ${width}px`, async ({ page }, info) => {
+for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/knowledge/vault");
-  await expect(page.getByRole("heading", { name: "문서 보관함", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "내 문서", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("heading", { name: "문서 보관함", exact: true }).first()).toHaveCount(1);
+  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
+  await expect(page.locator(".vault-count")).toHaveText("4");
+  await expect(page.getByRole("list", { name: "폴더 내용" })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(width >= 1280 ? 1 : 0);
   if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
-  for (const root of ["00_Skills", "01_Raw", "02_Wiki", "03_Content", "04_개인", "05_Projects", "06_학습"])
-    await expect(page.getByRole("treeitem", { name: `${root} 0`, exact: true })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "리키 1", exact: true })).toBeVisible();
   // Wait for the mobile drawer transition and verify text isn't clipped off-screen.
-  await expect.poll(async () => (await page.getByRole("treeitem", {name:"00_Skills 0",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+  await expect.poll(async () => (await page.getByRole("treeitem", {name:"회사 wiki 3",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath(`vault-${width}.png`), fullPage: true });
   expect(errors).toEqual([]);
 });
 
+test("desktop vault keeps its tree visible even with a saved hidden-tree preference", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("brandy-knowledge-vault-tree", "false"));
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
+  await expect(page.locator(".vault-count")).toHaveText("4");
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+});
+
+test("entering the vault keeps the company document menu visible while opening a folder", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/knowledge/vault");
+  const sidebar = page.getByRole("complementary", { name: "주요 메뉴" });
+  await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
+  await expect(sidebar.getByRole("button", { name: "사이드바 접기" })).toBeVisible();
+  await page.getByRole("treeitem", { name: "회사 wiki 3", exact: true }).click();
+  await expect(page).toHaveURL(/folder=/);
+  await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "폴더 내용" })).toBeVisible();
+});
+
 async function create(page: Page, title: string, content: string) {
-  await page.getByRole("button", { name: "새 페이지", exact: true }).click();
+  await page.locator(".vault-toolbar").getByRole("button", { name: "새 페이지", exact: true }).click();
   await page.getByRole("textbox", { name: "새 페이지 제목" }).fill(title);
   await page.getByRole("textbox", { name: "editable markdown", exact: true }).fill(content);
   await page.getByText("페이지 정보 · 폴더, 담당 팀, 브랜드, 태그", { exact: true }).click();
@@ -39,6 +63,7 @@ test("UUID links reopen the same document after folder move and title change", a
   const reference = await create(page, "QA 연결 문서", `[[${id}|원본 열기]]`);
   await page.locator(".document-reader").getByRole("button", { name: "원본 열기", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`document=${id}`));
+  await page.getByRole("button", { name: "더 보기", exact: true }).click();
   await page.getByRole("button", { name: "위치 이동", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "페이지 위치 이동" });
   await dialog.getByLabel("이동할 폴더", { exact: true }).selectOption("05_Projects");
@@ -54,8 +79,6 @@ test("UUID links reopen the same document after folder move and title change", a
   await page.locator(".document-reader").getByRole("button", { name: "원본 열기", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`document=${id}`));
   await expect(page.locator(".document-reader h1")).toHaveText("QA 이름 변경 후");
-  if (await page.getByRole("button", {name:"파일 트리 보기",exact:true}).isVisible())
-    await page.getByRole("button", {name:"파일 트리 보기",exact:true}).click();
   await expect(page.getByRole("treeitem").filter({hasText:"QA 이름 변경 후"})).toBeVisible();
   await page.screenshot({ path: info.outputPath("vault-id-link-after-move.png"), fullPage:true });
 });

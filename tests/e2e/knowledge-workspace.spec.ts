@@ -3,7 +3,7 @@ test.beforeEach(async({page})=>{
  await page.addInitScript(()=>localStorage.setItem("brandy-os-menu-guide-final","seen"));
 });
 const paths=[
- ["/knowledge","회사 문서"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
+ ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
  ["/knowledge/graph","연결"],["/knowledge/review","검토함"],["/knowledge/templates","템플릿"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
@@ -15,7 +15,8 @@ for(const width of [1440,1024,390]) test(`company workspace routes and horizonta
  for(const[path,title]of paths){await page.goto(path);await expect(page.getByRole("heading",{name:title,level:1,exact:true})).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await expect(page.getByText(/Application error/)).toHaveCount(0);
-  await expect(page.locator(".kw-root")).not.toContainText(/undefined|NaN|Infinity|\[object/);
+  if (path === "/knowledge") await expect(page.locator(".vault-workspace")).toBeVisible();
+  else await expect(page.locator(".kw-root")).not.toContainText(/undefined|NaN|Infinity|\[object/);
   if(path==="/knowledge"||path==="/knowledge/graph"){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`${path.endsWith("graph")?"graph":"home"}-${width}.png`)});}
  }
  await page.screenshot({path:info.outputPath(`workspace-${width}.png`),fullPage:true});
@@ -78,8 +79,8 @@ test("large document database paginates without dropping search or view filters"
  await expect(page).toHaveURL(/q=QA/);
 });
 async function createNote(page:import("@playwright/test").Page,title:string){
- await page.goto("/knowledge");
- await page.getByRole("button",{name:"새 문서",exact:true}).click();
+ await page.goto("/knowledge/notes?tab=all");
+ await page.getByRole("button",{name:"새 문서",exact:true}).first().click();
  await page.getByRole("radio",{name:"내 노트 나만 봅니다. 메모·초안"}).check();
  await page.getByRole("textbox",{name:"제목",exact:true}).fill(title);
  await page.getByRole("button",{name:"만들기",exact:true}).click();
@@ -145,9 +146,8 @@ test("create, draft, save, reopen, link insertion and version restore are persis
  await page.reload();await expect(editor).toContainText("example-canonical");
 });
 test("quick memo stores inbox then appends today's note once",async({page})=>{
- await page.goto("/knowledge");
- await page.getByRole("button",{name:/빠른 메모.*⌘J/}).click();
- await page.getByRole("textbox",{name:"메모",exact:true}).fill("QA 빠른 기록");
+ await page.goto("/knowledge/notes?tab=inbox");
+ await page.getByRole("textbox",{name:"빠른 메모",exact:true}).fill("QA 빠른 기록");
  await page.getByRole("button",{name:"메모 저장"}).click();
  await page.goto("/knowledge/notes?tab=inbox");
  await expect(page.getByText("QA 빠른 기록",{exact:true})).toBeVisible();

@@ -54,8 +54,8 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,11,4,7,3,4]);
-  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.slice(0,2).map(page=>page.href),['/knowledge','/knowledge/vault']);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,9,5,4,7,3,4]);
+  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);

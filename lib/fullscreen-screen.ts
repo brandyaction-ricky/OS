@@ -34,6 +34,7 @@ export const FULLSCREEN_ROUTES = {
   "/automation/templates": "automation-templates",
   "/automation/settings": "automation-settings",
   "/knowledge": "documents",
+  "/knowledge/vault": "vault",
   "/knowledge/graph": "links",
   "/knowledge/search": "search",
   "/knowledge/review": "review",

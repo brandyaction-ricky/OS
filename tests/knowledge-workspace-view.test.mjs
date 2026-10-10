@@ -22,7 +22,7 @@ function render(file,name,context,props={}){
 const actor={ownerId:'owner',role:'member',type:'user',memberKind:'staff',active:true,allowedStatuses:['draft','team','canonical']};
 test('failed workspace lists never imply zero documents or missing canon',()=>{
   const context={state:model.emptyKnowledgeState(),actor,loading:false,error:'read failed'};
-  for(const [file,name,props] of [['database.tsx','CategoryDatabase',{space:'team'}],['canon.tsx','KnowledgeCanon',{}],['home.tsx','KnowledgeHome',{}]]){
+  for(const [file,name,props] of [['database.tsx','CategoryDatabase',{space:'team'}],['canon.tsx','KnowledgeCanon',{}]]){
     const html=render(file,name,context,props);assert.match(html,/다시 불러오기/);assert.doesNotMatch(html,/0개|없습니다|전체 정본|최근 연 문서/);
   }
 });

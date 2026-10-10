@@ -317,7 +317,7 @@ export function AppShell({ children, hrEnabled = false }: { children: React.Reac
             <div className="quick-record-menu" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setQuickOpen(false);}} onKeyDown={event=>{if(event.key==="Escape"){setQuickOpen(false);event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();}}}>
               <button className="quick-record-link quick-add" data-ui="quick-add" aria-label="빠른 기록" onClick={()=>{setQuickOpen(false);setRequestOpen(true);}}><NotebookPen size={16} /><span>빠른 기록</span></button>
               <button className="quick-record-more" aria-label="기록 종류 선택" aria-expanded={quickOpen} aria-controls="quick-record-options" onClick={()=>setQuickOpen(!quickOpen)}><ChevronDown size={14}/></button>
-              {quickOpen ? <div id="quick-record-options" className="quick-record-options"><Link href="/knowledge?new=1" onClick={()=>{setQuickOpen(false);window.dispatchEvent(new Event("brandy-quick-record"));}}>메모</Link><Link href="/organization/tasks?new=1" onClick={()=>setQuickOpen(false)}>업무</Link><button onClick={()=>{setRequestOpen(true);setQuickOpen(false);}}>수정 요청</button></div> : null}
+              {quickOpen ? <div id="quick-record-options" className="quick-record-options"><Link href="/knowledge/notes?new=1&tab=all" onClick={()=>setQuickOpen(false)}>메모</Link><Link href="/organization/tasks?new=1" onClick={()=>setQuickOpen(false)}>업무</Link><button onClick={()=>{setRequestOpen(true);setQuickOpen(false);}}>수정 요청</button></div> : null}
             </div>
             <DevelopmentRequestNotifications open={notificationsOpen} onOpenChange={changeNotificationsOpen} />
           </div>
