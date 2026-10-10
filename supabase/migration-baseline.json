@@ -552,22 +552,24 @@
       "notes": "Additive profile flag and publication guard. No document rows, owner, folder, content, or current status changed by the migration. Configure the designated account separately after DEV verification."
     },
     {
-      "file": "20261010083100_hr_legacy_team_menu_control.sql",
+      "file": "20261010111824_hr_legacy_team_menu_control.sql",
       "sha256": "27dae542ce479d58ba18d8225521379588fc05d44e7addee7a4c7ee0ac51ea03",
       "purpose": "allow audited and reversible closure of the old Team leave menu after HR migration review",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-10",
       "productionApprovedAt": null,
-      "appliedEnvironments": []
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev only after explicit DEV deployment request. RPC existence, privileges, migration history and document/HR row counts verified; no data rows changed. Production requires separate approval."
     },
     {
-      "file": "20261010083200_hr_designated_half_day.sql",
+      "file": "20261010111840_hr_designated_half_day.sql",
       "sha256": "21e8faba7f0789e66b5e20e8d45ffca042b32d39ff0d528e020104f05bf4ecf7",
       "purpose": "record half-day designations and reject excess or ambiguous promotion dates",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-10",
       "productionApprovedAt": null,
-      "appliedEnvironments": []
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev only after explicit DEV deployment request. Nullable column and v2 RPC verified, existing document/HR row counts unchanged. Production requires separate approval."
     }
   ],
   "legacyMigrations": [
