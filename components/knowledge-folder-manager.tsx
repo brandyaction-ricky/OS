@@ -1,17 +1,20 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { getDocument, listDocuments, updateDocument } from "@/lib/api-client";
 import { executeFolderMoves, knowledgeFolderOptions, normalizeKnowledgeFolder, planFolderMove, type FolderMove } from "@/lib/knowledge-folders";
 import type { KnowledgeDocument } from "@/lib/types";
 import { KnowledgeModal } from "./knowledge-modal";
+import { KnowledgeVaultFolderChooser } from "./knowledge-vault-folder-chooser";
 
-export function KnowledgeFolderManager({ source: initialSource, initialParent, options, documents, token, demo, onClose, onSaved, onNew, onBusy }: {
+export function KnowledgeFolderManager({ source: initialSource, initialParent, initialName, options, documents, token, demo, onClose, onSaved, onNew, onBusy, vault = false, onCreateFolder, onFolderMoved, localOnly = false }: {
   source: string; initialParent?: string; options: string[]; documents: KnowledgeDocument[]; token: string | null; demo: boolean;
+  initialName?: string; vault?: boolean; onCreateFolder?: (parent: string, name: string) => string;
+  localOnly?: boolean; onFolderMoved?: (source: string, destination: string) => void;
   onClose: () => void; onSaved: (document: KnowledgeDocument, previous?: KnowledgeDocument) => void; onNew: (folder: string) => void; onBusy: (busy: boolean) => void;
 }) {
   const [source, setSource] = useState(initialSource);
-  const [name, setName] = useState(initialSource.split("/").at(-1) ?? "");
+  const [name, setName] = useState(initialName ?? initialSource.split("/").at(-1) ?? "");
   const [parent, setParent] = useState(initialParent ?? initialSource.split("/").slice(0, -1).join("/"));
   const [snapshot, setSnapshot] = useState(documents);
   const [plan, setPlan] = useState<FolderMove[] | null>(null);
@@ -21,14 +24,32 @@ export function KnowledgeFolderManager({ source: initialSource, initialParent, o
   const [done, setDone] = useState(0);
   const [completed, setCompleted] = useState(0);
   const [executed, setExecuted] = useState(false);
+  const inlineRename = vault && initialName !== undefined;
+  const started = useRef(false);
   const target = parent ? `${parent}/${name}` : name;
   const setWorking = (value: boolean) => { setBusy(value); onBusy(value); };
-  const preview = async () => {
+  const run = async (pending: FolderMove[], currentSnapshot: KnowledgeDocument[], retry: boolean, destination = normalizeKnowledgeFolder(target)) => {
+    setWorking(true); setError(""); setDone(0);
+    const result = await executeFolderMoves(pending, async move => {
+      let current = currentSnapshot.find(item => item.id === move.id);
+      if (!demo && retry) current = (await getDocument(token, move.id)).document;
+      if (retry && current?.folder === move.to) { onSaved(current); return current; }
+      if (!current || current.folder !== move.from) throw new Error("다른 작업에서 위치가 변경됐습니다. 현재 위치를 확인해 주세요.");
+      const document = demo ? { ...current, folder: move.to, current_version: current.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(token, { id: move.id, expectedVersion: retry ? current.current_version : move.version, folder: move.to, reason: "폴더 이름 및 위치 변경" })).document;
+      onSaved(document, current); return document;
+    }, setDone);
+    setFailed(result.failed); setCompleted(count => count + result.succeeded.length); setExecuted(true); setWorking(false);
+    if (!result.failed.length) onFolderMoved?.(source, destination);
+  };
+  const preview = async (chosenParent = parent, executeImmediately = false) => {
     setWorking(true); setError(""); setFailed([]); setCompleted(0); setExecuted(false);
     try {
-      const destination = normalizeKnowledgeFolder(target);
+      const destination = normalizeKnowledgeFolder(chosenParent ? `${chosenParent}/${name}` : name);
+      setParent(chosenParent);
       if (name.includes("/") || name.includes("\\")) throw new Error("폴더 이름에는 경로 구분자를 넣지 말고 상위 폴더를 선택해 주세요.");
+      if (destination === source || destination.startsWith(`${source}/`)) throw new Error("현재 위치나 자기 하위 폴더로 이동할 수 없습니다.");
       if (options.includes(destination)) throw new Error("같은 위치에 폴더가 있습니다. 다른 이름이나 상위 폴더를 선택해 주세요.");
+      if (localOnly) { onFolderMoved?.(source, destination); onClose(); return; }
       let affected = documents;
       if (!demo) {
         affected = [];
@@ -45,38 +66,32 @@ export function KnowledgeFolderManager({ source: initialSource, initialParent, o
       const next = planFolderMove(affected, source, destination);
       if (!next.length) throw new Error("이동할 문서가 없습니다. 폴더 목록을 새로고침해 주세요.");
       setSnapshot(affected); setPlan(next);
+      if ((inlineRename || executeImmediately) && next.length <= 20) await run(next, affected, false, destination);
     } catch (reason) { setError((reason as Error).message); }
     finally { setWorking(false); }
   };
   const execute = async (retry: boolean) => {
     if (!plan || busy) return;
-    setWorking(true); setError(""); setDone(0);
     const pending = retry ? failed.map(item => item.move) : plan;
-    const result = await executeFolderMoves(pending, async move => {
-      let current = snapshot.find(item => item.id === move.id);
-      if (!demo && retry) current = (await getDocument(token, move.id)).document;
-      if (retry && current?.folder === move.to) { onSaved(current); return current; }
-      if (retry && current?.folder !== move.from) throw new Error("다른 작업에서 위치가 변경됐습니다. 현재 위치를 확인해 주세요.");
-      const document = demo ? { ...current!, folder: move.to, current_version: current!.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(token, { id: move.id, expectedVersion: retry ? current!.current_version : move.version, folder: move.to, reason: "폴더 이름 및 위치 변경" })).document;
-      onSaved(document, current); return document;
-    }, setDone);
-    setFailed(result.failed); setCompleted(count => count + result.succeeded.length); setExecuted(true); setWorking(false);
+    await run(pending, snapshot, retry);
   };
-  return <KnowledgeModal title="폴더 관리" busy={busy} onClose={onClose}>
+  const prepareRef = useRef(preview); prepareRef.current = preview;
+  useEffect(() => { if (inlineRename && !started.current) { started.current = true; void prepareRef.current(); } }, [inlineRename]);
+  return <KnowledgeModal title={inlineRename ? "폴더 경로 변경" : "폴더 관리"} busy={busy} onClose={onClose}>
     <div className="form-modal folder-action-modal">
-      <header><h2>폴더 관리</h2><button aria-label="폴더 관리 닫기" disabled={busy} onClick={onClose}><X size={18} /></button></header>
+      <header><h2>{inlineRename ? "폴더 경로 변경" : "폴더 관리"}</h2><button aria-label="폴더 관리 닫기" disabled={busy} onClick={onClose}><X size={18} /></button></header>
       <div className="form-fields">
         {error ? <p className="inline-alert danger wide" role="alert">{error}</p> : null}
-        {!plan ? <>
-          <label className="wide"><span>관리할 폴더</span><select value={source} onChange={event => { const path = event.target.value; setSource(path); setName(path.split("/").at(-1) ?? ""); setParent(path.split("/").slice(0, -1).join("/")); }} disabled={busy}><option value="">폴더를 선택하세요</option>{options.map(path => <option key={path} value={path}>{path}</option>)}</select></label>
+        {!plan && inlineRename ? <p role="status" className="wide">{busy ? "영향 문서를 확인하고 있습니다…" : error ? "이름 변경을 적용하지 않았습니다. 닫고 다시 시도해 주세요." : "영향 문서 확인 중…"}</p> : !plan ? <>
+          <label className="wide"><span>관리할 폴더</span><select value={source} onChange={event => { const path = event.target.value; setSource(path); setName(path.split("/").at(-1) ?? ""); setParent(path.split("/").slice(0, -1).join("/")); }} disabled={busy || localOnly}><option value="">폴더를 선택하세요</option>{options.map(path => <option key={path} value={path}>{path}</option>)}</select></label>
           <label><span>폴더 이름 변경</span><input maxLength={160} value={name} onChange={event => setName(event.target.value)} disabled={busy} /></label>
-          <label><span>이동할 상위 폴더</span><select value={parent} onChange={event => setParent(event.target.value)} disabled={busy}><option value="">최상위</option>{knowledgeFolderOptions(options).filter(path => path !== source && !path.startsWith(`${source}/`)).map(path => <option key={path} value={path}>{path}</option>)}</select></label>
+          {vault ? <div className="wide"><KnowledgeVaultFolderChooser label="이동할 상위 폴더" options={options} value={parent} onChange={setParent} disabled={busy} excluded={[source]} onConfirm={path => void preview(path, true)} onCreate={onCreateFolder}/></div> : <label><span>이동할 상위 폴더</span><select value={parent} onChange={event => setParent(event.target.value)} disabled={busy}><option value="">최상위</option>{knowledgeFolderOptions(options).filter(path => path !== source && !path.startsWith(`${source}/`)).map(path => <option key={path} value={path}>{path}</option>)}</select></label>}
           <p className="wide">변경 후 위치 · {target || "폴더 이름을 입력하세요"}</p>
           <button className="secondary-button wide" disabled={!source || busy} onClick={() => onNew(source)}>이 폴더에 새 문서 만들기</button>
           <button className="secondary-button wide" disabled={!source || busy} onClick={() => onNew(`${source}/새 하위 폴더`)}>하위 폴더에 새 문서</button>
           <small className="wide">폴더는 첫 문서를 저장할 때 만들어집니다. 하위 폴더를 포함해 문서 위치만 변경하며, 권한 없는 문서는 실패 목록에 남습니다.</small>
         </> : <>
-          <p className="wide"><strong>{plan.length}개 문서</strong> · {source} → {plan[0]?.to.slice(0, target.length) || target}<br />보관 문서도 포함됩니다. 문서 ID·본문·소유자·상태는 유지됩니다.</p>
+          <p className="wide"><strong>문서 {plan.length}개의 경로가 함께 바뀝니다.</strong> · {source} → {target}<br />내용과 문서 연결(고유 ID)은 그대로입니다. 보관 문서도 포함됩니다.</p>
           <div className="folder-move-preview wide">{plan.map(move => <div key={move.id}><strong>{move.title}</strong><small>{move.from} → {move.to}</small></div>)}</div>
           {busy ? <p role="status" className="wide">{done} / {executed ? failed.length : plan.length}개 처리 중</p> : null}
           {executed ? <p role="status" className="wide">{completed}개 완료 · {failed.length}개 실패{failed.length ? " — 완료된 문서는 다시 처리하지 않습니다." : ""}</p> : null}
@@ -84,7 +99,7 @@ export function KnowledgeFolderManager({ source: initialSource, initialParent, o
         </>}
       </div>
       <footer><button className="ghost-button" disabled={busy} onClick={onClose}>닫기</button>{plan && !executed ? <button className="secondary-button" disabled={busy} onClick={() => setPlan(null)}>이전</button> : null}
-        {!plan ? <button className="primary-button" disabled={busy || !source} onClick={preview}>영향 문서 확인</button> : !executed ? <button className="primary-button" disabled={busy} onClick={() => execute(false)}>확인한 {plan.length}개 이동</button> : failed.length ? <button className="primary-button" disabled={busy} onClick={() => execute(true)}>실패 {failed.length}개 재시도</button> : null}
+        {!plan ? !inlineRename ? <button className="primary-button" disabled={busy || !source} onClick={() => void preview()}>{localOnly ? "빈 폴더 이동" : "영향 문서 확인"}</button> : null : !executed ? <button className="primary-button" disabled={busy} onClick={() => execute(false)}>확인한 {plan.length}개 이동</button> : failed.length ? <button className="primary-button" disabled={busy} onClick={() => execute(true)}>실패 {failed.length}개 재시도</button> : null}
       </footer>
     </div>
   </KnowledgeModal>;

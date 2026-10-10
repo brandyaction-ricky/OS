@@ -226,3 +226,47 @@
   .screen-vault .vault-workspace .document-editor .title-input { font-size:26px; }
   .screen-vault .vault-workspace .document-reader > h1 { font-size:26px; }
 }
+.screen-vault .knowledge-tree-scroll .folder-tree-item,
+.screen-vault .knowledge-tree-scroll .document-tree-select-row { position: relative; min-height: 30px; height: auto; }
+.screen-vault .knowledge-tree-scroll .folder-row { min-height: 30px; height: 30px; }
+.screen-vault .knowledge-tree-scroll .folder-tree-item:has(.vault-inline-name) { min-height: 60px; flex-wrap: wrap; }
+.screen-vault .vault-inline-name { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 6px; }
+.screen-vault .vault-inline-name input,.screen-vault .vault-inline-rename { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 4px; min-width: 0; padding: 3px 6px; }
+.screen-vault .vault-inline-rename { position: absolute; left: 40px; right: 30px; top: 2px; z-index: 3; }
+.screen-vault .vault-folder-table td { position: relative; }
+.screen-vault .vault-folder-table .vault-inline-rename { left: 24px; right: 4px; top: 7px; }
+.screen-vault .vault-folder-view h1 { position: relative; }
+.screen-vault .vault-folder-view h1 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; text-align: left; }
+.screen-vault .vault-save-status { color: var(--muted); font-size: 11px; margin-left: 12px; white-space: nowrap; }
+.screen-vault .vault-drop-hint { position: absolute; right: 5px; top: 25px; z-index: 4; padding: 3px 8px; background: var(--accent); color: white; border-radius: 4px; pointer-events: none; }
+.screen-vault .vault-folder-chooser { width: 100%; min-width: 0; }
+.screen-vault .vault-folder-chooser label { display: grid; gap: 8px; }
+.screen-vault .vault-folder-chooser input { width: 100%; padding: 9px; min-width: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); }
+.screen-vault .vault-chooser-tree { max-height: 260px; min-height: 100px; overflow: auto; margin: 10px 0; }
+.screen-vault .vault-chooser-tree > div { display: flex; min-width: 0; }
+.screen-vault .vault-chooser-tree button { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: 5px; background: none; color: var(--text-2); text-align: left; min-width: 0; }
+.screen-vault .vault-chooser-tree button[role=treeitem] { flex: 1; width: 100%; }
+.screen-vault .vault-chooser-tree button[aria-selected=true] { background: var(--accent-soft); color: var(--accent-2); }
+.screen-vault .vault-chooser-tree span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen-vault .vault-chooser-tree .vault-chooser-chevron { width: 25px; padding: 5px; flex: none; }
+.screen-vault .vault-folder-chooser footer,.screen-vault .vault-recent-folders { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.screen-vault .vault-folder-chooser footer span { min-width: 0; overflow-wrap: anywhere; flex: 1; font-size: 12px; }
+.screen-vault .vault-recent-folders { margin-top: 8px; }
+.screen-vault .vault-recent-folders { height: 24px; flex-wrap: nowrap; overflow: hidden; }
+.screen-vault .vault-recent-folders button { max-width: 84px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.screen-vault .vault-recent-folders button { border: 1px solid var(--line); border-radius: 12px; padding: 2px 8px; background: none; color: var(--text-2); }
+.screen-vault .vault-property-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 12px 0 18px; }
+.screen-vault .vault-property-chips details { position: relative; min-width: 0; max-width: 100%; }
+.screen-vault .vault-property-chips summary,.screen-vault .vault-tag { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--muted); padding: 4px 8px; border-radius: 14px; font-size: 12px; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
+.screen-vault .vault-property-chips .vault-folder-chooser,.screen-vault .vault-property-menu { position: absolute; top: 32px; left: 0; z-index: 20; width: min(340px, calc(100vw - 60px)); padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
+.screen-vault .vault-property-menu { width: min(250px, calc(100vw - 60px)); display: grid; gap: 6px; }
+.screen-vault .vault-tag button { display: flex; padding: 0; border: 0; background: none; color: inherit; }
+.screen-vault .vault-property-menu input { width: 100%; min-width: 0; }
+.screen-vault .vault-property-menu button { text-align: left; border: 0; color: var(--text); background: var(--panel-2); padding: 5px; }
+.screen-vault .vault-recovery,.screen-vault .vault-readonly-hint { margin: 8px 16px; padding: 8px 12px; border-radius: 7px; background: var(--accent-soft); color: var(--muted); font-size: 12px; }
+.screen-vault .vault-recovery button { margin-left: 10px; }
+.screen-vault .vault-bulk-bar,.screen-vault .vault-move-undo { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 45; display: flex; align-items: center; gap: 14px; max-width: calc(100vw - 24px); padding: 10px 16px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 10px; box-shadow: var(--shadow); white-space: nowrap; }
+.screen-vault .vault-move-undo { bottom: 70px; }
+.screen-vault .vault-help .form-fields { display: block; }
+.screen-vault .vault-help dl { display: grid; grid-template-columns: auto 1fr; gap: 8px 20px; }
+@media(max-width: 600px) { .screen-vault .vault-save-status { display: none; } .screen-vault .vault-property-chips details:has(.vault-folder-chooser) { position: static; } .screen-vault .vault-property-chips .vault-folder-chooser { left: 20px; top: 100px; } }
