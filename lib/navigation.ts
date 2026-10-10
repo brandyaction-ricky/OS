@@ -7,6 +7,8 @@ import {
   Code2,
   FileText,
   Film,
+  Image,
+  Lightbulb,
   Home,
   KeyRound,
   IdCard,
@@ -14,6 +16,8 @@ import {
   Link2,
   ListChecks,
   MessageSquareText,
+  Smartphone,
+  AtSign,
   ScrollText,
   Search,
   Settings,
@@ -40,6 +44,7 @@ export interface NavPage {
   description?: string;
   ready?: boolean;
   processNumber?: number;
+  children?: { label: string; href: string }[];
 }
 export interface NavStage {
   id: string;
@@ -65,16 +70,17 @@ export const NAV_STAGES: NavStage[] = [
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 6, ready: true },
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 7, aliases: ["콘텐츠 성과"], ready: true },
   ] },
-  { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/content/comments", pages: [
-    { label: "대시보드", href: "/automation/dashboard", icon: LayoutDashboard, ready: true },
-    { label: "최종 점검", href: "/automation/review", icon: ListChecks, ready: true },
-    { label: "Claude 요청함", href: "/automation/requests", icon: Bot, ready: true },
-    { label: "라이브러리", href: "/automation/library", icon: BookOpen, ready: true },
-    { label: "발행 캘린더", href: "/automation/calendar", icon: CalendarRange, ready: true },
-    { label: "성과 기록", href: "/automation/performance", icon: BarChart3, ready: true },
-    { label: "카드뉴스 시안", href: "/automation/templates", icon: Film, ready: true },
-    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true },
-    { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
+  { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
+    { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
+    { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
+    { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
+    { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },
+    { label: "쓰레드", href: "/automation/threads", icon: AtSign, processNumber: 4, ready: true },
+    { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
+    { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
+    { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
+    { label: "AI 작업함", href: "/automation/requests", icon: Bot, ready: true, children: [{ label: "작업 목록", href: "/automation/requests?tab=jobs" }, { label: "내 컴퓨터", href: "/automation/requests?tab=browsers" }, { label: "실행 기록", href: "/automation/requests?tab=runs" }] },
+    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true, children: [{ label: "실행 규칙", href: "/automation/settings?tab=run" }, { label: "스킬", href: "/automation/settings?tab=skills" }, { label: "템플릿·이미지", href: "/automation/settings?tab=templates" }, { label: "기본값", href: "/automation/settings?tab=defaults" }] },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge/vault", pages: [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
@@ -126,8 +132,11 @@ const NAV_ALIASES: Record<string, string> = {
   "/home/decisions": "/organization/meetings",
   "/settings/monitoring": "/settings/connections",
   "/settings/channels": "/settings/connections",
-  "/content/automation": "/automation/review",
+  "/content/automation": "/automation/topics",
   "/content/review": "/automation/review",
+  "/content/comments": "/automation/performance",
+  "/automation/library": "/automation/dashboard",
+  "/automation/templates": "/automation/settings",
   "/content/calendar": "/content/publishing",
 };
 export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/account", icon: UserRound, aliases: ["채널 연결"], ready: true };

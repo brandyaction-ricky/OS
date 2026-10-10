@@ -4,10 +4,10 @@ import {createHash} from 'node:crypto';
 import {PAGE_GUIDES,guideClosedKey} from '../lib/page-guides.ts';
 import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
 test('all current menus and account have three reviewed steps and a live next route',()=>{
-  assert.equal(Object.keys(PAGE_GUIDES).length,53);
+  assert.equal(Object.keys(PAGE_GUIDES).length,55);
   // Preserve the reviewed legacy guide snapshot while checking all new guides below.
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).filter(([path])=>!path.startsWith('/finance/')&&!path.startsWith('/hr/')&&!['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/decisions','/knowledge/docs','/knowledge/canon','/knowledge/graph','/knowledge/templates','/knowledge/trash'].includes(path)).sort(([a],[b])=>a.localeCompare(b)));
-  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'842353e6d79329088e538f6c9bdb197ac66d3a90063b53b3143e51bcc1b5364d');
+  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'79d30a31bf648e2fb612bac26b8c873a46fdb336e3a54279ffc0a265e9afba0f');
   for(const page of [...NAV_STAGES.flatMap(stage=>stage.pages),ACCOUNT_PAGE]){
     const guide=PAGE_GUIDES[page.href];assert.ok(guide,page.href);assert.equal(guide.steps.length,3);
     for(const step of guide.steps)assert.ok(typeof step==='string'&&step.trim().length>0,page.href);
