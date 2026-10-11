@@ -14,10 +14,14 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
   if(actor.type==="user"&&actor.role==="admin"){
     const privateIds=documents.filter(d=>d.owner_id!==actor.ownerId&&(d.status==="draft"||d.archived_from_status==="draft")).map(d=>d.id).filter((id):id is string=>Boolean(id));
     const granted=new Set<string>();
-    for(let offset=0;offset<privateIds.length;offset+=200){
-      const result=await service.from("os_note_access_grants").select("document_id").eq("admin_id",actor.ownerId).gt("expires_at",new Date().toISOString()).in("document_id",privateIds.slice(offset,offset+200));
-      if(result.error)throw new ApiError(503,"KNOWLEDGE_ACCESS_UNAVAILABLE","임시 열람 권한을 확인하지 못했습니다.");
-      for(const row of result.data??[])granted.add(row.document_id);
+    const now=new Date().toISOString();
+    for(let offset=0;offset<privateIds.length;offset+=800){
+      const chunks=[0,200,400,600].map(start=>privateIds.slice(offset+start,offset+start+200)).filter(chunk=>chunk.length);
+      const results=await Promise.all(chunks.map(chunk=>service.from("os_note_access_grants").select("document_id").eq("admin_id",actor.ownerId).gt("expires_at",now).in("document_id",chunk)));
+      for(const result of results){
+        if(result.error)throw new ApiError(503,"KNOWLEDGE_ACCESS_UNAVAILABLE","임시 열람 권한을 확인하지 못했습니다.");
+        for(const row of result.data??[])granted.add(row.document_id);
+      }
     }
     context.noteGrants=granted;
   }

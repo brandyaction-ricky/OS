@@ -6,6 +6,7 @@ import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { POLICY_FIELDS } from "@/lib/server/knowledge-page-access";
 import { createCanonicalProposal } from "@/lib/server/document-proposals";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
@@ -38,11 +39,11 @@ export async function GET(request: Request) {
     }
 
     // Pagination and totals are computed only after access filtering.
-    const summaryColumns = "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at";
+    const summaryColumns = `title,folder,brand,team,tags,source_ref,created_by,current_version,created_at,updated_at,page_order,steward_id,work_state,due_on,daily_on,review_due_on,archived_at,retention_hold,${POLICY_FIELDS}`;
     const listDocuments = (columns: string, scanOffset: number) => {
       let builder = createServiceSupabase()
       .from("os_documents")
-      .select(columns, { count: "exact" })
+      .select(columns)
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
       .range(scanOffset, scanOffset + 999);
@@ -62,10 +63,9 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
       return builder;
     };
-    void summaryColumns;
     const rows: KnowledgeDocument[] = [];
     for (let scanOffset = 0; ; scanOffset += 1000) {
-      const { data, error } = await listDocuments("*", scanOffset);
+      const { data, error } = await listDocuments(includeContent ? "*" : summaryColumns, scanOffset);
       if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.");
       const batch = (data ?? []) as unknown as KnowledgeDocument[];
       const allowed = await readableKnowledgePages(actor, batch);
