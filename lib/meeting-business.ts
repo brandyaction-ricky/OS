@@ -21,6 +21,7 @@ const COMPANY: MeetingBusiness = { recordBrand: "브랜디액션", wikiFolderSeg
 
 const BRAND_ALIASES: Record<string, MeetingBusiness> = {
   "마이인": MYIN,
+  "마이인(진단)": MYIN,
   "myin": MYIN,
   "브랜디에듀": BRANDYEDU,
   "브랜디액션에듀": BRANDYEDU,

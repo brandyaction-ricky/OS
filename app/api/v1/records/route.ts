@@ -14,6 +14,7 @@ import { changesAppealDecision, isAppealCandidatePackage } from "@/lib/appeal-de
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { assertDevelopmentRequestLink } from "@/lib/development-links";
 import { assertLegacyLeaveWritable } from "@/lib/server/hr-legacy-menus";
+import { recordDateColumn, recordDateRange } from "@/lib/team/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ export async function GET(request: Request) {
     if (recordType && !RECORD_TYPES.includes(recordType)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
     if (recordType === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 확인해 주세요.");
     if ((recordType === "development_notification" || recordType === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 알림 화면에서 확인해 주세요.");
+    const from = url.searchParams.get("from"), to = url.searchParams.get("to");
+    const dateRange = recordDateRange(from, to);
+    if ((from || to) && (!recordType || !dateRange)) throw new ApiError(400, "INVALID_DATE_RANGE", "기록 유형과 올바른 날짜 범위를 확인해 주세요.");
 
     let builder = actor.supabase
       .from("os_records")
@@ -63,6 +67,12 @@ export async function GET(request: Request) {
       .range(offset, offset + limit - 1);
     if (recordType) builder = builder.eq("record_type", recordType);
     else builder = builder.neq("record_type", "development_comment").neq("record_type", "development_notification").neq("record_type", "notification");
+    if (recordType && dateRange) {
+      const column = recordDateColumn(recordType);
+      const suffix = column === "due_date" ? "" : "T00:00:00+09:00";
+      if (dateRange.from) builder = builder.gte(column, `${dateRange.from}${suffix}`);
+      if (dateRange.to) builder = builder.lt(column, `${dateRange.to}${suffix}`);
+    }
     if (url.searchParams.get("excludeKind") === "development_request") {
       builder = builder.or("metadata->>kind.is.null,metadata->>kind.neq.development_request");
     }

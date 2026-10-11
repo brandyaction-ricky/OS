@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     const service = createServiceSupabase();
     const [initialProfiles, directoryResult] = await Promise.all([
       service.from("os_profiles")
-        .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,is_shared_account,canonical_publisher,must_change_password,created_at,updated_at")
+        .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,is_shared_account,member_kind,canonical_publisher,must_change_password,created_at,updated_at")
         .order("display_name", { ascending: true }),
       service.from("os_records")
         .select("id,title,team,brand,metadata,created_at,updated_at")
@@ -41,7 +41,7 @@ export async function GET(request: Request) {
       const legacy = await service.from("os_profiles")
         .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,must_change_password,created_at,updated_at")
         .order("display_name", { ascending: true });
-      profileResult = { ...legacy, data: legacy.data?.map((member) => ({ ...member, is_shared_account: false, canonical_publisher: false })) ?? null } as typeof profileResult;
+      profileResult = { ...legacy, data: legacy.data?.map((member) => ({ ...member, is_shared_account: false, member_kind: "staff", canonical_publisher: false })) ?? null } as typeof profileResult;
     }
     if (profileResult.error) throw new ApiError(400, "MEMBER_LIST_FAILED", "구성원 목록을 불러오지 못했습니다.", profileResult.error.message);
     if (directoryResult.error) throw new ApiError(400, "MEMBER_DIRECTORY_FAILED", "초대 구성원 정보를 불러오지 못했습니다.", directoryResult.error.message);

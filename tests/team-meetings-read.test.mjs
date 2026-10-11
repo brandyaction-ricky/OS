@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { projectMeetings } from "../lib/knowledge/meetings.ts";
+import { legacyMeetingStatus } from "../lib/team/status.ts";
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const actor = { ownerId: "reader", type: "user", role: "member", memberKind: "staff", active: true, allowedStatuses: [] };
@@ -28,6 +29,7 @@ function route({ meetings = [], decisions = [], attendees = [], failure = "", au
     "@/lib/server/auth": { authenticateRequest: async () => { if (!authenticated) throw new ApiError(401,"AUTH_REQUIRED","로그인 필요"); return { ownerId:"reader", supabase:db }; } },
     "@/lib/server/knowledge-access": { knowledgeAccessContext: async () => ({ actor }) },
     "@/lib/knowledge/meetings": { projectMeetings },
+    "@/lib/team/status": { legacyMeetingStatus },
     "@/lib/team/gate": { teamV1Enabled: () => enabled },
   };
   const exports = {};

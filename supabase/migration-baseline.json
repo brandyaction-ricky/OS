@@ -600,6 +600,16 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied to confirmed brandyaction-os-dev after the preceding content automation migration and explicit approval. The Supabase-generated version is reflected in this filename. Production requires separate approval."
+    },
+    {
+      "file": "20261011120000_team_meetings_v1.sql",
+      "sha256": "ce83c1d7dcf63bdce4f12c03d60242ce6062cef34d39a02edd331e67e3724a55",
+      "purpose": "add a guarded Team menu command facade for meeting review, decisions and human-approved legacy merge",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Prepared only. No DEV or production database execution has occurred. Existing company document rows remain unchanged."
     }
   ],
   "legacyMigrations": [

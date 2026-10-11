@@ -39,7 +39,7 @@ export async function generateMetadata({ params, searchParams }: GenericPageProp
   return { title: `${page.label} | 브랜디 OS` };
 }
 
-export default async function GenericPage({ params }: GenericPageProps) {
+export default async function GenericPage({ params, searchParams }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
   const teamEnabled = teamV1Enabled();
@@ -60,6 +60,12 @@ export default async function GenericPage({ params }: GenericPageProps) {
   if (teamEnabled && href === "/organization/meetings") return <TeamWorkspaceV1 section="meetings" />;
   if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
   if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
+  if (teamEnabled && href === "/home/decisions") {
+    const query = await searchParams;
+    const next = new URLSearchParams({ tab: "decisions" });
+    if (typeof query.record === "string") next.set("record", query.record);
+    redirect(`/organization/meetings?${next}`);
+  }
   if (href === "/organization/members") return <MembersWorkspace />;
   if (href === "/settings/audit") return <AuditWorkspace />;
   if (href === "/organization/projects") redirect("/organization/meetings");

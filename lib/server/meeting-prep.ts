@@ -23,7 +23,9 @@ export interface MeetingPrepResult {
   latestMeeting: { id: string; title: string; date: string | null; pending: string[]; summary: string } | null;
   pending: string[];
   todos: Array<Record<string, unknown>>;
+  completed: Array<Record<string, unknown>>;
   kpis: MeetingPrepKpi[];
+  unreviewed: Array<{ id: string; title: string; date: string | null }>;
 }
 
 /** 지난 회의 미해결 + 완료 전 업무 + 최근 KPI 신호를 모아 다음 회의 준비 자료를 만든다. */
@@ -33,15 +35,22 @@ export async function prepareMeetingBrief(
 ): Promise<MeetingPrepResult> {
   const scoped = (type: string, limit: number) => {
     let query = supabase.from("os_records").select("*").eq("record_type", type).is("archived_at", null).order("updated_at", { ascending: false }).limit(limit);
-    if (brand) query = query.eq("brand", brand);
+    // Historical meeting brands contain labels such as "자영업 교육"; filter them after normalization.
+    if (brand && type !== "meeting") query = query.eq("brand", brand);
     if (team) query = query.eq("team", team);
     return query;
   };
-  const [meetings, tasks, kpis] = await Promise.all([scoped("meeting", 10), scoped("task", 100), scoped("kpi", 20)]);
+  const [meetings, tasks, kpis] = await Promise.all([scoped("meeting", 500), scoped("task", 100), scoped("kpi", 20)]);
   const error = meetings.error || tasks.error || kpis.error;
   if (error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", error.message);
-  const latest = (meetings.data ?? []).find((item) => item.status === "done") ?? meetings.data?.[0] ?? null;
+  const wantedBusiness = brand ? resolveMeetingBusiness(brand)?.recordBrand ?? brand : "";
+  const brandedMeetings = (meetings.data ?? []).filter(item => !wantedBusiness || (resolveMeetingBusiness(item.brand ?? "")?.recordBrand ?? item.brand) === wantedBusiness);
+  const matchingMeetings = (brandedMeetings.length ? brandedMeetings : (meetings.data ?? []).filter(item => !item.brand))
+    .sort((a,b) => (b.starts_at ?? "").localeCompare(a.starts_at ?? ""));
+  const latest = matchingMeetings.find(item => item.status === "done") ?? null;
   let pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
+  if (Array.isArray(latest?.metadata?.items)) pending = [...pending, ...latest.metadata.items.filter((item: {kind?:string;state?:string}) => item.kind === "open" && item.state !== "discarded").map((item: {text?:string}) => String(item.text ?? "")).filter(Boolean)];
+  pending = [...new Set([...pending, ...matchingMeetings.filter(item => item.status === "review").flatMap(item => Array.isArray(item.metadata?.items) ? item.metadata.items.filter((candidate: {kind?:string;state?:string}) => candidate.kind === "decision" && candidate.state !== "discarded").map((candidate: {text?:string}) => String(candidate.text ?? "")).filter(Boolean) : [])])];
   let latestSummary = typeof latest?.metadata?.summary === "string" ? latest.metadata.summary : "";
   let latestTitle = latest?.title ?? "";
   let latestDate = latest?.starts_at ?? null;
@@ -68,10 +77,12 @@ export async function prepareMeetingBrief(
   }
 
   const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
+  const completed = (tasks.data ?? []).filter(item => item.status === "done" && (!latestDate || item.updated_at >= latestDate)).slice(0, 20);
   const latestKpis = (kpis.data ?? []).slice(0, 12).map((item) => {
     const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);
     const signal = buildPerformanceSignal({ title: item.title, current, previous, target: Number(item.metric_target ?? 0) || null, unit: item.metric_unit });
     return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: signal.label };
   });
-  return { latestMeeting: (latest || latestSummary) ? { id: latest?.id ?? "", title: latestTitle, date: latestDate, pending, summary: latestSummary } : null, pending, todos: openTodos, kpis: latestKpis };
+  const unreviewed = matchingMeetings.filter(item => item.status === "review").map(item => ({ id: item.id, title: item.title, date: item.starts_at ?? null }));
+  return { latestMeeting: (latest || latestSummary) ? { id: latest?.id ?? "", title: latestTitle, date: latestDate, pending, summary: latestSummary } : null, pending, todos: openTodos, completed, kpis: latestKpis, unreviewed };
 }
