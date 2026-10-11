@@ -63,9 +63,9 @@ test("the active chain records production assets and knowledge image links with 
   assert.equal(teamMeetings.developmentApprovedAt, "2026-10-11");
   assert.equal(teamMeetings.productionApprovedAt, null);
   assert.deepEqual(teamMeetings.appliedEnvironments, ["development"]);
-  assert.equal(teamAbsences.developmentApprovedAt, null);
+  assert.equal(teamAbsences.developmentApprovedAt, "2026-10-11");
   assert.equal(teamAbsences.productionApprovedAt, null);
-  assert.deepEqual(teamAbsences.appliedEnvironments, []);
+  assert.deepEqual(teamAbsences.appliedEnvironments, ["development"]);
   assert.deepEqual(result.errors, []);
 });
 

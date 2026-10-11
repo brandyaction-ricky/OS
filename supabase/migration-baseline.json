@@ -616,10 +616,10 @@
       "sha256": "68e38c5f01ea85f7cecdc384d2b0042d1bb5a4695f9db12ea489ba49117a07a6",
       "purpose": "provide a bounded, authenticated team-calendar view of approved HR absence dates without granting direct HR table access",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-11",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Pending environment approval. Additive function only; no existing HR or company document rows change."
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev after explicit approval. Supabase-generated migration version 20261011064111. The function grants execution only to authenticated; existing HR and company document row counts stayed unchanged. Production remains unapplied."
     }
   ],
   "legacyMigrations": [

@@ -12,14 +12,14 @@ The API now calls an authenticated, date-bounded SQL function. It returns only a
 - Local `npm run verify`: passed (789 tests, typecheck, lint with one existing image warning, production build).
 - Migration manifest integrity and new API regression tests: passed.
 - DEV DB precheck: Team command exists, new absence function does not, and direct service-role leave-date read is denied.
-- DEV migration and connected browser QA: pending explicit environment approval.
+- DEV migration: applied after approval; generated version `20261011064111`. Execution is limited to `authenticated`; `anon` and `service_role` cannot call it. Document count 879 and HR leave-request count 3 matched the pre-apply values.
+- Connected browser QA: pending an authenticated session on the new Preview.
 
 ## Release order and rollback
 
-1. Apply only `20261011061610_team_absences_read.sql` to the verified DEV project, then confirm the function's grants and that existing HR/document row counts did not change.
-2. Test Team schedule and people in an authenticated Preview against DEV. Do not create QA records.
-3. Review and approve the production SQL and exact application commit separately.
-4. In production, apply the additive function before deploying the API commit; then verify both Team pages. Existing direct HR table grants remain unchanged.
-5. If the API deployment fails, revert to the prior application deployment. The new function can remain unused; dropping it is optional and requires a separately reviewed migration.
+1. Test Team schedule and people in an authenticated Preview against DEV. Do not create QA records.
+2. Review and approve the production SQL and exact application commit separately.
+3. In production, apply the additive function before deploying the API commit; then verify both Team pages. Existing direct HR table grants remain unchanged.
+4. If the API deployment fails, revert to the prior application deployment. The new function can remain unused; dropping it is optional and requires a separately reviewed migration.
 
 The company OS development-management entry remains pending while its write connection is unavailable during the local-environment migration.
