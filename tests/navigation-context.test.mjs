@@ -27,7 +27,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
     home: ["/home"],
     content: ["/content/topics", "/content/scripts", "/content/packages", "/content/shorts", "/content/publishing", "/content/youtube", "/content/performance"],
     knowledge: ["/knowledge", "/knowledge/search", "/knowledge/review", "/knowledge/graph"],
-    team: ["/home/decisions", "/organization/meetings", "/organization/tasks", "/organization/schedule", "/organization/leave", "/organization/members"],
+    team: ["/home/decisions", "/organization/meetings", "/knowledge/meetings", "/organization/tasks", "/organization/schedule", "/organization/leave", "/organization/members"],
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
@@ -55,8 +55,9 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[7,10,5,4,7,3,4]);
-  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/canon','/knowledge/trash']);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[7,10,4,5,7,3,4]);
+  assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
+  assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);

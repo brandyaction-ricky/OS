@@ -88,6 +88,51 @@ async function createNote(page:import("@playwright/test").Page,title:string){
  await expect(page.getByRole("textbox",{name:"문서 제목"})).toHaveValue(title);
  return page.getByRole("textbox",{name:"editable markdown",exact:true});
 }
+test("document tree drag reparents a page and category drop returns it to the folder root",async({page})=>{
+ await createNote(page,"QA 부모");
+ await createNote(page,"QA 이동 문서");
+ const ids=await page.evaluate(()=>{
+  const key=Object.keys(localStorage).find(value=>value.startsWith("brandyos:knowledge:v1:"))!;
+  const state=JSON.parse(localStorage.getItem(key)!);
+  const owner=state.documents.find((doc:{title:string})=>doc.title==="QA 이동 문서").owner_id;
+  state.categories.push(
+   {id:"qa-cat-a",space:"mine",owner_id:owner,name:"QA 폴더 A",color:"blue",sort_order:100,partner_ids:[]},
+   {id:"qa-cat-b",space:"mine",owner_id:owner,name:"QA 폴더 B",color:"blue",sort_order:101,partner_ids:[]}
+  );
+  const parent=state.documents.find((doc:{title:string})=>doc.title==="QA 부모");
+  const child=state.documents.find((doc:{title:string})=>doc.title==="QA 이동 문서");
+  parent.category_id="qa-cat-a";child.category_id="qa-cat-a";
+  localStorage.setItem(key,JSON.stringify(state));
+  return {parent:parent.id,child:child.id};
+ });
+ await page.reload();
+ const toggle=page.getByRole("button",{name:/파일 트리/});
+ if(await toggle.getAttribute("aria-pressed")!=="true")await toggle.click();
+ const tree=page.getByRole("complementary",{name:"문서 파일 트리"});
+ const source=tree.locator(".kw-tree-row").filter({hasText:"QA 이동 문서"});
+ const target=tree.locator(".kw-tree-row").filter({hasText:"QA 부모"});
+ const transfer=await page.evaluateHandle(()=>new DataTransfer());
+ await source.dispatchEvent("dragstart",{dataTransfer:transfer});
+ await target.dispatchEvent("dragover",{dataTransfer:transfer});
+ await expect(target).toHaveClass(/kw-tree-drop-target/);
+ await target.dispatchEvent("drop",{dataTransfer:transfer});
+ await expect.poll(()=>page.evaluate(childId=>{
+  const key=Object.keys(localStorage).find(value=>value.startsWith("brandyos:knowledge:v1:"))!;
+  const state=JSON.parse(localStorage.getItem(key)!);
+  return state.documents.find((doc:{id:string})=>doc.id===childId)?.parent_document_id;
+ },ids.child)).toBe(ids.parent);
+ const transfer2=await page.evaluateHandle(()=>new DataTransfer());
+ await source.dispatchEvent("dragstart",{dataTransfer:transfer2});
+ const folder=tree.locator(".kw-tree-group").filter({hasText:"QA 폴더 B"}).locator("summary").first();
+ await folder.dispatchEvent("dragover",{dataTransfer:transfer2});
+ await folder.dispatchEvent("drop",{dataTransfer:transfer2});
+ await expect.poll(()=>page.evaluate(childId=>{
+  const key=Object.keys(localStorage).find(value=>value.startsWith("brandyos:knowledge:v1:"))!;
+  const state=JSON.parse(localStorage.getItem(key)!);
+  const child=state.documents.find((doc:{id:string})=>doc.id===childId);
+  return [child.category_id,child.parent_document_id];
+ },ids.child)).toEqual(["qa-cat-b",null]);
+});
 for(const width of [1440,390])test(`legacy knowledge is discoverable with original permissions and history at ${width}px`,async({page},info)=>{
  await page.setViewportSize({width,height:900});
  await createNote(page,"QA 이전 기준");

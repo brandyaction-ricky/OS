@@ -2,6 +2,7 @@ import { canReadDocument, canReadDocumentTree, canEditDocument, canManageCategor
 import { DEFAULT_TEMPLATES } from "./default-templates.ts";
 import { emptyKnowledgeState, kstDay, type KnowledgeState, type Command, type Category, type MeetingItem, type Proposal } from "./model.ts";
 import type { KnowledgeDocument, DocumentVersion } from "../types";
+import { canReparentKnowledgePage } from "../knowledge-pages.ts";
 
 export class KnowledgeCommandError extends Error { code: string; constructor(message: string, code = "INVALID_COMMAND") { super(message); this.code = code; } }
 const denied = () => { throw new KnowledgeCommandError("이 작업을 수행할 권한이 없습니다.", "FORBIDDEN"); };
@@ -66,6 +67,13 @@ export function applyKnowledgeCommand(previous: KnowledgeState, actor: Knowledge
     case "document.discard": { const d = find(); s.drafts = s.drafts.filter(draft => !(draft.document_id === d.id && draft.user_id === actor.ownerId)); break; }
     case "document.properties": {
       const d = find(); if (!canEditDocument(actor, d, context)) denied(); checkVersion(d);
+      if ("parentDocumentId" in c) {
+        const parentId = typeof c.parentDocumentId === "string" ? c.parentDocumentId : null;
+        const parent = parentId ? s.documents.find(row => row.id === parentId) : null;
+        if (parentId && (!parent || !canReadDocument(actor, parent, context) || parent.status !== d.status || (parent.category_id ?? null) !== (d.category_id ?? null))) denied();
+        if (!canReparentKnowledgePage(s.documents, d.id, parentId)) throw new KnowledgeCommandError("자신이나 하위 문서 아래로 옮길 수 없습니다.");
+        d.parent_document_id = parentId;
+      }
       if ("categoryId" in c) { if (!canChangeCategory(actor, d, context) && d.status !== "draft") denied(); const cat = s.categories.find(cat => cat.id === c.categoryId); if (c.categoryId && (!cat || cat.space !== (d.status === "draft" ? "mine" : "team") || (cat.space==="mine"&&cat.owner_id!==actor.ownerId) || cat.archived_at)) throw new KnowledgeCommandError("카테고리와 문서 공간이 다릅니다."); d.category_id = text(c.categoryId) || null; }
       if (c.workState && ["todo", "doing", "done"].includes(text(c.workState))) d.work_state = c.workState as KnowledgeDocument["work_state"];
       if ("dueOn" in c) d.due_on = text(c.dueOn) || null;

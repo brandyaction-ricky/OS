@@ -83,12 +83,12 @@ export const NAV_STAGES: NavStage[] = [
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge/vault", pages: [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
     { label: "내 노트", href: "/knowledge/notes", icon: FileText, ready: true },
-    { label: "회의록", href: "/knowledge/meetings", icon: CalendarRange, ready: true },
     { label: "회사 정본", href: "/knowledge/canon", icon: BookOpen, ready: true },
     { label: "휴지통", href: "/knowledge/trash", icon: ScrollText, ready: true },
   ] },
-  { id: "team", label: "팀", icon: Users, href: "/organization/meetings", pages: [
+  { id: "team", label: "업무 기록", icon: Users, href: "/organization/meetings", pages: [
     { label: "회의·결정", href: "/organization/meetings", icon: MessageSquareText, aliases: ["조직운영", "회의", "의사결정"], ready: true },
+    { label: "회의록", href: "/knowledge/meetings", icon: CalendarRange, ready: true },
     { label: "업무", href: "/organization/tasks", icon: ListChecks, aliases: ["업무 관리"], ready: true },
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정", "연차·휴가"], ready: true },
     { label: "팀원", href: "/organization/members", icon: Users, aliases: ["구성원"], ready: true },
