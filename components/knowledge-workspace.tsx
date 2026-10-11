@@ -648,7 +648,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     visit(folderTree, 0); return rows;
   }, [collapsedPages, expandedFolders, folderTree, treeFilter, vault, inventory, filtered, pendingFolders.paths]);
   const ownerNames = useMemo(() => new Map(members.map((member) => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
-  const vaultMembers = useMemo(() => vaultMemberOptions(members, profile), [members, profile]);
+  const vaultMembers = useMemo(() => vaultMemberOptions(members, profile, demo), [members, profile, demo]);
   useEffect(() => {
     if (!vault || !selectedId || !selected || selected.status === "archived") return;
     const ownerScope = selected.owner_id === profile?.id ? "mine" : `member:${selected.owner_id}`;

@@ -25,7 +25,7 @@ test("empty root and nested folders persist locally without API writes, rename i
   await page.getByRole("textbox", {name:"새 폴더 이름",exact:true}).press("Enter");
   const root = page.getByRole("treeitem", {name:"QA 고객 빈 폴더",exact:true});
   await expect(root).toHaveAttribute("aria-level", "1");
-  await expect(page.getByRole("treeitem", {name:"회사 wiki 3",exact:true})).toBeVisible();
+  await expect(page.getByRole("treeitem", {name:"회사 wiki 2",exact:true})).toBeVisible();
   await root.click({button:"right"});
   await page.getByRole("menuitem", {name:"새 하위 폴더",exact:true}).click();
   await page.getByRole("textbox", {name:"새 폴더 이름",exact:true}).fill("하위");
@@ -122,14 +122,14 @@ test("automatic edit, local draft recovery, explicit save, slash 17 and initial 
 test("folder inline rename reuses path plan without an input modal and retains document IDs", async ({page}) => {
   const writes=trackWrites(page);
   await page.goto("/knowledge/vault");
-  await page.getByRole("treeitem",{name:"회사 wiki 3",exact:true}).press("F2");
+  await page.getByRole("treeitem",{name:"회사 wiki 2",exact:true}).press("F2");
   await page.getByRole("textbox",{name:"이름 변경",exact:true}).fill("QA 위키");
   await page.getByRole("textbox",{name:"이름 변경",exact:true}).press("Enter");
   const result=page.getByRole("dialog",{name:"폴더 경로 변경",exact:true});
   await expect(result.getByRole("status")).toContainText("3개 완료 · 0개 실패");
   await expect(result.getByRole("textbox")).toHaveCount(0);
   await result.getByRole("button",{name:"닫기",exact:true}).click();
-  await expect(page.getByRole("treeitem",{name:"QA 위키 3",exact:true})).toBeVisible();
+  await expect(page.getByRole("treeitem",{name:"QA 위키 2",exact:true})).toBeVisible();
   await page.getByRole("button",{name:"문서·폴더 찾기",exact:true}).click();
   await page.getByRole("button").filter({hasText:"패키징 원칙"}).last().click();
   await expect(page).toHaveURL(/document=demo-packaging/);
@@ -161,9 +161,9 @@ test("drag move undo protects later unsaved edits before restoring the original 
   const transfer=await page.evaluateHandle(()=>new DataTransfer());
   await page.getByRole("treeitem").filter({hasText:"지식 정본 승격 절차"}).dispatchEvent("dragstart",{dataTransfer:transfer});
   await expect(page.getByText("최상위로 이동",{exact:true})).toBeVisible();
-  const target=page.getByRole("treeitem",{name:"리키 1",exact:true});
+  const target=page.getByRole("treeitem",{name:"회사 wiki 1",exact:true});
   await target.dispatchEvent("dragenter",{dataTransfer:transfer});
-  await expect(page.getByText("리키 안으로",{exact:true})).toBeVisible();
+  await expect(page.getByText("회사 wiki 안으로",{exact:true})).toBeVisible();
   await target.dispatchEvent("drop",{dataTransfer:transfer});
   await expect(page.locator(".vault-move-undo")).toBeVisible();
   const title=page.getByRole("textbox",{name:"문서 제목",exact:true});
@@ -190,6 +190,7 @@ test("canonical and review documents remain read only, tree rows are 30px and he
   await expect(page.locator(".vault-readonly-hint")).toBeVisible();
   const row=page.getByRole("treeitem",{name:"리키 1",exact:true});
   expect(await row.evaluate(node=>node.getBoundingClientRect().height)).toBe(30);
+  await page.getByRole("button",{name:"리키 펼치기",exact:true}).click();
   await row.press("ArrowDown");
   await expect(page.getByRole("treeitem",{name:"작업 중 1",exact:true})).toBeFocused();
   await page.getByRole("button",{name:"더 보기",exact:true}).click();
