@@ -27,6 +27,8 @@ import { canUseContentJevAssist } from "@/lib/content-jev-assist-gate";
 import { canUseContentTopicJevAssist } from "@/lib/content-topic-jev-assist-gate";
 import { ContentAutomationV07 } from "@/components/content-automation-v07";
 import { legacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
+import { teamV1Enabled } from "@/lib/team/gate";
+import { TeamWorkspaceV1 } from "@/components/team/team-workspace-v1";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -40,7 +42,8 @@ export async function generateMetadata({ params, searchParams }: GenericPageProp
 export default async function GenericPage({ params }: GenericPageProps) {
   const resolved = await params;
   const href = `/${resolved.stage}/${resolved.page}`;
-  if (["/organization/members", "/organization/leave", "/organization/schedule"].includes(href) && await legacyTeamMenusHidden()) {
+  const teamEnabled = teamV1Enabled();
+  if (["/organization/members", "/organization/leave", "/organization/schedule"].includes(href) && !(teamEnabled && href === "/organization/schedule") && await legacyTeamMenusHidden()) {
     redirect(href === "/organization/members" ? "/hr/employees" : href === "/organization/schedule" ? "/hr/leave?tab=calendar" : "/hr/leave");
   }
   const legacy = retiredRoute(href);
@@ -50,6 +53,13 @@ export default async function GenericPage({ params }: GenericPageProps) {
   const contentTopicJevAssistEnabled = canUseContentTopicJevAssist(process.env);
   const stage = NAV_STAGES.find((item) => item.pages.some((page) => page.href === href));
   const page = stage?.pages.find((item) => item.href === href);
+  if (href === "/organization/people") {
+    if (!teamEnabled) redirect("/organization/members");
+    return <TeamWorkspaceV1 section="people" />;
+  }
+  if (teamEnabled && href === "/organization/meetings") return <TeamWorkspaceV1 section="meetings" />;
+  if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
+  if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
   if (href === "/organization/members") return <MembersWorkspace />;
   if (href === "/settings/audit") return <AuditWorkspace />;
   if (href === "/organization/projects") redirect("/organization/meetings");

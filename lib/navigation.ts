@@ -7,6 +7,7 @@ import {
   Code2,
   FileText,
   Film,
+  Gauge,
   Image,
   Lightbulb,
   Home,
@@ -143,6 +144,7 @@ export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/acc
 const matchesPath = (pathname: string, href: string) => pathname === href || (href !== "/home" && pathname.startsWith(`${href}/`));
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
+  if (pathname === "/organization/people") return { label: "팀 현황", href: pathname, navHref: "/organization/members", icon: Gauge, ready: true };
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
     "/knowledge/decisions": "결정 모음", "/knowledge/docs": "팀 문서", "/knowledge/graph": "연결",
