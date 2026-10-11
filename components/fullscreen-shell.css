@@ -67,11 +67,13 @@
   .linear-shell.shell-v2.nav-collapsed .page-sidebar { width: 64px; padding: 12px 6px; }
   .linear-shell.shell-v2.nav-collapsed .app-main { padding-left: 64px; }
   .linear-shell.shell-v2.nav-collapsed .sidebar-head { padding: 0 0 10px; }
+  .linear-shell.shell-v2.nav-collapsed .sidebar-head .sidebar-collapse { align-self: center; margin: 0 auto; display: grid; place-items: center; }
   .linear-shell.shell-v2.nav-collapsed .sidebar-head .brand-copy { display: none; }
   .linear-shell.shell-v2.nav-collapsed .page-nav { padding: 0; }
   .linear-shell.shell-v2.nav-collapsed .nav-section-pages { display: none; }
   .linear-shell.shell-v2.nav-collapsed .nav-section-trigger { display: none; }
-  .linear-shell.shell-v2.nav-collapsed .compact-group { display: flex; }
+  .linear-shell.shell-v2.nav-collapsed .compact-group { display: flex; width: 44px; min-height: 44px; margin-inline: auto; gap: 0; }
+  .linear-shell.shell-v2.nav-collapsed .compact-group span { display: none; }
   .linear-shell.shell-v2.nav-collapsed .sidebar-foot :is(.profile-copy,.sidebar-status) { display: none; }
   .linear-shell.shell-v2.nav-collapsed .sidebar-foot .sidebar-request span { display: none; }
   .linear-shell.shell-v2.nav-collapsed .sidebar-foot :is(.sidebar-request,.profile-trigger) { width: 100%; justify-content: center; }

@@ -147,7 +147,7 @@
 }
 
 /* S1-3  편집 화면을 읽기 화면과 같은 780px 한 단으로 */
-.screen-vault .vault-workspace .document-editor > :is(.canonical-edit-banner,.title-input,.meta-input-grid,.knowledge-insert-toolbar,.knowledge-attachment-progress,.knowledge-live-editor,.knowledge-child-pages) {
+.screen-vault .vault-workspace .document-editor > :is(.canonical-edit-banner,.title-input,.meta-input-grid,.vault-property-chips,.knowledge-insert-toolbar,.knowledge-attachment-progress,.knowledge-live-editor,.knowledge-child-pages) {
   width:100%; max-width:780px; margin-left:auto; margin-right:auto;
 }
 

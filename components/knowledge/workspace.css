@@ -118,6 +118,9 @@
 .kw-root .knowledge-rich-content h1 { font-size: 30px; line-height: 1.3; font-weight: 750; }
 .kw-root .knowledge-rich-content h2 { font-size: 25px; line-height: 1.35; font-weight: 700; }
 .kw-root .knowledge-rich-content h3 { font-size: 21px; line-height: 1.4; font-weight: 700; }
+.kw-today .kw-editor-card .kw-title-input { font-size: 20px!important; line-height: 1.35; min-height: 36px!important; margin-bottom: 10px; }
+.kw-return-nav { margin-bottom: 12px; }
+.kw-return-nav a { display: inline-flex; align-items: center; min-height: 32px; padding: 6px 10px; border: 1px solid var(--kw-line); border-radius: 8px; background: var(--kw-surface); font-size: 13px; font-weight: 650; }
 .kw-meeting-layout > aside > .kw-card > p + button { margin-top: 14px; }
 .kw-meeting-layout > aside > .kw-card > .kw-card,
 .kw-meeting-layout > aside > .kw-card > .kw-stack { margin-top: 14px; }

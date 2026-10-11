@@ -156,7 +156,7 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
     <section ref={dialog} className="panel menu-access-dialog" role="dialog" aria-modal="true" aria-labelledby="menu-access-title" aria-describedby="menu-access-description">
       <header className="menu-access-heading"><div><small>계정별 메뉴 권한</small><h2 id="menu-access-title">{member.display_name} 권한 설정</h2><p>{roleLabel(member.role)} · {member.team || "팀 미지정"}</p></div><button className="icon-button" aria-label="권한 설정 닫기" disabled={saving} onClick={onClose}><X size={18} /></button></header>
       <div className="menu-access-scroll">
-        <p id="menu-access-description">선택한 메뉴만 사이드바와 화면에서 사용할 수 있습니다. 내 할 일과 내 계정은 항상 사용할 수 있습니다.</p>
+        <p id="menu-access-description">선택한 메뉴만 사이드바와 화면에서 사용할 수 있습니다. 홈과 내 계정은 항상 사용할 수 있습니다.</p>
         {isAdmin ? <p className="menu-access-info"><ShieldCheck size={17} />관리자는 모든 메뉴를 사용합니다. 관리 기능에 접근할 수 있도록 메뉴 제한을 적용하지 않습니다.</p> : <fieldset className="menu-access-mode" disabled={saving || !ready}><legend>설정 방식</legend><label><input type="radio" name="menu-access-mode" checked={mode === "default"} onChange={() => onMode("default")} />기본 권한 사용<small>역할·민감자료 권한에 맞는 메뉴 전체</small></label><label><input type="radio" name="menu-access-mode" checked={mode === "custom"} onChange={() => onMode("custom")} />메뉴 직접 선택<small>이 계정에 필요한 메뉴만 허용</small></label></fieldset>}
         <div className="menu-access-groups">
           {NAV_STAGES.filter(group => group.pages.length && (!group.requiresHr || hrEnabled)).map(group => group.requiresHr ? { ...group, pages: group.pages.filter(page => canOpenMenu(memberProfile(member), page.href)) } : group).map(group => {
