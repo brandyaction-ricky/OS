@@ -31,7 +31,7 @@ import {
 } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
 import type { ForwardedRef } from "react";
-import { useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { ContainerDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
@@ -140,8 +140,17 @@ export default function KnowledgeRichEditorInitialized({
 }) {
   const localRef = useRef<MDXEditorMethods | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
   const hasInlineOptions=Boolean(inlineOptions);
   const [picker, setPicker] = useState<{ query: string; index: number; top: number; left: number } | null>(null);
+  useEffect(() => {
+    if (!picker) return;
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !pickerRef.current?.contains(event.target)) setPicker(null);
+    };
+    document.addEventListener("pointerdown", dismiss, true);
+    return () => document.removeEventListener("pointerdown", dismiss, true);
+  }, [picker]);
   const choices = BLOCKS.filter(block => (inlineOptions || !["quote","code","rule","table","callout","decision","document"].includes(block.id)) && matchesVaultName(inlineOptions ? `${block.label} ${block.hint} ${block.id}` : block.label, picker?.query ?? ""));
   const openPicker = () => {
     if (disabled) return;
@@ -239,7 +248,7 @@ export default function KnowledgeRichEditorInitialized({
       );
     }}
   />
-    {picker ? <div className="knowledge-block-picker" role="listbox" aria-label="블록 종류" style={{ top: picker.top, left: picker.left }}>
+    {picker ? <div ref={pickerRef} className="knowledge-block-picker" role="listbox" aria-label="블록 종류" style={{ top: picker.top, left: picker.left }}>
       <input autoFocus aria-label="블록 찾기" placeholder="블록 이름·초성으로 찾기" value={picker.query} onChange={event => setPicker(value => value && ({...value, query: event.target.value, index: 0}))} />
       <small>블록 찾기 {picker.query ? `· ${picker.query}` : "· / 입력 후 검색"} · ↑↓ 선택 · Enter 추가</small>
       {choices.length ? choices.map((block, index) => <button type="button" key={block.id} role="option" aria-selected={picker.index === index} onMouseDown={event => event.preventDefault()} onClick={() => insertBlock(block.id)}><strong>{block.label}</strong><span>{block.hint}</span></button>) : <p>일치하는 블록이 없습니다.</p>}
