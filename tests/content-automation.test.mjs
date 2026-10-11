@@ -22,7 +22,7 @@ test("internal automation screens do not depend on an external contents-auto URL
     read("app/(os)/[stage]/[page]/page.tsx"),
   ]);
   assert.doesNotMatch(shell, /NEXT_PUBLIC_CONTENTS_AUTO_LINKS|external-app-link/);
-  for (const route of ["dashboard", "review", "requests", "library", "calendar", "performance", "templates", "settings"]) {
+  for (const route of ["dashboard", "topics", "cardnews", "shorts", "threads", "review", "calendar", "performance", "requests", "settings"]) {
     assert.match(navigation, new RegExp(`/automation/${route}`));
     assert.match(page, new RegExp(`/automation/${route}`));
   }

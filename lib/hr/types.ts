@@ -121,6 +121,7 @@ export interface Promotion extends Versioned {
   channel: "os_email" | "paper";
   days: number;
   designated_dates: string[];
+  designated_half_day?: "am" | "pm" | null;
   body: string;
   paper_path: string | null;
   read_at: string | null;

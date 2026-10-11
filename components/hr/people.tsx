@@ -169,8 +169,8 @@ export function Employees({ open }: { open: OpenDrawer }) {
           <Button onClick={exportPeople} disabled={exporting}>
             엑셀로 내보내기
           </Button>
-          <Button primary onClick={() => open({ kind: "new" })}>
-            ＋ 직원 등록
+          <Button primary disabled={hr.loading} onClick={() => open({ kind: "new" })}>
+            {hr.loading ? "불러오는 중…" : "＋ 직원 등록"}
           </Button>
         </div>
       </div>
@@ -190,6 +190,7 @@ export function Employees({ open }: { open: OpenDrawer }) {
             label: "상시근로자 판단",
             value: count.label,
             description: `${count.boundary ? "경계선 · " : ""}법정 산정은 노무사 확인`,
+            tone: count.unset ? "warn" : "",
           },
           {
             label: "급한 할 일",
@@ -268,7 +269,14 @@ export function Employees({ open }: { open: OpenDrawer }) {
                 isWorker = e && worker(hr.data, e),
                 miss = isWorker ? missingDocuments(hr.data, e.id) : [];
               return (
-                <tr key={id}>
+                <tr
+                  key={id}
+                  className="hr-clickable-row"
+                  onClick={(event) => {
+                    if ((event.target as HTMLElement).closest("a, button")) return;
+                    router.push(`/hr/employees/${id}`);
+                  }}
+                >
                   <td>
                     <Link href={`/hr/employees/${id}`} className="hr-name">
                       <span className="hr-avatar">{name.slice(0, 1)}</span>
@@ -398,18 +406,22 @@ export function PersonCard({ id, open }: { id: string; open: OpenDrawer }) {
   const [revealed, setRevealed] = useState<Record<string, string>>({}),
     [error, setError] = useState(""),
     [revealing, setRevealing] = useState("");
-  if (!e && !p)
-    return (
-      <Empty title="사람을 찾지 못했습니다">
-        <Link href="/hr/employees">직원 명부로 돌아가기</Link>
-      </Empty>
-    );
   const name = p?.display_name || e?.display_name || "",
     kind = p?.is_shared_account
       ? "shared"
       : p?.person_kind || (p ? null : "employee"),
     c = hr.data.contracts.find(
       (c) => c.hr_employee_id === e?.id && c.is_current,
+    );
+  useEffect(() => {
+    if (!name) return;
+    document.title = `${name} · 직원 명부 | 브랜디 OS`;
+  }, [name]);
+  if (!e && !p)
+    return (
+      <Empty title="사람을 찾지 못했습니다">
+        <Link href="/hr/employees">직원 명부로 돌아가기</Link>
+      </Empty>
     );
   async function reveal(field: string) {
     if (!e) return;
@@ -440,13 +452,13 @@ export function PersonCard({ id, open }: { id: string; open: OpenDrawer }) {
             보기
           </Button>
         ) : null}
-        <small className="hr-muted"> 열람 기록 남음</small>
+        {current ? <small className="hr-muted"> 열람 기록 남음</small> : null}
       </>
     );
   return (
     <>
       <p>
-        <Link href="/hr/employees">← 직원 명부</Link>
+        <Link href="/hr/employees">인사 노무 관리 › 직원 명부</Link> › {name}
       </p>
       <div className="hr-head">
         <div>
@@ -458,7 +470,7 @@ export function PersonCard({ id, open }: { id: string; open: OpenDrawer }) {
           <p>
             {(p?.roles || e?.job_roles || []).join(" · ")}
             {isWorker
-              ? ` · 입사 ${e.hire_date} · ${tenure(e.hire_date, hr.today)}`
+              ? `${(p?.roles || e?.job_roles || []).length ? " · " : ""}입사 ${e.hire_date} · ${tenure(e.hire_date, hr.today)}`
               : ""}
           </p>
         </div>
@@ -563,7 +575,14 @@ export function PersonCard({ id, open }: { id: string; open: OpenDrawer }) {
               </dl>
             </div>
             <div className="hr-foot">
-              {isWorker
+              {kind === null ? (
+                <span className="hr-banner warning">
+                  구분이 정해지지 않았습니다 — 근로자면 입사일·근로 조건을 입력해 주세요.{" "}
+                  <Button onClick={() => open({ kind: "edit", employee: e, profile: p })}>
+                    구분 정하기
+                  </Button>
+                </span>
+              ) : isWorker
                 ? "주민등록번호는 OS에 저장하지 않습니다. 4대보험 신고는 세무사·공단 시스템에서 합니다."
                 : kind === "shared"
                   ? "공용 계정은 사람이 아니어서 인원·연차·명부에서 빠집니다."

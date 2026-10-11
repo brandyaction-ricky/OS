@@ -13,6 +13,7 @@ import { RETIRE_LABELS, DOC_LABELS, type HrEvent } from "@/lib/hr/types";
 import { useHr } from "./context";
 import { Button, Cards, Drawer, Empty, Panel, Pill, Table, Tabs } from "./ui";
 import type { OpenDrawer } from "./people";
+import { MissingWorkersMessage } from "./notices";
 export function Documents({ open }: { open: OpenDrawer }) {
   const [history, setHistory] = useState<string | null>(null);
   const hr = useHr(),
@@ -65,7 +66,7 @@ export function Documents({ open }: { open: OpenDrawer }) {
                   0,
                 ),
                 description: "눌러서 날짜·파일 등록",
-                tone: "danger",
+                tone: people.some((e) => missingDocuments(hr.data, e.id).length) ? "danger" : "",
               },
               {
                 label: "30일 안 계약 만료",
@@ -137,7 +138,7 @@ export function Documents({ open }: { open: OpenDrawer }) {
                     ? "빠진 서류가 없습니다"
                     : "서류 대상 근로자가 없습니다"
                 }
-              />
+              ><MissingWorkersMessage /></Empty>
             )}
             <div className="hr-foot">
               교부는 근로자에게 계약서 사본을 준 날짜입니다. 계약 조건을 바꾸면

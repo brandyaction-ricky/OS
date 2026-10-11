@@ -5,7 +5,7 @@ test.beforeEach(async({page})=>{
 const paths=[
  ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
- ["/knowledge/graph","연결"],["/knowledge/review","검토함"],["/knowledge/templates","템플릿"],
+ ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","템플릿"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
 ];
 for(const width of [1440,1024,390]) test(`company workspace routes and horizontal bounds at ${width}px`,async({page},info)=>{
@@ -16,6 +16,7 @@ for(const width of [1440,1024,390]) test(`company workspace routes and horizonta
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await expect(page.getByText(/Application error/)).toHaveCount(0);
   if (path === "/knowledge") await expect(page.locator(".vault-workspace")).toBeVisible();
+  else if (path === "/knowledge/canon") await expect(page.getByRole("link",{name:"정본 검토·등록"})).toBeVisible();
   else await expect(page.locator(".kw-root")).not.toContainText(/undefined|NaN|Infinity|\[object/);
   if(path==="/knowledge"||path==="/knowledge/graph"){await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:info.outputPath(`${path.endsWith("graph")?"graph":"home"}-${width}.png`)});}
  }

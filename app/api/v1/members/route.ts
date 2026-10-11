@@ -19,6 +19,7 @@ const memberUpdateSchema = z.object({
   financeAccess: z.boolean(),
   isActive: z.boolean(),
   isSharedAccount: z.boolean().optional(),
+  canonicalPublisher: z.boolean().optional(),
 });
 
 export async function GET(request: Request) {
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     const service = createServiceSupabase();
     const [initialProfiles, directoryResult] = await Promise.all([
       service.from("os_profiles")
-        .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,is_shared_account,must_change_password,created_at,updated_at")
+        .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,is_shared_account,canonical_publisher,must_change_password,created_at,updated_at")
         .order("display_name", { ascending: true }),
       service.from("os_records")
         .select("id,title,team,brand,metadata,created_at,updated_at")
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
       const legacy = await service.from("os_profiles")
         .select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,must_change_password,created_at,updated_at")
         .order("display_name", { ascending: true });
-      profileResult = { ...legacy, data: legacy.data?.map((member) => ({ ...member, is_shared_account: false })) ?? null } as typeof profileResult;
+      profileResult = { ...legacy, data: legacy.data?.map((member) => ({ ...member, is_shared_account: false, canonical_publisher: false })) ?? null } as typeof profileResult;
     }
     if (profileResult.error) throw new ApiError(400, "MEMBER_LIST_FAILED", "구성원 목록을 불러오지 못했습니다.", profileResult.error.message);
     if (directoryResult.error) throw new ApiError(400, "MEMBER_DIRECTORY_FAILED", "초대 구성원 정보를 불러오지 못했습니다.", directoryResult.error.message);
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
           team: saved?.team ?? "", affiliation: saved?.brand ?? person.affiliation,
           roles: Array.isArray(metadata.roles) ? metadata.roles.map(String) : [...person.roles],
           onboarding: typeof metadata.onboarding === "object" && metadata.onboarding ? metadata.onboarding : {},
-          finance_access: Boolean(metadata.financeAccess), is_active: false, is_shared_account: false, must_change_password: true, account_connected: false,
+          finance_access: Boolean(metadata.financeAccess), is_active: false, is_shared_account: false, canonical_publisher: false, must_change_password: true, account_connected: false,
           created_at: saved?.created_at ?? "", updated_at: saved?.updated_at ?? "",
         };
       });
@@ -94,6 +95,9 @@ export async function PATCH(request: Request) {
     if (input.id === actor.id && (!input.isActive || input.role !== "admin")) {
       throw new ApiError(400, "SELF_ADMIN_PROTECTED", "현재 로그인한 관리자 자신의 권한은 낮추거나 중지할 수 없습니다.");
     }
+    if (input.canonicalPublisher && (input.role !== "admin" || !input.isActive)) {
+      throw new ApiError(400, "CANONICAL_PUBLISHER_REQUIRES_ADMIN", "정본 최종 등록 담당자는 활성 관리자여야 합니다.");
+    }
     const service = createServiceSupabase();
     if (input.isSharedAccount !== undefined) {
       const check = await service.from("os_profiles").select("is_shared_account").eq("id", input.id).maybeSingle();
@@ -108,8 +112,9 @@ export async function PATCH(request: Request) {
       onboarding: input.onboarding,
       finance_access: input.financeAccess,
       is_active: input.isActive,
+      ...(input.canonicalPublisher !== undefined ? { canonical_publisher: input.canonicalPublisher } : {}),
       updated_at: new Date().toISOString(),
-    }).eq("id", input.id).select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,must_change_password,created_at,updated_at").single();
+    }).eq("id", input.id).select("id,email,display_name,legal_name,role,team,affiliation,roles,onboarding,finance_access,is_active,canonical_publisher,must_change_password,created_at,updated_at").single();
     if (error || !data) throw new ApiError(400, "MEMBER_UPDATE_FAILED", "구성원 정보를 수정하지 못했습니다.", error?.message);
     if (input.isSharedAccount !== undefined) {
       const { error: sharedError } = await service.rpc("os_set_shared_account", {

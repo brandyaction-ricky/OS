@@ -1,0 +1,19 @@
+.ca-worker { max-width: 960px; min-height: 100vh; margin: 0 auto; padding: 32px 24px 80px; color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.6; }
+.ca-worker h1 { font-size: 28px; margin: 0 0 8px; }
+.ca-worker h2 { font-size: 19px; margin: 0 0 12px; }
+.ca-worker h3 { font-size: 15px; margin: 24px 0 8px; }
+.ca-worker header p { color: var(--muted); }
+.ca-worker-rules,.ca-worker-panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-top: 24px; }
+.ca-worker-rules ol { margin: 0; padding-left: 22px; }
+.ca-worker-rules li + li { margin-top: 8px; }
+.ca-worker-status { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+.ca-worker-status span { padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; }
+.ca-worker-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 6px; padding: 12px; font: inherit; }
+.ca-worker-panel label { display: block; margin: 12px 0 6px; font-weight: 650; }
+.ca-worker-panel textarea { width: 100%; min-height: 84px; box-sizing: border-box; padding: 12px; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; font: inherit; }
+.ca-worker-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.ca-worker-actions button { padding: 10px 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; }
+.ca-worker-actions button:first-child,.ca-worker-actions button:nth-child(2) { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.ca-worker-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.ca-worker-error { color: var(--danger); }
+@media(max-width:600px){.ca-worker{padding:18px 14px 48px}.ca-worker-rules,.ca-worker-panel{padding:16px}.ca-worker-actions button{width:100%}}

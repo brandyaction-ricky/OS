@@ -46,14 +46,14 @@ export async function syncChannelMetrics(now=new Date(),enabledPlatforms:readonl
         if(connectionError||!connection)throw Error("missing youtube connection");
         const youtubeConnection=connection as YoutubeStoredConnection;
         if(!youtubeAnalyticsConnected(youtubeConnection)){counts.reconnectRequired++;continue;}
-        const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",youtubeConnection.owner_id).maybeSingle();if(!owner?.is_active)continue;
+        const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",youtubeConnection.owner_id).maybeSingle();if(!owner?.is_active||post.metadata.space==="personal"&&post.owner_id!==youtubeConnection.owner_id)continue;
         values=await collectYoutubePostMetrics(youtubeConnection,videoId,publishedAt,now);metrics=YOUTUBE_ANALYTICS_METRICS;platform=youtubeMetricPlatform(post);ownerId=youtubeConnection.owner_id;dataSource="YouTube Analytics API";
       }else{
         const account=post.metadata.account as {platform?:"instagram"|"threads";ownerId?:string}|undefined;
         if(!account?.ownerId||!account.platform||!(account.platform in CHANNEL_METRICS)||!enabledPlatforms.includes(account.platform))continue;
         const {data:connection,error:connectionError}=await db.from("os_meta_connections").select("*").eq("owner_id",account.ownerId).eq("platform",account.platform).maybeSingle();
         if(connectionError||!connection)throw Error("missing connection");
-        const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",account.ownerId).maybeSingle();if(!owner?.is_active)continue;
+        const {data:owner}=await db.from("os_profiles").select("is_active").eq("id",account.ownerId).maybeSingle();if(!owner?.is_active||post.metadata.space==="personal"&&post.owner_id!==account.ownerId)continue;
         assertMetaModeMatches(connection);if(Boolean(post.metadata.mockPublished)!==(metaMode()==="mock"))continue;
         const externalId=Array.isArray(post.metadata.externalIds)?post.metadata.externalIds[0]:null;if(typeof externalId!=="string")continue;
         values=await collectPostMetrics(connection as MetaConnection,externalId);metrics=CHANNEL_METRICS[account.platform];platform=account.platform;ownerId=account.ownerId;dataSource="Meta API";mock=metaMode()==="mock";
@@ -65,7 +65,7 @@ export async function syncChannelMetrics(now=new Date(),enabledPlatforms:readonl
       for(const [metric,value] of Object.entries(values)){
         if(saved.has(metric))continue;
         const id=channelMetricId(post.id,platform,snapshot,metric);
-        const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_metric",title:post.title,status:"done",parent_id:post.parent_id,owner_id:ownerId,created_by:ownerId,updated_by:ownerId,metric_current:value,metric_unit:metric,starts_at:now.toISOString(),metadata:{channelSnapshotVersion:1,source:"api",snapshot,platform,platformFormat:post.metadata.platformFormat,publishId:post.id,contentId:post.id,metric,value,measuredAt:now.toISOString(),publishedAt,metricMode:"cumulative",dataSource,mock}},{onConflict:"id",ignoreDuplicates:true}).select("id");
+        const {data:inserted,error:writeError}=await db.from("os_records").upsert({id,record_type:"content_metric",title:post.title,status:"done",parent_id:post.metadata.space==="personal"?post.id:post.parent_id,owner_id:ownerId,created_by:ownerId,updated_by:ownerId,metric_current:value,metric_unit:metric,starts_at:now.toISOString(),metadata:{...(post.metadata.space==="personal"?{space:"personal"}:{}),channelSnapshotVersion:1,source:"api",snapshot,platform,platformFormat:post.metadata.platformFormat,publishId:post.id,contentId:post.id,metric,value,measuredAt:now.toISOString(),publishedAt,metricMode:"cumulative",dataSource,mock}},{onConflict:"id",ignoreDuplicates:true}).select("id");
         if(writeError)throw Error("metric save failed");counts.metrics+=inserted?.length??0;
       }
       counts.posts++;

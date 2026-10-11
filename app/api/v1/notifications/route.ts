@@ -14,18 +14,20 @@ function respondError(error: unknown) {
 }
 async function visibleSources(actor: RequestActor, rows: OsRecord[]) {
   const ids = (type: string) => [...new Set(rows.filter(row => row.metadata.sourceType === type).map(row => String(row.metadata.sourceId)))];
-  const recordIds = ids("record"), documentIds = ids("document");
-  const [records, documents] = await Promise.all([
+  const recordIds = ids("record"), documentIds = ids("document"),browserIds=ids("browser");
+  const [records, documents,browsers] = await Promise.all([
     recordIds.length ? actor.supabase.from("os_records").select("id,title,record_type,metadata").in("id",recordIds).is("archived_at",null) : {data:[],error:null},
     documentIds.length ? actor.supabase.from("os_documents").select("id,title").in("id",documentIds).neq("status","archived") : {data:[],error:null},
+    browserIds.length ? actor.supabase.from("os_ai_browsers").select("id,name").in("id",browserIds).eq("owner_id",actor.ownerId).is("removed_at",null) : {data:[],error:null},
   ]);
-  if (records.error || documents.error) throw new ApiError(500,"NOTIFICATION_SOURCE_FAILED","알림 원본의 접근 권한을 확인하지 못했습니다.");
+  if (records.error || documents.error || browsers.error) throw new ApiError(500,"NOTIFICATION_SOURCE_FAILED","알림 원본의 접근 권한을 확인하지 못했습니다.");
   const hrSources = rows.some(row => String(row.metadata.sourceType).startsWith("hr_"))
     ? await (await import("@/lib/server/hr-notifications")).hrNotificationSources(actor,rows) : [];
   return new Map<string, Pick<OsRecord, "id" | "title" | "record_type" | "metadata">>([
     ...hrSources,
     ...(records.data ?? []).map(row => [`record:${row.id}`,row] as const),
     ...(documents.data ?? []).map(row => [`document:${row.id}`,{...row,record_type:"task" as const,metadata:{}}] as const),
+    ...(browsers.data ?? []).map(row => [`browser:${row.id}`,{id:row.id,title:row.name,record_type:"ai_job" as const,metadata:{}}] as const),
   ]);
 }
 export async function GET(request: Request) {

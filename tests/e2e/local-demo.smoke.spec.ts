@@ -25,8 +25,8 @@ test("local demo renders the application shell and health contract", async ({ pa
 
 test("secondary publishing pages keep their current navigation context", async ({ page }) => {
   for (const [pathname, group, title] of [
-    ["/content/automation", "콘텐츠 자동화", "최종 점검"],
-    ["/content/review", "콘텐츠 자동화", "최종 점검"],
+    ["/content/automation", "콘텐츠 자동화", "주제 기획"],
+    ["/content/review", "콘텐츠 자동화", "최종 확인"],
     ["/content/calendar", "유튜브 공정", "발행·업로드"],
   ]) {
     await page.goto(pathname);

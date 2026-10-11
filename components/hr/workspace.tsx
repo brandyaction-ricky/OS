@@ -10,6 +10,7 @@ import { LeaveLedger } from "./ledger";
 import { Documents } from "./documents";
 import { HrFormDrawer, type DrawerState } from "./forms";
 import { LegacyImport } from "./legacy-import";
+import { MigrationNotice } from "./notices";
 export function HrWorkspace() {
   const hr = useHr(),
     path = usePathname(),
@@ -44,14 +45,14 @@ export function HrWorkspace() {
         </Empty>
       ) : (
         <>
+          {!self && hr.allowed ? <MigrationNotice /> : null}
           <nav className="hr-self-links" aria-label="인사·노무 메뉴">
             {(hr.allowed
               ? [
                   ["employees", "직원 명부"],
-                  ["leave", "휴가·일정"],
-                  ["leave-ledger", "연차 관리"],
+                  ["leave", "휴가 관리"],
+                  ["leave-ledger", "연차 원장·촉진"],
                   ["documents", "서류·계약"],
-                  ["my-leave", "내 휴가·연차"],
                 ]
               : [["my-leave", "내 휴가·연차"]]
             ).map(([key, label]) => (

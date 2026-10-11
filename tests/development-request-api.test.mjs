@@ -5,6 +5,7 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import * as zod from "zod";
 import * as requests from "../lib/development-requests.ts";
+import * as dbError from "../lib/development-request-db-error.ts";
 
 const projectId = "80950395-23b2-4b5a-bd0f-c3d8b8b78d92";
 const requestId = "28e1749d-92b9-476b-a17c-eb5be59d2822";
@@ -15,18 +16,21 @@ class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
-function createDatabase(rows, profiles = []) {
+function createDatabase(rows, profiles = [], insertError = null, rejectInsertReturning = false, readErrorAfterInsert = false) {
   return {
     from(table) {
       assert.ok(["os_records", "os_profiles"].includes(table));
       const records = table === "os_records" ? rows : profiles;
       const conditions = [], ordering = [];
-      let action = "read", fields, head = false, range;
+      let action = "read", fields, head = false, range, selected = false;
       const value = (row, key) => key === "metadata->>kind" ? row.metadata?.kind : row[key];
       const execute = () => {
         let matches = records.filter((row) => conditions.every((matchesRow) => matchesRow(row)));
+        if (action === "insert" && insertError) return { data: null, count: 0, error: insertError };
+        if (action === "insert" && selected && rejectInsertReturning) return { data: null, count: 0, error: { code: "42501", message: "new row violates row-level security policy" } };
+        if (action === "read" && readErrorAfterInsert && records.some((row) => row.id === requestId) && conditions.length === 3) return { data: null, count: 0, error: { code: "42501", message: "permission denied" } };
         if (action === "insert") {
-          const row = { ...structuredClone(fields), id: requestId, version: 1, archived_at: null, created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z" };
+          const row = { ...structuredClone(fields), version: 1, archived_at: null, created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z" };
           records.push(row); matches = [row];
         } else if (action === "update") {
           matches.forEach((row) => Object.assign(row, structuredClone(fields), { version: row.version + 1 }));
@@ -43,7 +47,7 @@ function createDatabase(rows, profiles = []) {
         return { data: head ? null : structuredClone(matches), count, error: null };
       };
       const builder = {
-        select(_columns, options = {}) { head = options.head ?? false; return builder; },
+        select(_columns, options = {}) { selected = true; head = options.head ?? false; return builder; },
         eq(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
         neq(key, expected) { conditions.push((row) => value(row, key) !== expected); return builder; },
         is(key, expected) { conditions.push((row) => value(row, key) === expected); return builder; },
@@ -61,11 +65,13 @@ function createDatabase(rows, profiles = []) {
   };
 }
 
-function setup(rows = [], profiles = []) {
-  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows, profiles) };
+function setup(rows = [], profiles = [], { insertError = null, rejectInsertReturning = false, readErrorAfterInsert = false, logger = console } = {}) {
+  const actor = { id: "reporter", role: "member", team: "콘텐츠", supabase: createDatabase(rows, profiles, insertError, rejectInsertReturning, readErrorAfterInsert) };
   const modules = {
     "next/server": { NextResponse: Response }, zod,
+    "node:crypto": { randomUUID: () => requestId },
     "@/lib/development-requests": requests,
+    "@/lib/development-request-db-error": dbError,
     "@/lib/server/auth": { authenticateRequest: async (request) => {
       if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED", "로그인이 필요합니다.");
       return actor;
@@ -74,7 +80,7 @@ function setup(rows = [], profiles = []) {
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ error: { code: error.code ?? "ERROR", message: error.message } }, { status: error.status ?? 500 }) },
   };
   const commonJsModule = { exports: {} };
-  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { URL, Response, console })((key) => {
+  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { URL, Response, console: logger })((key) => {
     if (!(key in modules)) throw new Error(`Unexpected module ${key}`);
     return modules[key];
   }, commonJsModule, commonJsModule.exports);
@@ -107,6 +113,41 @@ test("request API creates linked backlog request with server-owned identity and 
   rows[0].archived_at = "2026-09-05T13:00:00Z";
   assert.equal((await routes.POST(request("POST", { title: "다른 요청", parentId: projectId }))).status, 404);
   assert.equal(rows.length, 2);
+});
+
+test("request API saves and reads in separate statements when INSERT RETURNING is blocked by RLS", async () => {
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }], [], { rejectInsertReturning: true });
+  const response = await routes.POST(request("POST", { title: "저장 오류", parentId: projectId }));
+  assert.equal(response.status, 201);
+  assert.equal((await response.json()).record.id, requestId);
+  assert.equal(rows.length, 2);
+});
+
+test("request API distinguishes a saved request from a failed confirmation read", async () => {
+  const logged = [];
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }], [], {
+    readErrorAfterInsert: true, logger: { error: (...args) => logged.push(args) },
+  });
+  const response = await routes.POST(request("POST", { title: "저장 오류", parentId: projectId }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error.code, "REQUEST_CREATED_READ_FAILED");
+  assert.equal(rows.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(logged[0][1])), { sqlstate: "42501", signal: "PERMISSION_DENIED" });
+});
+
+test("request API reports a database rejection without logging request content", async () => {
+  const logged = [];
+  const { routes, rows } = setup([{ id: projectId, record_type: "project", archived_at: null }], [], {
+    insertError: { code: "42501", message: "new row violates row-level security policy", details: "private request text" },
+    logger: { error: (...args) => logged.push(args) },
+  });
+  const response = await routes.POST(request("POST", { title: "private request text", parentId: projectId }));
+  assert.equal(response.status, 500);
+  assert.equal((await response.json()).error.code, "REQUEST_CREATE_FAILED");
+  assert.equal(rows.length, 1);
+  assert.equal(logged[0][0], "development_request_insert_failed");
+  assert.deepEqual(JSON.parse(JSON.stringify(logged[0][1])), { sqlstate: "42501", signal: "ROW_LEVEL_SECURITY" });
+  assert.equal(JSON.stringify(logged).includes("private request text"), false);
 });
 
 test("request API rejects attachment paths uploaded by another member", async () => {

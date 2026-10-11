@@ -15,6 +15,8 @@ export async function POST(request:Request){
     const actor=await authenticateRequest(request);
     const input=requestSchema.parse(await parseJson(request,100_000));
     let current=await readPublication(actor,input.id);
+    if(current.metadata?.space==="personal")
+      throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 자동화 콘텐츠는 최종 확인과 발행 화면에서 처리해 주세요.");
     if(current.version!==input.expectedVersion)throw new ApiError(409,"PUBLICATION_CHANGED","게시물이 변경됐습니다. 새로 불러와 주세요.");
     const previous=publicationSettingsSchema.safeParse(current.metadata);
     if(previous.success)await authorizeMetaConnection(actor,previous.data.account.ownerId,previous.data.account.platform);

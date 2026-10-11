@@ -9,7 +9,7 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
   const service = createServiceSupabase();
   const { data: profile, error } = await service.from("os_profiles").select("*").eq("id", actor.ownerId).maybeSingle();
   if (error || !profile?.is_active) throw new ApiError(403, "KNOWLEDGE_ACCESS_UNAVAILABLE", "문서 열람 권한을 확인하지 못했습니다.");
-  const policyActor: KnowledgeActor = { ownerId:actor.ownerId,type:actor.type,role:actor.role,allowedStatuses:actor.allowedStatuses,memberKind: profile.member_kind ?? "staff", active: profile.is_active };
+  const policyActor: KnowledgeActor = { ownerId:actor.ownerId,type:actor.type,role:actor.role,allowedStatuses:actor.allowedStatuses,memberKind: profile.member_kind ?? "staff", active: profile.is_active, canPublishCanonical: profile.canonical_publisher === true && profile.role === "admin" };
   const context: KnowledgeAccessContext = { categories: new Map(), meetings: new Map(), noteGrants: new Set() };
   if(actor.type==="user"&&actor.role==="admin"){
     const privateIds=documents.filter(d=>d.owner_id!==actor.ownerId&&(d.status==="draft"||d.archived_from_status==="draft")).map(d=>d.id).filter((id):id is string=>Boolean(id));

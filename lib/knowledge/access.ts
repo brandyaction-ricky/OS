@@ -7,6 +7,7 @@ export interface KnowledgeActor {
   active?: boolean;
   allowedStatuses: readonly string[];
   canApprove?: boolean;
+  canPublishCanonical?: boolean;
 }
 export interface AccessDocument {
   id?: string;

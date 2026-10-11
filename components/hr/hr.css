@@ -82,6 +82,7 @@
   margin: 3px 0 1px;
   font-variant-numeric: tabular-nums;
 }
+.hr-card strong.warn { color: #a3650b; font-size: 16px; }
 .hr-panel {
   background: var(--hr-panel);
   border: 1px solid var(--hr-line);
@@ -315,6 +316,10 @@
   color: #d74444;
   background: color-mix(in srgb, #d74444 6%, var(--hr-panel));
 }
+.hr-banner.warning {
+  color: #a3650b;
+  background: color-mix(in srgb, #d99b20 10%, var(--hr-panel));
+}
 .hr-grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -470,6 +475,32 @@
 .hr-day.holiday {
   background: color-mix(in srgb, #d74444 7%, var(--hr-panel));
 }
+.hr-day.weekend {
+  background: color-mix(in srgb, var(--hr-muted) 7%, var(--hr-panel));
+}
+.hr-designation-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  max-width: 420px;
+}
+.hr-designation-calendar > span { text-align: center; color: var(--hr-muted); }
+.hr-designation-calendar > button {
+  min-height: 36px;
+  background: var(--hr-panel);
+  border: 1px solid var(--hr-line);
+  border-radius: 5px;
+  color: var(--hr-text);
+  cursor: pointer;
+}
+.hr-designation-calendar > button[aria-pressed="true"] {
+  background: var(--hr-accent);
+  color: white;
+}
+.hr-designation-calendar > button:disabled { opacity: .35; cursor: default; }
+.hr-designation-calendar > button.other { opacity: .55; }
+.hr-clickable-row { cursor: pointer; }
+.hr-clickable-row:hover td { background: color-mix(in srgb, var(--hr-accent) 6%, var(--hr-panel)); }
 .hr-day > header {
   display: flex;
   gap: 6px;
@@ -543,7 +574,7 @@
   font-size: 11px;
 }
 .hr-self-links {
-  display: flex;
+  display: none;
   gap: 12px;
   margin-bottom: 12px;
   font-size: 12px;
@@ -601,6 +632,7 @@
     padding: 16px;
   }
   .hr-self-links {
+    display: flex;
     flex-wrap: wrap;
   }
 }

@@ -15,6 +15,7 @@ import {
   promotion,
   addMonths,
   maskedEmployee,
+  workDays,
 } from "./domain";
 import { HR_MESSAGES } from "./messages";
 function fail(code: string): never {
@@ -370,6 +371,16 @@ export function demoCommand(
     const e = d.employees.find((e) => e.id === body.employee);
     if (!e) fail("HR_NOT_FOUND");
     const p = promotion(d, e, today);
+    const dates = body.dates as string[];
+    const designation = String(body.step).startsWith("designation");
+    if (designation) {
+      const target = String(body.step).endsWith("_extra")
+        ? Math.max(0, (p.extra?.days || 0) - Number(d.promotions.find((row) => row.hr_employee_id === e.id && row.step === "notice_1_extra")?.reply_days || 0))
+        : p.target;
+      if (Number(body.days) !== target || dates.length !== Math.ceil(target) || new Set(dates).size !== dates.length ||
+        (target % 1 !== 0 ? !["am", "pm"].includes(String(body.halfDay)) : body.halfDay != null)) fail("DATES_REQUIRED");
+      if (dates.some((day) => day < today || day < p.period.start || day > p.period.end || workDays(day, day, d.holidays).days !== 1)) fail("INVALID_DATES");
+    } else if (dates.length || body.halfDay != null) fail("DATES_REQUIRED");
     d.promotions.push({
       id,
       version: 1,
@@ -381,7 +392,8 @@ export function demoCommand(
       sent_at: today + "T00:00:00Z",
       channel: body.channel as "paper",
       days: Number(body.days),
-      designated_dates: body.dates as string[],
+      designated_dates: dates,
+      designated_half_day: body.halfDay as "am" | "pm" | null,
       body: String(body.body),
       paper_path: body.paper ? String(body.paper) : null,
       read_at: null,
@@ -428,6 +440,15 @@ export function demoCommand(
       r.reply_days = Math.min(r.days, r.reply_dates.length);
     }
     employeeId = r.hr_employee_id;
+  }
+  if (action === "legacy-menu-state") {
+    const hidden = body.hidden === true;
+    d.settings = [
+      ...d.settings.filter((setting) => setting.key !== "legacy_team_menus"),
+      { key: "legacy_team_menus", value: hidden ? "hidden" : "visible" },
+    ];
+    eventDetail = { to: hidden ? "hidden" : "visible" };
+    output = { hidden };
   }
   d.events.unshift({
     id,

@@ -5,10 +5,16 @@ import { Button, Drawer, Field, Pill } from "./ui";
 import { useHr } from "./context";
 import {
   activeEmployees,
+  addDays,
+  addMonths,
   leavePreview,
+  missingHolidayYears,
+  nextWorkday,
   promotion,
   retirement,
   shortDate,
+  weekday,
+  workDays,
 } from "@/lib/hr/domain";
 import {
   CONTRACT_LABELS,
@@ -25,6 +31,7 @@ import {
   type PromotionStep,
 } from "@/lib/hr/types";
 import { HR_MESSAGES } from "@/lib/hr/messages";
+import { MissingHolidayNotice } from "./notices";
 export type DrawerState = {
   kind:
     | "new"
@@ -72,11 +79,10 @@ export function HrFormDrawer({
     { employee: e, profile, kind } = state;
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [personKind, setPersonKind] = useState<PersonKind>(
+  const [personKind, setPersonKind] = useState<PersonKind | "">(
     profile?.is_shared_account
       ? "shared"
-      : profile?.person_kind ||
-          (profile?.affiliation?.includes("협업") ? "contractor" : "employee"),
+      : profile ? profile.person_kind || "" : "employee",
   );
   const [issue, setIssue] = useState(hr.admin && !profile),
     [contractType, setContractType] = useState(
@@ -90,10 +96,15 @@ export function HrFormDrawer({
       e?.id || activeEmployees(hr.data, hr.today)[0]?.id || "",
     ),
     [leaveType, setLeaveType] = useState<LeaveType>("annual"),
-    [start, setStart] = useState(hr.today),
-    [end, setEnd] = useState(hr.today),
+    [start, setStart] = useState(() => nextWorkday(hr.today, hr.data.holidays)),
+    [end, setEnd] = useState(() => nextWorkday(hr.today, hr.data.holidays)),
+    [datesChanged, setDatesChanged] = useState(false),
+    [holidayAcknowledged, setHolidayAcknowledged] = useState(false),
     [retireDate, setRetireDate] = useState(e?.retire_date || hr.today),
-    [channel, setChannel] = useState("os_email");
+    [channel, setChannel] = useState("os_email"),
+    [designatedDates, setDesignatedDates] = useState<string[]>([]),
+    [designatedHalf, setDesignatedHalf] = useState<"am" | "pm" | "">(""),
+    [designatedMonth, setDesignatedMonth] = useState(hr.today.slice(0, 7));
   const chosen = hr.data.employees.find((x) => x.id === who),
     half = ["half_am", "half_pm"].includes(leaveType),
     preview =
@@ -129,6 +140,9 @@ export function HrFormDrawer({
         ? promo.target
         : promo.unused
     : 0;
+  const designatedMonthStart = `${designatedMonth}-01`;
+  const designatedGridStart = addDays(designatedMonthStart, -((weekday(designatedMonthStart) + 6) % 7));
+  const designatedTotal = designatedDates.length - (designatedHalf ? 0.5 : 0);
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -136,6 +150,13 @@ export function HrFormDrawer({
     setBusy(true);
     setError("");
     try {
+      if ((kind === "new" || kind === "edit") && !personKind)
+        throw new Error("구분을 먼저 선택해 주세요.");
+      if (kind === "promotion" && isDesignation && (
+        designatedDates.length !== Math.ceil(promotionDays) ||
+        designatedTotal !== promotionDays ||
+        (promotionDays % 1 === 0 && designatedHalf !== "")
+      )) throw new Error("지정일과 대상 일수를 정확히 맞춰 주세요.");
       const file = f.get("file");
       let filePath: string | null = null;
       if (file instanceof File && file.size) {
@@ -291,6 +312,8 @@ export function HrFormDrawer({
           },
         });
       if (kind === "leave") {
+        if (missingHolidayYears(hr.data, start, half ? start : end).length && !holidayAcknowledged)
+          throw new Error("공휴일 미등록 안내를 확인해 주세요.");
         if (preview?.errors.length)
           throw new Error(
             HR_MESSAGES[preview.errors[0]] || "입력 내용을 확인해 주세요.",
@@ -327,17 +350,18 @@ export function HrFormDrawer({
           "PATCH",
         );
       if (kind === "promotion")
+        {
         await hr.save("leave-promotions", {
           employee: e?.id,
           step: state.step,
           days: promotionDays,
-          dates: value(f, "dates")
-            .split(/[\s,]+/)
-            .filter(Boolean),
+          dates: isDesignation ? designatedDates : [],
+          halfDay: isDesignation ? designatedHalf || null : null,
           channel,
           body: value(f, "body"),
           paper: filePath,
         });
+        }
       if (kind === "reply")
         await hr.save(`leave-promotions/${state.promotion?.id}/reply`, {
           dates: value(f, "dates")
@@ -391,9 +415,11 @@ export function HrFormDrawer({
             <>
               <Field label="구분" required>
                 <select
+                  required
                   value={personKind}
                   onChange={(x) => setPersonKind(x.target.value as PersonKind)}
                 >
+                  <option value="" disabled>구분을 선택해 주세요</option>
                   {Object.entries(KIND_LABELS).map(([v, l]) => (
                     <option
                       key={v}
@@ -865,11 +891,13 @@ export function HrFormDrawer({
                     required
                     value={start}
                     onInput={(x) => {
+                      setDatesChanged(true);
                       const day = x.currentTarget.value;
                       setStart(day);
                       if (end < day) setEnd(day);
                     }}
                     onChange={(x) => {
+                      setDatesChanged(true);
                       setStart(x.target.value);
                       if (end < x.target.value) setEnd(x.target.value);
                     }}
@@ -881,11 +909,18 @@ export function HrFormDrawer({
                     required
                     disabled={half}
                     value={half ? start : end}
-                    onInput={(x) => setEnd(x.currentTarget.value)}
-                    onChange={(x) => setEnd(x.target.value)}
+                    onInput={(x) => { setDatesChanged(true); setEnd(x.currentTarget.value); }}
+                    onChange={(x) => { setDatesChanged(true); setEnd(x.target.value); }}
                   />
                 </Field>
               </div>
+              <MissingHolidayNotice start={start} end={half ? start : end} />
+              {missingHolidayYears(hr.data, start, half ? start : end).length ? (
+                <label className="hr-check">
+                  <input type="checkbox" checked={holidayAcknowledged} onChange={(x) => setHolidayAcknowledged(x.target.checked)} />
+                  공휴일이 빠져 실제 휴가 일수가 달라질 수 있음을 확인했습니다.
+                </label>
+              ) : null}
               {preview ? (
                 <div className="hr-calc">
                   <b>{preview.days}일</b> · 주말 {preview.weekends}일 · 공휴일{" "}
@@ -896,7 +931,7 @@ export function HrFormDrawer({
                     : `이번 기간 잔여 ${preview.balance.left}일`}
                   <br />
                   저장 후 잔여 <b>{preview.after}일</b>
-                  {preview.errors.map((x) => (
+                  {datesChanged && preview.errors.map((x) => (
                     <p className="hr-danger" key={x}>
                       {x === "CROSSES_PERIOD"
                         ? `연차 기간(${shortDate(preview.balance.period.end)} 끝)을 넘습니다 — 두 건으로 나눠 입력해 주세요.`
@@ -906,7 +941,10 @@ export function HrFormDrawer({
                   {preview.overlaps.length ? (
                     <p>
                       <Pill tone="warn">
-                        같은 날 다른 사람 휴가 {preview.overlaps.length}건
+                        같은 날 다른 사람 휴가: {preview.overlaps.map((r) => {
+                          const name = hr.data.employees.find((e) => e.id === r.hr_employee_id)?.display_name || "근로자";
+                          return `${name} ${r.start_date}~${r.end_date}${r.status === "pending" ? " (대기)" : ""}`;
+                        }).join(", ")}
                       </Pill>
                     </p>
                   ) : null}
@@ -1010,17 +1048,41 @@ export function HrFormDrawer({
                 ) : null}
               </div>
               {isDesignation ? (
-                <Field
-                  label="지정일"
-                  required
-                  hint="YYYY-MM-DD 형식, 여러 날은 쉼표로 나눠 주세요."
-                >
-                  <textarea
-                    name="dates"
-                    required
-                    placeholder="2026-11-02, 2026-11-03"
-                  />
-                </Field>
+                <div className="hr-field">
+                  <strong>지정일 *</strong>
+                  <div className="hr-actions">
+                    <Button type="button" onClick={() => setDesignatedMonth(addMonths(designatedMonthStart, -1).slice(0, 7))}>이전 달</Button>
+                    <b>{designatedMonth.replace("-", "년 ")}월</b>
+                    <Button type="button" onClick={() => setDesignatedMonth(addMonths(designatedMonthStart, 1).slice(0, 7))}>다음 달</Button>
+                  </div>
+                  <div className="hr-designation-calendar" role="group" aria-label="연차 지정일 선택">
+                    {["월", "화", "수", "목", "금", "토", "일"].map((day) => <span key={day}>{day}</span>)}
+                    {Array.from({ length: 42 }, (_, index) => {
+                      const day = addDays(designatedGridStart, index);
+                      const enabled = !!promo && day >= hr.today && day >= promo.period.start && day <= promo.period.end && workDays(day, day, hr.data.holidays).days > 0;
+                      return <button
+                        key={day}
+                        type="button"
+                        disabled={!enabled}
+                        aria-label={`${day} 지정일`}
+                        aria-pressed={designatedDates.includes(day)}
+                        className={day.slice(0, 7) === designatedMonth ? "" : "other"}
+                        onClick={() => setDesignatedDates((dates) => dates.includes(day) ? dates.filter((value) => value !== day) : [...dates, day].sort())}
+                      >{Number(day.slice(-2))}</button>;
+                    })}
+                  </div>
+                  <p className={designatedTotal === promotionDays ? "hr-muted" : "hr-danger"}>
+                    고른 일수 {designatedTotal}일 / 지정 대상 {promotionDays}일
+                  </p>
+                  {promotionDays % 1 !== 0 && designatedDates.length ? (
+                    <div className="hr-actions" role="group" aria-label="마지막 지정일 반차">
+                      <span>마지막 날 {designatedDates.at(-1)} 반차</span>
+                      <Button type="button" aria-pressed={designatedHalf === "am"} onClick={() => setDesignatedHalf("am")}>오전</Button>
+                      <Button type="button" aria-pressed={designatedHalf === "pm"} onClick={() => setDesignatedHalf("pm")}>오후</Button>
+                    </div>
+                  ) : null}
+                  <small>토·일·등록된 공휴일과 연차 기간 밖 날짜는 고를 수 없습니다.</small>
+                </div>
               ) : null}
               <Field
                 label="보낼 본문"

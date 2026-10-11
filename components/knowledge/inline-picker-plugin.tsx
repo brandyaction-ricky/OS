@@ -12,6 +12,7 @@ export interface InlineOptions {
   people:InlineChoice[];
   createDocument?:(title:string)=>Promise<string|undefined>;
   onMention?:(name:string)=>void;
+  onDocumentQuery?:(query:string)=>void;
   onError:(message:string)=>void;
 }
 export const KnowledgeInlineOptions = createContext<InlineOptions|undefined>(undefined);
@@ -25,6 +26,8 @@ function InlinePicker() {
   const dismissed = useRef("");
   const previousQuery = useRef("");
   const signature = (m:Match)=>`${m.key}:${m.start}:${m.end}:${m.query}`;
+  const onDocumentQuery = options?.onDocumentQuery;
+  useEffect(() => { if (match?.kind === "document") onDocumentQuery?.(match.query); }, [match?.kind, match?.query, onDocumentQuery]);
   useEffect(()=>editor.registerUpdateListener(({editorState})=>{
     if(editor.isComposing())return;
     editorState.read(()=>{

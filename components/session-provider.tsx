@@ -58,7 +58,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     async function hydrate(nextSession: Session, requestGeneration: number, controller: AbortController) {
       const { data } = await client
         .from("os_profiles")
-        .select("id,email,display_name,role,team,must_change_password,is_active,finance_access")
+        .select("id,email,display_name,role,team,must_change_password,is_active,finance_access,person_kind,is_shared_account")
         .eq("id", nextSession.user.id)
         .abortSignal(controller.signal)
         .maybeSingle();
@@ -78,6 +78,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         mustChangePassword: Boolean(data?.must_change_password),
         isActive: data?.is_active === true,
         financeAccess: data?.finance_access === true,
+        personKind: data?.person_kind ?? null,
+        isSharedAccount: data?.is_shared_account === true,
       });
       setLoading(false);
     }

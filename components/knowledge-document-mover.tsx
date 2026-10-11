@@ -3,12 +3,16 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { getDocument, updateDocument } from "@/lib/api-client";
 import { executeFolderMoves, normalizeKnowledgeFolder, type FolderMove } from "@/lib/knowledge-folders";
+import { planVaultSelectionMove } from "@/lib/knowledge-vault-interactions";
 import type { KnowledgeDocument } from "@/lib/types";
 import { KnowledgeFolderPicker } from "./knowledge-folder-picker";
 import { KnowledgeModal } from "./knowledge-modal";
+import { KnowledgeVaultFolderChooser } from "./knowledge-vault-folder-chooser";
 
-export function KnowledgeDocumentMover({ documents, options, token, demo, onSaved, onBusy, onClose }: {
+export function KnowledgeDocumentMover({ documents, options, token, demo, onSaved, onBusy, onClose, vault = false, selectedFolders = [], onCreateFolder, onFolderMoved }: {
   documents: KnowledgeDocument[]; options: string[]; token: string | null; demo: boolean;
+  vault?: boolean; selectedFolders?: string[]; onCreateFolder?: (parent: string, name: string) => string;
+  onFolderMoved?: (source: string, destination: string) => void;
   onSaved: (document: KnowledgeDocument, previous?: KnowledgeDocument) => void; onBusy: (busy: boolean) => void; onClose: () => void;
 }) {
   const [folder, setFolder] = useState(documents[0]?.folder ?? "");
@@ -17,12 +21,21 @@ export function KnowledgeDocumentMover({ documents, options, token, demo, onSave
   const [failed, setFailed] = useState<Array<{move: FolderMove; message: string}>>([]);
   const [progress, setProgress] = useState({done: 0, total: 0});
   const [completed, setCompleted] = useState(0);
-  const move = async (retry = false) => {
+  const [folderTargets, setFolderTargets] = useState<Array<{from: string; to: string}>>([]);
+  const move = async (retry = false, chosenFolder = folder) => {
     if (busy) return;
     let destination: string;
-    try { destination = folder.trim() ? normalizeKnowledgeFolder(folder) : ""; } catch (reason) { setError((reason as Error).message); return; }
-    const plan = retry ? failed.map(item => item.move) : documents.filter(item => item.folder !== destination).map(item => ({id: item.id, title: item.title, from: item.folder, to: destination, version: item.current_version}));
-    if (!plan.length) { setError("현재 위치와 다른 폴더를 선택해 주세요."); return; }
+    try { destination = chosenFolder.trim() ? normalizeKnowledgeFolder(chosenFolder) : ""; } catch (reason) { setError((reason as Error).message); return; }
+    let plan: FolderMove[], targets = folderTargets;
+    try {
+      if (retry) plan = failed.map(item => item.move);
+      else { const selection = planVaultSelectionMove(documents, selectedFolders, destination, options); plan = selection.plan; targets = selection.targets; setFolderTargets(targets); }
+    } catch (reason) { setError((reason as Error).message); return; }
+    if (!plan.length) {
+      if (targets.length) { targets.forEach(item => onFolderMoved?.(item.from, item.to)); setCompleted(targets.length); setError(""); }
+      else setError("현재 위치와 다른 폴더를 선택해 주세요.");
+      return;
+    }
     setBusy(true); onBusy(true); setError(""); setProgress({done: 0, total: plan.length});
     const result = await executeFolderMoves(plan, async item => {
       const previous = documents.find(document => document.id === item.id)!;
@@ -33,11 +46,12 @@ export function KnowledgeDocumentMover({ documents, options, token, demo, onSave
       onSaved(updated, current); return updated;
     }, done => setProgress({done, total: plan.length}));
     setCompleted(count => count + result.succeeded.length); setFailed(result.failed); setBusy(false); onBusy(false);
+    if (!result.failed.length) targets.forEach(item => onFolderMoved?.(item.from, item.to));
   };
   return <KnowledgeModal title="문서 위치 이동" onClose={onClose} busy={busy}><div className="form-modal folder-action-modal">
     <header><h2>문서 위치 이동</h2><button disabled={busy} aria-label="문서 이동 닫기" onClick={onClose}><X size={18} /></button></header>
     <div className="form-fields"><p className="wide">선택한 문서 {documents.length}개</p><div className="folder-move-preview wide">{documents.map(item => <div key={item.id}><strong>{item.title}</strong><small>{item.folder || "분류 없음"}</small></div>)}</div>
-      <div className="wide"><KnowledgeFolderPicker options={options} label="이동할 폴더" value={folder} onChange={setFolder} disabled={busy || completed > 0 || failed.length > 0} /></div>
+      <div className="wide">{vault ? <KnowledgeVaultFolderChooser options={options} label="이동할 폴더" value={folder} onChange={setFolder} disabled={busy || completed > 0 || failed.length > 0} excluded={selectedFolders} onCreate={onCreateFolder} onConfirm={path => void move(false, path)} /> : <KnowledgeFolderPicker options={options} label="이동할 폴더" value={folder} onChange={setFolder} disabled={busy || completed > 0 || failed.length > 0} />}</div>
       {error ? <p className="inline-alert danger wide" role="alert">{error}</p> : null}
       {busy || completed || failed.length ? <p role="status" className="wide">{busy ? `${progress.done} / ${progress.total}개 처리 중` : `${completed}개 완료 · ${failed.length}개 실패`}</p> : null}
       {failed.map(item => <p className="inline-alert danger wide" key={item.move.id}>{item.move.title} · {item.message}</p>)}

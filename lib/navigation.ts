@@ -7,12 +7,17 @@ import {
   Code2,
   FileText,
   Film,
+  Image,
+  Lightbulb,
   Home,
   KeyRound,
+  IdCard,
   LayoutDashboard,
   Link2,
   ListChecks,
   MessageSquareText,
+  Smartphone,
+  AtSign,
   ScrollText,
   Search,
   Settings,
@@ -39,6 +44,7 @@ export interface NavPage {
   description?: string;
   ready?: boolean;
   processNumber?: number;
+  children?: { label: string; href: string }[];
 }
 export interface NavStage {
   id: string;
@@ -64,16 +70,17 @@ export const NAV_STAGES: NavStage[] = [
     { label: "유튜브 관리", href: "/content/youtube", icon: Youtube, processNumber: 6, ready: true },
     { label: "영상 성과", href: "/content/performance", icon: BarChart3, processNumber: 7, aliases: ["콘텐츠 성과"], ready: true },
   ] },
-  { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/content/comments", pages: [
-    { label: "대시보드", href: "/automation/dashboard", icon: LayoutDashboard, ready: true },
-    { label: "최종 점검", href: "/automation/review", icon: ListChecks, ready: true },
-    { label: "Claude 요청함", href: "/automation/requests", icon: Bot, ready: true },
-    { label: "라이브러리", href: "/automation/library", icon: BookOpen, ready: true },
-    { label: "발행 캘린더", href: "/automation/calendar", icon: CalendarRange, ready: true },
-    { label: "성과 기록", href: "/automation/performance", icon: BarChart3, ready: true },
-    { label: "카드뉴스 시안", href: "/automation/templates", icon: Film, ready: true },
-    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true },
-    { label: "댓글·답글", href: "/content/comments", icon: MessageSquareText, ready: true },
+  { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
+    { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
+    { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
+    { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
+    { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },
+    { label: "쓰레드", href: "/automation/threads", icon: AtSign, processNumber: 4, ready: true },
+    { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
+    { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
+    { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
+    { label: "AI 작업함", href: "/automation/requests", icon: Bot, ready: true, children: [{ label: "작업 목록", href: "/automation/requests?tab=jobs" }, { label: "내 컴퓨터", href: "/automation/requests?tab=browsers" }, { label: "실행 기록", href: "/automation/requests?tab=runs" }] },
+    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true, children: [{ label: "실행 규칙", href: "/automation/settings?tab=run" }, { label: "스킬", href: "/automation/settings?tab=skills" }, { label: "템플릿·이미지", href: "/automation/settings?tab=templates" }, { label: "기본값", href: "/automation/settings?tab=defaults" }] },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge/vault", pages: [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
@@ -88,12 +95,12 @@ export const NAV_STAGES: NavStage[] = [
     { label: "일정·휴가", href: "/organization/schedule", icon: CalendarRange, aliases: ["이번 주 일정", "연차·휴가"], ready: true },
     { label: "팀원", href: "/organization/members", icon: Users, aliases: ["구성원"], ready: true },
   ] },
-  { id: "hr", label: "인사 노무 관리", icon: Users, href: "/hr/employees", requiresHr: true, pages: [
+  { id: "hr", label: "인사 노무 관리", icon: IdCard, href: "/hr/employees", requiresHr: true, pages: [
     { label: "직원 명부", href: "/hr/employees", icon: Users, ready: true },
-    { label: "휴가·일정", href: "/hr/leave", icon: CalendarRange, ready: true },
-    { label: "연차 관리", href: "/hr/leave-ledger", icon: ListChecks, ready: true },
+    { label: "휴가 관리", href: "/hr/leave", icon: CalendarRange, aliases: ["휴가·일정"], ready: true },
+    { label: "연차 원장·촉진", href: "/hr/leave-ledger", icon: ListChecks, aliases: ["연차 관리"], ready: true },
     { label: "서류·계약", href: "/hr/documents", icon: FileText, ready: true },
-    { label: "내 휴가·연차", href: "/hr/my-leave", icon: UserRound, ready: true },
+    { label: "내 휴가", href: "/hr/my-leave", icon: UserRound, aliases: ["내 휴가·연차"], ready: true },
   ] },
   { id: "finance", label: "재무관리", icon: Wallet, href: "/finance/overview", requiresFinance: true, pages: [
     { label: "개요", href: "/finance/overview", icon: LayoutDashboard, aliases: ["재무 요약", "순수익"], ready: true },
@@ -125,8 +132,11 @@ const NAV_ALIASES: Record<string, string> = {
   "/home/decisions": "/organization/meetings",
   "/settings/monitoring": "/settings/connections",
   "/settings/channels": "/settings/connections",
-  "/content/automation": "/automation/review",
+  "/content/automation": "/automation/topics",
   "/content/review": "/automation/review",
+  "/content/comments": "/automation/performance",
+  "/automation/library": "/automation/dashboard",
+  "/automation/templates": "/automation/settings",
   "/content/calendar": "/content/publishing",
 };
 export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/account", icon: UserRound, aliases: ["채널 연결"], ready: true };
@@ -136,7 +146,7 @@ export function findPage(path: string): NavPage {
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
     "/knowledge/decisions": "결정 모음", "/knowledge/docs": "팀 문서", "/knowledge/graph": "연결",
-    "/knowledge/review": "검토함", "/knowledge/templates": "템플릿",
+    "/knowledge/review": "정본 검토·등록", "/knowledge/templates": "템플릿",
   };
   if (legacyDocuments[pathname]) return { label: legacyDocuments[pathname], href: pathname, navHref: "/knowledge/vault", icon: FileText, ready: true };
   if (pathname === "/knowledge/search") return { label: "문서 찾기", href: "/knowledge/search", navHref: "/knowledge/vault", icon: Search, ready: true };

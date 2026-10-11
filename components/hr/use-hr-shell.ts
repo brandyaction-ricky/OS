@@ -5,6 +5,7 @@ import { useSession } from "../session-provider";
 export function useHrShell(enabled: boolean) {
   const { accessToken, profile, demo, loading } = useSession();
   const [blocked, setBlocked] = useState(false),
+    [legacyHidden, setLegacyHidden] = useState(false),
     [badges, setBadges] = useState<Record<string, number>>({});
   const operator = profile?.role === "admin" || profile?.financeAccess;
   useEffect(() => {
@@ -13,6 +14,12 @@ export function useHrShell(enabled: boolean) {
       setBadges((event as CustomEvent<Record<string, number>>).detail);
     window.addEventListener("hr-demo-badges", listener);
     return () => window.removeEventListener("hr-demo-badges", listener);
+  }, [enabled, demo]);
+  useEffect(() => {
+    if (!enabled || !demo) return;
+    const listener = (event: Event) => setLegacyHidden((event as CustomEvent<boolean>).detail);
+    window.addEventListener("hr-demo-legacy-hidden", listener);
+    return () => window.removeEventListener("hr-demo-legacy-hidden", listener);
   }, [enabled, demo]);
   useEffect(() => {
     if (
@@ -35,6 +42,7 @@ export function useHrShell(enabled: boolean) {
         });
         const body = await response.json();
         if (!active) return;
+        if (response.ok) setLegacyHidden(body.legacyTeamMenusHidden === true);
         setBlocked(
           response.status === 403 && body.error?.code === "ACCOUNT_DISABLED",
         );
@@ -77,5 +85,6 @@ export function useHrShell(enabled: boolean) {
   return {
     blocked: enabled && !demo && blocked,
     badges: enabled ? badges : {},
+    legacyHidden: enabled && legacyHidden,
   };
 }

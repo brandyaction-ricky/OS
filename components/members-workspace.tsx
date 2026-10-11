@@ -29,6 +29,7 @@ interface Member {
   finance_access: boolean;
   is_active: boolean;
   is_shared_account: boolean;
+  canonical_publisher: boolean;
   created_at: string;
   updated_at: string;
   account_connected: boolean;
@@ -124,6 +125,7 @@ export function MembersWorkspace() {
           financeAccess: form.get("financeAccess") === "on",
           isActive: form.get("isActive") === "on",
           isSharedAccount: selected.account_connected ? form.get("isSharedAccount") === "on" : undefined,
+          canonicalPublisher: selected.account_connected ? form.get("canonicalPublisher") === "on" : undefined,
         }),
       });
       await load();
@@ -388,6 +390,15 @@ export function MembersWorkspace() {
                   disabled={profile?.role !== "admin" || !selected.account_connected}
                 />
                 <span>경영지원 민감정보 접근</span>
+              </label>
+              <label className="toggle-label">
+                <input
+                  type="checkbox"
+                  name="canonicalPublisher"
+                  defaultChecked={selected.canonical_publisher}
+                  disabled={profile?.role !== "admin" || !selected.account_connected}
+                />
+                <span>회사 정본 최종 등록 담당 <small>독립 승인 후 정본으로 옮길 수 있는 계정은 한 명입니다.</small></span>
               </label>
               {selected.account_connected ? (
                 <section className="member-password-admin">

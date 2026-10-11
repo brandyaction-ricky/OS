@@ -120,8 +120,11 @@ test("candidate approval excludes author, requires assignee or reasoned admin pr
  assert.throws(()=>run(state,{action:"candidate.decide",id:candidate.id,expectedVersion:1,decision:"approved"}));
  assert.throws(()=>run(state,{action:"candidate.decide",id:candidate.id,expectedVersion:1,decision:"approved"},admin));
  state=run(state,{action:"candidate.decide",id:candidate.id,expectedVersion:1,decision:"approved"},reviewer).state;
- assert.equal(state.documents.find(d=>d.id===id).status,"canonical");
+ assert.equal(state.documents.find(d=>d.id===id).status,"reviewed");
  assert.equal(state.documents.find(d=>d.id===id).current_version,1);
+ assert.throws(()=>run(state,{action:"candidate.publish",id:candidate.id,expectedVersion:1},admin));
+ state=run(state,{action:"candidate.publish",id:candidate.id,expectedVersion:1},{...admin,canPublishCanonical:true}).state;
+ assert.equal(state.documents.find(d=>d.id===id).status,"canonical");
 });
 test("metadata-only proposal creates one version and stale proposal cannot approve",()=>{
  let state=createDemoKnowledge(author);

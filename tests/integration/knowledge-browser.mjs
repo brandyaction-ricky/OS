@@ -44,7 +44,7 @@ try {
   await page.screenshot({ path: join(local.directory, 'connected-editor-desktop.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(appUrl + '/knowledge/review');
-  await expect(page.getByRole('heading', { name: '검토함', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '정본 검토·등록', exact: true })).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   assert.equal(overflow, false, 'mobile review horizontal overflow');
   await page.screenshot({ path: join(local.directory, 'connected-review-mobile.png'), fullPage: true });

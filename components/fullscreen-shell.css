@@ -17,6 +17,14 @@
 .linear-shell.shell-v2 .nav-section-trigger { padding: 9px 10px; font-size: 13px; font-weight: 700; }
 .linear-shell.shell-v2 .nav-section-pages { padding: 3px 0 7px 16px; border-left: 1px solid var(--line-soft); margin-left: 17px; }
 .linear-shell.shell-v2 .nav-section-pages .page-link { padding: 7px 10px; font-size: 12px; font-weight: 450; }
+.linear-shell.shell-v2 .page-link-row { display: flex; align-items: center; min-width: 0; }
+.linear-shell.shell-v2 .page-link-row .page-link { flex: 1; min-width: 0; }
+.linear-shell.shell-v2 .page-submenu-toggle { flex: 0 0 28px; display: grid; place-items: center; min-height: 28px; padding: 0; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
+.linear-shell.shell-v2 .page-submenu-toggle .expanded { transform: rotate(90deg); }
+.linear-shell.shell-v2 .page-submenu { display: grid; margin-left: 22px; border-left: 1px solid var(--line-soft); }
+.linear-shell.shell-v2 .page-submenu[hidden] { display: none; }
+.linear-shell.shell-v2 .page-sublink { padding: 6px 10px; color: var(--muted); font-size: 12px; text-decoration: none; }
+.linear-shell.shell-v2 .page-sublink.active { color: var(--text); background: var(--surface-selected); }
 .linear-shell.shell-v2 .nav-section-pages .page-link.active { border-radius: 0; box-shadow: inset 3px 0 var(--accent); font-weight: 700; }
 .linear-shell.shell-v2 .nav-section:first-child { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
 .linear-shell.shell-v2 .nav-section:first-child + .nav-section { border-top: 0; }
