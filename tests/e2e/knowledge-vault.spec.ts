@@ -8,8 +8,8 @@ for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, asyn
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/knowledge/vault");
   await expect(page.getByRole("heading", { name: "문서 보관함", exact: true }).first()).toHaveCount(1);
-  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
-  await expect(page.locator(".vault-count")).toHaveText("4");
+  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("mine");
+  await expect(page.locator(".vault-count")).toHaveText("3");
   await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
   await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(0);
   await page.getByRole("button", { name: "목차·정보 패널" }).click();
@@ -17,10 +17,10 @@ for (const width of [1440, 1024, 390]) test(`document vault at ${width}px`, asyn
   await page.getByRole("button", { name: "패널 닫기" }).click();
   await expect(page.getByRole("complementary", { name: "목차와 문서 정보" })).toHaveCount(0);
   if (width < 900) await page.getByRole("button", { name: "파일 트리 보기", exact: true }).click();
-  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 2", exact: true })).toBeVisible();
   await expect(page.getByRole("treeitem", { name: "리키 1", exact: true })).toBeVisible();
   // Wait for the mobile drawer transition and verify text isn't clipped off-screen.
-  await expect.poll(async () => (await page.getByRole("treeitem", {name:"회사 wiki 3",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
+  await expect.poll(async () => (await page.getByRole("treeitem", {name:"회사 wiki 2",exact:true}).boundingBox())?.x ?? -1).toBeGreaterThanOrEqual(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.screenshot({ path: info.outputPath(`vault-${width}.png`), fullPage: true });
   expect(errors).toEqual([]);
@@ -30,9 +30,58 @@ test("desktop vault keeps its tree visible even with a saved hidden-tree prefere
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.addInitScript(() => localStorage.setItem("brandy-knowledge-vault-tree", "false"));
   await page.goto("/knowledge/vault");
-  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("all");
-  await expect(page.locator(".vault-count")).toHaveText("4");
-  await expect(page.getByRole("treeitem", { name: "회사 wiki 3", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "보기 범위" })).toHaveValue("mine");
+  await expect(page.locator(".vault-count")).toHaveText("3");
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 2", exact: true })).toBeVisible();
+});
+
+test("vault restores the last open folders and keeps an all-closed tree closed", async ({ page }) => {
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("button", { name: "00_Skills 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 접기" })).toBeVisible();
+  await page.getByRole("button", { name: "00_Skills 접기" }).click();
+  await page.getByRole("button", { name: "02_Wiki 접기" }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
+
+  await page.goto("/knowledge/vault?folder=%ED%9A%8C%EC%82%AC%20wiki%2F%EC%B1%84%EB%84%90%20%EC%9A%B4%EC%98%81");
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await page.goto("/knowledge/vault?document=demo-packaging");
+  await expect(page.locator(".document-reader h1")).toHaveText("패키징 원칙");
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await page.goto("/knowledge/vault");
+
+  await page.getByRole("button", { name: "회사 wiki 펼치기" }).click();
+  await page.getByRole("button", { name: "회사 wiki/채널 운영 펼치기" }).click();
+  await page.goto("/home");
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("button", { name: "회사 wiki 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "회사 wiki/채널 운영 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
+});
+
+test("vault scope lists linked team member names with the signed-in member first", async ({ page }) => {
+  await page.goto("/knowledge/vault");
+  const scope = page.getByRole("combobox", { name: "보기 범위" });
+  await expect(scope.locator("option")).toHaveText(["리키", "정호"]);
+  await expect(scope).toHaveValue("mine");
+  await page.goto("/knowledge/vault?document=demo-packaging");
+  await expect(page.locator(".document-reader h1")).toHaveText("패키징 원칙");
+  await scope.selectOption("member:demo-jeongho");
+  await expect(page).not.toHaveURL(/document=/);
+  await expect(page.locator(".document-reader")).toHaveCount(0);
+  await expect(page.locator(".vault-count")).toHaveText("1");
+  await expect(page.getByRole("treeitem", { name: "회사 wiki 1", exact: true })).toBeVisible();
+  await scope.selectOption("mine");
+  await expect(page.locator(".vault-count")).toHaveText("3");
+  await page.goto("/knowledge/vault?document=demo-workflow");
+  await expect(page.getByRole("textbox", { name: "문서 제목" })).toHaveValue("지식 정본 승격 절차");
+  await expect(scope).toHaveValue("member:demo-jeongho");
 });
 
 test("vault toolbar tracks the resized tree and keeps its count next to the scope", async ({ page }) => {
@@ -77,7 +126,7 @@ test("entering the vault keeps the company document menu visible while opening a
   const sidebar = page.getByRole("complementary", { name: "주요 메뉴" });
   await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "사이드바 접기" })).toBeVisible();
-  await page.getByRole("treeitem", { name: "회사 wiki 3", exact: true }).click();
+  await page.getByRole("treeitem", { name: "회사 wiki 2", exact: true }).click();
   await expect(page).toHaveURL(/folder=/);
   await expect(sidebar.getByRole("link", { name: "문서 보관함" })).toBeVisible();
   await expect(page.getByRole("table", { name: "폴더 내용" })).toBeVisible();
@@ -86,7 +135,7 @@ test("entering the vault keeps the company document menu visible while opening a
 for (const width of [1024, 1440]) test(`vault restores its desktop columns after a mobile transition at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/knowledge/vault");
-  await expect(page.locator(".vault-count")).toHaveText("4");
+  await expect(page.locator(".vault-count")).toHaveText("3");
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator(".vault-workspace")).toHaveClass(/tree-hidden/);
   await page.setViewportSize({ width, height: 900 });
@@ -123,6 +172,7 @@ test("folder table matches the reference and reuses selection, menus and folder 
   await page.setViewportSize({ width: 1804, height: 960 });
   await page.addInitScript(() => localStorage.setItem("brandy-os-theme", "light"));
   await page.goto("/knowledge/vault");
+  await page.getByRole("combobox", { name: "보기 범위" }).selectOption("member:demo-jeongho");
   await page.getByRole("table", { name: "폴더 내용" }).getByRole("button", { name: "회사 wiki 폴더 열기", exact: true }).click();
   await page.getByRole("button", { name: "운영 원칙 폴더 열기", exact: true }).click();
   const table = page.getByRole("table", { name: "폴더 내용" });
@@ -142,7 +192,7 @@ test("folder table matches the reference and reuses selection, menus and folder 
   await page.getByRole("textbox", { name: "새 폴더 이름" }).press("Enter");
   await expect(page.getByRole("treeitem", {name:"QA 하위 폴더 빈 폴더",exact:true})).toBeVisible();
   await expect(page.locator(".knowledge-new-canvas")).toHaveCount(0);
-  await expect(page.locator(".vault-count")).toHaveText("4");
+  await expect(page.locator(".vault-count")).toHaveText("1");
   const switcher = page.getByRole("group", { name: "폴더 보기 방식" });
   await switcher.getByRole("button", { name: "갤러리", exact: true }).click();
   await expect(switcher.getByRole("button", { name: "갤러리", exact: true })).toHaveAttribute("aria-pressed", "true");

@@ -50,7 +50,7 @@ import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
 import { PERSONAL_VAULT_ROOTS, stableWikiLink } from "@/lib/knowledge-vault";
-import { canEditVaultDocument, matchesVaultName, newVaultFolder, selectedVaultDocuments, vaultFolderKey } from "@/lib/knowledge-vault-interactions";
+import { canEditVaultDocument, isStringArray, matchesVaultName, newVaultFolder, readVaultStorage, selectedVaultDocuments, vaultFolderKey, writeVaultStorage } from "@/lib/knowledge-vault-interactions";
 import { useVaultFolders } from "@/hooks/use-vault-folders";
 import { KnowledgeVaultFolderChooser } from "./knowledge-vault-folder-chooser";
 import { KnowledgeVaultProperties } from "./knowledge-vault-properties";
@@ -72,12 +72,14 @@ import { KnowledgeVaultFolderView } from "./knowledge-vault-folder-view";
 import { KnowledgeImageRecovery } from "./knowledge-image-recovery";
 import { dispatchKnowledgeFileDropPosition } from "./knowledge-image-drag-plugin";
 import { getDemoKnowledgeDocuments, getDemoKnowledgeVersions, saveDemoKnowledgeDocument, addDemoKnowledgeEvent } from "@/lib/demo-knowledge-store";
+import { vaultMemberOptions } from "@/lib/knowledge-vault-members";
 import type { DocumentStatus, DocumentVersion, KnowledgeDocument } from "@/lib/types";
 import { statusLabel } from "./dashboard";
 import { DevelopmentDocumentLiveLog } from "./development-document-live-log";
 import { useSession } from "./session-provider";
 
 const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "review", "reviewed", "canonical"];
+const DEFAULT_EXPANDED_FOLDERS = ["00_Skills", "02_Wiki"];
 
 const OWNER_FILTERS = [
   { id: "mine_company", label: "내 문서 + 회사 정본" },
@@ -248,7 +250,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const { demo, accessToken, profile } = useSession();
   const [documents, setDocuments] = useState<KnowledgeDocument[]>(() => demo ? getDemoKnowledgeDocuments() : []);
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("document"));
-  const [ownerFilter, setOwnerFilter] = useState(vault || Boolean(searchParams.get("document")) ? "all" : "mine_company");
+  const [ownerFilter, setOwnerFilter] = useState(vault ? "mine" : Boolean(searchParams.get("document")) ? "all" : "mine_company");
   const [members, setMembers] = useState<OsMember[]>([]);
   const [mode, setMode] = useState<"read" | "edit" | "info">("read");
   const [workspaceView, setWorkspaceView] = useState<"document" | "folder" | "gallery">(vault && !searchParams.get("document") ? "folder" : "document");
@@ -327,7 +329,21 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
+  const [expandedFolders, setExpandedFoldersState] = useState<Set<string>>(() => new Set(DEFAULT_EXPANDED_FOLDERS));
+  const expandedFoldersRef = useRef(expandedFolders);
+  expandedFoldersRef.current = expandedFolders;
+  const hasStoredExpansion = useRef(false);
+  const [expansionReadyFor, setExpansionReadyFor] = useState<string | null>(null);
+  const expansionKey = `brandy-vault-v1-expanded-folders:${profile?.id ?? ""}`;
+  const setExpandedFolders = useCallback((change: (current: Set<string>) => Set<string>) => {
+    const next = change(expandedFoldersRef.current);
+    expandedFoldersRef.current = next;
+    setExpandedFoldersState(next);
+    if (vault && profile?.id) {
+      hasStoredExpansion.current = true;
+      writeVaultStorage(expansionKey, [...next]);
+    }
+  }, [expansionKey, profile?.id, vault]);
   const [sortAscending, setSortAscending] = useState(false);
   const [listLoading, setListLoading] = useState(!demo);
   const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
@@ -434,8 +450,21 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   }, [focusMode, preferencesReady, treeOpen, paneWidth, vault]);
 
   useEffect(() => {
+    if (!vault || !profile?.id) return;
+    const saved = readVaultStorage<string[] | null>(expansionKey, null, isStringArray);
+    const restored = new Set(saved ?? DEFAULT_EXPANDED_FOLDERS);
+    hasStoredExpansion.current = saved !== null;
+    expandedFoldersRef.current = restored;
+    setExpandedFoldersState(restored);
+    setExpansionReadyFor(profile.id);
+  }, [expansionKey, profile?.id, vault]);
+
+  useEffect(() => {
     if (demo) {
-      if (profile) setMembers([{ id: profile.id, email: profile.email, display_name: profile.displayName, role: profile.role, team: profile.team, is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: profile.role === "admin" }]);
+      if (profile) setMembers([
+        { id: profile.id, email: profile.email, display_name: profile.displayName, role: profile.role, team: profile.team, is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: profile.role === "admin" },
+        { id: "demo-jeongho", email: "", display_name: "정호", role: "member", team: "전체", is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: false },
+      ]);
       return;
     }
     listMembers(accessToken).then((result) => setMembers(result.members.filter((member) => member.is_active))).catch(() => setMembers([]));
@@ -479,9 +508,9 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   useEffect(() => { if (vault && selectedId) setMode(editableSelected ? "edit" : "read"); }, [vault, selectedId, editableSelected]);
   useEffect(() => {
     if (!vault || listLoading || !selectedId || !selectedFolder) return;
-    setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([selectedFolder])]));
+    if (!hasStoredExpansion.current) setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([selectedFolder])]));
     void loadFolder(selectedFolder);
-  }, [vault, listLoading, selectedId, selectedFolder, loadFolder]);
+  }, [vault, listLoading, selectedId, selectedFolder, loadFolder, setExpandedFolders]);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -493,21 +522,22 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       if (revision !== epoch.current) return;
       setInventory(result.folders);
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
-      // A direct nested-folder URL starts with only the default roots expanded.
-      // Load its ancestors and exact folder as well, including after scope reloads.
-      const foldersToLoad = new Set(expandedFolders);
+      // Restore the saved tree before loading; direct folder URLs also need their ancestors.
+      const foldersToLoad = new Set(expandedFoldersRef.current);
       if (vault && managedFolderRef.current) {
         for (const path of knowledgeFolderOptions([managedFolderRef.current])) foldersToLoad.add(path);
-        setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
+        if (!hasStoredExpansion.current) setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
       }
       await Promise.all([...foldersToLoad].map(loadFolder));
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다."); }
     finally { if (revision === epoch.current) setListLoading(false); }
   // Selection and expansion do not reload the folder inventory.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, demo, ownerFilter, loadFolder, vault]);
-  useEffect(() => { void reload(); }, [reload]);
+  }, [accessToken, demo, ownerFilter, loadFolder, setExpandedFolders, vault]);
+  useEffect(() => {
+    if (vault && expansionReadyFor !== profile?.id) return;
+    void reload();
+  }, [expansionReadyFor, profile?.id, reload, vault]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") { event.preventDefault(); openFinderRef.current(); }
@@ -618,6 +648,12 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     visit(folderTree, 0); return rows;
   }, [collapsedPages, expandedFolders, folderTree, treeFilter, vault, inventory, filtered, pendingFolders.paths]);
   const ownerNames = useMemo(() => new Map(members.map((member) => [member.id, member.display_name || member.email.split("@")[0]])), [members]);
+  const vaultMembers = useMemo(() => vaultMemberOptions(members, profile, demo), [members, profile, demo]);
+  useEffect(() => {
+    if (!vault || !selectedId || !selected || selected.status === "archived") return;
+    const ownerScope = selected.owner_id === profile?.id ? "mine" : `member:${selected.owner_id}`;
+    if (ownerScope !== ownerFilter && vaultMembers.some((member) => member.value === ownerScope)) setOwnerFilter(ownerScope);
+  }, [ownerFilter, profile?.id, selected, selectedId, vault, vaultMembers]);
   const readingContent = useMemo(() => prepareReadingContent(dirty ? draft?.content ?? "" : selected?.content_md ?? ""), [selected?.content_md, dirty, draft?.content]);
   const existingFolderOptions = useMemo(() => knowledgeFolderOptions([
     ...(demo ? [] : allFolders),
@@ -1124,7 +1160,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
           const content = `${input.content.trim()}\n\n${attachments.join("\n\n")}`.trim();
           document = (await updateDocument(accessToken, { id: document.id, expectedVersion: document.current_version, content, reason: "새 페이지 이미지 첨부" })).document;
         } catch (reason) {
-          commitDocument(document); setOwnerFilter("all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
+          commitDocument(document); setOwnerFilter(vault ? "mine" : "all"); selectDocumentNow(document.id); setNewOpen(false); setMode("edit");
           setNewImageFiles([]); setNewImageAlt([]); setNewImageCaptions([]); setNewValues({ title: "", content: "", brand: "", team: "", tags: "" });
           setError(`${reason instanceof Error ? reason.message : "이미지를 올리지 못했습니다."} 페이지는 초안으로 저장됐습니다. 자료 첨부에서 다시 시도해 주세요.`);
           return document;
@@ -1231,7 +1267,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const treeRowHeight = vault ? 30 : 38;
   const treeStart = Math.max(0, Math.min(Math.floor(treeScroll / treeRowHeight) - 8, treeRows.length - 45));
   const visibleRows = treeRows.slice(treeStart, treeStart + 45);
-  const treeScopeLabel = ownerFilter === "mine_company" ? "내 문서 + 회사 정본" : ownerFilter === "mine" ? "내 문서" : ownerFilter === "canonical" ? "회사 정본" : ownerFilter === "team" ? "팀 공유" : ownerFilter === "review" ? "검토 문서" : ownerFilter === "archived" ? "휴지통 문서" : ownerFilter.startsWith("member:") ? `${ownerNames.get(ownerFilter.slice(7)) || "선택한 소유자"} 문서` : "전체 문서";
+  const treeScopeLabel = ownerFilter === "mine_company" ? "내 문서 + 회사 정본" : ownerFilter === "mine" ? vault ? `${vaultMembers[0]?.name || "내 계정"} 문서` : "내 문서" : ownerFilter === "canonical" ? "회사 정본" : ownerFilter === "team" ? "팀 공유" : ownerFilter === "review" ? "검토 문서" : ownerFilter === "archived" ? "휴지통 문서" : ownerFilter.startsWith("member:") ? `${ownerNames.get(ownerFilter.slice(7)) || "선택한 소유자"} 문서` : "전체 문서";
   const treeScopeDetail = ownerFilter === "mine_company" ? "내 문서 + 회사 정본 · 휴지통 제외" : ownerFilter === "all" ? "모든 활성 문서 · 휴지통 제외" : ownerFilter === "archived" ? treeScopeLabel : `${treeScopeLabel} · 휴지통 제외`;
   const visibleDocumentCount = demo ? filtered.length : inventory.reduce((sum, item) => sum + item.count, 0);
   const activeFolderPath = workspaceView === "folder" || workspaceView === "gallery" ? managedFolder : selected?.folder || "";
@@ -1243,12 +1279,21 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const folderChildren = managedFolder ? folderNode?.children ?? [] : folderTree;
   const folderDocuments = filtered.filter(item => documentFolder(item) === (managedFolder || "분류 없음")).sort((a, b) => folderSort === "name" ? a.title.localeCompare(b.title, "ko") : folderSort === "old" ? a.updated_at.localeCompare(b.updated_at) : b.updated_at.localeCompare(a.updated_at));
   const outline = [...(dirty ? draft?.content ?? "" : selected?.content_md ?? "").matchAll(/^#{1,3}\s+(.+)$/gm)].map(match => match[1].trim()).filter(Boolean);
-  const chooseScope = (value: string) => guardAction(() => { setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(value); });
+  const chooseScope = (value: string) => guardAction(() => {
+    if (value === ownerFilter) return;
+    setCheckedIds(new Set()); setSelectionMode(false); setOwnerFilter(value);
+    if (vault) {
+      setSelectedId(null); setManagedFolder(""); setWorkspaceView("folder"); setNewOpen(false);
+      const params = new URLSearchParams(window.location.search);
+      params.delete("document"); params.delete("folder"); params.delete("new");
+      window.history.pushState(window.history.state, "", `${window.location.pathname}${params.size ? `?${params}` : ""}`);
+    }
+  });
 
   return (
     <>
       {vault ? <header className="vault-toolbar" style={{ "--knowledge-tree-width": `${paneWidth}px` } as React.CSSProperties} aria-label="문서 보관함 도구">
-        <div className="vault-toolbar-tree"><button className="vault-mobile-tree" aria-label="파일 트리 보기" onClick={() => setTreeOpen(true)}><PanelLeftOpen size={18} /></button><div className="vault-scope-count"><label className="vault-scope"><span className="sr-only">보기 범위</span><select aria-label="보기 범위" value={ownerFilter} onChange={event => chooseScope(event.target.value)}>{OWNER_FILTERS.filter(item => item.id !== "archived").map(item => <option key={item.id} value={item.id}>{item.label}</option>)}{members.map(member => <option key={member.id} value={`member:${member.id}`}>{member.display_name || member.email.split("@")[0]} 문서</option>)}</select></label><span className="vault-count" aria-live="polite">{visibleDocumentCount}</span></div><button aria-label="새 페이지" title="새 페이지" onClick={() => openNewDocument()}><FilePlus2 size={17} /></button><details className="vault-more"><summary role="button" aria-label="새 폴더"><FolderPlus size={17}/></summary><div><button onClick={() => beginFolder("")}>최상위에 새 폴더</button><button onClick={() => beginFolder(managedFolder || selected?.folder || "")}>현재 폴더 아래 새 폴더</button></div></details></div>
+        <div className="vault-toolbar-tree"><button className="vault-mobile-tree" aria-label="파일 트리 보기" onClick={() => setTreeOpen(true)}><PanelLeftOpen size={18} /></button><div className="vault-scope-count"><label className="vault-scope"><span className="sr-only">보기 범위</span><select aria-label="보기 범위" value={ownerFilter} onChange={event => chooseScope(event.target.value)}>{vaultMembers.map(member => <option key={member.value} value={member.value}>{member.name}</option>)}</select></label><span className="vault-count" aria-live="polite">{visibleDocumentCount}</span></div><button aria-label="새 페이지" title="새 페이지" onClick={() => openNewDocument()}><FilePlus2 size={17} /></button><details className="vault-more"><summary role="button" aria-label="새 폴더"><FolderPlus size={17}/></summary><div><button onClick={() => beginFolder("")}>최상위에 새 폴더</button><button onClick={() => beginFolder(managedFolder || selected?.folder || "")}>현재 폴더 아래 새 폴더</button></div></details></div>
         <nav className="vault-breadcrumbs" aria-label="문서 경로"><div className="vault-root-crumb"><button onClick={() => openFolderView("")}>문서 보관함</button></div>{folderSegments.map((part, index) => <span key={`${index}-${part}`}><ChevronRight size={13} /><button onClick={() => openFolderView(folderSegments.slice(0, index + 1).join("/"))}>{part}</button></span>)}{workspaceView === "document" && selected ? <span><ChevronRight size={13} /><strong>{selected.title}</strong></span> : null}<small className="vault-save-status" role="status">{newOpen ? busy ? "저장 중…" : "저장 전" : selected ? busy ? "저장 중…" : dirty ? "미저장 · 기기에 임시 보관" : `저장됨 · v${selected.current_version}` : ""}</small></nav>
         <div className="vault-toolbar-actions"><button aria-label="문서·폴더 찾기" title="문서·폴더 찾기" onClick={() => setFinderOpen(true)}><Search size={17} /></button>{selected?.status === "canonical" ? <Link className="vault-proposal" href={`/knowledge/canon/${selected.id}/propose`}>변경 제안 작성</Link> : null}{mode === "edit" && selected ? <><button className="vault-save" disabled={busy} onClick={save}><Save size={15} /> 저장</button></> : null}<button aria-label="목차·정보 패널" title="목차·정보 패널" aria-pressed={vaultPanelOpen} onClick={() => setVaultPanelOpen(value => !value)}><PanelLeftOpen size={17} /></button><details className="vault-more"><summary role="button" aria-label="더 보기"><MoreHorizontal size={18} /></summary><div>{workspaceView === "folder" || workspaceView === "gallery" ? <button onClick={openGallery}><Images size={15} /> {workspaceView === "gallery" ? "목록 보기" : "갤러리 보기"}</button> : null}{selected && selected.status !== "archived" ? <button onClick={() => openPageMove(selected)}><MoveRight size={15} /> 위치 이동</button> : null}{selected && (selected.owner_id === profile?.id || profile?.role === "admin") && nextStatus(selected.status) && statusActionLabel(selected.status) ? <button onClick={() => guardAction(() => moveStatus(nextStatus(selected.status)!))}><Send size={15} /> {statusActionLabel(selected.status)}</button> : null}{selected?.status === "review" || selected?.status === "reviewed" ? <Link href={`/knowledge/review?document=${selected.id}`}>검토 내역 보기</Link> : null}<button onClick={() => setImportOpen(true)}><Upload size={15} /> Markdown 가져오기</button><button onClick={() => void reload()}><RefreshCw size={15} /> 새로고침</button>{selected && editableSelected ? <button onClick={() => setMode(mode === "read" ? "edit" : "read")}>{mode === "read" ? "본문 입력으로" : "읽기 미리보기"}</button> : null}<button onClick={() => setHelpOpen(true)}>사용법·단축키</button></div></details></div>
       </header> : <header className="page-header workspace-page-header">
@@ -1370,7 +1415,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
               )}
             </>
           ) : (
-            <div className="empty-state"><div><span><FilePenLine /></span><h3>{listLoading ? "문서를 불러오는 중입니다" : visibleDocumentCount ? `${treeScopeLabel} ${visibleDocumentCount}개` : "이 범위에 문서가 없습니다"}</h3><p>{listLoading ? "문서 목록을 확인하고 있습니다." : visibleDocumentCount ? treeOpen ? "왼쪽 파일 트리에서 문서를 선택하세요." : "파일 트리를 열면 문서를 볼 수 있습니다." : ownerFilter === "all" ? "새 문서를 만들어 시작할 수 있습니다." : "전체 문서에서 다른 범위의 문서를 확인할 수 있습니다."}</p>{!listLoading && !treeOpen && visibleDocumentCount > 0 ? <button className="primary-button" onClick={() => setTreeOpen(true)}>파일 트리 보기</button> : null}{!listLoading && !visibleDocumentCount && ownerFilter !== "all" ? <button className="primary-button" onClick={() => setOwnerFilter("all")}>전체 문서 보기</button> : null}<button className="secondary-button" onClick={() => openNewDocument()}>새 문서</button></div></div>
+            <div className="empty-state"><div><span><FilePenLine /></span><h3>{listLoading ? "문서를 불러오는 중입니다" : visibleDocumentCount ? `${treeScopeLabel} ${visibleDocumentCount}개` : "이 범위에 문서가 없습니다"}</h3><p>{listLoading ? "문서 목록을 확인하고 있습니다." : visibleDocumentCount ? treeOpen ? "왼쪽 파일 트리에서 문서를 선택하세요." : "파일 트리를 열면 문서를 볼 수 있습니다." : vault ? "위에서 다른 팀원을 선택해 문서를 확인할 수 있습니다." : ownerFilter === "all" ? "새 문서를 만들어 시작할 수 있습니다." : "전체 문서에서 다른 범위의 문서를 확인할 수 있습니다."}</p>{!listLoading && !treeOpen && visibleDocumentCount > 0 ? <button className="primary-button" onClick={() => setTreeOpen(true)}>파일 트리 보기</button> : null}{!vault && !listLoading && !visibleDocumentCount && ownerFilter !== "all" ? <button className="primary-button" onClick={() => setOwnerFilter("all")}>전체 문서 보기</button> : null}<button className="secondary-button" onClick={() => openNewDocument()}>새 문서</button></div></div>
           )}
         </article>
         {vault && vaultPanelOpen ? <aside className="vault-side-panel" aria-label="목차와 문서 정보"><div className="vault-side-tabs" role="tablist" aria-label="문서 상세">{(selected && workspaceView === "document" ? [ ["toc", "목차"], ["info", "정보"], ["links", "연결"], ["versions", "버전"] ] as const : [["info", "폴더 정보"]] as const).map(([key, label]) => <button key={key} role="tab" aria-selected={workspaceView !== "document" || vaultPanelTab === key} onClick={() => setVaultPanelTab(key)}>{label}</button>)}<button className="vault-side-close" aria-label="패널 닫기" onClick={() => setVaultPanelOpen(false)}><X size={16} /></button></div><div className="vault-side-body">{selected && workspaceView === "document" ? vaultPanelTab === "toc" ? outline.length ? outline.map((title, index) => <button className="vault-outline-link" key={`${title}-${index}`} onClick={() => revealHeading(`wiki-heading-${title.normalize("NFC")}`)}>{title}</button>) : <p>본문의 제목이 여기에 표시됩니다.</p> : vaultPanelTab === "info" ? <dl><div><dt>상태</dt><dd>{statusLabel(selected.status)}</dd></div><div><dt>소유자</dt><dd>{ownerNames.get(selected.owner_id) || "소유자 미지정"}</dd></div><div><dt>폴더</dt><dd>{selected.folder || "분류 없음"}</dd></div><div><dt>버전</dt><dd>v{selected.current_version}</dd></div><div><dt>수정</dt><dd>{formatDate(selected.updated_at)}</dd></div><div><dt>팀</dt><dd>{selected.team || "미지정"}</dd></div><div><dt>브랜드</dt><dd>{selected.brand || "미지정"}</dd></div></dl> : vaultPanelTab === "links" ? <><h3>나가는 연결</h3>{wikiLinks(selected.content_md ?? "").length ? wikiLinks(selected.content_md ?? "").map(link => <button key={link} onClick={() => void openWikiLink(link)}>{link}</button>) : <p>연결된 문서가 없습니다.</p>}<h3>이 문서를 가리킴</h3>{backlinks.length ? backlinks.map(item => <button key={item.id} onClick={() => selectDocument(item.id)}>{item.title}</button>) : <p>아직 없습니다.</p>}</> : <>{versionsLoading ? <p>버전을 불러오는 중입니다.</p> : versions.map(version => <div className="vault-version" key={version.version_no}><span>v{version.version_no} · {formatDate(version.created_at)}</span>{version.version_no !== selected.current_version ? <button onClick={() => guardAction(() => { setCompareBase(selected); setCompareVersion(version); })}>비교·복원</button> : <em>현재</em>}</div>)}</> : <><h3>폴더 정보</h3><p>{managedFolder || "전체 폴더"}</p><p>하위 폴더 {folderChildren.length}개</p><p>이 폴더 문서 {folderDocuments.length}개</p></>}</div></aside> : null}
@@ -1419,7 +1464,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       {folderDeletePath ? <KnowledgeModal title="폴더 문서 휴지통 이동" onClose={() => setFolderDeletePath("")} busy={busy}><div className="form-modal folder-delete-modal"><header><h2>폴더를 정리할까요?</h2></header><div className="form-fields"><p className="wide"><strong>{folderDeletePath}</strong><br/>이 폴더와 모든 하위 폴더의 활성 문서를 휴지통으로 옮깁니다. 본문과 변경 이력은 보존되며 문서별로 복원할 수 있습니다.</p>{error ? <p role="alert" className="inline-alert danger wide">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setFolderDeletePath("")}>취소</button><button className="primary-button danger-button" disabled={busy} onClick={() => void archiveFolderDocuments()}>{busy ? "처리 중…" : "폴더 문서 휴지통으로"}</button></footer></div></KnowledgeModal> : null}
       {canonicalGate ? <KnowledgeModal title="회사 정본 변경 제안" onClose={() => setCanonicalGate(false)}><div className="canonical-gate-modal"><ShieldAlert size={28} /><h2>정본에 변경을 제안합니다</h2><p>저장해도 기존 정본은 바로 바뀌지 않습니다. 작성자와 다른 승인자가 변경 내용을 확인하고 승인하면 새 버전으로 반영됩니다.</p><div className="drawer-actions"><button className="ghost-button" onClick={() => setCanonicalGate(false)}>취소</button><button className="primary-button" onClick={() => { setCanonicalGate(false); setMode("edit"); }}>변경 제안 작성</button></div></div></KnowledgeModal> : null}
       {externalLinkOpen ? <KnowledgeModal title="웹 링크 넣기" onClose={() => setExternalLinkOpen(false)}><form className="form-modal knowledge-link-modal" onSubmit={addExternalLink}><header><h2>웹 링크 넣기</h2></header><div className="form-fields"><label className="wide"><span>표시할 이름</span><input name="label" maxLength={200} placeholder="예: 참고 자료" /></label><label className="wide"><span>웹 주소</span><input name="url" type="url" required maxLength={2000} placeholder="https://…" autoFocus /></label>{externalLinkError ? <p role="alert" className="inline-alert danger wide">{externalLinkError}</p> : null}</div><footer><button type="button" className="secondary-button" onClick={() => setExternalLinkOpen(false)}>취소</button><button className="primary-button">본문에 넣기</button></footer></form></KnowledgeModal> : null}
-      {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); setOwnerFilter(document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(vault && !window.matchMedia("(max-width: 899px)").matches);}} /> : null}
+      {finderOpen ? <KnowledgeDocumentFinder token={accessToken} demo={demo} onClose={() => setFinderOpen(false)} onSelect={document => {setDocuments(current => current.some(row => row.id === document.id) ? current : [document,...current]); const memberScope = document.owner_id === profile?.id ? "mine" : `member:${document.owner_id}`; setOwnerFilter(vault ? vaultMembers.some(member => member.value === memberScope) ? memberScope : "mine" : document.status === "archived" ? "archived" : "all"); selectDocumentNow(document.id); setFinderOpen(false); setTreeOpen(vault && !window.matchMedia("(max-width: 899px)").matches);}} /> : null}
       {importOpen ? <KnowledgeImport token={accessToken} demo={demo} ownerId={profile?.id ?? "demo-ricky"} team={profile?.team ?? ""} options={folderOptions} onSaved={commitDocument} onBusy={setBusy} onClose={() => setImportOpen(false)} /> : null}
       {compareVersion && compareBase ? <KnowledgeVersionComparison title="이전 버전 비교·복원" left={{label:`v${compareVersion.version_no} 복원할 내용`,title:compareVersion.title,content:compareVersion.content_md}} right={{label:`현재 v${compareBase.current_version}`,title:compareBase.title,content:compareBase.content_md}} action={`v${compareVersion.version_no} 내용을 새 버전으로 복원`} busy={busy} error={error} onClose={() => {setCompareVersion(null);setCompareBase(null);}} onAction={() => void restoreVersion(compareVersion)} /> : null}
       {conflict && draft ? <KnowledgeVersionComparison title="저장 충돌 · 작성 내용 유지됨" left={{label:`최신 v${conflict.current_version}`,title:conflict.title,content:conflict.content_md,properties:{폴더:conflict.folder,팀:conflict.team,브랜드:conflict.brand,태그:conflict.tags.join(", ")}}} right={{label:"내 미저장 내용",title:draft.title,content:draft.content,properties:{폴더:draft.folder,팀:draft.team,브랜드:draft.brand,태그:draft.tags}}} action="내 내용을 유지하고 최신 버전 기준으로 계속 편집" busy={busy} error="이 버튼은 저장하지 않습니다. 최신 내용과 내 내용을 비교·수정한 뒤 다시 저장하세요. 직접 변경한 값은 유지하고, 변경하지 않은 분류 항목은 최신 값으로 맞춥니다." onClose={() => setConflict(null)} onAction={() => {commitDocument(conflict);rebase(conflict);setConflict(null);setError("");setMode("edit");}} /> : null}

@@ -111,6 +111,8 @@ for(const width of [1440,390])test(`legacy knowledge is discoverable with origin
  await expect(page.getByRole("link",{name:"QA 기존 작업 기록",exact:true})).toBeVisible();
  await page.reload();await expect(page.getByRole("combobox",{name:"기존 폴더"})).toHaveValue("기존 자료/MD/기록");
  await page.getByRole("combobox",{name:"기존 폴더"}).selectOption("");
+ await expect(page.getByRole("combobox",{name:"기존 폴더"})).toHaveValue("");
+ await expect(page).not.toHaveURL(/folder=/);
  await page.getByRole("button",{name:"갤러리 보기"}).click();await expect(page.locator(".kw-gallery article")).toHaveCount(3);
  await page.getByRole("button",{name:"보드 보기"}).click();await expect(page.locator(".kw-board article")).toHaveCount(3);
  await page.getByRole("button",{name:"표 보기"}).click();
