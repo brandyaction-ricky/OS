@@ -285,9 +285,12 @@
 }
 .screen-vault .vault-recent-folders button { max-width: 84px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .screen-vault .vault-recent-folders button { border: 1px solid var(--line); border-radius: 12px; padding: 2px 8px; background: none; color: var(--text-2); }
-.screen-vault .vault-property-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 12px 0 18px; }
+.screen-vault .vault-property-chips { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; width: 100%; margin: 12px 0 18px; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.screen-vault .vault-property-chips:has(details[open]) { overflow: visible; }
+.screen-vault .vault-property-chips > * { flex: 0 0 auto; }
 .screen-vault .vault-property-chips details { position: relative; min-width: 0; max-width: 100%; }
-.screen-vault .vault-property-chips summary,.screen-vault .vault-tag { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--muted); padding: 4px 8px; border-radius: 14px; font-size: 12px; max-width: 100%; overflow-wrap: anywhere; cursor: pointer; }
+.screen-vault .vault-property-chips summary,.screen-vault .vault-tag { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line-soft); background: var(--panel-2); color: var(--muted); padding: 4px 8px; border-radius: 14px; font-size: 12px; max-width: 100%; white-space: nowrap; cursor: pointer; }
+.screen-vault .vault-property-chips summary { max-width: min(320px, 45vw); overflow: hidden; text-overflow: ellipsis; }
 .screen-vault .vault-property-chips .vault-folder-chooser,.screen-vault .vault-property-menu { position: absolute; top: 32px; left: 0; z-index: 20; width: min(340px, calc(100vw - 60px)); padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); }
 .screen-vault .vault-property-menu { width: min(250px, calc(100vw - 60px)); display: grid; gap: 6px; }
 .screen-vault .vault-tag button { display: flex; padding: 0; border: 0; background: none; color: inherit; }

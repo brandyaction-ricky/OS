@@ -59,9 +59,6 @@ export interface NavStage {
 
 // Names live here so the navigation, page heading, breadcrumb and tab stay in sync.
 export const NAV_STAGES: NavStage[] = [
-  { id: "home", label: "내 할 일", icon: Home, href: "/home", pages: [
-    { label: "내 할 일", href: "/home", icon: LayoutDashboard, aliases: ["홈", "오늘 현황"], ready: true },
-  ] },
   { id: "content", label: "콘텐츠", icon: Film, href: "/content/topics", pages: [
     { label: "주제·기획", href: "/content/topics", icon: Sparkles, processNumber: 1, aliases: ["주제 찾기", "콘텐츠 레이더", "제작 현황"], ready: true },
     { label: "원고·스크립트", href: "/content/scripts", icon: FileText, processNumber: 2, ready: true },
@@ -141,9 +138,13 @@ const NAV_ALIASES: Record<string, string> = {
   "/content/calendar": "/content/publishing",
 };
 export const ACCOUNT_PAGE: NavPage = { label: "내 계정", href: "/settings/account", icon: UserRound, aliases: ["채널 연결"], ready: true };
+// The landing page remains reachable from the logo, without a sidebar or search menu entry.
+const HOME_PAGE: NavPage = { label: "홈", href: "/home", icon: Home, ready: true };
+const HOME_STAGE: NavStage = { id: "home", label: "홈", icon: Home, href: "/home", pages: [HOME_PAGE] };
 const matchesPath = (pathname: string, href: string) => pathname === href || (href !== "/home" && pathname.startsWith(`${href}/`));
 export function findPage(path: string): NavPage {
   const pathname = path.split(/[?#]/)[0];
+  if (pathname === "/home") return HOME_PAGE;
   if (pathname === "/organization/people") return { label: "팀 현황", href: pathname, navHref: "/organization/members", icon: Gauge, ready: true };
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
@@ -168,11 +169,11 @@ export function findPage(path: string): NavPage {
     const page = pages.find(item => item.href === NAV_ALIASES[alias])!;
     return { ...page, href: alias, navHref: page.href };
   }
-  return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href)) ?? pages[0];
+  return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
 }
 export function findStage(pathname: string) {
   const page = findPage(pathname);
-  return NAV_STAGES.find(stage => stage.pages.some(item => item.href === (page.navHref ?? page.href))) ?? NAV_STAGES[0];
+  return NAV_STAGES.find(stage => stage.pages.some(item => item.href === (page.navHref ?? page.href))) ?? HOME_STAGE;
 }
 export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");

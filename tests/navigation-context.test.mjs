@@ -19,7 +19,7 @@ test("legacy content routes point to their separate YouTube and automation secti
 
 test("secondary content route matching does not capture similarly prefixed pages", () => {
   assert.equal(findStage("/content/calendar-extra").id, "home");
-  assert.equal(findPage("/content/calendar-extra").label, "내 할 일");
+  assert.equal(findPage("/content/calendar-extra").label, "홈");
 });
 
 test("all legacy pages resolve to their new group and one authoritative name", () => {
@@ -31,7 +31,7 @@ test("all legacy pages resolve to their new group and one authoritative name", (
     development: ["/knowledge/development", "/organization/agents"],
     settings: ["/settings/connections", "/settings/access", "/settings/audit", "/settings/company"],
   };
-  assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 8);
+  assert.equal(NAV_STAGES.filter(stage=>!stage.requiresHr).length, 7);
   assert.ok(NAV_STAGES.every(stage => stage.label.replaceAll(" ", "").length <= 6));
   assert.equal(findStage("/content/comments").id, "automation");
   assert.equal(findPage("/content/comments").processNumber, 7);
@@ -47,21 +47,22 @@ test("all legacy pages resolve to their new group and one authoritative name", (
   assert.notEqual(findPage("/knowledge/development-extra").label, "수정 요청");
 });
 test("command palette finds both new labels and former menu labels", () => {
-  for (const [oldName, newName] of [["오늘 현황","내 할 일"],["주제 찾기","주제·기획"],["유튜브 발행","발행·업로드"],["문서 작업공간","문서 보관함"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
+  for (const [oldName, newName] of [["주제 찾기","주제·기획"],["유튜브 발행","발행·업로드"],["문서 작업공간","문서 보관함"],["지식 검색","문서 찾기"],["개발 관리","수정 요청"],["채널 연결","내 계정"],["감사 로그","변경 기록"]]) {
     assert.ok(searchNavigation(oldName).some(page => page.label === newName), oldName);
     assert.ok(searchNavigation(newName).some(page => page.label === newName), newName);
   }
+  assert.ok(!searchNavigation("내 할 일").some(page => page.href === "/home"));
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[1,7,10,5,4,7,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[7,10,5,4,7,3,4]);
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
   assert.equal(searchNavigation('재무',false).some(page=>page.href.startsWith('/finance/')),false);
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
-  assert.deepEqual(NAV_STAGES[1].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);
+  assert.deepEqual(NAV_STAGES[0].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);
   assert.equal(findPage('/knowledge/development?tab=history').label,'업데이트 내역');
   assert.equal(findPage('/knowledge/development?tab=updates').label,'업데이트 내역');
 });

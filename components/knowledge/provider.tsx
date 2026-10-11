@@ -4,13 +4,13 @@ import { usePathname } from "next/navigation";
 import { useSession } from "@/components/session-provider";
 import { apiRequest, getDocument } from "@/lib/api-client";
 import { applyKnowledgeCommand, createDemoKnowledge, visibleState } from "@/lib/knowledge/demo";
-import { emptyKnowledgeState, type Command, type KnowledgeState, type WorkspaceSnapshot } from "@/lib/knowledge/model";
+import { emptyKnowledgeState, kstDay, type Command, type KnowledgeState, type Meeting, type WorkspaceSnapshot } from "@/lib/knowledge/model";
 import type { KnowledgeActor } from "@/lib/knowledge/access";
 import type { KnowledgeDocument } from "@/lib/types";
 
 import { KnowledgeShortcuts } from "./shortcuts";
 
-interface WorkspaceContext { state: KnowledgeState; actor: KnowledgeActor; loading: boolean; error: string; demo: boolean; token: string | null; refresh: () => Promise<void>; command: (command: Command) => Promise<{ id?: string }>; loadDocument: (id: string) => Promise<KnowledgeDocument>; notify: (message: string) => void }
+interface WorkspaceContext { state: KnowledgeState; actor: KnowledgeActor; loading: boolean; error: string; demo: boolean; token: string | null; refresh: () => Promise<void>; command: (command: Command, options?: { fastCreate?: boolean }) => Promise<{ id?: string }>; loadDocument: (id: string) => Promise<KnowledgeDocument>; notify: (message: string) => void }
 const Context = createContext<WorkspaceContext | null>(null);
 export function KnowledgeBoundary({children}:{children:ReactNode}) {
   const pathname=usePathname();
@@ -18,6 +18,7 @@ export function KnowledgeBoundary({children}:{children:ReactNode}) {
   return pathname.startsWith("/knowledge/development") || pathname === "/knowledge/vault" ? children : <KnowledgeProvider key={`${demo ? "demo" : "connected"}:${profile?.id ?? "signed-out"}`}>{children}</KnowledgeProvider>;
 }
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const { profile, accessToken: token, demo, loading: sessionLoading } = useSession();
   const [state, setState] = useState<KnowledgeState>(emptyKnowledgeState);
   const [remoteActor, setRemoteActor] = useState<KnowledgeActor | null>(null);
@@ -27,6 +28,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state); stateRef.current = state;
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const generation = useRef(0);
+  const initialMeetingRead = useRef(false);
   const refresh = useCallback(async () => {
     if (sessionLoading || !profile) return;
     const request = ++generation.current;
@@ -37,6 +39,17 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         if (stored) { try { const value = JSON.parse(stored); if (Object.entries(emptyKnowledgeState()).every(([key,initial]) => Array.isArray(initial) ? Array.isArray(value[key]) : value[key] && typeof value[key]==="object")) next = value; } catch { /* Invalid local demo data is never sent to a server. */ } }
         setState(next); stateRef.current = next;
       } else {
+        const meetingId = /^\/knowledge\/meetings\/([0-9a-f-]{36})$/i.exec(pathname)?.[1];
+        if (meetingId && !initialMeetingRead.current && !stateRef.current.meetings.some(row => row.id === meetingId)) {
+          try {
+            const detail = await apiRequest<{meeting: Meeting; people: KnowledgeState["people"]; actor: KnowledgeActor}>(`/api/v1/knowledge/meetings/${meetingId}`, { token });
+            if (request !== generation.current) return;
+            initialMeetingRead.current = true;
+            setRemoteActor(detail.actor);
+            setState(current => ({ ...current, meetings: [detail.meeting, ...current.meetings.filter(row => row.id !== meetingId)], people: detail.people }));
+            setLoading(false);
+          } catch { /* The full workspace read below remains the fallback for old or inaccessible meetings. */ }
+        }
         const result = await apiRequest<WorkspaceSnapshot>("/api/v1/knowledge/workspace", { token });
         if (request !== generation.current) return;
         setRemoteActor(prior=>JSON.stringify(prior)===JSON.stringify(result.actor)?prior:result.actor);
@@ -45,12 +58,12 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       setError("");
     } catch (e) { if (request === generation.current) { if (!demo) { setState(emptyKnowledgeState()); setRemoteActor(null); } setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); } }
     finally { if (request === generation.current) setLoading(false); }
-  }, [sessionLoading, profile, demo, storageKey, actor, token]);
+  }, [sessionLoading, profile, demo, storageKey, actor, token, pathname]);
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
   useEffect(() => { void refreshRef.current(); const requests=generation; return () => { requests.current++; }; }, [profile?.id, demo, sessionLoading]);
   useEffect(() => { const focus = () => { void refreshRef.current(); }; window.addEventListener("focus", focus); return () => window.removeEventListener("focus", focus); }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => notify(""), 5000); return () => clearTimeout(timer); }, [toast]);
-  const command = useCallback((input: Command): Promise<{ id?: string }> => {
+  const command = useCallback((input: Command, options?: { fastCreate?: boolean }): Promise<{ id?: string }> => {
     const operation = async () => {
       if (demo) {
         const result = applyKnowledgeCommand(stateRef.current, actor, input);
@@ -59,6 +72,23 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         stateRef.current = result.state; setState(result.state); return { id: result.id };
       }
       const result = await apiRequest<{ id?: string }>("/api/v1/knowledge/workspace", { token, method: "POST", body: JSON.stringify(input) });
+      if (options?.fastCreate && result.id && (input.action === "meeting.create" || input.action === "document.create")) {
+        if (input.action === "meeting.create") {
+          const now = new Date().toISOString();
+          const meeting: Meeting = {
+            id: result.id, title: String(input.title || "").trim() || `회의 — ${kstDay(new Date(now))}`,
+            description: "", status: "planned", version: 1, owner_id: actor.ownerId, created_by: actor.ownerId,
+            created_at: now, updated_at: now, starts_at: null, attendees: [actor.ownerId],
+            metadata: { workspace: "knowledge", visibility: actor.memberKind === "partner" || input.visibility === "attendees" ? "attendees" : "team", agenda: "", items: [] },
+          };
+          const next = { ...stateRef.current, meetings: [meeting, ...stateRef.current.meetings.filter(row => row.id !== meeting.id)] };
+          stateRef.current = next;
+          setState(next);
+        }
+        // The destination can render immediately; reconcile the full list without blocking navigation.
+        void refreshRef.current();
+        return result;
+      }
       await refreshRef.current(); return result;
     };
     const result = queue.current.then(operation, operation); queue.current = result.catch(() => undefined); return result;

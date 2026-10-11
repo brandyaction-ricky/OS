@@ -12,6 +12,7 @@ import {meetingDecisions} from "@/lib/knowledge/meetings";
 import {KnowledgeRichEditor, type KnowledgeRichEditorMethods} from "@/components/knowledge-rich-editor";
 
 const STATUSES={planned:"준비",active:"진행",review:"검수 대기",done:"완료"};
+const toKstInput = (value: string) => new Date(new Date(value).getTime()+9*3600000).toISOString().slice(0,16);
 export function KnowledgeMeetings(){
   const {state}=useKnowledge(),params=useSearchParams(),router=useRouter();
   const view=params.get("view")??"table",status=params.get("status")??"all";
@@ -42,10 +43,11 @@ function MeetingEditor({meeting:m}:{meeting:Meeting}){
   const inFlight=useRef(false),latestSave=useRef<()=>void>(()=>{});
   const editorRef=useRef<KnowledgeRichEditorMethods>(null);
   const [reason,setReason]=useState(""),[correction,setCorrection]=useState(""),[attendees,setAttendees]=useState(m.attendees),[visibility,setVisibility]=useState(m.metadata.visibility);
-  const [startsAt,setStartsAt]=useState(m.starts_at?new Date(new Date(m.starts_at).getTime()+9*3600000).toISOString().slice(0,16):"");
+  const originalStartsAt = m.starts_at ?? m.created_at ?? m.updated_at;
+  const [startsAt,setStartsAt]=useState(toKstInput(originalStartsAt));
   const owner=m.owner_id===actor.ownerId||actor.role==="admin";
   const canEdit=m.status!=="done"&&(m.attendees.includes(actor.ownerId)||actor.role==="admin")&&(m.status!=="review"||owner);
-  const dirty=summary!==(m.metadata.summary??"")||(startsAt?new Date(startsAt+"+09:00").toISOString():null)!==(m.starts_at?new Date(m.starts_at).toISOString():null)||title!==m.title||content!==m.description||agenda!==m.metadata.agenda||JSON.stringify(items)!==JSON.stringify(m.metadata.items);
+  const dirty=summary!==(m.metadata.summary??"")||startsAt!==toKstInput(originalStartsAt)||title!==m.title||content!==m.description||agenda!==m.metadata.agenda||JSON.stringify(items)!==JSON.stringify(m.metadata.items);
   useEffect(()=>{function guard(e:BeforeUnloadEvent){if(dirty){e.preventDefault();e.returnValue="";}}window.addEventListener("beforeunload",guard);return()=>window.removeEventListener("beforeunload",guard);},[dirty]);
   async function execute(action:string,extras:Record<string,unknown>={},automatic=false){
     if(inFlight.current)return false;inFlight.current=true;
@@ -72,7 +74,7 @@ function MeetingEditor({meeting:m}:{meeting:Meeting}){
   },[dirty,canEdit]);
   latestSave.current=()=>{void execute("meeting.save",{},true);};
   useEffect(()=>{if(!dirty||!canEdit||busy||error||dialog)return;const timer=setTimeout(()=>latestSave.current(),1500);return()=>clearTimeout(timer);},[title,content,agenda,items,summary,startsAt,dirty,canEdit,busy,error,dialog]);
-  useEffect(()=>{setStartsAt(m.starts_at?new Date(new Date(m.starts_at).getTime()+9*3600000).toISOString().slice(0,16):"");},[m.starts_at]);
+  useEffect(()=>{setStartsAt(toKstInput(originalStartsAt));},[originalStartsAt]);
   async function nextMeeting(){setBusy(true);try{const result=await command({action:"meeting.create",title:m.title+" · 다음 회의",previousMeetingId:m.id});if(result.id)router.push("/knowledge/meetings/"+result.id);}catch(e){setError((e as Error).message);}finally{setBusy(false);}}
   function addItem(){if(!itemText.trim())return;setItems([...items,{id:crypto.randomUUID(),kind,text:itemText.trim(),state:"pending",source:"manual",addedBy:actor.ownerId}]);setItemText("");}
   async function summarize(){

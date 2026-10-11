@@ -191,9 +191,11 @@ test("personal template saves body, creates selected-space document, survives re
 test("meeting start, review, confirmation and append-only correction",async({page})=>{
  await page.goto("/knowledge/meetings");
  await page.getByRole("button",{name:"새 회의",exact:true}).click();
+ await expect(page.getByRole("dialog").getByText("템플릿",{exact:false})).toHaveCount(0);
  await page.getByRole("textbox",{name:"제목",exact:true}).fill("QA 회의");
  await page.getByRole("button",{name:"만들기",exact:true}).click();
  await expect(page.getByRole("heading",{name:"QA 회의",level:1})).toBeVisible();
+ await expect(page.locator('label:has-text("회의 예정 시각") input[type="datetime-local"]')).not.toHaveValue("");
  await page.getByRole("group",{name:"회의 메모",exact:true}).getByRole("textbox").fill("원문은 보존합니다.");
  await page.getByRole("button",{name:"저장",exact:true}).click();
  await page.getByRole("button",{name:"회의 시작",exact:true}).click();
@@ -262,6 +264,10 @@ test("inline document and people pickers respect visibility, keyboard insertion 
  await expect(people.getByRole("option",{name:/승인 담당자/})).toBeDisabled();
  await editor.press("Escape");await expect(people).toHaveCount(0);
  await editor.fill("prefix ");await editor.pressSequentially("/");
+ await expect(page.getByRole("listbox",{name:"블록 종류"})).toBeVisible();
+ await page.getByRole("textbox",{name:"문서 제목"}).click();
+ await expect(page.getByRole("listbox",{name:"블록 종류"})).toHaveCount(0);
+ await editor.click();await editor.pressSequentially("/");
  await expect(page.getByRole("listbox",{name:"블록 종류"})).toBeVisible();
  await page.getByRole("option",{name:/하위 페이지/}).click();
  await expect(editor).toContainText("↳ [[");

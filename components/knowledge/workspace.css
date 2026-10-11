@@ -112,6 +112,23 @@
 .kw-root .kw-shortcuts kbd{color:var(--text-secondary);font-size:11px;margin-left:8px}
 .kw-root .kw-diff pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:3px 8px}
 .kw-root .kw-diff-added{background:#22c55e18}.kw-root .kw-diff-removed{background:#ef444418}
+.kw-document-layout > .kw-editor-card { min-height: calc(100dvh - 170px); }
+.kw-document-layout > .kw-editor-card .knowledge-rich-editor { min-height: max(380px, calc(100dvh - 410px)); }
+.kw-document-layout > .kw-editor-card .knowledge-rich-content { min-height: max(340px, calc(100dvh - 470px)); }
+.kw-root .knowledge-rich-content h1 { font-size: 30px; line-height: 1.3; font-weight: 750; }
+.kw-root .knowledge-rich-content h2 { font-size: 25px; line-height: 1.35; font-weight: 700; }
+.kw-root .knowledge-rich-content h3 { font-size: 21px; line-height: 1.4; font-weight: 700; }
+.kw-meeting-layout > aside > .kw-card > p + button { margin-top: 14px; }
+.kw-meeting-layout > aside > .kw-card > .kw-card,
+.kw-meeting-layout > aside > .kw-card > .kw-stack { margin-top: 14px; }
+.kw-meeting-capture .kw-actions { margin-bottom: 14px; }
+.kw-meeting-capture details { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--kw-line); }
+.kw-meeting-capture > .kw-card > small { display: block; }
+.kw-recording-indicator { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; align-items: center; gap: 9px; padding: 9px 14px; border: 1px solid #a13c3c; border-radius: 999px; background: #3b1014; color: #fff; box-shadow: 0 8px 26px #0005; font-weight: 700; }
+.kw-recording-indicator::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: #ff5959; animation: kw-recording-pulse 1.4s ease-in-out infinite; }
+@keyframes kw-recording-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .kw-recording-indicator::before { animation: none; } }
+@media (max-width: 860px) { .kw-document-layout > .kw-editor-card { min-height: calc(100dvh - 155px); } .kw-recording-indicator { top: 60px; } }
 .kw-root .kw-minimap { position:absolute; right:12px; bottom:12px; width:160px; height:104px; border:1px solid var(--kw-line); border-radius:8px; background:var(--kw-surface); cursor:crosshair; z-index:1; }
 @media(max-width:860px){.kw-root .kw-minimap{width:120px;height:78px;}}
 .kw-inline-suggestions{position:fixed;z-index:10000;width:min(304px,calc(100vw - 16px));max-height:280px;overflow:auto;display:grid;gap:6px;padding:12px;border:1px solid #e1e1e8;border-radius:10px;background:#fff;color:#16161b;box-shadow:0 12px 30px #0002}
