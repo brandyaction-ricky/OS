@@ -65,6 +65,36 @@ test("vault restores the last open folders and keeps an all-closed tree closed",
   await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
 });
 
+test("vault returns to the last folder view without reopening closed tree branches", async ({ page }) => {
+  await page.goto("/knowledge/vault");
+  await page.getByRole("button", { name: "00_Skills 접기" }).click();
+  await page.getByRole("button", { name: "02_Wiki 접기" }).click();
+  await page.getByRole("treeitem", { name: "회사 wiki 2", exact: true }).click();
+  await expect(page).toHaveURL(/folder=%ED%9A%8C%EC%82%AC\+wiki/);
+  await page.goto("/home");
+  await page.goto("/knowledge/vault");
+  await expect(page).toHaveURL(/folder=%ED%9A%8C%EC%82%AC\+wiki/);
+  await expect(page.getByRole("heading", { name: "회사 wiki", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
+
+  await page.getByRole("button", { name: "문서 보관함", exact: true }).last().click();
+  await page.goto("/home");
+  await page.goto("/knowledge/vault");
+  await expect(page).not.toHaveURL(/folder=/);
+  await expect(page.getByRole("heading", { name: "문서 보관함", exact: true }).first()).toBeVisible();
+});
+
+test("vault returns to a document's containing folder after leaving the workspace", async ({ page }) => {
+  await page.goto("/knowledge/vault?document=demo-packaging");
+  await expect(page.locator(".document-reader h1")).toHaveText("패키징 원칙");
+  await page.goto("/home");
+  await page.goto("/knowledge/vault");
+  await expect(page).toHaveURL(/folder=%ED%9A%8C%EC%82%AC\+wiki%2F%EC%B1%84%EB%84%90\+%EC%9A%B4%EC%98%81/);
+  await expect(page.getByRole("heading", { name: "채널 운영", exact: true })).toBeVisible();
+  await expect(page.locator(".document-reader")).toHaveCount(0);
+});
+
 test("vault scope lists linked team member names with the signed-in member first", async ({ page }) => {
   await page.goto("/knowledge/vault");
   const scope = page.getByRole("combobox", { name: "보기 범위" });
