@@ -335,6 +335,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const hasStoredExpansion = useRef(false);
   const [expansionReadyFor, setExpansionReadyFor] = useState<string | null>(null);
   const expansionKey = `brandy-vault-v1-expanded-folders:${profile?.id ?? ""}`;
+  const lastViewKey = `brandy-vault-v1-last-folder:${profile?.id ?? ""}`;
   const setExpandedFolders = useCallback((change: (current: Set<string>) => Set<string>) => {
     const next = change(expandedFoldersRef.current);
     expandedFoldersRef.current = next;
@@ -456,8 +457,37 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     hasStoredExpansion.current = saved !== null;
     expandedFoldersRef.current = restored;
     setExpandedFoldersState(restored);
+    // A direct document or folder URL wins over the browser's last-view preference.
+    const initialParams = new URLSearchParams(window.location.search);
+    if (!initialParams.has("document") && !initialParams.has("folder") && !initialParams.has("new")) {
+      const lastView = readVaultStorage<{folder: string; scope: string} | null>(lastViewKey, null,
+        (value): value is {folder: string; scope: string} => {
+          if (!value || typeof value !== "object" || !("folder" in value) || !("scope" in value)) return false;
+          return typeof value.folder === "string" && value.folder.length <= 500 &&
+            typeof value.scope === "string" && (value.scope === "mine" || /^member:[\w-]+$/.test(value.scope));
+        });
+      if (lastView) {
+        setOwnerFilter(lastView.scope);
+        setManagedFolder(lastView.folder);
+        managedFolderRef.current = lastView.folder;
+        setWorkspaceView("folder");
+        if (lastView.folder) {
+          const params = new URLSearchParams(window.location.search);
+          params.set("folder", lastView.folder);
+          window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params}${window.location.hash}`);
+        }
+      }
+    }
     setExpansionReadyFor(profile.id);
-  }, [expansionKey, profile?.id, vault]);
+  }, [expansionKey, lastViewKey, profile?.id, vault]);
+
+  useEffect(() => {
+    if (!vault || !profile?.id || expansionReadyFor !== profile.id || (selectedId && !selected)) return;
+    writeVaultStorage(lastViewKey, {
+      folder: workspaceView === "document" ? selected?.folder ?? managedFolder : managedFolder,
+      scope: ownerFilter,
+    });
+  }, [expansionReadyFor, lastViewKey, managedFolder, ownerFilter, profile?.id, selected, selectedId, vault, workspaceView]);
 
   useEffect(() => {
     if (demo) {
