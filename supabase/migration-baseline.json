@@ -582,24 +582,24 @@
       "notes": "Follow-up to the DEV canonical publisher gate, applied after separate approval: replace two newly introduced SQLSTATE 40001 business conflicts with PT409 without changing function logic, grants, or document rows. DEV function definitions and existing row counts verified. Production requires separate approval."
     },
     {
-      "file": "20261011002800_content_automation_v07.sql",
+      "file": "20261011003653_content_automation_v07.sql",
       "sha256": "c082e6850edf4798ba1b337f9f507c55a034b5fa6c0fbc73d498197c0a801a30",
       "purpose": "add personal content automation state, append-only review and publication history, and owner isolation without changing existing rows",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-11",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Local proposal only. No existing company document rows are modified. DEV and Production migration application each require explicit environment-specific approval."
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev after explicit approval. The Supabase-generated version is reflected in this filename. No existing company document rows were modified; document count, identity, and body digests matched the pre-apply baseline. Production requires separate approval."
     },
     {
-      "file": "20261011002900_content_automation_atomic_topic.sql",
+      "file": "20261011003703_content_automation_atomic_topic.sql",
       "sha256": "fc89900b6c21232e1004e5c031ced59d049f90a97d67631f793bd26aa5649597",
       "purpose": "start a personal topic and selected channel drafts atomically without changing existing rows on apply",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-11",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Local proposal only. Requires the preceding content automation migration. DEV and Production application each require separate approval."
+      "appliedEnvironments": ["development"],
+      "notes": "Applied to confirmed brandyaction-os-dev after the preceding content automation migration and explicit approval. The Supabase-generated version is reflected in this filename. Production requires separate approval."
     }
   ],
   "legacyMigrations": [
