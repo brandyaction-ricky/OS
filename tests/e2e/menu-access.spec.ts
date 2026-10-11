@@ -5,7 +5,7 @@ test("menu settings persist, cancel discards changes, and reset restores default
   const trigger = page.getByRole("button", { name: "가상 마케터 권한 설정", exact: true });
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: "가상 마케터 권한 설정", exact: true });
-  await expect(dialog.getByRole("checkbox", { name: "내 할 일 항상 허용" })).toBeDisabled();
+  await expect(dialog).toContainText("홈과 내 계정은 항상 사용할 수 있습니다.");
   const finance = dialog.getByRole("group", { name: /^재무관리/ });
   await expect(finance).toBeVisible();
   await expect(finance.getByRole("checkbox", { name: "매출내역", exact: true })).toBeDisabled();
@@ -13,6 +13,7 @@ test("menu settings persist, cancel discards changes, and reset restores default
   await dialog.getByRole("checkbox", { name: "원고·스크립트", exact: true }).uncheck();
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brandy-os-demo-menu-access-v1") ?? "[]")[0]?.allowed_menus)).toContain("/home");
   await expect(trigger).toBeFocused();
   await page.reload();
   await trigger.click();
