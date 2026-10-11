@@ -11,7 +11,8 @@ test("canonical list reads existing documents and keeps promotion in review",asy
   await page.getByLabel("정본 검색").fill("");
   await page.getByLabel("정본 검색").press("Enter");
   await page.getByRole("link",{name:"문서 작성 기준",exact:true}).click();
-  await expect(page.locator(".document-reader")).toContainText("목적과 근거");
+  await expect(page).toHaveURL(/\/knowledge\/canon\/[^/?#]+$/);
+  await expect(page.locator(".document-reader")).toContainText("목적과 근거",{timeout:15_000});
   await expect(page.getByRole("textbox",{name:"editable markdown"})).toHaveCount(0);
   await page.getByRole("link",{name:"변경 제안",exact:true}).click();
   await expect(page).toHaveURL(/\/propose$/);
