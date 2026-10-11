@@ -7,6 +7,7 @@ import {
   ChevronsUpDown,
   ChevronsLeft,
   ChevronsRight,
+  Gauge,
   NotebookPen,
   CircleHelp,
   Command,
@@ -50,18 +51,26 @@ function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function AppShell({ children, hrEnabled = false }: { children: React.ReactNode; hrEnabled?: boolean }) {
+export function AppShell({ children, hrEnabled = false, teamV1Enabled = false }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean }) {
   // The server owns the rollout flag; no environment values are read in the browser.
   const pathname = usePathname();
   const params = useSearchParams();
   const navigationPath = `${pathname}?${params.toString()}`;
   const stage = useMemo(() => findStage(navigationPath), [navigationPath]);
-  const page = useMemo(() => findPage(navigationPath), [navigationPath]);
+  const page = useMemo(() => {
+    const found = findPage(navigationPath);
+    if (teamV1Enabled && pathname === "/organization/people") return { ...found, navHref: "/organization/people" };
+    return teamV1Enabled && pathname === "/organization/schedule" ? { ...found, label: "팀 일정" } : found;
+  }, [navigationPath, pathname, teamV1Enabled]);
   const screen = fullscreenScreen(pathname, params.get("tab"));
   const { profile, accessToken, loading, demo, signOut } = useSession();
   const hrShell = useHrShell(hrEnabled);
   const menuAccess = useMenuAccess(profile, accessToken, demo);
-  const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages.filter(entry => entry.href !== "/hr/my-leave" && !(hrShell.legacyHidden && ["/organization/schedule", "/organization/members"].includes(entry.href)) && canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed)) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
+  const visibleStages = NAV_STAGES.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
+    .filter(entry => entry.href !== "/hr/my-leave"
+      && !(hrShell.legacyHidden && (!teamV1Enabled && entry.href === "/organization/members" || !teamV1Enabled && entry.href === "/organization/schedule"))
+      && canOpenMenu(profile, entry.href, menuAccess.loading || menuAccess.error ? [] : menuAccess.allowed))
+    .map(entry => teamV1Enabled && entry.href === "/organization/schedule" ? { ...entry, label: "팀 일정", aliases: ["이번 주 일정", "일정"] } : teamV1Enabled && entry.href === "/organization/members" ? { ...entry, label: "팀 현황", href: "/organization/people", icon: Gauge, aliases: ["팀원 업무량"] } : entry) })).filter(item => item.pages.length && (!item.requiresFinance || canAccessFinance(profile)));
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);

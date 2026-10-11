@@ -48,6 +48,7 @@ export const FULLSCREEN_ROUTES = {
   "/organization/schedule": "schedule",
   "/organization/leave": "leave",
   "/organization/members": "members",
+  "/organization/people": "people",
   "/knowledge/development": "requests",
   "/organization/agents": "ai",
   "/settings/connections": "settings",

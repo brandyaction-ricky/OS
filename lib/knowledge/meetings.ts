@@ -29,7 +29,7 @@ export function projectMeetings(rows: RecordRow[], decisions: RecordRow[], atten
       confirmedAt:text(d.metadata?.decidedAt) || d.created_at, reviewMissing:!d.metadata?.decidedBy || !d.metadata?.decidedAt,
     }));
     return [{...row, legacy:true, description:text(metadata.transcript) || row.description || "", starts_at:row.starts_at ?? null, status:row.status as Meeting["status"], attendees:[...new Set(attendees)],
-      metadata:{workspace:"knowledge",visibility:metadata.visibility === "attendees" ? "attendees" : "team",agenda:row.description ?? "",summary:text(metadata.summary),items},
+      metadata:{workspace:"knowledge",visibility:metadata.visibility === "attendees" ? "attendees" : "team",agenda:row.description ?? "",summary:text(metadata.summary),migratedTo:text(metadata.migratedTo),items},
     }];
   });
 }
