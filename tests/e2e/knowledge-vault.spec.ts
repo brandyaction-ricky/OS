@@ -35,6 +35,36 @@ test("desktop vault keeps its tree visible even with a saved hidden-tree prefere
   await expect(page.getByRole("treeitem", { name: "회사 wiki 2", exact: true })).toBeVisible();
 });
 
+test("vault restores the last open folders and keeps an all-closed tree closed", async ({ page }) => {
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("button", { name: "00_Skills 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 접기" })).toBeVisible();
+  await page.getByRole("button", { name: "00_Skills 접기" }).click();
+  await page.getByRole("button", { name: "02_Wiki 접기" }).click();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
+
+  await page.goto("/knowledge/vault?folder=%ED%9A%8C%EC%82%AC%20wiki%2F%EC%B1%84%EB%84%90%20%EC%9A%B4%EC%98%81");
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await page.goto("/knowledge/vault?document=demo-packaging");
+  await expect(page.locator(".document-reader h1")).toHaveText("패키징 원칙");
+  await expect(page.getByRole("button", { name: "회사 wiki 펼치기" })).toBeVisible();
+  await page.goto("/knowledge/vault");
+
+  await page.getByRole("button", { name: "회사 wiki 펼치기" }).click();
+  await page.getByRole("button", { name: "회사 wiki/채널 운영 펼치기" }).click();
+  await page.goto("/home");
+  await page.goto("/knowledge/vault");
+  await expect(page.getByRole("button", { name: "회사 wiki 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "회사 wiki/채널 운영 접기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "00_Skills 펼치기" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "02_Wiki 펼치기" })).toBeVisible();
+});
+
 test("vault scope lists linked team member names with the signed-in member first", async ({ page }) => {
   await page.goto("/knowledge/vault");
   const scope = page.getByRole("combobox", { name: "보기 범위" });

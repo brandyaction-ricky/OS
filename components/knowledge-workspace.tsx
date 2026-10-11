@@ -50,7 +50,7 @@ import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
 import { PERSONAL_VAULT_ROOTS, stableWikiLink } from "@/lib/knowledge-vault";
-import { canEditVaultDocument, matchesVaultName, newVaultFolder, selectedVaultDocuments, vaultFolderKey } from "@/lib/knowledge-vault-interactions";
+import { canEditVaultDocument, isStringArray, matchesVaultName, newVaultFolder, readVaultStorage, selectedVaultDocuments, vaultFolderKey, writeVaultStorage } from "@/lib/knowledge-vault-interactions";
 import { useVaultFolders } from "@/hooks/use-vault-folders";
 import { KnowledgeVaultFolderChooser } from "./knowledge-vault-folder-chooser";
 import { KnowledgeVaultProperties } from "./knowledge-vault-properties";
@@ -79,6 +79,7 @@ import { DevelopmentDocumentLiveLog } from "./development-document-live-log";
 import { useSession } from "./session-provider";
 
 const STATUS_FLOW: DocumentStatus[] = ["draft", "team", "review", "reviewed", "canonical"];
+const DEFAULT_EXPANDED_FOLDERS = ["00_Skills", "02_Wiki"];
 
 const OWNER_FILTERS = [
   { id: "mine_company", label: "내 문서 + 회사 정본" },
@@ -328,7 +329,21 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["00_Skills", "02_Wiki"]));
+  const [expandedFolders, setExpandedFoldersState] = useState<Set<string>>(() => new Set(DEFAULT_EXPANDED_FOLDERS));
+  const expandedFoldersRef = useRef(expandedFolders);
+  expandedFoldersRef.current = expandedFolders;
+  const hasStoredExpansion = useRef(false);
+  const [expansionReadyFor, setExpansionReadyFor] = useState<string | null>(null);
+  const expansionKey = `brandy-vault-v1-expanded-folders:${profile?.id ?? ""}`;
+  const setExpandedFolders = useCallback((change: (current: Set<string>) => Set<string>) => {
+    const next = change(expandedFoldersRef.current);
+    expandedFoldersRef.current = next;
+    setExpandedFoldersState(next);
+    if (vault && profile?.id) {
+      hasStoredExpansion.current = true;
+      writeVaultStorage(expansionKey, [...next]);
+    }
+  }, [expansionKey, profile?.id, vault]);
   const [sortAscending, setSortAscending] = useState(false);
   const [listLoading, setListLoading] = useState(!demo);
   const [backlinks, setBacklinks] = useState<KnowledgeDocument[]>([]);
@@ -435,6 +450,16 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   }, [focusMode, preferencesReady, treeOpen, paneWidth, vault]);
 
   useEffect(() => {
+    if (!vault || !profile?.id) return;
+    const saved = readVaultStorage<string[] | null>(expansionKey, null, isStringArray);
+    const restored = new Set(saved ?? DEFAULT_EXPANDED_FOLDERS);
+    hasStoredExpansion.current = saved !== null;
+    expandedFoldersRef.current = restored;
+    setExpandedFoldersState(restored);
+    setExpansionReadyFor(profile.id);
+  }, [expansionKey, profile?.id, vault]);
+
+  useEffect(() => {
     if (demo) {
       if (profile) setMembers([
         { id: profile.id, email: profile.email, display_name: profile.displayName, role: profile.role, team: profile.team, is_active: true, affiliation: "브랜디액션", roles: [], onboarding: {}, finance_access: profile.role === "admin" },
@@ -483,9 +508,9 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   useEffect(() => { if (vault && selectedId) setMode(editableSelected ? "edit" : "read"); }, [vault, selectedId, editableSelected]);
   useEffect(() => {
     if (!vault || listLoading || !selectedId || !selectedFolder) return;
-    setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([selectedFolder])]));
+    if (!hasStoredExpansion.current) setExpandedFolders(current => new Set([...current, ...knowledgeFolderOptions([selectedFolder])]));
     void loadFolder(selectedFolder);
-  }, [vault, listLoading, selectedId, selectedFolder, loadFolder]);
+  }, [vault, listLoading, selectedId, selectedFolder, loadFolder, setExpandedFolders]);
 
   const reload = useCallback(async () => {
     if (demo) return;
@@ -497,21 +522,22 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       if (revision !== epoch.current) return;
       setInventory(result.folders);
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
-      // A direct nested-folder URL starts with only the default roots expanded.
-      // Load its ancestors and exact folder as well, including after scope reloads.
-      const foldersToLoad = new Set(expandedFolders);
+      // Restore the saved tree before loading; direct folder URLs also need their ancestors.
+      const foldersToLoad = new Set(expandedFoldersRef.current);
       if (vault && managedFolderRef.current) {
         for (const path of knowledgeFolderOptions([managedFolderRef.current])) foldersToLoad.add(path);
-        setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
+        if (!hasStoredExpansion.current) setExpandedFolders(current => new Set([...current, ...foldersToLoad]));
       }
       await Promise.all([...foldersToLoad].map(loadFolder));
       setError("");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "문서를 불러오지 못했습니다."); }
     finally { if (revision === epoch.current) setListLoading(false); }
   // Selection and expansion do not reload the folder inventory.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, demo, ownerFilter, loadFolder, vault]);
-  useEffect(() => { void reload(); }, [reload]);
+  }, [accessToken, demo, ownerFilter, loadFolder, setExpandedFolders, vault]);
+  useEffect(() => {
+    if (vault && expansionReadyFor !== profile?.id) return;
+    void reload();
+  }, [expansionReadyFor, profile?.id, reload, vault]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "o") { event.preventDefault(); openFinderRef.current(); }
