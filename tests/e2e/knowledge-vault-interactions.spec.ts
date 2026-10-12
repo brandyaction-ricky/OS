@@ -153,6 +153,25 @@ test("empty folder move changes only this browser and rejects self descendants",
   expect(writes).toEqual([]);
 });
 
+test("dragging a populated folder previews its document impact before moving", async ({page}) => {
+  const writes=trackWrites(page);
+  await page.goto("/knowledge/vault");
+  const transfer=await page.evaluateHandle(()=>new DataTransfer());
+  const source=page.getByRole("treeitem",{name:"리키 1",exact:true});
+  const target=page.getByRole("treeitem",{name:"회사 wiki 2",exact:true});
+  await source.dispatchEvent("dragstart",{dataTransfer:transfer});
+  await target.dispatchEvent("dragenter",{dataTransfer:transfer});
+  await target.dispatchEvent("drop",{dataTransfer:transfer});
+  const dialog=page.getByRole("dialog",{name:"폴더 관리",exact:true});
+  await expect(dialog).toContainText("문서 1개의 경로가 함께 바뀝니다.");
+  await expect(source).toBeVisible();
+  await dialog.getByRole("button",{name:"확인한 1개 이동",exact:true}).click();
+  await expect(dialog.getByRole("status")).toContainText("1개 완료 · 0개 실패");
+  await dialog.getByRole("button",{name:"닫기",exact:true}).click();
+  await expect(page.getByRole("treeitem",{name:"리키 1",exact:true})).toHaveAttribute("aria-level","2");
+  expect(writes).toEqual([]);
+});
+
 test("drag move undo protects later unsaved edits before restoring the original location", async ({page}) => {
   const writes=trackWrites(page);
   await page.goto("/knowledge/vault?document=demo-workflow");
@@ -240,7 +259,7 @@ test("admin demo allows every enabled OS menu including finance and settings",as
   await page.setViewportSize({width:1440,height:1000});
   await page.goto("/knowledge/vault");
   const nav=page.getByRole("navigation").first();
-  const groups=["유튜브 공정","콘텐츠 자동화","팀",...(process.env.HR_E2E_DEMO==="true"?["인사 노무 관리"]:[]),"재무관리","개발","설정"];
+  const groups=["유튜브 공정","콘텐츠 자동화","업무 기록",...(process.env.HR_E2E_DEMO==="true"?["인사 노무 관리"]:[]),"재무관리","개발","설정"];
   for(const label of groups) await nav.getByRole("button",{name:label,exact:true}).click();
   const links = await nav.locator("a[href]").evaluateAll(items=>items.map(item=>({name:item.textContent?.trim(),href:item.getAttribute("href")!})));
   expect(links.length).toBeGreaterThanOrEqual(40);

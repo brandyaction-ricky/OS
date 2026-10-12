@@ -269,7 +269,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   const [draggedDocument, setDraggedDocument] = useState("");
   const [dropTargetDocument, setDropTargetDocument] = useState("");
   const renaming = useRef(false);
-  const [moveUndo, setMoveUndo] = useState<{ id: string; folder: string } | null>(null);
+  const [moveUndo, setMoveUndo] = useState<{ id: string; folder: string; parentId: string | null } | null>(null);
   const selectionAnchor = useRef<string | null>(null);
   const newEditorRef = useRef<KnowledgeRichEditorMethods | null>(null);
   const [focusNewBody, setFocusNewBody] = useState(false);
@@ -799,15 +799,17 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     return () => { active = false; };
   }, [accessToken, demo, ownerFilter, revision, busy]);
 
-  const moveDocument = async (documentId: string, folder: string, undo = false) => {
+  const moveDocument = async (documentId: string, folder: string, undo = false, restoreParentId: string | null = null) => {
     const item = documentsRef.current.find(document => document.id === documentId);
     if (!item || busy) return;
     setBusy(true); setError("");
     try {
       const destination = folder.trim() ? normalizeKnowledgeFolder(folder) : "";
-      if (item.folder === destination) { setMoveOpen(false); return; }
-      const document = demo ? { ...item, folder: destination, current_version: item.current_version + 1, updated_at: new Date().toISOString() } : (await updateDocument(accessToken, { id: item.id, expectedVersion: item.current_version, folder: destination, reason: "문서 위치 이동" })).document;
-      commitDocument(document); discard(document.id); setMoveOpen(false); setMoveUndo(undo ? null : { id: document.id, folder: item.folder });
+      const parentId = undo ? restoreParentId : null;
+      if (item.folder === destination && (item.parent_document_id ?? null) === parentId) { setMoveOpen(false); return; }
+      const document = demo ? { ...item, folder: destination, parent_document_id: parentId, current_version: item.current_version + 1, updated_at: new Date().toISOString() }
+        : (await moveKnowledgePage(accessToken, { id: item.id, folder: destination, parentDocumentId: parentId, expectedUpdatedAt: item.updated_at })).document;
+      commitDocument(document, item); discard(document.id); setMoveOpen(false); setMoveUndo(undo ? null : { id: document.id, folder: item.folder, parentId: item.parent_document_id ?? null });
       setToast(`문서를 ${destination || "분류 없음"}(으)로 이동했습니다.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "폴더로 이동하지 못했습니다."); }
     finally { setBusy(false); }
@@ -1501,7 +1503,7 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
       {archiveConfirm && selected ? <KnowledgeModal title={selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"} onClose={() => setArchiveConfirm(false)} busy={busy}><div className="form-modal"><header><h2>{selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</h2></header><div className="form-fields"><p className="wide"><strong>{selected.title}</strong><br/>{selected.status === "archived" ? "개인 초안으로 복원합니다. 이전 팀 공유·회사 정본 상태는 자동으로 복원하지 않습니다." : "활성 문서 목록과 검색에서 제외합니다. 본문과 변경 이력은 보존되며, 휴지통에서 초안으로 복원할 수 있습니다."}</p>{error ? <p role="alert" className="inline-alert danger">{error}</p> : null}</div><footer><button className="secondary-button" disabled={busy} onClick={() => setArchiveConfirm(false)}>취소</button><button className="primary-button" disabled={busy} onClick={() => void moveStatus(selected.status === "archived" ? "draft" : "archived")}>{busy ? "처리 중…" : selected.status === "archived" ? "초안으로 복원" : "휴지통으로 이동"}</button></footer></div></KnowledgeModal> : null}
       <datalist id="knowledge-team-options">{[...new Set([...members.map(member => member.team), ...documents.map(document => document.team)].filter(Boolean))].sort().map(value => <option key={value} value={value}/>)}</datalist>
       <datalist id="knowledge-brand-options">{[...new Set(documents.map(document => document.brand).filter(Boolean))].sort().map(value => <option key={value} value={value}/>)}</datalist>
-{vault && moveUndo ? <div className="vault-move-undo" role="status">문서 이동 완료<button disabled={busy} onClick={() => guardAction(() => { const undo = moveUndo; setMoveUndo(null); void moveDocument(undo.id, undo.folder, true); })}>되돌리기</button></div> : null}{vault && checkedIds.size >= 2 ? <div className="vault-bulk-bar" role="region" aria-label="선택 항목 작업"><span>{checkedIds.size}개 선택</span><button disabled={busy} onClick={openBulkMove}>이동</button><button disabled={busy} onClick={() => setBulkArchiveOpen(true)}>휴지통</button><button aria-label="선택 해제" onClick={() => setCheckedIds(new Set())}><X size={14}/></button></div> : null}
+{vault && moveUndo ? <div className="vault-move-undo" role="status">문서 이동 완료<button disabled={busy} onClick={() => guardAction(() => { const undo = moveUndo; setMoveUndo(null); void moveDocument(undo.id, undo.folder, true, undo.parentId); })}>되돌리기</button></div> : null}{vault && checkedIds.size >= 2 ? <div className="vault-bulk-bar" role="region" aria-label="선택 항목 작업"><span>{checkedIds.size}개 선택</span><button disabled={busy} onClick={openBulkMove}>이동</button><button disabled={busy} onClick={() => setBulkArchiveOpen(true)}>휴지통</button><button aria-label="선택 해제" onClick={() => setCheckedIds(new Set())}><X size={14}/></button></div> : null}
       {bulkArchiveOpen ? <KnowledgeModal title="선택 항목 휴지통 이동" onClose={() => setBulkArchiveOpen(false)} busy={busy}><div className="form-modal"><header><h2>선택한 항목을 휴지통으로 옮길까요?</h2></header><div className="form-fields"><p>회사 정본과 권한 없는 문서는 제외합니다. 문서 ID·본문·이력을 보존합니다.</p></div><footer><button disabled={busy} onClick={() => setBulkArchiveOpen(false)}>취소</button><button disabled={busy} onClick={() => void archiveSelection()}>휴지통으로 이동</button></footer></div></KnowledgeModal> : null}
       {helpOpen ? <KnowledgeModal title="문서 보관함 사용법·단축키" onClose={() => setHelpOpen(false)}><div className="form-modal vault-help"><header><h2>문서 보관함 사용법</h2></header><div className="form-fields"><ol><li>개인 폴더에서 기록을 쌓고, 문서 고유 링크로 연결합니다.</li><li>02_Wiki의 검증된 내용만 회사 정본으로 제안합니다.</li><li>저장 버튼 또는 ⌘S로 서버에 반영합니다. 임시 보관은 이 기기에만 남습니다.</li></ol><p>/ 블록 · [[ 문서 연결 · @ 사람 언급 · ## 제목 · - 목록 · &gt; 인용</p><dl><dt>⌘/Ctrl+S</dt><dd>명시적 저장</dd><dt>⌘/Ctrl+⇧M</dt><dd>선택 항목 이동</dd><dt>⌘/Ctrl 클릭 · Shift 클릭</dt><dd>복수·범위 선택</dd><dt>↑↓ · ←→ · Enter</dt><dd>트리 탐색 · 접기/펼치기 · 열기</dd><dt>F2 · Delete</dt><dd>이름 변경 · 휴지통 확인</dd><dt>Esc</dt><dd>선택 해제·닫기</dd></dl></div></div></KnowledgeModal> : null}
       {toast ? <button className="toast" onClick={() => setToast("")}><CircleCheck size={16} /> {toast}</button> : null}

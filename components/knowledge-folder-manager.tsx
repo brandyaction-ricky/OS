@@ -76,7 +76,7 @@ export function KnowledgeFolderManager({ source: initialSource, initialParent, i
     await run(pending, snapshot, retry);
   };
   const prepareRef = useRef(preview); prepareRef.current = preview;
-  useEffect(() => { if (inlineRename && !started.current) { started.current = true; void prepareRef.current(); } }, [inlineRename]);
+  useEffect(() => { if ((inlineRename || initialParent !== undefined) && !started.current) { started.current = true; void prepareRef.current(initialParent); } }, [inlineRename, initialParent]);
   return <KnowledgeModal title={inlineRename ? "폴더 경로 변경" : "폴더 관리"} busy={busy} onClose={onClose}>
     <div className="form-modal folder-action-modal">
       <header><h2>{inlineRename ? "폴더 경로 변경" : "폴더 관리"}</h2><button aria-label="폴더 관리 닫기" disabled={busy} onClick={onClose}><X size={18} /></button></header>
