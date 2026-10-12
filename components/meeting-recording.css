@@ -1,0 +1,12 @@
+.meeting-recording-bar { position: fixed; z-index: 90; left: 50%; transform: translateX(-50%); bottom: 18px; width: min(760px, calc(100vw - 32px)); padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--accent, #7775e7); border-radius: 12px; background: var(--panel-2, #20212a); color: var(--text, #eee); box-shadow: 0 4px 24px #0005; }
+.meeting-recording-bar > div:first-child { display: grid; gap: 5px; min-width: 0; }
+.meeting-recording-bar a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: underline; }
+.meeting-recording-bar strong { color: var(--danger, #e96d6d); font-size: 14px; }
+.meeting-recording-bar small { font-size: 12px; }
+.meeting-recording-controls { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; max-width: 45%; }
+.meeting-recording-bar button { padding: 7px 10px; border: 1px solid var(--line, #555); border-radius: 7px; background: var(--bg, #16171d); color: inherit; cursor: pointer; }
+.meeting-recording-controls [role="alert"] { display: grid; gap: 8px; }
+.meeting-live-transcript { padding: 8px 0; }
+.meeting-live-transcript p { margin: 8px 0; padding: 12px; border-left: 3px solid var(--accent, #7775e7); white-space: pre-wrap; background: var(--bg, #16171d); }
+.meeting-live-transcript textarea { width: 100%; }
+@media (max-width: 640px) { .meeting-recording-bar { align-items: flex-start; padding: 12px; bottom: 12px; } .meeting-recording-controls { max-width: 35%; } }
