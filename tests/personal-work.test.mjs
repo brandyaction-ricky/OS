@@ -11,6 +11,11 @@ test("requests show centralized status and actionable hold guidance",()=>{
  const result=buildPersonalWork([row("request",{record_type:"ai_job",created_by:"me",status:"blocked",metadata:{kind:"development_request",plainSummary:"기능 수정",nextAction:"범위 확인",holdReason:"정보 대기",reviewDate:"2026-10-05"}})],[],"me");
  assert.equal(result.requested[0].status,"보류");assert.equal(result.requested[0].nextAction,"범위 확인");assert.match(result.requested[0].href,/knowledge\/development\?request=request/);
 });
+test("personal work accepts the lightweight record projection without a description body",()=>{
+ const {description,...compact}=row("request",{record_type:"ai_job",created_by:"me",status:"backlog",metadata:{kind:"development_request"}});
+ assert.equal(description,"");
+ assert.equal(buildPersonalWork([compact],[],"me").requested[0].nextAction,"담당자와 처리 범위 확인");
+});
 test("reviewed documents are returned for owners and admins, never as approval authority",()=>{
  const documents=[{id:"a",title:"A",status:"reviewed",owner_id:"other"},{id:"b",title:"B",status:"review",owner_id:"other"}];
  assert.deepEqual(buildPersonalWork([],documents,"me").review.map(x=>x.id),["b"]);assert.equal(buildPersonalWork([],documents,"me",true).review.length,2);

@@ -4,6 +4,8 @@ import { contentOrigin } from "./content-origin.ts";
 import { developmentStatusLabel, requestPlainSummary } from "./development-status.ts";
 export type WorkTab = "received" | "review" | "requested";
 export interface WorkItem { id: string; title: string; status: string; dueDate: string | null; href: string; kind: string; nextAction: string }
+export type PersonalWorkRecord = Pick<OsRecord, "id" | "record_type" | "title" | "status" | "assignee_id" | "created_by" | "due_date" | "updated_at" | "archived_at" | "metadata" | "parent_id">;
+export type PersonalWorkDocument = Pick<KnowledgeDocument, "id" | "title" | "status" | "owner_id">;
 export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "metadata">) {
   const id = encodeURIComponent(record.id);
   if (record.metadata.kind === "development_request") return `/knowledge/development?request=${id}`;
@@ -25,9 +27,9 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   return `/organization/agents?job=${id}`;
 }
 const closed = new Set(["done", "completed", "cancelled", "published", "rejected"]);
-export function buildPersonalWork(records: OsRecord[], documents: KnowledgeDocument[], userId: string, admin = false): Record<WorkTab, WorkItem[]> {
+export function buildPersonalWork(records: PersonalWorkRecord[], documents: PersonalWorkDocument[], userId: string, admin = false): Record<WorkTab, WorkItem[]> {
   const visible = records.filter(record => !record.archived_at && contentOrigin(record) === "own");
-  const item = (record: OsRecord): WorkItem => ({ id: record.id, title: record.title,
+  const item = (record: PersonalWorkRecord): WorkItem => ({ id: record.id, title: record.title,
     status: record.metadata.kind === "development_request" ? developmentStatusLabel(record.status) : ({ backlog: "대기", planned: "예정", active: "진행", review: "검토", ready: "승인 대기", blocked: "막힘", done: "완료" } as Record<string, string>)[record.status] || record.status,
     dueDate: record.due_date, href: recordWorkHref(record), kind: record.record_type,
     nextAction: record.metadata.kind === "development_request" ? requestPlainSummary(record).nextAction : String(record.metadata.nextAction || record.metadata.doneCriteria || "상세에서 다음 행동 확인"),

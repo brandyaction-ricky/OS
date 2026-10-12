@@ -2,7 +2,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { ApiError } from "@/lib/http";
 import type { KnowledgeDocument } from "@/lib/types";
 import type { RequestActor } from "./auth";
-import { readableKnowledgePages } from "./knowledge-page-access";
+import { POLICY_FIELDS, readableKnowledgePages } from "./knowledge-page-access";
 
 // Only lightweight metadata crosses this boundary. Bodies are fetched on open.
 export async function documentIndex(scope: string, actor: RequestActor) {
@@ -10,7 +10,7 @@ export async function documentIndex(scope: string, actor: RequestActor) {
   const rows: KnowledgeDocument[] = [];
   for (let offset = 0; ; offset += 1000) {
     let query = createServiceSupabase().from("os_documents")
-      .select("id,title,folder,status,source_ref,owner_id,current_version,updated_at,team,brand,tags")
+      .select(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`)
       .order("id").range(offset, offset + 999);
     if (scope === "mine_company") query = query.or(`owner_id.eq.${ownerId},status.eq.canonical`);
     else if (scope === "mine") query = query.eq("owner_id", ownerId);
