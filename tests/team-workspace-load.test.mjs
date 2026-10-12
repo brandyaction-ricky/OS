@@ -52,7 +52,7 @@ function workspace({ hold = Promise.resolve(), readResult = (_, result) => resul
   const exports = {}, noopModule = new Proxy({}, { get: () => () => null });
   const source = readFileSync(new URL("../components/team/team-workspace-v1.tsx", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  runInNewContext(code, { exports, require: name => imports[name] ?? noopModule });
+  runInNewContext(code, { exports, Error, require: name => imports[name] ?? noopModule });
   return {
     calls,
     setSession(next) { session = { ...session, ...next }; },
@@ -72,6 +72,18 @@ function propsOf(tree, name) {
   if (Array.isArray(tree)) return tree.map(child => propsOf(child, name)).find(Boolean);
   if (tree.type === name || tree.type?.name === name) return tree.props;
   return propsOf(tree.props?.children, name);
+}
+function findNode(tree, predicate) {
+  if (!tree) return undefined;
+  if (Array.isArray(tree)) return tree.map(child => findNode(child, predicate)).find(Boolean);
+  if (predicate(tree)) return tree;
+  return findNode(tree.props?.children, predicate);
+}
+function textOf(tree) {
+  if (tree == null || tree === false) return "";
+  if (Array.isArray(tree)) return tree.map(textOf).join(" ");
+  if (typeof tree !== "object") return String(tree);
+  return textOf(tree.props?.children);
 }
 function deferred() {
   let resolve, reject;
@@ -169,4 +181,83 @@ test("account and permission changes immediately hide old data and reject old re
   tree = screen.render("schedule", "week=2026-10-19");
   assert.equal(propsOf(tree, "ScheduleView").tasks.length, 0);
   assert.equal(screen.calls.length, before, "disabled account does not start another read");
+});
+
+test("schedule renders main data without waiting for absences and retries only the failed absence read", async () => {
+  const absence = deferred(); let retried = false;
+  const screen = workspace({ readResult: (kind, result) => {
+    if (kind.startsWith("/api/v1/hr/absences")) return retried ? { absences: [{ name: "테스트", start: "2026-10-12", end: "2026-10-12" }] } : absence.promise;
+    if (kind.startsWith("task:")) return [{ id: "task", title: "업무", due_date: "2026-10-12" }];
+    if (kind === "/api/v1/team/meetings") return { meetings: [{ id: "meeting", title: "회의", starts_at: "2026-10-12T03:00:00Z", metadata: {} }] };
+    return result;
+  } });
+  screen.render("schedule", "week=2026-10-12"); await screen.settle();
+  let tree = screen.render("schedule", "week=2026-10-12");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").loading, false);
+  assert.equal(propsOf(tree, "ScheduleView").tasks.length, 1);
+  assert.equal(propsOf(tree, "ScheduleView").meetings.length, 1);
+  assert.equal(propsOf(tree, "ScheduleView").absenceNotice, "확인 중");
+  absence.reject(new Error("private database detail")); await screen.settle();
+  tree = screen.render("schedule", "week=2026-10-12");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").error, "");
+  const warning = findNode(tree, node => node.props?.role === "alert");
+  assert.match(textOf(warning), /부재 일정을 확인하지 못했습니다/);
+  assert.doesNotMatch(textOf(warning), /private database detail/);
+  const view = findNode(tree, node => node.type?.name === "ScheduleView");
+  assert.match(textOf(view.type(view.props)), /부재 인원 확인 필요/);
+  const before = screen.calls.length;
+  retried = true;
+  findNode(tree, node => node.type === "button" && node.props.children === "부재 다시 불러오기").props.onClick();
+  await screen.settle();
+  tree = screen.render("schedule", "week=2026-10-12");
+  assert.equal(screen.calls.length, before + 1);
+  assert.ok(screen.calls.at(-1).startsWith("/api/v1/hr/absences"));
+  assert.equal(propsOf(tree, "WorkspaceLoadState").loading, false);
+  assert.equal(propsOf(tree, "ScheduleView").absenceNotice, "");
+  assert.equal(propsOf(tree, "ScheduleView").absences.length, 1);
+  assert.equal(findNode(tree, node => node.props?.role === "alert"), undefined);
+});
+
+test("people keeps members and workloads when absences fail, without claiming zero absences", async () => {
+  const screen = workspace({ readResult: (kind, result) => {
+    if (kind.startsWith("/api/v1/hr/absences")) throw new Error("unavailable");
+    if (kind === "members") return { members: [{ id: "member", display_name: "테스트", is_active: true, role: "member" }] };
+    if (kind === "task") return [{ id: "task", title: "업무", status: "active", assignee_id: "member" }];
+    return result;
+  } });
+  screen.render("people"); await screen.settle();
+  const tree = screen.render("people");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").error, "");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").loading, false);
+  const view = findNode(tree, node => node.type?.name === "PeopleView");
+  assert.equal(view.props.members.length, 1);
+  assert.equal(view.props.tasks.length, 1);
+  assert.equal(view.props.absenceNotice, "확인 필요");
+  assert.match(textOf(view.type(view.props)), /확인 필요/);
+});
+
+test("primary data failures retain the global error even if the absence read also fails", async () => {
+  const screen = workspace({ readResult: (kind, result) => {
+    if (kind.startsWith("/api/v1/hr/absences")) throw new Error("absence unavailable");
+    if (kind.startsWith("task:")) throw new Error("main unavailable");
+    return result;
+  } });
+  screen.render("schedule", "week=2026-10-12"); await screen.settle();
+  const tree = screen.render("schedule", "week=2026-10-12");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").error, "main unavailable");
+  assert.equal(propsOf(tree, "WorkspaceLoadState").loading, false);
+  assert.equal(propsOf(tree, "ScheduleView").tasks.length, 0);
+});
+
+test("obsolete absence responses cannot overwrite the current range's readiness or warning", async () => {
+  const earlier = deferred(), latest = deferred();
+  const screen = workspace({ readResult: (kind, result) => kind.startsWith("/api/v1/hr/absences") ? (kind.includes("from=2026-10-12") ? earlier.promise : latest.promise) : result });
+  screen.render("schedule", "week=2026-10-12");
+  screen.render("schedule", "week=2026-10-19");
+  latest.resolve({ absences: [{ name: "현재", start: "2026-10-19", end: "2026-10-19" }] }); await screen.settle();
+  earlier.reject(new Error("obsolete absence")); await screen.settle();
+  const tree = screen.render("schedule", "week=2026-10-19");
+  assert.equal(propsOf(tree, "ScheduleView").absenceNotice, "");
+  assert.equal(propsOf(tree, "ScheduleView").absences[0].name, "현재");
+  assert.equal(findNode(tree, node => node.props?.role === "alert"), undefined);
 });
