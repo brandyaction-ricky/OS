@@ -72,6 +72,15 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         stateRef.current = result.state; setState(result.state); return { id: result.id };
       }
       const result = await apiRequest<{ id?: string }>("/api/v1/knowledge/workspace", { token, method: "POST", body: JSON.stringify(input) });
+      if (input.action === "meeting.save" && input.id) {
+        const detail = await apiRequest<{meeting: Meeting; people: KnowledgeState["people"]; actor: KnowledgeActor}>(`/api/v1/knowledge/meetings/${input.id}`, { token });
+        const next = { ...stateRef.current,
+          meetings: [detail.meeting, ...stateRef.current.meetings.filter(row => row.id !== detail.meeting.id)],
+          people: [...detail.people, ...stateRef.current.people.filter(row => !detail.people.some(person => person.id === row.id))],
+        };
+        stateRef.current = next;setState(next);setRemoteActor(detail.actor);
+        return result;
+      }
       if (options?.fastCreate && result.id && (input.action === "meeting.create" || input.action === "document.create")) {
         if (input.action === "meeting.create") {
           const now = new Date().toISOString();

@@ -219,9 +219,11 @@ export async function uploadMeetingRecording(token: string | null, file: Blob) {
   });
 }
 
-export async function transcribeMeeting(token: string | null, file: Blob) {
+export async function transcribeMeeting(token: string | null, file: Blob, options?: {liveSegment?: boolean}) {
   const body = new FormData();
-  body.set("file", file, `meeting-${Date.now()}.webm`);
+  const extension = file.type.includes("mp4") ? "mp4" : file.type.includes("ogg") ? "ogg" : "webm";
+  body.set("file", file, `meeting-${Date.now()}.${extension}`);
+  if (options?.liveSegment) body.set("liveSegment", "1");
   return apiRequest<{ transcript: string; mode: "ai" }>("/api/v1/meeting-transcription", { method: "POST", token, body });
 }
 
