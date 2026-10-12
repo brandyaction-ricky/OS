@@ -24,12 +24,34 @@ export async function readFinance(actor:RequestActor, resource:string, offset=0,
   // Provider raw data is never sent to a browser, even when sanitized at ingestion.
   return (data??[]).map(({raw,secret_env,...row})=>{void raw;void secret_env;return row as FinanceRow;});
 }
-export async function readLedger(actor:RequestActor):Promise<FinanceData> {
+export async function readLedger(actor:RequestActor,{maxBytes}:{maxBytes?:number}={}):Promise<FinanceData> {
   const data:FinanceData={};
-  await Promise.all(READ_RESOURCES.filter(x=>x!=="events").map(async r=>{
-    const rows:FinanceRow[]=[];
-    for(let offset=0;offset<100000;offset+=1000){const page=await readFinance(actor,r,offset);rows.push(...page);if(page.length<1000){data[r]=rows;return;}}
-    throw new ApiError(413,"FINANCE_RANGE_REQUIRED","조회할 데이터가 많습니다. 기간을 줄여 주세요.");
+  const resources=READ_RESOURCES.filter(x=>x!=="events");
+  // The optional transport budget applies only to batch reads, never save validation.
+  let bytes=maxBytes===undefined?0:Buffer.byteLength(JSON.stringify(Object.fromEntries(resources.map(resource=>[resource,[]]))),"utf8");
+  const checkSize=()=>{if(maxBytes!==undefined&&bytes>maxBytes)throw new ApiError(413,"FINANCE_WORKSPACE_PAGED","장부를 나누어 불러옵니다.");};
+  checkSize();
+  let next=0,failed=false;
+  // Reuse one authorized actor, without flooding the database with every table at once.
+  await Promise.all(Array.from({length:Math.min(4,resources.length)},async()=>{
+    while(!failed&&next<resources.length){
+      const resource=resources[next++],rows:FinanceRow[]=[];
+      try{
+        for(let offset=0;;offset+=1000){
+          if(failed)return;
+          if(offset>=100000)throw new ApiError(413,"FINANCE_RANGE_REQUIRED","조회할 데이터가 많습니다. 기간을 줄여 주세요.");
+          const page=await readFinance(actor,resource,offset);
+          if(failed)return;
+          if(maxBytes!==undefined){
+            // Empty arrays are already included above; count only page contents and joins.
+            bytes+=Buffer.byteLength(JSON.stringify(page),"utf8")-2+(rows.length&&page.length?1:0);
+            checkSize();
+          }
+          rows.push(...page);
+          if(page.length<1000){data[resource]=rows;break;}
+        }
+      }catch(error){failed=true;throw error;}
+    }
   }));
   return data;
 }

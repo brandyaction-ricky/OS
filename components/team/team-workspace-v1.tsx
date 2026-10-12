@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, CircleAlert, Plus, Search, Users, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, archiveRecord, listAllRecordsOfType, listMembers, updateRecord, type OsMember } from "@/lib/api-client";
 import { CreateTeamMeeting, TeamMeetingDetail, TeamMeetingReview } from "@/components/team/meeting-actions";
 import { CreateTeamTask, EditableTaskDrawer, TeamTaskInbox, moveTeamTask } from "@/components/team/task-actions";
@@ -96,46 +96,65 @@ function sectionTabs(label: string, items: Array<{ label: string; href: string; 
 
 export function TeamWorkspaceV1({ section }: { section: Section }) {
   const params = useSearchParams();
-  const { accessToken, demo, profile } = useSession();
-  const [data, setData] = useState<Data>(EMPTY_DATA);
-  const [loading, setLoading] = useState(!demo);
-  const [error, setError] = useState("");
+  const { accessToken, demo, profile, loading: sessionLoading } = useSession();
   const [search, setSearch] = useState("");
   const [guideClosed, setGuideClosed] = useState(false);
+  // Selection, tabs and client-side filters reuse the loaded workspace.
+  const scheduleWeek = section === "schedule" ? params.get("week") : null;
+  const scheduleMonth = section === "schedule" && params.get("view") === "month";
+  const loadKey = JSON.stringify([accessToken, demo, sessionLoading, profile?.id, profile?.role, profile?.memberKind, profile?.isActive, profile?.team, profile?.personKind, profile?.isSharedAccount, section, scheduleWeek, scheduleMonth]);
+  const currentLoadKey = useRef(loadKey); currentLoadKey.current = loadKey;
+  const generation = useRef(0);
+  const [snapshot, setSnapshot] = useState<{ key: string; data: Data } | null>(null);
+  const [loadStatus, setLoadStatus] = useState({ key: loadKey, loading: !demo, error: "" });
+  // Never render a prior account, permission scope or schedule range while its replacement loads.
+  const data = snapshot?.key === loadKey ? snapshot.data : EMPTY_DATA;
+  const loading = loadStatus.key === loadKey ? loadStatus.loading : !demo;
+  const error = loadStatus.key === loadKey ? loadStatus.error : "";
   const load = useCallback(async () => {
-    if (demo) { setData(EMPTY_DATA); setLoading(false); return; }
-    if (!accessToken) return;
-    setLoading(true);
+    if (loadKey !== currentLoadKey.current) return;
+    const request = ++generation.current;
+    const current = () => request === generation.current && loadKey === currentLoadKey.current;
+    if (demo || sessionLoading || !accessToken || !profile?.id || profile.isActive === false) {
+      setSnapshot({ key: loadKey, data: EMPTY_DATA });
+      setLoadStatus({ key: loadKey, loading: !demo && sessionLoading, error: "" });
+      return;
+    }
+    setLoadStatus({ key: loadKey, loading: true, error: "" });
     try {
       if (section === "meetings") {
         const [result, tasks, members, decisions, projects] = await Promise.all([
           apiRequest<{meetings: Meeting[]}>("/api/v1/team/meetings", { token: accessToken }),
           listAllRecordsOfType(accessToken, "task"), listMembers(accessToken), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "project"),
         ]);
-        setData({ meetings: result.meetings, tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), decisions, publishes: [], absences: [] });
+        if (!current()) return;
+        setSnapshot({ key: loadKey, data: { meetings: result.meetings, tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), decisions, publishes: [], absences: [] } });
       } else {
-        const selectedDate = params.get("week") && /^\d{4}-\d{2}-\d{2}$/.test(params.get("week") ?? "") ? new Date(`${params.get("week")}T12:00:00`) : new Date();
-        const rangeStart = section === "schedule" ? monday(params.get("view") === "month" ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1) : selectedDate) : addDays(new Date(), -14);
-        const rangeEnd = section === "schedule" ? addDays(rangeStart, params.get("view") === "month" ? 42 : 7) : addDays(new Date(), 46);
+        const selectedDate = scheduleWeek && /^\d{4}-\d{2}-\d{2}$/.test(scheduleWeek) ? new Date(`${scheduleWeek}T12:00:00`) : new Date();
+        const rangeStart = section === "schedule" ? monday(scheduleMonth ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1) : selectedDate) : addDays(new Date(), -14);
+        const rangeEnd = section === "schedule" ? addDays(rangeStart, scheduleMonth ? 42 : 7) : addDays(new Date(), 46);
         const from = dayKey(rangeStart), to = dayKey(rangeEnd);
-        const [tasks, members, meetings, publishes, projects] = await Promise.all([
+        const [tasks, members, meetings, publishes, projects, absences] = await Promise.all([
           section === "schedule" ? listTeamRange(accessToken, "task", from, to) : listAllRecordsOfType(accessToken, "task"),
           section === "people" || section === "tasks" ? listMembers(accessToken).then(result => result.members) : Promise.resolve([]),
           section === "schedule" || section === "tasks" ? apiRequest<{meetings: Meeting[]}>("/api/v1/team/meetings", { token: accessToken }).then(result => result.meetings) : Promise.resolve([]),
           section === "schedule" ? listTeamRange(accessToken, "content_publish", from, to) : Promise.resolve([]),
           section === "tasks" ? listAllRecordsOfType(accessToken, "project") : Promise.resolve([]),
+          section === "people" || section === "schedule"
+            ? apiRequest<{ absences: TeamAbsence[] }>(`/api/v1/hr/absences?from=${from}&to=${to}`, { token: accessToken }).then(result => result.absences)
+            : Promise.resolve([]),
         ]);
-        const absences = section === "people" || section === "schedule"
-          ? await apiRequest<{ absences: TeamAbsence[] }>(`/api/v1/hr/absences?from=${from}&to=${to}`, { token: accessToken }).then(result => result.absences)
-          : [];
-        setData({ tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), meetings, decisions: [], publishes: publishes.filter(item => contentOrigin(item) === "own"), absences });
+        if (!current()) return;
+        setSnapshot({ key: loadKey, data: { tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), meetings, decisions: [], publishes: publishes.filter(item => contentOrigin(item) === "own"), absences } });
       }
-      setError("");
+      setLoadStatus({ key: loadKey, loading: false, error: "" });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "팀 화면을 불러오지 못했습니다.");
-    } finally { setLoading(false); }
-  }, [accessToken, demo, section, params]);
-  useEffect(() => { void load(); }, [load]);
+      if (!current()) return;
+      setSnapshot({ key: loadKey, data: EMPTY_DATA });
+      setLoadStatus({ key: loadKey, loading: false, error: cause instanceof Error ? cause.message : "팀 화면을 불러오지 못했습니다." });
+    }
+  }, [accessToken, demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey]);
+  useEffect(() => { void load(); const requests = generation; return () => { requests.current++; }; }, [load]);
 
   const activeTab = params.get("tab") ?? "records";
   const meetingId = params.get("meeting");

@@ -20,6 +20,11 @@ async function handle(request:Request,context:Context){
     const url=new URL(request.url), action=path.join("/");
     if(request.method==="GET"){
       if(action==="workspace"){
+        if(url.searchParams.get("batch")==="1"){
+          // Stop early for large ledgers and use the existing paged endpoint.
+          const data=await readLedger(actor,{maxBytes:3_500_000});
+          return json({data});
+        }
         const resource=url.searchParams.get("resource")||"";
         const offset=z.coerce.number().int().min(0).max(100000).parse(url.searchParams.get("offset")||0);
         const rows=await readFinance(actor,resource,offset);

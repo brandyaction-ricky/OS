@@ -11,9 +11,11 @@ export async function GET() {
   let agentMcp: "ready" | "missing" | "error" = hasServerSupabaseConfig() ? "error" : "missing";
   if (hasServerSupabaseConfig()) {
     const service = createServiceSupabase();
-    const { error } = await service.from("os_documents").select("id").limit(1).abortSignal(AbortSignal.timeout(8_000));
+    const [{ error }, { error: agentError }] = await Promise.all([
+      service.from("os_documents").select("id").limit(1).abortSignal(AbortSignal.timeout(8_000)),
+      service.from("os_organizations").select("id").eq("slug", "brandyaction").limit(1).abortSignal(AbortSignal.timeout(8_000)),
+    ]);
     database = error ? "error" : "ready";
-    const { error: agentError } = await service.from("os_organizations").select("id").eq("slug", "brandyaction").limit(1).abortSignal(AbortSignal.timeout(8_000));
     agentMcp = agentError ? "error" : "ready";
   }
   const auth = hasPublicSupabaseConfig() ? "ready" : "missing";

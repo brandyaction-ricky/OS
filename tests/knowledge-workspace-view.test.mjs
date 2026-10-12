@@ -12,7 +12,7 @@ import * as access from '../lib/knowledge/access.ts';
 
 function render(file,name,context,props={}){
   const exports={},box=({children})=>React.createElement('section',null,children);
-  const modules={react:React,'react/jsx-runtime':jsx,'next/link':{default:({children,href})=>React.createElement('a',{href},children)},'next/navigation':{useRouter:()=>({replace(){}}),useSearchParams:()=>new URLSearchParams()},
+  const modules={react:React,'react/jsx-runtime':jsx,'next/link':{default:({children,href})=>React.createElement('a',{href},children)},'next/dynamic':{default:()=>box},'next/navigation':{useRouter:()=>({replace(){}}),useSearchParams:()=>new URLSearchParams()},
     './provider':{useKnowledge:()=>context},'./ui':{Empty:box,Header:box,SpaceBadge:box},'./use-graph':{useWorkspaceGraph:()=>({graph:null})},
     '@/lib/knowledge/model':model,'@/lib/knowledge/legacy':legacy,'@/lib/knowledge/access':access};
   const source=ts.transpileModule(readFileSync(new URL('../components/knowledge/'+file,import.meta.url),'utf8'),{compilerOptions:{jsx:ts.JsxEmit.ReactJSX,module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;

@@ -24,11 +24,15 @@ import type { KnowledgeDocument } from "@/lib/types";
 import { useKnowledge } from "./provider";
 import { Empty, Modal, PinButton, SpaceBadge } from "./ui";
 
-export function KnowledgeDocumentPage({ id, embedded = false }: { id: string; embedded?: boolean }) {
-  const { loadDocument, actor, loading } = useKnowledge(); const [document, setDocument] = useState<KnowledgeDocument | null>(null), [error, setError] = useState("");
-  useEffect(() => { if (loading) return; let active = true; setDocument(null); setError(""); void loadDocument(id).then(doc => { if (active) setDocument(doc); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, loadDocument, loading]);
+export function KnowledgeDocumentPage({ id, embedded = false, earlyCanonicalRead = false }: { id: string; embedded?: boolean; earlyCanonicalRead?: boolean }) {
+  const { loadDocument, actor, loading, demo, token } = useKnowledge(); const [document, setDocument] = useState<KnowledgeDocument | null>(null), [error, setError] = useState("");
+  // Read-only canon has no editable draft to restore. Fetch its body alongside
+  // the supporting workspace; editable documents still wait for draft recovery.
+  const waiting = loading && !(earlyCanonicalRead && !demo && token);
+  const loadDocumentRef = useRef(loadDocument); loadDocumentRef.current = loadDocument;
+  useEffect(() => { if (waiting) return; let active = true; setDocument(null); setError(""); void loadDocumentRef.current(id).then(doc => { if (active) setDocument(doc); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, waiting, token]);
   useEffect(() => { if (!document) return; try { const key = `kw:recent:${actor.ownerId}`, prior = JSON.parse(localStorage.getItem(key) ?? "[]"); localStorage.setItem(key, JSON.stringify([id, ...prior.filter((v: string) => v !== id)].slice(0,20))); } catch { /* Reading must not depend on local preference storage. */ } }, [document, id, actor.ownerId]);
-  return error ? <Empty>{error}</Empty> : document ? <DocumentEditor key={id} initial={document} embedded={embedded}/> : <Empty>문서를 불러오는 중…</Empty>;
+  return error ? <Empty>{error}</Empty> : document && (!loading || document.status === "canonical") ? <DocumentEditor key={id} initial={document} embedded={embedded}/> : <Empty>문서를 불러오는 중…</Empty>;
 }
 export function DocumentEditor({ initial, embedded = false }: { initial: KnowledgeDocument; embedded?: boolean }) {
   const { state, actor, command, loadDocument, refresh, token, demo, notify } = useKnowledge(), router = useRouter();

@@ -15,19 +15,49 @@ export class ApiRequestError extends Error {
   constructor(message: string, public readonly code: string, public readonly status: number) { super(message); this.name = "ApiRequestError"; }
 }
 
+// Only explicitly selected, side-effect-free reads share an in-flight request.
+// Results are never retained after settlement or reused across access tokens.
+const pendingReads = new Map<string, Promise<unknown>>();
+let pendingWrites = 0;
+
+async function sharedRead<T>(path: string, token: string | null): Promise<T> {
+  if (typeof window === "undefined" || !token || pendingWrites) return apiRequest<T>(path, { token });
+  const key = JSON.stringify([token, path]);
+  let pending = pendingReads.get(key);
+  if (!pending) {
+    pending = apiRequest<T>(path, { token });
+    // Bound the map even if a connection takes a long time to settle.
+    if (pendingReads.size >= 100) pendingReads.clear();
+    pendingReads.set(key, pending);
+  }
+  try {
+    // Callers may sort or edit returned rows locally; keep their copies isolated.
+    return structuredClone(await pending) as T;
+  } finally {
+    if (pendingReads.get(key) === pending) pendingReads.delete(key);
+  }
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set("accept", "application/json");
   if (options.body && !(options.body instanceof FormData)) headers.set("content-type", "application/json");
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
 
-  const response = await fetch(path, { ...options, headers, cache: "no-store" });
-  const body = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = body?.error?.message ?? `요청을 처리하지 못했습니다. (${response.status})`;
-    throw new ApiRequestError(message, body?.error?.code ?? "REQUEST_FAILED", response.status);
+  const mutation = !["GET", "HEAD"].includes((options.method ?? "GET").toUpperCase());
+  if (mutation) { pendingWrites += 1; pendingReads.clear(); }
+  try {
+    const response = await fetch(path, { ...options, headers, cache: "no-store" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      const message = body?.error?.message ?? `요청을 처리하지 못했습니다. (${response.status})`;
+      throw new ApiRequestError(message, body?.error?.code ?? "REQUEST_FAILED", response.status);
+    }
+    return body as T;
+  } finally {
+    // A refresh after a save must never join a read from before/during that save.
+    if (mutation) { pendingWrites -= 1; pendingReads.clear(); }
   }
-  return body as T;
 }
 
 export async function listDocuments(token: string | null, query = "") {
@@ -153,20 +183,32 @@ export async function searchKnowledge(
   });
 }
 
+function decodedRecordTitles(records: OsRecord[]) {
+  return records.map(record => record.record_type.startsWith("content_") ? { ...record, title: decodeHtmlEntities(record.title) } : record);
+}
+
 export async function listRecords(token: string | null, recordType: RecordType, query = "") {
   const params = new URLSearchParams(query);
   params.set("type", recordType);
-  const result = await apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, { token });
-  return { ...result, records: result.records.map(record => record.record_type.startsWith("content_") ? { ...record, title: decodeHtmlEntities(record.title) } : record) };
+  // Pagination helpers use offset=0; screens often omit that same default.
+  if (params.get("offset") === "0") params.delete("offset");
+  params.sort();
+  const result = await sharedRead<{ records: OsRecord[]; total: number }>(`/api/v1/records?${params}`, token);
+  return { ...result, records: decodedRecordTitles(result.records) };
 }
 
 export async function listAllRecordsOfType(token: string | null, recordType: RecordType) {
-  const records: OsRecord[] = [];
-  for (let offset = 0; ; offset += 200) {
-    const page = await listRecords(token, recordType, `limit=200&offset=${offset}`);
-    records.push(...page.records);
-    if (page.records.length < 200 || records.length >= page.total) return records;
+  // Keep the first page identical to list screens so their in-flight read is shared.
+  const first = await listRecords(token, recordType, "limit=200");
+  const records = first.records;
+  if (records.length < 200) return records;
+  for (let offset = 200; records.length < first.total; offset += 200) {
+    const params = new URLSearchParams({ count: "none", limit: "200", offset: String(offset), type: recordType });
+    const page = await sharedRead<{ records: OsRecord[]; total: null }>(`/api/v1/records?${params}`, token);
+    records.push(...decodedRecordTitles(page.records));
+    if (page.records.length < 200) break;
   }
+  return records;
 }
 
 export async function listAllRecords(token: string | null, query = "limit=200") {
@@ -715,7 +757,7 @@ export interface OsMember {
 }
 
 export async function listMembers(token: string | null) {
-  return apiRequest<{ members: OsMember[] }>("/api/v1/members", { token });
+  return sharedRead<{ members: OsMember[] }>("/api/v1/members", token);
 }
 
 export async function getMenuAccess(token: string | null, all = false) {
