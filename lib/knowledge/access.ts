@@ -7,6 +7,8 @@ export interface KnowledgeActor {
   active?: boolean;
   allowedStatuses: readonly string[];
   canApprove?: boolean;
+  /** Explicitly assigned approver: may also decide proposals on own documents or drafted by own AI key. */
+  designatedApprover?: boolean;
   canPublishCanonical?: boolean;
 }
 export interface AccessDocument {
@@ -78,6 +80,6 @@ export function canManageCategory(actor: KnowledgeActor, category: { space: stri
 }
 export function canDecideProposal(actor: KnowledgeActor, proposal: { author_id: string; requested_approver_id?: string | null; agent_owner_id?: string | null }, doc: AccessDocument, proxyReason = "") {
   return actor.type === "user" && actor.memberKind !== "partner" && actor.active !== false && actor.canApprove === true
-    && ![proposal.author_id, proposal.agent_owner_id, doc.owner_id].includes(actor.ownerId)
+    && (actor.designatedApprover === true || ![proposal.author_id, proposal.agent_owner_id, doc.owner_id].includes(actor.ownerId))
     && (!proposal.requested_approver_id || proposal.requested_approver_id === actor.ownerId || (actor.role === "admin" && proxyReason.trim().length > 0));
 }

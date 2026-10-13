@@ -53,11 +53,12 @@ export function KnowledgeProposalReview() {
     let active = true;
     setCanApprove(false);
     Promise.all([
-      apiRequest<{ canApprove: boolean }>(`/api/v1/approvals?documentId=${encodeURIComponent(document.id)}`, { token: accessToken }),
+      apiRequest<{ canApprove: boolean; assignments?: Array<{ user_id: string; kind: string }> }>(`/api/v1/approvals?documentId=${encodeURIComponent(document.id)}`, { token: accessToken }),
       apiRequest<ProposalResponse>(`/api/v1/documents/proposals?id=${encodeURIComponent(selected.id)}`, { token: accessToken }),
     ]).then(([permission, detail]) => {
       if (!active) return;
-      setCanApprove(permission.canApprove && selected.author_id !== profile?.id);
+      const designated = permission.assignments?.some((row) => row.kind === "approver" && row.user_id === profile?.id) === true;
+      setCanApprove(designated || (permission.canApprove && selected.author_id !== profile?.id));
       setComments(detail.comments);
     }).catch((reason) => { if (active) { setCanApprove(false); setError(reason instanceof Error ? reason.message : "제안을 확인하지 못했습니다."); } });
     return () => { active = false; };

@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { canReadKnowledgeDocument } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
+import { isDesignatedApprover } from "@/lib/server/document-proposals";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentProposal, KnowledgeDocument } from "@/lib/types";
 
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
     if (proposal.status !== "open") throw new ApiError(409, "PROPOSAL_NOT_OPEN", "이미 처리된 변경 제안입니다.");
     if (input.action === "withdraw") {
       if (proposal.author_id !== actor.id) throw new ApiError(403, "PROPOSAL_WITHDRAW_DENIED", "제안 작성자만 철회할 수 있습니다.");
-    } else {
+    } else if (!(await isDesignatedApprover(actor.id))) {
       const { data: authorAllowed, error: approvalError } = await actor.supabase.rpc("os_can_approve", { p_actor: actor.id, p_author: proposal.author_id });
       const { data: ownerAllowed, error: ownerError } = await actor.supabase.rpc("os_can_approve", { p_actor: actor.id, p_author: document.owner_id });
       if (approvalError || ownerError || !authorAllowed || !ownerAllowed) throw new ApiError(403, "PROPOSAL_APPROVAL_DENIED", "작성자와 다른 승인자 또는 유효한 위임자만 결정할 수 있습니다.");

@@ -646,6 +646,16 @@
       "approvedAt": "2026-10-13",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval. Rollback-only DEV fixtures and a read-only Production check per active member showed 0 visibility differences against the original functions."
+    },
+    {
+      "file": "20261013060000_designated_approver_own_proposals.sql",
+      "sha256": "385c9ab0acbd2210603f78b67ba5d7bddc0c224d4696f84dd809bd6dcbad05f8",
+      "purpose": "let the explicitly assigned approver decide change proposals on own documents or own-AI-key drafts",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Adds os_is_designated_approver and replaces os_knowledge_workflow_command from the 2026-10-13 Production definition (identical on DEV) with only the proposal.decide approval condition changed. No table, row or grant changes."
     }
   ],
   "legacyMigrations": [

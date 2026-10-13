@@ -11,6 +11,15 @@ export interface DocumentProposalInput {
   tags: string[];
 }
 
+/** Mirrors public.os_is_designated_approver: an active, explicitly assigned approver (no admin fallback). */
+export async function isDesignatedApprover(userId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data, error } = await createServiceSupabase().from("os_approval_assignments")
+    .select("starts_on,ends_on").eq("user_id", userId).eq("kind", "approver").is("revoked_at", null);
+  if (error) return false;
+  return (data ?? []).some((row) => (!row.starts_on || row.starts_on <= today) && (!row.ends_on || row.ends_on >= today));
+}
+
 export async function createCanonicalProposal(actor: RequestActor, current: {
   id: string; current_version: number; status: string; owner_id?: string; steward_id?: string | null;
 }, expectedVersion: number, next: DocumentProposalInput, note = "") {
