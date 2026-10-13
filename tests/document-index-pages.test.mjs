@@ -33,3 +33,17 @@ test("document index reads counted pages together and still picks up rows added 
   assert.deepEqual(grew.ranges, [0, 1000, 2000, 3000]);
   assert.equal((await index(0, 0)).result.length, 0);
 });
+
+test("folder counts read only the folder and access fields", async () => {
+  const selected = [];
+  const from = () => { const q = new Proxy({}, { get: (_t, key) => key === "then" ? done => done({ data: [], count: 0, error: null }) : (...args) => { if (key === "select") selected.push(args[0]); return q; } }); return q; };
+  const source = await readFile(new URL("../lib/server/document-index.ts", import.meta.url), "utf8");
+  const mod = { exports: {} };
+  runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: mod, exports: mod.exports, require: name => ({
+    "@/lib/http": { ApiError: Error }, "./knowledge-page-access": { POLICY_FIELDS: "id,owner_id", readableKnowledgePages: async () => new Set() },
+  })[name] });
+  await mod.exports.documentIndex("all", { ownerId: "synthetic", supabase: { from } }, "folders");
+  assert.equal(selected[1], "folder,id,owner_id");
+  await mod.exports.documentIndex("all", { ownerId: "synthetic", supabase: { from } });
+  assert.match(selected[3], /^title,/);
+});

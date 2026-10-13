@@ -45,7 +45,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, recentRead, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, documentFolderPath, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, readDocumentFolders, recentRead, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -555,12 +555,11 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     const revision = ++epoch.current;
     loadedFolders.current.clear();
     setListLoading(true);
-    const inventoryPath = `/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`;
-    const recentInventory = recentRead<{folders: Array<{path: string; count: number}>}>(inventoryPath, accessToken);
+    const recentInventory = recentRead<{folders: Array<{path: string; count: number}>}>(documentFolderPath(ownerFilter), accessToken);
     // The folder tree can render from this tab's last inventory; loading stays on until the fresh pass ends.
     if (recentInventory) setInventory(recentInventory.folders);
     try {
-      const result = await apiRequest<{folders: Array<{path: string; count: number}>}>(inventoryPath, {token: accessToken});
+      const result = await readDocumentFolders(accessToken, ownerFilter);
       if (revision !== epoch.current) return;
       setInventory(result.folders);
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
@@ -804,9 +803,9 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     if (demo || !accessToken || busy) return;
     let active = true;
     Promise.all([
-      apiRequest<{ folders: Array<{path: string; count: number}> }>(`/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`, { token: accessToken }),
-      apiRequest<{ folders: Array<{path: string; count: number}> }>("/api/v1/documents/index?folders=true&scope=all", { token: accessToken }),
-      apiRequest<{ total: number; folders: Array<{path: string; count: number}> }>("/api/v1/documents/index?folders=true&scope=archived", { token: accessToken }),
+      readDocumentFolders(accessToken, ownerFilter),
+      readDocumentFolders(accessToken, "all"),
+      readDocumentFolders(accessToken, "archived"),
     ]).then(([current, all, archived]) => { if (active) { setInventory(current.folders); setAllFolders([...all.folders, ...archived.folders].map(item => item.path).filter(path => path !== "분류 없음")); setArchivedCount(archived.total); } }).catch(() => { if (active) setError("폴더 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 확인해 주세요."); });
     return () => { active = false; };
   }, [accessToken, demo, ownerFilter, revision, busy]);

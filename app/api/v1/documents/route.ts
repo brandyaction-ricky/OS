@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     const includeContent = view !== "summary" && view !== "page-summary";
 
     if (url.searchParams.get("view") === "folders") {
-      const folders = new Set((await documentIndex("all", actor)).map(row => row.folder).filter(Boolean));
+      const folders = new Set((await documentIndex("all", actor, "folders")).map(row => row.folder).filter(Boolean));
       return NextResponse.json({ folders: [...folders].sort((a, b) => a.localeCompare(b, "ko", { numeric: true })) });
     }
 

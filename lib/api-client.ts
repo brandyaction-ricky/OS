@@ -91,6 +91,14 @@ export async function getDocument(token: string | null, id: string) {
   return apiRequest<{ document: KnowledgeDocument }>(`/api/v1/documents/${encodeURIComponent(id)}`, { token });
 }
 
+// Folder counts per scope; simultaneous screens share one request.
+export function documentFolderPath(scope: string) {
+  return `/api/v1/documents/index?folders=true&scope=${encodeURIComponent(scope)}`;
+}
+export function readDocumentFolders(token: string | null, scope: string) {
+  return sharedRead<{ total: number; folders: Array<{ path: string; count: number }> }>(documentFolderPath(scope), token);
+}
+
 export async function listDocumentFolders(token: string | null) {
   return apiRequest<{ folders: string[] }>("/api/v1/documents?view=folders", { token });
 }

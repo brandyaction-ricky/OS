@@ -24,8 +24,9 @@ test("global shell controls do not present dead actions", async () => {
 });
 
 test("knowledge workspace requests folder inventory and loads expanded folders lazily", async () => {
-  const workspace = await read("components/knowledge-workspace.tsx");
-  assert.match(workspace, /documents\/index\?folders=true/);
+  const [workspace, client] = await Promise.all([read("components/knowledge-workspace.tsx"), read("lib/api-client.ts")]);
+  assert.match(workspace, /readDocumentFolders\(/);
+  assert.match(client, /documents\/index\?folders=true/);
   assert.match(workspace, /\.map\(loadFolder\)/);
   assert.match(workspace, /Promise\.all/);
   assert.match(workspace, /문서 불러오는 중/);

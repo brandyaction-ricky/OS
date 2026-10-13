@@ -4,7 +4,9 @@ import type { RequestActor } from "./auth";
 import { POLICY_FIELDS, readableKnowledgePages } from "./knowledge-page-access";
 
 // Only lightweight metadata crosses this boundary. Bodies are fetched on open.
-export async function documentIndex(scope: string, actor: RequestActor) {
+// Folder counts need only the folder and the access fields, not every listed column.
+export async function documentIndex(scope: string, actor: RequestActor, view: "list" | "folders" = "list") {
+  const columns = view === "folders" ? `folder,${POLICY_FIELDS}` : `title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`;
   const ownerId = actor.ownerId;
   const scoped = (columns: string, options?: { count: "exact"; head: true }) => {
     // A signed-in member's own client lets row policies drop unreadable drafts in the
@@ -24,10 +26,10 @@ export async function documentIndex(scope: string, actor: RequestActor) {
   if (countError) throw failed();
   const offsets = Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / 1000)) }, (_, page) => page * 1000);
   const pages = await Promise.all(offsets.map(offset =>
-    scoped(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`).order("id").range(offset, offset + 999)));
+    scoped(columns).order("id").range(offset, offset + 999)));
   // Rows added after the count still arrive: a full last page continues one page at a time.
   for (let offset = offsets[offsets.length - 1] + 1000; pages[pages.length - 1].data?.length === 1000; offset += 1000) {
-    pages.push(await scoped(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`).order("id").range(offset, offset + 999));
+    pages.push(await scoped(columns).order("id").range(offset, offset + 999));
   }
   const rows: KnowledgeDocument[] = [];
   for (const { data, error } of pages) {
