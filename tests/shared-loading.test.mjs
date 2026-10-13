@@ -153,13 +153,13 @@ test("whole-type pagination stops if rows disappear after the first count", asyn
   const all = api.listAllRecordsOfType("one", "task");
   calls[0].reply({ records: Array.from({ length: 200 }, (_, i) => ({ ...recordBody.records[0], id: `synthetic-${i}` })), total: 9999 });
   await turn();
-  assert.equal(calls.length, 9, "pages after the first count are read eight at a time");
+  assert.equal(calls.length, 17, "pages after the first count are read sixteen at a time");
   const queries = calls.slice(1).map(call => new URLSearchParams(call.path.split("?")[1]));
-  assert.deepEqual(queries.map(query => query.get("offset")), ["200", "1200", "2200", "3200", "4200", "5200", "6200", "7200"]);
-  assert.ok(queries.every(query => query.get("limit") === "1000" && query.get("count") === "none"));
+  assert.deepEqual(queries.map(query => Number(query.get("offset"))), Array.from({ length: 16 }, (_, i) => 200 + i * 500));
+  assert.ok(queries.every(query => query.get("limit") === "500" && query.get("count") === "none"));
   calls.slice(1).forEach(call => call.reply({ records: [], total: null }));
   assert.equal((await all).length, 200);
-  assert.equal(calls.length, 9, "a short page stops before the next group");
+  assert.equal(calls.length, 17, "a short page stops before the next group");
 });
 
 test("mutations break reuse before and after a save, without allowing old reads to evict new ones", async () => {

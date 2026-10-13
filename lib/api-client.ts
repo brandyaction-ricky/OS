@@ -239,16 +239,17 @@ async function readAllRecordsOfType(token: string | null, recordType: RecordType
   const first = await listRecords(token, recordType, "limit=200");
   const records = first.records;
   if (records.length < 200) return records;
-  // The first count fixes every remaining offset; read uncounted 1,000-row pages eight at a time.
+  // The first count fixes every remaining offset. Page cost grows with rows, so
+  // uncounted 500-row pages are read sixteen at a time (8,000 rows per round).
   const offsets: number[] = [];
-  for (let offset = 200; offset < first.total; offset += 1000) offsets.push(offset);
-  for (let index = 0; index < offsets.length; index += 8) {
-    const pages = await Promise.all(offsets.slice(index, index + 8).map(offset => {
-      const params = new URLSearchParams({ count: "none", limit: "1000", offset: String(offset), type: recordType });
+  for (let offset = 200; offset < first.total; offset += 500) offsets.push(offset);
+  for (let index = 0; index < offsets.length; index += 16) {
+    const pages = await Promise.all(offsets.slice(index, index + 16).map(offset => {
+      const params = new URLSearchParams({ count: "none", limit: "500", offset: String(offset), type: recordType });
       return sharedRead<{ records: OsRecord[]; total: null }>(`/api/v1/records?${params}`, token);
     }));
     for (const page of pages) records.push(...decodedRecordTitles(page.records));
-    if (pages.some(page => page.records.length < 1000)) break;
+    if (pages.some(page => page.records.length < 500)) break;
   }
   return records;
 }
