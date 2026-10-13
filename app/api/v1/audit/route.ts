@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -113,7 +113,7 @@ export async function GET(request: Request) {
     const agentKeyIds = [...new Set((agentResult.data ?? []).map((event) => event.agent_key_id).filter(Boolean))];
     const agentRecordIds = [...new Set((agentResult.data ?? []).map((event) => event.record_id).filter(Boolean))];
     const [documentLookup, profiles, agentKeys, agentRecords] = await Promise.all([
-      documentIds.length ? service.from("os_documents").select("id,title,status,owner_id,parent_document_id").in("id", documentIds) : Promise.resolve({ data: [], error: null }),
+      documentIds.length ? service.from("os_documents").select(`title,${POLICY_FIELDS}`).in("id", documentIds) : Promise.resolve({ data: [], error: null }),
       actorIds.length ? service.from("os_profiles").select("id,display_name,email").in("id", actorIds) : Promise.resolve({ data: [] }),
       agentKeyIds.length ? service.from("os_agent_keys").select("id,name").in("id", agentKeyIds) : Promise.resolve({ data: [] }),
       agentRecordIds.length ? service.from("os_records").select("id,title,record_type,metadata").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
