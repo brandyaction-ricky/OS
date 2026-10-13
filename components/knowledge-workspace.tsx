@@ -802,13 +802,19 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
   useEffect(() => {
     if (demo || !accessToken || busy) return;
     let active = true;
-    Promise.all([
-      readDocumentFolders(accessToken, ownerFilter),
-      readDocumentFolders(accessToken, "all"),
-      readDocumentFolders(accessToken, "archived"),
-    ]).then(([current, all, archived]) => { if (active) { setInventory(current.folders); setAllFolders([...all.folders, ...archived.folders].map(item => item.path).filter(path => path !== "분류 없음")); setArchivedCount(archived.total); } }).catch(() => { if (active) setError("폴더 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 확인해 주세요."); });
+    readDocumentFolders(accessToken, ownerFilter).then(current => { if (active) setInventory(current.folders); }).catch(() => { if (active) setError("폴더 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 확인해 주세요."); });
     return () => { active = false; };
   }, [accessToken, demo, ownerFilter, revision, busy]);
+  // Move-target folder choices and the trash count are not needed for the first
+  // screen; read them after the visible tree has loaded so they do not compete with it.
+  useEffect(() => {
+    if (demo || !accessToken || busy || listLoading) return;
+    let active = true;
+    Promise.all([readDocumentFolders(accessToken, "all"), readDocumentFolders(accessToken, "archived")])
+      .then(([all, archived]) => { if (active) { setAllFolders([...all.folders, ...archived.folders].map(item => item.path).filter(path => path !== "분류 없음")); setArchivedCount(archived.total); } })
+      .catch(() => { if (active) setError("폴더 목록을 갱신하지 못했습니다. 목록 새로고침으로 다시 확인해 주세요."); });
+    return () => { active = false; };
+  }, [accessToken, demo, revision, busy, listLoading]);
 
   const moveDocument = async (documentId: string, folder: string, undo = false, restoreParentId: string | null = null) => {
     const item = documentsRef.current.find(document => document.id === documentId);
