@@ -86,19 +86,13 @@ export async function GET(request: Request) {
       return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:row.member_kind==="staff"&&result.data===true};
     }));
     access.actor.canApprove=state.people.find(p=>p.id===user.ownerId)?.can_approve===true;
-    const docIds=[...ids],chunks:string[][]=[];
-    for(let offset=0;offset<docIds.length;offset+=100) chunks.push(docIds.slice(offset,offset+100));
-    // Chunks are independent; read four at a time instead of one after another.
-    for(let group=0;group<chunks.length;group+=4) {
-      const pages=await Promise.all(chunks.slice(group,group+4).map(async chunk=>{
-        const rows:KnowledgeState["proposals"]=[];
-        for(let pageOffset=0;;pageOffset+=500){
-          const result=await service.from("os_document_proposals").select("*").in("document_id",chunk).order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
-          if(result.error) throw readError(result.error,"proposals");
-          rows.push(...(result.data ?? []));if(!result.data||result.data.length<500)return rows;
-        }
-      }));
-      for(const rows of pages) state.proposals.push(...rows);
+    // Proposals are few; read them once and keep those on visible documents
+    // instead of one request per 100 visible document ids.
+    for(let pageOffset=0;;pageOffset+=500){
+      const result=await service.from("os_document_proposals").select("*").order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
+      if(result.error) throw readError(result.error,"proposals");
+      state.proposals.push(...(result.data ?? []).filter(row=>ids.has(row.document_id)));
+      if(!result.data||result.data.length<500)break;
     }
     // Keys are never returned; only their owner identity is needed for the self-approval guard.
     const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];

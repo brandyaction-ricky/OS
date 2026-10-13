@@ -5,7 +5,7 @@
 -- row policies return with the verdict of the original functions, which stay
 -- in place. Synthetic fixtures cover parent chains, private parents, cycles,
 -- self/dangling parents, attendee-only meetings and their decisions/documents,
--- archived states, MCP sources and partner categories. The final block always
+-- archived states, MCP sources, partner categories and admin note grants. The final block always
 -- raises, so the whole transaction rolls back. Expect "mismatches=0".
 begin;
 set local statement_timeout = '170s';
@@ -16,7 +16,7 @@ grant select, insert on eq_info, vis to authenticated;
 
 do $$
 declare
-  staff1 uuid; staff2 uuid; partner uuid;
+  staff1 uuid; staff2 uuid; partner uuid; adm uuid; granted uuid := gen_random_uuid(); expired uuid := gen_random_uuid();
   cat uuid := gen_random_uuid(); mtg uuid := gen_random_uuid();
   a uuid := gen_random_uuid(); b uuid := gen_random_uuid(); c uuid := gen_random_uuid();
   priv uuid := gen_random_uuid(); under_priv uuid := gen_random_uuid();
@@ -29,6 +29,7 @@ begin
   select id into staff1 from public.os_profiles where is_active and role<>'admin' and member_kind='staff' order by id limit 1;
   select id into staff2 from public.os_profiles where is_active and role<>'admin' and member_kind='staff' and id<>staff1 order by id limit 1;
   select id into partner from public.os_profiles where is_active and role<>'admin' and id not in (staff1,staff2) order by id limit 1;
+  select id into adm from public.os_profiles where is_active and role='admin' order by id limit 1;
   update public.os_profiles set member_kind='partner' where id=partner;
   begin execute 'set local session_replication_role = replica'; f:=f||' triggers_off'; exception when others then f:=f||' -triggers_off('||sqlerrm||')'; end;
   begin insert into public.os_doc_categories(id,space,name,partner_ids,created_by) values (cat,'team','eq partner cat',array[partner],staff1); f:=f||' cat'; exception when others then f:=f||' -cat('||sqlerrm||')'; end;
@@ -49,6 +50,8 @@ begin
   begin insert into public.os_documents(id,title,content_md,status,owner_id,source) values (mcp,'eq mcp team','','team',staff1,'mcp'); f:=f||' mcp'; exception when others then f:=f||' -mcp('||sqlerrm||')'; end;
   begin insert into public.os_documents(id,title,content_md,status,owner_id,category_id) values (pcat,'eq partner category doc','','team',staff1,cat); f:=f||' partner_category'; exception when others then f:=f||' -partner_category('||sqlerrm||')'; end;
   begin execute 'set local session_replication_role = origin'; exception when others then null; end;
+  begin insert into public.os_documents(id,title,content_md,status,owner_id) values (granted,'eq granted draft','','draft',staff2),(expired,'eq expired grant draft','','draft',staff2);
+        insert into public.os_note_access_grants(document_id,admin_id,reason,created_at,expires_at) values (granted,adm,'eq',now(),now()+interval '1 hour'),(expired,adm,'eq',now()-interval '2 hours',now()-interval '1 hour'); f:=f||' note_grants'; exception when others then f:=f||' -note_grants('||sqlerrm||')'; end;
   insert into eq_info values ('fixtures',f);
 end $$;
 

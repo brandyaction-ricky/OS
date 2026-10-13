@@ -610,6 +610,42 @@
       "productionApprovedAt": null,
       "appliedEnvironments": ["development"],
       "notes": "Applied to confirmed brandyaction-os-dev after an explicit continuation request and rollback-only SQL validation. Supabase migration version matches this filename. Production remains unapproved and unapplied; existing company document rows were not changed."
+    },
+    {
+      "file": "20261013020000_fast_document_record_rls.sql",
+      "sha256": "64ba7c3f9decda1018d73db369838b76a1769f84e46a5b7ac9390ea8f7d6069e",
+      "purpose": "evaluate document and record read policies once per query instead of per row; read rules unchanged",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval. Rollback-only DEV fixtures and a read-only Production check per active member showed 0 visibility differences against the original functions."
+    },
+    {
+      "file": "20261013030000_fast_document_rls_drafts.sql",
+      "sha256": "20f517bd2e4832582267277157c00ed9b2a59e568d69587e33a3bc878de4608e",
+      "purpose": "skip the per-row note grant lookup for non-admins on private drafts; read rules unchanged",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval. Rollback-only DEV fixtures and a read-only Production check per active member showed 0 visibility differences against the original functions."
+    },
+    {
+      "file": "20261013040000_document_text_trgm_index.sql",
+      "sha256": "6468ad2bd7502dab1364c6b269c667f528427accd17ba782b76d4640bd8dfc36",
+      "purpose": "trigram indexes for document content and source_ref ILIKE search",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval, using CREATE INDEX CONCURRENTLY. Additive only."
+    },
+    {
+      "file": "20261013050000_fast_document_rls_admin_grants.sql",
+      "sha256": "04a58261bdd378743aee22f24d3e6f242b3440614beaf81aab77b9c40e6ffcfd",
+      "purpose": "read an admin's note grants once per query; read rules unchanged",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval. Rollback-only DEV fixtures and a read-only Production check per active member showed 0 visibility differences against the original functions."
     }
   ],
   "legacyMigrations": [
