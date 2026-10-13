@@ -153,9 +153,11 @@ test("whole-type pagination stops if rows disappear after the first count", asyn
   const all = api.listAllRecordsOfType("one", "task");
   calls[0].reply({ records: Array.from({ length: 200 }, (_, i) => ({ ...recordBody.records[0], id: `synthetic-${i}` })), total: 999 });
   await turn();
-  calls[1].reply({ records: [], total: null });
+  assert.equal(calls.length, 5, "pages after the first count are read four at a time");
+  assert.deepEqual(calls.slice(1).map(call => new URLSearchParams(call.path.split("?")[1]).get("offset")), ["200", "400", "600", "800"]);
+  calls.slice(1).forEach(call => call.reply({ records: [], total: null }));
   assert.equal((await all).length, 200);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 5, "a short page stops before the next group");
 });
 
 test("mutations break reuse before and after a save, without allowing old reads to evict new ones", async () => {
