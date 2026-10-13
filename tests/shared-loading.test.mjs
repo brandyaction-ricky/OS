@@ -193,3 +193,24 @@ test("failures are retryable and generic, anonymous, and server requests are nev
   assert.equal(server.calls.length, 2);
   server.calls.forEach(call => call.reply({ members: [] })); await Promise.all(serverCalls);
 });
+
+test("recent reads are per token, copied, cleared by any save, and skip reads that overlapped a save", async () => {
+  const { api, calls } = await clientFixture();
+  const read = api.apiRequest("/api/v1/my-work", { token: "one" });
+  calls[0].reply({ items: [1] }); await read;
+  const remembered = api.recentRead("/api/v1/my-work", "one");
+  assert.equal(remembered.items[0], 1);
+  remembered.items.push(2);
+  assert.equal(api.recentRead("/api/v1/my-work", "one").items.length, 1, "callers get their own copy");
+  assert.equal(api.recentRead("/api/v1/my-work", "two"), undefined, "another account never sees it");
+  const save = api.apiRequest("/api/v1/records", { token: "one", method: "PATCH", body: "{}" });
+  assert.equal(api.recentRead("/api/v1/my-work", "one"), undefined, "a save clears remembered reads at once");
+  const overlapping = api.apiRequest("/api/v1/my-work", { token: "one" });
+  calls[1].reply({ saved: true }); await save;
+  calls[2].reply({ items: ["before save"] }); await overlapping;
+  assert.equal(api.recentRead("/api/v1/my-work", "one"), undefined, "a read that overlapped a save is not remembered");
+  const server = await clientFixture(false);
+  const serverRead = server.api.apiRequest("/api/v1/my-work", { token: "one" });
+  server.calls[0].reply({ items: [1] }); await serverRead;
+  assert.equal(server.api.recentRead("/api/v1/my-work", "one"), undefined, "server-side requests keep nothing");
+});

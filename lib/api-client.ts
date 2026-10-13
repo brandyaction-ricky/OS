@@ -20,6 +20,24 @@ export class ApiRequestError extends Error {
 const pendingReads = new Map<string, Promise<unknown>>();
 let pendingWrites = 0;
 
+// The last good response of each read, kept in this tab's memory only (never in
+// browser storage). Screens may show it at once on a revisit and then replace it
+// with the fresh response. Any save clears it; entries expire after 15 minutes.
+const recentReads = new Map<string, { at: number; body: unknown }>();
+const RECENT_READ_MS = 15 * 60_000;
+// Bumped when a save starts and ends; a read is remembered only if none overlapped it.
+let writeEpoch = 0;
+export function recentRead<T>(path: string, token: string | null): T | undefined {
+  if (typeof window === "undefined" || !token) return undefined;
+  const hit = recentReads.get(JSON.stringify([token, path]));
+  return hit && Date.now() - hit.at < RECENT_READ_MS ? structuredClone(hit.body) as T : undefined;
+}
+export function rememberRead(path: string, token: string | null, body: unknown) {
+  if (typeof window === "undefined" || !token) return;
+  if (recentReads.size >= 50) recentReads.delete(recentReads.keys().next().value!);
+  recentReads.set(JSON.stringify([token, path]), { at: Date.now(), body: structuredClone(body) });
+}
+
 async function sharedRead<T>(path: string, token: string | null): Promise<T> {
   if (typeof window === "undefined" || !token || pendingWrites) return apiRequest<T>(path, { token });
   const key = JSON.stringify([token, path]);
@@ -45,7 +63,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (options.token) headers.set("authorization", `Bearer ${options.token}`);
 
   const mutation = !["GET", "HEAD"].includes((options.method ?? "GET").toUpperCase());
-  if (mutation) { pendingWrites += 1; pendingReads.clear(); }
+  if (mutation) { pendingWrites += 1; writeEpoch += 1; pendingReads.clear(); recentReads.clear(); }
+  const startedEpoch = writeEpoch;
   try {
     const response = await fetch(path, { ...options, headers, cache: "no-store" });
     const body = await response.json().catch(() => null);
@@ -53,10 +72,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       const message = body?.error?.message ?? `요청을 처리하지 못했습니다. (${response.status})`;
       throw new ApiRequestError(message, body?.error?.code ?? "REQUEST_FAILED", response.status);
     }
+    if (!mutation && !pendingWrites && startedEpoch === writeEpoch && path.startsWith("/api/")) rememberRead(path, options.token ?? null, body);
     return body as T;
   } finally {
     // A refresh after a save must never join a read from before/during that save.
-    if (mutation) { pendingWrites -= 1; pendingReads.clear(); }
+    if (mutation) { pendingWrites -= 1; writeEpoch += 1; pendingReads.clear(); recentReads.clear(); }
   }
 }
 
@@ -197,7 +217,16 @@ export async function listRecords(token: string | null, recordType: RecordType, 
   return { ...result, records: decodedRecordTitles(result.records) };
 }
 
+export function recentAllRecordsOfType(token: string | null, recordType: RecordType) {
+  return recentRead<OsRecord[]>(`all-records:${recordType}`, token);
+}
 export async function listAllRecordsOfType(token: string | null, recordType: RecordType) {
+  const startedEpoch = writeEpoch;
+  const records = await readAllRecordsOfType(token, recordType);
+  if (!pendingWrites && startedEpoch === writeEpoch) rememberRead(`all-records:${recordType}`, token, records);
+  return records;
+}
+async function readAllRecordsOfType(token: string | null, recordType: RecordType) {
   // Keep the first page identical to list screens so their in-flight read is shared.
   const first = await listRecords(token, recordType, "limit=200");
   const records = first.records;

@@ -6,7 +6,7 @@ import {useContentWork} from "./content-work-provider";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, recentAllRecordsOfType, updateRecord } from "@/lib/api-client";
 import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import { isYoutubeMetricPlatform } from "@/lib/channel-metrics";
 import type { OsRecord } from "@/lib/record-types";
@@ -37,11 +37,17 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   const load = useCallback(async () => {
     if (demo) return;
     setLoading(true);
+    const apply = (metrics: OsRecord[], decisions: OsRecord[], topics: OsRecord[]) => {
+      const visibleMetrics = youtubeOnly ? metrics.filter(item => isYoutubeMetricPlatform(item.metadata.platform)) : metrics;
+      setSnapshots(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion===1));
+      setRecords(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion!==1)); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis" && (!youtubeOnly || ["all", "yt_long", "yt_shorts", "YouTube", "YouTube Shorts"].includes(String(item.metadata.platformFilter ?? "all")))));
+    };
     try {
+    // A revisit shows this tab's last figures at once; the fresh reads below replace them.
+    const recent = [recentAllRecordsOfType(accessToken, "content_metric"), recentAllRecordsOfType(accessToken, "decision"), recentAllRecordsOfType(accessToken, "content_topic")];
+    if (recent.every(Boolean)) { apply(recent[0]!, recent[1]!, recent[2]!); setLoading(false); }
     const [metrics, decisions, topics] = await Promise.all([listAllRecordsOfType(accessToken, "content_metric"), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "content_topic")]);
-    const visibleMetrics = youtubeOnly ? metrics.filter(item => isYoutubeMetricPlatform(item.metadata.platform)) : metrics;
-    setSnapshots(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion===1));
-    setRecords(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion!==1)); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis" && (!youtubeOnly || ["all", "yt_long", "yt_shorts", "YouTube", "YouTube Shorts"].includes(String(item.metadata.platformFilter ?? "all")))));
+    apply(metrics, decisions, topics);
     } finally {setLoading(false);}
   }, [accessToken, demo, youtubeOnly]);
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);

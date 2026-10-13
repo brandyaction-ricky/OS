@@ -12,7 +12,7 @@ const turn = () => new Promise(resolve => setTimeout(resolve, 0));
 
 // Controlled hook lifecycle verifies that a persistent Next layout never treats
 // a partial canon response as a complete document/meeting/editor workspace.
-function setup() {
+function setup(recent = {}) {
   const hooks = [], effects = [], requests = [], listeners = new Map();
   let cursor = 0, pathname = "/knowledge/canon";
   const profile = { id: actor.ownerId, role: "member", isActive: true };
@@ -28,7 +28,7 @@ function setup() {
     react, "react/jsx-runtime": { jsx: (_type, props) => props, jsxs: (_type, props) => props },
     "next/navigation": { usePathname: () => pathname },
     "@/components/session-provider": { useSession: () => ({ profile, accessToken: "synthetic-token", demo: false, loading: false }) },
-    "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })) },
+    "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })), recentRead: path => recent[path] },
     "@/lib/knowledge/demo": {}, "@/lib/knowledge/model": model, "./shortcuts": { KnowledgeShortcuts: () => null },
   };
   const exports = {};
@@ -121,4 +121,17 @@ test("saving one meeting refreshes its record without downloading the document w
   app.requests[1].resolve({ meeting: { id: "synthetic-meeting", version: 2 }, people: [], actor }); await pending;
   assert.equal(app.requests.length, 2);
   assert.equal(app.render().state.meetings[0].version, 2);
+});
+
+test("a revisit shows the remembered list at once, but editors wait for the fresh workspace", async () => {
+  const app = setup({ "/api/v1/knowledge/canon": canon, "/api/v1/knowledge/workspace": workspace() });
+  app.render(); let value = app.render();
+  assert.equal(value.loading, false, "the remembered canon list renders before the network answers");
+  assert.equal(value.canonList.documents.length, 1);
+  assert.deepEqual(app.requests.map(request => request.path), ["/api/v1/knowledge/canon"], "a fresh read still runs");
+  app.render("/knowledge/notes"); value = app.render();
+  assert.equal(value.loading, false); assert.equal(value.workspaceReady, true);
+  assert.equal(value.draftsReady, false, "remembered drafts never open an editor");
+  app.requests[1].resolve(workspace()); await turn();
+  assert.equal(app.render().draftsReady, true);
 });

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, CheckCircle2, RefreshCw } from "lucide-react";
-import { listDocuments, listRecords } from "@/lib/api-client";
+import { listDocuments, listRecords, recentRead, rememberRead } from "@/lib/api-client";
 import type { WorkItem, WorkTab } from "@/lib/personal-work";
 import type { KnowledgeDocument } from "@/lib/types";
 import type { OsRecord } from "@/lib/record-types";
@@ -28,10 +28,13 @@ export function PersonalWorkHome() {
     if (!accessToken) return;
     try {
       setError("");
+      // A revisit shows this tab's last list at once; the fresh read below replaces it.
+      const recent = recentRead<NonNullable<typeof data>>("/api/v1/my-work", accessToken);
+      if (recent && !signal.aborted) { setData(current => current ?? recent); setLoading(false); }
       const response = await fetch("/api/v1/my-work", { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal });
       if (!response.ok) throw new Error("내 할 일을 불러오지 못했습니다.");
       const result = await response.json();
-      if (!signal.aborted) setData(result);
+      if (!signal.aborted) { setData(result); rememberRead("/api/v1/my-work", accessToken, result); }
     } catch (reason) { if (!signal.aborted) setError(reason instanceof Error ? reason.message : "연결을 확인해 주세요."); }
     finally { if (!signal.aborted) setLoading(false); }
   }, [accessToken, demo, sessionLoading]);
@@ -49,13 +52,15 @@ export function PersonalWorkHome() {
   useEffect(() => {
     if (demo || !accessToken) return;
     let active = true;
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recentDocs = recentRead<{ documents: KnowledgeDocument[] }>("/api/v1/documents?view=summary&scope=mine_company&limit=3", accessToken);
+    if (recentDocs) setRecentDocuments(recentDocs.documents.slice(0, 3));
     void Promise.allSettled([
       listDocuments(accessToken, "view=summary&scope=mine_company&limit=3"),
       listRecords(accessToken, "decision", "limit=20"),
     ]).then(([documents, decisions]) => {
       if (!active) return;
       setRecentDocuments(documents.status === "fulfilled" ? documents.value.documents.slice(0, 3) : []);
-      const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       setRecentDecisions(decisions.status === "fulfilled" ? decisions.value.records.filter((item) => Date.parse(item.updated_at) >= weekAgo).slice(0, 3) : []);
     });
     return () => { active = false; };

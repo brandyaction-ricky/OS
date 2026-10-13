@@ -8,7 +8,7 @@ const turn = () => new Promise(resolve => setTimeout(resolve, 0));
 function setup() {
   const hooks = [], effects = [], reads = [];
   let cursor = 0;
-  const context = { loading: true, demo: false, token: "synthetic-token", actor: { ownerId: "synthetic-user" },
+  const context = { loading: true, draftsReady: false, demo: false, token: "synthetic-token", actor: { ownerId: "synthetic-user" },
     loadDocument: id => new Promise(resolve => reads.push({ id, resolve })),
   };
   const react = {
@@ -30,7 +30,7 @@ test("read-only canonical body renders while supporting workspace is still loadi
   app.render(props); assert.equal(app.reads.length, 1);
   app.reads[0].resolve({ id: "synthetic-doc", status: "canonical", content_md: "기준 본문" }); await turn();
   assert.equal(app.render(props).type, app.editor);
-  app.context.loading = false; app.render(props);
+  app.context.loading = false; app.context.draftsReady = true; app.render(props);
   assert.equal(app.reads.length, 1, "supporting workspace completion must not re-fetch the body");
 });
 
@@ -44,5 +44,7 @@ test("editable documents still wait for draft recovery before loading the editor
   app.render(props); app.reads[0].resolve({ id: "synthetic-doc", status: "draft" }); await turn();
   assert.equal(app.render(props).type, "empty");
   app.context.loading = false;
+  assert.equal(app.render(props).type, "empty", "a remembered workspace snapshot cannot open an editor");
+  app.context.draftsReady = true;
   assert.equal(app.render(props).type, app.editor);
 });
