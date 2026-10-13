@@ -48,9 +48,10 @@ export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
     const url = new URL(request.url);
-    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
-    const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const countRows = url.searchParams.get("count") !== "none";
+    // Whole-type continuation pages skip the exact count, so they may be larger.
+    const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), countRows ? 200 : 1000);
+    const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const recordType = url.searchParams.get("type") as RecordType | null;
     if (recordType && !RECORD_TYPES.includes(recordType)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
     if (recordType === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 확인해 주세요.");

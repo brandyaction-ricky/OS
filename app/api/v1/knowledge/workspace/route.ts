@@ -33,21 +33,8 @@ export async function GET(request: Request) {
     const db = user.supabase, service = createServiceSupabase();
     const state = emptyKnowledgeState();
     // RLS filters each page; do not accept client supplied actor or permissions.
-    // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
-    const rows: KnowledgeDocument[] = [];
-    for (let cursor="00000000-0000-0000-0000-000000000000";;) {
-      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(500);
-      if(result.error) throw readError(result.error,"documents");
-      const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
-      rows.push(...batch);
-      if(batch.length<500) break;
-      cursor=batch[batch.length-1].id;
-    }
-    // One ancestor check over every page: parents from other pages are already loaded.
-    const readable = await readableKnowledgePages(user,rows);
-    state.documents.push(...rows.filter(d=>readable.has(d.id)));
-    const access = await knowledgeAccessContext(user,state.documents);
-    const resources = await Promise.all([
+    // Supporting reads do not depend on the document list; start them together.
+    const resourcesRead = Promise.all([
       db.from("os_doc_categories").select("*").is("archived_at",null).order("sort_order"),
       db.from("os_doc_templates").select("*").order("sort_order"),
       db.from("os_note_inbox").select("*").eq("owner_id",user.ownerId).is("processed_at",null).order("created_at",{ascending:false}),
@@ -67,6 +54,33 @@ export async function GET(request: Request) {
       for(let offset=0;;offset+=500){const page=await builder.range(offset,offset+499);if(page.error)return {data:null,error:page.error};data.push(...(page.data??[]));if(!page.data||page.data.length<500)break;}
       return {data,error:null};
     }));
+    // Proposals are few; read them once alongside the documents and keep those on
+    // visible documents instead of one request per 100 visible document ids.
+    const proposalsRead = (async()=>{
+      const pages=[];
+      for(let pageOffset=0;;pageOffset+=500){
+        const page=await service.from("os_document_proposals").select("*").order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
+        pages.push(page);
+        if(page.error||!page.data||page.data.length<500) return pages;
+      }
+    })();
+    // A failed document read must not leave these as unhandled rejections.
+    void resourcesRead.catch(()=>undefined); void proposalsRead.catch(()=>undefined);
+    // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
+    const rows: KnowledgeDocument[] = [];
+    for (let cursor="00000000-0000-0000-0000-000000000000";;) {
+      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(1000);
+      if(result.error) throw readError(result.error,"documents");
+      const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
+      rows.push(...batch);
+      if(batch.length<1000) break;
+      cursor=batch[batch.length-1].id;
+    }
+    // One ancestor check over every page: parents from other pages are already loaded.
+    const readable = await readableKnowledgePages(user,rows);
+    state.documents.push(...rows.filter(d=>readable.has(d.id)));
+    const access = await knowledgeAccessContext(user,state.documents);
+    const resources = await resourcesRead;
     const stages=["categories","templates","inbox","pins","drafts","meetings","attendees","candidates","events","people","decisions"];
     for(const [index,result] of resources.entries()) if(result.error) throw readError(result.error,stages[index]);
     const [categories,templates,inbox,pins,drafts,meetings,attendees,candidates,events,people,decisions]=resources.map(r=>r.data ?? []);
@@ -86,13 +100,9 @@ export async function GET(request: Request) {
       return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:row.member_kind==="staff"&&result.data===true};
     }));
     access.actor.canApprove=state.people.find(p=>p.id===user.ownerId)?.can_approve===true;
-    // Proposals are few; read them once and keep those on visible documents
-    // instead of one request per 100 visible document ids.
-    for(let pageOffset=0;;pageOffset+=500){
-      const result=await service.from("os_document_proposals").select("*").order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
-      if(result.error) throw readError(result.error,"proposals");
-      state.proposals.push(...(result.data ?? []).filter(row=>ids.has(row.document_id)));
-      if(!result.data||result.data.length<500)break;
+    for(const page of await proposalsRead){
+      if(page.error) throw readError(page.error,"proposals");
+      state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)));
     }
     // Keys are never returned; only their owner identity is needed for the self-approval guard.
     const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];

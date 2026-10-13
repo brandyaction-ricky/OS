@@ -54,3 +54,11 @@ test("count-free reads retain authentication and protected-record restrictions",
   assert.equal((await restricted.GET(new Request("https://example.invalid/api/v1/records?count=none&type=development_comment"))).status, 403);
   assert.equal(restricted.calls.length, 0);
 });
+
+test("only count-free continuation pages may read up to 1,000 rows", async () => {
+  for (const [query, end] of [["count=none&limit=1000", 999], ["limit=1000", 199], ["count=none&limit=5000", 999]]) {
+    const api = route();
+    assert.equal((await api.GET(new Request(`https://example.invalid/api/v1/records?type=task&${query}`))).status, 200);
+    assert.ok(api.calls.some(call => call[0] === "range" && call[1] === 0 && call[2] === end), query);
+  }
+});
