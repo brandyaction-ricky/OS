@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {PAGE_GUIDES,guideClosedKey} from '../lib/page-guides.ts';
 import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
 test('all current menus and account have three reviewed steps and a live next route',()=>{
-  assert.equal(Object.keys(PAGE_GUIDES).length,55);
+  assert.equal(Object.keys(PAGE_GUIDES).length,54);
   // Preserve the reviewed legacy guide snapshot while checking all new guides below.
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).filter(([path])=>!path.startsWith('/finance/')&&!path.startsWith('/hr/')&&!['/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/decisions','/knowledge/docs','/knowledge/canon','/knowledge/graph','/knowledge/templates','/knowledge/trash'].includes(path)).sort(([a],[b])=>a.localeCompare(b)));
   assert.equal(createHash('sha256').update(snapshot).digest('hex'),'79d30a31bf648e2fb612bac26b8c873a46fdb336e3a54279ffc0a265e9afba0f');

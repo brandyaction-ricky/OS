@@ -47,13 +47,12 @@ test("quick record works when already in the document workspace", async ({ page 
   await expect(page).toHaveURL(/\/knowledge\/vault$/);
   await page.getByRole("button", { name: "기록 종류 선택", exact: true }).click();
   await page.getByRole("link", { name: "메모", exact: true }).click();
-  const dialog=page.getByRole("dialog",{name:"새 문서",exact:true});
-  await expect(dialog.getByRole("radio",{name:"내 노트 나만 봅니다. 메모·초안"})).toBeChecked();
-  await dialog.getByRole("textbox",{name:"제목",exact:true}).fill("QA 빠른 기록 진입");
-  await dialog.getByRole("button",{name:"만들기",exact:true}).click();
+  await expect(page).toHaveURL(/\/knowledge\/vault\?new=1$/);
+  await page.getByRole("textbox",{name:"새 페이지 제목",exact:true}).fill("QA 빠른 기록 진입");
+  await page.keyboard.press("ControlOrMeta+s");
   await expect(page.getByRole("textbox",{name:"문서 제목"})).toHaveValue("QA 빠른 기록 진입");
   await expect(page.getByRole("textbox",{name:"editable markdown"})).toBeVisible();
-  await expect(page.locator(".kw-editor-card .kw-badge").first()).toContainText("내 노트");
+  await expect(page.locator(".vault-workspace")).toBeVisible();
 });
 
 for (const theme of ["dark", "light"]) for (const width of [1440, 390]) {

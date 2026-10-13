@@ -23,6 +23,9 @@ test("company document detail follows an allowed list without opening other menu
   assert.equal(access.canOpenMenu(member,"/knowledge/development",["/knowledge/vault"]),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/vault",[]),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",["/knowledge/notes"]),true);
+  assert.equal(access.canOpenMenu(member,"/knowledge/vault",["/knowledge/notes"]),true);
+  assert.equal(access.canOpenMenu(member,"/knowledge/notes?new=1",["/knowledge/vault"]),true);
+  assert.equal(access.MENU_HREFS.includes("/knowledge/notes"),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/doc/example",[]),false);
   assert.equal(access.canOpenMenu(member,"/knowledge/development",["/knowledge/notes"]),false);
   assert.equal(access.canOpenMenu(member,"/finance/sales",["/knowledge"]),false);
