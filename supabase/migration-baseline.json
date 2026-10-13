@@ -656,6 +656,15 @@
       "productionApprovedAt": "2026-10-13",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval, after a rollback-only DEV check (no assignment: denied; assigned owner: applied; other admin self-approval: denied) and a guard that the live function was unchanged. Function privileges unchanged. Adds os_is_designated_approver and replaces os_knowledge_workflow_command from the 2026-10-13 Production definition (identical on DEV) with only the proposal.decide approval condition changed. No table, row or grant changes."
+    },
+    {
+      "file": "20261013070000_records_type_updated_index.sql",
+      "sha256": "fd942ee18e0b35bc1ad4e5013a450dada4e30e6f1343de714c893b27e4faba57",
+      "purpose": "record lists by type ordered by updated_at read in index order instead of sorting every row",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval, using CREATE INDEX CONCURRENTLY. Additive only."
     }
   ],
   "legacyMigrations": [
