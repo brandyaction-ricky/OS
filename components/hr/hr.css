@@ -274,6 +274,64 @@
   min-height: 75px;
   resize: vertical;
 }
+.hr-leave-types {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.hr-leave-types legend {
+  padding: 0;
+  margin-bottom: 5px;
+}
+.hr-leave-types legend b {
+  color: #d74444;
+}
+.hr-leave-type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.hr-leave-type-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid var(--hr-line);
+  border-radius: 7px;
+  background: var(--hr-panel);
+  cursor: pointer;
+}
+.hr-leave-type-option:hover {
+  border-color: var(--hr-accent);
+}
+.hr-leave-type-option:has(input:checked) {
+  border-color: var(--hr-accent);
+  background: color-mix(in srgb, var(--hr-accent) 5%, var(--hr-panel));
+}
+.hr-leave-type-option:focus-within {
+  outline: 2px solid var(--hr-accent);
+  outline-offset: 2px;
+}
+.hr-leave-type-option input[type="radio"] {
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  margin: 3px 0 0;
+  padding: 0;
+  accent-color: var(--hr-accent);
+  cursor: pointer;
+}
+.hr-leave-type-option > span {
+  min-width: 0;
+}
+.hr-leave-type-option small {
+  display: block;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
 .hr-tabs {
   display: flex;
   gap: 6px;
