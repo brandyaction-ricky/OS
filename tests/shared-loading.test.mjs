@@ -151,10 +151,12 @@ test("whole-type pagination counts only the first page and keeps exact-boundary 
 test("whole-type pagination stops if rows disappear after the first count", async () => {
   const { api, calls } = await clientFixture();
   const all = api.listAllRecordsOfType("one", "task");
-  calls[0].reply({ records: Array.from({ length: 200 }, (_, i) => ({ ...recordBody.records[0], id: `synthetic-${i}` })), total: 999 });
+  calls[0].reply({ records: Array.from({ length: 200 }, (_, i) => ({ ...recordBody.records[0], id: `synthetic-${i}` })), total: 9999 });
   await turn();
   assert.equal(calls.length, 5, "pages after the first count are read four at a time");
-  assert.deepEqual(calls.slice(1).map(call => new URLSearchParams(call.path.split("?")[1]).get("offset")), ["200", "400", "600", "800"]);
+  const queries = calls.slice(1).map(call => new URLSearchParams(call.path.split("?")[1]));
+  assert.deepEqual(queries.map(query => query.get("offset")), ["200", "1200", "2200", "3200"]);
+  assert.ok(queries.every(query => query.get("limit") === "1000" && query.get("count") === "none"));
   calls.slice(1).forEach(call => call.reply({ records: [], total: null }));
   assert.equal((await all).length, 200);
   assert.equal(calls.length, 5, "a short page stops before the next group");

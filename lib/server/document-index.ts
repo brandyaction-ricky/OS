@@ -7,21 +7,31 @@ import { POLICY_FIELDS, readableKnowledgePages } from "./knowledge-page-access";
 // Only lightweight metadata crosses this boundary. Bodies are fetched on open.
 export async function documentIndex(scope: string, actor: RequestActor) {
   const ownerId = actor.ownerId;
-  const rows: KnowledgeDocument[] = [];
-  for (let offset = 0; ; offset += 1000) {
-    let query = createServiceSupabase().from("os_documents")
-      .select(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`)
-      .order("id").range(offset, offset + 999);
+  const scoped = (columns: string, options?: { count: "exact"; head: true }) => {
+    let query = createServiceSupabase().from("os_documents").select(columns, options);
     if (scope === "mine_company") query = query.or(`owner_id.eq.${ownerId},status.eq.canonical`);
     else if (scope === "mine") query = query.eq("owner_id", ownerId);
     else if (["canonical", "team", "archived"].includes(scope)) query = query.eq("status", scope);
     else if (scope === "review") query = query.in("status", ["review", "reviewed"]);
     else if (scope.startsWith("member:")) query = query.eq("owner_id", scope.slice(7));
     if (scope !== "archived") query = query.neq("status", "archived");
-    const { data, error } = await query;
-    if (error) throw new ApiError(400, "DOCUMENT_INDEX_FAILED", "폴더 목록을 불러오지 못했습니다.");
-    rows.push(...(data ?? []) as KnowledgeDocument[]);
-    if (!data || data.length < 1000) break;
+    return query;
+  };
+  const failed = () => new ApiError(400, "DOCUMENT_INDEX_FAILED", "폴더 목록을 불러오지 못했습니다.");
+  // The count fixes every page, so pages are read together instead of one after another.
+  const { count, error: countError } = await scoped("id", { count: "exact", head: true });
+  if (countError) throw failed();
+  const offsets = Array.from({ length: Math.max(1, Math.ceil((count ?? 0) / 1000)) }, (_, page) => page * 1000);
+  const pages = await Promise.all(offsets.map(offset =>
+    scoped(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`).order("id").range(offset, offset + 999)));
+  // Rows added after the count still arrive: a full last page continues one page at a time.
+  for (let offset = offsets[offsets.length - 1] + 1000; pages[pages.length - 1].data?.length === 1000; offset += 1000) {
+    pages.push(await scoped(`title,folder,source_ref,current_version,updated_at,team,brand,tags,${POLICY_FIELDS}`).order("id").range(offset, offset + 999));
+  }
+  const rows: KnowledgeDocument[] = [];
+  for (const { data, error } of pages) {
+    if (error) throw failed();
+    rows.push(...(data ?? []) as unknown as KnowledgeDocument[]);
   }
   const readable = await readableKnowledgePages(actor, rows);
   return rows.filter(row => readable.has(row.id));
