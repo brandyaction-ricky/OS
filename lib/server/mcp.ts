@@ -1,8 +1,23 @@
 import { z } from "zod";
+import { kosisInputSchema } from "../kosis.ts";
 
 const documentId = z.string().uuid();
 
 export const MCP_TOOLS = [
+  {
+    name: "query_statistics",
+    description: "KOSIS 공식 통계를 읽기 전용으로 조회합니다. search로 표를 찾고 metadata(ITM·PRD·UNIT·SOURCE)로 대상·항목·단위를 확인한 뒤 data로 실제 수치를 조회하세요. query에는 공개 검색어만 넣고 회사 문서·개인정보를 보내지 마세요. 수치·단위·시점·출처를 함께 인용하고 자동 저장·사업 판단은 하지 않습니다.",
+    inputSchema: {
+      type: "object", properties: {
+        action: { type: "string", enum: ["search", "metadata", "data"] }, query: { type: "string", minLength: 2, maxLength: 120 },
+        page: { type: "integer", minimum: 1, maximum: 100 }, limit: { type: "integer", minimum: 1, maximum: 20 }, sort: { type: "string", enum: ["RANK", "DATE"] },
+        orgId: { type: "string" }, tblId: { type: "string" }, type: { type: "string", enum: ["TBL", "ORG", "PRD", "ITM", "UNIT", "SOURCE"] },
+        itmId: { type: "string" }, objL1: { type: "string" }, objL2: { type: "string" }, objL3: { type: "string" }, objL4: { type: "string" }, objL5: { type: "string" }, objL6: { type: "string" }, objL7: { type: "string" }, objL8: { type: "string" },
+        prdSe: { type: "string", enum: ["Y", "M", "Q", "S", "D", "F", "IR"] }, newEstPrdCnt: { type: "integer", minimum: 1, maximum: 12 },
+      }, required: ["action"], additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
   {
     name: "list_canonical_rule_jobs",
     description: "이 키 소유자의 정본 규칙 추출 구독 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. nextAfter가 있으면 after_run_id로 전달해 다음 페이지를 확인합니다. runs가 비어 있어도 nextAfter가 있으면 계속 조회합니다.",
@@ -323,6 +338,10 @@ type FetchApi = (path: string, init?: RequestInit) => Promise<unknown>;
 
 export async function callMcpTool(request: ToolRequest, organizationId: string, fetchApi: FetchApi) {
   const args = request.arguments ?? {};
+  if (request.name === "query_statistics") {
+    const input = kosisInputSchema.parse(args);
+    return fetchApi("/api/v1/statistics/kosis", { method: "POST", body: JSON.stringify(input) });
+  }
   if(request.name==="list_canonical_rule_jobs"){
     const input=z.object({after_run_id:documentId.optional()}).strict().parse(args);
     return fetchApi(`/api/v1/knowledge/canonical/worker${input.after_run_id?`?after=${encodeURIComponent(input.after_run_id)}`:""}`);
