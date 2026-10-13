@@ -47,7 +47,7 @@ export function KnowledgeCanon(){
     </div>
   </>;
 }
-export function KnowledgeCanonDocument({id}:{id:string}){return <KnowledgeDocumentPage id={id} earlyCanonicalRead/>;}
+export function KnowledgeCanonDocument({id}:{id:string}){return <KnowledgeDocumentPage id={id}/>;}
 export function KnowledgeProposalPage({id}:{id:string}){
   const {loadDocument,loading,demo,token,state}=useKnowledge(),params=useSearchParams();
   const versionNumber=Number(params.get("version"))||0;
