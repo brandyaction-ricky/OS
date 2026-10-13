@@ -63,7 +63,8 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
     const policy = policies.find(item => item.member_id === member.id);
     const eligibleMenus = availableMenuGroups(memberProfile(member), hrEnabled).flatMap(stage => stage.pages.map(page => page.href));
     setMode(policy?.allowed_menus ? "custom" : "default");
-    setAllowed(policy?.allowed_menus?.filter(href => eligibleMenus.includes(href)) ?? eligibleMenus);
+    const savedMenus = policy?.allowed_menus?.map(href => href === "/knowledge/notes" ? "/knowledge/vault" : href);
+    setAllowed(savedMenus ? [...new Set(savedMenus.filter(href => eligibleMenus.includes(href)))] : eligibleMenus);
     setVersion(policy?.version ?? 0);
     setModalError("");
     setNotice("");

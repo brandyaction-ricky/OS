@@ -16,7 +16,7 @@ export function NoteAuditAccess(){
     setBusy(true);setError("");
     try{await command({action:"note.access",id,reason});setOpen(false);router.push(`/knowledge/doc/${id}`);}catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
-  return <><button onClick={()=>setOpen(true)}>감사·인계 목적 임시 열람</button>{open&&<Modal title="내 노트 임시 열람" busy={busy} onClose={()=>setOpen(false)}><form onSubmit={e=>{e.preventDefault();void submit();}}>
+  return <><button onClick={()=>setOpen(true)}>감사·인계 목적 임시 열람</button>{open&&<Modal title="개인 문서 임시 열람" busy={busy} onClose={()=>setOpen(false)}><form onSubmit={e=>{e.preventDefault();void submit();}}>
     <p>사유를 기록하고 소유자에게 알린 뒤 24시간 동안 읽기만 허용합니다. 비공개 노트 목록은 제공하지 않습니다.</p>
     <label>정확한 문서 주소 또는 ID<input required value={target} onChange={e=>setTarget(e.target.value)}/></label>
     <label>감사·인계 사유<textarea required maxLength={500} value={reason} onChange={e=>setReason(e.target.value)}/></label>

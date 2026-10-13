@@ -21,7 +21,7 @@ try {
   await expect(page.getByText('API·DB 응답 확인', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '새 문서', exact: true }).click();
   const modal = page.getByRole('dialog', { name: '새 문서', exact: true });
-  await modal.getByRole('radio', { name: /내 노트/ }).check();
+  await modal.getByRole('radio', { name: /개인 문서/ }).check();
   const title = `QA browser ${randomUUID().slice(0, 8)}`;
   await modal.getByRole('textbox', { name: '제목', exact: true }).fill(title);
   await modal.getByRole('button', { name: '만들기', exact: true }).click();

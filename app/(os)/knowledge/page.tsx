@@ -4,6 +4,6 @@ export default async function KnowledgePage({ searchParams }: { searchParams: Pr
   const query = await searchParams;
   if (query.document) permanentRedirect(`/knowledge/doc/${encodeURIComponent(query.document)}`);
   if (query.tab === "canon") permanentRedirect("/knowledge/canon");
-  if (query.new === "1") permanentRedirect("/knowledge/notes?new=1&tab=all");
+  if (query.new === "1") permanentRedirect("/knowledge/vault?new=1");
   permanentRedirect("/knowledge/vault");
 }

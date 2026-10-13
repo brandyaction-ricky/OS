@@ -20,7 +20,7 @@ export interface KnowledgeState {
 }
 export interface WorkspaceSnapshot { state: KnowledgeState; actor: KnowledgeActor; schemaReady: boolean }
 export type Command = { action: string; id?: string; expectedVersion?: number; [key: string]: unknown };
-export const SPACE_LABELS: Record<Space, string> = { mine: "내 노트", team: "팀 문서", canon: "회사 정본", meet: "회의록", ai: "AI 작업 기록" };
+export const SPACE_LABELS: Record<Space, string> = { mine: "개인 문서", team: "팀 문서", canon: "회사 정본", meet: "회의록", ai: "AI 작업 기록" };
 export const WORK_LABELS = { todo: "할 일", doing: "진행 중", done: "완료" };
 export function documentSpace(doc: KnowledgeDocument): Space {
   if (doc.meeting_record_id) return "meet";

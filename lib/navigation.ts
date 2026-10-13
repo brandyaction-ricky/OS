@@ -82,7 +82,6 @@ export const NAV_STAGES: NavStage[] = [
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge/vault", pages: [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
-    { label: "내 노트", href: "/knowledge/notes", icon: FileText, ready: true },
     { label: "회사 정본", href: "/knowledge/canon", icon: BookOpen, ready: true },
     { label: "휴지통", href: "/knowledge/trash", icon: ScrollText, ready: true },
   ] },
@@ -123,6 +122,7 @@ export const NAV_STAGES: NavStage[] = [
 ];
 
 const NAV_ALIASES: Record<string, string> = {
+  "/knowledge/notes": "/knowledge/vault",
   "/content/production": "/content/topics",
   "/performance/connections": "/settings/connections",
   "/organization/leave": "/organization/schedule",

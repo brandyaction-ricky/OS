@@ -3,7 +3,7 @@ test.beforeEach(async({page})=>{
  await page.addInitScript(()=>localStorage.setItem("brandy-os-menu-guide-final","seen"));
 });
 const paths=[
- ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
+ ["/knowledge","문서 보관함"],["/knowledge/meetings","회의록"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
  ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","템플릿"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
@@ -65,10 +65,10 @@ test("large document database paginates without dropping search or view filters"
    const key=Object.keys(localStorage).find(key=>key.startsWith("brandyos:knowledge:v1:"))!;
    const state=JSON.parse(localStorage.getItem(key)!);
    const original=state.documents.find((doc:{title:string})=>doc.title==="QA 목록 원본");
-   state.documents=Array.from({length:121},(_,i)=>({...original,id:`qa-row-${i}`,title:`QA 페이지 ${String(i).padStart(3,"0")}`}));
+   state.documents=Array.from({length:121},(_,i)=>({...original,id:`qa-row-${i}`,status:"team",title:`QA 페이지 ${String(i).padStart(3,"0")}`}));
    localStorage.setItem(key,JSON.stringify(state));
  });
- await page.goto("/knowledge/notes?tab=all&q=QA+페이지&sort=title");
+ await page.goto("/knowledge/docs?q=QA+페이지&sort=title");
  await expect(page.locator(".kw-table tbody tr")).toHaveCount(50);
  const pages=page.getByRole("navigation",{name:"문서 목록 페이지"});
  await pages.getByRole("button",{name:"다음"}).click();
@@ -80,11 +80,10 @@ test("large document database paginates without dropping search or view filters"
  await expect(page).toHaveURL(/q=QA/);
 });
 async function createNote(page:import("@playwright/test").Page,title:string){
- await page.goto("/knowledge/notes?tab=all");
- await page.getByRole("button",{name:"새 문서",exact:true}).first().click();
- await page.getByRole("radio",{name:"내 노트 나만 봅니다. 메모·초안"}).check();
- await page.getByRole("textbox",{name:"제목",exact:true}).fill(title);
- await page.getByRole("button",{name:"만들기",exact:true}).click();
+ await page.goto("/knowledge/docs");
+ await page.getByRole("button",{name:/^빠른 메모/}).click();
+ await page.getByRole("textbox",{name:"메모",exact:true}).fill(title);
+ await page.getByRole("button",{name:"메모 저장",exact:true}).click();
  await expect(page.getByRole("textbox",{name:"문서 제목"})).toHaveValue(title);
  return page.getByRole("textbox",{name:"editable markdown",exact:true});
 }
@@ -193,14 +192,8 @@ test("create, draft, save, reopen, link insertion and version restore are persis
  await page.getByRole("button",{name:"저장",exact:true}).click();
  await page.reload();await expect(editor).toContainText("example-canonical");
 });
-test("quick memo stores inbox then appends today's note once",async({page})=>{
- await page.goto("/knowledge/notes?tab=inbox");
- await page.getByRole("textbox",{name:"빠른 메모",exact:true}).fill("QA 빠른 기록");
- await page.getByRole("button",{name:"메모 저장"}).click();
- await page.goto("/knowledge/notes?tab=inbox");
- await expect(page.getByText("QA 빠른 기록",{exact:true})).toBeVisible();
- await page.getByRole("button",{name:"오늘 노트에 붙이기"}).click();
- await page.goto("/knowledge/notes?tab=today");
+test("quick memo saves a private document and reopens without the retired notes screen",async({page})=>{
+ await createNote(page,"QA 빠른 기록");
  await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("QA 빠른 기록");
  await page.reload();await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("QA 빠른 기록");
 });
@@ -231,7 +224,7 @@ test("personal template saves body, creates selected-space document, survives re
  await card.getByRole("button",{name:"이 템플릿 사용"}).click();
  await page.getByRole("button",{name:"만들기",exact:true}).click();
  await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("확인 항목");
- await expect(page.locator(".kw-editor-card")).toContainText("내 노트");
+ await expect(page.locator(".kw-editor-card")).toContainText("개인 문서");
 });
 test("meeting start, review, confirmation and append-only correction",async({page})=>{
  await page.goto("/knowledge/meetings");
@@ -295,7 +288,7 @@ test("tag suggestions, no-version property save, archive and restore persist",as
  await page.getByRole("dialog").getByRole("button",{name:"휴지통으로",exact:true}).click();
  await page.goto("/knowledge/trash");const row=page.getByRole("row").filter({hasText:"QA 태그 복원"});
  await row.getByRole("button",{name:"복원",exact:true}).click();
- await page.goto("/knowledge/notes?tab=all");await expect(page.getByRole("link",{name:"QA 태그 복원",exact:true})).toBeVisible();
+ await page.goto("/knowledge/search?q=QA+태그+복원&space=mine&mine=1");await expect(page.getByRole("link",{name:"QA 태그 복원",exact:true})).toBeVisible();
 });
 
 test("inline document and people pickers respect visibility, keyboard insertion and child links",async({page})=>{

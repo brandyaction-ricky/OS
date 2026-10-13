@@ -14,7 +14,7 @@ export interface MenuAccessProfile {
 
 export const MENU_HREFS = [...NAV_STAGES.flatMap(stage => stage.pages.map(page => page.href)), "/knowledge/search"];
 export const REQUIRED_MENUS = ["/home", ACCOUNT_PAGE.href];
-const LEGACY_DOCUMENT_MENUS = ["/knowledge", "/knowledge/decisions", "/knowledge/docs", "/knowledge/graph", "/knowledge/review", "/knowledge/templates"];
+const LEGACY_DOCUMENT_MENUS = ["/knowledge", "/knowledge/notes", "/knowledge/decisions", "/knowledge/docs", "/knowledge/graph", "/knowledge/review", "/knowledge/templates"];
 const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
   "/automation/topics": ["/automation/review"],
   "/automation/cardnews": ["/automation/review"],
