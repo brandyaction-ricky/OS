@@ -5,7 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
-import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
+import { POLICY_FIELDS, readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { createCanonicalProposal } from "@/lib/server/document-proposals";
 import { documentCreateSchema, documentUpdateSchema } from "@/lib/validation";
 
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     if (url.searchParams.get("view") === "folders") {
       const folders = new Set<string>();
       for (let offset = 0; offset < 10_000; offset += 1_000) {
-        const { data, error } = await createServiceSupabase().from("os_documents").select("id,owner_id,status,folder,parent_document_id").neq("status", "archived").order("id").range(offset, offset + 999);
+        const { data, error } = await createServiceSupabase().from("os_documents").select(`folder,${POLICY_FIELDS}`).neq("status", "archived").order("id").range(offset, offset + 999);
         if (error) throw new ApiError(400, "DOCUMENT_FOLDER_LIST_FAILED", "지식 폴더 목록을 불러오지 못했습니다.", error.message);
         const visible = await readableKnowledgePages(actor, data ?? []);
         for (const row of data ?? []) if (visible.has(row.id) && row.folder) folders.add(row.folder);

@@ -15,7 +15,7 @@ async function route(selected) {
     zod: { ZodError: class {} }, "@/lib/http": { apiErrorResponse: error => { throw error; }, ApiError: Error, parseJson: () => ({}) },
     "@/lib/server/auth": { authenticateRequest: async () => ({ id: "synthetic-user", ownerId: "synthetic-user" }) },
     "@/lib/server/indexing": {}, "@/lib/supabase/server": { createServiceSupabase: () => ({ from: () => query }) },
-    "@/lib/server/knowledge-page-access": { readableKnowledgePages: async (_actor, rows) => new Set(rows.map(r => r.id)) },
+    "@/lib/server/knowledge-page-access": { POLICY_FIELDS: "id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source", readableKnowledgePages: async (_actor, rows) => new Set(rows.map(r => r.id)) },
     "@/lib/server/document-proposals": {}, "@/lib/validation": {},
   };
   runInNewContext(code, { module: mod, exports: mod.exports, require: name => modules[name], URL });
@@ -29,4 +29,13 @@ test("summary lists never read document bodies; full lists still do", async () =
   assert.equal(summary.documents[0].content_md, undefined);
   await api.GET(new Request("https://example.invalid/api/v1/documents?limit=3"));
   assert.equal(selected[1], "*");
+});
+
+test("bulk document lists carry every policy field so access checks skip re-reading each row", async () => {
+  const policy = "id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source".split(",");
+  const selected = [], api = await route(selected);
+  await api.GET(new Request("https://example.invalid/api/v1/documents?view=folders"));
+  for (const key of policy) assert.ok(selected[0].includes(key), key);
+  const index = await readFile(new URL("../lib/server/document-index.ts", import.meta.url), "utf8");
+  assert.match(index, /\.select\(`[^`]*\$\{POLICY_FIELDS\}`\)/);
 });
