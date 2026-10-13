@@ -17,10 +17,10 @@ async function index(total, counted) {
   const source = await readFile(new URL("../lib/server/document-index.ts", import.meta.url), "utf8");
   const mod = { exports: {} };
   runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: mod, exports: mod.exports, require: name => ({
-    "@/lib/supabase/server": { createServiceSupabase: () => ({ from }) }, "@/lib/http": { ApiError: Error },
+    "@/lib/http": { ApiError: Error },
     "./knowledge-page-access": { POLICY_FIELDS: "id,owner_id", readableKnowledgePages: async (_a, list) => new Set(list.map(r => r.id)) },
   })[name] });
-  const result = await mod.exports.documentIndex("all", { ownerId: "synthetic" });
+  const result = await mod.exports.documentIndex("all", { ownerId: "synthetic", supabase: { from } });
   return { result, ranges };
 }
 
