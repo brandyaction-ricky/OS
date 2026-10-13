@@ -26,7 +26,7 @@ function setup() {
 }
 
 test("read-only canonical body renders while supporting workspace is still loading", async () => {
-  const app = setup(), props = { earlyCanonicalRead: true };
+  const app = setup(), props = {};
   app.render(props); assert.equal(app.reads.length, 1);
   app.reads[0].resolve({ id: "synthetic-doc", status: "canonical", content_md: "기준 본문" }); await turn();
   assert.equal(app.render(props).type, app.editor);
@@ -34,16 +34,13 @@ test("read-only canonical body renders while supporting workspace is still loadi
   assert.equal(app.reads.length, 1, "supporting workspace completion must not re-fetch the body");
 });
 
-test("editable documents still wait for draft recovery before loading the editor", async () => {
-  const app = setup();
+test("a session without a token waits instead of reading the body", () => {
+  const app = setup(); app.context.token = null;
   app.render(); assert.equal(app.reads.length, 0);
-  app.context.loading = false; app.render(); assert.equal(app.reads.length, 1);
-  app.reads[0].resolve({ id: "synthetic-doc", status: "draft" }); await turn();
-  assert.equal(app.render().type, app.editor);
 });
 
-test("a noncanonical document on a canon URL cannot bypass draft readiness", async () => {
-  const app = setup(), props = { earlyCanonicalRead: true };
+test("editable documents still wait for draft recovery before loading the editor", async () => {
+  const app = setup(), props = {};
   app.render(props); app.reads[0].resolve({ id: "synthetic-doc", status: "draft" }); await turn();
   assert.equal(app.render(props).type, "empty");
   app.context.loading = false;

@@ -24,11 +24,11 @@ import type { KnowledgeDocument } from "@/lib/types";
 import { useKnowledge } from "./provider";
 import { Empty, Modal, PinButton, SpaceBadge } from "./ui";
 
-export function KnowledgeDocumentPage({ id, embedded = false, earlyCanonicalRead = false }: { id: string; embedded?: boolean; earlyCanonicalRead?: boolean }) {
+export function KnowledgeDocumentPage({ id, embedded = false }: { id: string; embedded?: boolean }) {
   const { loadDocument, actor, loading, demo, token } = useKnowledge(); const [document, setDocument] = useState<KnowledgeDocument | null>(null), [error, setError] = useState("");
-  // Read-only canon has no editable draft to restore. Fetch its body alongside
-  // the supporting workspace; editable documents still wait for draft recovery.
-  const waiting = loading && !(earlyCanonicalRead && !demo && token);
+  // Fetch the body alongside the supporting workspace on every document URL.
+  // Read-only canon renders at once; editable documents still wait for draft recovery below.
+  const waiting = loading && (demo || !token);
   const loadDocumentRef = useRef(loadDocument); loadDocumentRef.current = loadDocument;
   useEffect(() => { if (waiting) return; let active = true; setDocument(null); setError(""); void loadDocumentRef.current(id).then(doc => { if (active) setDocument(doc); }).catch(e => { if (active) setError(e.message); }); return () => { active = false; }; }, [id, waiting, token]);
   useEffect(() => { if (!document) return; try { const key = `kw:recent:${actor.ownerId}`, prior = JSON.parse(localStorage.getItem(key) ?? "[]"); localStorage.setItem(key, JSON.stringify([id, ...prior.filter((v: string) => v !== id)].slice(0,20))); } catch { /* Reading must not depend on local preference storage. */ } }, [document, id, actor.ownerId]);

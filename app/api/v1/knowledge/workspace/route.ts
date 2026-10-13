@@ -34,15 +34,18 @@ export async function GET(request: Request) {
     const state = emptyKnowledgeState();
     // RLS filters each page; do not accept client supplied actor or permissions.
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
+    const rows: KnowledgeDocument[] = [];
     for (let cursor="00000000-0000-0000-0000-000000000000";;) {
       const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(500);
       if(result.error) throw readError(result.error,"documents");
       const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
-      const readable = await readableKnowledgePages(user,batch);
-      state.documents.push(...batch.filter(d=>readable.has(d.id)).map(d=>({...d,content_md:""})));
+      rows.push(...batch);
       if(batch.length<500) break;
       cursor=batch[batch.length-1].id;
     }
+    // One ancestor check over every page: parents from other pages are already loaded.
+    const readable = await readableKnowledgePages(user,rows);
+    state.documents.push(...rows.filter(d=>readable.has(d.id)));
     const access = await knowledgeAccessContext(user,state.documents);
     const resources = await Promise.all([
       db.from("os_doc_categories").select("*").is("archived_at",null).order("sort_order"),
@@ -83,13 +86,19 @@ export async function GET(request: Request) {
       return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:row.member_kind==="staff"&&result.data===true};
     }));
     access.actor.canApprove=state.people.find(p=>p.id===user.ownerId)?.can_approve===true;
-    const docIds=[...ids];
-    for(let offset=0;offset<docIds.length;offset+=100) {
-      for(let pageOffset=0;;pageOffset+=500){
-        const result=await service.from("os_document_proposals").select("*").in("document_id",docIds.slice(offset,offset+100)).order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
-        if(result.error) throw readError(result.error,"proposals");
-        state.proposals.push(...(result.data ?? []));if(!result.data||result.data.length<500)break;
-      }
+    const docIds=[...ids],chunks:string[][]=[];
+    for(let offset=0;offset<docIds.length;offset+=100) chunks.push(docIds.slice(offset,offset+100));
+    // Chunks are independent; read four at a time instead of one after another.
+    for(let group=0;group<chunks.length;group+=4) {
+      const pages=await Promise.all(chunks.slice(group,group+4).map(async chunk=>{
+        const rows:KnowledgeState["proposals"]=[];
+        for(let pageOffset=0;;pageOffset+=500){
+          const result=await service.from("os_document_proposals").select("*").in("document_id",chunk).order("created_at",{ascending:false}).order("id").range(pageOffset,pageOffset+499);
+          if(result.error) throw readError(result.error,"proposals");
+          rows.push(...(result.data ?? []));if(!result.data||result.data.length<500)return rows;
+        }
+      }));
+      for(const rows of pages) state.proposals.push(...rows);
     }
     // Keys are never returned; only their owner identity is needed for the self-approval guard.
     const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];
