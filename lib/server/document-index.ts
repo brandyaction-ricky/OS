@@ -1,4 +1,3 @@
-import { createServiceSupabase } from "@/lib/supabase/server";
 import { ApiError } from "@/lib/http";
 import type { KnowledgeDocument } from "@/lib/types";
 import type { RequestActor } from "./auth";
@@ -8,7 +7,9 @@ import { POLICY_FIELDS, readableKnowledgePages } from "./knowledge-page-access";
 export async function documentIndex(scope: string, actor: RequestActor) {
   const ownerId = actor.ownerId;
   const scoped = (columns: string, options?: { count: "exact"; head: true }) => {
-    let query = createServiceSupabase().from("os_documents").select(columns, options);
+    // A signed-in member's own client lets row policies drop unreadable drafts in the
+    // database; the page check below still runs (agents keep the service client).
+    let query = actor.supabase.from("os_documents").select(columns, options);
     if (scope === "mine_company") query = query.or(`owner_id.eq.${ownerId},status.eq.canonical`);
     else if (scope === "mine") query = query.eq("owner_id", ownerId);
     else if (["canonical", "team", "archived"].includes(scope)) query = query.eq("status", scope);

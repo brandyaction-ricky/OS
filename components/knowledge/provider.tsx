@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useSession } from "@/components/session-provider";
-import { apiRequest, getDocument } from "@/lib/api-client";
+import { apiRequest, getDocument, recentRead } from "@/lib/api-client";
 import { applyKnowledgeCommand, createDemoKnowledge, visibleState } from "@/lib/knowledge/demo";
 import { emptyKnowledgeState, kstDay, type Command, type KnowledgeState, type Meeting, type WorkspaceSnapshot } from "@/lib/knowledge/model";
 import type { KnowledgeActor } from "@/lib/knowledge/access";
@@ -12,7 +12,7 @@ import type { CanonListSnapshot } from "@/lib/knowledge/canon-list";
 import { KnowledgeShortcuts } from "./shortcuts";
 
 type ReadScope = "canon" | "meetings" | "workspace";
-interface WorkspaceContext { state: KnowledgeState; canonList: CanonListSnapshot | null; actor: KnowledgeActor; loading: boolean; workspaceReady: boolean; error: string; demo: boolean; token: string | null; refresh: () => Promise<void>; ensureWorkspace: () => Promise<void>; command: (command: Command, options?: { fastCreate?: boolean }) => Promise<{ id?: string }>; loadDocument: (id: string) => Promise<KnowledgeDocument>; notify: (message: string) => void }
+interface WorkspaceContext { state: KnowledgeState; canonList: CanonListSnapshot | null; actor: KnowledgeActor; loading: boolean; workspaceReady: boolean; draftsReady: boolean; error: string; demo: boolean; token: string | null; refresh: () => Promise<void>; ensureWorkspace: () => Promise<void>; command: (command: Command, options?: { fastCreate?: boolean }) => Promise<{ id?: string }>; loadDocument: (id: string) => Promise<KnowledgeDocument>; notify: (message: string) => void }
 const Context = createContext<WorkspaceContext | null>(null);
 export function KnowledgeBoundary({children}:{children:ReactNode}) {
   const pathname=usePathname();
@@ -27,6 +27,8 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [canonList, setCanonList] = useState<CanonListSnapshot | null>(null);
   const [remoteActor, setRemoteActor] = useState<KnowledgeActor | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false), [partialMeetingId, setPartialMeetingId] = useState("");
+  // Lists may render from a remembered snapshot; editors wait for the fresh one.
+  const [workspaceFresh, setWorkspaceFresh] = useState(false);
   const [error, setError] = useState(""), [toast, notify] = useState("");
   const workspaceReadyRef = useRef(false);
   const actor = useMemo<KnowledgeActor>(() => remoteActor ?? ({ ownerId: profile?.id ?? "", type: "user", role: profile?.role ?? "member", memberKind: profile?.memberKind ?? "staff", active: profile?.isActive === true, allowedStatuses: ["draft", "team", "review", "reviewed", "canonical"], canApprove: demo && profile?.role === "admin" }), [remoteActor, profile, demo]);
@@ -50,13 +52,34 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         let next = createDemoKnowledge(actor);
         if (stored) { try { const value = JSON.parse(stored); if (Object.entries(emptyKnowledgeState()).every(([key,initial]) => Array.isArray(initial) ? Array.isArray(value[key]) : value[key] && typeof value[key]==="object")) next = value; } catch { /* Invalid local demo data is never sent to a server. */ } }
         setState(next); stateRef.current = next;
-        workspaceReadyRef.current = true; setWorkspaceReady(true);
+        workspaceReadyRef.current = true; setWorkspaceReady(true); setWorkspaceFresh(true);
       } else if (requestedScope === "canon") {
+        const applyCanon = (result: CanonListSnapshot) => {
+          setCanonList(result);
+          setRemoteActor(prior => JSON.stringify(prior) === JSON.stringify(result.actor) ? prior : result.actor);
+        };
+        // A revisit shows this tab's last list at once; the fresh read below replaces it.
+        const recent = recentRead<CanonListSnapshot>("/api/v1/knowledge/canon", token);
+        if (recent) applyCanon(recent);
         const result = await apiRequest<CanonListSnapshot>("/api/v1/knowledge/canon", { token });
         if (!isCurrent()) return;
-        setCanonList(result);
-        setRemoteActor(prior => JSON.stringify(prior) === JSON.stringify(result.actor) ? prior : result.actor);
+        applyCanon(result);
       } else {
+        const applyWorkspace = (result: WorkspaceSnapshot) => {
+          setRemoteActor(prior=>JSON.stringify(prior)===JSON.stringify(result.actor)?prior:result.actor);
+          setState(current => {
+            const cachedDocuments = new Map(current.documents.map(doc => [doc.id, doc]));
+            return { ...result.state, documents: result.state.documents.map(doc => {
+              const cached = cachedDocuments.get(doc.id);
+              return cached?.current_version === doc.current_version && cached.content_md ? { ...doc, content_md: cached.content_md } : doc;
+            }) };
+          });
+          workspaceReadyRef.current = true; setWorkspaceReady(true);
+          setCanonList(null);
+        };
+        // Drafts in a remembered snapshot are this tab's own: any save clears the memory.
+        const recent = workspaceReadyRef.current ? undefined : recentRead<WorkspaceSnapshot>("/api/v1/knowledge/workspace", token);
+        if (recent) applyWorkspace(recent);
         const meetingId = /^\/knowledge\/meetings\/([0-9a-f-]{36})$/i.exec(pathname)?.[1];
         if (meetingId && !initialMeetingRead.current && !stateRef.current.meetings.some(row => row.id === meetingId)) {
           try {
@@ -70,19 +93,10 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         }
         const result = await apiRequest<WorkspaceSnapshot>("/api/v1/knowledge/workspace", { token });
         if (!isCurrent()) return;
-        setRemoteActor(prior=>JSON.stringify(prior)===JSON.stringify(result.actor)?prior:result.actor);
-        setState(current => {
-          const cachedDocuments = new Map(current.documents.map(doc => [doc.id, doc]));
-          return { ...result.state, documents: result.state.documents.map(doc => {
-            const cached = cachedDocuments.get(doc.id);
-            return cached?.current_version === doc.current_version && cached.content_md ? { ...doc, content_md: cached.content_md } : doc;
-          }) };
-        });
-        workspaceReadyRef.current = true; setWorkspaceReady(true);
-        setCanonList(null);
+        applyWorkspace(result); setWorkspaceFresh(true);
       }
       setError("");
-    } catch (e) { if (isCurrent()) { if (!demo) { setState(emptyKnowledgeState()); setRemoteActor(null); setCanonList(null); workspaceReadyRef.current = false; setWorkspaceReady(false); setPartialMeetingId(""); } setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); } }
+    } catch (e) { if (isCurrent()) { if (!demo) { setState(emptyKnowledgeState()); setRemoteActor(null); setCanonList(null); workspaceReadyRef.current = false; setWorkspaceReady(false); setWorkspaceFresh(false); setPartialMeetingId(""); } setError(e instanceof Error ? e.message : "회사 문서를 불러오지 못했습니다."); } }
   }, [sessionLoading, profile, demo, storageKey, actor, token, pathname, scope]);
   const refreshRef = useRef(refresh); refreshRef.current = refresh;
   useEffect(() => { void refreshRef.current(); const epoch=routeEpoch; return () => { epoch.current++; }; }, [profile?.id, demo, sessionLoading, scope]);
@@ -138,6 +152,6 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const visible = useMemo(() => demo ? visibleState(state, actor) : state, [demo, state, actor]);
   const scopeReady = workspaceReady || (!demo && scope === "meetings") || (scope === "canon" && canonList !== null) || (Boolean(partialMeetingId) && pathname === `/knowledge/meetings/${partialMeetingId}`);
   const loading = sessionLoading || (!scopeReady && !error);
-  return <Context.Provider value={{ state: visible, canonList, actor, loading, workspaceReady, error, demo, token, refresh, ensureWorkspace, command, loadDocument, notify }}><div className="kw-root">{error && <div className="kw-alert" role="alert">{error}<button onClick={() => void refresh()}>다시 불러오기</button></div>}{children}<KnowledgeShortcuts/>{toast && <div className="kw-toast" role="status">{toast}<button aria-label="알림 닫기" onClick={() => notify("")}>×</button></div>}</div></Context.Provider>;
+  return <Context.Provider value={{ state: visible, canonList, actor, loading, workspaceReady, draftsReady: workspaceFresh, error, demo, token, refresh, ensureWorkspace, command, loadDocument, notify }}><div className="kw-root">{error && <div className="kw-alert" role="alert">{error}<button onClick={() => void refresh()}>다시 불러오기</button></div>}{children}<KnowledgeShortcuts/>{toast && <div className="kw-toast" role="status">{toast}<button aria-label="알림 닫기" onClick={() => notify("")}>×</button></div>}</div></Context.Provider>;
 }
 export function useKnowledge() { const value = useContext(Context); if (!value) throw new Error("KnowledgeProvider required"); return value; }

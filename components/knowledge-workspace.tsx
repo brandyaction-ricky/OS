@@ -45,7 +45,7 @@ import {
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
+import { ApiRequestError, apiRequest, changeDocumentStatus, createDocument, createKnowledgeAttachmentUpload, deleteKnowledgeAttachment, finalizeKnowledgeAssetUpload, getDocument, knowledgeAssetSha256, listDocuments, listDocumentVersions, listMembers, moveKnowledgePage, prepareKnowledgeAssetUpload, recentRead, restoreDocumentVersion, setDocumentSteward, updateDocument, uploadKnowledgeAttachment, type OsMember } from "@/lib/api-client";
 import { knowledgeAttachmentMarkdown } from "@/lib/knowledge-attachments";
 import { resolveWikiLink } from "@/lib/knowledge-links";
 import { knowledgeFolderOptions, normalizeKnowledgeFolder } from "@/lib/knowledge-folders";
@@ -505,17 +505,25 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     if (demo || loadedFolders.current.has(key)) return;
     loadedFolders.current.add(key);
     const revision = epoch.current;
+    const pageQuery = (offset: number) => {
+      const params = new URLSearchParams({view: "page-summary", limit: "200", offset: String(offset), folder: path, exactFolder: "true", scope: ownerFilter});
+      if (ownerFilter.startsWith("member:")) params.set("owner", ownerFilter.slice(7));
+      return params.toString();
+    };
+    // A revisit shows this tab's last first page at once; the fresh pages below replace it.
+    const recent = recentRead<{ documents: KnowledgeDocument[] }>(`/api/v1/documents?${pageQuery(0)}`, accessToken)?.documents ?? [];
+    if (recent.length) setDocuments(current => [...current, ...recent.filter(item => !current.some(row => row.id === item.id))]);
     try {
       const items: KnowledgeDocument[] = [];
       for (let offset = 0; ; offset += 200) {
-        const params = new URLSearchParams({view: "page-summary", limit: "200", offset: String(offset), folder: path, exactFolder: "true", scope: ownerFilter});
-        if (ownerFilter.startsWith("member:")) params.set("owner", ownerFilter.slice(7));
-        const result = await listDocuments(accessToken, params.toString());
+        const result = await listDocuments(accessToken, pageQuery(offset));
         items.push(...result.documents);
         if (items.length >= result.total || !result.documents.length) break;
       }
       if (revision !== epoch.current) return;
-      setDocuments(current => [...current, ...items.filter(item => !current.some(row => row.id === item.id))]);
+      const fresh = new Map(items.map(item => [item.id, item]));
+      const gone = new Set(recent.filter(item => !fresh.has(item.id)).map(item => item.id));
+      setDocuments(current => [...current.filter(row => !gone.has(row.id)).map(row => fresh.get(row.id) ?? row), ...items.filter(item => !current.some(row => row.id === item.id))]);
     } catch (reason) {
       loadedFolders.current.delete(key);
       setError(reason instanceof Error ? reason.message : "폴더를 열지 못했습니다.");
@@ -547,8 +555,12 @@ function WorkspaceContent({ vault = false }: { vault?: boolean }) {
     const revision = ++epoch.current;
     loadedFolders.current.clear();
     setListLoading(true);
+    const inventoryPath = `/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`;
+    const recentInventory = recentRead<{folders: Array<{path: string; count: number}>}>(inventoryPath, accessToken);
+    // The folder tree can render from this tab's last inventory; loading stays on until the fresh pass ends.
+    if (recentInventory) setInventory(recentInventory.folders);
     try {
-      const result = await apiRequest<{folders: Array<{path: string; count: number}>}>(`/api/v1/documents/index?folders=true&scope=${encodeURIComponent(ownerFilter)}`, {token: accessToken});
+      const result = await apiRequest<{folders: Array<{path: string; count: number}>}>(inventoryPath, {token: accessToken});
       if (revision !== epoch.current) return;
       setInventory(result.folders);
       setDocuments(current => current.filter(row => row.id === selectedIdRef.current));
