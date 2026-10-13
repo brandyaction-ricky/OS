@@ -202,11 +202,16 @@ export async function listAllRecordsOfType(token: string | null, recordType: Rec
   const first = await listRecords(token, recordType, "limit=200");
   const records = first.records;
   if (records.length < 200) return records;
-  for (let offset = 200; records.length < first.total; offset += 200) {
-    const params = new URLSearchParams({ count: "none", limit: "200", offset: String(offset), type: recordType });
-    const page = await sharedRead<{ records: OsRecord[]; total: null }>(`/api/v1/records?${params}`, token);
-    records.push(...decodedRecordTitles(page.records));
-    if (page.records.length < 200) break;
+  // The first count fixes every remaining offset, so read four pages at a time instead of one by one.
+  const offsets: number[] = [];
+  for (let offset = 200; offset < first.total; offset += 200) offsets.push(offset);
+  for (let index = 0; index < offsets.length; index += 4) {
+    const pages = await Promise.all(offsets.slice(index, index + 4).map(offset => {
+      const params = new URLSearchParams({ count: "none", limit: "200", offset: String(offset), type: recordType });
+      return sharedRead<{ records: OsRecord[]; total: null }>(`/api/v1/records?${params}`, token);
+    }));
+    for (const page of pages) records.push(...decodedRecordTitles(page.records));
+    if (pages.some(page => page.records.length < 200)) break;
   }
   return records;
 }

@@ -38,7 +38,8 @@ export async function GET(request: Request) {
     }
 
     // Pagination and totals are computed only after access filtering.
-    const summaryColumns = "id,title,folder,status,brand,team,tags,source,source_ref,owner_id,created_by,current_version,created_at,updated_at";
+    // Summary views drop the body anyway; never transfer every document's full text to list a few titles.
+    const columns = includeContent ? "*" : "id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id";
     const listDocuments = (columns: string, scanOffset: number) => {
       let builder = createServiceSupabase()
       .from("os_documents")
@@ -62,10 +63,9 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
       return builder;
     };
-    void summaryColumns;
     const rows: KnowledgeDocument[] = [];
     for (let scanOffset = 0; ; scanOffset += 1000) {
-      const { data, error } = await listDocuments("*", scanOffset);
+      const { data, error } = await listDocuments(columns, scanOffset);
       if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.");
       const batch = (data ?? []) as unknown as KnowledgeDocument[];
       const allowed = await readableKnowledgePages(actor, batch);
