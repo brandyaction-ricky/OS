@@ -5,6 +5,7 @@ import { hrWorkspaceEnabled } from "@/lib/hr/gate";
 import { addDays, todayKst } from "@/lib/hr/domain";
 import { emptyHrData, type HrData, type Employee } from "@/lib/hr/types";
 import { HR_MESSAGES } from "@/lib/hr/messages";
+import { HR_BADGE_COLUMNS } from "@/lib/hr/badge-columns";
 export { HR_MESSAGES };
 
 export function hrDbError(error: { message?: string; code?: string }): never {
@@ -167,6 +168,24 @@ export async function hrWorkspace(
     holidays,
     settings,
   };
+}
+/** Sidebar counters need no contracts, forms, holidays, settings, or file paths. */
+export async function hrBadgeData(actor: HrActor, today = todayKst()): Promise<HrData> {
+  if (!actor.hrAccess)
+    throw new ApiError(403, "HR_ACCESS_REQUIRED", HR_MESSAGES.HR_ACCESS_REQUIRED);
+  const data = emptyHrData();
+  [data.profiles, data.employees, data.credits, data.requests, data.promotions, data.documents] =
+    await Promise.all([
+      readAll<HrData["profiles"][number]>(actor, "os_profiles", HR_BADGE_COLUMNS.profiles),
+      hrRpc<Employee[]>(actor, "os_hr_people"),
+      readAll<HrData["credits"][number]>(actor, "os_hr_leave_credits", HR_BADGE_COLUMNS.credits),
+      readAll<HrData["requests"][number]>(actor, "os_hr_leave_requests", HR_BADGE_COLUMNS.requests, {
+        from: addDays(today, -366), to: addDays(today, 366),
+      }),
+      readAll<HrData["promotions"][number]>(actor, "os_hr_leave_promotions", HR_BADGE_COLUMNS.promotions),
+      readAll<HrData["documents"][number]>(actor, "os_hr_documents", HR_BADGE_COLUMNS.documents),
+    ]);
+  return data;
 }
 export async function hrSelf(actor: HrActor): Promise<HrData> {
   const data = emptyHrData(),

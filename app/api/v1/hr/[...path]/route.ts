@@ -9,6 +9,7 @@ import {
   hrRpc,
   hrSelf,
   hrWorkspace,
+  hrBadgeData,
   HR_MESSAGES,
   readAll,
 } from "@/lib/server/hr";
@@ -75,7 +76,7 @@ async function handle(request: Request, context: Context) {
         legacyTeamMenusHidden: await legacyTeamMenusHidden(),
       });
       if (action === "badges") {
-        return json({ badges: hrBadges(await hrWorkspace(actor), today) });
+        return json({ badges: hrBadges(await hrBadgeData(actor, today), today) });
       }
       if (action === "workspace")
         return json({ data: await hrWorkspace(actor), today });

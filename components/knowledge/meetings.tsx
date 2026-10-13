@@ -13,18 +13,46 @@ import {KnowledgeRichEditor, type KnowledgeRichEditorMethods} from "@/components
 
 const STATUSES={planned:"준비",active:"진행",review:"검수 대기",done:"완료"};
 const toKstInput = (value: string) => new Date(new Date(value).getTime()+9*3600000).toISOString().slice(0,16);
+type MeetingListRow = Pick<Meeting,"id"|"title"|"status"|"starts_at"|"updated_at"|"attendees"> & {visibility:"team"|"attendees"};
+type MeetingListSnapshot = {meetings:MeetingListRow[];people:Array<{id:string;display_name:string}>};
 export function KnowledgeMeetings(){
-  const {state}=useKnowledge(),params=useSearchParams(),router=useRouter();
+  const {state,demo,token}=useKnowledge(),params=useSearchParams(),router=useRouter();
   const view=params.get("view")??"table",status=params.get("status")??"all";
   const [q,setQ]=useState(""),[month,setMonth]=useState(kstDay().slice(0,7));
-  const rows=state.meetings.filter(m=>(status==="all"||m.status===status)&&m.title.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.starts_at??b.updated_at).localeCompare(a.starts_at??a.updated_at));
+  const [remote,setRemote]=useState<{token:string;data:MeetingListSnapshot}|null>(null);
+  const [readState,setReadState]=useState<{token:string|null;loading:boolean;error:string}>({token:null,loading:!demo,error:""});
+  const [retry,setRetry]=useState(0);
+  useEffect(()=>{
+    if(demo)return;
+    if(!token){setRemote(null);setReadState({token:null,loading:true,error:""});return;}
+    const controller=new AbortController();
+    setRemote(current=>current?.token===token?current:null);
+    setReadState({token,loading:true,error:""});
+    void apiRequest<MeetingListSnapshot>("/api/v1/knowledge/meetings",{token,signal:controller.signal})
+      .then(result=>{if(!controller.signal.aborted){setRemote({token,data:result});setReadState({token,loading:false,error:""});}})
+      .catch(reason=>{if(!controller.signal.aborted){setRemote(null);setReadState({token,loading:false,error:(reason as Error).message});}});
+    return()=>controller.abort();
+  },[demo,token,retry]);
+  useEffect(()=>{
+    if(demo)return;
+    const focus=()=>setRetry(value=>value+1);
+    window.addEventListener("focus",focus);
+    return()=>window.removeEventListener("focus",focus);
+  },[demo]);
+  // Hide a previous account/token's rows during render, before effect cleanup.
+  const currentRemote=remote?.token===token?remote.data:null;
+  const loading=!demo&&(readState.token!==token||readState.loading);
+  const error=!demo&&readState.token===token?readState.error:"";
+  const meetings=demo?state.meetings.map(m=>({...m,visibility:m.metadata.visibility})):currentRemote?.meetings??[];
+  const people=new Map((demo?state.people:currentRemote?.people??[]).map(p=>[p.id,p.display_name]));
+  const rows=meetings.filter(m=>(status==="all"||m.status===status)&&m.title.toLowerCase().includes(q.toLowerCase())).sort((a,b)=>(b.starts_at??b.updated_at).localeCompare(a.starts_at??a.updated_at));
   function query(patch:Record<string,string>){const next=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>next.set(k,v));router.replace(`/knowledge/meetings?${next}`);}
-  const card=(m:Meeting)=><article className="kw-card" key={m.id}><Link href={`/knowledge/meetings/${m.id}`}><strong>{m.title}</strong></Link><p><small>{m.starts_at?kstTime(m.starts_at):"일정 미정"} · {m.attendees.length}명</small></p><small>{m.metadata.visibility==="attendees"?"참석자만":"팀 공개"}</small></article>;
+  const card=(m:MeetingListRow)=><article className="kw-card" key={m.id}><Link href={`/knowledge/meetings/${m.id}`}><strong>{m.title}</strong></Link><p><small>{m.starts_at?kstTime(m.starts_at):"일정 미정"} · {m.attendees.length}명</small></p><small>{m.visibility==="attendees"?"참석자만":"팀 공개"}</small></article>;
   const [year,mon]=month.split("-").map(Number),count=new Date(Date.UTC(year,mon,0)).getUTCDate(),first=new Date(Date.UTC(year,mon-1,1)).getUTCDay();
   return <><Header title="회의록" description="안건에서 메모, 결정과 할 일까지 한 흐름으로 기록합니다."><NewDocumentButton space="meeting" label="새 회의"/></Header><div className="kw-toolbar"><input aria-label="회의 검색" placeholder="회의 제목 검색" value={q} onChange={e=>setQ(e.target.value)}/><select aria-label="회의 상태" value={status} onChange={e=>query({status:e.target.value})}><option value="all">전체 상태</option>{Object.entries(STATUSES).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select><div className="kw-actions">{[["table","표"],["calendar","달력"],["board","보드"]].map(([value,label])=><button key={value} aria-pressed={view===value} onClick={()=>query({view:value})}>{label}</button>)}</div></div>
     {view==="calendar"?<Card title="회의 일정"><label>월<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label><div className="kw-meeting-calendar">{["일","월","화","수","목","금","토"].map(d=><strong key={d}>{d}</strong>)}{Array.from({length:first},(_,i)=><span key={`empty-${i}`}/>)}{Array.from({length:count},(_,i)=>{const day=`${month}-${String(i+1).padStart(2,"0")}`;return <section key={day}><small>{i+1}</small>{rows.filter(m=>m.starts_at&&kstDay(new Date(m.starts_at))===day).map(card)}</section>;})}</div>{rows.some(m=>!m.starts_at)&&<><h3>일정 미정</h3>{rows.filter(m=>!m.starts_at).map(card)}</>}</Card>
     :view==="board"?<div className="kw-board">{Object.entries(STATUSES).map(([key,label])=><section key={key}><h3>{label} <small>{rows.filter(m=>m.status===key).length}</small></h3>{rows.filter(m=>m.status===key).map(card)}</section>)}</div>
-    :<div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>회의</th><th>일정</th><th>상태</th><th>참석자</th><th>공개 범위</th></tr></thead><tbody>{rows.map(m=><tr key={m.id}><td><Link href={`/knowledge/meetings/${m.id}`}>{m.title}</Link></td><td>{m.starts_at?kstTime(m.starts_at):"미정"}</td><td><span className="kw-badge">{STATUSES[m.status]}</span></td><td>{m.attendees.map(id=>state.people.find(p=>p.id===id)?.display_name??"구성원").join(", ")}</td><td>{m.metadata.visibility==="attendees"?"참석자만":"팀 공개"}</td></tr>)}</tbody></table>{!rows.length&&<Empty>표시할 회의가 없습니다</Empty>}</div>}</>;
+    :<div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>회의</th><th>일정</th><th>상태</th><th>참석자</th><th>공개 범위</th></tr></thead><tbody>{rows.map(m=><tr key={m.id}><td><Link href={`/knowledge/meetings/${m.id}`}>{m.title}</Link></td><td>{m.starts_at?kstTime(m.starts_at):"미정"}</td><td><span className="kw-badge">{STATUSES[m.status]}</span></td><td>{m.attendees.map(id=>people.get(id)??"구성원").join(", ")}</td><td>{m.visibility==="attendees"?"참석자만":"팀 공개"}</td></tr>)}</tbody></table>{!rows.length&&!loading&&!error&&<Empty>표시할 회의가 없습니다</Empty>}</div>}{loading&&<p role="status">회의록을 불러오는 중입니다…</p>}{error&&<p className="kw-error" role="alert">{error} <button onClick={()=>setRetry(value=>value+1)}>다시 불러오기</button></p>}</>;
 }
 export function KnowledgeMeetingPage({id}:{id:string}){
   const {state,loading}=useKnowledge();const meeting=state.meetings.find(m=>m.id===id);

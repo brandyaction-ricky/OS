@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, CircleAlert, Plus, Search, Users, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, archiveRecord, listAllRecordsOfType, listMembers, updateRecord, type OsMember } from "@/lib/api-client";
 import { CreateTeamMeeting, TeamMeetingDetail, TeamMeetingReview } from "@/components/team/meeting-actions";
 import { CreateTeamTask, EditableTaskDrawer, TeamTaskInbox, moveTeamTask } from "@/components/team/task-actions";
@@ -24,8 +24,8 @@ import { useSession } from "@/components/session-provider";
 import { WorkspaceLoadState } from "@/components/workspace-load-state";
 
 type Section = "meetings" | "tasks" | "schedule" | "people";
-type Data = { meetings: Meeting[]; tasks: OsRecord[]; projects: OsRecord[]; members: OsMember[]; decisions: OsRecord[]; publishes: OsRecord[]; absences: TeamAbsence[] };
-const EMPTY_DATA: Data = { meetings: [], tasks: [], projects: [], members: [], decisions: [], publishes: [], absences: [] };
+type Data = { meetings: Meeting[]; tasks: OsRecord[]; projects: OsRecord[]; members: OsMember[]; decisions: OsRecord[]; publishes: OsRecord[] };
+const EMPTY_DATA: Data = { meetings: [], tasks: [], projects: [], members: [], decisions: [], publishes: [] };
 const TITLE: Record<Section, string> = { meetings: "회의·결정", tasks: "업무", schedule: "팀 일정", people: "팀 현황" };
 const DESCRIPTION: Record<Section, string> = {
   meetings: "회의 기록에서 결정과 후속 업무를 확인합니다.",
@@ -65,6 +65,12 @@ function addDays(date: Date, days: number) {
   return result;
 }
 function monday(date: Date) { return addDays(date, -((date.getDay() + 6) % 7)); }
+function workspaceRange(section: Section, week: string | null, month: boolean) {
+  const selected = week && /^\d{4}-\d{2}-\d{2}$/.test(week) ? new Date(`${week}T12:00:00`) : new Date();
+  const start = section === "schedule" ? monday(month ? new Date(selected.getFullYear(), selected.getMonth(), 1) : selected) : addDays(new Date(), -14);
+  const end = section === "schedule" ? addDays(start, month ? 42 : 7) : addDays(new Date(), 46);
+  return { from: dayKey(start), to: dayKey(end) };
+}
 function personName(members: OsMember[], id: string | null | undefined) {
   if (!id) return "담당 미정";
   return members.find(member => member.id === id)?.display_name ?? "구성원";
@@ -96,28 +102,65 @@ function sectionTabs(label: string, items: Array<{ label: string; href: string; 
 
 export function TeamWorkspaceV1({ section }: { section: Section }) {
   const params = useSearchParams();
-  const { accessToken, demo, profile } = useSession();
-  const [data, setData] = useState<Data>(EMPTY_DATA);
-  const [loading, setLoading] = useState(!demo);
-  const [error, setError] = useState("");
+  const { accessToken, demo, profile, loading: sessionLoading } = useSession();
   const [search, setSearch] = useState("");
   const [guideClosed, setGuideClosed] = useState(false);
+  // Selection, tabs and client-side filters reuse the loaded workspace.
+  const scheduleWeek = section === "schedule" ? params.get("week") : null;
+  const scheduleMonth = section === "schedule" && params.get("view") === "month";
+  const loadKey = JSON.stringify([accessToken, demo, sessionLoading, profile?.id, profile?.role, profile?.memberKind, profile?.isActive, profile?.team, profile?.personKind, profile?.isSharedAccount, section, scheduleWeek, scheduleMonth]);
+  const currentLoadKey = useRef(loadKey); currentLoadKey.current = loadKey;
+  const generation = useRef(0);
+  const absenceGeneration = useRef(0);
+  const [snapshot, setSnapshot] = useState<{ key: string; data: Data } | null>(null);
+  const [loadStatus, setLoadStatus] = useState({ key: loadKey, loading: !demo, error: "" });
+  const [absenceState, setAbsenceState] = useState<{ key: string; rows: TeamAbsence[]; loading: boolean; error: string }>({ key: loadKey, rows: [], loading: !demo, error: "" });
+  // Never render a prior account, permission scope or schedule range while its replacement loads.
+  const data = snapshot?.key === loadKey ? snapshot.data : EMPTY_DATA;
+  const loading = loadStatus.key === loadKey ? loadStatus.loading : !demo;
+  const error = loadStatus.key === loadKey ? loadStatus.error : "";
+  const absences = absenceState.key === loadKey ? absenceState.rows : [];
+  const absenceError = absenceState.key === loadKey ? absenceState.error : "";
+  const absenceLoading = absenceState.key === loadKey ? absenceState.loading : !demo;
+  const absenceNotice = absenceError ? "확인 필요" : absenceLoading ? "확인 중" : "";
+  const loadAbsences = useCallback(async () => {
+    if (loadKey !== currentLoadKey.current) return;
+    const request = ++absenceGeneration.current;
+    const current = () => request === absenceGeneration.current && loadKey === currentLoadKey.current;
+    if (demo || sessionLoading || !accessToken || !profile?.id || profile.isActive === false || (section !== "people" && section !== "schedule")) {
+      setAbsenceState({ key: loadKey, rows: [], loading: false, error: "" });
+      return;
+    }
+    setAbsenceState({ key: loadKey, rows: [], loading: true, error: "" });
+    const { from, to } = workspaceRange(section, scheduleWeek, scheduleMonth);
+    try {
+      const result = await apiRequest<{ absences: TeamAbsence[] }>(`/api/v1/hr/absences?from=${from}&to=${to}`, { token: accessToken });
+      if (current()) setAbsenceState({ key: loadKey, rows: result.absences, loading: false, error: "" });
+    } catch {
+      if (current()) setAbsenceState({ key: loadKey, rows: [], loading: false, error: "부재 일정을 확인하지 못했습니다." });
+    }
+  }, [accessToken, demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey]);
   const load = useCallback(async () => {
-    if (demo) { setData(EMPTY_DATA); setLoading(false); return; }
-    if (!accessToken) return;
-    setLoading(true);
+    if (loadKey !== currentLoadKey.current) return;
+    const request = ++generation.current;
+    const current = () => request === generation.current && loadKey === currentLoadKey.current;
+    void loadAbsences();
+    if (demo || sessionLoading || !accessToken || !profile?.id || profile.isActive === false) {
+      setSnapshot({ key: loadKey, data: EMPTY_DATA });
+      setLoadStatus({ key: loadKey, loading: !demo && sessionLoading, error: "" });
+      return;
+    }
+    setLoadStatus({ key: loadKey, loading: true, error: "" });
     try {
       if (section === "meetings") {
         const [result, tasks, members, decisions, projects] = await Promise.all([
           apiRequest<{meetings: Meeting[]}>("/api/v1/team/meetings", { token: accessToken }),
           listAllRecordsOfType(accessToken, "task"), listMembers(accessToken), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "project"),
         ]);
-        setData({ meetings: result.meetings, tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), decisions, publishes: [], absences: [] });
+        if (!current()) return;
+        setSnapshot({ key: loadKey, data: { meetings: result.meetings, tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), decisions, publishes: [] } });
       } else {
-        const selectedDate = params.get("week") && /^\d{4}-\d{2}-\d{2}$/.test(params.get("week") ?? "") ? new Date(`${params.get("week")}T12:00:00`) : new Date();
-        const rangeStart = section === "schedule" ? monday(params.get("view") === "month" ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1) : selectedDate) : addDays(new Date(), -14);
-        const rangeEnd = section === "schedule" ? addDays(rangeStart, params.get("view") === "month" ? 42 : 7) : addDays(new Date(), 46);
-        const from = dayKey(rangeStart), to = dayKey(rangeEnd);
+        const { from, to } = workspaceRange(section, scheduleWeek, scheduleMonth);
         const [tasks, members, meetings, publishes, projects] = await Promise.all([
           section === "schedule" ? listTeamRange(accessToken, "task", from, to) : listAllRecordsOfType(accessToken, "task"),
           section === "people" || section === "tasks" ? listMembers(accessToken).then(result => result.members) : Promise.resolve([]),
@@ -125,17 +168,17 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
           section === "schedule" ? listTeamRange(accessToken, "content_publish", from, to) : Promise.resolve([]),
           section === "tasks" ? listAllRecordsOfType(accessToken, "project") : Promise.resolve([]),
         ]);
-        const absences = section === "people" || section === "schedule"
-          ? await apiRequest<{ absences: TeamAbsence[] }>(`/api/v1/hr/absences?from=${from}&to=${to}`, { token: accessToken }).then(result => result.absences)
-          : [];
-        setData({ tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), meetings, decisions: [], publishes: publishes.filter(item => contentOrigin(item) === "own"), absences });
+        if (!current()) return;
+        setSnapshot({ key: loadKey, data: { tasks: tasks.filter(task => contentOrigin(task) === "own"), projects, members: members.filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner"), meetings, decisions: [], publishes: publishes.filter(item => contentOrigin(item) === "own") } });
       }
-      setError("");
+      setLoadStatus({ key: loadKey, loading: false, error: "" });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "팀 화면을 불러오지 못했습니다.");
-    } finally { setLoading(false); }
-  }, [accessToken, demo, section, params]);
-  useEffect(() => { void load(); }, [load]);
+      if (!current()) return;
+      setSnapshot({ key: loadKey, data: EMPTY_DATA });
+      setLoadStatus({ key: loadKey, loading: false, error: cause instanceof Error ? cause.message : "팀 화면을 불러오지 못했습니다." });
+    }
+  }, [accessToken, demo, sessionLoading, profile?.id, profile?.isActive, section, scheduleWeek, scheduleMonth, loadKey, loadAbsences]);
+  useEffect(() => { void load(); const requests = generation, absenceRequests = absenceGeneration; return () => { requests.current++; absenceRequests.current++; }; }, [load]);
 
   const activeTab = params.get("tab") ?? "records";
   const meetingId = params.get("meeting");
@@ -168,6 +211,8 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
       { label: "분류함", href: "/organization/tasks?view=inbox", active: view === "inbox", count: data.tasks.filter(task => !task.assignee_id).length },
     ]) : null}
     <WorkspaceLoadState loading={loading} error={error} retry={() => void load()}>
+      {(section === "schedule" || section === "people") && absenceError ? <div className="tm-callout" data-tone="warn" role="alert"><CircleAlert size={16}/><div className="tm-callout-body"><strong>{absenceError}</strong><small>회의·업무 정보는 표시됩니다. 부재 여부는 아직 확인되지 않았습니다.</small></div><div className="tm-callout-actions"><button className="secondary-button compact" type="button" onClick={() => void loadAbsences()}>부재 다시 불러오기</button></div></div> : null}
+      {(section === "schedule" || section === "people") && absenceLoading ? <p className="tm-muted" role="status">부재 일정을 불러오는 중입니다.</p> : null}
       {section === "meetings" ? <>
         {activeTab !== "prep" && activeTab !== "decisions" ? <label className="tm-search"><Search size={15} /><input aria-label="회의 검색" placeholder="회의 검색" value={search} onChange={event => setSearch(event.target.value)} /></label> : null}
         {selectedMeeting && activeTab !== "decisions" && accessToken ? params.get("step") === "review" && !selectedMeeting.legacy ? <TeamMeetingReview key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} tasks={data.tasks} onChanged={load} /> : <TeamMeetingDetail key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} meetings={data.meetings} tasks={data.tasks} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} projects={data.projects} onChanged={load} /> : activeTab === "decisions" && accessToken ? <TeamDecisionList rows={decisionRows} selectedId={params.get("record")} members={data.members} tasks={data.tasks} projects={data.projects} meetings={data.meetings} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : activeTab === "prep" && accessToken ? <TeamPrepView meetings={data.meetings} token={accessToken} onChanged={load} /> : <MeetingList meetings={meetingRows} filter={params.get("f") ?? "all"} records={[...data.tasks,...data.decisions]} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} onChanged={load} />}
@@ -177,8 +222,8 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
         {view === "board" ? <TaskBoard tasks={tasks} members={data.members} owner={params.get("owner")} token={accessToken} onChanged={load} /> : view === "inbox" && accessToken ? <TeamTaskInbox tasks={tasks.filter(task => !task.assignee_id && !["done", "cancelled"].includes(task.status))} allTasks={tasks} meetings={data.meetings} members={data.members} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : <MyTasks tasks={tasks} members={data.members} userId={profile?.id} requested={params.get("mine") === "requested"} token={accessToken} onChanged={load} />}
         {selectedTask && accessToken ? <EditableTaskDrawer key={`${selectedTask.id}:${selectedTask.version}`} task={selectedTask} members={data.members} projects={data.projects} token={accessToken} onChanged={load} /> : null}
       </> : null}
-      {section === "schedule" ? <ScheduleView meetings={data.meetings} tasks={data.tasks} publishes={data.publishes} absences={data.absences} weekStart={weekStart} view={view === "month" ? "month" : "week"} /> : null}
-      {section === "people" ? <PeopleView members={data.members} tasks={data.tasks} absences={data.absences} /> : null}
+      {section === "schedule" ? <ScheduleView meetings={data.meetings} tasks={data.tasks} publishes={data.publishes} absences={absences} absenceNotice={absenceNotice} weekStart={weekStart} view={view === "month" ? "month" : "week"} /> : null}
+      {section === "people" ? <PeopleView members={data.members} tasks={data.tasks} absences={absences} absenceNotice={absenceNotice} /> : null}
     </WorkspaceLoadState>
   </div>;
 }
@@ -259,7 +304,7 @@ function TaskBoard({ tasks, members, owner, token, onChanged }: { tasks: OsRecor
   }
   return <><div className="tm-toolbar"><span className="tm-muted">사업</span><button className="tm-chip" aria-pressed={business === "all"} onClick={() => setBusiness("all")}>전체</button>{TEAM_BUSINESSES.map(item => <button className="tm-chip" aria-pressed={business === item.key} onClick={() => setBusiness(item.key)} key={item.key}>{item.label}</button>)}<span className="tm-muted">담당</span><Link className="tm-chip" aria-current={!owner ? "page" : undefined} href="/organization/tasks?view=board">전체</Link>{members.map(member => <Link className="tm-chip" aria-current={owner===member.id?"page":undefined} href={`/organization/tasks?view=board&owner=${encodeURIComponent(member.id)}`} key={member.id}>{member.display_name}</Link>)}<select aria-label="업무 출처" value={source} onChange={event => setSource(event.target.value)}><option value="all">전체 출처</option><option value="meeting">회의</option><option value="direct">직접 요청</option><option value="planning">기획안</option><option value="telegram">텔레그램 피드백</option></select><button className="tm-chip" onClick={() => {setBusiness("all");setSource("all");}}>필터 지우기</button><span className="tm-spacer"/><button className="tm-chip" aria-pressed={layout === "board"} onClick={() => setLayout("board")}>보드</button><button className="tm-chip" aria-pressed={layout === "list"} onClick={() => setLayout("list")}>목록</button></div>{moveError ? <p role="alert" className="tm-danger-text">{moveError}</p> : null}{layout === "list" ? <div className="panel tm-table-wrap"><table className="data-table"><thead><tr><th>업무</th><th>상태</th><th>사업</th><th>담당</th><th>기한</th></tr></thead><tbody>{visible.slice().sort((a,b) => TASK_COLUMNS.findIndex(col => col.statuses.includes(a.status as never)) - TASK_COLUMNS.findIndex(col => col.statuses.includes(b.status as never)) || (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999")).map(task => <tr key={task.id}><td className="cell-title"><Link href={`/organization/tasks?view=board&task=${encodeURIComponent(task.id)}`}>{task.title}</Link></td><td>{statusLabel(task.status)}</td><td>{businessLabel(task.brand)}</td><td>{personName(members,task.assignee_id)}</td><td>{dateLabel(task.due_date)}</td></tr>)}</tbody></table></div> : <div className="task-board">{TASK_COLUMNS.map(column => { const rows = visible.filter(task => (column.statuses as readonly string[]).includes(task.status)); return <section className="tm-column" key={column.key} data-drop-target={dropTarget===column.key} onDragOver={event => {event.preventDefault();setDropTarget(column.key);}} onDragLeave={() => setDropTarget(null)} onDrop={event => void drop(event,column)}><header><span className="tm-col-dot" data-status={column.key} />{column.label}<span className="tm-count">{rows.length}</span></header>{rows.map(task => <Link className="tm-task-card" draggable href={`/organization/tasks?view=board${owner?`&owner=${encodeURIComponent(owner)}`:""}&task=${encodeURIComponent(task.id)}`} onDragStart={event => event.dataTransfer.setData("text/plain",task.id)} key={task.id}><span className="tm-task-card-title">{task.title}</span>{task.status === "blocked" && task.metadata.blockedReason ? <small className="tm-danger-text">{String(task.metadata.blockedReason)}</small> : null}<span className="tm-task-card-meta"><span className="tm-biz" data-biz={businessTone(task.brand)}>{businessLabel(task.brand)}</span><span className="tm-avatar" title={personName(members,task.assignee_id)}>{personName(members,task.assignee_id).slice(0,1)}</span></span><span className="tm-due">{dateLabel(task.due_date)}</span></Link>)}</section>; })}</div>}</>;
 }
-function ScheduleView({ meetings, tasks, publishes, absences, weekStart, view }: { meetings: Meeting[]; tasks: OsRecord[]; publishes: OsRecord[]; absences: TeamAbsence[]; weekStart: Date; view: "week" | "month" }) {
+function ScheduleView({ meetings, tasks, publishes, absences, absenceNotice, weekStart, view }: { meetings: Meeting[]; tasks: OsRecord[]; publishes: OsRecord[]; absences: TeamAbsence[]; absenceNotice: string; weekStart: Date; view: "week" | "month" }) {
   const [layers, setLayers] = useState({ meeting: true, due: true, absence: true, publish: true });
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
   const start = view === "month" ? monday(new Date(weekStart.getFullYear(),weekStart.getMonth(),1)) : weekStart;
@@ -271,7 +316,7 @@ function ScheduleView({ meetings, tasks, publishes, absences, weekStart, view }:
   const monthLabel = new Intl.DateTimeFormat("ko-KR", {year:"numeric",month:"long"}).format(weekStart);
   const rangeLabel = view === "month" ? monthLabel : `${dateLabel(weekStart)} ~ ${dateLabel(addDays(weekStart,6))}`;
   const href = (date: Date) => `/organization/schedule?view=${view}&week=${dayKey(date)}`;
-  return <><div className="tm-stats"><div className="metric"><div className="metric-label">회의</div><div className="metric-value">{meetings.filter(meeting=>days.some(date=>dayKey(date)===dayKey(meeting.starts_at))).length}</div></div><div className="metric"><div className="metric-label">업무 마감</div><div className="metric-value">{tasks.filter(task=>days.some(date=>dayKey(date)===dayKey(task.due_date))).length}</div></div><div className="metric"><div className="metric-label">부재 인원</div><div className="metric-value">{new Set(absences.filter(absence=>days.some(date=>dayKey(date)>=absence.start&&dayKey(date)<=absence.end)).map(absence=>absence.name)).size}</div></div><div className="metric"><div className="metric-label">발행</div><div className="metric-value">{publishes.filter(item=>days.some(date=>dayKey(date)===dayKey(item.starts_at))).length}</div></div></div><div className="tm-toolbar"><Link className="secondary-button compact" aria-label="이전 기간" href={href(previous)}><ChevronLeft size={16}/></Link><Link className="secondary-button compact" href={`/organization/schedule?view=${view}`}>오늘</Link><strong className="tm-range">{rangeLabel}</strong><Link className="secondary-button compact" aria-label="다음 기간" href={href(next)}><ChevronRight size={16}/></Link><span className="tm-spacer"/><Link className="tm-chip" aria-current={view==="week"?"page":undefined} href={`/organization/schedule?view=week&week=${dayKey(weekStart)}`}>주</Link><Link className="tm-chip" aria-current={view==="month"?"page":undefined} href={`/organization/schedule?view=month&week=${dayKey(weekStart)}`}>월</Link></div><div className="tm-toolbar">{([{key:"meeting",label:"회의"},{key:"due",label:"업무 마감"},{key:"absence",label:"부재"},{key:"publish",label:"발행"}] as const).map(layer=><button type="button" className="tm-layer" data-kind={layer.key} aria-pressed={layers[layer.key]} key={layer.key} onClick={()=>setLayers(current=>({...current,[layer.key]:!current[layer.key]}))}>{layer.label}</button>)}</div><div className={view==="month"?"tm-month":"tm-week"}>{view==="month"?WEEKDAYS.map(day=><div className="tm-month-head" key={day}>{day}</div>):null}{days.map(date=>{const key=dayKey(date);const dayMeetings=layers.meeting?meetings.filter(meeting=>dayKey(meeting.starts_at)===key):[];const dayTasks=layers.due?tasks.filter(task=>dayKey(task.due_date)===key):[];const dayAbsences=layers.absence?absences.filter(absence=>key>=absence.start&&key<=absence.end):[];const dayPublishes=layers.publish?publishes.filter(item=>dayKey(item.starts_at)===key):[];
+  return <><div className="tm-stats"><div className="metric"><div className="metric-label">회의</div><div className="metric-value">{meetings.filter(meeting=>days.some(date=>dayKey(date)===dayKey(meeting.starts_at))).length}</div></div><div className="metric"><div className="metric-label">업무 마감</div><div className="metric-value">{tasks.filter(task=>days.some(date=>dayKey(date)===dayKey(task.due_date))).length}</div></div><div className="metric"><div className="metric-label">부재 인원</div><div className="metric-value">{absenceNotice || new Set(absences.filter(absence=>days.some(date=>dayKey(date)>=absence.start&&dayKey(date)<=absence.end)).map(absence=>absence.name)).size}</div></div><div className="metric"><div className="metric-label">발행</div><div className="metric-value">{publishes.filter(item=>days.some(date=>dayKey(date)===dayKey(item.starts_at))).length}</div></div></div><div className="tm-toolbar"><Link className="secondary-button compact" aria-label="이전 기간" href={href(previous)}><ChevronLeft size={16}/></Link><Link className="secondary-button compact" href={`/organization/schedule?view=${view}`}>오늘</Link><strong className="tm-range">{rangeLabel}</strong><Link className="secondary-button compact" aria-label="다음 기간" href={href(next)}><ChevronRight size={16}/></Link><span className="tm-spacer"/><Link className="tm-chip" aria-current={view==="week"?"page":undefined} href={`/organization/schedule?view=week&week=${dayKey(weekStart)}`}>주</Link><Link className="tm-chip" aria-current={view==="month"?"page":undefined} href={`/organization/schedule?view=month&week=${dayKey(weekStart)}`}>월</Link></div><div className="tm-toolbar">{([{key:"meeting",label:"회의"},{key:"due",label:"업무 마감"},{key:"absence",label:"부재"},{key:"publish",label:"발행"}] as const).map(layer=><button type="button" className="tm-layer" data-kind={layer.key} disabled={layer.key === "absence" && Boolean(absenceNotice)} aria-pressed={layers[layer.key]} key={layer.key} onClick={()=>setLayers(current=>({...current,[layer.key]:!current[layer.key]}))}>{layer.label}</button>)}</div><div className={view==="month"?"tm-month":"tm-week"}>{view==="month"?WEEKDAYS.map(day=><div className="tm-month-head" key={day}>{day}</div>):null}{days.map(date=>{const key=dayKey(date);const dayMeetings=layers.meeting?meetings.filter(meeting=>dayKey(meeting.starts_at)===key):[];const dayTasks=layers.due?tasks.filter(task=>dayKey(task.due_date)===key):[];const dayAbsences=layers.absence?absences.filter(absence=>key>=absence.start&&key<=absence.end):[];const dayPublishes=layers.publish?publishes.filter(item=>dayKey(item.starts_at)===key):[];
     const events = [
       ...dayMeetings.map(meeting=><Link key={`m:${meeting.id}`} className="tm-event" data-kind="meeting" href={`/organization/meetings?meeting=${encodeURIComponent(meeting.id)}`}>{meeting.title}</Link>),
       ...dayTasks.map(task=><Link key={`t:${task.id}`} className="tm-event" data-kind="due" href={`/organization/tasks?task=${encodeURIComponent(task.id)}`}>{task.title}</Link>),
@@ -281,7 +326,7 @@ function ScheduleView({ meetings, tasks, publishes, absences, weekStart, view }:
     const collapsed = view==="month" && expandedDay!==key && events.length>3;
     return <div key={key} className={view==="month"?"tm-month-cell":"tm-day"} data-today={key===dayKey(new Date())} data-outside={view==="month"&&date.getMonth()!==weekStart.getMonth()}><div className="tm-day-head"><b>{date.getDate()}</b>{view==="week"?<span>{WEEKDAYS[(date.getDay()+6)%7]}</span>:null}</div>{collapsed?events.slice(0,3):events}{collapsed?<button type="button" className="tm-more" aria-label={`${key} 일정 ${events.length-3}개 더 보기`} onClick={()=>setExpandedDay(key)}>+{events.length-3}</button>:view==="month"&&expandedDay===key&&events.length>3?<button type="button" className="tm-more" onClick={()=>setExpandedDay(null)}>접기</button>:null}</div>;})}</div><p className="tm-muted">부재는 인사에서 관리하며, 팀 일정에는 이름과 시간대만 표시합니다.</p></>;
 }
-function PeopleView({ members, tasks, absences }: { members: OsMember[]; tasks: OsRecord[]; absences: TeamAbsence[] }) {
+function PeopleView({ members, tasks, absences, absenceNotice }: { members: OsMember[]; tasks: OsRecord[]; absences: TeamAbsence[]; absenceNotice: string }) {
   const people = [...new Map(members.map(member => [member.id, member])).values()];
   const active = tasks.filter(task => !["done", "archived", "cancelled"].includes(task.status));
   const overdue = active.filter(task => (daysUntil(task.due_date) ?? 0) < 0);
@@ -299,7 +344,7 @@ function PeopleView({ members, tasks, absences }: { members: OsMember[]; tasks: 
       const recentDone = tasks.filter(task => task.assignee_id === member.id && task.status === "done" && (daysUntil(task.updated_at) ?? -999) >= -7).length;
       const role = member.role === "admin" ? "관리자" : member.role === "lead" ? "리드" : "팀원";
       const twoWeeks = dayKey(addDays(new Date(),14));
-      const absenceCount = absences.filter(absence => absence.name === member.display_name && absence.start <= twoWeeks && absence.end >= dayKey(new Date())).length;
+      const absenceCount = absenceNotice || absences.filter(absence => absence.name === member.display_name && absence.start <= twoWeeks && absence.end >= dayKey(new Date())).length;
       return <tr key={member.id}><td className="cell-title"><Link className="tm-person" href={`/organization/tasks?view=board&owner=${encodeURIComponent(member.id)}`}><span className="tm-avatar">{member.display_name.slice(0,1)}</span><span>{member.display_name}<small className="tm-muted"> · {role}</small></span></Link></td><td>{own.length}</td><td>{own.filter(task => ["active", "doing"].includes(task.status)).length}</td><td>{own.filter(task => task.status === "blocked").length}</td><td>{own.filter(task => (daysUntil(task.due_date) ?? 0) < 0).length}</td><td>{own.filter(task => { const days = daysUntil(task.due_date); return days !== null && days >= 0 && days <= 7; }).length}</td><td>{absenceCount}</td><td>{recentDone}</td></tr>;
     })}</tbody></table> : empty("표시할 팀원이 없습니다.")}</div>
     <p className="tm-muted"><Users size={14}/> 계정·권한과 인사 상세 정보는 이 화면에 없습니다. 부재는 인사 데이터에서 읽기 전용으로 표시합니다.</p>

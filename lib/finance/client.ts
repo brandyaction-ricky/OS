@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api-client";
+import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { READ_RESOURCES, type FinanceData, type FinanceRow } from "./schema";
 import { createLedgerProjection, workspaceFromLedger, type WorkspaceData } from "./ledger-adapter.mjs";
 
@@ -7,6 +7,14 @@ export async function connectFinance(getToken:()=>string|null,signal:AbortSignal
   const today=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Seoul"});
   const request=<T>(path:string,method="GET",body?:unknown)=>apiRequest<T>(`/api/v1/finance/${path}`,{token:getToken(),method,signal,body:body===undefined?undefined:JSON.stringify(body)});
   const load=async()=>{
+    try{
+      const result=await request<{data:FinanceData}>("workspace?batch=1");
+      data=result.data;
+      return;
+    }catch(error){
+      if(!(error instanceof ApiRequestError)||error.code!=="FINANCE_WORKSPACE_PAGED")throw error;
+    }
+    // Preserve large-ledger support when one response would exceed the hosting limit.
     const next:FinanceData={};
     const resources=READ_RESOURCES.filter(r=>r!=="events");
     for(let i=0;i<resources.length;i+=4)await Promise.all(resources.slice(i,i+4).map(async resource=>{

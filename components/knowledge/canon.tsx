@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter,useSearchParams } from "next/navigation";
 import { useEffect,useState } from "react";
 import {TagPicker} from "./tag-picker";
@@ -7,24 +8,28 @@ import { Header,Card,Empty,Modal } from "./ui";
 import { useKnowledge } from "./provider";
 import { kstDay,kstTime,type Proposal } from "@/lib/knowledge/model";
 import { ProposalComments } from "./proposal-comments";
-import { KnowledgeDocumentPage } from "./editor";
-import { KnowledgeRichEditor } from "@/components/knowledge-rich-editor";
 import { diffMarkdownLines } from "@/lib/line-diff";
 import { mergeMarkdown,mergeValue,joinMergeParts } from "@/lib/knowledge/merge";
 import { canDecideProposal } from "@/lib/knowledge/access";
 import type { KnowledgeDocument,DocumentVersion } from "@/lib/types";
 import { apiRequest } from "@/lib/api-client";
+import type { CanonListDocument } from "@/lib/knowledge/canon-list";
+
+const KnowledgeDocumentPage=dynamic(()=>import("./editor").then(module=>module.KnowledgeDocumentPage),{loading:()=> <Empty>문서를 불러오는 중…</Empty>});
+const KnowledgeRichEditor=dynamic(()=>import("@/components/knowledge-rich-editor").then(module=>module.KnowledgeRichEditor),{loading:()=> <Empty>편집기를 불러오는 중…</Empty>});
 
 export function KnowledgeCanon(){
-  const {state,loading,error}=useKnowledge(),params=useSearchParams(),router=useRouter();
+  const {state,canonList,loading,error}=useKnowledge(),params=useSearchParams(),router=useRouter();
   const [searchText,setSearchText]=useState("");
   const [q,setQ]=useState(""),[page,setPage]=useState(0);
   const folder=params.get("folder")??"",filter=params.get("filter")??"all";
-  const all=state.documents.filter(d=>d.status==="canonical");
+  const all=canonList?.documents??state.documents.filter(d=>d.status==="canonical");
+  const people=new Map((canonList?.people??state.people).map(person=>[person.id,person.display_name]));
   const folderCounts=new Map<string,number>();
   for(const document of all)folderCounts.set(document.folder,(folderCounts.get(document.folder)??0)+1);
-  const proposals=new Set(state.proposals.filter(p=>p.status==="open").map(p=>p.document_id));
-  const overdue=(d:KnowledgeDocument)=>Boolean(d.review_due_on&&d.review_due_on<kstDay());
+  const proposals=new Set(canonList?.proposalDocumentIds??state.proposals.filter(p=>p.status==="open").map(p=>p.document_id));
+  const today=kstDay();
+  const overdue=(d:CanonListDocument)=>Boolean(d.review_due_on&&d.review_due_on<today);
   const rows=all.filter(d=>(!folder||d.folder===folder||d.folder.startsWith(folder+"/"))&&d.title.toLowerCase().includes(q.toLowerCase())&&(filter==="all"||filter==="overdue"&&overdue(d)||filter==="nosteward"&&!d.steward_id||filter==="proposal"&&proposals.has(d.id))).sort((a,b)=>b.updated_at.localeCompare(a.updated_at));
   function query(patch:Record<string,string>){const next=new URLSearchParams(params);Object.entries(patch).forEach(([k,v])=>v?next.set(k,v):next.delete(k));setPage(0);router.replace(`/knowledge/canon?${next}`);}
   if(loading)return <Empty>정본 목록을 불러오는 중입니다</Empty>;
@@ -36,13 +41,13 @@ export function KnowledgeCanon(){
       <aside className="kw-card kw-categories"><h3>정본 폴더</h3><button aria-pressed={!folder} onClick={()=>query({folder:""})}>전체 폴더</button>{[...folderCounts].sort(([a],[b])=>a.localeCompare(b,"ko")).map(([path,count])=><button key={path} title={path||"분류 없음"} aria-pressed={folder===path} onClick={()=>query({folder:path})}><span className="kw-category-name">{path||"분류 없음"}</span><small>{count}</small></button>)}</aside>
       <div>
         <div className="kw-toolbar"><form className="kw-canon-search" role="search" onSubmit={event=>{event.preventDefault();setQ(searchText.trim());setPage(0);}}><input aria-label="정본 검색" placeholder="정본 제목 검색" value={searchText} onChange={event=>setSearchText(event.target.value)}/><button type="submit">검색</button></form><small>{rows.length}개</small></div>
-        <div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>정본</th><th>담당자</th><th>검토일</th><th>버전</th><th>수정</th></tr></thead><tbody>{rows.slice(page*50,(page+1)*50).map(d=><tr key={d.id}><td><Link href={`/knowledge/canon/${d.id}`}>{d.title}</Link>{proposals.has(d.id)&&<span className="kw-badge">변경 제안</span>}</td><td>{state.people.find(p=>p.id===d.steward_id)?.display_name??"미지정"}</td><td className={overdue(d)?"kw-danger":""}>{d.review_due_on??"미지정"}</td><td>v{d.current_version}</td><td>{kstTime(d.updated_at)}</td></tr>)}</tbody></table>{!rows.length&&<Empty>조건에 맞는 정본이 없습니다</Empty>}</div>
+        <div className="kw-table-wrap"><table className="kw-table"><thead><tr><th>정본</th><th>담당자</th><th>검토일</th><th>버전</th><th>수정</th></tr></thead><tbody>{rows.slice(page*50,(page+1)*50).map(d=><tr key={d.id}><td><Link href={`/knowledge/canon/${d.id}`}>{d.title}</Link>{proposals.has(d.id)&&<span className="kw-badge">변경 제안</span>}</td><td>{people.get(d.steward_id??"")??"미지정"}</td><td className={overdue(d)?"kw-danger":""}>{d.review_due_on??"미지정"}</td><td>v{d.current_version}</td><td>{kstTime(d.updated_at)}</td></tr>)}</tbody></table>{!rows.length&&<Empty>조건에 맞는 정본이 없습니다</Empty>}</div>
         <div className="kw-toolbar"><button disabled={!page} onClick={()=>setPage(page-1)}>이전</button><small>{page+1} / {Math.max(1,Math.ceil(rows.length/50))}</small><button disabled={(page+1)*50>=rows.length} onClick={()=>setPage(page+1)}>다음</button></div>
       </div>
     </div>
   </>;
 }
-export function KnowledgeCanonDocument({id}:{id:string}){return <KnowledgeDocumentPage id={id}/>;}
+export function KnowledgeCanonDocument({id}:{id:string}){return <KnowledgeDocumentPage id={id} earlyCanonicalRead/>;}
 export function KnowledgeProposalPage({id}:{id:string}){
   const {loadDocument,loading,demo,token,state}=useKnowledge(),params=useSearchParams();
   const versionNumber=Number(params.get("version"))||0;

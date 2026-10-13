@@ -50,6 +50,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? 100), 1), 200);
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
+    const countRows = url.searchParams.get("count") !== "none";
     const recordType = url.searchParams.get("type") as RecordType | null;
     if (recordType && !RECORD_TYPES.includes(recordType)) throw new ApiError(400, "INVALID_RECORD_TYPE", "지원하지 않는 운영 기록 유형입니다.");
     if (recordType === "development_comment") throw new ApiError(403, "COMMENT_API_REQUIRED", "개발 요청 대화는 해당 요청 화면에서 확인해 주세요.");
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
 
     let builder = actor.supabase
       .from("os_records")
-      .select("*", { count: "exact" })
+      .select("*", countRows ? { count: "exact" } : {})
       .is("archived_at", null)
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
@@ -99,7 +100,7 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,description.ilike.%${query}%`);
     const { data, count, error } = await builder;
     if (error) throw new ApiError(400, "RECORD_LIST_FAILED", "운영 기록을 불러오지 못했습니다.", error.message);
-    return NextResponse.json({ records: data ?? [], total: count ?? 0 });
+    return NextResponse.json({ records: data ?? [], total: countRows ? count ?? 0 : null });
   } catch (error) { return apiErrorResponse(error); }
 }
 

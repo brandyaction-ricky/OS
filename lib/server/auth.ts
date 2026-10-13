@@ -101,14 +101,19 @@ export async function authenticateRequest(
   const supabase = createUserSupabase(token);
   const { data: userData, error: userError } = await supabase.auth.getUser(token);
   if (userError || !userData.user) throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
-  const { data: profile, error: profileError } = await supabase
-    .from("os_profiles")
-    .select("role,team,is_active,must_change_password")
-    .eq("id", userData.user.id)
-    .maybeSingle();
+  // Verify the token first. The two subsequent account checks are independent,
+  // and both must succeed before returning an actor; neither result is cached.
+  const [profileResult, hrSession] = await Promise.all([
+    supabase.from("os_profiles")
+      .select("role,team,is_active,must_change_password")
+      .eq("id", userData.user.id)
+      .maybeSingle(),
+    hrWorkspaceEnabled() ? supabase.rpc("os_hr_session_active") : Promise.resolve(null),
+  ]);
+  const { data: profile, error: profileError } = profileResult;
   if (profileError || !profile?.is_active) throw new ApiError(403, "ACCOUNT_DISABLED", "활성 구성원 계정을 확인할 수 없습니다.");
-  if (hrWorkspaceEnabled()) {
-    const { data: active, error } = await supabase.rpc("os_hr_session_active");
+  if (hrSession) {
+    const { data: active, error } = hrSession;
     if (error) throw new ApiError(503, "HR_SESSION_UNAVAILABLE", "계정 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
     if (active !== true) throw new ApiError(403, "ACCOUNT_DISABLED", "퇴사일이 지난 계정은 사용할 수 없습니다.");
   }

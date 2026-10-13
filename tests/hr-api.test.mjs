@@ -22,8 +22,9 @@ function harness({
   rpcResults = {},
   tables = {},
   me = null,
+  projectColumns = false,
 } = {}) {
-  const calls = [],
+  const calls = [], reads = [],
     env = { CRON_SECRET: "test-secret" },
     cache = new Map();
   let authenticated = 0;
@@ -46,9 +47,11 @@ function harness({
       };
     },
     from(name) {
-      let rows = tables[name] || [];
+      let rows = tables[name] || [], selectedColumns = "*";
       const q = {
-        select() {
+        select(columns = "*") {
+          reads.push({ table: name, columns });
+          selectedColumns = columns;
           return q;
         },
         order() {
@@ -74,7 +77,9 @@ function harness({
         },
         maybeSingle: async () => ({ data: rows[0] || null, error: null }),
         then(resolve, reject) {
-          return Promise.resolve({ data: rows, error: null }).then(
+          const result = projectColumns && selectedColumns !== "*"
+            ? rows.map((row) => Object.fromEntries(selectedColumns.split(",").map((key) => [key, row[key]]))) : rows;
+          return Promise.resolve({ data: result, error: null }).then(
             resolve,
             reject,
           );
@@ -175,7 +180,7 @@ function harness({
     });
     return mod.exports;
   }
-  return { load, calls, actor, env, authCount: () => authenticated };
+  return { load, calls, reads, actor, env, authCount: () => authenticated };
 }
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 async function call(h, method, route, body) {
@@ -464,4 +469,23 @@ test("HR cron authenticates before work, and flag-off never calls the database",
     200,
   );
   assert.equal(h.calls.length, 0);
+});
+
+test("HR sidebar projections preserve counter results without loading contracts, forms or personal payloads", async () => {
+  const fixture = harness().load("lib/hr/demo.ts").hrDemo();
+  const tables = { people: fixture.employees };
+  const mapping = { profiles: "os_profiles", contracts: "os_hr_contracts", credits: "os_hr_leave_credits", requests: "os_hr_leave_requests", promotions: "os_hr_leave_promotions", documents: "os_hr_documents", forms: "os_hr_forms", holidays: "os_hr_holidays", settings: "os_hr_settings" };
+  for (const [key, table] of Object.entries(mapping)) tables[table] = fixture[key];
+  const h = harness({ tables, projectColumns: true });
+  const server = h.load("lib/server/hr.ts");
+  for (const today of ["2026-09-01", "2026-10-09", "2026-11-02", "2026-12-01"]) {
+    const summary = await server.hrBadgeData({ ...h.actor, hrAccess: true }, today);
+    assert.deepEqual(domain.hrBadges(summary, today), domain.hrBadges(fixture, today));
+  }
+  assert.equal(new Set(h.reads.map((r) => r.table)).size, 5);
+  assert.ok(h.reads.every((r) => r.columns !== "*"));
+  assert.ok(h.reads.every((r) => !/email|phone|address|file_path|body|reason/.test(r.columns)));
+  const denied = harness({ access: false });
+  assert.equal((await call(denied, "GET", "badges")).status, 403);
+  assert.equal(denied.reads.length, 0);
 });

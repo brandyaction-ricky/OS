@@ -25,7 +25,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getHealth,
   getTelegramStatus,
@@ -87,7 +87,7 @@ function SettingsLoading({ page }: { page: Page }) {
 import { TelegramAccessPanel } from "./telegram-access-panel";
 
 export function SettingsWorkspace({ page, embedded = false }: { page: Page; embedded?: boolean }) {
-  const { accessToken, demo, profile } = useSession();
+  const { accessToken, demo, profile, loading: sessionLoading } = useSession();
   const [health, setHealth] = useState<Awaited<ReturnType<typeof getHealth>> | null>(null);
   const [telegram, setTelegram] = useState<TelegramConnectionStatus | null>(null);
   const [youtubeOAuth, setYoutubeOAuth] = useState<YoutubeOAuthStatus | null>(null);
@@ -95,8 +95,11 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
   const [brands, setBrands] = useState<OsRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    if (sessionLoading || (!demo && !accessToken)) return;
     if (demo) {
       setLoaded(true);
       return;
@@ -105,9 +108,11 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
     try {
       const [status, memberResult, brandResult, telegramResult, youtubeOAuthResult] =
         await Promise.all([
-          getHealth(),
-          listMembers(accessToken),
-          listRecords(accessToken, "brand", "limit=100"),
+          page === "connections" ? getHealth() : Promise.resolve(null),
+          page === "access" || page === "company"
+            ? listMembers(accessToken) : Promise.resolve({ members: [] }),
+          page === "company"
+            ? listRecords(accessToken, "brand", "limit=100") : Promise.resolve({ records: [] }),
           (page === "channels" || page === "company") && profile?.role === "admin"
             ? getTelegramStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
@@ -115,6 +120,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
             ? getYoutubeOAuthStatus(accessToken).catch(() => null)
             : Promise.resolve(null),
         ]);
+      if (generation !== loadGeneration.current) return;
       setHealth(status);
       setMembers(memberResult.members);
       setBrands(brandResult.records);
@@ -122,18 +128,21 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
       setYoutubeOAuth(youtubeOAuthResult);
       setError("");
     } catch (reason) {
+      if (generation !== loadGeneration.current) return;
       setError(
         reason instanceof Error
           ? reason.message
           : "설정 정보를 불러오지 못했습니다.",
       );
     } finally {
-      setLoaded(true);
+      if (generation === loadGeneration.current) setLoaded(true);
     }
-  }, [accessToken, demo, page, profile?.role]);
+  }, [accessToken, demo, page, profile?.role, sessionLoading]);
 
   useEffect(() => {
-    load();
+    void load();
+    const requests = loadGeneration;
+    return () => { requests.current++; };
   }, [load]);
 
   const active = members.filter((member) => member.is_active);

@@ -4,19 +4,25 @@ import { canReadDocument, knowledgeAccessContext } from "./knowledge-access";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 type PageAccessRow = Pick<KnowledgeDocument, "id" | "owner_id" | "status"> & { parent_document_id?: string | null };
-const POLICY_FIELDS="id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source";
+export const POLICY_FIELDS="id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source";
+const policyKeys=POLICY_FIELDS.split(",");
 
 // A child's own status is not enough: a team-visible child beneath a private
 // draft must not reveal its parent's hierarchy or content by direct URL.
 export async function readableKnowledgePages(actor: RequestActor, rows: PageAccessRow[]) {
   if (!rows.length) return new Set<string>();
-  // Callers may pass summaries without category/meeting/private-archive metadata.
-  // Re-fetch the policy projection so a missing field cannot turn into access.
-  const hydrated: PageAccessRow[] = [];
-  for (let offset = 0; offset < rows.length; offset += 200) {
-    const result = await createServiceSupabase().from("os_documents").select(POLICY_FIELDS).in("id", rows.slice(offset, offset + 200).map(row => row.id));
-    if (result.error) throw result.error;
-    hydrated.push(...(result.data ?? []));
+  // Complete server-side database projections already carry every policy field.
+  // Partial summaries still need hydration: missing fields must never grant access.
+  const complete = (row: PageAccessRow) => policyKeys.every(key => Object.hasOwn(row, key));
+  const hydrated: PageAccessRow[] = rows.filter(complete);
+  const incomplete = rows.filter(row => !complete(row));
+  for (let offset = 0; offset < incomplete.length; offset += 800) {
+    const chunks = [0, 200, 400, 600].map(start => incomplete.slice(offset + start, offset + start + 200)).filter(chunk => chunk.length);
+    const results = await Promise.all(chunks.map(chunk => createServiceSupabase().from("os_documents").select(POLICY_FIELDS).in("id", chunk.map(row => row.id))));
+    for (const result of results) {
+      if (result.error) throw result.error;
+      hydrated.push(...(result.data ?? []));
+    }
   }
   const byId = new Map(hydrated.map(row => [row.id, row]));
   let pending = [...new Set(hydrated.map(row => row.parent_document_id).filter((id): id is string => Boolean(id)))];
