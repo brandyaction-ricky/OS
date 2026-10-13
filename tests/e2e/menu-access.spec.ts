@@ -42,7 +42,8 @@ test("finance menus stay discoverable but locked without existing finance access
     await expect(finance.getByRole("checkbox", { name: label, exact: true })).toBeDisabled();
     await expect(finance.getByRole("checkbox", { name: label, exact: true })).not.toBeChecked();
   }
-  await expect(finance.getByRole("link", { name: "구성원 권한 관리 →", exact: true })).toHaveAttribute("href", "/organization/members");
+  await expect(finance).toContainText("재무·인사 민감정보 접근 허용");
+  await expect(dialog.getByRole("checkbox", { name: "재무·인사 민감정보 접근 허용", exact: true })).toBeEnabled();
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("brandy-os-demo-menu-access-v1") ?? "[]"));
   expect(stored[0].allowed_menus.some((href: string) => href.startsWith("/finance/"))).toBe(false);
@@ -87,7 +88,7 @@ test("revoked finance eligibility does not re-save stale finance menu selections
   expect(stored[0].allowed_menus).toEqual(["/home", "/content/topics"]);
 });
 
-test("mobile finance guidance opens existing member management without saving draft menus", async ({ page }) => {
+test("mobile admin grants access in place while cancel discards only draft menus", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/settings/access");
   await page.getByRole("button", { name: "가상 마케터 권한 설정", exact: true }).click();
@@ -96,11 +97,38 @@ test("mobile finance guidance opens existing member management without saving dr
   await dialog.getByRole("checkbox", { name: "원고·스크립트", exact: true }).uncheck();
   await expect(dialog.getByRole("checkbox", { name: "매출내역", exact: true })).toBeDisabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await dialog.getByRole("link", { name: "구성원 권한 관리 →", exact: true }).click();
-  await expect(page).toHaveURL(/\/organization\/members$/);
+  await dialog.getByRole("checkbox", { name: "재무·인사 민감정보 접근 허용", exact: true }).check();
+  await expect(dialog.getByRole("checkbox", { name: "매출내역", exact: true })).toBeEnabled();
+  await expect(dialog.getByRole("status")).toContainText("민감정보 접근을 허용했습니다.");
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
   expect(await page.evaluate(() => localStorage.getItem("brandy-os-demo-menu-access-v1"))).toBeNull();
+  await page.reload();
+  await page.getByRole("button", { name: "가상 마케터 권한 설정", exact: true }).click();
+  await expect(dialog.getByRole("checkbox", { name: "재무·인사 민감정보 접근 허용", exact: true })).toBeChecked();
+});
+
+test("admin grant unlocks finance selection and revocation removes stale selections", async ({ page }) => {
+  await page.goto("/settings/access");
+  const trigger = page.getByRole("button", { name: "가상 마케터 권한 설정", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  const permission = dialog.getByRole("checkbox", { name: "재무·인사 민감정보 접근 허용", exact: true });
+  await permission.check();
+  await expect(dialog.getByRole("radio", { name: /메뉴 직접 선택/ })).toBeChecked();
+  await dialog.getByRole("checkbox", { name: "카드지출", exact: true }).check();
+  await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
+  await page.reload();
+  await trigger.click();
+  await expect(permission).toBeChecked();
+  await expect(dialog.getByRole("checkbox", { name: "카드지출", exact: true })).toBeChecked();
+  await permission.uncheck();
+  await expect(dialog.getByRole("checkbox", { name: "카드지출", exact: true })).toBeDisabled();
+  await expect(dialog.getByRole("checkbox", { name: "카드지출", exact: true })).not.toBeChecked();
+  await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("brandy-os-demo-menu-access-v1") ?? "[]"));
+  expect(stored[0].allowed_menus.some((href: string) => href.startsWith("/finance/") || (href.startsWith("/hr/") && href !== "/hr/my-leave"))).toBe(false);
 });
 
 test("mobile administrator settings are read-only and keep keyboard focus in the dialog", async ({ page }) => {
