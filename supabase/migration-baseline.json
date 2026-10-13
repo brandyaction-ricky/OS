@@ -665,6 +665,16 @@
       "approvedAt": "2026-10-13",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval, using CREATE INDEX CONCURRENTLY. Additive only."
+    },
+    {
+      "file": "20261013093500_agent_trash_and_owner_canonical_apply.sql",
+      "sha256": "b466377e6b2fa40983f0b34e2457d1fbfffaf657076d754c32decfeba1b2c52e",
+      "purpose": "AI keys trash documents with their owner's own rule; the designated approver's own key applies canonical proposals at once",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-13",
+      "productionApprovedAt": "2026-10-13",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval after a rollback-only DEV check with temporary keys (own-doc trash ok, other member's private doc not found, owner key denied before approver assignment and applied after, other admin key denied). Adds os_agent_as_owner (internal), os_agent_trash_document and os_agent_apply_own_proposal, service_role only. Both call the existing human functions under the key owner's identity; no table, row or existing-function changes."
     }
   ],
   "legacyMigrations": [
