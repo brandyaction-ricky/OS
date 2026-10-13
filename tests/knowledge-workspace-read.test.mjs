@@ -23,6 +23,7 @@ function workspace({failureTable,code='57014',authenticated=true,documents=[]}={
     '@/lib/server/auth':{authenticateRequest:async()=>{if(!authenticated)throw new ApiError(401,'AUTH_REQUIRED','로그인 필요');return {ownerId:'synthetic-owner',supabase:db};}},
     '@/lib/supabase/server':{createServiceSupabase:()=>db},
     '@/lib/server/knowledge-access':{knowledgeAccessContext:async()=>({actor:{ownerId:'synthetic-owner'}})},
+    '@/lib/server/document-proposals':{isDesignatedApprover:async()=>false},
     '@/lib/server/knowledge-page-access':{readableKnowledgePages:async(_user,rows)=>new Set(rows.filter(d=>d.owner_id!=='hidden-owner').map(d=>d.id))},
     '@/lib/knowledge/default-templates':{DEFAULT_TEMPLATES:[]},
     '@/lib/knowledge/model':{emptyKnowledgeState},
