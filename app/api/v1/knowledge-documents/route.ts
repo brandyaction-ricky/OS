@@ -7,7 +7,7 @@ import { canReadKnowledgeDocument, canAgentWriteDocument, canAgentEditDraft } fr
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
-import { createCanonicalProposal } from "@/lib/server/document-proposals";
+import { createCanonicalProposal, isDesignatedApprover } from "@/lib/server/document-proposals";
 import type { KnowledgeDocument } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -91,6 +91,7 @@ function writeError(error: { message?: string } | null, fallbackCode: string, fa
   if (detail.includes("OS_AGENT_DOCUMENT_DENIED") || detail.includes("OS_AGENT_WRITE_DENIED")) return new ApiError(403, "AGENT_WRITE_DENIED", "이 문서를 변경할 권한이 없습니다.");
   if (detail.includes("OS_AGENT_ARCHIVED_READ_ONLY")) return new ApiError(409, "DOCUMENT_ARCHIVED", "휴지통 문서는 수정할 수 없습니다.");
   if (detail.includes("OS_DOC_NOT_FOUND")) return new ApiError(404, "DOCUMENT_NOT_FOUND", "문서를 찾을 수 없습니다.");
+  if (detail.includes("OS_STATUS_TRANSITION_DENIED") || detail.includes("OS_OPEN_CANDIDATE")) return new ApiError(403, "AGENT_WRITE_DENIED", "이 키 주인의 권한으로는 이 문서를 휴지통으로 옮길 수 없습니다.");
   return new ApiError(400, fallbackCode, fallbackMessage, detail || undefined);
 }
 
@@ -206,6 +207,17 @@ export async function PATCH(request: Request) {
         team: next.team,
         tags: next.tags,
       });
+      // The designated approver's own AI key applies its proposal at once, recorded as approved by that owner.
+      if (actor.type === "agent" && await isDesignatedApprover(actor.ownerId)) {
+        const { data, error } = await service.rpc("os_agent_apply_own_proposal", {
+          p_agent_key_id: actor.id, p_organization_id: input.organizationId, p_proposal_id: proposal.id,
+        });
+        const applied = rpcRow(data) as KnowledgeDocument | null;
+        if (!error && applied) {
+          return NextResponse.json({ documentId: applied.id, document: applied, proposalId: proposal.id, applied: true, indexing: await enqueueIndex(applied.id) });
+        }
+        console.error("owner-key canonical apply failed; proposal left open", error?.message);
+      }
       return NextResponse.json({ documentId: current.id, document: current, proposalId: proposal.id, proposal, indexing: "queued" }, { status: 202 });
     }
 
@@ -260,7 +272,6 @@ export async function DELETE(request: Request) {
   try {
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "knowledge.write" });
     requireAgentScope(actor, "knowledge.write");
-    if(actor.type === "agent") throw new ApiError(403,"AGENT_WRITE_DENIED","AI 키로 문서를 삭제할 수 없습니다.");
     const url = new URL(request.url);
     const parsedOrganizationId = organizationId.parse(url.searchParams.get("organizationId"));
     const documentId = z.string().uuid().parse(url.searchParams.get("documentId"));
@@ -268,7 +279,14 @@ export async function DELETE(request: Request) {
     await assertOrganization(actor, parsedOrganizationId);
     let document: KnowledgeDocument | null = null;
 
-    {
+    if (actor.type === "agent") {
+      // Same rule as the key owner pressing 휴지통 themselves.
+      const { data, error } = await createServiceSupabase().rpc("os_agent_trash_document", {
+        p_agent_key_id: actor.id, p_organization_id: parsedOrganizationId, p_document_id: documentId, p_reason: reason,
+      });
+      document = rpcRow(data) as KnowledgeDocument | null;
+      if (error || !document) throw writeError(error, "DOCUMENT_ARCHIVE_FAILED", "문서를 휴지통으로 옮기지 못했습니다.");
+    } else {
       const { data, error } = await actor.supabase.rpc("os_set_document_status", {
         p_document_id: documentId,
         p_to: "archived",

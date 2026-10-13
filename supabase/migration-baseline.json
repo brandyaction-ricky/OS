@@ -656,6 +656,16 @@
       "productionApprovedAt": "2026-10-13",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval, after a rollback-only DEV check (no assignment: denied; assigned owner: applied; other admin self-approval: denied) and a guard that the live function was unchanged. Function privileges unchanged. Adds os_is_designated_approver and replaces os_knowledge_workflow_command from the 2026-10-13 Production definition (identical on DEV) with only the proposal.decide approval condition changed. No table, row or grant changes."
+    },
+    {
+      "file": "20261013070000_agent_trash_and_owner_canonical_apply.sql",
+      "sha256": "b466377e6b2fa40983f0b34e2457d1fbfffaf657076d754c32decfeba1b2c52e",
+      "purpose": "AI keys trash documents with their owner's own rule; the designated approver's own key applies canonical proposals at once",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Adds os_agent_as_owner (internal), os_agent_trash_document and os_agent_apply_own_proposal, service_role only. Both call the existing human functions under the key owner's identity; no table, row or existing-function changes."
     }
   ],
   "legacyMigrations": [
