@@ -18,10 +18,10 @@ class ApiError extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
 }
 
-async function authFixture(hr = true) {
-  const calls = [], user = deferred(), profile = deferred(), active = deferred();
+async function authFixture(hr = true, method = "POST") {
+  const calls = [], user = deferred(), profile = deferred(), active = deferred(), claims = deferred();
   const db = {
-    auth: { getUser: token => { calls.push(["user", token]); return user.promise; } },
+    auth: { getUser: token => { calls.push(["user", token]); return user.promise; }, getClaims: token => { calls.push(["claims", token]); return claims.promise; } },
     from(table) {
       assert.equal(table, "os_profiles");
       const query = { select: () => query, eq: (_key, id) => { assert.equal(id, "fixture-user"); return query; }, maybeSingle: () => { calls.push(["profile"]); return profile.promise; } };
@@ -35,7 +35,7 @@ async function authFixture(hr = true) {
     "@/lib/supabase/server": { createUserSupabase: () => db },
     "@/lib/agent-key-policy": {}, "./document-access": {},
   });
-  return { calls, user, profile, active, authenticate: options => auth.authenticateRequest({}, options) };
+  return { calls, user, profile, active, claims, authenticate: options => auth.authenticateRequest({ method }, options) };
 }
 const activeProfile = { data: { role: "member", team: "fixture", is_active: true, must_change_password: false }, error: null };
 const activeUser = { data: { user: { id: "fixture-user" } }, error: null };
@@ -72,6 +72,30 @@ test("parallel account checks retain disabled, HR-error, and password-change fai
   invalid.user.resolve({ data: { user: null }, error: {} });
   await rejected;
   assert.equal(invalid.calls.length, 1, "invalid tokens must not initiate account reads");
+});
+
+test("reads verify the signed token locally; writes and explicit callers still ask the auth server", async () => {
+  const read = await authFixture(true, "GET");
+  const result = read.authenticate();
+  assert.deepEqual(read.calls, [["claims", "fixture-token"]], "a read never calls the auth server");
+  read.claims.resolve({ data: { claims: { sub: "fixture-user", role: "authenticated", email: "fixture@example.invalid" } }, error: null });
+  await turn();
+  assert.deepEqual(read.calls.map(call => call[0]), ["claims", "profile", "hr"], "active-member and HR checks still run");
+  read.profile.resolve(activeProfile); read.active.resolve({ data: true, error: null });
+  const actor = await result;
+  assert.equal(actor.id, "fixture-user"); assert.equal(actor.user.email, "fixture@example.invalid");
+  for (const claims of [{ data: { claims: { role: "anon" } }, error: null }, { data: { claims: { sub: "x", role: "service_role" } }, error: null }, { data: null, error: { message: "Invalid JWT signature" } }]) {
+    const fixture = await authFixture(true, "GET");
+    const rejected = assert.rejects(fixture.authenticate(), error => error.code === "INVALID_SESSION");
+    fixture.claims.resolve(claims);
+    await rejected;
+    assert.equal(fixture.calls.length, 1, "rejected tokens must not initiate account reads");
+  }
+  const explicit = await authFixture(true, "GET");
+  const live = explicit.authenticate({ verifySession: true });
+  assert.deepEqual(explicit.calls, [["user", "fixture-token"]]);
+  explicit.user.resolve(activeUser); explicit.profile.resolve(activeProfile); explicit.active.resolve({ data: true, error: null });
+  await live;
 });
 
 test("disabled HR rollout skips only the HR check and allowed password changes preserve their gate", async () => {
