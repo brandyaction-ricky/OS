@@ -681,10 +681,10 @@
       "sha256": "97f5d77a9d78453a83b187c076cb3cef25923f9b634dbc41e9d186b77762b69a",
       "purpose": "the designated approver passes os_can_approve (propose to self, review, decide); others keep the author/owner exclusion",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
-      "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Replaces os_can_approve from the 2026-10-14 Production definition (identical on DEV) with only the designated-approver condition added. No table, row or grant changes."
+      "developmentApprovedAt": "2026-10-14",
+      "productionApprovedAt": "2026-10-14",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Applied to brandyaction-os-dev and Production on 2026-10-14 with owner approval after a rollback-only DEV check and a guard that the live function was unchanged; privileges unchanged. Replaces os_can_approve from the 2026-10-14 Production definition (identical on DEV) with only the designated-approver condition added. No table, row or grant changes."
     }
   ],
   "legacyMigrations": [
