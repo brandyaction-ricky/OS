@@ -39,7 +39,7 @@ export function safeSecretMatch(received: string, expected: string) {
 
 export async function authenticateRequest(
   request: Request,
-  options: { allowAgent?: boolean; requiredAgentScope?: AgentScope; allowPasswordChangeRequired?: boolean } = {},
+  options: { allowAgent?: boolean; requiredAgentScope?: AgentScope; allowPasswordChangeRequired?: boolean; verifySession?: boolean } = {},
 ): Promise<RequestActor> {
   const token = getBearerToken(request);
   if (token.startsWith("bos_pat_")) {
@@ -99,8 +99,12 @@ export async function authenticateRequest(
   }
 
   const supabase = createUserSupabase(token);
-  const { data: userData, error: userError } = await supabase.auth.getUser(token);
-  if (userError || !userData.user) throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
+  // Reads verify the token's signature and expiry locally against the project's
+  // cached public signing keys (no auth-server round trip). Writes, and callers
+  // that ask, still confirm with the auth server that the session is live.
+  // Both paths keep the per-request active-member and HR checks below.
+  const verifySession = options.verifySession ?? !["GET", "HEAD"].includes((request.method ?? "GET").toUpperCase());
+  const userData = verifySession ? await liveUser(supabase, token) : await signedUser(supabase, token);
   // Verify the token first. The two subsequent account checks are independent,
   // and both must succeed before returning an actor; neither result is cached.
   const [profileResult, hrSession] = await Promise.all([
@@ -135,6 +139,19 @@ export async function authenticateRequest(
     mustChangePassword: Boolean(profile?.must_change_password),
     supabase,
   };
+}
+
+async function liveUser(supabase: SupabaseClient, token: string) {
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user) throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
+  return { user: data.user };
+}
+async function signedUser(supabase: SupabaseClient, token: string) {
+  const { data, error } = await supabase.auth.getClaims(token);
+  const claims = data?.claims;
+  // Only signed-in user tokens: anon and service tokens carry other roles and no subject.
+  if (error || !claims?.sub || claims.role !== "authenticated") throw new ApiError(401, "INVALID_SESSION", "로그인 세션이 만료되었습니다.");
+  return { user: { id: claims.sub, email: typeof claims.email === "string" ? claims.email : undefined } as User };
 }
 
 export function requireAgentScope(actor: RequestActor, scope: AgentScope) {
