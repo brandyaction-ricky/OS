@@ -34,13 +34,13 @@ export async function GET(request: Request) {
     // Pagination and totals are computed only after access filtering.
     // Summary views drop the body anyway; never transfer every document's full text to list a few titles.
     const columns = includeContent ? "*" : "id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id";
-    const listDocuments = (columns: string, scanOffset: number) => {
-      let builder = createServiceSupabase()
+    const listDocuments = (columns: string, scanOffset: number, scanEnd = scanOffset + 999, client = createServiceSupabase()) => {
+      let builder = client
       .from("os_documents")
       .select(columns, { count: "exact" })
       .order("updated_at", { ascending: false })
       .order("id", { ascending: true })
-      .range(scanOffset, scanOffset + 999);
+      .range(scanOffset, scanEnd);
     if (statuses?.length) builder = builder.in("status", statuses);
     if (owner) builder = builder.eq("owner_id", owner);
     if (url.searchParams.get("exactFolder") === "true") builder = builder.eq("folder", folder === "분류 없음" ? "" : folder ?? "");
@@ -57,6 +57,17 @@ export async function GET(request: Request) {
     if (query) builder = builder.or(`title.ilike.%${query}%,content_md.ilike.%${query}%,source_ref.ilike.%${query}%`);
       return builder;
     };
+    const strip = (row: KnowledgeDocument) => includeContent ? row : { ...row, content_md: undefined };
+    const listFilters = ["space", "category", "workState"].some(key => url.searchParams.get(key)) || url.searchParams.get("sort") === "title";
+    if (actor.type === "user" && !listFilters) {
+      // A member's row policies already drop unreadable documents, so the database
+      // can page and count; the page check below still runs on what is returned.
+      const { data, error, count } = await listDocuments(columns, offset, offset + limit - 1, actor.supabase);
+      if (error) throw new ApiError(400, "DOCUMENT_LIST_FAILED", "문서 목록을 불러오지 못했습니다.");
+      const page = (data ?? []) as unknown as KnowledgeDocument[];
+      const allowed = await readableKnowledgePages(actor, page);
+      return NextResponse.json({ documents: page.filter(row => allowed.has(row.id)).map(strip), total: count ?? page.length });
+    }
     const rows: KnowledgeDocument[] = [];
     for (let scanOffset = 0; ; scanOffset += 1000) {
       const { data, error } = await listDocuments(columns, scanOffset);
@@ -78,7 +89,7 @@ export async function GET(request: Request) {
       return !state || row.work_state === state;
     });
     if (url.searchParams.get("sort") === "title") filtered.sort((a, b) => a.title.localeCompare(b.title, "ko"));
-    return NextResponse.json({ documents: filtered.slice(offset, offset + limit).map(row => includeContent ? row : { ...row, content_md: undefined }), total: filtered.length });
+    return NextResponse.json({ documents: filtered.slice(offset, offset + limit).map(strip), total: filtered.length });
   } catch (error) { return apiErrorResponse(error); }
 }
 
