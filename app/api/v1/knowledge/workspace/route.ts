@@ -98,10 +98,12 @@ export async function GET(request: Request) {
     state.people=await Promise.all(people.map(async row=>{
       const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
       if(result.error) throw readError(result.error,"approvers");
-      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:row.member_kind==="staff"&&result.data===true};
+      const canApprove=row.member_kind==="staff"&&result.data===true;
+      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove,designated:canApprove&&await isDesignatedApprover(row.id)};
     }));
-    access.actor.canApprove=state.people.find(p=>p.id===user.ownerId)?.can_approve===true;
-    access.actor.designatedApprover=access.actor.canApprove&&await isDesignatedApprover(user.ownerId);
+    const me=state.people.find(p=>p.id===user.ownerId);
+    access.actor.canApprove=me?.can_approve===true;
+    access.actor.designatedApprover=me?.designated===true;
     for(const page of await proposalsRead){
       if(page.error) throw readError(page.error,"proposals");
       state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)));

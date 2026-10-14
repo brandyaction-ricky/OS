@@ -675,6 +675,16 @@
       "productionApprovedAt": "2026-10-13",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-13 with owner approval after a rollback-only DEV check with temporary keys (own-doc trash ok, other member's private doc not found, owner key denied before approver assignment and applied after, other admin key denied). Adds os_agent_as_owner (internal), os_agent_trash_document and os_agent_apply_own_proposal, service_role only. Both call the existing human functions under the key owner's identity; no table, row or existing-function changes."
+    },
+    {
+      "file": "20261014031500_designated_approver_everywhere.sql",
+      "sha256": "97f5d77a9d78453a83b187c076cb3cef25923f9b634dbc41e9d186b77762b69a",
+      "purpose": "the designated approver passes os_can_approve (propose to self, review, decide); others keep the author/owner exclusion",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Replaces os_can_approve from the 2026-10-14 Production definition (identical on DEV) with only the designated-approver condition added. No table, row or grant changes."
     }
   ],
   "legacyMigrations": [

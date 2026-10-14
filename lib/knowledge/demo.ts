@@ -1,4 +1,4 @@
-import { canReadDocument, canReadDocumentTree, canEditDocument, canManageCategory, canChangeCategory, canDecideProposal, type KnowledgeActor } from "./access.ts";
+import { approverChoices, canReadDocument, canReadDocumentTree, canEditDocument, canManageCategory, canChangeCategory, canDecideProposal, type KnowledgeActor } from "./access.ts";
 import { DEFAULT_TEMPLATES } from "./default-templates.ts";
 import { emptyKnowledgeState, kstDay, type KnowledgeState, type Command, type Category, type MeetingItem, type Proposal } from "./model.ts";
 import type { KnowledgeDocument, DocumentVersion } from "../types";
@@ -145,7 +145,7 @@ export function applyKnowledgeCommand(previous: KnowledgeState, actor: Knowledge
     case "proposal.comment": { const p=s.proposals.find(row=>row.id===c.id&&row.status==="open"); const d=s.documents.find(row=>row.id===p?.document_id); if(!p||!d||!canReadDocument(actor,d,context))denied(); const line=Number(c.lineNo),body=text(c.body).trim();if(!Number.isInteger(line)||line<1||line>p!.content_md.split("\n").length||!body||body.length>2000)throw new KnowledgeCommandError("댓글 내용과 줄을 확인해 주세요.");p!.comments=[...(p!.comments??[]),{id:id(),line_no:line,body,created_at:now}];break; }
     case "proposal.create": {
       const d = find(); if (d.status !== "canonical") denied(); if (!text(c.reason).trim()) throw new KnowledgeCommandError("변경 이유를 적어 주세요.");
-      const approver = s.people.find(p => p.id === c.approverId && p.can_approve && p.member_kind === "staff" && ![actor.ownerId, d.owner_id].includes(p.id)); if (!approver) throw new KnowledgeCommandError("작성자와 다른 승인자를 선택해 주세요.");
+      const approver = approverChoices(s.people, actor, d).find(p => p.id === c.approverId); if (!approver) throw new KnowledgeCommandError("작성자와 다른 승인자를 선택해 주세요.");
       const existing = s.proposals.find(p => p.id === c.proposalId && p.author_id === actor.ownerId && p.status === "returned" && p.return_kind === "revise"); resultId = existing?.id ?? id();
       const p: Proposal = { id: resultId, document_id: d.id, base_version: Number(c.expectedVersion), title: text(c.title, d.title), content_md: text(c.content, d.content_md), folder: text(c.folder, d.folder), brand: d.brand, team: d.team, tags: Array.isArray(c.tags) ? strings(c.tags) : d.tags, author_id: actor.ownerId, agent_key_id: null, status: "open", created_at: existing?.created_at ?? now, updated_at: now, author_note: text(c.reason), requested_approver_id: approver.id, review_due_on: text(c.reviewDueOn, d.review_due_on ?? "") || null, ai_assist: text(c.aiAssist) };
       s.proposals = [p, ...s.proposals.filter(row => row.id !== resultId)]; event("proposal_create", resultId, {}, "proposal"); break;
