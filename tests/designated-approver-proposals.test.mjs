@@ -35,6 +35,20 @@ test("API and review screens use the same designated-approver exception", async 
     read("app/api/v1/documents/proposals/route.ts"), read("app/api/v1/knowledge/workspace/route.ts"), read("components/knowledge-proposal-review.tsx"),
   ]);
   assert.match(route, /else if \(!\(await isDesignatedApprover\(actor\.id\)\)\)/);
-  assert.match(workspace, /designatedApprover=access\.actor\.canApprove&&await isDesignatedApprover/);
+  assert.match(workspace, /designated:canApprove&&await isDesignatedApprover\(row\.id\)/);
+  assert.match(workspace, /designatedApprover=me\?\.designated===true/);
   assert.match(review, /row\.kind === "approver" && row\.user_id === profile\?\.id/);
+});
+
+test("designated approver is offered as approver and passes every approval check; others keep the exclusion", async () => {
+  const { approverChoices } = await import("../lib/knowledge/access.ts");
+  const actor = { ownerId: "a", type: "user", role: "admin", allowedStatuses: [] };
+  const people = [{ id: "a", can_approve: true, member_kind: "staff", designated: true }, { id: "b", can_approve: true, member_kind: "staff" }];
+  assert.deepEqual(approverChoices(people, actor, { owner_id: "a" }).map((p) => p.id), ["a", "b"]);
+  assert.deepEqual(approverChoices(people, { ...actor, ownerId: "b" }, { owner_id: "b" }).map((p) => p.id), ["a"]);
+  const sql = await read("supabase/migrations/20261014031500_designated_approver_everywhere.sql");
+  assert.match(sql, /select public\.os_is_designated_approver\(p_actor\) or coalesce\(\s+p_actor is not null\s+and p_actor is distinct from p_author/);
+  assert.doesNotMatch(sql, /os_publish_candidate/);
+  const [canon, editor] = await Promise.all([read("components/knowledge/canon.tsx"), read("components/knowledge/editor.tsx")]);
+  assert.doesNotMatch(canon + editor, /!\[actor\.ownerId,doc\.owner_id\]\.includes\(p\.id\)/);
 });

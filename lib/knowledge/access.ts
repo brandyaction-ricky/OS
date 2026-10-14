@@ -83,3 +83,7 @@ export function canDecideProposal(actor: KnowledgeActor, proposal: { author_id: 
     && (actor.designatedApprover === true || ![proposal.author_id, proposal.agent_owner_id, doc.owner_id].includes(actor.ownerId))
     && (!proposal.requested_approver_id || proposal.requested_approver_id === actor.ownerId || (actor.role === "admin" && proxyReason.trim().length > 0));
 }
+/** Approvers a proposal or candidate may name. The designated approver is offered even for their own documents. */
+export function approverChoices<P extends { id: string; can_approve: boolean; member_kind: string; designated?: boolean }>(people: P[], actor: KnowledgeActor, doc: { owner_id: string }) {
+  return people.filter(p => p.can_approve && p.member_kind === "staff" && (p.designated === true || ![actor.ownerId, doc.owner_id].includes(p.id)));
+}
