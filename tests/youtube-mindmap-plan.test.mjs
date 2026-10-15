@@ -38,6 +38,14 @@ test('item counts and formats his deck code cannot draw are rejected', () => {
   assert.equal(broken(1, { deck: '17', items: ['1', '2', '3', '4', '5'] }), false, 'horizontal steps hold four');
 });
 
+test('items longer than their box are rejected (the first C01 render overflowed these)', () => {
+  const broken = (change) => scenePlanSchema.safeParse(plan(n6.map((scene, i) => i === 1 ? { ...scene, ...change } : scene))).success;
+  assert.equal(broken({ deck: '29', items: ['하고싶은 게 1개만', '몇 개 없는 사람'] }), false);
+  assert.equal(broken({ deck: '18', items: ['돈 벌고 싶다', '우선순위를 정하지 못하는'] }), false);
+  assert.equal(broken({ deck: '35', items: ['하고싶은게 너무 많아서 시작을 못 하는 사람들 공통점이 뭐냐면'] }), false);
+  assert.equal(broken({ deck: '29', items: ['빠른 도착', '안전 보관'] }), true, 'Logan\'s own n6 labels fit');
+});
+
 test('sections follow the script: start at 0, step by one, end on the last name, one typing question', () => {
   assert.equal(scenePlanSchema.safeParse(plan(n6.map((scene) => ({ ...scene, section: 1 })))).success, false);
   assert.equal(scenePlanSchema.safeParse(plan(n6, ['도입', '걱정과 고침', '마무리'])).success, false);

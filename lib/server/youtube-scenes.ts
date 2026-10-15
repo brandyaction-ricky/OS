@@ -3,11 +3,13 @@ import { ApiError } from "@/lib/http";
 import type { RequestActor } from "./auth";
 import { generateContentText } from "./content-model";
 import { splitFishNarration } from "./fish-audio";
-import { MINDMAP_DECKS, mindmapDeckIds, YOUTUBE_VISUAL_TEMPLATE_VERSION, type MindmapDeck } from "@/lib/youtube-visual-template";
+import { MINDMAP_DECKS, MINDMAP_ITEM_CHARS, mindmapDeckIds, YOUTUBE_VISUAL_TEMPLATE_VERSION, type MindmapDeck } from "@/lib/youtube-visual-template";
 
 export const SCENE_MODEL = "claude-opus-5-5";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PIPED = new Set<MindmapDeck>(["09", "10", "41"]);
+const letters = (text: string) => text.replace(/\s/g, "").length;
+const charLimit = (deck: MindmapDeck) => ("chars" in MINDMAP_DECKS[deck] ? MINDMAP_DECKS[deck].chars : MINDMAP_ITEM_CHARS) as number;
 
 function configuredRuleIds() {
   const ids = (process.env.YOUTUBE_SCENE_RULE_IDS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
@@ -31,6 +33,8 @@ const sceneSchema = z.object({
   if (scene.deck === "41" && scene.items.some((item) => { const [label, ratio] = item.split("|"); return !label?.trim() || !(Number(ratio) >= 0 && Number(ratio) <= 1); }))
     fail("항목은 \"라벨|0~1 비율\"입니다.");
   if (scene.deck === "24" && !/\s/.test(scene.items[0])) fail("인용문에는 띄어쓰기가 있어야 합니다.");
+  const long = scene.items.find((item) => (scene.deck === "41" ? [item.split("|")[0]] : item.split("|")).some((part) => letters(part) > charLimit(scene.deck)));
+  if (long) fail(`"${long}"이 깁니다. 항목은 ${charLimit(scene.deck)}자(띄어쓰기 제외) 이내입니다.`);
 });
 
 export const scenePlanSchema = z.object({
@@ -76,12 +80,12 @@ const STYLE_CONTRACT = `[화면 원칙]
 
 [덱 고르기]
 문단의 핵심 구조를 먼저 판단하고, 아래 목록에서 같은 구조의 덱을 고릅니다. 같은 덱은 연속으로 쓰지 않습니다. 한 영상에서 가능한 한 많은 종류를 씁니다. 큰따옴표 인용이나 책·사람의 말이 핵심이면 24, 질문이 핵심이면 35(영상 전체 1회) 또는 08입니다.
-덱 목록 (번호 · 이름 · 쓰는 구조 · 항목 형식 · 항목 수):
-${Object.entries(MINDMAP_DECKS).map(([id, deck]) => `${id} · ${deck.name} · ${deck.use} · ${deck.items} · ${deck.min === deck.max ? deck.min : `${deck.min}~${deck.max}`}개`).join("\n")}
+덱 목록 (번호 · 이름 · 쓰는 구조 · 항목 형식 · 항목 수 · 항목 하나의 최대 글자 수):
+${mindmapDeckIds.map((id) => { const deck = MINDMAP_DECKS[id]; return `${id} · ${deck.name} · ${deck.use} · ${deck.items} · ${deck.min === deck.max ? deck.min : `${deck.min}~${deck.max}`}개 · ${charLimit(id)}자`; }).join("\n")}
 
 [항목 문구]
 1. 원고 단락에 나온 단어를 그대로 씁니다. 그래야 화자가 그 단어를 말하는 순간 나타납니다.
-2. 한 항목은 가능하면 2~8자입니다. 박스 폭이 고정이라 길면 밖으로 넘칩니다. 인용·질문·강조 문장(24, 35, 08, 22, 23, 39)만 조금 길어도 됩니다.
+2. 한 항목은 덱 목록의 최대 글자 수(띄어쓰기 제외, "|" 항목은 양쪽 각각)를 넘지 않습니다. 박스 폭이 고정이라 길면 도형 밖으로 넘칩니다. 원고 표현이 길면 핵심 단어만 남깁니다.
 3. 항목 수는 덱의 항목 수 범위를 지킵니다.
 4. 명사형으로 씁니다. ~요, ~습니다 같은 문장 말투를 쓰지 않습니다(질문·인용·말풍선 제외).
 5. 원고 순서대로 나열합니다.
