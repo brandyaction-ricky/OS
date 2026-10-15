@@ -6,7 +6,7 @@ import {listAllRecordsOfType} from "@/lib/api-client";
 import {demoRecord} from "@/lib/demo-record";
 import {NAV_STAGES,findPage} from "@/lib/navigation";
 import {defaultsToAll,workTopicSelection,workTopics,workTopicHref} from "@/lib/content-work-context";
-import {productionStep,PRODUCTION_STEPS} from "@/lib/content-production-board";
+import {productionStep,type ProductionStep} from "@/lib/content-production-board";
 import type {OsRecord,RecordType} from "@/lib/record-types";
 import {useSession} from "./session-provider";
 import {defaultGenerationMode,type GenerationMode} from "@/lib/content-generation-mode";
@@ -41,13 +41,15 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   const page=findPage(path), content=NAV_STAGES.find(stage=>stage.id==="content")!;
   const showProcess=enabled && Boolean(page.processNumber);
   const currentStep=selected?productionStep(selected,records):null;
-  const completedThrough=currentStep?PRODUCTION_STEPS.findIndex(([key])=>key===currentStep):0;
+  // Done marks follow the saved-output board, matched by page; 영상 제작 is optional and never marked done here.
+  const boardHref={planning:"/content/topics",script:"/content/scripts",package:"/content/packages",short:"/content/shorts",publish:"/content/publishing"} satisfies Record<ProductionStep,string>;
+  const completedThrough=currentStep?content.pages.findIndex(item=>item.href===boardHref[currentStep]):0;
   return <Context.Provider value={{topics,publications:records.filter(row=>row.record_type==="content_publish"),selected,topicId,loading,error,generationMode:defaultGenerationMode(records),select,reload}}>
     {showProcess?<section className="process-bar" data-ui="process-bar" aria-label="작업 중인 영상">
       <label><span className="process-bar-label">작업 중인 영상</span><select className="process-video" data-ui="process-video" aria-label="작업 중인 영상 선택" value={topicId} disabled={loading||Boolean(error)} onChange={event=>select(event.target.value)}><option value="">{loading?"불러오는 중…":"전체 영상"}</option>{topics.map(topic=><option key={topic.id} value={topic.id}>{topic.title}</option>)}</select></label>
       <nav className="process-steps" aria-label="콘텐츠 공정 순서"><span className="process-bar-label">공정</span>{content.pages.map((item,index)=>{
         const current=(page.navHref??page.href)===item.href;
-        const done=Boolean(selected)&&index<completedThrough;
+        const done=Boolean(selected)&&item.href!=="/content/video"&&index<completedThrough;
         return <Link key={item.href} href={workTopicHref(item.href,topicId)} data-ui={current?"process-step-current":"process-step"} aria-label={`${item.processNumber}. ${item.label}`} aria-current={current?"step":undefined} className={`process-step${current?" active current":done?" done":""}`} title={`${item.label} · ${current?"현재 화면":done?"저장된 산출물 있음 · 승인 별도 확인":"이동"}`}><span className={`process-icon ${current?"now":done?"done":"todo"}`} aria-hidden="true">{!current&&done?"✓":null}</span><span>{item.processNumber}{current?`. ${item.label}`:""}</span></Link>;
       })}</nav>
       {error?<span role="alert">{error}<button onClick={reload}>다시 불러오기</button></span>:requested&&requested!=="all"&&!loading&&!selected?<span role="status">이 영상은 접근할 수 없거나 우리 콘텐츠가 아닙니다.</span>:null}
