@@ -341,7 +341,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false }:
         </header>
         <ContentWorkProvider><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
-          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 7단계에서, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
+          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 콘텐츠의 8단계에서, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
           {menuAccess.loading ? <section className="panel settings-loading-state" role="status">메뉴 권한을 확인하는 중입니다.</section> : menuAccess.error ? <section className="panel menu-access-denied" role="alert"><h1>메뉴 권한을 확인하지 못했습니다.</h1><p>{menuAccess.error}</p><button className="secondary-button" onClick={menuAccess.retry}>다시 확인</button></section> : canOpenMenu(profile, navigationPath, menuAccess.allowed) ? children : <section className="panel menu-access-denied"><ShieldCheck size={24} /><h1>이 메뉴에 접근 권한이 없습니다.</h1><p>관리자에게 메뉴 권한 설정을 요청해 주세요.</p><Link className="secondary-button" href="/home">내 할 일로 이동</Link></section>}
         </main></ContentWorkProvider>
       </div>
