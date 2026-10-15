@@ -41,6 +41,9 @@
 .linear-shell .ui-v2 .yt-scroll-x { overflow-x: auto; }
 .linear-shell .ui-v2 .yt-table th:first-child, .linear-shell .ui-v2 .yt-table td:first-child { width: 48px; }
 .linear-shell .ui-v2 .yt-table td { word-break: keep-all; overflow-wrap: anywhere; }
+/* Phones scroll the table sideways inside its box instead of squeezing words (style guide 8). */
+.linear-shell .ui-v2 .yt-table { min-width: 560px; }
+.linear-shell .ui-v2 .yt-table .cell-title { white-space: nowrap; }
 
 /* Notes (style guide 5: note / note.warn). */
 .linear-shell .ui-v2 .yt-note { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel-2); color: var(--text-2); font-size: 12px; }
