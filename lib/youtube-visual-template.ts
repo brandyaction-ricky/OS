@@ -13,7 +13,7 @@ export const MINDMAP_DECKS = {
   "02": { name: "세로대비", use: "둘을 비교·대비(위→아래, 아래가 강조)", items: "[위, 아래]", min: 2, max: 2, chars: 11 },
   "03": { name: "2칸카드", use: "둘을 비교·대비", items: "[왼쪽, 오른쪽]", min: 2, max: 2, chars: 11 },
   "04": { name: "벤2원", use: "교집합·공통점", items: "[왼쪽, 오른쪽, 가운데]", min: 3, max: 3, chars: 4 },
-  "06": { name: "체크목록", use: "여러 항목 나열·확인", items: "[항목…]", min: 2, max: 4, chars: 9 },
+  "06": { name: "체크목록", use: "여러 항목 나열·확인", items: "[항목…]", min: 2, max: 3, chars: 9 },
   "07": { name: "취소선", use: "앞의 것을 지우고 마지막만 남김", items: "[항목…] 앞 항목은 취소선, 마지막만 남음", min: 2, max: 3 },
   "08": { name: "질문카드", use: "질문", items: "[위, 아래] 아래가 질문 문장", min: 2, max: 2, chars: 12 },
   "09": { name: "2x2", use: "항목을 2×2로 분류", items: "[\"제목|설명\" ×4]", min: 4, max: 4 },
