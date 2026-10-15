@@ -5,11 +5,8 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
-import { validateSceneSvg } from "@/lib/youtube-scene-svg";
-import { YOUTUBE_CHARACTER_BUCKET, youtubeCharacterCatalogSchema } from "./youtube-characters";
 import { scenePlanSchema } from "./youtube-scenes";
-import { alignYoutubeVisualBeats, createYoutubeRenderBrief, createYoutubeTimedTranscriptFromFish } from "./youtube-timeline";
-import { digestVoiceValue, parseVoiceRun, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_RUN_KIND, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
+import { digestVoiceValue, parseVoiceRun, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_RUN_KIND } from "./youtube-voice-run";
 import { currentSegments } from "./youtube-voice-worker";
 
 // A render run turns one finished voice run into a private MP4. The media worker
@@ -110,7 +107,7 @@ export async function claimYoutubeRender(service: Service = createServiceSupabas
   return { idle: true as const };
 }
 
-/** Verify the worker's assembled narration against every segment artifact and return the render brief. */
+/** Check the worker's narration against the voice run and hand it the mind-map brief: one deck per voice paragraph. */
 export async function buildYoutubeRenderBrief(input: { renderId: string; lease: string; segmentDurations: number[]; durationSeconds: number },
   service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.renderId, input.lease);
@@ -118,32 +115,19 @@ export async function buildYoutubeRenderBrief(input: { renderId: string; lease: 
   if (!voiceRecord) throw new ApiError(409, "RENDER_VOICE_MISSING", "음성 제작 작업을 찾지 못했습니다.");
   const voice = parseVoiceRun(voiceRecord as OsRecord);
   const scriptSegments = await currentSegments(service, voiceRecord as OsRecord, voice);
-  if (input.segmentDurations.length !== voice.segments.length) throw new ApiError(409, "RENDER_AUDIO_MISMATCH", "음성 단락 수가 맞지 않습니다.");
-  const segments = [];
-  let offset = 0;
-  for (const [index, segment] of voice.segments.entries()) {
-    // ponytail: offsets are cumulative measured durations of a stream-copy concat; MP3 frame padding stays within the 0.25s checks.
-    segments.push({ audio: await download(service, YOUTUBE_VOICE_BUCKET, segment.path ?? ""),
-      timing: JSON.parse((await download(service, YOUTUBE_VOICE_TIMING_BUCKET, segment.timingPath ?? "")).toString("utf8")),
-      offsetSeconds: offset, measuredDurationSeconds: input.segmentDurations[index] });
-    offset += input.segmentDurations[index];
-  }
+  if (input.segmentDurations.length !== voice.segments.length || input.segmentDurations.some((seconds) => !(seconds > 0)))
+    throw new ApiError(409, "RENDER_AUDIO_MISMATCH", "음성 단락 수가 맞지 않습니다.");
   const finalAudio = await download(service, YOUTUBE_VIDEO_BUCKET, run.audioPath);
-  const transcript = createYoutubeTimedTranscriptFromFish({ scriptSegments, finalAudio, finalDurationSeconds: input.durationSeconds, segments });
   const { data: source } = await service.from("os_records").select("metadata").eq("id", run.sourceId).maybeSingle();
   const stored = (source?.metadata as Record<string, unknown> | undefined)?.narratedScenePlan as { plan?: unknown; generatedAt?: unknown; templateVersion?: unknown } | undefined;
   const plan = scenePlanSchema.safeParse(stored?.plan);
-  if (!plan.success || stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION)
+  if (!plan.success || stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
+    plan.data.scenes.length !== scriptSegments.length)
     throw new ApiError(409, "RENDER_SCENE_PLAN_CHANGED", "화면 설계가 음성 제작 이후 변경됐습니다. 새 작업이 필요합니다.");
-  const brief = createYoutubeRenderBrief(plan.data, alignYoutubeVisualBeats(plan.data, scriptSegments, transcript, sha256(finalAudio)));
-  const catalogBytes = await download(service, YOUTUBE_CHARACTER_BUCKET, "catalog.json");
-  const catalog = youtubeCharacterCatalogSchema.parse(JSON.parse(catalogBytes.toString("utf8")));
-  const ids = new Set(catalog.assets.filter((asset) => asset.usable).map((asset) => asset.id));
-  const used = new Set(brief.timeline.beats.flatMap((beat) => { const svg = validateSceneSvg(beat.svg, ids); return svg.ok ? svg.summary.characters : []; }));
-  const characters: Record<string, string> = {};
-  for (const asset of catalog.assets) if (used.has(asset.id)) characters[asset.file] = await signedRead(service, YOUTUBE_CHARACTER_BUCKET, asset.file);
+  const brief = { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, sections: plan.data.sections,
+    beats: plan.data.scenes.map((scene, index) => ({ deck: scene.deck, items: scene.items, section: scene.section, text: scriptSegments[index] })) };
   await save(service, record, "in_progress", "rendering", { ...run, audioSha256: sha256(finalAudio), durationSeconds: input.durationSeconds });
-  return { brief, catalog, characters, videoUploadUrl: await signedUpload(service, run.videoPath) };
+  return { brief, videoUploadUrl: await signedUpload(service, run.videoPath) };
 }
 
 /** Record a finished upload after checking the stored object size the worker reported. */
