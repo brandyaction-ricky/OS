@@ -123,7 +123,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
           <ul className="yt-checklist">{plan.missing.map((item) => <li key={item}>{item}</li>)}</ul>
         </>}
         {scriptReady && isAdmin && previewConfigured ? <div className="yt-actions">
-          <button type="button" className="ghost-button" disabled={Boolean(busy)} onClick={() => void previewVoice()}>{busy === "preview" ? "목소리 만드는 중…" : "첫 단락 목소리 미리듣기"}</button>
+          <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void previewVoice()}>{busy === "preview" ? "목소리 만드는 중…" : "첫 단락 목소리 미리듣기"}</button>
         </div> : null}
         {previewUrl ? <audio controls src={previewUrl} aria-label="첫 단락 목소리 미리듣기" /> : null}
       </Step>
@@ -150,10 +150,14 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
               </div>)}
             </div>
           </details>
-          {notes.length ? <div className={`yt-notes ${notesDone ? "yt-notes-done" : ""}`}>
+          {notes.length && notesDone ? <details className="yt-details">
+            <summary>AI가 남긴 확인할 점 {notes.length}개 · 확인 완료</summary>
+            <ul className="yt-checklist">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
+          </details> : null}
+          {notes.length && !notesDone ? <div className="yt-notes">
             <strong>AI가 남긴 확인할 점 {notes.length}개</strong>
             <ul>{notes.map((note) => <li key={note}>{note}</li>)}</ul>
-            {notesDone ? <p>확인 기록이 저장됐습니다.</p> : isAdmin ? <div className="yt-actions">
+            {isAdmin ? <div className="yt-actions">
               <label className="yt-check"><input type="checkbox" checked={notesRead} onChange={(event) => setNotesRead(event.target.checked)} />위 내용을 읽었고, 이대로 제작해도 됩니다.</label>
               <button type="button" className="primary-button" disabled={Boolean(busy) || !notesRead} onClick={() => void act("ack", () => post("/scenes", "PATCH", { acknowledgeUnresolved: true }))}>확인 완료</button>
             </div> : <p>관리자가 확인하면 다음 단계로 넘어갑니다.</p>}

@@ -920,15 +920,16 @@ select option { background:var(--panel-2); color:var(--text); }
 .yt-steps-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .yt-steps-header h3 { margin: 0 0 4px; font-size: 16px; }
 .yt-steps-header p { margin: 0; font-size: 13px; }
+.yt-steps-header > button { white-space: nowrap; }
 .yt-steps p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
 .yt-steps small, .yt-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .yt-step-list { margin: 0; padding: 0; list-style: none; display: grid; }
 .yt-step { position: relative; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 14px; padding-bottom: 16px; }
 .yt-step:last-child { padding-bottom: 0; }
-.yt-step::before { content: ""; position: absolute; left: 15px; top: 36px; bottom: 4px; width: 2px; border-radius: 2px; background: var(--line-soft); }
+.yt-step::before { content: ""; position: absolute; left: 15px; top: 46px; bottom: 4px; width: 2px; border-radius: 2px; background: var(--line-soft); }
 .yt-step:last-child::before { display: none; }
 .yt-step-done::before { background: var(--mint-soft); }
-.yt-step-number { width: 32px; height: 32px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 700; }
+.yt-step-number { margin-top: 10px; width: 32px; height: 32px; display: grid; place-items: center; border: 2px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 700; }
 .yt-step-done .yt-step-number { border-color: var(--mint); background: var(--mint-soft); color: var(--mint); }
 .yt-step-current .yt-step-number { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .yt-step-body { min-width: 0; display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel); }
@@ -954,7 +955,6 @@ select option { background:var(--panel-2); color:var(--text); }
 .yt-table > .yt-table-head { padding-top: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
 .yt-table span { min-width: 0; overflow-wrap: anywhere; }
 .yt-notes { display: grid; gap: 8px; padding: 12px 14px; border-left: 3px solid var(--warning); border-radius: 8px; background: var(--warning-soft); }
-.yt-notes-done { border-left-color: var(--mint); background: var(--mint-soft); }
 .yt-notes strong { color: var(--text); font-size: 13px; }
 .yt-notes ul, .yt-run ul { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 12.5px; line-height: 1.65; }
 .pipeline-panel label.yt-check { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
@@ -972,7 +972,7 @@ select option { background:var(--panel-2); color:var(--text); }
   .yt-steps { padding: 14px; }
   .yt-steps-header { flex-direction: column; }
   .yt-step { grid-template-columns: 26px minmax(0, 1fr); gap: 10px; }
-  .yt-step::before { left: 12px; top: 30px; }
+  .yt-step::before { left: 12px; top: 40px; }
   .yt-step-number { width: 26px; height: 26px; font-size: 12px; }
   .yt-step-body { padding: 12px; }
   .yt-table > .yt-table-head { display: none; }
