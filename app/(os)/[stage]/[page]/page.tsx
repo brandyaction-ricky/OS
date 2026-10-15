@@ -3,6 +3,7 @@ import {AccountWorkspace} from "@/components/account-workspace";
 import {ContentProductionWorkspace} from "@/components/content-production-workspace";
 import {retiredRoute} from "@/lib/final-routes";
 import {ContentStepWorkspace} from "@/components/content-step-workspace";
+import { ContentVideoWorkspace } from "@/components/content-video-workspace";
 import {KnowledgeTabs} from "@/components/knowledge-tabs";
 import {AiOperationsWorkspace} from "@/components/organization-v3-workspaces";
 import { OperationsWorkspace } from "@/components/operations-workspace";
@@ -78,6 +79,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if(href==="/organization/leave")return <WorkspaceTabHub hub="schedule" initialTab="leave"/>;
   if (href === "/content/topics") return <ContentTopicsWorkspace showPlanningHandoff={contentPlanningHandoffEnabled} showTopicJevAssist={contentTopicJevAssistEnabled} />;
   if (href === "/content/scripts") return <ContentStepWorkspace step="scripts" showPlanningHandoff={contentPlanningHandoffEnabled} />;
+  if (href === "/content/video") return <ContentVideoWorkspace />;
   if (href === "/content/packages") return <ContentStepWorkspace step="packages" showJevAssist={contentJevAssistEnabled} />;
   if (href === "/content/shorts") return <ContentStepWorkspace step="shorts" />;
   if (href === "/content/youtube") return <ContentStepWorkspace step="youtube" />;

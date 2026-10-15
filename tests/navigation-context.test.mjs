@@ -55,7 +55,7 @@ test("command palette finds both new labels and former menu labels", () => {
 });
 
 test('company documents and finance menus coexist with gated HR navigation',()=>{
-  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[7,10,4,5,7,3,4]);
+  assert.deepEqual(NAV_STAGES.filter(stage=>!stage.requiresHr).map(stage=>stage.pages.length),[8,10,4,5,7,3,4]);
   assert.deepEqual(NAV_STAGES.find(stage=>stage.id==='knowledge').pages.map(page=>page.href),['/knowledge/vault','/knowledge/notes','/knowledge/canon','/knowledge/trash']);
   assert.equal(NAV_STAGES.find(stage=>stage.id==='team').label,'업무 기록');
   assert.equal(NAV_STAGES.find(stage=>stage.id==='finance').requiresFinance,true);
@@ -63,7 +63,7 @@ test('company documents and finance menus coexist with gated HR navigation',()=>
   assert.equal(searchNavigation('재무',true).filter(page=>page.href.startsWith('/finance/')).length,7);
   assert.ok(!NAV_STAGES.some(stage=>stage.pages.some(page=>page.href===ACCOUNT_PAGE.href)));
   assert.equal(findPage(ACCOUNT_PAGE.href).label,'내 계정');
-  assert.deepEqual(NAV_STAGES[0].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7]);
+  assert.deepEqual(NAV_STAGES[0].pages.map(page=>page.processNumber),[1,2,3,4,5,6,7,8]);
   assert.equal(findPage('/knowledge/development?tab=history').label,'업데이트 내역');
   assert.equal(findPage('/knowledge/development?tab=updates').label,'업데이트 내역');
 });

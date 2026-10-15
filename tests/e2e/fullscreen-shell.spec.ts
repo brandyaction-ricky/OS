@@ -7,12 +7,12 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("seven YouTube steps keep content selection; comments have a separate group", async ({ page }) => {
+test("eight YouTube steps keep content selection; comments have a separate group", async ({ page }) => {
   await page.goto("/content/topics");
   const process = page.getByRole("navigation", { name: "콘텐츠 공정 순서" });
-  await expect(process.getByRole("link")).toHaveCount(7);
+  await expect(process.getByRole("link")).toHaveCount(8);
   await page.getByLabel("작업 중인 영상 선택").selectOption("demo-final-topic");
-  await process.getByRole("link", { name: "7. 영상 성과" }).click();
+  await process.getByRole("link", { name: "8. 영상 성과" }).click();
   await expect(page).toHaveURL(/topic=demo-final-topic/);
   await expect(page.getByLabel("작업 중인 영상 선택")).toHaveValue("demo-final-topic");
   await page.goto("/content/comments");
