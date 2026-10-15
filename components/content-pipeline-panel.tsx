@@ -35,6 +35,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
   const [voicePreviewKey, setVoicePreviewKey] = useState("");
   const [voiceRuns, setVoiceRuns] = useState<VoiceRun[]>([]);
   const [voiceRunAudioUrl, setVoiceRunAudioUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [sceneNotesRead, setSceneNotesRead] = useState(false);
   const load = useCallback(async () => {
     const data = await apiRequest<PipelineState>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }); setState(data);
@@ -47,7 +48,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       } catch { setVoiceRuns([]); }
     } catch { setVoicePlan(null); setVoicePreviewConfigured(false); setPilotAvailable(false); setVoiceRuns([]); }
   }, [accessToken, sourceId]);
-  useEffect(() => { setState(null); setSceneNotesRead(false); setVoiceRunAudioUrl(""); load().catch((reason) => setError(String(reason.message))); }, [load]);
+  useEffect(() => { setState(null); setSceneNotesRead(false); setVoiceRunAudioUrl(""); setVideoUrl(""); load().catch((reason) => setError(String(reason.message))); }, [load]);
   useEffect(() => { setSceneNotesRead(false); }, [voicePlan?.inputKey, state?.source.metadata.narratedScenePlan]);
   useEffect(() => () => { if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl); }, [voicePreviewUrl]);
   const perform = async (action: () => Promise<unknown>) => {
@@ -108,6 +109,12 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
     } catch (reason) { setError(reason instanceof Error ? reason.message : "음성을 열지 못했습니다."); }
     finally { setBusy(false); }
   };
+  const openVideo = async () => {
+    setBusy(true); setError("");
+    try { setVideoUrl((await apiRequest<{ url: string }>(`/api/v1/content/youtube-automation/video?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken })).url); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "완성 영상을 열지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   if (!state || state.source.id !== sourceId) return <section className="panel pipeline-panel"><p>{error || "공정 불러오는 중…"}</p></section>;
   const artifacts = pipelineArtifacts(state.records);
   const enabled = state.source.metadata.pipelineEnabled === true;
@@ -159,6 +166,8 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {profile?.role === "admin" && currentScenePlan && (!currentScenePlan.unresolved?.length || sceneNotesAcknowledged) ? <button type="button" className="secondary-button" disabled={busy || !voicePreviewConfigured} onClick={() => void queueVoice()}>현재 원고 전체 음성 제작 작업 등록</button> : null}
       {voiceRuns.length ? <details open><summary>음성 제작 작업 {voiceRuns.length}건</summary>{voiceRuns.map((run) => <div key={run.id} data-testid={`voice-run-${run.id}`}><p>{run.status === "done" ? "음성 준비 완료" : run.status === "blocked" ? "확인 필요" : run.status === "in_progress" ? "제작 중" : "제작 대기"} · {run.segmentsReady}/{run.segmentCount}단락 · {run.stage}{run.lastErrorCode ? ` · ${run.lastErrorCode}` : ""}</p>{run.needsAttention.map((issue) => <p key={issue}>{issue}</p>)}{run.readyIndexes.map((index) => <button type="button" className="ghost-button" disabled={busy} key={index} onClick={() => void listenVoiceSegment(run.id, index)}>{index + 1}단락 듣기</button>)}</div>)}</details> : null}
       {voiceRunAudioUrl ? <audio key={voiceRunAudioUrl} controls src={voiceRunAudioUrl} aria-label="음성 제작 결과 듣기" /> : null}
+      <button type="button" className="secondary-button" disabled={busy} onClick={() => void openVideo()}>완성 영상 보기</button>
+      {videoUrl ? <video key={videoUrl} controls src={videoUrl} aria-label="완성 영상" style={{ width: "100%", maxWidth: 960 }} /> : null}
       <p>음성 작업은 개발용 워커가 연결된 뒤 단락별로 진행됩니다. 화면 자산 전체 제작, 렌더링, 비공개 업로드는 아직 연결 전입니다.</p>
     </section> : null}
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
