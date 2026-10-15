@@ -155,7 +155,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {profile?.role === "admin" ? <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey || !voicePreviewConfigured} onClick={() => void previewVoice()}>내 목소리 첫 단락 미리듣기</button> : null}
       <button type="button" className="secondary-button" disabled={busy || !voicePlan?.inputKey} onClick={() => void generateScenes()}>Opus로 화면 설계 만들기</button>
       {voicePreviewUrl && voicePreviewKey === voicePlan?.inputKey ? <div><audio controls src={voicePreviewUrl} aria-label="내 목소리 생성 결과 미리듣기" /><a className="ghost-button" href={voicePreviewUrl} download={`${sourceId}-first-paragraph.mp3`}>첫 단락 음성 다운로드</a></div> : null}
-      {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}단락</summary><p>섹션: {currentScenePlan.sections?.join(" → ")}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.segmentIndex + 1}. {scene.deck} {MINDMAP_DECKS[scene.deck]?.name}</strong> · {scene.items.join(" / ")} · {currentScenePlan.sections?.[scene.section]}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
+      {currentScenePlan ? <details><summary>현재 원고의 화면 설계 {currentScenePlan.scenes?.length ?? 0}단락</summary><p>섹션: {currentScenePlan.sections?.join(" → ")}</p><ol>{currentScenePlan.scenes?.map((scene) => <li key={scene.segmentIndex}><strong>{scene.deck} {MINDMAP_DECKS[scene.deck]?.name}</strong> · {scene.items.join(" / ")} · {currentScenePlan.sections?.[scene.section]}</li>)}</ol>{currentScenePlan.unresolved?.length ? <p>확인할 항목: {currentScenePlan.unresolved.join(" · ")}</p> : null}</details> : null}
       {profile?.role === "admin" && currentScenePlan?.unresolved?.length ? <div key={`${voicePlan?.inputKey}-${JSON.stringify(currentScenePlan.unresolved)}`}>
         {sceneNotesAcknowledged ? <p role="status">화면 설계의 확인할 항목을 읽은 기록이 저장됐습니다. 영상 수정 사항은 최종 검수까지 유지합니다.</p> : <>
           <label><input type="checkbox" checked={sceneNotesRead} onChange={(event) => setSceneNotesRead(event.target.checked)} />위 항목을 읽고 음성 제작에 미치는 영향을 검토했습니다.</label>
@@ -168,7 +168,7 @@ export function ContentPipelinePanel({ sourceId, onChange }: { sourceId: string;
       {voiceRunAudioUrl ? <audio key={voiceRunAudioUrl} controls src={voiceRunAudioUrl} aria-label="음성 제작 결과 듣기" /> : null}
       <button type="button" className="secondary-button" disabled={busy} onClick={() => void openVideo()}>완성 영상 보기</button>
       {videoUrl ? <video key={videoUrl} controls src={videoUrl} aria-label="완성 영상" style={{ width: "100%", maxWidth: 960 }} /> : null}
-      <p>음성 작업은 개발용 워커가 연결된 뒤 단락별로 진행됩니다. 화면 자산 전체 제작, 렌더링, 비공개 업로드는 아직 연결 전입니다.</p>
+      <p>음성 제작 작업을 등록하면 개발용 워커가 음성과 영상을 만들어 비공개로 올립니다. 완성되면 ‘완성 영상 보기’로 재생합니다.</p>
     </section> : null}
     <div className="pipeline-gates">{PIPELINE_GATES.map((title, index) => {
       const gate = index + 1; const prior = state.reviews.filter((review) => review.gate === gate).at(-1);
