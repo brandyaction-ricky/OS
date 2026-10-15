@@ -17,7 +17,7 @@ test('review history includes approvals and revision requests without calling bo
   const values = [state, false, '', {}]; let cursor = 0;
   const imports = { react: { ...React, useState: () => [values[cursor++], () => {}], useEffect: () => {}, useCallback: fn => fn },
     'react/jsx-runtime': jsx, 'next/link': { default: 'a' }, '@/lib/api-client': {}, '@/lib/content-pipeline': pipeline, '@/lib/youtube-visual-template': visualTemplate,
-    './session-provider': { useSession: () => ({ accessToken: null }) } };
+    './session-provider': { useSession: () => ({ accessToken: null }) }, './youtube-production-steps': { YoutubeProductionSteps: () => null } };
   const compiled = { exports: {} };
   const code = ts.transpileModule(readFileSync(new URL('../components/content-pipeline-panel.tsx', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInNewContext(code, { module: compiled, exports: compiled.exports, require(name) { if (name in imports) return imports[name]; throw Error(name); } });

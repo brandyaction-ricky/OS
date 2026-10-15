@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
+import { YOUTUBE_RENDER_RUN_KIND } from "@/lib/server/youtube-render-run";
 import { createVoiceRun, parseVoiceRun, presentVoiceRun, voiceRunId, voiceSegmentPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_RUN_KIND } from "@/lib/server/youtube-voice-run";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -50,7 +51,14 @@ export async function GET(request: Request) {
       .eq("record_type", "ai_job").eq("owner_id", actor.id).eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND)
       .is("archived_at", null).order("created_at", { ascending: false }).limit(10);
     if (error) throw new ApiError(500, "VOICE_RUN_READ_FAILED", "음성 제작 이력을 읽지 못했습니다.");
-    return NextResponse.json({ runs: (data ?? []).map((record) => presentVoiceRun(record as OsRecord)) }, { headers: noStore });
+    // Each voice run shows where its video stands, so the panel can tell staff what happens next.
+    const { data: renders } = await actor.supabase.from("os_records").select("status,stage,metadata").eq("parent_id", sourceId)
+      .eq("record_type", "ai_job").eq("owner_id", actor.id).eq("metadata->>kind", YOUTUBE_RENDER_RUN_KIND).is("archived_at", null);
+    const renderOf = new Map((renders ?? []).map((render) => {
+      const metadata = render.metadata as { voiceRunId?: string; lastError?: { code?: string } };
+      return [metadata.voiceRunId, { status: render.status as string, stage: render.stage as string, lastErrorCode: metadata.lastError?.code ?? null }];
+    }));
+    return NextResponse.json({ runs: (data ?? []).map((record) => ({ ...presentVoiceRun(record as OsRecord), render: renderOf.get(record.id) ?? null })) }, { headers: noStore });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_VOICE_RUN_INPUT", "콘텐츠와 음성 작업 번호를 확인해 주세요."));
     return apiErrorResponse(error);
