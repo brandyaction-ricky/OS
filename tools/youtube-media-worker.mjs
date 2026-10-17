@@ -7,10 +7,11 @@
  * OS_URL=https://<preview> YOUTUBE_MEDIA_WORKER_SECRET=... MINDMAP_DIR=<unzipped package> MINDMAP_PYTHON=<python with numpy, Pillow>
  * MINDMAP_FFMPEG=<ffmpeg with libass> HAN_BATANG=<serif font for quote decks> node tools/youtube-media-worker.mjs [--once] [--run <voice run id>]
  * --run limits both the voice steps and the render claim to one voice run, so older queued runs are left alone.
+ * Once a minute it reports disk, memory and the current step to the OS (렌더 PC 상태); with under 60 GB free it takes no new render.
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,6 +22,16 @@ const runArg = process.argv.indexOf("--run");
 const runId = runArg > 0 ? process.argv[runArg + 1] : undefined;
 const mindmapDir = process.env.MINDMAP_DIR ?? "";
 const GAP = 0.45; // Logan's pause between paragraphs; his timings and renderer assume it.
+const MIN_DISK_GB = 60; // one render decodes about 45 GB of deck frames under MINDMAP_DIR
+let current = null; // { renderId?, step } while working, for the heartbeat
+
+const gb = (bytes) => Math.round(bytes / 1e8) / 10;
+const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os.tmpdir()); return gb(bavail * bsize); };
+/** 렌더 PC 상태: never stops the worker if the OS is unreachable or older. */
+export async function heartbeat() {
+  await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
+    packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(mindmapDir, ".."))).slice(0, 80) }).catch((error) => console.error(`heartbeat: ${error.message}`));
+}
 
 async function call(body, route = "media") {
   const response = await fetch(`${osUrl}/api/v1/content/youtube-automation/${route}`, {
@@ -46,8 +57,11 @@ const seconds = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_
 
 /** Process one render job; returns false when the queue is empty. */
 export async function processOne() {
+  if (diskFreeGb() < MIN_DISK_GB) { console.error(`disk low (${diskFreeGb()} GB free): not taking a render`); return false; }
   const job = await call({ action: "claim", ...(runId && { voiceRunId: runId }) });
   if (job.idle) return false;
+  current = { renderId: job.renderId, step: "download" };
+  void heartbeat();
   const dir = mkdtempSync(path.join(os.tmpdir(), "brandyaction-render-"));
   const lease = { renderId: job.renderId, lease: job.lease };
   try {
@@ -57,12 +71,15 @@ export async function processOne() {
       await fetchTo(segment.url, file);
       parts.push(file);
     }
+    current.step = "narration";
     writeFileSync(path.join(dir, "parts.txt"), parts.map((file) => `file '${file}'`).join("\n"));
     const narration = path.join(dir, "narration.mp3");
     execFileSync("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", path.join(dir, "parts.txt"), "-c", "copy", narration]);
     await upload(job.audioUploadUrl, narration, "audio/mpeg");
     const render = await call({ action: "brief", ...lease, segmentDurations: parts.map(seconds), durationSeconds: seconds(narration) });
+    current.step = "drawing";
     const video = drawMindmap(render.brief, parts, job.renderId);
+    current.step = "upload";
     await upload(render.videoUploadUrl, video, "video/mp4");
     const bytes = readFileSync(video);
     await call({ action: "complete", ...lease, videoBytes: bytes.length, videoSha256: createHash("sha256").update(bytes).digest("hex") });
@@ -71,6 +88,7 @@ export async function processOne() {
     console.error(`render failed: ${job.renderId}: ${error.message}`);
     await call({ action: "fail", ...lease, code: String(error.code ?? "WORKER_RENDER_FAILED") }).catch(() => {});
   } finally {
+    current = null;
     rmSync(dir, { recursive: true, force: true });
     rmSync(path.join(mindmapDir, "voice", job.renderId), { recursive: true, force: true }); // ~45 GB of decoded deck frames
   }
@@ -134,12 +152,14 @@ export function drawMindmap(brief, parts, name) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   if (!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
+  void heartbeat();
+  setInterval(() => void heartbeat(), 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || call(runId ? { runId } : {}, "worker").then((step) => {
+    const worked = await processOne().then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
-    }))
+    }).finally(() => { current = null; }))
       .catch((error) => { console.error(error.message); return false; });
     if (process.argv.includes("--once")) break;
     if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));
