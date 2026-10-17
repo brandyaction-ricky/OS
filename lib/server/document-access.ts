@@ -18,7 +18,7 @@ export function canAgentEditDraft(actor: Pick<RequestActor,"type"|"ownerId">, do
 }
 
 export function canReadKnowledgeDocument(actor: DocumentActor, document: ReadableDocument) {
-  // Coarse status gate; hydrated category/meeting/ancestor checks follow in
-  // readableKnowledgePages before any response leaves the server.
-  return canReadDocument(actor, { owner_id: document.owner_id, status: document.status, source: document.source });
+  // Coarse status gate; hydrated category/meeting/ancestor and restricted-canon
+  // reader checks follow in readableKnowledgePages before any response leaves the server.
+  return canReadDocument(actor, { owner_id: document.owner_id, status: document.status, source: document.source, reader_scope: "all" });
 }
