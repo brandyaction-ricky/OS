@@ -10,6 +10,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { RECORD_TYPES, type RecordType } from "@/lib/record-types";
 import { recordCreateSchema, recordUpdateSchema } from "@/lib/record-validation";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
+import { protectedYoutubeChange } from "@/lib/youtube-process/project";
 import { changesAppealDecision, isAppealCandidatePackage } from "@/lib/appeal-decision-guard";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { assertDevelopmentRequestLink } from "@/lib/development-links";
@@ -115,6 +116,7 @@ export async function POST(request: Request) {
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
+    if (protectedYoutubeChange(null, input.metadata)) throw new ApiError(403, "YOUTUBE_API_REQUIRED", "유튜브 공정 프로젝트는 유튜브 공정 화면에서 만들어 주세요.");
     if (input.metadata.kind === "development_request") throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청 전용 화면에서 등록해 주세요.");
     if (input.recordType === "content_metric" && input.metadata.channelSnapshotVersion === 1) throw new ApiError(403, "METRIC_SNAPSHOT_READ_ONLY", "자동 수집 스냅샷은 수집 작업에서만 저장합니다.");
     if (input.recordType === "content_comment") throw new ApiError(403, "CONTENT_COMMENT_API_REQUIRED", "댓글 수집 기록은 전용 API에서만 만듭니다.");
@@ -168,6 +170,7 @@ export async function PATCH(request: Request) {
     if ((current.record_type === "development_notification" || current.record_type === "notification") || (input.metadata?.kind === "development_notification" || input.metadata?.kind === "notification")) throw new ApiError(403, "NOTIFICATION_API_REQUIRED", "개발 요청 알림은 전용 알림 API에서만 변경합니다.");
     await assertReviewedMeetingTask(actor,input,current);
     if (protectedPipelineChange(current.metadata, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
+    if (protectedYoutubeChange(current.metadata, input.metadata)) throw new ApiError(403, "YOUTUBE_API_REQUIRED", "유튜브 공정 프로젝트는 유튜브 공정 화면에서 고쳐 주세요.");
     if (input.recordType && input.recordType !== current.record_type) throw new ApiError(400, "RECORD_TYPE_IMMUTABLE", "기존 기록의 유형은 변경할 수 없습니다.");
     if (current.record_type === "content_publish" && current.metadata.channelWorkflowVersion === 1) throw new ApiError(403, "PUBLICATION_API_REQUIRED", "계정별 게시물은 게시 설정 패널에서 수정·승인·예약해 주세요.");
     if (current.record_type === "content_publish" && input.status === "published" && current.status !== "published") throw new ApiError(409, "PUBLISH_RECEIPT_REQUIRED", "실제 발행 결과는 채널 업로드 완료 처리에서 기록합니다.");

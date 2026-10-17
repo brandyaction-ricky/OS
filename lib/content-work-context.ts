@@ -1,6 +1,7 @@
 import {contentOrigin} from "./content-origin.ts";
 type Topic = {id:string;record_type:string;title:string;archived_at?:string|null;metadata:Record<string,unknown>};
-export function workTopics<T extends Topic>(records:T[]) {return records.filter(row=>row.record_type==="content_topic"&&!row.archived_at&&contentOrigin(row)==="own");}
+// 유튜브 공정 v1 projects live on their own screens (D3) and stay out of the legacy topic picker.
+export function workTopics<T extends Topic>(records:T[]) {return records.filter(row=>row.record_type==="content_topic"&&!row.archived_at&&contentOrigin(row)==="own"&&row.metadata?.workflow!=="youtube_v1");}
 export function defaultsToAll(path:string,tab:string|null) {return ["/content/comments","/content/performance","/content/calendar"].includes(path)||(path==="/content/publishing"&&tab==="calendar");}
 export function workTopicSelection<T extends Topic>(records:T[],requested:string|null,saved:string,all:boolean) {
   const topics=workTopics(records);

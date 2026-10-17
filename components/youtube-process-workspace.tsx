@@ -7,6 +7,8 @@ import type { YoutubeV1Screen } from "@/lib/youtube-process/navigation";
 import { PageTitle } from "./page-title";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
+import { YoutubePlanScreen } from "./youtube-process-plan";
+import { YoutubeProjectsScreen } from "./youtube-process-projects";
 
 // 지시서 4장. Each screen is filled in by its own step (T3 ~ T11); until then it says what will appear here.
 const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: string }> = {
@@ -25,12 +27,16 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen })
   const { accessToken, demo, profile } = useSession();
   const canConfirm = useYoutubeCanConfirm(screen === "confirm", accessToken, demo, profile?.role === "admin");
   const info = SCREENS[screen];
+  const header = <header className="page-header"><div className="page-title-group"><PageTitle /><p>{info.sub}</p></div></header>;
+  // 기획 draws the progress line above its header (the line sits at the very top of the screen).
+  if (screen === "plan") return <section className="yp ui-v2"><YoutubePlanScreen header={header} /></section>;
   return <section className="yp ui-v2">
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>{info.sub}</p></div></header>
-    {screen === "confirm" && canConfirm === null ? <p className="yp-hint" role="status">권한을 확인하는 중이에요…</p>
+    {header}
+    {screen === "projects" ? <YoutubeProjectsScreen />
+      : screen === "confirm" && canConfirm === null ? <p className="yp-hint" role="status">권한을 확인하는 중이에요…</p>
       : screen === "confirm" && !canConfirm ? <div className="yp-locked"><Lock size={18} className="yp-i" aria-hidden="true" /><div><b>대표 메뉴예요</b><p>컨펌 목록은 회사 승인자에게만 보여요. 컨펌 대기 중인 단계 화면에서는 누구나 상태를 볼 수 있어요.</p></div></div>
         : <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div><b>이 화면은 만드는 중이에요.</b> 다음 개발 단계({info.step})에서 {info.coming}이 들어와요.</div></div>}
-    {screen === "projects" ? <nav aria-label="기존 화면">
+    {screen === "projects" ? <nav aria-label="기존 화면" className="yp-legacy">
       <h2>기존 화면</h2>
       <p className="yp-hint">진행 중이던 옛 주제는 기존 화면에서 마무리해요. 주소는 그대로 열려요.</p>
       <ul>{LEGACY_PAGES.map(page => <li key={page.href}><Link href={page.href}>{page.processNumber ? `${page.processNumber}. ` : ""}{page.label}</Link></li>)}</ul>

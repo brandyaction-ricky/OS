@@ -81,7 +81,8 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   const { accessToken, demo, profile } = useSession();
   const [allRecords, setRecords] = useState<OsRecord[]>(lockedSource?[lockedSource]:[]);
   const [includeTests, setIncludeTests] = useState(false);
-  const records = useMemo(() => allRecords.filter(record => includeTests || contentOrigin(record) !== "test"), [allRecords, includeTests]);
+  // 유튜브 공정 v1 projects have their own screens (D3).
+  const records = useMemo(() => allRecords.filter(record => (includeTests || contentOrigin(record) !== "test") && record.metadata?.workflow !== "youtube_v1"), [allRecords, includeTests]);
   const [packages, setPackages] = useState<OsRecord[]>([]);
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [queryTab, setTab] = useQueryTab<RadarTab>("tab",["channels","discovery","niches","planning"],"channels");

@@ -945,5 +945,15 @@
 @media (max-width:820px){.linear-shell .ui-v2.yp .yp-aitabs button{font-size:11px;padding:0 4px}.linear-shell .ui-v2.yp .yp-jobl .yp-btn{flex:1}}
 
 /* OS 셸 맞춤: 진행 줄은 .page-content 안쪽 여백(22px 26px · 모바일 18px 14px, components/linear-shell.css:146·246)을 넘어 꽉 차게 */
-.linear-shell .ui-v2.yp .yp-flow{margin:-22px -26px 16px}
-@media (max-width:820px){.linear-shell .ui-v2.yp .yp-flow{margin:-18px -14px 12px}}
+/* The current shell pads .page-content 14px 24px (12px 14px on phones, app/final-uiux.css) under a 53px desktop top bar (components/os-ui.css) and a 52px phone top bar. */
+.linear-shell .ui-v2.yp .yp-flow{margin:-14px -24px 16px}
+@media (min-width:821px){.linear-shell .ui-v2.yp .yp-flow{top:53px}}
+@media (max-width:820px){.linear-shell .ui-v2.yp .yp-flow{margin:-12px -14px 12px;top:52px}}
+
+/* ── OS 연결 (T3): native dialog, filter state and the open-project list ── */
+.linear-shell .ui-v2.yp dialog.yp-modal{border:0;padding:0;color:var(--text)}
+.linear-shell .ui-v2.yp dialog.yp-modal::backdrop{background:color-mix(in srgb,var(--media-shadow) 45%,transparent)}
+.linear-shell .ui-v2.yp .yp-pfil button[aria-pressed="true"]{color:var(--text);font-weight:700}
+.linear-shell .ui-v2.yp .yp-open-list{list-style:none;margin:12px 0 0;padding:0;display:grid;max-height:50vh;overflow:auto}
+.linear-shell .ui-v2.yp .yp-open-list li{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line-soft)}
+.linear-shell .ui-v2.yp .yp-legacy{margin-top:28px;display:grid;gap:6px}
