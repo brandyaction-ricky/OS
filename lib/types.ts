@@ -40,6 +40,8 @@ export interface KnowledgeDocument {
   archived_from_status?: DocumentStatus | null;
   retention_hold?: boolean;
   meeting_record_id?: string | null;
+  /** Canonical only: 'all' (every active member) or 'restricted' (admins, owner, steward, named readers). */
+  reader_scope?: "all" | "restricted";
 }
 
 export interface DocumentVersion {

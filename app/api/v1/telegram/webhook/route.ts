@@ -50,6 +50,8 @@ async function telegramHelp(supabase: ReturnType<typeof createServiceSupabase>) 
     .select("id,content_md")
     .eq("title", TELEGRAM_HELP_TITLE)
     .eq("status", "canonical")
+    // Telegram users are not checked per document: only canon open to every member.
+    .eq("reader_scope", "all")
     .maybeSingle();
   if (error) throw new ApiError(500, "TELEGRAM_HELP_READ_FAILED", "봇 사용 매뉴얼을 불러오지 못했습니다. 잠시 뒤 다시 요청해 주세요.");
   const answer = helpSection(String(data?.content_md ?? ""));
@@ -494,7 +496,8 @@ async function handleOperatingBaselineView(supabase: ReturnType<typeof createSer
   const token = text.trim().replace(/^\/?운영기준(?:@\w+)?/, "").trim().split(/\s+/)[0] ?? "";
   const business = resolveMeetingBusiness(token);
   if (!business) return "사용법: /운영기준 [사업]\n예) /운영기준 마이인\n사업은 마이인, 브랜디에듀(교육), 회사(전체)만 인식합니다.";
-  const { data: doc, error } = await supabase.from("os_documents").select("content_md").eq("source", "operating_baseline").eq("source_ref", business.recordBrand).neq("status", "archived").maybeSingle();
+  // Telegram users are not checked per document: a restricted baseline is not shown here.
+  const { data: doc, error } = await supabase.from("os_documents").select("content_md").eq("source", "operating_baseline").eq("source_ref", business.recordBrand).neq("status", "archived").eq("reader_scope", "all").maybeSingle();
   if (error) throw new ApiError(500, "OPS_BASELINE_READ_FAILED", "운영 기준을 불러오지 못했습니다.", error.message);
   if (!doc?.content_md) return `📂 [${business.label}] 아직 저장된 운영 기준이 없습니다. 회의 결정을 운영안에 반영하면 자동으로 만들어집니다.`;
   const visible = doc.content_md.replace(/<!-- ledger:[\s\S]*?-->/, "").trim();

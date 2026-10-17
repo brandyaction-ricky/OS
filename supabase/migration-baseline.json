@@ -685,6 +685,15 @@
       "productionApprovedAt": "2026-10-14",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-14 with owner approval after a rollback-only DEV check and a guard that the live function was unchanged; privileges unchanged. Replaces os_can_approve from the 2026-10-14 Production definition (identical on DEV) with only the designated-approver condition added. No table, row or grant changes."
+    },
+    {
+      "file": "20261017020000_canonical_reader_scope.sql",
+      "sha256": "bb4f4201a0184f0a91e13a49f53beaf94237f640abc1bc930edef794421087a0",
+      "purpose": "let admins limit a canonical document to named members; default reader_scope 'all' keeps every existing document as is",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-17",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner approved per-document canonical read restriction on 2026-10-17. Applied to brandyaction-os-dev, then Production, before the matching app code was deployed."
     }
   ],
   "legacyMigrations": [

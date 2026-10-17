@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     const since = new Date(Date.now() - 86_400_000).toISOString();
     const [recordResult, documentResult] = await Promise.all([
       supabase.from("os_records").select("id,title,record_type,status,assignee_id,due_date,updated_at").in("record_type", ["task", "decision"]).is("archived_at", null).order("updated_at", { ascending: false }).limit(100),
-      supabase.from("os_documents").select("id,title,status,current_version,updated_at").eq("status", "canonical").gte("updated_at", since).order("updated_at", { ascending: false }).limit(20),
+      supabase.from("os_documents").select("id,title,status,current_version,updated_at").eq("status", "canonical").eq("reader_scope", "all").gte("updated_at", since).order("updated_at", { ascending: false }).limit(20),
     ]);
     if (recordResult.error || documentResult.error) throw new ApiError(500, "DIGEST_DATA_READ_FAILED", "팀 요약 데이터를 읽지 못했습니다.");
     const records = recordResult.data ?? []; const documents = documentResult.data ?? [];

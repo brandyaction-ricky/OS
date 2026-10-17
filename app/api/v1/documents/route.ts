@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
     // Pagination and totals are computed only after access filtering.
     // Summary views drop the body anyway; never transfer every document's full text to list a few titles.
-    const columns = includeContent ? "*" : "id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id";
+    const columns = includeContent ? "*" : "id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope";
     const listDocuments = (columns: string, scanOffset: number, scanEnd = scanOffset + 999, client = createServiceSupabase()) => {
       let builder = client
       .from("os_documents")
