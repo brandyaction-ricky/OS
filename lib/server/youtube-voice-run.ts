@@ -75,6 +75,14 @@ export function presentVoiceRun(record: OsRecord) {
   };
 }
 
+/** The staff AI's { ready, issues: [{ segmentIndex, issue }] } in the voice run's review shape, or null. */
+function staffPronunciation(value: { ready?: unknown; issues?: unknown } | undefined, segmentCount: number, at: string) {
+  const issues = Array.isArray(value?.issues) ? value.issues as { segmentIndex?: unknown; issue?: unknown }[] : null;
+  if (typeof value?.ready !== "boolean" || !issues || issues.length > 20 || value.ready !== (issues.length === 0)) return null;
+  if (issues.some((item) => !Number.isInteger(item.segmentIndex) || Number(item.segmentIndex) >= segmentCount || typeof item.issue !== "string")) return null;
+  return { ready: value.ready, issues: issues.map((item) => `${Number(item.segmentIndex) + 1}단락: ${String(item.issue).slice(0, 250)}`), at };
+}
+
 export async function createVoiceRun(actor: RequestActor, sourceId: string, inputKey: string) {
   if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 음성 제작 작업을 시작할 수 있습니다.");
   const automation = await readYoutubeAutomationInput(actor.supabase, sourceId);
@@ -83,7 +91,7 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (!plan.inputKey || plan.inputKey !== inputKey || !plan.script || !automation.scriptText)
     throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 승인된 원고와 패키징을 다시 확인해 주세요.");
   const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown;
-    unresolvedAcknowledged?: { by?: unknown; count?: unknown } } | undefined;
+    unresolvedAcknowledged?: { by?: unknown; count?: unknown }; pronunciation?: { ready?: unknown; issues?: unknown } } | undefined;
   const parsedScenes = scenePlanSchema.safeParse(scenePlan?.plan);
   // Open notes block voice until the owner has read them (acknowledged the exact list).
   const acknowledged = parsedScenes.success && scenePlan?.unresolvedAcknowledged?.by === actor.id &&
@@ -101,7 +109,9 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   const voiceModel = process.env.FISH_TTS_MODEL?.trim() || "s2.1-pro";
   const voiceSettings = fishVoiceSettings(process.env);
-  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || !hasClaudeKey())
+  // A design made by a staff AI already carries the pronunciation check, so no company Claude call is needed.
+  const staffReview = staffPronunciation(scenePlan?.pronunciation, segments.length, generatedAt);
+  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || (!staffReview && !hasClaudeKey()))
     throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Claude API 연결을 확인해 주세요.");
   const { data: bucket, error: bucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_BUCKET);
   if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소를 확인해 주세요.");
@@ -118,6 +128,7 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     sceneTemplateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceReferenceFingerprint: fingerprint,
     voiceModel, voiceSettings, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
     segments: segments.map((text, index) => ({ index, textHash: digestVoiceValue(text), status: "pending" })), attempts: 0,
+    ...(staffReview ? { lunaReview: staffReview } : {}),
   };
   // A new scene design over the same script and voice reuses finished narration instead of paying for it again.
   const { data: earlier } = await actor.supabase.from("os_records").select("*").eq("record_type", "ai_job").eq("parent_id", sourceId)

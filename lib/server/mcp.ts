@@ -16,6 +16,18 @@ export const MCP_TOOLS = [
     annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
   },
   {
+    name: "list_youtube_ai_jobs",
+    description: "이 키 주인이 유튜브 영상 제작 화면에서 요청한 AI 작업(화면 설계와 발음 검토) 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. 작업이 있으면 process_youtube_ai_job으로 하나씩 처리합니다.",
+    inputSchema: {type:"object",properties:{},additionalProperties:false},
+    annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
+  },
+  {
+    name: "process_youtube_ai_job",
+    description: "유튜브 AI 작업을 claim으로 가져가 받은 지시대로 결과 JSON을 만든 뒤 complete(job_id, lease, model, result)로 제출합니다. OS가 형식을 검사해 틀린 곳을 돌려주면 고쳐 다시 complete 합니다. 처리할 수 없으면 fail에 reason을 적습니다. 승인·업로드·게시는 하지 않습니다.",
+    inputSchema: {type:"object",properties:{action:{type:"string",enum:["claim","complete","fail"]},job_id:{type:"string",format:"uuid"},lease:{type:"string",format:"uuid"},model:{type:"string"},result:{type:"object"},reason:{type:"string"}},required:["action","job_id"],additionalProperties:false},
+    annotations:{readOnlyHint:false,destructiveHint:false,idempotentHint:false,openWorldHint:false},
+  },
+  {
     name: "search_knowledge",
     description: "브랜디 OS 회사 정본과 이 AI 소유자의 초안에서 관련 근거를 검색합니다.",
     inputSchema: {
@@ -330,6 +342,14 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
   if(request.name==="process_canonical_rule_job"){
     const input=z.object({action:z.enum(["claim","complete","fail"]),run_id:documentId,result:z.record(z.unknown()).optional(),model:z.string().trim().min(1).max(100).optional()}).strict().parse(args);
     return fetchApi("/api/v1/knowledge/canonical/worker",{method:"POST",body:JSON.stringify({action:input.action,runId:input.run_id,result:input.result,model:input.model})});
+  }
+  if(request.name==="list_youtube_ai_jobs"){
+    z.object({}).strict().parse(args);
+    return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker");
+  }
+  if(request.name==="process_youtube_ai_job"){
+    const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(300).optional()}).strict().parse(args);
+    return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,reason:input.reason})});
   }
   if (request.name === "list_record_versions") {
     const input = getRecordArgs.parse(args);
