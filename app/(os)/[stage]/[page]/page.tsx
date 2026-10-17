@@ -30,6 +30,9 @@ import { ContentAutomationV07 } from "@/components/content-automation-v07";
 import { legacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
 import { teamV1Enabled } from "@/lib/team/gate";
 import { TeamWorkspaceV1 } from "@/components/team/team-workspace-v1";
+import { YoutubeProcessWorkspace } from "@/components/youtube-process-workspace";
+import { youtubeV1Enabled } from "@/lib/youtube-process/gate";
+import { youtubeV1Screen } from "@/lib/youtube-process/navigation";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -59,6 +62,11 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
     return <TeamWorkspaceV1 section="people" />;
   }
   if (teamEnabled && href === "/organization/meetings") return <TeamWorkspaceV1 section="meetings" />;
+  const youtubeScreen = youtubeV1Screen(href);
+  if (youtubeScreen) {
+    if (!youtubeV1Enabled()) redirect("/content/topics");
+    return <YoutubeProcessWorkspace screen={youtubeScreen} />;
+  }
   if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
   if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
   if (teamEnabled && href === "/home/decisions") {

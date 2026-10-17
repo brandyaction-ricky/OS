@@ -5,13 +5,14 @@ import {usePathname,useSearchParams} from "next/navigation";
 import {CircleHelp,X} from "lucide-react";
 import {findPage} from "@/lib/navigation";
 import {PAGE_GUIDES,guideClosedKey} from "@/lib/page-guides";
+import {YOUTUBE_V1_GUIDES} from "@/lib/youtube-process/guides";
 
 export function GuideNumber({number}:{number:1|2|3}) {return <span className="guide-no" data-ui="guide-no" aria-hidden="true">{number}</span>;}
 export function PageGuide() {
   const pathname=usePathname(), search=useSearchParams();
   const page=findPage(`${pathname}?${search.toString()}`);
   const key=page.navHref??page.href;
-  const guide=PAGE_GUIDES[key];
+  const guide=PAGE_GUIDES[key]??YOUTUBE_V1_GUIDES[key];
   const [closed,setClosed]=useState(false);
   useEffect(()=>{
     const read=()=>{try{setClosed(localStorage.getItem(guideClosedKey(key))==="closed");}catch{setClosed(false);}};

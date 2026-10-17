@@ -10,12 +10,14 @@ import {productionStep,type ProductionStep} from "@/lib/content-production-board
 import type {OsRecord,RecordType} from "@/lib/record-types";
 import {useSession} from "./session-provider";
 import {defaultGenerationMode,type GenerationMode} from "@/lib/content-generation-mode";
+import {youtubeV1Screen} from "@/lib/youtube-process/navigation";
 type WorkContext = {topics:OsRecord[];publications:OsRecord[];selected?:OsRecord;topicId:string;loading:boolean;error:string;generationMode:GenerationMode;select:(id:string)=>void;reload:()=>void};
 const Context=createContext<WorkContext|null>(null);
 const TYPES:RecordType[]=["content_topic","content_script","content_package","content_short","content_publish","company_setting"];
 export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   const path=usePathname(), search=useSearchParams(), {accessToken,demo,profile}=useSession();
-  const enabled=path.startsWith("/content/");
+  // 유튜브 공정 v1 screens read their own project data instead of the legacy topic list.
+  const enabled=path.startsWith("/content/")&&!youtubeV1Screen(path);
   const [records,setRecords]=useState<OsRecord[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
   const [saved,setSaved]=useState(""),[revision,setRevision]=useState(0);
   const storageKey=`brandy-os-work-topic:${profile?.id??"demo"}`;
