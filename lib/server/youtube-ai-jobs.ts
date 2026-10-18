@@ -6,7 +6,7 @@ import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { splitFishNarration } from "./fish-audio";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
-import { checkScenePlan, readYoutubeSceneRules, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt } from "./youtube-scenes";
+import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
@@ -17,7 +17,8 @@ const LEASE_MINUTES = 30;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 const jobMetaSchema = z.object({
   kind: z.literal(STAFF_AI_JOB_KIND), task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64),
-  templateVersion: z.string(), ruleVersions: z.array(versionRef), requestedAt: z.string(),
+  // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
+  templateVersion: z.string(), ruleVersions: z.array(versionRef).optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
 }).passthrough();
@@ -65,14 +66,13 @@ export async function requestScenePlanJob(actor: RequestActor, input: z.infer<ty
   const { state, plan, scriptText } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
   if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 화면 설계를 요청할 수 있습니다.");
   if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
-  const rules = await readYoutubeSceneRules(actor);
   for (const job of await openJobs(actor.id, input.sourceId)) {
     if (meta(job).inputKey === input.inputKey) return publicStaffJob(job);
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "원고가 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: "scene-plan", sourceId: input.sourceId, inputKey: input.inputKey,
-    templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, ruleVersions: rules.ruleVersions, requestedAt: now };
+    templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, requestedAt: now };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${state.source.title} · 화면 설계와 발음 검토`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
@@ -111,32 +111,30 @@ async function ownJob(agent: RequestActor, jobId: string) {
   return data as OsRecord;
 }
 
-/** The current script, rules and approvals; a job whose input moved on is closed instead of producing a stale design. */
+/** The current script and approvals; a job whose input moved on is closed instead of producing a stale design. */
 async function currentInput(job: OsRecord) {
   const m = meta(job);
   const automation = await readYoutubeAutomationInput(service(), m.sourceId);
-  const rules = await readYoutubeSceneRules({ supabase: service() });
-  const stale = automation.plan.inputKey !== m.inputKey || !automation.scriptText || m.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
-    JSON.stringify(rules.ruleVersions) !== JSON.stringify(m.ruleVersions);
+  const stale = automation.plan.inputKey !== m.inputKey || !automation.scriptText || m.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION;
   if (stale) {
     await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: "원고·승인·영상 기준이 바뀌어 이 요청은 닫았어요. 영상 제작 화면에서 다시 보내 주세요." } });
     throw new ApiError(409, "STAFF_AI_JOB_STALE", "원고나 영상 기준이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
   }
-  return { automation, rules, segments: splitFishNarration(automation.scriptText!) };
+  return { automation, segments: splitFishNarration(automation.scriptText!) };
 }
 
 export async function claimStaffJob(agent: RequestActor, jobId: string) {
   const job = await ownJob(agent, jobId);
   const m = meta(job);
   if (job.status !== "backlog" && !(job.status === "active" && !leaseLive(m.lease))) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", "이미 처리 중이거나 끝난 작업입니다.");
-  const { automation, rules, segments } = await currentInput(job);
+  const { automation, segments } = await currentInput(job);
   const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + LEASE_MINUTES * 60_000).toISOString() };
   await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, lease, claimedAt: new Date().toISOString(), issues: [] } });
   const scene = scenePlanPrompt({ script: automation.scriptText!, title: automation.title, thumbnailCopy: automation.thumbnailCopy,
-    evidence: String(automation.state.source.metadata.evidence ?? ""), rules: rules.rules }).prompt;
+    evidence: String(automation.state.source.metadata.evidence ?? ""), rules: await youtubeSceneRuleRefs({ supabase: service() }) }).prompt;
   return {
     jobId, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-    instructions: `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 아래 두 가지를 만들어 JSON 하나로 제출하세요.\n\n## 1. 화면 설계 (result.plan)\n${scene}\n\n## 2. 발음 검토 (result.pronunciation)\n${pronunciationPrompt(segments)}\n\n## 제출\nprocess_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result={ "plan": …, "pronunciation": … }를 보내세요. 형식이 틀리면 고칠 점이 돌아오니 고쳐서 다시 complete 하세요. ${LEASE_MINUTES}분 안에 끝내지 못하거나 처리할 수 없으면 action=fail과 reason(한 줄)을 보내세요.`,
+    instructions: `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 아래 두 가지를 만들어 JSON 하나로 제출하세요.\n\n## 1. 화면 설계 (result.plan)\n${scene}\n\n## 2. 발음 검토 (result.pronunciation)\n${pronunciationPrompt(segments, true)}\n\n## 제출\nprocess_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result={ "plan": …, "pronunciation": … }를 보내세요. 형식이 틀리면 고칠 점이 돌아오니 고쳐서 다시 complete 하세요. ${LEASE_MINUTES}분 안에 끝내지 못하거나 처리할 수 없으면 action=fail과 reason(한 줄)을 보내세요.`,
     resultSchema: { type: "object", additionalProperties: false, properties: { plan: SCENE_PLAN_JSON_SCHEMA, pronunciation: PRONUNCIATION_JSON_SCHEMA }, required: ["plan", "pronunciation"] },
   };
 }
@@ -150,7 +148,7 @@ function liveLease(job: OsRecord, token: string) {
 export async function completeStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
-  const { automation, rules, segments } = await currentInput(job);
+  const { automation, segments } = await currentInput(job);
   let plan; let pronunciation;
   try {
     plan = checkScenePlan(input.result.plan, segments, 422);
@@ -164,7 +162,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   const rest = { ...source.metadata };
   delete rest.narratedScenePlanDraft;
   const now = new Date().toISOString();
-  const narratedScenePlan = { inputKey: m.inputKey, model: input.model, templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, ruleVersions: rules.ruleVersions,
+  const narratedScenePlan = { inputKey: m.inputKey, model: input.model, templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION,
     plan, pronunciation, segmentCount: segments.length, generatedAt: now, judgmentMode: "advisory_only",
     author: { type: "staff_ai", ownerId: agent.ownerId, model: input.model, jobId: job.id } };
   const { data: saved, error } = await service().from("os_records").update({ metadata: { ...rest, narratedScenePlan }, updated_by: agent.ownerId })
