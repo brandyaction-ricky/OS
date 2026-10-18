@@ -15,6 +15,8 @@ const BANNED: [string, string[]][] = [
 // ponytail: keyword heuristic for "수치·연구·후기·인용" paragraphs; the separate fact review (관문 5) is the real check.
 const NEEDS_SOURCE = /%|연구|논문|조사|후기|에 따르면/;
 const MAX_ISSUES = 30;
+// A banned word counts only where a word starts: "마디" (the outline unit) is banned, "첫마디" and "한마디" are ordinary speech.
+const bannedAt = (text: string, word: string) => new RegExp(`(^|[^가-힣])${word}`).test(text);
 export const CHARS_PER_MINUTE = 600;
 
 /** Body rules that also apply when a staff member edits the narration text directly (no headings left to check). */
@@ -30,7 +32,7 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
     const n = index + 1;
     if (paragraph.includes("\n")) issues.push(`${n}번 문단 안에 줄바꿈이 있습니다.`);
     if (paragraph.length < 80 || paragraph.length > 300) issues.push(`${n}번 문단 ${paragraph.length}자 — 80~300자여야 합니다.`);
-    for (const [kind, words] of BANNED) for (const word of words) if (paragraph.includes(word)) issues.push(`${n}번 문단 ${kind} "${word}"`);
+    for (const [kind, words] of BANNED) for (const word of words) if (bannedAt(paragraph, word)) issues.push(`${n}번 문단 ${kind} "${word}"`);
     const cue = paragraph.match(/\([^)]*\)/);
     if (cue) issues.push(`${n}번 문단 괄호 지시 "${cue[0]}"`);
     subscribe += paragraph.split("구독").length - 1;

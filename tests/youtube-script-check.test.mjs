@@ -32,4 +32,6 @@ test("body rules: paragraph length, banned words, stage cues and unsourced resea
   assert.match(issues, /괄호 지시 "\(웃음\)"/);
   assert.match(issues, /3번 문단에 수치·연구·후기가 있는데/);
   assert.deepEqual(checkScriptBody([`${paragraph("c")} 연구 결과입니다.`], null, new Set([1])).issues, []);
+  assert.deepEqual(checkScriptBody([`${paragraph("d")} 회의에서 첫마디를 꺼내고 한마디 더 합니다.`], null).issues, []);
+  assert.match(checkScriptBody([`${paragraph("e")} 마디마다 다시 봅니다.`], null).issues.join(), /작업어 "마디"/);
 });
