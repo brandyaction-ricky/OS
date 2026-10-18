@@ -6,6 +6,8 @@ import type { OsRecord } from "@/lib/record-types";
 import type { RequestActor } from "./auth";
 import { splitFishNarration } from "./fish-audio";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
+import { readPipeline } from "./content-pipeline";
+import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKey, scriptJobCard } from "./youtube-script-job";
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
@@ -13,23 +15,28 @@ import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 // Staff AI jobs (owner decision 2026-10-17, method B): the requester's own Claude or Codex reaches the OS through
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
-const LEASE_MINUTES = 30;
+// ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
+const LEASE_MINUTES = { "scene-plan": 30, script: 120 } as const;
+const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
-  templateVersion: z.string(), ruleVersions: z.array(versionRef).optional(), requestedAt: z.string(),
+  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
-export const staffJobRequestSchema = z.object({ sourceId: z.string().uuid(), inputKey: z.string().length(64), task: z.literal("scene-plan") }).strict();
+export const staffJobRequestSchema = z.discriminatedUnion("task", [
+  z.object({ task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict(),
+  z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10) }).strict(),
+]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
   z.object({ action: z.literal("complete"), jobId: z.string().uuid(), lease: z.string().uuid(), model: z.string().trim().min(1).max(100),
-    result: z.object({ plan: z.unknown(), pronunciation: z.unknown() }).strict() }).strict(),
-  z.object({ action: z.literal("fail"), jobId: z.string().uuid(), lease: z.string().uuid(), reason: z.string().trim().min(1).max(300) }).strict(),
+    result: z.record(z.unknown()) }).strict(),
+  z.object({ action: z.literal("fail"), jobId: z.string().uuid(), lease: z.string().uuid(), reason: z.string().trim().min(1).max(1000) }).strict(),
 ]);
 
 const service = () => createServiceSupabase();
@@ -52,31 +59,44 @@ async function saveJob(job: OsRecord, changes: { status?: string; stage?: string
   return data as OsRecord;
 }
 
-async function openJobs(ownerId: string, sourceId?: string) {
+async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task"]) {
   let query = service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND)
     .eq("owner_id", ownerId).in("status", ["backlog", "active"]).is("archived_at", null).order("created_at", { ascending: true }).limit(50);
   if (sourceId) query = query.eq("parent_id", sourceId);
+  if (task) query = query.eq("metadata->>task", task);
   const { data, error } = await query;
   if (error) throw dbError();
   return (data ?? []) as OsRecord[];
 }
 
-/** 영상 제작 › 화면 설계 › [내 AI에 보내기]. The content owner asks; an open job for the same input is reused. */
-export async function requestScenePlanJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
-  const { state, plan, scriptText } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
-  if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 화면 설계를 요청할 수 있습니다.");
-  if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
-  for (const job of await openJobs(actor.id, input.sourceId)) {
-    if (meta(job).inputKey === input.inputKey) return publicStaffJob(job);
-    await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "원고가 바뀌어 새 요청으로 바꿨어요." } });
+/**
+ * [내 AI에 보내기] on ② 원고 or ③ 영상 제작. The content owner asks; an open job of the same kind for the same input is reused,
+ * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
+ */
+export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
+  let source: OsRecord; let title: string; let inputKey: string;
+  if (input.task === "scene-plan") {
+    const { state, plan, scriptText, title: adopted } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
+    if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
+    source = state.source; title = adopted; inputKey = input.inputKey;
+  } else {
+    const state = await readPipeline(actor, input.sourceId);
+    assertScriptInputs(state);
+    source = state.source; title = state.writing.packageTitle; inputKey = scriptInputKey(state);
+  }
+  if (source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당 직원만 내 AI에 보낼 수 있습니다.");
+  const targetMinutes = input.task === "script" ? input.targetMinutes : undefined;
+  for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
+    if (meta(job).inputKey === inputKey && meta(job).targetMinutes === targetMinutes) return publicStaffJob(job);
+    await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
-  const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: "scene-plan", sourceId: input.sourceId, inputKey: input.inputKey,
-    templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, requestedAt: now };
+  const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
+    ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : { targetMinutes }) };
   const { data, error } = await actor.supabase.from("os_records").insert({
-    id: randomUUID(), record_type: "ai_job", title: `${state.source.title} · 화면 설계와 발음 검토`.slice(0, 240),
+    id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
-    brand: state.source.brand, team: state.source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
+    brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
     tags: ["유튜브", "직원AI"], metadata,
   }).select("*").maybeSingle();
   if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
@@ -84,10 +104,10 @@ export async function requestScenePlanJob(actor: RequestActor, input: z.infer<ty
 }
 
 /** The latest job for one video, and whether the requester's AI has used its key lately (화면 칩 '내 AI'). */
-export async function staffJobStatus(actor: RequestActor, sourceId: string) {
+export async function staffJobStatus(actor: RequestActor, sourceId: string, task: JobMeta["task"]) {
   const [{ data: jobs, error }, { data: keys, error: keyError }] = await Promise.all([
     service().from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", STAFF_AI_JOB_KIND).eq("parent_id", sourceId)
-      .eq("owner_id", actor.id).is("archived_at", null).order("created_at", { ascending: false }).limit(1),
+      .eq("metadata->>task", task).eq("owner_id", actor.id).is("archived_at", null).order("created_at", { ascending: false }).limit(1),
     service().from("os_agent_keys").select("last_used_at").eq("owner_user_id", actor.id).eq("active", true),
   ]);
   if (error || keyError) throw dbError();
@@ -111,30 +131,52 @@ async function ownJob(agent: RequestActor, jobId: string) {
   return data as OsRecord;
 }
 
+async function closeStale(job: OsRecord, m: JobMeta): Promise<never> {
+  const where = m.task === "script" ? "② 원고" : "③ 영상 제작";
+  await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: `기획·제목·원고·영상 기준이 바뀌어 이 요청은 닫았어요. ${where} 화면에서 다시 보내 주세요.` } });
+  throw new ApiError(409, "STAFF_AI_JOB_STALE", "입력이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
+}
+
 /** The current script and approvals; a job whose input moved on is closed instead of producing a stale design. */
 async function currentInput(job: OsRecord) {
   const m = meta(job);
   const automation = await readYoutubeAutomationInput(service(), m.sourceId);
-  const stale = automation.plan.inputKey !== m.inputKey || !automation.scriptText || m.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION;
-  if (stale) {
-    await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: "원고·승인·영상 기준이 바뀌어 이 요청은 닫았어요. 영상 제작 화면에서 다시 보내 주세요." } });
-    throw new ApiError(409, "STAFF_AI_JOB_STALE", "원고나 영상 기준이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
-  }
+  if (automation.plan.inputKey !== m.inputKey || !automation.scriptText || m.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION) await closeStale(job, m);
   return { automation, segments: splitFishNarration(automation.scriptText!) };
+}
+
+/** The approved plan and adopted title for a ② job; closed the same way when they moved on. */
+async function currentScriptInput(job: OsRecord) {
+  const m = meta(job);
+  const state = await readPipeline({ supabase: service() }, m.sourceId);
+  try { assertScriptInputs(state); } catch { await closeStale(job, m); }
+  if (scriptInputKey(state) !== m.inputKey) await closeStale(job, m);
+  return state;
 }
 
 export async function claimStaffJob(agent: RequestActor, jobId: string) {
   const job = await ownJob(agent, jobId);
   const m = meta(job);
   if (job.status !== "backlog" && !(job.status === "active" && !leaseLive(m.lease))) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", "이미 처리 중이거나 끝난 작업입니다.");
+  const minutes = LEASE_MINUTES[m.task];
+  const take = async () => {
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + minutes * 60_000).toISOString() };
+    await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, lease, claimedAt: new Date().toISOString(), issues: [] } });
+    return lease;
+  };
+  if (m.task === "script") {
+    const state = await currentScriptInput(job);
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+      instructions: await scriptJobCard(service(), state, m.targetMinutes ?? 10, minutes) };
+  }
   const { automation, segments } = await currentInput(job);
-  const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + LEASE_MINUTES * 60_000).toISOString() };
-  await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, lease, claimedAt: new Date().toISOString(), issues: [] } });
+  const lease = await take();
   const scene = scenePlanPrompt({ script: automation.scriptText!, title: automation.title, thumbnailCopy: automation.thumbnailCopy,
     evidence: String(automation.state.source.metadata.evidence ?? ""), rules: await youtubeSceneRuleRefs({ supabase: service() }) }).prompt;
   return {
-    jobId, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-    instructions: `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 아래 두 가지를 만들어 JSON 하나로 제출하세요.\n\n## 1. 화면 설계 (result.plan)\n${scene}\n\n## 2. 발음 검토 (result.pronunciation)\n${pronunciationPrompt(segments, true)}\n\n## 제출\nprocess_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result={ "plan": …, "pronunciation": … }를 보내세요. 형식이 틀리면 고칠 점이 돌아오니 고쳐서 다시 complete 하세요. ${LEASE_MINUTES}분 안에 끝내지 못하거나 처리할 수 없으면 action=fail과 reason(한 줄)을 보내세요.`,
+    jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+    instructions: `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다. 아래 두 가지를 만들어 JSON 하나로 제출하세요.\n\n## 1. 화면 설계 (result.plan)\n${scene}\n\n## 2. 발음 검토 (result.pronunciation)\n${pronunciationPrompt(segments, true)}\n\n## 제출\nprocess_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result={ "plan": …, "pronunciation": … }를 보내세요. 형식이 틀리면 고칠 점이 돌아오니 고쳐서 다시 complete 하세요. ${minutes}분 안에 끝내지 못하거나 처리할 수 없으면 action=fail과 reason(한 줄)을 보내세요.`,
     resultSchema: { type: "object", additionalProperties: false, properties: { plan: SCENE_PLAN_JSON_SCHEMA, pronunciation: PRONUNCIATION_JSON_SCHEMA }, required: ["plan", "pronunciation"] },
   };
 }
@@ -145,19 +187,23 @@ function liveLease(job: OsRecord, token: string) {
   return m;
 }
 
+/** The job stays with this AI so it can fix and resubmit; the screen shows the same problems. */
+async function keepIssues<T>(job: OsRecord, m: JobMeta, check: () => Promise<T> | T) {
+  try { return await check(); } catch (error) {
+    if (error instanceof ApiError && error.status === 422) await saveJob(job, { metadata: { ...m, issues: [error.message] } }).catch(() => undefined);
+    throw error;
+  }
+}
+
 export async function completeStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
+  if (m.task === "script") return completeScriptJob(agent, job, m, input);
   const { automation, segments } = await currentInput(job);
-  let plan; let pronunciation;
-  try {
-    plan = checkScenePlan(input.result.plan, segments, 422);
-    pronunciation = checkPronunciation(input.result.pronunciation, segments, 422);
-  } catch (error) {
-    // The job stays with this AI so it can fix and resubmit; the screen shows the same problems.
-    if (error instanceof ApiError) await saveJob(job, { metadata: { ...m, issues: [error.message] } }).catch(() => undefined);
-    throw error;
-  }
+  const { plan, pronunciation } = await keepIssues(job, m, () => ({
+    plan: checkScenePlan(input.result.plan, segments, 422),
+    pronunciation: checkPronunciation(input.result.pronunciation, segments, 422),
+  }));
   const source = automation.state.source;
   const rest = { ...source.metadata };
   delete rest.narratedScenePlanDraft;
@@ -171,6 +217,17 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (!saved) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "그사이 콘텐츠가 바뀌었습니다. 같은 결과로 다시 complete 해 주세요.");
   await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: now } });
   return { done: true, scenes: segments.length, unresolved: plan.unresolved.length, pronunciationReady: pronunciation.ready };
+}
+
+async function completeScriptJob(agent: RequestActor, job: OsRecord, m: JobMeta, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "complete" }>) {
+  await currentScriptInput(job);
+  const saved = await keepIssues(job, m, () => {
+    const parsed = scriptBundleSchema.safeParse(input.result);
+    if (!parsed.success) throw new ApiError(422, "SCRIPT_BUNDLE_INVALID", `제출 묶음 형식이 맞지 않습니다: ${parsed.error.issues.slice(0, 10).map((issue) => `${issue.path.join(".") || "result"} ${issue.message}`).join(" / ")}`);
+    return saveScriptBundle({ supabase: service(), id: agent.ownerId }, m.sourceId, parsed.data, { type: "staff_ai", model: input.model, jobId: job.id, targetMinutes: m.targetMinutes ?? 10 });
+  });
+  await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+  return { done: true, ...saved, next: "담당 직원이 ② 원고 화면에서 읽고 확인한 뒤 대표 최종 승인으로 넘깁니다." };
 }
 
 export async function failStaffJob(agent: RequestActor, input: Extract<z.infer<typeof staffJobWorkerSchema>, { action: "fail" }>) {

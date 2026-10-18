@@ -17,7 +17,7 @@ export const MCP_TOOLS = [
   },
   {
     name: "list_youtube_ai_jobs",
-    description: "이 키 주인이 유튜브 영상 제작 화면에서 요청한 AI 작업(화면 설계와 발음 검토) 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. 작업이 있으면 process_youtube_ai_job으로 하나씩 처리합니다.",
+    description: "이 키 주인이 유튜브 ② 원고·③ 영상 제작 화면에서 요청한 AI 작업(원고 작성, 화면 설계와 발음 검토) 대기열을 읽습니다. knowledge.read·records.write 범위가 필요합니다. 작업이 있으면 process_youtube_ai_job으로 하나씩 처리합니다.",
     inputSchema: {type:"object",properties:{},additionalProperties:false},
     annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:false},
   },
@@ -348,7 +348,7 @@ export async function callMcpTool(request: ToolRequest, organizationId: string, 
     return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker");
   }
   if(request.name==="process_youtube_ai_job"){
-    const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(300).optional()}).strict().parse(args);
+    const input=z.object({action:z.enum(["claim","complete","fail"]),job_id:documentId,lease:documentId.optional(),model:z.string().trim().min(1).max(100).optional(),result:z.record(z.unknown()).optional(),reason:z.string().trim().min(1).max(1000).optional()}).strict().parse(args);
     return fetchApi("/api/v1/content/youtube-automation/ai-jobs/worker",{method:"POST",body:JSON.stringify({action:input.action,jobId:input.job_id,lease:input.lease,model:input.model,result:input.result,reason:input.reason})});
   }
   if (request.name === "list_record_versions") {

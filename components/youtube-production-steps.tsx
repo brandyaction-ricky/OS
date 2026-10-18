@@ -11,7 +11,7 @@ import "./youtube-production-steps.css";
 interface Render { status: string; stage: string; lastErrorCode: string | null }
 interface VoiceRun { id: string; status: string; stage: string; segmentCount: number; segmentsReady: number; readyIndexes: number[]; needsAttention: string[]; lastErrorCode: string | null; createdAt: string; render: Render | null }
 interface StaffJob { id: string; status: string; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean }
-interface StaffJobStatus { job: StaffJob | null; myAi: { keys: number; lastUsedAt: string | null } }
+export interface StaffJobStatus { job: StaffJob | null; myAi: { keys: number; lastUsedAt: string | null } }
 interface RenderPc { state: "online" | "offline" | "unknown"; ageSeconds: number | null; diskFreeGb: number | null; lowDisk: boolean; job: { step: string } | null; queue: { voice: number; render: number }; averageRenderMinutes: number | null }
 interface StoredPlan {
   inputKey?: string; templateVersion?: string; generatedAt?: string; unresolvedAcknowledged?: { by?: string; count?: number }; author?: { type?: string; model?: string };
@@ -235,7 +235,8 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
 }
 
 /** 화면 설계 by the requester's own AI: send, then the job's state in words (대기 · 처리 중 · 확인 필요 · 못 함). */
-function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void }) {
+/** [내 AI에 보내기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
+export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void }) {
   const job = status?.job;
   const lastSeen = sinceIso(status?.myAi.lastUsedAt ?? null);
   const connected = (status?.myAi.keys ?? 0) > 0;

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
       : await failStaffJob(actor, input);
     return NextResponse.json(result, { headers });
   } catch (error) {
-    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "STAFF_AI_JOB_INPUT", "작업 입력을 확인해 주세요. action · job_id · lease · result(plan, pronunciation) · model이 필요합니다."));
+    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "STAFF_AI_JOB_INPUT", "작업 입력을 확인해 주세요. action · job_id · lease · model · result(claim 때 받은 지시의 형식)가 필요합니다."));
     return apiErrorResponse(error);
   }
 }

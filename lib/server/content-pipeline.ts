@@ -186,7 +186,7 @@ export function releaseWorkflowState(source: OsRecord, kit: OsRecord | null, fin
   return { plan, signature, approved, canApprove, blocker, nextAction: approved ? "승인한 조건으로 YouTube 업로드" : canApprove ? "발행 승인" : "발행 조건 준비", lastDecision };
 }
 
-export async function readPipeline(actor: RequestActor, id: string) {
+export async function readPipeline(actor: Pick<RequestActor, "supabase">, id: string) {
   const { data: source, error } = await actor.supabase.from("os_records").select("*").eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error || !source) throw new ApiError(404, "CONTENT_SOURCE_NOT_FOUND", "기준 콘텐츠를 찾지 못했습니다.");
   const records: OsRecord[] = [];
@@ -232,7 +232,7 @@ export async function reviewRelease(actor: RequestActor, id: string, expectedVer
   return saveMetadata(actor, state.source, { releaseWorkflow: { ...workflow, schemaVersion: RELEASE_WORKFLOW_SCHEMA_VERSION, decisions: [...workflow.decisions, decision] } });
 }
 
-async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Record<string, unknown>) {
+export async function saveMetadata(actor: Pick<RequestActor, "supabase" | "id">, source: OsRecord, changes: Record<string, unknown>) {
   const { data, error } = await actor.supabase.from("os_records").update({ metadata: { ...source.metadata, ...changes }, updated_by: actor.id })
     .eq("id", source.id).eq("version", source.version).is("archived_at", null).select("*").maybeSingle();
   if (error) throw new ApiError(500, "PIPELINE_SAVE_FAILED", "공정 이력을 저장하지 못했습니다.");
@@ -240,7 +240,7 @@ async function saveMetadata(actor: RequestActor, source: OsRecord, changes: Reco
   return data as OsRecord;
 }
 
-function assertExpectedVersion(source: OsRecord, expectedVersion: number) {
+export function assertExpectedVersion(source: OsRecord, expectedVersion: number) {
   if (source.version !== expectedVersion) throw new ApiError(409, "PIPELINE_CHANGED", "다른 작업이 먼저 변경했습니다. 새로 불러와 주세요.");
 }
 
