@@ -65,7 +65,7 @@ export function YoutubeProjectsScreen() {
             <td className="yp-c-name"><div className="yp-pname">
               <span className={`yp-pico${project.yp.topic.type === "anim" ? " yp-anim" : ""}`} aria-hidden="true">{project.yp.topic.type === "anim" ? <Sparkles size={18} /> : <Film size={18} />}</span>
               <div style={{ minWidth: 0 }}><Link href={projectHref(project)}><b>{projectName(project)}</b></Link>
-                <div className="yp-psub"><span className="yp-tag">{stageLabel(project)}</span>{Object.values(project.yp.gates).some(gate => gate.state === "wait") ? <span className="yp-tag yp-acc">컨펌 대기</span> : null}</div></div>
+                <div className="yp-psub"><span className="yp-tag">{stageLabel(project)}</span>{Object.values(project.yp.gates).some(gate => gate.state === "wait") ? <span className="yp-tag yp-acc">컨펌 대기</span> : null}{Object.values(project.yp.gates).some(gate => gate.state === "changes") ? <span className="yp-tag yp-warn">수정 요청</span> : null}{Object.values(project.yp.gates).some(gate => gate.state === "hold") ? <span className="yp-tag yp-bad">보류</span> : null}</div></div>
             </div></td>
             <td className="yp-c-kind">{project.yp.topic.type ? YP_KIND_SHORT[project.yp.topic.type] : "—"}</td>
             <td>{shortDate(project.yp.contentUpdatedAt)}</td>

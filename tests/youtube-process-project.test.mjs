@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   newProjectMeta, parseYoutubeRef, projectFromRecord, projectHref, protectedYoutubeChange, recentProjects, searchProjects,
-  similarProjects, stepHref, topicEditable, topicLines, topicMissing, YP_MAX_LINES,
+  similarProjects, stepHref, topicEditable, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES,
 } from "../lib/youtube-process/project.ts";
 
 const project = (id, title, stage = "topic", days = 0, gate = "none") => {
@@ -27,7 +27,12 @@ test("topic confirm request names the first missing field (수용 3)", () => {
 
 test("topic fields lock while waiting for the confirm and after it", () => {
   assert.equal(topicEditable(project("a", "x")), true);
-  assert.equal(topicEditable(project("a", "x", "topic", 0, "changes")), true);
+  const changes = project("a", "x", "topic", 0, "changes");
+  assert.equal(topicEditable(changes), false, "수정 요청 with no ticked field leaves nothing to edit");
+  changes.yp.gates.topic.fields = ["topic.title"];
+  assert.equal(topicEditable(changes), true);
+  assert.equal(topicFieldEditable(changes, "title"), true);
+  assert.equal(topicFieldEditable(changes, "target"), false);
   assert.equal(topicEditable(project("a", "x", "topic", 0, "wait")), false);
   assert.equal(topicEditable(project("a", "x", "draft", 0, "ok")), false);
 });

@@ -688,13 +688,13 @@
     },
     {
       "file": "20261015130000_youtube_process_v1.sql",
-      "sha256": "e886438e3fee0113661032b24e6a819f98155185c4e4059e7b1b8de65d37e41c",
+      "sha256": "74873d798f73d4887632631a17ea83483bf57d75c2ecccf4c9612c5f807bac75",
       "purpose": "유튜브 공정 v1: content_feedback record type, append-only confirmation history, one open YouTube AI job per target, browser recording audio types, six notification reasons",
       "requiresApproval": true,
       "developmentApprovedAt": null,
       "productionApprovedAt": null,
       "appliedEnvironments": [],
-      "notes": "Draft, not applied anywhere. Additive only; the notification guard is the v0.7 definition with yt_* reasons added. The confirm function joins the file in T4 before the first application, and this checksum is updated then."
+      "notes": "Draft, not applied anywhere. Additive only; the notification guard is the v0.7 definition with yt_* reasons added. Confirm decisions are checked by the server (lib/youtube-process/confirm.ts); this migration only adds their history table and notice reasons (all six yt_* reasons also allowed as self-notices)."
     }
   ],
   "legacyMigrations": [

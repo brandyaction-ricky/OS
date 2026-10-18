@@ -37,11 +37,40 @@ test.describe("유튜브 공정 v1 smoke", () => {
     await expect(page.getByText("2개를 더 만들고")).toBeVisible();
     await expect(page.getByLabel("주제", { exact: true })).toHaveAttribute("readonly", "");
     await page.locator("#nav-content").getByRole("link", { name: "프로젝트", exact: true }).click();
+    await expect(page).toHaveURL(/\/content\/projects$/);
     for (const line of lines) {
       const row = page.locator(".yp-plist tr", { hasText: line });
       await expect(row).toHaveCount(1);
       await expect(row.locator(".yp-tag", { hasText: "컨펌 대기" })).toBeVisible();
     }
+  });
+
+  test("수정 요청 opens only the ticked fields; an unchanged re-request needs a reason; OK moves to 처리한 것 (수용 4 · 6)", async ({ page }) => {
+    await page.goto("/content/plan?project=demo-p8&view=topic");
+    // 수용 4: while the confirm waits, every field is read-only.
+    await expect(page.getByLabel("주제", { exact: true })).toHaveAttribute("readonly", "");
+    await page.locator(".yp-cwait").getByRole("button", { name: "수정 요청" }).click();
+    await page.locator(".yp-confirm-fields").getByLabel("주제", { exact: true }).check();
+    await page.locator(".yp-confirm-fields").getByLabel("정밀 타겟").check();
+    await page.locator("#yp-confirm-memo").fill("타겟을 더 좁혀 주세요");
+    await page.getByRole("button", { name: "수정 요청 보내기" }).click();
+    await expect(page.getByText("대표 수정 요청")).toBeVisible();
+    await expect(page.locator("#yp-topic-title")).not.toHaveAttribute("readonly", "");
+    await expect(page.locator("#yp-topic-target")).not.toHaveAttribute("readonly", "");
+    await expect(page.locator("#yp-topic-note")).toHaveAttribute("readonly", "");
+    await expect(page.getByLabel("롱폼 애니메이션")).toBeDisabled();
+    await page.locator(".yp-fl-act button.yp-btn").click();
+    await expect(page.locator("#yp-topic-reply")).toBeVisible();
+    await page.locator("#yp-topic-reply").fill("지금 타겟이 맞다고 봐요");
+    await page.getByRole("button", { name: "이유와 함께 다시 요청" }).click();
+    await expect(page.locator(".yp-fl-status")).toContainText("대표 컨펌 대기");
+    await expect(page.getByText("PD 답글")).toBeVisible();
+    await page.locator("#nav-ceo").getByRole("link", { name: "컨펌" }).click();
+    await page.locator(".yp-ci", { hasText: "구독자 1만 명" }).click();
+    await page.locator(".yp-cv").getByRole("button", { name: "OK" }).click();
+    await page.getByRole("tab", { name: /내가 처리한 것/ }).click();
+    await page.locator(".yp-ci", { hasText: "구독자 1만 명" }).click();
+    await expect(page.getByRole("button", { name: "결정 되돌리기" })).toBeVisible();
   });
 
   for (const width of [1440, 390]) for (const theme of ["dark", "light"]) {

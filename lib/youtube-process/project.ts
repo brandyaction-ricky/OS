@@ -1,4 +1,5 @@
 // 유튜브 공정 v1 project rules shared by the API, the screens and the demo store (지시서 6-2 · 8-1).
+import { editableFields } from "./confirm.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
 export type YpKind = "live" | "anim";
 export type YpGate = "topic" | "draft" | "review";
@@ -49,9 +50,16 @@ export function projectFromRecord(row: ProjectRow): YpProject | null {
 /** Project name = first topic line (4-2); stays as the record title. */
 export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 프로젝트";
 
-/** The topic fields can change only while the topic is being written or was sent back (8-1). */
-export function topicEditable(project: YpProject) {
-  return project.yp.stage === "topic" && ["none", "changes", "hold"].includes(project.yp.gates.topic.state);
+/** Some topic field can change: while writing, on hold, or the fields ticked in 수정 요청 (8-1, editableFields). */
+export function topicEditable(project: Pick<YpProject, "yp">) {
+  const fields = editableFields(project, "topic");
+  return fields === "all" || fields.length > 0;
+}
+/** Topic edit keys (API and form) and the field keys the approver ticks. */
+export const TOPIC_FIELD_OF = { title: "topic.title", kind: "topic.type", target: "topic.target", refs: "topic.refs", note: "topic.note" } as const;
+export function topicFieldEditable(project: Pick<YpProject, "yp">, key: keyof typeof TOPIC_FIELD_OF) {
+  const fields = editableFields(project, "topic");
+  return fields === "all" || fields.includes(TOPIC_FIELD_OF[key]);
 }
 
 export function recentProjects<T extends Pick<YpProject, "yp">>(projects: T[], limit = YP_RECENT) {

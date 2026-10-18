@@ -1,6 +1,6 @@
 -- 유튜브 공정 v1 (M1). Additive only: no existing row, column, policy or function meaning changes.
 -- Draft: apply only after owner approval, development database first.
--- The confirm function (os_youtube_confirm) joins this file in T4, before it is applied anywhere.
+-- Confirm decisions are checked and saved by the server (lib/youtube-process/confirm.ts); this table keeps their history.
 begin;
 
 -- 1. Feedback, feedback requests and member opinions are their own record type.
@@ -53,8 +53,8 @@ set allowed_mime_types = (
 )
 where id = 'os-content-media';
 
--- 5. Notification guard: the v0.7 definition with six 유튜브 공정 reasons.
---    yt_confirm_request (6-hour reminder), yt_due and yt_upload may also be sent to oneself.
+-- 5. Notification guard: the v0.7 definition with six 유튜브 공정 reasons. The server writes each notice as
+--    its recipient (like content automation), so all six are also allowed as self-notifications.
 create or replace function public.os_notification_guard() returns trigger
 language plpgsql security invoker set search_path=public,pg_temp as $$
 begin
@@ -73,7 +73,7 @@ begin
   if new.record_type<>'notification' then return new; end if;
   if new.title<>'업무 알림' or new.description<>'' or new.status not in ('read','unread')
     or new.owner_id is null
-    or (new.owner_id=new.created_by and coalesce(new.metadata->>'reason','') not in ('scheduled','token_expiring','knowledge_review','knowledge_update','knowledge_access','knowledge_reminder','knowledge_mention','ai_result','computer_silent','publish_due','yt_confirm_request','yt_due','yt_upload'))
+    or (new.owner_id=new.created_by and coalesce(new.metadata->>'reason','') not in ('scheduled','token_expiring','knowledge_review','knowledge_update','knowledge_access','knowledge_reminder','knowledge_mention','ai_result','computer_silent','publish_due','yt_confirm_request','yt_confirm_result','yt_feedback','yt_feedback_request','yt_due','yt_upload'))
     or not exists(select 1 from public.os_profiles where id=new.owner_id and is_active)
     -- Preserve the already-deployed HR notification contract when that optional
     -- schema is present; installing this workspace must not disable other menus.

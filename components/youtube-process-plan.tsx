@@ -4,12 +4,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, topicEditable, topicLines, topicMissing,
+  parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
+import { ConfirmActions } from "./youtube-process-confirm";
+import { useYoutubeCanConfirm } from "./use-youtube-confirm";
+import { editedSinceDecision, GATE_FIELDS } from "@/lib/youtube-process/confirm";
 
 const LAST_KEY = "brandy-yp-last-project";
 const VIEWS = ["topic", "draft", "outline"] as const;
@@ -19,9 +22,9 @@ const hhmm = (date: Date) => `${String(date.getHours()).padStart(2, "0")}:${Stri
 const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${hhmm(date)}`; };
 const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
 
-function Field({ n, title, question, need, children }: { n: number; title: string; question?: string; need: boolean; children: ReactNode }) {
+function Field({ n, title, question, need, rev, children }: { n: number; title: string; question?: string; need: boolean; rev?: boolean; children: ReactNode }) {
   return <section className="yp-fsec">
-    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{question ? <span className="yp-gq">{question}</span> : null}</div>
+    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{question ? <span className="yp-gq">{question}</span> : null}{rev ? <span className="yp-revtag">고칠 칸</span> : null}</div>
     <div className="yp-fsec-b">{children}</div>
   </section>;
 }
@@ -32,6 +35,7 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
   const params = useSearchParams();
   const projectParam = params.get("project");
   const { accessToken, demo, profile } = useSession();
+  const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const [project, setProject] = useState<YpProject | null>(null);
   const [projects, setProjects] = useState<YpProject[]>([]);
@@ -46,6 +50,8 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
   const [refUrl, setRefUrl] = useState("");
   const [refError, setRefError] = useState("");
   const [loading, setLoading] = useState(projectParam !== "new");
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState("");
   const saving = useRef<Promise<YpProject | null> | null>(null);
   // The project on screen, so the URL change after a first save does not reload it over newer typing.
   const loadedId = useRef<string | null>(null);
@@ -108,15 +114,19 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
   }, [client, form, project, router]);
 
   const saveIfDirty = () => { if (dirty && editable) void save(); };
+  const open = (key: "title" | "kind" | "target" | "refs" | "note") => project ? topicFieldEditable(project, key) : projectParam === "new";
   const editAndSave = (patch: Partial<Form>) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); void save(next); };
 
-  async function gate(action: "request" | "cancel") {
+  async function gate(action: "request" | "cancel", reply?: string) {
     if (!client) return;
     setBusy(true); setError(""); setCreated([]);
     try {
       const base = saving.current ? await saving.current : dirty || !project ? await save() : project;
       if (!base) return;
-      const result = await client.topicGate(base.id, action, base.version);
+      // S11-5: after 수정 요청, re-requesting without changing anything needs a one-line reason.
+      if (action === "request" && !reply && base.yp.gates.topic.state === "changes" && !editedSinceDecision(base, "topic")) { setReplyOpen(true); return; }
+      const result = await client.topicGate(base.id, action, base.version, reply);
+      setReplyOpen(false); setReplyText("");
       setProject(result.project); setForm(formOf(result.project)); setDirty(false); setCreated(result.created);
       if (result.created.length) setProjects(list => [...result.created, ...list]);
     } catch (reason) {
@@ -127,6 +137,7 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
   if (!projectParam) return <>{header}<p className="yp-hint" role="status">프로젝트를 여는 중이에요…</p></>;
   const shell = project ?? { id: "new", version: 0, title: form.title, assigneeId: form.assigneeId, ownerId: "", updatedAt: "", yp: { v: 1 as const, stage: "topic" as const, topic: { type: form.kind, target: form.target, note: form.note, refs: form.refs }, gates: { topic: { state: "none" as const, round: 0 }, draft: { state: "none" as const, round: 0 }, review: { state: "none" as const, round: 0 } }, contentUpdatedAt: "" } };
   const topicGate = shell.yp.gates.topic;
+  const rev = (field: string) => topicGate.state === "changes" && (topicGate.fields ?? []).includes(field);
   const lines = topicLines(form.title);
   const action: YpAction = view !== current && current < YP_FLOW.length
     ? { kind: "link", label: `지금 단계로: ${YP_FLOW[current]}`, href: stepHref(current, shell.id) }
@@ -146,7 +157,16 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
       {view === 0 ? <div onBlur={saveIfDirty}>
         <div className="yp-shead"><div><h2>주제</h2><p className="yp-sub">어떤 영상을 만들지 정해요. 대표는 이 내용을 보고 할지 말지만 정해요.</p></div>
           <div className="yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}<button type="button" className="yp-btn yp-sm" disabled={!editable || !dirty} onClick={() => void save()}>임시 저장</button></div></div>
-        {topicGate.state === "wait" ? <div className="yp-cwait" role="status"><div className="yp-cwait-h"><b>주제 컨펌 · 대표 대기</b><span className="yp-hint">{md(topicGate.requestedAt)} 올라감 · 대기 {daysSince(topicGate.requestedAt)}일</span></div><p className="yp-hint">기다리는 동안 이 단계는 고칠 수 없어요. 고치려면 위 [요청 취소]를 누르세요. 대표가 OK하면 기획안 단계가 열려요.</p></div> : null}
+        {topicGate.state === "wait" ? <div className="yp-cwait" role="status"><div className="yp-cwait-h"><b>주제 컨펌 · 대표 대기</b><span className="yp-hint">{md(topicGate.requestedAt)} 올라감 · 대기 {daysSince(topicGate.requestedAt)}일 · 6시간마다 다시 알림 (22~08시 제외)</span></div>
+          {(topicGate as { pdReply?: string }).pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{(topicGate as { pdReply?: string }).pdReply}”</p> : null}
+          {canConfirm && client && project ? <ConfirmActions project={project} gate="topic" client={client} onDone={next => { setProject(next); setForm(formOf(next)); }} />
+            : <p className="yp-hint">기다리는 동안 이 단계는 고칠 수 없어요. 고치려면 위 [요청 취소]를 누르세요. 대표가 OK하면 기획안 단계가 열려요.</p>}</div> : null}
+        {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />고칠 칸: {(topicGate.fields ?? []).map(field => GATE_FIELDS.topic[field] ?? field).join(", ")}. 고친 뒤 위 [주제 컨펌 다시 요청]을 누르세요.</div></div> : null}
+        {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 다시 요청할 수 있어요.</div></div> : null}
+        {replyOpen ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); if (replyText.trim()) void gate("request", replyText.trim()); }}>
+          <label>고친 칸이 없어요. 다시 요청하는 이유를 한 줄 써 주세요 (대표 화면에 ‘PD 답글’로 보여요)<input className="yp-in" id="yp-topic-reply" maxLength={200} value={replyText} onChange={event => setReplyText(event.target.value)} /></label>
+          <div><button type="submit" className="yp-btn yp-pri" disabled={busy || !replyText.trim()}>이유와 함께 다시 요청</button> <button type="button" className="yp-btn" onClick={() => setReplyOpen(false)}>취소</button></div>
+        </form> : null}
         {!editable && topicGate.state === "ok" ? <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>주제는 대표 컨펌을 받아 확정됐어요.</div></div> : null}
         <div className="yp-savebar">
           <label>담당 PD <select className="yp-pdsel" id="yp-topic-pd" value={form.assigneeId ?? ""} onChange={event => editAndSave({ assigneeId: event.target.value || null })}>
@@ -154,36 +174,36 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
           <span className="yp-hint">OS 구성원 목록 · 안 고르면 주제를 넣은 사람</span>
           <span>프로젝트 이름: <b>{lines[0] ?? <span className="yp-hint">주제를 쓰면 자동으로 채워져요</span>}</b></span>
         </div>
-        <Field n={1} title="주제" question="어떤 영상을 만들까요?" need>
+        <Field n={1} title="주제" question="어떤 영상을 만들까요?" need rev={rev("topic.title")}>
           <div className="yp-max720">
-            <textarea className="yp-in" id="yp-topic-title" rows={2} aria-label="주제" placeholder="예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유" readOnly={!editable} value={form.title} onChange={event => edit({ title: event.target.value })} />
+            <textarea className="yp-in" id="yp-topic-title" rows={2} aria-label="주제" placeholder="예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유" readOnly={!open("title")} value={form.title} onChange={event => edit({ title: event.target.value })} />
             <p className="yp-hint">한 줄로 써요. 여러 줄로 쓰면 줄마다 프로젝트가 만들어져요.</p>
             {similar.length ? <div className="yp-note yp-warn"><div>비슷한 주제가 이미 있어요: {similar.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}><b>{projectName(row)}</b></Link> ({stageLabel(row)})</span>)}</div></div> : null}
             {lines.length > 1 && editable ? <div className="yp-note"><Info size={16} className="yp-i" aria-hidden="true" /><div>{lines.length}줄이에요 → 컨펌을 요청하면 프로젝트 {lines.length}개가 만들어져요. 유형 · 정밀 타겟 · 레퍼런스 · 담당 PD는 같은 값으로 들어가요.</div></div> : null}
           </div>
         </Field>
-        <Field n={2} title="유형" question="기본값이 없어요. 꼭 골라주세요." need>
+        <Field n={2} title="유형" question="기본값이 없어요. 꼭 골라주세요." need rev={rev("topic.type")}>
           <div className="yp-radio-c" role="radiogroup" aria-label="유형">
             {(["live", "anim"] as const).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
-              <input type="radio" name="yp-topic-kind" value={kind} checked={form.kind === kind} disabled={!editable} onChange={() => editAndSave({ kind })} />
+              <input type="radio" name="yp-topic-kind" value={kind} checked={form.kind === kind} disabled={!open("kind")} onChange={() => editAndSave({ kind })} />
               <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : "작화 · 생성 · 편집"}</small></span>
             </label>)}
           </div>
         </Field>
-        <Field n={3} title="정밀 타겟" question="누가, 언제, 무엇이 막혀서 볼까요?" need>
-          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 퇴근 후 2시간 안에서 무엇부터 할지 막힌 30대 직장인" readOnly={!editable} value={form.target} onChange={event => edit({ target: event.target.value })} /></div>
+        <Field n={3} title="정밀 타겟" question="누가, 언제, 무엇이 막혀서 볼까요?" need rev={rev("topic.target")}>
+          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 퇴근 후 2시간 안에서 무엇부터 할지 막힌 30대 직장인" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} /></div>
         </Field>
-        <Field n={4} title="레퍼런스" question="유튜브 링크 · 개수 제한 없음" need={false}>
+        <Field n={4} title="레퍼런스" question="유튜브 링크 · 개수 제한 없음" need={false} rev={rev("topic.refs")}>
           <div className="yp-max720">
             {form.refs.length ? <ul className="yp-open-list">{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}>
               <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
-              {editable ? <>
+              {open("refs") ? <>
                 <button type="button" className="yp-ib" aria-label="위로" disabled={!index} onClick={() => { const refs = [...form.refs]; [refs[index - 1], refs[index]] = [refs[index], refs[index - 1]]; editAndSave({ refs }); }}><ArrowUp size={14} /></button>
                 <button type="button" className="yp-ib" aria-label="아래로" disabled={index === form.refs.length - 1} onClick={() => { const refs = [...form.refs]; [refs[index + 1], refs[index]] = [refs[index], refs[index + 1]]; editAndSave({ refs }); }}><ArrowDown size={14} /></button>
                 <button type="button" className="yp-ib" aria-label="빼기" onClick={() => editAndSave({ refs: form.refs.filter((_, at) => at !== index) })}><X size={14} /></button>
               </> : null}
             </li>)}</ul> : !editable ? <span className="yp-hint">없음</span> : null}
-            {editable ? <form className="yp-savebar" onSubmit={event => {
+            {open("refs") ? <form className="yp-savebar" onSubmit={event => {
               event.preventDefault();
               const ref = parseYoutubeRef(refUrl);
               if (!ref) { setRefError("유튜브 영상 주소를 붙여 넣어 주세요. (youtube.com/watch · youtu.be · shorts)"); return; }
@@ -195,8 +215,8 @@ export function YoutubePlanScreen({ header }: { header: ReactNode }) {
             {refError ? <div className="yp-errline" role="alert">{refError}</div> : null}
           </div>
         </Field>
-        <Field n={5} title="전달 사항" question="추가로 설명이 필요한 부분이 있으면 적어주세요" need={false}>
-          <textarea className="yp-in yp-max720" id="yp-topic-note" rows={2} aria-label="전달 사항" readOnly={!editable} value={form.note} onChange={event => edit({ note: event.target.value })} />
+        <Field n={5} title="전달 사항" question="추가로 설명이 필요한 부분이 있으면 적어주세요" need={false} rev={rev("topic.note")}>
+          <textarea className="yp-in yp-max720" id="yp-topic-note" rows={2} aria-label="전달 사항" readOnly={!open("note")} value={form.note} onChange={event => edit({ note: event.target.value })} />
         </Field>
         <div className="yp-lists"><section className="yp-card"><div className="yp-card-h">우리가 했던 주제</div>
           <div>{recentProjects(others, 5).map(row => <Link key={row.id} className="yp-lrow" href={stepHref(0, row.id)}><div className="yp-lt"><b>{projectName(row)}</b><div className="yp-lm"><span>{row.yp.topic.type ? YP_KIND_SHORT[row.yp.topic.type] : "유형 없음"}</span><span>{stageLabel(row)}</span><span>{md(row.yp.contentUpdatedAt).split(" ")[0]}</span></div></div></Link>)}

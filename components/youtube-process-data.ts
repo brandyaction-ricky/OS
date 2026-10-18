@@ -1,7 +1,8 @@
 "use client";
 
 import { apiRequest, ApiRequestError, listMembers } from "@/lib/api-client";
-import { newProjectMeta, topicEditable, topicLines, topicMissing, YP_MAX_LINES, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
+import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
+import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
@@ -10,9 +11,12 @@ export interface YpClient {
   get(id: string): Promise<YpProject>;
   create(input: YpTopicInput): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
-  topicGate(id: string, action: "request" | "cancel", expectedVersion: number): Promise<{ project: YpProject; created: YpProject[] }>;
+  topicGate(id: string, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  confirm(id: string, gate: YpGate, action: YpApproverAction, expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
+  confirmList(tab: "wait" | "done" | "hold"): Promise<{ project: YpProject; gate: YpGate }[]>;
   members(): Promise<YpMember[]>;
 }
+export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
 const json = (body: unknown) => JSON.stringify(body);
 
@@ -23,7 +27,9 @@ function apiClient(token: string): YpClient {
     get: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}`, { token })).project,
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
     update: async (id, expectedVersion, patch) => (await apiRequest<{ project: YpProject }>(`${base}/${id}`, { token, method: "PATCH", body: json({ ...patch, expectedVersion }) })).project,
-    topicGate: (id, action, expectedVersion) => apiRequest(`${base}/${id}/gates/topic`, { token, method: "POST", body: json({ action, expectedVersion }) }),
+    topicGate: (id, action, expectedVersion, reply) => apiRequest(`${base}/${id}/gates/topic`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}) }) }),
+    confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
+    confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -49,8 +55,16 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p5", "[예시] 강의 상세페이지 첫 화면 고치기", "live", "review", 5),
   demoProject("demo-p6", "[예시] 처음 쓰는 사업계획서의 순서", "anim", "upload", 8, "demo-logan"),
   demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13),
+  waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
 ];
+/** One example waiting for the 대표 컨펌, so the confirm menu has something to show in the demo. */
+function waitingDemo(project: YpProject): YpProject {
+  return { ...project, yp: applyGateAction(project, "topic", "request", { actor: "demo-logan", now: daysAgo(1) }) };
+}
 const demoError = (status: number, code: string, message: string) => new ApiRequestError(message, code, status);
+const gateApply = (...args: Parameters<typeof applyGateAction>) => {
+  try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
+};
 function demoClient(): YpClient {
   const find = (id: string) => {
     const project = demoProjects().find(row => row.id === id);
@@ -76,7 +90,7 @@ function demoClient(): YpClient {
       const project = find(id);
       checkVersion(project, expectedVersion);
       const content = Object.keys(fields).length > 0;
-      if (content && !topicEditable(project)) throw demoError(409, "GATE_WAITING", "대표 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
+      if ((Object.keys(fields) as (keyof typeof TOPIC_FIELD_OF)[]).some(key => !topicFieldEditable(project, key))) throw demoError(409, "FIELD_LOCKED", "지금은 이 칸을 고칠 수 없어요.");
       const topic = project.yp.topic;
       return put({
         ...project, version: project.version + 1, updatedAt: new Date().toISOString(),
@@ -84,27 +98,29 @@ function demoClient(): YpClient {
         yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs } } : project.yp,
       });
     },
-    topicGate: async (id, action, expectedVersion) => {
+    topicGate: async (id, action, expectedVersion, reply) => {
       const project = find(id);
       checkVersion(project, expectedVersion);
-      const gate = project.yp.gates.topic;
       const now = new Date().toISOString();
       const bump = (yp: YpProject["yp"], title = project.title) => ({ ...project, title, version: project.version + 1, updatedAt: now, yp });
-      if (action === "cancel") {
-        if (gate.state !== "wait") throw demoError(409, "INVALID_TRANSITION", "기다리는 컨펌 요청이 없어요.");
-        return { project: put(bump({ ...project.yp, gates: { ...project.yp.gates, topic: { state: "none", round: gate.round } } })), created: [] };
-      }
+      if (action === "cancel") return { project: put(bump(gateApply(project, "topic", "cancel", { actor: DEMO_ME, now }))), created: [] };
       const missing = topicMissing(project.title, project.yp.topic);
-      if (!topicEditable(project) || missing) throw demoError(400, "TOPIC_INCOMPLETE", missing || "이미 대표 컨펌을 기다리고 있어요.");
+      if (missing) throw demoError(400, "TOPIC_INCOMPLETE", missing);
       const [first, ...rest] = topicLines(project.title).slice(0, YP_MAX_LINES);
-      const waiting = (round: number) => ({ state: "wait" as const, round, requestedAt: now, requestedBy: DEMO_ME });
-      const saved = put(bump({ ...project.yp, gates: { ...project.yp.gates, topic: waiting(gate.round + 1) } }, first));
+      const saved = put(bump(gateApply(project, "topic", "request", { actor: DEMO_ME, now, reply }), first));
       const created = rest.map(line => {
         const extra = add(line, { kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId }, project.id);
-        return put({ ...extra, yp: { ...extra.yp, gates: { ...extra.yp.gates, topic: waiting(1) } } });
+        return put({ ...extra, yp: gateApply(extra, "topic", "request", { actor: DEMO_ME, now }) });
       });
       return { project: saved, created };
     },
+    confirm: async (id, gate, action, expectedVersion, extra = {}) => {
+      const project = find(id);
+      checkVersion(project, expectedVersion);
+      const now = new Date().toISOString();
+      return put({ ...project, version: project.version + 1, updatedAt: now, yp: gateApply(project, gate, action, { actor: DEMO_ME, now, ...extra }) });
+    },
+    confirmList: async tab => confirmTab(structuredClone(demoProjects()), tab, DEMO_ME).map(row => ({ project: row.project, gate: row.gate })),
     members: async () => DEMO_MEMBERS,
   };
 }
