@@ -709,10 +709,10 @@
       "sha256": "2e150a479deefddbd7a901e173900f7be70654c7afce924728b7a987f0bb9001",
       "purpose": "anyone with approval authority may approve their own documents, proposals, candidates and appeal candidates; who holds approval authority is unchanged; finance refunds keep their own rule",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-18",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Owner request 2026-10-18. Draft only, not applied anywhere. Before applying, confirm the live os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate match the latest repository definitions. Apply before the matching app code is deployed."
+      "appliedEnvironments": ["development"],
+      "notes": "Owner request 2026-10-18; owner approved DEV apply the same day. Before applying, the live DEV os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate matched the latest repository definitions. Rollback-only DEV test (tests/designated-approver-solo-canon.sql with this migration) 7 checks, 0 failures, then applied to brandyaction-os-dev and recorded in schema history; privileges unchanged. A rollback-only check of the reported case (no approver assigned, admin creator) returned true. Production: not applied, needs separate approval and must precede the app deploy."
     }
   ],
   "legacyMigrations": [

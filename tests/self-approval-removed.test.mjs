@@ -19,7 +19,8 @@ test("approvers may approve their own work; authority, named approver and publis
   const entry = manifest.forwardMigrations.find((item) => item.file === file);
   assert.equal(entry?.sha256, createHash("sha256").update(sql).digest("hex"));
   assert.equal(entry?.requiresApproval, true);
-  assert.deepEqual(entry?.appliedEnvironments, []);
+  assert.equal(entry?.productionApprovedAt, null);
+  assert.deepEqual(entry?.appliedEnvironments, ["development"]);
 });
 
 test("app code no longer blocks an approver on their own work", async () => {
