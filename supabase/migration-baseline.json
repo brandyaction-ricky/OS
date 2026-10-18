@@ -719,8 +719,10 @@
       "sha256": "1dd88ada0917bf111a16fb4f0d1eee65ec614392a21bee7aa21cc6c445566032",
       "purpose": "Threads team review inbox: a shared Threads draft is readable by active members, edited and approved by named reviewers (os_content_reviewers); review notes table; topic create request id; personal-record history no longer readable by other members; review command records the human reviewer",
       "requiresApproval": true,
-      "appliedEnvironments": ["development"],
-      "notes": "2026-10-18 Threads handoff P0. DEV: live os_content_review_command matched the v07 definition; rollback-only test (tests/threads-team-review.sql with this migration) 18 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back (one 7-argument review command, 4 split personal-space policies, both new tables). Production: not applied."
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "2026-10-18 Threads handoff P0. DEV: live os_content_review_command matched the v07 definition; rollback-only test (tests/threads-team-review.sql with this migration) 18 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back (one 7-argument review command, 4 split personal-space policies, both new tables). Production (owner approved 2026-10-18): live os_content_review_command and os_workspace_record_read matched the repository; a rollback-only run (migration plus read checks as each of the 10 active members: other members' personal rows 0, their history 0, own rows all visible) passed and rolled back; then applied, recorded in schema history and read back. Reviewers are data, assigned after the app deploy."
     }
   ],
   "legacyMigrations": [
