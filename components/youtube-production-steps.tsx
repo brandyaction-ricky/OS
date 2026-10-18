@@ -10,7 +10,7 @@ import "./youtube-production-steps.css";
 
 interface Render { status: string; stage: string; lastErrorCode: string | null }
 interface VoiceRun { id: string; status: string; stage: string; segmentCount: number; segmentsReady: number; readyIndexes: number[]; needsAttention: string[]; lastErrorCode: string | null; createdAt: string; render: Render | null }
-interface StaffJob { id: string; status: string; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean }
+interface StaffJob { id: string; status: string; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean; targetMinutes?: number | null }
 export interface StaffJobStatus { job: StaffJob | null; myAi: { keys: number; lastUsedAt: string | null } }
 interface RenderPc { state: "online" | "offline" | "unknown"; ageSeconds: number | null; diskFreeGb: number | null; lowDisk: boolean; job: { step: string } | null; queue: { voice: number; render: number }; averageRenderMinutes: number | null }
 interface StoredPlan {

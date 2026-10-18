@@ -22,7 +22,7 @@ const versionRef = z.object({ id: z.string(), version: z.number() });
 const jobMetaSchema = z.object({
   kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
-  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), requestedAt: z.string(),
+  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), attachments: z.string().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
 }).passthrough();
@@ -30,7 +30,9 @@ type JobMeta = z.infer<typeof jobMetaSchema>;
 
 export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("scene-plan"), sourceId: z.string().uuid(), inputKey: z.string().length(64) }).strict(),
-  z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10) }).strict(),
+  // attachments = 원고 공정 정본 §2 "카드 첨부": what the staff member hands the AI with the job (댓글 원문, 직접 고른 재료).
+  z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10),
+    attachments: z.string().trim().max(20_000).optional() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -48,7 +50,8 @@ const leaseLive = (value?: JobMeta["lease"]) => Boolean(value && Date.parse(valu
 export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
   return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
-    model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease) };
+    model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
+    targetMinutes: m.targetMinutes ?? null };
 }
 
 async function saveJob(job: OsRecord, changes: { status?: string; stage?: string; metadata: JobMeta }) {
@@ -86,13 +89,14 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   }
   if (source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당 직원만 내 AI에 보낼 수 있습니다.");
   const targetMinutes = input.task === "script" ? input.targetMinutes : undefined;
+  const attachments = input.task === "script" ? input.attachments || undefined : undefined;
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
-    if (meta(job).inputKey === inputKey && meta(job).targetMinutes === targetMinutes) return publicStaffJob(job);
+    if (meta(job).inputKey === inputKey && meta(job).targetMinutes === targetMinutes && meta(job).attachments === attachments) return publicStaffJob(job);
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
-    ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : { targetMinutes }) };
+    ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : { targetMinutes, ...(attachments ? { attachments } : {}) }) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
@@ -168,7 +172,7 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     const state = await currentScriptInput(job);
     const lease = await take();
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
-      instructions: await scriptJobCard(service(), state, m.targetMinutes ?? 10, minutes) };
+      instructions: await scriptJobCard(service(), state, { targetMinutes: m.targetMinutes ?? 10, leaseMinutes: minutes, attachments: m.attachments }) };
   }
   const { automation, segments } = await currentInput(job);
   const lease = await take();
