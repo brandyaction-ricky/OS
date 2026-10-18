@@ -30,7 +30,8 @@ export async function POST(request: Request) {
   try {
     if (!canUseYoutubeAutomationPilot(process.env)) throw disabled();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = staffJobRequestSchema.parse(await parseJson(request, 1_000));
+    // 20,000-letter attachments at up to 3 UTF-8 bytes each.
+    const input = staffJobRequestSchema.parse(await parseJson(request, 64_000));
     return NextResponse.json({ job: await requestStaffJob(actor, input) }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_AUTOMATION_INPUT", "콘텐츠와 원고 버전을 확인해 주세요."));
