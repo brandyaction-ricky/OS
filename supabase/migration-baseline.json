@@ -694,6 +694,15 @@
       "approvedAt": "2026-10-17",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner approved per-document canonical read restriction on 2026-10-17. Applied to brandyaction-os-dev, then Production, before the matching app code was deployed."
+    },
+    {
+      "file": "20261018020000_designated_approver_solo_canon.sql",
+      "sha256": "861d8d3bd733174f2834968ebde5ae4469f1cb2989fc78e750a127a9cee98b71",
+      "purpose": "the designated approver may submit, approve and publish their own and own-AI documents alone; others keep the two-person rules",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner decision 2026-10-18. Rollback-only DEV test (tests/designated-approver-solo-canon.sql) 6 checks, 0 failures; without the migration the old table check reproduces the reported failure. Applied to brandyaction-os-dev, then Production."
     }
   ],
   "legacyMigrations": [
