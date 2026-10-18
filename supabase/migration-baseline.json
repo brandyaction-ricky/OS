@@ -703,6 +703,16 @@
       "approvedAt": "2026-10-18",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner decision 2026-10-18. Rollback-only DEV test (tests/designated-approver-solo-canon.sql) 6 checks, 0 failures; without the migration the old table check reproduces the reported failure. Applied to brandyaction-os-dev, then Production."
+    },
+    {
+      "file": "20261018100000_remove_self_approval_block.sql",
+      "sha256": "2e150a479deefddbd7a901e173900f7be70654c7afce924728b7a987f0bb9001",
+      "purpose": "anyone with approval authority may approve their own documents, proposals, candidates and appeal candidates; who holds approval authority is unchanged; finance refunds keep their own rule",
+      "requiresApproval": true,
+      "developmentApprovedAt": null,
+      "productionApprovedAt": null,
+      "appliedEnvironments": [],
+      "notes": "Owner request 2026-10-18. Draft only, not applied anywhere. Before applying, confirm the live os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate match the latest repository definitions. Apply before the matching app code is deployed."
     }
   ],
   "legacyMigrations": [

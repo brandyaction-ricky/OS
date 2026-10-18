@@ -66,7 +66,7 @@ function InboxContent() {
   useEffect(() => {
     if (!selected) { setApprovalLoaded(true); setCanApprove(false); return; }
     if (demo) {
-      setCanApprove(selected.owner_id !== profile?.id && profile?.role === "admin");
+      setCanApprove(profile?.role === "admin");
       setApprovalError(false);
       setApprovalLoaded(true);
       return;
@@ -78,11 +78,11 @@ function InboxContent() {
       .catch(() => { if (!cancelled) { setCanApprove(false); setApprovalError(true); } })
       .finally(() => { if (!cancelled) setApprovalLoaded(true); });
     return () => { cancelled = true; };
-  }, [selected, accessToken, demo, profile?.id, profile?.role]);
+  }, [selected, accessToken, demo, profile?.role]);
 
   const move = async (status: DocumentStatus) => {
     if (!selected || busy) return;
-    if ((status === "reviewed" || status === "canonical") && !canApprove) { setError("작성자는 승인할 수 없습니다. 지정된 승인자 또는 유효한 위임자에게 요청해 주세요."); return; }
+    if ((status === "reviewed" || status === "canonical") && !canApprove) { setError("승인 권한이 없습니다. 지정된 승인자 또는 유효한 위임자에게 요청해 주세요."); return; }
     if (status === "team" && !note.trim()) { setError("작성자가 수정할 수 있도록 보완 이유를 적어주세요."); return; }
     setBusy(true); setError("");
     try {
@@ -115,9 +115,9 @@ function InboxContent() {
             {reviewTab === "preview" ? <div className="review-content"><KnowledgeInlineProvider documentId={selected.id} revision={selected.current_version}><MarkdownView content={selected.content_md} onOpenLink={() => {}} /></KnowledgeInlineProvider><Link href={`/knowledge?document=${selected.id}`}>원문에서 읽기·편집</Link></div> : null}
             {reviewTab === "comments" ? <KnowledgeReviewHistory id={selected.id} token={accessToken} demo={demo} revision={selected.updated_at} /> : null}
             <div className="review-note"><MessageSquareText size={16} /><input aria-label="검토 사유" maxLength={500} disabled={busy} value={note} onChange={(event) => setNote(event.target.value)} placeholder="승인 또는 보완 이유를 남겨주세요" /></div>
-            {approvalLoaded && !canApprove ? <p className="review-approval-hint">{approvalError ? "승인 규칙을 확인할 수 없어 승인 동작을 잠갔습니다. 연결 상태를 확인해 주세요." : selected.owner_id === profile?.id ? "작성자는 자신의 문서를 승인할 수 없습니다." : "지정된 승인자 또는 유효한 위임자만 승인할 수 있습니다."}</p> : null}
+            {approvalLoaded && !canApprove ? <p className="review-approval-hint">{approvalError ? "승인 규칙을 확인할 수 없어 승인 동작을 잠갔습니다. 연결 상태를 확인해 주세요." : "지정된 승인자 또는 유효한 위임자만 승인할 수 있습니다."}</p> : null}
             <footer>
-              {selected.status === "review" ? <><button className="secondary-button" disabled={busy} onClick={() => move("team")}><RotateCcw size={15} /> 보완 요청</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} onClick={() => move("reviewed")}><Check size={15} /> 검토 완료</button></> : <><button className="secondary-button" disabled={busy} onClick={() => move("review")}><RotateCcw size={15} /> 검토로 되돌리기</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} title="작성자가 아닌 지정 승인자 또는 위임자만 공개할 수 있습니다" onClick={() => move("canonical")}><Send size={15} /> 회사 정본으로 공개</button></>}
+              {selected.status === "review" ? <><button className="secondary-button" disabled={busy} onClick={() => move("team")}><RotateCcw size={15} /> 보완 요청</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} onClick={() => move("reviewed")}><Check size={15} /> 검토 완료</button></> : <><button className="secondary-button" disabled={busy} onClick={() => move("review")}><RotateCcw size={15} /> 검토로 되돌리기</button><button className="primary-button" disabled={busy || !approvalLoaded || !canApprove} title="지정 승인자 또는 위임자만 공개할 수 있습니다" onClick={() => move("canonical")}><Send size={15} /> 회사 정본으로 공개</button></>}
             </footer>
           </> : <div className="empty-state"><div><span><BookCheck /></span><h3>검토할 문서가 없습니다</h3><p>팀원이 검토를 요청하면 문서 내용과 이력을 확인할 수 있습니다.</p></div></div>}
         </article>

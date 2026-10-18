@@ -32,7 +32,7 @@ export async function POST(request: Request) {
       const conflict = error.message.includes("OS_APPEAL_VERSION_CONFLICT");
       throw new ApiError(denied ? 403 : conflict ? 409 : 400,
         denied ? "APPEAL_APPROVAL_DENIED" : conflict ? "APPEAL_VERSION_CONFLICT" : "APPEAL_DECISION_FAILED",
-        denied ? "작성자는 승인할 수 없습니다. 지정 승인자 또는 위임자에게 요청해 주세요."
+        denied ? "승인 권한이 없습니다. 지정 승인자 또는 위임자에게 요청해 주세요."
           : conflict ? "후보 세트가 바뀌었습니다. 다시 불러온 뒤 판정해 주세요." : "소구점 판정을 저장하지 못했습니다.");
     }
     return NextResponse.json({ record: data });

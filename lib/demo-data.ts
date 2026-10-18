@@ -59,7 +59,7 @@ export const DEMO_DOCUMENTS: KnowledgeDocument[] = [
     id: "demo-workflow",
     title: "지식 정본 승격 절차",
     content_md:
-      "# 지식 정본 승격 절차\n\n개인 초안 → 팀 공유 → 검토 요청 → 검토 완료 → 회사 정본 순서로 이동한다. 작성자와 최종 검토자는 분리한다.",
+      "# 지식 정본 승격 절차\n\n개인 초안 → 팀 공유 → 검토 요청 → 검토 완료 → 회사 정본 순서로 이동한다.",
     folder: "회사 wiki/운영 원칙",
     status: "team",
     brand: "브랜디액션",
