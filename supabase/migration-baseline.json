@@ -703,6 +703,16 @@
       "approvedAt": "2026-10-18",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner decision 2026-10-18. Rollback-only DEV test (tests/designated-approver-solo-canon.sql) 6 checks, 0 failures; without the migration the old table check reproduces the reported failure. Applied to brandyaction-os-dev, then Production."
+    },
+    {
+      "file": "20261018100000_remove_self_approval_block.sql",
+      "sha256": "2e150a479deefddbd7a901e173900f7be70654c7afce924728b7a987f0bb9001",
+      "purpose": "anyone with approval authority may approve their own documents, proposals, candidates and appeal candidates; who holds approval authority is unchanged; finance refunds keep their own rule",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner request 2026-10-18; owner approved DEV apply, then Production apply, the same day. Production: live definitions matched the repository; a rollback-only check (migration plus read-only os_can_approve checks: active approvers may approve their own work, the 8 active members without authority still may not) passed and rolled back; then applied, recorded in schema history, read back; privileges unchanged. The app code was not deployed with it. DEV: Before applying, the live DEV os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate matched the latest repository definitions. Rollback-only DEV test (tests/designated-approver-solo-canon.sql with this migration) 7 checks, 0 failures, then applied to brandyaction-os-dev and recorded in schema history; privileges unchanged. A rollback-only check of the reported case (no approver assigned, admin creator) returned true."
     }
   ],
   "legacyMigrations": [

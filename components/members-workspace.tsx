@@ -398,7 +398,7 @@ export function MembersWorkspace() {
                   defaultChecked={selected.canonical_publisher}
                   disabled={profile?.role !== "admin" || !selected.account_connected}
                 />
-                <span>회사 정본 최종 등록 담당 <small>독립 승인 후 정본으로 옮길 수 있는 계정은 한 명입니다.</small></span>
+                <span>회사 정본 최종 등록 담당 <small>승인된 문서를 정본으로 옮길 수 있는 계정은 한 명입니다.</small></span>
               </label>
               {selected.account_connected ? (
                 <section className="member-password-admin">

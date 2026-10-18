@@ -45,15 +45,15 @@ test("attendee-only meeting beats admin privileges, missing context denies", () 
   assert.equal(canReadDocument(actor, meetingDoc), false);
   assert.equal(canReadDocument({ ...partner, ownerId: "b" }, meetingDoc, context), true);
 });
-test("category and approval operations keep separation of duties", () => {
+test("category and approval operations follow approval authority, own work included", () => {
   assert.equal(canManageCategory(actor, { space: "team" }), true);
   assert.equal(canManageCategory(actor, { space: "team" }, true), false);
   assert.equal(canManageCategory(partner, { space: "team" }), false);
   assert.equal(canManageCategory(partner, { space: "mine", owner_id: "a" }), true);
-  assert.equal(canDecideProposal(actor, { author_id: "a" }, doc), false);
-  assert.equal(canDecideProposal(actor, { author_id: "c", agent_owner_id: "a" }, doc), false);
-  assert.equal(canDecideProposal(actor, { author_id: "c", requested_approver_id: "b" }, doc), false);
-  assert.equal(canDecideProposal({ ...actor, role: "admin" }, { author_id: "c", requested_approver_id: "b" }, doc, "대리 사유"), true);
+  assert.equal(canDecideProposal(actor, { author_id: "a", agent_owner_id: "a" }), true);
+  assert.equal(canDecideProposal({ ...actor, canApprove: false }, { author_id: "c" }), false);
+  assert.equal(canDecideProposal(actor, { author_id: "c", requested_approver_id: "b" }), false);
+  assert.equal(canDecideProposal({ ...actor, role: "admin" }, { author_id: "c", requested_approver_id: "b" }, "대리 사유"), true);
 });
 test("archived meeting documents still deny non-attendees, including owners and admins", () => {
   const context = { meetings: new Map([["m", { visibility: "attendees", attendees: ["b"] }]]) };

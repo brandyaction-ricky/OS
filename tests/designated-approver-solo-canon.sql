@@ -1,9 +1,11 @@
--- Candidate integration test for 20261018020000_designated_approver_solo_canon.
--- NOT run by npm test. Run only on a DEV database that has the migration:
+-- Candidate integration test for 20261018020000_designated_approver_solo_canon, updated for
+-- 20261018100000_remove_self_approval_block.
+-- NOT run by npm test. Run only on a DEV database that has both migrations:
 --   supabase db query --project-ref <dev-ref> --linked -f tests/designated-approver-solo-canon.sql
 -- The designated approver (here also the canonical publisher, as in Production) takes their own
--- AI-written team document to canonical alone; another member still cannot name themselves, and
--- an approval that did not come from the designated approver still needs an independent publisher.
+-- AI-written team document to canonical alone; a member without approval authority still cannot
+-- name themselves; a delegate may approve their own document; the publisher no longer requires an
+-- approval from someone other than the submitter.
 -- The final block always raises, so the whole transaction rolls back. Expect "failures=0".
 begin;
 set local statement_timeout = '60s';
@@ -41,9 +43,9 @@ begin
   perform public.os_publish_candidate(c.id, d.current_version);
   execute 'reset role';
   insert into ds values ('boss publishes own document', (select status = 'canonical' and folder = '02_Wiki/test' from public.os_documents where id = own_doc));
-  insert into ds values ('publish logged as designated approval', exists(select 1 from public.os_document_events where document_id = own_doc and note = '지정 승인자 승인 후 최종 등록'));
+  insert into ds values ('publish logged', exists(select 1 from public.os_document_events where document_id = own_doc and note = '승인 후 최종 등록'));
 
-  -- 2) Another member still cannot name themselves as approver.
+  -- 2) A member without approval authority still cannot name themselves as approver.
   perform set_config('request.jwt.claims', json_build_object('sub', staff, 'role', 'authenticated')::text, true);
   execute as_user;
   begin
@@ -53,7 +55,13 @@ begin
   end;
   execute 'reset role';
 
-  -- 3) An approval that did not come from the designated approver still needs independence.
+  -- 3) A delegate may approve their own document.
+  insert into public.os_approval_assignments(user_id, kind, delegated_by, starts_on, ends_on, created_by)
+    values (staff, 'delegate', boss, current_date, current_date, boss);
+  insert into ds values ('delegate may approve own document', public.os_can_approve(staff, staff));
+  delete from public.os_approval_assignments where user_id = staff and kind = 'delegate' and delegated_by = boss and starts_on = current_date;
+
+  -- 4) The publisher accepts an approval made by the submitter.
   perform set_config('request.jwt.claims', json_build_object('sub', staff, 'role', 'authenticated')::text, true);
   execute as_user;
   select * into c from public.os_submit_candidate(staff_doc, (select current_version from public.os_documents where id = staff_doc), boss, '02_Wiki/test', staff, current_date + 90);
@@ -66,12 +74,9 @@ begin
   select * into d from public.os_documents where id = staff_doc;
   perform set_config('request.jwt.claims', json_build_object('sub', boss, 'role', 'authenticated')::text, true);
   execute as_user;
-  begin
-    perform public.os_publish_candidate(c.id, d.current_version);
-    insert into ds values ('non-designated self-approval still blocked at publish', false);
-  exception when others then insert into ds values ('non-designated self-approval still blocked at publish', sqlerrm like '%OS_INDEPENDENT_APPROVAL_REQUIRED%');
-  end;
+  perform public.os_publish_candidate(c.id, d.current_version);
   execute 'reset role';
+  insert into ds values ('submitter self-approval publishes', (select status = 'canonical' from public.os_documents where id = staff_doc));
 
   raise exception 'DS_RESULT checks=% failures=% | %', (select count(*) from ds), (select count(*) from ds where not ok), (select string_agg(check_name, ' ; ') from ds where not ok);
 end $$;

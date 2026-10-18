@@ -7,8 +7,6 @@ export interface KnowledgeActor {
   active?: boolean;
   allowedStatuses: readonly string[];
   canApprove?: boolean;
-  /** Explicitly assigned approver: may also decide proposals on own documents or drafted by own AI key. */
-  designatedApprover?: boolean;
   canPublishCanonical?: boolean;
 }
 export interface AccessDocument {
@@ -92,12 +90,12 @@ export function canManageCategory(actor: KnowledgeActor, category: { space: stri
   if (category.space === "mine") return category.owner_id === actor.ownerId;
   return actor.memberKind !== "partner" && (!destructive || actor.role === "admin");
 }
-export function canDecideProposal(actor: KnowledgeActor, proposal: { author_id: string; requested_approver_id?: string | null; agent_owner_id?: string | null }, doc: AccessDocument, proxyReason = "") {
+/** Approvers may decide their own proposals and candidates too (owner decision 2026-10-18). */
+export function canDecideProposal(actor: KnowledgeActor, proposal: { requested_approver_id?: string | null }, proxyReason = "") {
   return actor.type === "user" && actor.memberKind !== "partner" && actor.active !== false && actor.canApprove === true
-    && (actor.designatedApprover === true || ![proposal.author_id, proposal.agent_owner_id, doc.owner_id].includes(actor.ownerId))
     && (!proposal.requested_approver_id || proposal.requested_approver_id === actor.ownerId || (actor.role === "admin" && proxyReason.trim().length > 0));
 }
-/** Approvers a proposal or candidate may name. The designated approver is offered even for their own documents. */
-export function approverChoices<P extends { id: string; can_approve: boolean; member_kind: string; designated?: boolean }>(people: P[], actor: KnowledgeActor, doc: { owner_id: string }) {
-  return people.filter(p => p.can_approve && p.member_kind === "staff" && (p.designated === true || ![actor.ownerId, doc.owner_id].includes(p.id)));
+/** Approvers a proposal or candidate may name, the author included. */
+export function approverChoices<P extends { id: string; can_approve: boolean; member_kind: string }>(people: P[]) {
+  return people.filter(p => p.can_approve && p.member_kind === "staff");
 }
