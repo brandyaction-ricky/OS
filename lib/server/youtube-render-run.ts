@@ -67,13 +67,21 @@ export async function claimYoutubeRender(service: Service = createServiceSupabas
   let query = service.from("os_records").select("*").eq("record_type", "ai_job")
     .eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND).eq("status", "done").eq("stage", "voice_ready").is("archived_at", null);
   if (targetVoiceRunId) query = query.eq("id", targetVoiceRunId);
-  const { data: voiceRuns, error } = await query.order("updated_at").limit(20);
+  const { data: voiceRuns, error } = await query.order("updated_at").limit(100);
   if (error) throw new ApiError(500, "RENDER_QUEUE_READ_FAILED", "영상 제작 대기열을 읽지 못했습니다.");
+  // Only a voice run made for the design its content still carries (same design, current template, passing today's
+  // deck rules) can render; older ones would fail at the brief three times each after downloading and uploading audio.
+  const sourceIds = [...new Set((voiceRuns ?? []).map((row) => row.parent_id as string | null).filter((id): id is string => Boolean(id)))];
+  const { data: sources, error: sourceError } = sourceIds.length ? await service.from("os_records").select("id,metadata").in("id", sourceIds) : { data: [], error: null };
+  if (sourceError) throw new ApiError(500, "RENDER_QUEUE_READ_FAILED", "영상 제작 대기열을 읽지 못했습니다.");
+  const designs = new Map((sources ?? []).map((row) => [row.id as string, (row.metadata as Record<string, unknown> | null)?.narratedScenePlan as { plan?: unknown; generatedAt?: unknown; templateVersion?: unknown } | undefined]));
   for (const candidate of voiceRuns ?? []) {
     const voiceRecord = candidate as OsRecord;
     let voice;
     try { voice = parseVoiceRun(voiceRecord); } catch { continue; }
     if (!voice.timingMode || !voiceRecord.owner_id) continue;
+    const design = designs.get(voice.sourceId);
+    if (!design || design.generatedAt !== voice.scenePlanGeneratedAt || design.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION || !scenePlanSchema.safeParse(design.plan).success) continue;
     const id = voiceRunId(digestVoiceValue([YOUTUBE_RENDER_RUN_KIND, voiceRecord.id, voice.scenePlanGeneratedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION]));
     const base = `${voiceRecord.owner_id}/${voice.sourceId}/${id}`;
     let { data: existing } = await service.from("os_records").select("*").eq("id", id).maybeSingle();
