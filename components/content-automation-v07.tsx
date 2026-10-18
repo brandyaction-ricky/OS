@@ -32,7 +32,9 @@ const EMPTY:Data={topics:[],items:[],jobs:[],browsers:[],runs:[],publications:[]
   team:{reviewers:[],canReview:false,canManage:false},me:""};
 // A shared Threads draft in the team inbox (any owner's). Other drafts stay owner-only.
 const isTeam=(row:OsRecord)=>row.metadata.shared==="team";
-const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows,...more.filter(row=>!rows.some(existing=>existing.id===row.id))];
+// The team list adds owner names to rows I already loaded as my own, so a repeat row is combined.
+const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows.map(row=>({...row,...more.find(extra=>extra.id===row.id)})),
+  ...more.filter(row=>!rows.some(existing=>existing.id===row.id))];
 const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:string}>={
   dashboard:{title:"자동화 현황",description:"내가 만든 콘텐츠·AI 작업·내 채널 계정만 봅니다.",next:"/automation/topics"},
   topics:{title:"① 주제 기획",description:"주제 후보를 모으고 브리프와 제작 채널을 정합니다.",next:"/automation/cardnews"},
