@@ -65,11 +65,12 @@ export async function readYoutubeSceneRules(actor: Pick<RequestActor, "supabase"
 
 /**
  * A staff AI is connected to the OS and opens these documents itself when it needs them, so its job lists titles and ids
- * instead of 46,000 characters of script rules; a design no longer depends on their versions or status.
+ * instead of 46,000 characters of script rules; a design no longer depends on their versions or status. Only documents that are
+ * still canonical are listed, so a retired rule document drops out instead of being read.
  */
 export async function youtubeSceneRuleRefs(actor: Pick<RequestActor, "supabase">) {
   const ids = (process.env.YOUTUBE_SCENE_RULE_IDS ?? "").split(",").map((value) => value.trim()).filter((id) => UUID.test(id));
-  const { data } = ids.length ? await actor.supabase.from("os_documents").select("id,title").in("id", ids).neq("status", "archived") : { data: [] };
+  const { data } = ids.length ? await actor.supabase.from("os_documents").select("id,title").in("id", ids).eq("status", "canonical") : { data: [] };
   if (!data?.length) return "없음. 위 화면 원칙과 원고만으로 설계하세요.";
   return `내용·근거·표현을 확인할 때만 OS 연결(get_document)로 직접 열어 읽으세요. 화면 형식은 위 원칙을 따릅니다.\n${data.map((doc) => `- ${doc.title} (doc_id: ${doc.id})`).join("\n")}`;
 }
