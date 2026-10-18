@@ -72,19 +72,80 @@ export async function createPersonalRecord(actor:RequestActor,type:RecordType,in
       .is("archived_at",null).maybeSingle();
     if(existing.data)return existing.data as OsRecord;
   }
+  if(error?.code==="23505"&&type==="content_topic"&&typeof input.metadata?.requestId==="string"){
+    const existing=await createServiceSupabase().from("os_records").select("*")
+      .eq("record_type","content_topic").eq("owner_id",ownerId).eq("metadata->>space","personal")
+      .eq("metadata->>requestId",input.metadata.requestId).is("archived_at",null).maybeSingle();
+    if(existing.data)return existing.data as OsRecord;
+  }
   if(error||!data)throw new ApiError(503,"AUTOMATION_SAVE_FAILED","내 기록을 저장하지 못했습니다.");
   return data as OsRecord;
 }
-export async function updatePersonalRecord(actor:RequestActor,current:OsRecord,changes:Record<string,unknown>) {
+// team: the caller already checked the actor may edit this shared draft (or its AI job).
+// The row keeps its owner; updated_by records who changed it.
+export async function updatePersonalRecord(actor:RequestActor,current:OsRecord,changes:Record<string,unknown>,{team=false}:{team?:boolean}={}) {
   const ownerId=assertHumanOwner(actor);
-  if(!personalRecord(current,ownerId))throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
+  if(!(team?current.metadata?.space==="personal":personalRecord(current,ownerId)))throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
   const {data,error}=await createServiceSupabase().from("os_records")
-    .update({...changes,updated_by:ownerId}).eq("id",current.id).eq("owner_id",ownerId)
+    .update({...changes,updated_by:ownerId}).eq("id",current.id).eq("owner_id",current.owner_id)
     .eq("metadata->>space","personal").eq("version",current.version).is("archived_at",null)
     .select("*").maybeSingle();
   if(error)throw new ApiError(503,"AUTOMATION_SAVE_FAILED","내 기록을 저장하지 못했습니다.");
   if(!data)throw new ApiError(409,"AUTOMATION_CHANGED","다른 작업이 먼저 수정했습니다. 다시 불러와 주세요.");
   return data as OsRecord;
+}
+
+// Team review inbox. Only a Threads draft its owner shared carries metadata.shared="team";
+// everything else stays owner-only. Reviewers are the named people in os_content_reviewers.
+export const TEAM_FIELDS=["shared","sharedAt","sharedBy"] as const;
+export function isTeamShared(record:Pick<OsRecord,"record_type"|"metadata">) {
+  return record.record_type==="content_publish"&&record.metadata?.space==="personal"&&record.metadata?.shared==="team";
+}
+export async function isContentReviewer(userId:string) {
+  const {data,error}=await createServiceSupabase().rpc("os_is_content_reviewer",{p_actor:userId});
+  if(error)throw new ApiError(503,"REVIEWER_CHECK_FAILED","검수 권한을 확인하지 못했습니다.");
+  return data===true;
+}
+export type ContentAccess={record:OsRecord;own:boolean;team:boolean;canEdit:boolean;canReview:boolean};
+export async function getContentRecord(actor:RequestActor,id:string,type?:RecordType):Promise<ContentAccess> {
+  const ownerId=assertHumanOwner(actor);
+  let query=createServiceSupabase().from("os_records").select("*").eq("id",id)
+    .eq("metadata->>space","personal").is("archived_at",null);
+  if(type)query=query.eq("record_type",type);
+  const {data,error}=await query.maybeSingle();
+  if(error)throw new ApiError(503,"AUTOMATION_READ_FAILED","기록을 확인하지 못했습니다.");
+  const record=data as OsRecord|null,team=Boolean(record&&isTeamShared(record));
+  if(!record||record.owner_id!==ownerId&&!team)throw new ApiError(404,"AUTOMATION_NOT_FOUND","기록을 찾을 수 없습니다.");
+  const own=record.owner_id===ownerId,reviewer=team?await isContentReviewer(ownerId):false;
+  return {record,own,team,canEdit:own||reviewer,canReview:team?reviewer:own};
+}
+export function assertCanEdit(access:ContentAccess) {
+  if(!access.canEdit)throw new ApiError(403,"TEAM_EDIT_FORBIDDEN","팀 원고는 작성자와 지정 검수자만 고칠 수 있습니다. 의견으로 남겨 주세요.");
+  return access.record;
+}
+// The AI job behind a draft: the owner's own job, or for a shared draft the owner's job that targets it.
+export async function getItemJob(actor:RequestActor,access:ContentAccess,jobId:string) {
+  if(access.own)return getPersonalRecord(actor,jobId,"ai_job");
+  const {data,error}=await createServiceSupabase().from("os_records").select("*").eq("id",jobId)
+    .eq("record_type","ai_job").eq("owner_id",access.record.owner_id).eq("metadata->>space","personal")
+    .eq("metadata->>targetId",access.record.id).is("archived_at",null).maybeSingle();
+  if(error)throw new ApiError(503,"AUTOMATION_READ_FAILED","AI 결과를 확인하지 못했습니다.");
+  if(!data)throw new ApiError(404,"AUTOMATION_NOT_FOUND","AI 결과를 찾을 수 없습니다.");
+  return data as OsRecord;
+}
+export async function listTeamItems(limit=200) {
+  const {data,error}=await createServiceSupabase().from("os_records").select("*")
+    .eq("record_type","content_publish").eq("metadata->>space","personal").eq("metadata->>shared","team")
+    .is("archived_at",null).order("updated_at",{ascending:false}).limit(limit);
+  if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","팀 검수함을 불러오지 못했습니다.");
+  return (data??[]) as OsRecord[];
+}
+export async function memberNames(ids:Iterable<string|null|undefined>) {
+  const unique=[...new Set(ids)].filter((id):id is string=>Boolean(id));
+  if(!unique.length)return new Map<string,string>();
+  const {data,error}=await createServiceSupabase().from("os_profiles").select("id,display_name").in("id",unique);
+  if(error)throw new ApiError(503,"MEMBER_NAMES_FAILED","구성원 이름을 확인하지 못했습니다.");
+  return new Map((data??[]).map(row=>[row.id as string,String(row.display_name??"구성원")]));
 }
 
 export function validateRunRules(input:Record<string,unknown>) {

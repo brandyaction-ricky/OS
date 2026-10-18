@@ -713,6 +713,16 @@
       "productionApprovedAt": "2026-10-18",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner request 2026-10-18; owner approved DEV apply, then Production apply, the same day. Production: live definitions matched the repository; a rollback-only check (migration plus read-only os_can_approve checks: active approvers may approve their own work, the 8 active members without authority still may not) passed and rolled back; then applied, recorded in schema history, read back; privileges unchanged. The app code was not deployed with it. DEV: Before applying, the live DEV os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate matched the latest repository definitions. Rollback-only DEV test (tests/designated-approver-solo-canon.sql with this migration) 7 checks, 0 failures, then applied to brandyaction-os-dev and recorded in schema history; privileges unchanged. A rollback-only check of the reported case (no approver assigned, admin creator) returned true."
+    },
+    {
+      "file": "20261018120000_threads_team_review.sql",
+      "sha256": "1dd88ada0917bf111a16fb4f0d1eee65ec614392a21bee7aa21cc6c445566032",
+      "purpose": "Threads team review inbox: a shared Threads draft is readable by active members, edited and approved by named reviewers (os_content_reviewers); review notes table; topic create request id; personal-record history no longer readable by other members; review command records the human reviewer",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "2026-10-18 Threads handoff P0. DEV: live os_content_review_command matched the v07 definition; rollback-only test (tests/threads-team-review.sql with this migration) 18 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back (one 7-argument review command, 4 split personal-space policies, both new tables). Production (owner approved 2026-10-18): live os_content_review_command and os_workspace_record_read matched the repository; a rollback-only run (migration plus read checks as each of the 10 active members: other members' personal rows 0, their history 0, own rows all visible) passed and rolled back; then applied, recorded in schema history and read back. Reviewers are data, assigned after the app deploy."
     }
   ],
   "legacyMigrations": [
