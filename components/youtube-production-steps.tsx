@@ -58,6 +58,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
   const [available, setAvailable] = useState<boolean | null>(null);
   const [plan, setPlan] = useState<YoutubeAutomationPlan | null>(null);
   const [previewConfigured, setPreviewConfigured] = useState(false);
+  const [designValid, setDesignValid] = useState<boolean | null>(null);
   const [runs, setRuns] = useState<VoiceRun[] | null>(null);
   const [busy, setBusy] = useState(""); const [error, setError] = useState("");
   const [previewUrl, setPreviewUrl] = useState(""); const [segmentUrl, setSegmentUrl] = useState(""); const [videoUrl, setVideoUrl] = useState("");
@@ -68,8 +69,8 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
 
   const load = useCallback(async () => {
     try {
-      const automation = await apiRequest<{ plan: YoutubeAutomationPlan; voicePreviewConfigured: boolean }>(`/api/v1/content/youtube-automation?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken });
-      setPlan(automation.plan); setPreviewConfigured(automation.voicePreviewConfigured); setAvailable(true);
+      const automation = await apiRequest<{ plan: YoutubeAutomationPlan; designValid: boolean | null; voicePreviewConfigured: boolean }>(`/api/v1/content/youtube-automation?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken });
+      setPlan(automation.plan); setDesignValid(automation.designValid ?? null); setPreviewConfigured(automation.voicePreviewConfigured); setAvailable(true);
     } catch { setAvailable(false); return; }
     try { setRuns((await apiRequest<{ runs: VoiceRun[] }>(`/api/v1/content/youtube-automation/runs?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken })).runs); }
     catch { setRuns(null); }
@@ -118,7 +119,10 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
   if (available === null) return <section className="panel load-error" role="status">영상 제작 정보를 불러오는 중…</section>;
   if (!available || !plan) return <section className="panel empty-state"><div><h3>영상 자동 제작은 아직 연결 전입니다</h3><p>지금은 개발용 시험 서버에서만 시범 운영 중입니다. 운영 연결은 대표 승인 후 진행합니다.</p></div></section>;
   const stored = (storedPlan ?? null) as StoredPlan | null;
-  const design = stored && plan.inputKey && stored.inputKey === plan.inputKey && stored.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION ? stored.plan : null;
+  const storedForInput = Boolean(stored && plan.inputKey && stored.inputKey === plan.inputKey && stored.templateVersion === YOUTUBE_VISUAL_TEMPLATE_VERSION);
+  // A design that no longer passes today's deck rules counts as missing: it can't be rendered again.
+  const outdatedDesign = storedForInput && designValid === false;
+  const design = storedForInput && !outdatedDesign ? stored!.plan ?? null : null;
   const notes = design?.unresolved ?? [];
   const notesDone = Boolean(design) && (!notes.length || (stored?.unresolvedAcknowledged?.by === profile?.id && stored?.unresolvedAcknowledged?.count === notes.length));
   const scriptReady = Boolean(plan.inputKey) && !plan.missing.length;
@@ -161,6 +165,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
 
     <Step index={1} state={states[1]}>
       <p>내 AI(Claude 또는 Codex)가 원고를 읽고 단락마다 도식 하나와 화면에 나올 짧은 문구, 위쪽 막대에 보일 섹션을 정하고, 목소리로 읽기 어려운 곳이 없는지 봅니다.</p>
+      {outdatedDesign ? <p className="yt-note yt-warn"><strong>다시 설계 필요</strong> 저장된 화면 설계가 지금 도식 규칙(항목 수 · 글자 수)에 맞지 않아 새로 만들 수 없어요. 내 AI에 다시 보내 주세요. 이미 완성된 영상은 그대로 볼 수 있어요.</p> : null}
       {!design && scriptReady ? <StaffDesign status={staff} busy={Boolean(busy)} onSend={() => void act("design", () => post("/ai-jobs", "POST", { task: "scene-plan" }))} /> : null}
       {design ? <>
         {stored?.author?.type === "staff_ai" ? <small>직원 AI가 설계 · {stored.author.model ?? "모델 이름 없음"} (AI가 적은 이름)</small> : null}

@@ -121,7 +121,9 @@ export async function buildYoutubeRenderBrief(input: { renderId: string; lease: 
   const { data: source } = await service.from("os_records").select("metadata").eq("id", run.sourceId).maybeSingle();
   const stored = (source?.metadata as Record<string, unknown> | undefined)?.narratedScenePlan as { plan?: unknown; generatedAt?: unknown; templateVersion?: unknown } | undefined;
   const plan = scenePlanSchema.safeParse(stored?.plan);
-  if (!plan.success || stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
+  // A design made before a deck rule tightened (e.g. checklist 06 down to 3 items) no longer passes; say so plainly.
+  if (!plan.success) throw new ApiError(409, "RENDER_SCENE_PLAN_INVALID", "화면 설계가 지금 도식 규칙에 맞지 않습니다. 영상 제작 화면에서 다시 설계해 주세요.");
+  if (stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
     plan.data.scenes.length !== scriptSegments.length)
     throw new ApiError(409, "RENDER_SCENE_PLAN_CHANGED", "화면 설계가 음성 제작 이후 변경됐습니다. 새 작업이 필요합니다.");
   const brief = { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, sections: plan.data.sections,
