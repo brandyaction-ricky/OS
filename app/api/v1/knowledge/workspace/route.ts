@@ -70,7 +70,7 @@ export async function GET(request: Request) {
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
     const rows: KnowledgeDocument[] = [];
     for (let cursor="00000000-0000-0000-0000-000000000000";;) {
-      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(1000);
+      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope").gt("id",cursor).order("id").limit(1000);
       if(result.error) throw readError(result.error,"documents");
       const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
       rows.push(...batch);

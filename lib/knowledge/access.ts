@@ -20,11 +20,23 @@ export interface AccessDocument {
   meeting_record_id?: string | null;
   archived_from_status?: string | null;
   archived_by?: string | null;
+  /** 'all' (every active member) or 'restricted'; a missing value is treated as restricted. */
+  reader_scope?: string | null;
+  steward_id?: string | null;
 }
 export interface KnowledgeAccessContext {
   categories?: ReadonlyMap<string, { partner_ids: readonly string[]; archived_at?: string | null }>;
   meetings?: ReadonlyMap<string, { visibility: string; attendees: readonly string[] }>;
   noteGrants?: ReadonlySet<string>;
+  /** Restricted canonical documents on which the actor (an AI key: its owner) is a named reader. */
+  canonReaders?: ReadonlySet<string>;
+  /** An AI key's owner is an admin; keys otherwise act with the member role. */
+  ownerAdmin?: boolean;
+}
+/** Restricted canon: admins, the owner, the steward and named readers. An AI key mirrors its owner. */
+function canReadRestrictedCanon(actor: KnowledgeActor, doc: AccessDocument, context: KnowledgeAccessContext) {
+  const admin = actor.type === "user" ? actor.role === "admin" : context.ownerAdmin === true;
+  return admin || doc.owner_id === actor.ownerId || doc.steward_id === actor.ownerId || Boolean(doc.id && context.canonReaders?.has(doc.id));
 }
 export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, context: KnowledgeAccessContext = {}) {
   if (actor.active === false) return false;
@@ -44,6 +56,8 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
     return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id));
   }
   if (doc.status === "archived") return actor.type === "user" && (actor.role === "admin" || doc.owner_id === actor.ownerId || doc.archived_by === actor.ownerId);
+  // Same order as the database rule: before the meeting shortcut, so a link cannot bypass it.
+  if (doc.status === "canonical" && doc.reader_scope !== "all" && !canReadRestrictedCanon(actor, doc, context)) return false;
   if (doc.meeting_record_id) return true;
   if (actor.type === "agent") return actor.allowedStatuses.includes(doc.status) && ["team", "canonical"].includes(doc.status);
   if (doc.status === "canonical") return true;

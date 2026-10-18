@@ -4,7 +4,7 @@ import { canReadDocument, knowledgeAccessContext } from "./knowledge-access";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 type PageAccessRow = Pick<KnowledgeDocument, "id" | "owner_id" | "status"> & { parent_document_id?: string | null };
-export const POLICY_FIELDS="id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source";
+export const POLICY_FIELDS="id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source,reader_scope,steward_id";
 const policyKeys=POLICY_FIELDS.split(",");
 
 // A child's own status is not enough: a team-visible child beneath a private

@@ -121,6 +121,14 @@ export async function setDocumentSteward(token: string | null, documentId: strin
   });
 }
 
+export async function getDocumentReaders(token: string | null, documentId: string) {
+  return apiRequest<{ scope: "all" | "restricted"; readerIds: string[]; currentVersion: number }>(`/api/v1/documents/readers?documentId=${encodeURIComponent(documentId)}`, { token });
+}
+
+export async function setDocumentReaders(token: string | null, input: { documentId: string; expectedVersion: number; scope: "all" | "restricted"; readerIds: string[] }) {
+  return apiRequest<{ scope: "all" | "restricted"; readerIds: string[] }>("/api/v1/documents/readers", { token, method: "PUT", body: JSON.stringify(input) });
+}
+
 export async function createDocument(
   token: string | null,
   input: { title: string; content: string; folder?: string; brand?: string; team?: string; tags?: string[]; source?: string; sourceRef?: string | null; parentDocumentId?: string | null },
