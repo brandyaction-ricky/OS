@@ -51,7 +51,9 @@ async function kitInputs(supabase: RequestActor["supabase"], state: Pipeline) {
 
 export async function kitJobCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number) {
   const { script, srt, myin, packaging } = await kitInputs(supabase, state);
-  const docs = await procedureRefs(supabase, "youtube_kit");
+  // "유튜브" alone matches every canonical YouTube page; the kit procedure is the one whose title names the kit.
+  const all = await procedureRefs(supabase, "youtube_kit");
+  const docs = all.filter((doc) => /발행\s?키트/.test(doc.title)).length ? all.filter((doc) => /발행\s?키트/.test(doc.title)) : all;
   const source = state.source;
   const text = (value: unknown) => String((value as { text?: unknown } | null)?.text ?? "").trim();
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
