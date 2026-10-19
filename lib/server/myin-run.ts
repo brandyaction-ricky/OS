@@ -1,0 +1,236 @@
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
+import { ApiError } from "@/lib/http";
+import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
+import type { OsRecord } from "@/lib/record-types";
+import { createServiceSupabase } from "@/lib/supabase/server";
+import type { RequestActor } from "./auth";
+import { synthesizeFishWav } from "./fish-audio";
+import { readYoutubeAutomationInput } from "./youtube-automation-input";
+import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
+
+// 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
+// One run per approved script. Stage 1: the OS server asks Fish for each paragraph exactly as Logan's stage_voice.py does and
+// keeps the wav (voice_pending); the render PC then runs his pipeline unchanged on those files — voice post-processing, words.json
+// and subtitles — and sends back one JSON bundle (words_pending → words_ready). The voice is frozen from here: Fish never reads a
+// line the same way twice, and every later cue is matched against this transcription.
+export const MYIN_RUN_KIND = "youtube_myin_v13";
+export const MYIN_VOICE_MODEL = "drama-3"; // pinned like Logan: Fish serves an unknown model name as 2.1 without an error
+const WORDS_LEASE_MS = 30 * 60_000;
+type Service = ReturnType<typeof createServiceSupabase>;
+
+const hex = z.string().regex(/^[a-f0-9]{64}$/);
+const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
+const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime() }).strict();
+const runSchema = z.object({
+  kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
+  voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
+  paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).min(1).max(150),
+  words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime() }).strict().optional(),
+  lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
+  lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
+}).strict();
+type MyinRun = z.infer<typeof runSchema>;
+
+const sha = (value: string) => createHash("sha256").update(value).digest("hex");
+const parse = (record: Pick<OsRecord, "metadata">) => {
+  const result = runSchema.safeParse(record.metadata);
+  if (!result.success) throw new ApiError(409, "MYIN_RUN_INVALID", "저장된 v13 작업을 읽을 수 없습니다.");
+  return result.data;
+};
+const paragraphPath = (record: OsRecord, run: MyinRun, index: number) => `${record.owner_id}/${run.sourceId}/${record.id}/p${String(index).padStart(2, "0")}.wav`;
+
+/** The approved script as Logan's pipeline reads it, and the paragraphs his stage_voice speaks. */
+async function currentInput(supabase: Service | RequestActor["supabase"], sourceId: string) {
+  const { state, plan, scriptText } = await readYoutubeAutomationInput(supabase, sourceId);
+  if (!plan.inputKey || !plan.script || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "승인된 원고와 패키징을 먼저 확인해 주세요.");
+  const script = state.records.find((record) => record.id === plan.script?.id);
+  const manuscript = typeof script?.metadata.manuscript === "string" ? script.metadata.manuscript : null;
+  const markdown = myinScriptMarkdown(manuscript, scriptText);
+  const { spoken } = myinCleanScript(markdown);
+  if (!spoken.length) throw new ApiError(409, "MYIN_SCRIPT_EMPTY", "읽을 문단이 없는 원고입니다.");
+  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken };
+}
+
+async function save(service: Service, record: OsRecord, status: string, stage: string, run: MyinRun) {
+  const { data, error } = await service.from("os_records").update({ status, stage, metadata: run, updated_by: record.owner_id })
+    .eq("id", record.id).eq("version", record.version).eq("record_type", "ai_job").is("archived_at", null).select("*").maybeSingle();
+  if (error || !data) throw new ApiError(409, "MYIN_RUN_CHANGED", "v13 작업이 먼저 변경됐습니다.");
+  return data as OsRecord;
+}
+
+export function presentMyinRun(record: OsRecord) {
+  const run = parse(record);
+  return { id: record.id, status: record.status, stage: record.stage, paragraphs: run.paragraphs.length,
+    paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
+    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
+}
+
+export async function latestMyinRun(actor: RequestActor, sourceId: string) {
+  const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
+    .eq("owner_id", actor.id).eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  return data?.[0] ? presentMyinRun(data[0] as OsRecord) : null;
+}
+
+/** [v13 음성 만들기]: the content owner (an admin, as for today's voice runs) starts one run for the approved script. */
+export async function createMyinRun(actor: RequestActor, sourceId: string) {
+  if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 음성 제작을 시작할 수 있습니다.");
+  const input = await currentInput(actor.supabase, sourceId);
+  if (input.state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당자만 음성 제작을 시작할 수 있습니다.");
+  const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
+  if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
+  const fingerprint = digestVoiceValue(voiceReference);
+  const markdownHash = sha(input.markdown);
+  const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint]);
+  const id = voiceRunId(runKey);
+  const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
+    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0,
+    paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
+  const { data, error } = await actor.supabase.from("os_records").insert({
+    id, record_type: "ai_job", title: `${input.state.source.title} · v13 음성·받아쓰기`.slice(0, 240),
+    description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: "voice_pending",
+    priority: "normal", brand: input.state.source.brand, team: input.state.source.team, owner_id: actor.id, parent_id: sourceId,
+    created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "마이인v13"], metadata: run,
+  }).select("*").maybeSingle();
+  if (!error && data) return presentMyinRun(data as OsRecord);
+  if (error?.code !== "23505") throw new ApiError(500, "MYIN_RUN_CREATE_FAILED", "v13 작업을 저장하지 못했습니다.");
+  // Same script, same voice: the run already exists. A blocked one goes back in the queue with fresh attempts.
+  const { data: existing } = await actor.supabase.from("os_records").select("*").eq("id", id).is("archived_at", null).maybeSingle();
+  if (!existing) throw new ApiError(409, "MYIN_RUN_CONFLICT", "기존 v13 작업을 확인할 수 없습니다.");
+  if (existing.status !== "blocked") return presentMyinRun(existing as OsRecord);
+  const prior = parse(existing as OsRecord);
+  const resumed: MyinRun = { ...prior, attempts: 0 }; delete resumed.lease;
+  const stage = prior.paragraphs.every((p) => p.status === "ready") ? "words_pending" : "voice_pending";
+  return presentMyinRun(await save(createServiceSupabase(), existing as OsRecord, "backlog", stage, resumed));
+}
+
+/** Drop a run whose script changed after it started; the owner starts a new one. */
+async function assertCurrent(service: Service, run: MyinRun) {
+  const input = await currentInput(service, run.sourceId);
+  if (input.inputKey !== run.inputKey || sha(input.markdown) !== run.scriptMarkdownHash ||
+    input.spoken.length !== run.paragraphs.length || input.spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
+    throw new ApiError(409, "MYIN_RUN_STALE", "원고가 바뀌었습니다. v13 음성을 다시 시작해 주세요.");
+  return input;
+}
+
+async function claim(service: Service, stage: string, leaseMs: number) {
+  const { data } = await service.from("os_records").select("*").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+    .eq("stage", stage).in("status", ["backlog", "in_progress"]).is("archived_at", null).order("created_at").limit(10);
+  for (const candidate of (data ?? []) as OsRecord[]) {
+    let run: MyinRun; try { run = parse(candidate); } catch { continue; }
+    if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) continue;
+    if (run.attempts >= 3) { await save(service, candidate, "blocked", stage, run).catch(() => null); continue; }
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString() };
+    const claimed = await save(service, candidate, "in_progress", stage, { ...run, lease, attempts: run.attempts + 1 }).catch(() => null);
+    if (claimed) return { record: claimed, run: parse(claimed), lease };
+  }
+  return null;
+}
+
+async function failed(service: Service, record: OsRecord, run: MyinRun, code: string) {
+  const next: MyinRun = { ...run, lastError: { code: code.replace(/[^A-Z0-9_]/g, "").slice(0, 60) || "MYIN_FAILED", at: new Date().toISOString() } };
+  delete next.lease;
+  const final = code === "MYIN_RUN_STALE" || run.attempts >= 3;
+  await save(service, record, final ? "blocked" : "backlog", record.stage ?? "voice_pending", next);
+}
+
+/** One paragraph of voice per call; the render PC's queue loop calls this when no older voice run is waiting. */
+export async function processMyinVoiceStep(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "voice_pending", 240_000);
+  if (!claimed) return { processed: false };
+  const { record, run } = claimed;
+  try {
+    const input = await assertCurrent(service, run);
+    const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
+    if (!process.env.FISH_API_KEY?.trim() || digestVoiceValue(voiceReference) !== run.voiceReferenceFingerprint)
+      throw new ApiError(409, "MYIN_RUN_STALE", "목소리 설정이 바뀌었습니다. v13 음성을 다시 시작해 주세요.");
+    const pending = run.paragraphs.find((p) => p.status === "pending");
+    let paragraphs = run.paragraphs;
+    if (pending) {
+      const audio = await synthesizeFishWav(input.spoken[pending.index], { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: MYIN_VOICE_MODEL });
+      const path = paragraphPath(record, run, pending.index);
+      const { error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), { contentType: audio.mimeType, upsert: true });
+      if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "생성된 음성을 저장하지 못했습니다.");
+      paragraphs = run.paragraphs.map((p) => p.index === pending.index ? { ...p, status: "ready" as const, path, bytes: audio.bytes.length } : p);
+    }
+    const done = paragraphs.every((p) => p.status === "ready");
+    const next: MyinRun = { ...run, paragraphs, attempts: 0 }; delete next.lease; delete next.lastError;
+    await save(service, record, "backlog", done ? "words_pending" : "voice_pending", next);
+    return { processed: true, myinRunId: record.id, ready: paragraphs.filter((p) => p.status === "ready").length, of: paragraphs.length };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_VOICE_FAILED");
+    return { processed: true, myinRunId: record.id, error: error instanceof ApiError ? error.code : "MYIN_VOICE_FAILED" };
+  }
+}
+
+const bundlePath = (record: OsRecord, run: MyinRun) => `${record.owner_id}/${run.sourceId}/${record.id}/myin-words.json`;
+
+/** Render PC: take a run whose voice is complete, with the script file, each paragraph's text and wav, and where to put the bundle. */
+export async function claimMyinWords(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS);
+  if (!claimed) return { idle: true as const };
+  const { record, run, lease } = claimed;
+  try {
+    const input = await assertCurrent(service, run);
+    const paragraphs = [];
+    for (const p of run.paragraphs) {
+      const { data, error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUrl(p.path ?? "", 1_800);
+      if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "음성 파일 주소를 만들지 못했습니다.");
+      paragraphs.push({ index: p.index, text: input.spoken[p.index], url: data.signedUrl });
+    }
+    const { data: upload, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(bundlePath(record, run), { upsert: true });
+    if (error || !upload) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
+    return { runId: record.id, lease: lease.token, scriptMarkdown: input.markdown, paragraphs, bundleUploadUrl: upload.signedUrl };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
+    throw error;
+  }
+}
+
+async function leased(service: Service, runId: string, token: string) {
+  const { data } = await service.from("os_records").select("*").eq("id", runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
+  const run = data ? parse(data as OsRecord) : null;
+  if (!data || !run || run.lease?.token !== token || Date.parse(run.lease.expiresAt) < Date.now())
+    throw new ApiError(409, "MYIN_LEASE_LOST", "v13 작업의 처리 권한이 만료됐습니다.");
+  return { record: data as OsRecord, run };
+}
+
+const bundleSchema = z.object({
+  words: z.array(z.tuple([z.number(), z.number(), z.string()])).min(1),
+  subtitlesAss: z.string().min(1), subtitleQc: z.string(), speech: z.string().min(1), durationSeconds: z.number().positive(),
+}).passthrough();
+
+/** Render PC: the bundle is up; the OS reads it back before the run moves on. */
+export async function completeMyinWords(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  const path = bundlePath(record, run);
+  const { data, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(path);
+  if (error || !data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
+  const bundle = bundleSchema.safeParse(JSON.parse(await data.text()));
+  if (!bundle.success) throw new ApiError(422, "MYIN_BUNDLE_INVALID", "받아쓰기 결과 형식이 맞지 않습니다.");
+  const spoken = bundle.data.speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
+  if (spoken.length !== run.paragraphs.length || spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
+    throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "렌더 PC가 읽은 문단이 OS 원고와 다릅니다.");
+  const next: MyinRun = { ...run, attempts: 0, words: { path, words: bundle.data.words.length,
+    subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString() } };
+  delete next.lease; delete next.lastError;
+  await save(service, record, "done", "words_ready", next);
+  return { runId: record.id, stage: "words_ready" };
+}
+
+export async function failMyinWords(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  await failed(service, record, run, input.code);
+  return { runId: record.id, retry: run.attempts < 3 };
+}
+
+/** The subtitle check sheet and counts for the ③ panel. */
+export async function myinWordsReport(actor: RequestActor, runId: string) {
+  const { data: record } = await actor.supabase.from("os_records").select("*").eq("id", runId).eq("owner_id", actor.id).is("archived_at", null).maybeSingle();
+  const run = record ? parse(record as OsRecord) : null;
+  if (!run?.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
+  const { data } = await createServiceSupabase().storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
+  if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
+  const bundle = JSON.parse(await data.text()) as { subtitleQc?: string };
+  return { subtitleQc: String(bundle.subtitleQc ?? "").slice(0, 20_000) };
+}

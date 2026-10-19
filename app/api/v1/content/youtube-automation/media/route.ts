@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
+import { claimMyinWords, completeMyinWords, failMyinWords } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -16,6 +17,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("brief"), ...lease, segmentDurations: z.array(z.number().positive().max(3_600)).min(1).max(80), durationSeconds: z.number().positive().max(14_400) }).strict(),
   z.object({ action: z.literal("complete"), ...lease, videoBytes: z.number().int().positive(), videoSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ action: z.literal("fail"), ...lease, code: z.string().max(80) }).strict(),
+  // 마이인 v13 stage 1: voice post-processing, words.json and subtitles on the render PC.
+  z.object({ action: z.literal("myin_claim") }).strict(),
+  z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   renderPcSignalSchema,
 ]);
 
@@ -31,6 +36,9 @@ export async function POST(request: Request) {
       : input.action === "claim" ? await claimYoutubeRender(undefined, input.voiceRunId)
       : input.action === "brief" ? await buildYoutubeRenderBrief(input)
       : input.action === "complete" ? await completeYoutubeRender(input)
+      : input.action === "myin_claim" ? await claimMyinWords()
+      : input.action === "myin_complete" ? await completeMyinWords(input)
+      : input.action === "myin_fail" ? await failMyinWords(input)
       : await failYoutubeRender(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

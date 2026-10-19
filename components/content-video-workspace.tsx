@@ -1,5 +1,6 @@
 "use client";
 import { useContentWork } from "./content-work-provider";
+import { MyinV13Panel } from "./myin-v13-panel";
 import { PageTitle } from "./page-title";
 import { YoutubeProductionSteps } from "./youtube-production-steps";
 
@@ -12,6 +13,9 @@ export function ContentVideoWorkspace() {
     {work?.loading ? <section className="panel load-error" role="status">작업 영상 불러오는 중…</section>
       : work?.error ? <section className="panel load-error" role="alert">{work.error}</section>
         : !selected ? <section className="panel empty-state"><div><h3>영상을 먼저 골라 주세요</h3><p>위 ‘작업 중인 영상’에서 원고 승인까지 마친 영상을 고르면 제작 단계가 열립니다.</p></div></section>
-          : <YoutubeProductionSteps key={selected.id} sourceId={selected.id} storedPlan={selected.metadata.narratedScenePlan} onChange={async () => work.reload()} />}
+          : <>
+            <YoutubeProductionSteps key={selected.id} sourceId={selected.id} storedPlan={selected.metadata.narratedScenePlan} onChange={async () => work.reload()} />
+            <MyinV13Panel key={`myin-${selected.id}`} sourceId={selected.id} />
+          </>}
   </>;
 }

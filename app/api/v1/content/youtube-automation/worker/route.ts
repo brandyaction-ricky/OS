@@ -2,6 +2,7 @@ import { z, ZodError } from "zod";
 import { NextResponse } from "next/server";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
+import { processMyinVoiceStep } from "@/lib/server/myin-run";
 import { processYoutubeVoiceQueue } from "@/lib/server/youtube-voice-worker";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -19,7 +20,9 @@ export async function POST(request: Request) {
     if (!(cron && safeSecretMatch(received, cron)) && !(media.length >= 32 && safeSecretMatch(received, media)))
       throw new ApiError(401, "INVALID_CRON_SECRET", "작업 실행 인증에 실패했습니다.");
     const input = z.object({ runId: z.string().uuid().optional() }).strict().parse(request.body ? await parseJson(request, 1_000) : {});
-    return NextResponse.json(await processYoutubeVoiceQueue(input.runId), { headers: { "cache-control": "no-store" } });
+    const step = await processYoutubeVoiceQueue(input.runId);
+    // 마이인 v13 voice paragraphs share the same queue loop, after the older voice runs.
+    return NextResponse.json(step.processed || input.runId ? step : await processMyinVoiceStep(), { headers: { "cache-control": "no-store" } });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_VOICE_RUN", "실행할 음성 작업을 확인해 주세요."));
     return apiErrorResponse(error);

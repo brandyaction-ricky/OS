@@ -173,6 +173,70 @@ export async function drawMindmap(brief, parts, name) {
   }
 }
 
+// 마이인 v13 stage 1 (design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ): Logan's package runs unchanged in a per-video APFS
+// clone (his scripts write inside the package, and SRC defaults to an old video). The OS made each paragraph's wav exactly as his
+// stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
+const myinPkg = process.env.MYIN_PKG ?? "";
+const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
+const myinPython = process.env.MYIN_PYTHON || "python3";
+const runAsync = (command, args, options) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, { stdio: "inherit", ...options });
+  child.on("error", reject);
+  child.on("exit", (code) => code === 0 ? resolve() : reject(Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
+});
+
+/** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
+export async function processMyinWords() {
+  if (!myinPkg) return false;
+  const job = await call({ action: "myin_claim" });
+  if (job.idle) return false;
+  current = { step: "download" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const work = path.join(myinWork, job.runId);
+    if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
+    const voiceJob = "os_voice", videoJob = "os_myin"; // fixed names: the clone belongs to this one video
+    const voiceDir = path.join(work, "voice", voiceJob);
+    mkdirSync(voiceDir, { recursive: true });
+    for (const paragraph of job.paragraphs) {
+      const n = String(paragraph.index).padStart(2, "0");
+      const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
+      if (existsSync(pcm)) continue;
+      await fetchTo(paragraph.url, raw);
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", pcm]); // his exact conversion
+    }
+    const script = path.join(voiceDir, "script.md");
+    writeFileSync(script, job.scriptMarkdown);
+    // Dummy keys only pass his "keys present" check; every pNN.wav exists, so no Fish call is made.
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: "unused", FISH_VOICE_ID: "unused" };
+    current.step = "narration";
+    await runAsync(myinPython, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+    const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
+    const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
+    if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
+      throw Object.assign(new Error("speech.txt differs from the OS paragraphs"), { code: "MYIN_PARAGRAPHS_MISMATCH" });
+    current.step = "drawing";
+    const myinDir = path.join(work, "tools", "myin_pipeline");
+    await runAsync(myinPython, ["stage_words.py", voiceJob, videoJob], { cwd: myinDir, env });
+    await runAsync(myinPython, ["stage_subs_myin.py", voiceJob, videoJob, script], { cwd: myinDir, env });
+    const out = path.join(work, "voice", videoJob);
+    const bundle = path.join(out, "myin-words.json");
+    writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
+      subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")) }));
+    current.step = "upload";
+    await upload(job.bundleUploadUrl, bundle, "application/json");
+    await call({ action: "myin_complete", ...lease });
+    console.log(`myin words ready: ${job.runId}`);
+  } catch (error) {
+    console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
+    await call({ action: "myin_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   if (!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
@@ -180,7 +244,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
+    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
     }).finally(() => { current = null; }))
