@@ -14,6 +14,7 @@ import { sanitizePublicCopyValue } from "@/lib/content-safety";
 import { normalizeYoutubeKitCopy } from "@/lib/content-input";
 import { finalizeYoutubeUpload, type PendingYoutubeCompletion } from "@/lib/youtube-upload-flow";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
+import { YoutubeKitStaffAi } from "./youtube-kit-staff-ai";
 
 interface MyinFinal { runId: string; credits: string[]; final: { bytes: number; durationSeconds: number; lufs: number; peak: number } }
 interface MyinOutputs { video: string | null; summary: string | null; deck: string | null; srt: string | null }
@@ -84,6 +85,7 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
   const [pendingCompletions, setPendingCompletions] = useState<Record<string, PendingYoutubeCompletion | null>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(""); const [editing, setEditing] = useState(false); const [draft, setDraft] = useState<Record<string, string>>({});
   const [myin, setMyin] = useState<(MyinFinal & { outputs: MyinOutputs }) | null>(null);
+  const [staffKit, setStaffKit] = useState(false);
   const load = useCallback(async () => {
     if (demo) return;
     try {
@@ -98,6 +100,7 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
     setPipeline(await apiRequest<{ source: OsRecord; approved: boolean[]; release: ReleaseWorkflowState }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }));
   }, [accessToken, demo, sourceId]);
   useEffect(() => { loadPipeline().catch((reason) => setError(reason instanceof Error ? reason.message : "발행 승인 상태를 불러오지 못했습니다.")); }, [loadPipeline]);
+  const reloadKits = useCallback(async () => { await Promise.all([load(), loadPipeline()]); }, [load, loadPipeline]);
   // ③ 마이인 v13 finished video for this source (the pilot route answers 404 where it is off; then nothing shows).
   const myinOutputs = useCallback((runId: string) => apiRequest<MyinOutputs>(`/api/v1/content/youtube-automation/myin?outputs=${runId}`, { token: accessToken }), [accessToken]);
   useEffect(() => {
@@ -169,12 +172,13 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
     } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 업로드를 완료하지 못했습니다."); } finally { setBusy(false); }
   };
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>{view === "manage" ? "YouTube 발행 키트를 만들고 제목·설명·체크리스트를 검수합니다." : "유튜브 관리에서 준비한 키트를 확인한 뒤 발행 조건을 승인하고 최종 영상을 업로드합니다."}</p></div><div className="header-actions">{view === "manage" ? <>{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}<ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</ContentGenerationButton></> : <Link className="secondary-button" href={`/content/youtube${sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : ""}`}>유튜브 관리에서 키트 확인 →</Link>}</div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>{view === "manage" ? "YouTube 발행 키트를 만들고 제목·설명·체크리스트를 검수합니다." : "유튜브 관리에서 준비한 키트를 확인한 뒤 발행 조건을 승인하고 최종 영상을 업로드합니다."}</p></div><div className="header-actions">{view === "manage" ? <>{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}{staffKit ? null : <ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</ContentGenerationButton>}</> : <Link className="secondary-button" href={`/content/youtube${sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : ""}`}>유튜브 관리에서 키트 확인 →</Link>}</div></header>
     <div className="fullscreen-source-row"><span>기준 콘텐츠</span>{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<SourcePicker sources={sources} value={sourceId} onChange={onSourceChange ?? setSourceId} /><span>작업 중인 영상과 같은 값</span></div>
     {sourceId ? <div className="youtube-derivatives-link"><span>이 주제의 다른 채널용 콘텐츠는 콘텐츠 자동화에서 관리합니다.</span><Link className="secondary-button" href={`/automation/review?tab=create&sourceId=${encodeURIComponent(sourceId)}`}>파생 콘텐츠 관리 →</Link></div> : null}
     {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     {view === "manage" ? <section className="panel youtube-connection"><div><span className="platform-icon youtube"><Youtube size={17}/></span><span><strong>{oauth?.connected?oauth.channelTitle:"YouTube 채널 동의 확인 필요"}</strong><small>채널 연결과 팀 공유는 내 계정에서 관리합니다.</small></span></div><Link className="secondary-button" href="/settings/account">내 계정 · 채널 연결</Link></section> : null}
     {view === "manage" ? <section className="panel kit-guide"><span><strong>1</strong> 기준 롱폼 선택</span><span><strong>2</strong> 정본으로 키트 만들기</span><span><strong>3</strong> 문안·체크리스트 검수</span><span><strong>4</strong> 발행·업로드로 이동</span></section> : <section className="panel kit-guide"><span><strong>1</strong> 기준 영상 선택</span><span><strong>2</strong> 발행 키트 준비 확인</span><span><strong>3</strong> 발행 조건 승인</span><span><strong>4</strong> 최종 영상 업로드</span></section>}
+    {view === "manage" && sourceId && !demo ? <YoutubeKitStaffAi key={sourceId} sourceId={sourceId} onAvailable={setStaffKit} onDone={reloadKits} /> : null}
     {kitIsStale ? <div className="inline-alert warning"><CircleAlert size={16} /><span><strong>이 키트는 이전 규칙으로 만들어졌습니다.</strong> 최신 정본과 공개 문안 필터를 적용하려면 {view === "manage" ? "‘발행 키트 만들기’를 다시 실행하세요." : "유튜브 관리에서 발행 키트를 다시 만들어 주세요."}</span></div> : null}
     {view === "manage" ? <section className="kit-grid">{KIT_FIELDS.map(([key, label]) => { const value = result[key]; return <article className="panel kit-card" key={key}><header><div><PackageCheck size={15} /><strong>{label}</strong></div><button className="ghost-button" disabled={!value && !draft[key]} onClick={() => copy(key, editing ? draft[key] : value)}><Clipboard size={13} /> {copied === key ? "복사됨" : "복사"}</button></header>{editing ? <textarea aria-label={`${label} 수정`} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /> : key === "checklist" && Array.isArray(value) ? <div className="kit-checklist">{value.map((item, index) => <label key={index}><input type="checkbox" disabled={busy} checked={metadata<number[]>(kit, "checkedItems", []).includes(index)} onChange={() => toggleChecklist(index)} />{String(item)}</label>)}</div> : <pre>{Array.isArray(value) ? value.join("\n") : String(value ?? "생성된 내용이 없습니다.")}</pre>}</article>; })}</section> : null}
     {view === "publish" && pendingCompletion ? <div className="inline-alert warning"><CircleAlert size={16} /><span>영상 전송은 완료됐습니다. 업로드 결과를 다시 확인하면 기존 영상의 OS 기록만 저장합니다.</span></div> : null}

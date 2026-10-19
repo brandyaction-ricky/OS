@@ -13,18 +13,20 @@ import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } fr
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
 import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
+import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
 
 // Staff AI jobs (owner decision 2026-10-17, method B): the requester's own Claude or Codex reaches the OS through
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90 } as const;
-const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)" } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30 } as const;
+const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
+  kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -39,6 +41,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
     role: z.enum(SCRIPT_ROLES).default("유입형"), attachments: z.string().trim().max(20_000).optional() }).strict(),
   // 마이인 v13 ③ 기획표 after the render PC's transcription; a resend after Logan asked for changes carries his note.
   z.object({ task: z.literal("storyboard"), sourceId: z.string().uuid() }).strict(),
+  // ⑦ 유튜브 관리 발행키트, from the script approved at gate 2 (and the v13 final's subtitles for the chapters).
+  z.object({ task: z.literal("kit"), sourceId: z.string().uuid() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -93,6 +97,10 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     const state = await readPipeline(actor, input.sourceId);
     source = state.source; title = state.writing.packageTitle || source.title; myinRunId = myin.record.id;
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
+  } else if (input.task === "kit") {
+    const state = await readPipeline(actor, input.sourceId);
+    assertKitInputs(state);
+    source = state.source; title = state.writing.packageTitle || source.title; inputKey = kitInputKey(state);
   } else if (input.task === "scene-plan") {
     const { state, plan, scriptText, title: adopted } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
     if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
@@ -154,7 +162,7 @@ async function ownJob(agent: RequestActor, jobId: string) {
 }
 
 async function closeStale(job: OsRecord, m: JobMeta): Promise<never> {
-  const where = m.task === "script" ? "② 원고" : "③ 영상 제작";
+  const where = m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : "③ 영상 제작";
   await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: `기획·제목·원고·영상 기준이 바뀌어 이 요청은 닫았어요. ${where} 화면에서 다시 보내 주세요.` } });
   throw new ApiError(409, "STAFF_AI_JOB_STALE", "입력이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
 }
@@ -174,6 +182,15 @@ async function currentStoryboardInput(job: OsRecord) {
   const note = myin?.run.review?.decision === "revise" ? myin.run.review.note : "";
   if (!myin || myin.record.id !== m.myinRunId || myin.record.stage !== "words_ready" || myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note) !== m.inputKey) return closeStale(job, m);
   return myin;
+}
+
+/** The approvals behind a ⑦ kit job; closed the same way when they moved on. */
+async function currentKitInput(job: OsRecord) {
+  const m = meta(job);
+  const state = await readPipeline({ supabase: service() }, m.sourceId);
+  try { assertKitInputs(state); } catch { await closeStale(job, m); }
+  if (kitInputKey(state) !== m.inputKey) await closeStale(job, m);
+  return state;
 }
 
 /** The approved plan and adopted title for a ② job; closed the same way when they moved on. */
@@ -201,6 +218,11 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
         note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes }) };
+  }
+  if (m.task === "kit") {
+    const state = await currentKitInput(job);
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await kitJobCard(service(), state, minutes) };
   }
   if (m.task === "script") {
     const state = await currentScriptInput(job);
@@ -237,6 +259,12 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
+  if (m.task === "kit") {
+    const state = await currentKitInput(job);
+    const saved = await keepIssues(job, m, () => saveStaffKit(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id }));
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, ...saved, next: "담당 직원이 ⑦ 유튜브 관리에서 문안과 업로드 체크리스트를 검수합니다." };
+  }
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words));

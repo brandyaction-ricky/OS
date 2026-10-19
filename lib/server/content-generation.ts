@@ -114,6 +114,15 @@ export async function generationProcedureRevision(actor: RequestActor, action: k
   return `generation-v4-public-copy:${action === "derivatives" ? `${BUNDLED_CHANNEL_PROCEDURE_VERSION}:` : ""}${revisions.join(",")}`;
 }
 
+/** The canonical procedure documents an action follows, by id and title: a staff-AI card points at them instead of pasting them. */
+export async function procedureRefs(supabase: RequestActor["supabase"], action: keyof typeof PROCEDURE_TERMS) {
+  const filter = PROCEDURE_TERMS[action].flatMap((term) => [`title.ilike.%${term}%`, `source_ref.ilike.%${term}%`]).join(",");
+  const { data, error } = await supabase.from("os_documents").select("id,title").eq("status", "canonical").or(filter).order("updated_at", { ascending: false }).order("id").limit(10);
+  if (error) throw new ApiError(500, "PROCEDURE_READ_FAILED", "절차 문서를 읽지 못했습니다.");
+  if (!data?.length) throw new ApiError(409, "CONTENT_PROCEDURE_MISSING", "실행할 정본 절차 문서가 없습니다. 문서 작업공간에서 확인해 주세요.");
+  return data as { id: string; title: string }[];
+}
+
 async function procedures(actor: RequestActor, action: keyof typeof PROCEDURE_TERMS, platforms: string[]) {
   // Clip selection uses the supplied time-coded transcript and its own extraction rules.
   if (action === "shorts_proposal") return "제공된 SRT/VTT의 실제 시각과 문장만 사용. 구간은 자막 범위 안에서 완결된 문맥을 유지. 근거 없는 내용이나 영상 시각을 만들지 않음.";
