@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Copy, KeyRound, LoaderCircle } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 
@@ -9,7 +9,7 @@ type Tool = "claude" | "codex";
 const STEPS: Record<Tool, string[]> = {
   claude: [
     "Claude 앱(또는 claude.ai)에서 설정 › 커넥터로 갑니다.",
-    "‘사용자 지정 커넥터 추가’를 누르고 이름은 브랜디 OS, 주소 칸에 복사한 주소를 붙여 넣고 추가합니다.",
+    "‘사용자 지정 커넥터 추가’를 누르고 이름은 브랜디 OS, 주소 칸에 복사한 주소를 붙여 넣습니다. 인증은 ‘로그인 없음’을 고르고, 나머지는 그대로 둔 채 추가합니다.",
     "새 대화에서 ‘브랜디 OS로 원고 공정 정본 찾아줘’라고 해 보고, 문서가 나오면 연결된 것입니다.",
   ],
   codex: [
@@ -33,9 +33,14 @@ export function MyAiConnect() {
     catch (reason) { setError(reason instanceof Error ? reason.message : "연결 주소를 만들지 못했습니다."); }
     finally { setBusy(false); }
   };
+  const field = useRef<HTMLTextAreaElement>(null);
+  // Some app browsers refuse the clipboard API; selecting the field and the older copy command still works there.
   const copy = async () => {
-    try { await navigator.clipboard.writeText(address); setCopied(true); }
-    catch { setError("복사하지 못했습니다. 주소를 직접 선택해 복사해 주세요."); }
+    setError("");
+    try { await navigator.clipboard.writeText(address); setCopied(true); return; } catch { /* fall back below */ }
+    field.current?.select();
+    if (document.execCommand("copy")) setCopied(true);
+    else setError("자동 복사가 막혔습니다. 주소 칸이 선택되어 있으니 ⌘C(윈도우는 Ctrl+C)로 복사해 주세요.");
   };
 
   return <div style={{ display: "grid", gap: 10 }}>
@@ -47,7 +52,8 @@ export function MyAiConnect() {
       <small>내 이름으로 초안 쓰기 키(90일)를 만듭니다. 같은 AI로 다시 누르면 이전 주소는 끊깁니다.</small>
     </div> : <div style={{ display: "grid", gap: 8 }}>
       <strong>연결 주소 · 지금 한 번만 보입니다</strong>
-      <code style={{ padding: 8, overflowWrap: "anywhere", border: "1px solid var(--line)", borderRadius: 7, background: "var(--panel-2)", fontSize: 11 }}>{address}</code>
+      <textarea ref={field} readOnly rows={3} aria-label="연결 주소" value={address} onFocus={(event) => event.currentTarget.select()}
+        style={{ padding: 8, resize: "none", border: "1px solid var(--line)", borderRadius: 7, background: "var(--panel-2)", color: "inherit", font: "11px ui-monospace,SFMono-Regular,Menlo,monospace", wordBreak: "break-all" }} />
       <div style={{ display: "flex", gap: 6 }}>
         <button type="button" className="secondary-button" onClick={() => void copy()}>{copied ? <Check size={14} /> : <Copy size={14} />}{copied ? "복사됨" : "주소 복사"}</button>
         <button type="button" className="secondary-button" onClick={() => setAddress("")}>닫기</button>
