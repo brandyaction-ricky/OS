@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -237,6 +237,69 @@ export async function processMyinWords() {
   return true;
 }
 
+/** Like runAsync, and also returns what the process printed (Logan's scripts report "문구 못 찾음" only on stdout). */
+const runCapture = (command, args, options) => new Promise((resolve, reject) => {
+  const child = spawn(command, args, { stdio: ["ignore", "pipe", "inherit"], ...options });
+  let out = "";
+  child.stdout.on("data", (chunk) => { out += chunk; process.stdout.write(chunk); });
+  child.on("error", reject);
+  child.on("exit", (code) => code === 0 ? resolve(out) : reject(Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
+});
+
+/**
+ * v13 stage 3 in the same clone: the confirmed storyboard, approved photos and music, the CTA lines (his ffmpeg line, his
+ * tighten(), his md5 tag so stage_cta would say "그대로"), the site capture when a site_ad scene exists, then his preview,
+ * whose "문구 못 찾음" lines and sheets go back to the OS.
+ */
+export async function processMyinPrep() {
+  if (!myinPkg) return false;
+  const job = await call({ action: "myin_prep_claim" });
+  if (job.idle) return false;
+  current = { step: "download" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const work = path.join(myinWork, job.runId);
+    if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
+    const videoDir = path.join(work, "voice", "os_myin");
+    const myinDir = path.join(work, "tools", "myin_pipeline");
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" };
+    writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
+    for (const asset of job.assets) {
+      mkdirSync(path.join(work, "assets", asset.kind), { recursive: true });
+      await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file));
+    }
+    const ctaDir = path.join(videoDir, "cta");
+    mkdirSync(ctaDir, { recursive: true });
+    for (const cta of job.cta) {
+      const k = String(cta.index).padStart(2, "0");
+      const raw = path.join(ctaDir, `cta_${k}_raw.wav`), pcm = path.join(ctaDir, `cta_${k}_48k.wav`);
+      await fetchTo(cta.url, raw);
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", pcm]);
+      await runAsync(myinPython, ["-c", "import sys, stage_voice as SV; SV.tighten(sys.argv[1], sys.argv[2])", pcm, path.join(ctaDir, `cta_${k}.wav`)],
+        { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+      writeFileSync(path.join(ctaDir, `cta_${k}.txt`), cta.tag);
+    }
+    if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
+    current.step = "drawing";
+    const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env });
+    const misses = log.split("\n").filter((line) => line.includes("못 찾음"));
+    const sheets = readdirSync(videoDir).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, job.sheetUploadUrls.length);
+    current.step = "upload";
+    for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");
+    const bundle = path.join(videoDir, "myin-prep.json");
+    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, log: log.slice(-20_000) }));
+    await upload(job.bundleUploadUrl, bundle, "application/json");
+    await call({ action: "myin_prep_complete", ...lease });
+    console.log(`myin prep ready: ${job.runId} (문구 못 찾음 ${misses.length})`);
+  } catch (error) {
+    console.error(`myin prep failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
+    await call({ action: "myin_prep_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   if (!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
@@ -244,7 +307,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
+    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
     }).finally(() => { current = null; }))

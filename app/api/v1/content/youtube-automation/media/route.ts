@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { claimMyinWords, completeMyinWords, failMyinWords } from "@/lib/server/myin-run";
+import { claimMyinPrep, claimMyinWords, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinWords } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -21,6 +21,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_claim") }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
+  // Stage 3: approved photos and music, CTA voice, Logan's preview check.
+  z.object({ action: z.literal("myin_prep_claim") }).strict(),
+  z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   renderPcSignalSchema,
 ]);
 
@@ -39,6 +43,9 @@ export async function POST(request: Request) {
       : input.action === "myin_claim" ? await claimMyinWords()
       : input.action === "myin_complete" ? await completeMyinWords(input)
       : input.action === "myin_fail" ? await failMyinWords(input)
+      : input.action === "myin_prep_claim" ? await claimMyinPrep()
+      : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
+      : input.action === "myin_prep_fail" ? await failMyinPrep(input)
       : await failYoutubeRender(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

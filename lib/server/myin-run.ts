@@ -37,6 +37,12 @@ const runSchema = z.object({
     assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
     fuzzy: z.array(z.string()), notes: z.array(z.string()) }).strict().optional(),
   review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
+  // Stage 3: each candidate's download decision (by file name), files people uploaded (Pixabay blocks automated downloads),
+  // the CTA lines' voice, and the render PC's preparation with Logan's preview check.
+  assets: z.record(z.string(), z.object({ decision: z.enum(["approved", "excluded"]), by: z.string().uuid(), at: z.string().datetime(),
+    path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).optional(),
+  cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional() }).strict()).optional(),
+  prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime() }).strict().optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
   lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
 }).strict();
@@ -74,6 +80,9 @@ export function presentMyinRun(record: OsRecord) {
   return { id: record.id, status: record.status, stage: record.stage, paragraphs: run.paragraphs.length,
     paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
+    assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision, uploaded: Boolean(value.path) }])),
+    ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
+    prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
 }
 
@@ -196,7 +205,7 @@ async function failed(service: Service, record: OsRecord, run: MyinRun, code: st
 /** One paragraph of voice per call; the render PC's queue loop calls this when no older voice run is waiting. */
 export async function processMyinVoiceStep(service: Service = createServiceSupabase()) {
   const claimed = await claim(service, "voice_pending", 240_000);
-  if (!claimed) return { processed: false };
+  if (!claimed) return processMyinCtaStep(service);
   const { record, run } = claimed;
   try {
     const input = await assertCurrent(service, run);
@@ -292,4 +301,202 @@ export async function myinWordsReport(actor: RequestActor, runId: string) {
   if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await data.text()) as { subtitleQc?: string };
   return { subtitleQc: String(bundle.subtitleQc ?? "").slice(0, 20_000) };
+}
+
+// ── Stage 3: photos, music, CTA voice and the render PC's preparation with Logan's preview check ──
+
+const ASSET_BUCKET = "os-youtube-video"; // private, accepts audio/mpeg; uploaded music lives next to the video
+const SHEET_BUCKET = "os-youtube-character"; // private, accepts PNG: Logan's preview sheets for the ③ panel
+const md5 = (value: string) => createHash("md5").update(value).digest("hex");
+
+async function runRecord(service: Service, runId: string) {
+  const { data } = await service.from("os_records").select("*").eq("id", runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
+  if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
+  const record = data as OsRecord;
+  return { record, run: parse(record) };
+}
+async function ownedRun(actor: RequestActor, runId: string) {
+  const found = await runRecord(createServiceSupabase(), runId);
+  if (found.record.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당자만 자료를 정할 수 있습니다.");
+  return found;
+}
+async function storyboardJson(service: Service, run: MyinRun) {
+  const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.storyboard?.path ?? "");
+  if (!data) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표 파일을 찾지 못했습니다.");
+  return JSON.parse(await data.text()) as Record<string, unknown> & { scenes: Record<string, unknown>[]; cta: { line: string }[] };
+}
+
+/** File names the storyboard points at: photo/music "file", opening "image", site_ad "capture" (made by the render PC). */
+export function myinReferencedFiles(storyboard: unknown) {
+  const files = new Set<string>();
+  const walk = (o: unknown) => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+      if ((k === "file" || k === "image") && typeof v === "string") files.add(v); else walk(v);
+    }
+  };
+  walk(storyboard);
+  return files;
+}
+const pageId = (url: string) => url.split("/photos/")[1]?.split(/[?#/]/)[0]?.split("-").pop() ?? "";
+/** Where the render PC fetches an approved file: what a person uploaded, else the photo site's own download address. */
+function fetchUrl(asset: { url: string }, uploaded: string | undefined) {
+  if (uploaded) return { storage: uploaded };
+  const url = new URL(asset.url);
+  if (url.hostname === "unsplash.com" && pageId(asset.url)) return { url: `https://unsplash.com/photos/${pageId(asset.url)}/download?force=true` };
+  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return { url: `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}` };
+  return null; // Pixabay and others: a person downloads it and uploads the file here
+}
+
+/** [허락] / [빼기] on one candidate. */
+export async function decideMyinAsset(actor: RequestActor, runId: string, file: string, decision: "approved" | "excluded") {
+  const { record, run } = await ownedRun(actor, runId);
+  if (!["storyboard_confirmed", "prep_ready"].includes(record.stage ?? "") || !run.storyboard?.assets.some((a) => a.file === file))
+    throw new ApiError(409, "MYIN_ASSET_NOT_OPEN", "기획표가 확인된 뒤 후보 목록에 있는 파일만 정할 수 있습니다.");
+  const prior = run.assets?.[file];
+  const next: MyinRun = { ...run, assets: { ...run.assets, [file]: { ...(prior ?? {}), decision, by: actor.id, at: new Date().toISOString() } } };
+  return presentMyinRun(await save(createServiceSupabase(), record, record.status ?? "done", record.stage ?? "storyboard_confirmed", next));
+}
+
+/** A signed address to upload one approved file a person downloaded (mp3 for music). */
+export async function myinAssetUploadUrl(actor: RequestActor, runId: string, file: string) {
+  const { record, run } = await ownedRun(actor, runId);
+  if (run.assets?.[file]?.decision !== "approved") throw new ApiError(409, "MYIN_ASSET_NOT_APPROVED", "허락한 파일만 올릴 수 있습니다.");
+  const path = `${record.owner_id}/${run.sourceId}/${record.id}/assets/${file}`;
+  const { data, error } = await createServiceSupabase().storage.from(ASSET_BUCKET).createSignedUploadUrl(path, { upsert: true });
+  if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "업로드 주소를 만들지 못했습니다.");
+  return { signedUrl: data.signedUrl, path };
+}
+
+/** After the browser's upload: the OS checks the file is there before counting it. */
+export async function confirmMyinAssetUpload(actor: RequestActor, runId: string, file: string) {
+  const { record, run } = await ownedRun(actor, runId);
+  const path = `${record.owner_id}/${run.sourceId}/${record.id}/assets/${file}`;
+  const folder = path.slice(0, path.lastIndexOf("/"));
+  const { data } = await createServiceSupabase().storage.from(ASSET_BUCKET).list(folder, { search: file, limit: 5 });
+  const object = data?.find((item) => item.name === file);
+  if (!object || run.assets?.[file]?.decision !== "approved") throw new ApiError(409, "MYIN_ASSET_UPLOAD_MISSING", "올린 파일을 찾지 못했습니다. 다시 올려 주세요.");
+  const bytes = Number((object.metadata as { size?: number } | null)?.size ?? 0) || undefined;
+  const next: MyinRun = { ...run, assets: { ...run.assets, [file]: { ...run.assets[file], path, ...(bytes ? { bytes } : {}) } } };
+  return presentMyinRun(await save(createServiceSupabase(), record, record.status ?? "done", record.stage ?? "storyboard_confirmed", next));
+}
+
+/** [자료 준비 시작]: every file the storyboard uses is approved and fetchable; the CTA lines go to Fish next. */
+export async function startMyinPrep(actor: RequestActor, runId: string) {
+  const service = createServiceSupabase();
+  const { record, run } = await ownedRun(actor, runId);
+  const restart = record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "");
+  if ((!["storyboard_confirmed", "prep_ready"].includes(record.stage ?? "") && !restart) || !run.storyboard) throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 시작할 수 있습니다.");
+  const story = await storyboardJson(service, run);
+  const byFile = new Map(run.storyboard.assets.map((a) => [a.file, a]));
+  const problems: string[] = [];
+  for (const file of myinReferencedFiles(story)) {
+    const asset = byFile.get(file);
+    if (!asset) continue; // a package file (end screen) or the render PC's site capture
+    const decision = run.assets?.[file];
+    if (decision?.decision !== "approved") problems.push(`${file}: 기획표에 쓰였는데 아직 허락하지 않았습니다.`);
+    else if (!fetchUrl(asset, decision.path)) problems.push(`${file}: 이 사이트는 자동으로 받을 수 없어 파일을 직접 올려야 합니다.`);
+  }
+  if (problems.length) throw new ApiError(409, "MYIN_PREP_ASSETS", problems.join(" / "));
+  const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) => {
+    const prior = run.cta?.find((p) => p.index === index && p.textHash === sha(c.line));
+    return prior ?? { index, textHash: sha(c.line), status: "pending" as const };
+  });
+  const next: MyinRun = { ...run, cta, attempts: 0 }; delete next.prepared; delete next.lastError;
+  return presentMyinRun(await save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next));
+}
+
+/** One CTA line of voice per call, the same Fish request as the paragraphs. */
+async function processMyinCtaStep(service: Service) {
+  const claimed = await claim(service, "cta_pending", 240_000);
+  if (!claimed) return { processed: false };
+  const { record, run } = claimed;
+  try {
+    const story = await storyboardJson(service, run);
+    const pending = run.cta?.find((c) => c.status === "pending");
+    let cta = run.cta ?? [];
+    if (pending) {
+      const line = story.cta[pending.index]?.line ?? "";
+      if (sha(line) !== pending.textHash) throw new ApiError(409, "MYIN_RUN_STALE", "구독 대사가 바뀌었습니다. 자료 준비를 다시 시작해 주세요.");
+      const audio = await synthesizeFishWav(line, { apiKey: process.env.FISH_API_KEY ?? "", referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
+      const path = `${record.owner_id}/${run.sourceId}/${record.id}/cta_${String(pending.index).padStart(2, "0")}.wav`;
+      const { error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), { contentType: audio.mimeType, upsert: true });
+      if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "구독 대사 음성을 저장하지 못했습니다.");
+      cta = cta.map((c) => c.index === pending.index ? { ...c, status: "ready" as const, path } : c);
+    }
+    const next: MyinRun = { ...run, cta, attempts: 0 }; delete next.lease; delete next.lastError;
+    await save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
+    return { processed: true, myinRunId: record.id, cta: `${cta.filter((c) => c.status === "ready").length}/${cta.length}` };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CTA_FAILED");
+    return { processed: true, myinRunId: record.id, error: error instanceof ApiError ? error.code : "MYIN_CTA_FAILED" };
+  }
+}
+
+const prepBundlePath = (record: OsRecord, run: MyinRun) => `${record.owner_id}/${run.sourceId}/${record.id}/myin-prep.json`;
+const sheetPath = (record: OsRecord, run: MyinRun, n: number) => `${record.owner_id}/${run.sourceId}/${record.id}/preview_${String(n).padStart(2, "0")}.png`;
+const sign = async (service: Service, bucket: string, path: string) => {
+  const { data, error } = await service.storage.from(bucket).createSignedUrl(path, 1_800);
+  if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "파일 주소를 만들지 못했습니다.");
+  return data.signedUrl;
+};
+
+/** Render PC: storyboard, approved files, CTA voice and where to put the preview sheets and the report. */
+export async function claimMyinPrep(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS);
+  if (!claimed) return { idle: true as const };
+  const { record, run, lease } = claimed;
+  try {
+    const story = await storyboardJson(service, run);
+    const assets = [];
+    for (const asset of run.storyboard?.assets ?? []) {
+      const decision = run.assets?.[asset.file];
+      if (decision?.decision !== "approved") continue;
+      const where = fetchUrl(asset, decision.path);
+      if (!where) continue;
+      assets.push({ kind: asset.kind, file: asset.file, url: "storage" in where ? await sign(service, ASSET_BUCKET, where.storage!) : where.url });
+    }
+    const cta = [];
+    for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });
+    const sheets = Math.ceil(story.scenes.length / 12) + 1;
+    const sheetUploads = [];
+    for (let n = 1; n <= sheets; n++) {
+      const { data } = await service.storage.from(SHEET_BUCKET).createSignedUploadUrl(sheetPath(record, run, n), { upsert: true });
+      if (data) sheetUploads.push(data.signedUrl);
+    }
+    const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run), { upsert: true });
+    if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
+    return { runId: record.id, lease: lease.token, storyboard: story, assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+      sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
+    throw error;
+  }
+}
+
+/** Render PC: the preview ran. Its "문구 못 찾음" lines decide whether the run may go on to the preview clips. */
+export async function completeMyinPrep(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(prepBundlePath(record, run));
+  if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
+  const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0) }).passthrough().parse(JSON.parse(await data.text()));
+  const credits = (run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved").map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`);
+  const next: MyinRun = { ...run, attempts: 0, prepared: { path: prepBundlePath(record, run), misses: bundle.misses.slice(0, 60),
+    sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, i + 1)), credits, at: new Date().toISOString() } };
+  delete next.lease; delete next.lastError;
+  await save(service, record, "done", "prep_ready", next);
+  return { runId: record.id, stage: "prep_ready", misses: bundle.misses.length };
+}
+
+export async function failMyinPrep(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  await failed(service, record, run, input.code);
+  return { runId: record.id, retry: run.attempts < 3 };
+}
+
+/** Logan's preview sheets for the ③ panel (10 minutes). */
+export async function myinPreviewSheets(actor: RequestActor, runId: string) {
+  const { run } = await ownedRun(actor, runId);
+  const service = createServiceSupabase();
+  return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))) };
 }
