@@ -62,6 +62,19 @@ async function leased(service: Service, renderId: string, token: string) {
   return { record: data as OsRecord, run: parsed.data };
 }
 
+/**
+ * [영상 다시 만들기]: a render that failed three times (blocked) goes back to the queue with fresh attempts, keeping its last
+ * error for the record. Only the content owner, only a blocked run; the voice is reused, so it costs no Fish call.
+ */
+export async function retryYoutubeRender(actor: RequestActor, sourceId: string, runId: string, service: Service = createServiceSupabase()) {
+  const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("owner_id", actor.id)
+    .eq("metadata->>kind", YOUTUBE_RENDER_RUN_KIND).eq("metadata->>voiceRunId", runId).eq("status", "blocked").is("archived_at", null).maybeSingle();
+  const parsed = renderRunSchema.safeParse(data?.metadata);
+  if (!data || !parsed.success) throw new ApiError(409, "RENDER_NOT_RETRYABLE", "다시 만들 수 있는 실패한 영상 작업이 없습니다.");
+  await save(service, data as OsRecord, "backlog", "render_pending", { ...parsed.data, attempts: 0 });
+  return { retried: true };
+}
+
 /** Create or claim the render run for one finished voice run, and hand the worker its inputs. */
 export async function claimYoutubeRender(service: Service = createServiceSupabase(), targetVoiceRunId?: string) {
   let query = service.from("os_records").select("*").eq("record_type", "ai_job")

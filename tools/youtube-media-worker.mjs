@@ -48,9 +48,24 @@ async function fetchTo(url, file) {
   writeFileSync(file, Buffer.from(await response.arrayBuffer()));
 }
 
+// P01 (10 min, ~40 MB) rendered fine twice and lost both attempts to a dropped PUT ("fetch failed"). A network blip or a 5xx
+// is retried here instead of costing a 13-minute re-render. ponytail: one whole-file PUT; resumable upload if videos outgrow it.
 async function upload(url, file, contentType) {
-  const response = await fetch(url, { method: "PUT", headers: { "content-type": contentType, "x-upsert": "true" }, body: readFileSync(file) });
-  if (!response.ok) throw Object.assign(new Error(`upload ${response.status}`), { code: "WORKER_UPLOAD_FAILED" });
+  const body = readFileSync(file);
+  for (const wait of [0, 10_000, 30_000]) {
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    let response;
+    try { response = await fetch(url, { method: "PUT", headers: { "content-type": contentType, "x-upsert": "true" }, body }); }
+    catch (error) {
+      console.error(`upload ${path.basename(file)} (${gb(body.length)} GB): ${error.message}${error.cause ? ` · ${error.cause.code ?? error.cause.message}` : ""}`);
+      if (wait === 30_000) throw Object.assign(new Error(`upload: ${error.message}`), { code: "WORKER_UPLOAD_NETWORK" });
+      continue;
+    }
+    if (response.ok) return;
+    if ((response.status < 500 && ![408, 429].includes(response.status)) || wait === 30_000)
+      throw Object.assign(new Error(`upload ${response.status}: ${(await response.text()).slice(0, 200)}`), { code: response.status === 413 ? "WORKER_UPLOAD_TOO_LARGE" : "WORKER_UPLOAD_FAILED" });
+    console.error(`upload ${path.basename(file)}: HTTP ${response.status}, retrying`);
+  }
 }
 
 const seconds = (file) => Number(execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file], { encoding: "utf8" }));
@@ -82,10 +97,13 @@ export async function processOne() {
     current.step = "upload";
     await upload(render.videoUploadUrl, video, "video/mp4");
     const bytes = readFileSync(video);
-    await call({ action: "complete", ...lease, videoBytes: bytes.length, videoSha256: createHash("sha256").update(bytes).digest("hex") });
+    const done = { action: "complete", ...lease, videoBytes: bytes.length, videoSha256: createHash("sha256").update(bytes).digest("hex") };
+    // The video is already up; a dropped "complete" must not throw the render away.
+    await call(done).catch((error) => error.code?.startsWith("HTTP_4") || error.code?.startsWith("RENDER_") ? Promise.reject(error)
+      : new Promise((resolve) => setTimeout(resolve, 10_000)).then(() => call(done)));
     console.log(`render ready: ${job.renderId}`);
   } catch (error) {
-    console.error(`render failed: ${job.renderId}: ${error.message}`);
+    console.error(`render failed: ${job.renderId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
     await call({ action: "fail", ...lease, code: String(error.code ?? "WORKER_RENDER_FAILED") }).catch(() => {});
   } finally {
     current = null;

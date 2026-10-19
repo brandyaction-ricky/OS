@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
-import { YOUTUBE_RENDER_RUN_KIND } from "@/lib/server/youtube-render-run";
+import { retryYoutubeRender, YOUTUBE_RENDER_RUN_KIND } from "@/lib/server/youtube-render-run";
 import { createVoiceRun, parseVoiceRun, presentVoiceRun, voiceRunId, voiceSegmentPath, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_RUN_KIND } from "@/lib/server/youtube-voice-run";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -59,6 +59,19 @@ export async function GET(request: Request) {
       return [metadata.voiceRunId, { status: render.status as string, stage: render.stage as string, lastErrorCode: metadata.lastError?.code ?? null }];
     }));
     return NextResponse.json({ runs: (data ?? []).map((record) => ({ ...presentVoiceRun(record as OsRecord), render: renderOf.get(record.id) ?? null })) }, { headers: noStore });
+  } catch (error) {
+    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_VOICE_RUN_INPUT", "콘텐츠와 음성 작업 번호를 확인해 주세요."));
+    return apiErrorResponse(error);
+  }
+}
+
+/** [영상 다시 만들기] after a render failed three times. */
+export async function PATCH(request: Request) {
+  try {
+    requirePilot();
+    const actor = await authenticateRequest(request, { allowAgent: false });
+    const input = z.object({ sourceId: z.string().uuid(), runId: z.string().uuid() }).passthrough().parse(await parseJson(request, 1_000));
+    return NextResponse.json(await retryYoutubeRender(actor, input.sourceId, input.runId), { headers: noStore });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_VOICE_RUN_INPUT", "콘텐츠와 음성 작업 번호를 확인해 주세요."));
     return apiErrorResponse(error);

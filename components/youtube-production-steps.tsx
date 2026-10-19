@@ -209,6 +209,10 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
         <div className="yt-run-head"><span className="status-pill" data-status={PHASE_PILL[phase.tone]}>{phase.label}</span>
           <small>{new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(latest.createdAt))} 시작</small></div>
         {phase.tone === "progress" && latest.stage !== "voice_ready" ? <progress max={latest.segmentCount} value={latest.segmentsReady} aria-label="음성 진행" /> : null}
+        {phase.tone === "problem" || latest.render?.lastErrorCode ? <small>{phase.detail}</small> : null}
+        {latest.render?.status === "blocked" && isAdmin ? <div className="yt-actions">
+          <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("retry", () => post("/runs", "PATCH", { runId: latest.id }))}>{busy === "retry" ? "다시 넣는 중…" : "영상 다시 만들기"}</button>
+          <small>녹음은 그대로 다시 써서 음성 비용이 들지 않습니다.</small></div> : null}
         {latest.needsAttention.length ? <ul className="yt-list">{latest.needsAttention.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
         {!madeForDesign ? <p>이 기록은 지금 화면 설계보다 먼저 만든 것입니다. 새 설계로 만들려면 위 ‘제작 시작’을 눌러 주세요.</p> : null}
       </div> : null}
