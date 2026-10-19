@@ -376,7 +376,7 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
 /** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt. */
 export async function startMyinPrep(actor: RequestActor, runId: string) {
   const { record, run } = await ownedRun(actor, runId);
-  const restart = record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "");
+  const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
   if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
   return presentMyinRun(await beginPrep(createServiceSupabase(), record, run, actor.id));
@@ -514,10 +514,14 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
   return { runId: record.id, stage: "clips_review" };
 }
 
-/** Logan's OK on the clips starts the full render; changes go back through 수정 요청 on the storyboard. */
+/** Logan's OK on the clips starts the full render; changes go back through 수정 요청 on the storyboard. The same button restarts a stopped full render. */
 export async function confirmMyinClips(actor: RequestActor, runId: string, note: string) {
   const service = createServiceSupabase();
   const { record, run } = await runRecord(service, runId);
+  if (record.stage === "final_pending" && record.status === "blocked") {
+    const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease;
+    return presentMyinRun(await save(service, record, "backlog", "final_pending", next));
+  }
   if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 시안이 없습니다.");
   const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
   delete next.final;

@@ -169,7 +169,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
       </details> : null}
       {run?.prepared ? <details className="yt-details"><summary>출처 목록 {run.prepared.credits.length}개 (⑥ 발행 설명란용)</summary>
         <ul className="yt-list">{run.prepared.credits.map((c) => <li key={c}>{c}</li>)}</ul></details> : null}
-      {run && (run.stage === "prep_ready" || (run.status === "blocked" && ["cta_pending", "prep_pending"].includes(run.stage))) ? <div className="yt-actions">
+      {run && (run.stage === "prep_ready" || (run.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(run.stage))) ? <div className="yt-actions">
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "자료 준비 다시 하기"}</button>
         <small>사진을 다시 받고 점검을 다시 돌립니다. 같은 구독 대사면 음성은 그대로 씁니다.</small></div> : null}
     </Step>
@@ -191,7 +191,8 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
     <Step index={4} state={step5} title="완성 영상과 자료" idBase="myin-step">
       <p>1080p 전체 영상, 음향 마스터링, 한 장 정리 이미지와 덱 PDF, 유튜브 자막 파일을 렌더 PC가 만들어 올립니다.</p>
       {run?.stage === "final_pending" ? <div className="yt-run"><div className="yt-run-head">
-        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
+        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div>
+        {run.status === "blocked" ? <div className="yt-actions"><button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("final", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note: "" }))}>{busy === "final" ? "시작하는 중…" : "전체 영상 다시 만들기"}</button></div> : null}</div> : null}
       {run?.final ? <div className="yt-run"><div className="yt-run-head">
         <span className="status-pill" data-status={Math.abs(run.final.lufs + 14) <= 1 && run.final.peak <= -1 ? "approved" : "review"}>완성 · {Math.floor(run.final.durationSeconds / 60)}분 {Math.round(run.final.durationSeconds % 60)}초</span>
         <small>{(run.final.bytes / 1e6).toFixed(1)}MB · 음량 {run.final.lufs} LUFS · 최대 {run.final.peak} dB · {when(run.final.at)}</small></div></div> : null}
