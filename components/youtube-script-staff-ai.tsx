@@ -22,6 +22,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
   const [status, setStatus] = useState<StaffJobStatus | null>(null);
   const [available, setAvailable] = useState(false);
   const [minutes, setMinutes] = useState(10);
+  const [role, setRole] = useState("유입형");
   const [attachments, setAttachments] = useState("");
   const seenJob = useRef<string | null>(null);
   const [paste, setPaste] = useState(EMPTY);
@@ -33,7 +34,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
       const next = await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${encodeURIComponent(sourceId)}&task=script`, { token: accessToken });
       setStatus(next); setAvailable(true);
       // Show the length the latest job was sent with, once per job, without undoing an edit between polls.
-      if (next.job && next.job.id !== seenJob.current) { seenJob.current = next.job.id; if (next.job.targetMinutes) setMinutes(next.job.targetMinutes); }
+      if (next.job && next.job.id !== seenJob.current) { seenJob.current = next.job.id; if (next.job.targetMinutes) setMinutes(next.job.targetMinutes); if (next.job.role) setRole(next.job.role); }
     }
     catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [accessToken, sourceId]);
@@ -65,8 +66,10 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
     {!ready ? <p className="yt-note">{writing.steps[0]?.blocker || "기획 승인과 제목·썸네일 채택이 먼저 필요합니다."}</p> : (() => {
       const send = <>
         <label className="yt-actions">목표 길이 <input type="number" min={1} max={60} value={minutes} onChange={(event) => setMinutes(Number(event.target.value) || 10)} style={{ width: 72 }} /> 분 (공백 포함 약 {minutes * 600}자)</label>
+        <label className="yt-actions">역할 <select value={role} onChange={(event) => setRole(event.target.value)}>{["유입형", "전환형", "판매형"].map((item) => <option key={item}>{item}</option>)}</select>
+          <small>원고 공정 정본 §2의 역할입니다. 기획에서 따로 정하지 않았으면 유입형.</small></label>
         <label>카드에 붙일 자료 (선택)<textarea rows={3} value={attachments} onChange={(event) => setAttachments(event.target.value)} placeholder="같은 고민을 다룬 영상 댓글 원문(좋아요 수 포함 6개 이상), 직접 고른 재료나 문서 이름 등" /></label>
-        <StaffDesign status={status} busy={busy === "send"} onSend={() => void act("send", { task: "script", targetMinutes: minutes, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }, "/ai-jobs")} />
+        <StaffDesign status={status} busy={busy === "send"} onSend={() => void act("send", { task: "script", targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }, "/ai-jobs")} />
       </>;
       // Once a staff script exists, a new job replaces it, so sending again sits behind one more click.
       return byStaff && !open ? <details className="yt-details"><summary>새 원고로 다시 쓰기</summary>{send}</details> : send;

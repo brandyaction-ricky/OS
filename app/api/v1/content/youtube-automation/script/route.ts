@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { confirmScriptPreparation, saveScriptBundle, scriptBundleSchema } from "@/lib/server/youtube-script-job";
-import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
+import { canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ const inputSchema = z.discriminatedUnion("action", [
 
 export async function POST(request: Request) {
   try {
-    if (!canUseYoutubeAutomationPilot(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
+    if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
     const actor = await authenticateRequest(request, { allowAgent: false });
     const input = inputSchema.parse(await parseJson(request, 200_000));
     if (input.action === "confirm") return NextResponse.json({ source: await confirmScriptPreparation(actor, input.sourceId, input.expectedVersion) }, { headers });

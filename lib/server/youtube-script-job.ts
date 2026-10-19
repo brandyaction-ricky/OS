@@ -55,14 +55,14 @@ async function canonRefs(supabase: Client["supabase"]) {
 }
 
 /** The job card: where the inputs are and what to submit. The canon itself is read by the AI, not pasted here. */
-export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; attachments?: string }) {
-  const { targetMinutes, leaseMinutes } = card;
+export async function scriptJobCard(supabase: Client["supabase"], state: Pipeline, card: { targetMinutes: number; leaseMinutes: number; role: string; attachments?: string }) {
+  const { targetMinutes, leaseMinutes, role } = card;
   const source = state.source;
   const plan = pipelineArtifacts(state.records).research;
   const materials = writingWorkflowOf(source.metadata.writingWorkflow).materials;
   const inputs = {
     sourceId: source.id, title: state.writing.packageTitle, thumbnailCopy: state.writing.packageCopy,
-    targetMinutes, targetChars: targetMinutes * CHARS_PER_MINUTE,
+    targetMinutes, targetChars: targetMinutes * CHARS_PER_MINUTE, role, format: "원고형",
     plan: { recordId: plan?.id ?? null, version: plan?.version ?? null, adopted: pickedPlanningCandidate(plan), summary: (plan?.metadata.result as Record<string, unknown> | undefined)?.summary ?? null },
     audience: source.metadata.audience ?? "", evidence: source.metadata.evidence ?? "", experience: source.metadata.experience ?? "",
     coreMessage: source.metadata.coreMessage ?? "", researchBrief: source.metadata.researchBrief ?? null,
@@ -89,6 +89,9 @@ ${await canonRefs(supabase)}
 ${JSON.stringify(inputs, null, 2)}
 - 제목은 잠겨 있습니다. 원고 첫 줄 "# ${state.writing.packageTitle}"에 그대로 씁니다.
 - 목표 길이는 ${targetMinutes}분(공백 포함 약 ${targetMinutes * CHARS_PER_MINUTE}자, ±15%)입니다.
+- plan은 ① 기획 승인 기록(OS 기록, recordId·version) 원문 그대로라 get_document로 따로 열지 않습니다. 이 칸이 정본 §2의 '① 기획 승인본'입니다.
+- 역할은 담당 직원이 보낼 때 고른 ${role}이고, 형식은 원고형입니다(자동 영상은 원고형만 만듭니다).
+- 중심 질문·우리 답은 ① 기획에 따로 칸이 없습니다. coreMessage가 비어 있으면 plan.adopted(제목·내러티브·썸네일 카피)와 summary에서 한 문장씩 세워 axis 맨 위에 "기획에서 세움"으로 적고 진행합니다. 이것만으로 fail하지 않습니다.
 - staffMaterials(② 자료 칸)와 staffAttachments(보낼 때 붙인 자료)는 담당 직원이 준 자료입니다. 있으면 그것부터 봅니다. 댓글 원문 6개 이상이 없고 직접 채집할 수도 없으면, 정본 §2대로 원고를 쓰지 않고 빈 입력을 적어 fail로 끝냅니다.
 
 ## 제출

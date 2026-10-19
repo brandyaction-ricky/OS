@@ -22,3 +22,11 @@ export function canUseYoutubeAutomationPilot(environment: Environment) {
   } else if (environment.NODE_ENV !== "development") return false;
   return true;
 }
+
+/**
+ * ② 원고 by the staff member's own AI writes only content records (no storage, voice or render), so it opens in Production on
+ * its own switch. Every other automation route, ③ 화면 설계 jobs included, stays behind the DEV-only pilot above.
+ */
+export function canUseYoutubeStaffScript(environment: Environment) {
+  return environment.YOUTUBE_STAFF_SCRIPT_ENABLED === "true" || canUseYoutubeAutomationPilot(environment);
+}
