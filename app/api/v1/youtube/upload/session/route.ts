@@ -5,6 +5,7 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { readPipeline } from "@/lib/server/content-pipeline";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "@/lib/server/youtube-oauth";
 import { auditChannelAction } from "@/lib/server/channel-access";
+import { myinCreditsBlock } from "@/lib/myin-storyboard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,6 +46,11 @@ export async function POST(request: Request) {
     const result = (kit.metadata?.result ?? {}) as Record<string, unknown>;
     const title = String(result.title || kit.title).trim().slice(0, 100);
     if (!title) throw new ApiError(400, "YOUTUBE_TITLE_REQUIRED", "업로드 전에 영상 제목을 입력해 주세요.");
+    // ③ 마이인 v13: the finished run's photo and music credits go at the end of the description (owner decision 2026-10-19).
+    const { data: myin } = kit.parent_id ? await actor.supabase.from("os_records").select("stage,metadata").eq("parent_id", kit.parent_id).eq("record_type", "ai_job")
+      .eq("metadata->>kind", "youtube_myin_v13").is("archived_at", null).order("created_at", { ascending: false }).limit(1) : { data: null };
+    const credits = myin?.[0]?.stage === "final_ready" ? myinCreditsBlock(((myin[0].metadata as { prepared?: { credits?: string[] } })?.prepared?.credits ?? []).slice(0, 40)).slice(0, 2500) : "";
+    const description = String(result.description ?? "").slice(0, 5000 - credits.length) + credits;
     const accessToken = await getYoutubeAccessToken(ownerId);
     const params = new URLSearchParams({ uploadType: "resumable", part: "snippet,status" });
     const google = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?${params}`, {
@@ -54,7 +60,7 @@ export async function POST(request: Request) {
         "x-upload-content-length": String(input.fileSize), "x-upload-content-type": input.mimeType,
       },
       body: JSON.stringify({
-        snippet: { title, description: String(result.description ?? "").slice(0, 5000), tags: lines(result.tags).slice(0, 60), categoryId: "22" },
+        snippet: { title, description, tags: lines(result.tags).slice(0, 60), categoryId: "22" },
         status: { privacyStatus: input.privacyStatus, selfDeclaredMadeForKids: false },
       }), cache: "no-store",
     });

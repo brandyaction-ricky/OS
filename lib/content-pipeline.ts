@@ -11,7 +11,10 @@ export interface PipelineRun { key: string; action: string; state: "running" | "
 
 export function pipelineArtifacts(records: OsRecord[]) {
   const latest = (match: (record: OsRecord) => boolean) => records.filter((record) => !record.archived_at && match(record)).sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0] ?? null;
+  const myin = latest((record) => record.record_type === "ai_job" && record.metadata.kind === "youtube_myin_v13");
   return {
+    // ③ 마이인 v13: the latest run, only once its finished video is up (a newer run in progress replaces it).
+    myin: myin?.stage === "final_ready" ? myin : null,
     appeals: latest((record) => record.metadata.packageKind === "appeal_candidates"),
     research: latest((record) => record.metadata.packageKind === "topic_plan"),
     script: latest((record) => record.record_type === "content_script"),
@@ -82,7 +85,7 @@ export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: num
   if (gate >= 3 && production) {
     for (const step of production.steps) if (!step.approved) missing.push(step.label);
   }
-  if (gate >= 3 && !/^https:\/\//.test(String(source.metadata.finalVideoUrl ?? ""))) missing.push("검토할 최종 영상 HTTPS URL");
+  if (gate >= 3 && !production?.myinFinal && !/^https:\/\//.test(String(source.metadata.finalVideoUrl ?? ""))) missing.push("검토할 최종 영상 HTTPS URL");
   return missing;
 }
 

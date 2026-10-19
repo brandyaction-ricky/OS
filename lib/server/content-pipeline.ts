@@ -7,6 +7,7 @@ import { SCRIPT_REVIEW_SCHEMA_VERSION, SCRIPT_REVIEW_STEPS, scriptReviewStepLabe
 import { WRITING_WORKFLOW_SCHEMA_VERSION, WRITING_WORKFLOW_STEPS, writingStepLabel, writingWorkflowOf, type WritingPreparationStep, type WritingWorkflowReview, type WritingWorkflowState, type WritingWorkflowStep } from "@/lib/content-writing-workflow";
 import { RELEASE_WORKFLOW_SCHEMA_VERSION, releaseWorkflowOf, type ReleaseDecision, type ReleasePlan, type ReleaseWorkflowState } from "@/lib/content-release-workflow";
 import type { OsRecord } from "@/lib/record-types";
+import { automationInputKey } from "@/lib/youtube-automation-plan";
 import type { RequestActor } from "./auth";
 import { executeGeneration, generationProcedureRevision, generationSchema } from "./content-generation";
 
@@ -117,7 +118,7 @@ export function scriptReviewWorkflowState(source: OsRecord, script: OsRecord | n
   };
 }
 
-export function productionWorkflowState(source: OsRecord, scriptApproved: boolean, scriptGateSignature: string): ProductionWorkflowState {
+export function productionWorkflowState(source: OsRecord, scriptApproved: boolean, scriptGateSignature: string, myinFinal = false): ProductionWorkflowState {
   const workflow = productionWorkflowOf(source.metadata.productionWorkflow);
   const parsedAssets = productionAssetsOf(source.metadata.productionAssets);
   const assets = Object.fromEntries(PRODUCTION_WORKFLOW_STEPS.map((step) => [step, parsedAssets[step].filter((asset) => asset.path.split("/")[2] === source.id)])) as typeof parsedAssets;
@@ -139,6 +140,12 @@ export function productionWorkflowState(source: OsRecord, scriptApproved: boolea
     signatures[step] = digest([`production-${step}-v2`, priorSignature, urls[step], assets[step]]);
   }
   const lastReview = (step: ProductionWorkflowStep) => workflow.reviews.filter((review) => review.step === step).at(-1) ?? null;
+  // Owner decision 2026-10-19: for a 마이인 v13 video, ③'s own checks (로건·유쓰 confirm the storyboard and the clips) replace these four.
+  if (myinFinal && scriptApproved) return {
+    steps: PRODUCTION_WORKFLOW_STEPS.map((step) => ({ key: step, label: productionStepLabel(step), artifactUrls: urls[step], assets: assets[step], signature: signatures[step],
+      approved: true, canApprove: false, blocker: "", lastReview: lastReview(step) })),
+    ready: true, myinFinal: true, nextAction: "사람 검토·발행 승인 준비", blocker: "",
+  };
   const approved = {} as Record<ProductionWorkflowStep, boolean>;
   const steps = PRODUCTION_WORKFLOW_STEPS.map((step, index) => {
     const priorApproved = index === 0 ? scriptApproved : approved[PRODUCTION_WORKFLOW_STEPS[index - 1]];
@@ -158,6 +165,7 @@ export function productionWorkflowState(source: OsRecord, scriptApproved: boolea
   return {
     steps,
     ready: steps.length > 0 && steps.every((step) => step.approved),
+    myinFinal: false,
     nextAction: next ? (next.canApprove ? `${next.label} 승인` : `${next.label} 준비`) : "사람 검토·발행 승인 준비",
     blocker: next?.blocker ?? "",
   };
@@ -168,7 +176,9 @@ export function gateSignature(source: OsRecord, records: OsRecord[], gate: numbe
   return digest([sourceInput(source), reference(artifacts.appeals), reference(artifacts.research), ...(gate >= 2 ? [reference(artifacts.script), reference(artifacts.packaging)] : []),
     ...(gate >= 2 ? [source.metadata.writingWorkflow, source.metadata.scriptReviewWorkflow] : []),
     ...(gate >= 3 ? [reference(artifacts.kit), artifacts.clips.map(reference).sort(), source.metadata.voiceUrl, source.metadata.imageFolderUrl, source.metadata.characterUrl,
-      source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionAssets, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : [])]);
+      source.metadata.editSpecUrl, source.metadata.roughCutUrl, source.metadata.productionAssets, source.metadata.productionWorkflow, source.metadata.finalVideoUrl, source.metadata.transcriptSrt, source.metadata.shortsStyle] : []),
+    // Only when present, so sources without a v13 run keep their existing gate-3 signature.
+    ...(gate >= 3 && artifacts.myin ? [reference(artifacts.myin)] : [])]);
 }
 
 export function releaseWorkflowState(source: OsRecord, kit: OsRecord | null, finalReviewApproved: boolean, finalReviewSignature: string): ReleaseWorkflowState {
@@ -202,7 +212,9 @@ export async function readPipeline(actor: Pick<RequestActor, "supabase">, id: st
   const artifacts = pipelineArtifacts(records);
   const writing = writingWorkflowState(source as OsRecord, artifacts.packaging, approved[0]);
   const scriptReview = scriptReviewWorkflowState(source as OsRecord, artifacts.script, writing.ready);
-  const production = productionWorkflowState(source as OsRecord, approved[1], signatures[1]);
+  // A v13 final counts only when made from the script and packaging approved now (the run carries the input key it started from).
+  const myinFinal = Boolean(artifacts.myin && artifacts.myin.metadata.inputKey === automationInputKey({ source: source as OsRecord, records, approved, signatures }));
+  const production = productionWorkflowState(source as OsRecord, approved[1], signatures[1], myinFinal);
   const release = releaseWorkflowState(source as OsRecord, artifacts.kit, approved[2], signatures[2]);
   const verifiedLearning = records.filter((record) => record.record_type === "decision" && record.status === "adopted" && record.metadata.kind === "content_hypothesis" && record.metadata.verifiedLearning === true);
   return { source: source as OsRecord, records, reviews, signatures, approved, writing, scriptReview, production, release, verifiedLearning,

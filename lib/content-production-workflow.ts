@@ -90,6 +90,8 @@ export function productionAssetsOf(value: unknown): ProductionAssets {
 
 export interface ProductionWorkflowState {
   steps: ProductionWorkflowStepState[];
+  /** A ③ 마이인 v13 final made from the current approved script: it stands in for the four steps and the final video URL. */
+  myinFinal: boolean;
   ready: boolean;
   nextAction: string;
   blocker: string;

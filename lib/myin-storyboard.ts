@@ -134,3 +134,9 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
 }
+
+/** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
+export function myinCreditsBlock(credits: string[]) {
+  const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);
+  return lines.length ? `\n\n사진·음악 출처\n${lines.map((line) => `- ${line}`).join("\n")}` : "";
+}

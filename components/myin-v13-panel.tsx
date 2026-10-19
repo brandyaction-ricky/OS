@@ -202,7 +202,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
         {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
         {outputs.srt ? <li><a href={outputs.srt} target="_blank" rel="noreferrer">유튜브 자막 파일 (SRT)</a></li> : null}
       </ul> : null}
-      {run?.final ? <p className="yt-note">이어폰으로 소리를 확인한 뒤 다음은 대표 최종 승인과 ⑥ 발행입니다. 엔드 스크린 설정은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
+      {run?.final ? <p className="yt-note">이어폰으로 소리를 확인한 뒤 <a href={`/content/production?sourceId=${sourceId}`}>제작 현황 › 제작 자산·전체 승인 현황</a>에서 대표가 관문 3(최종 영상·발행키트)을 승인하고, <a href={`/content/publishing?sourceId=${sourceId}`}>⑥ 발행·업로드</a>에서 [OS 완성본 쓰기]로 올립니다. 발행키트는 ⑦ 유튜브 관리에서 만듭니다. 자막 파일과 엔드 스크린은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
     </Step>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;

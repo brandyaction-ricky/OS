@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, seqRatio } from "../lib/myin-storyboard.ts";
+import { checkMyinStoryboard, myinCreditsBlock, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -33,4 +33,10 @@ test("the frame scenes are required", () => {
   const withoutSummary = frame.map((sc) => sc.type === "summary" ? { type: "statement", at_time: 25 } : sc);
   const result = checkMyinStoryboard(story(withoutSummary), words);
   assert.ok(result.issues.includes("summary 장면이 없습니다."));
+});
+
+test("myinCreditsBlock drops file names and angle brackets, and is empty without credits", () => {
+  assert.equal(myinCreditsBlock([]), "");
+  assert.equal(myinCreditsBlock(["situ_a.jpg — Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x", 'music_b.mp3 — "Intro" by <alex>. https://pixabay.com/music/y/']),
+    '\n\n사진·음악 출처\n- Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x\n- "Intro" by alex. https://pixabay.com/music/y/');
 });
