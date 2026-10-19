@@ -18,7 +18,7 @@ interface StoredPlan {
   inputKey?: string; templateVersion?: string; generatedAt?: string; unresolvedAcknowledged?: { by?: string; count?: number }; author?: { type?: string; model?: string };
   plan?: { sections?: string[]; scenes?: Array<{ segmentIndex: number; deck: MindmapDeck; items: string[]; section: number }>; unresolved?: string[] };
 }
-type StepState = "done" | "current" | "waiting";
+export type StepState = "done" | "current" | "waiting";
 // Status pills use the OS kit's data-status colors (components/os-ui.css) and always carry a word.
 const STEP_PILL: Record<StepState, { status: string; label: string }> = {
   done: { status: "approved", label: "완료" }, current: { status: "review", label: "할 차례" }, waiting: { status: "draft", label: "대기" },
@@ -41,10 +41,11 @@ const RENDER_STEP: Record<string, string> = { voice: "목소리 만드는 중", 
 // What staff paste into their own Claude or Codex once (the OS connection is set up with a personal agent key).
 const MY_AI_PROMPT = "브랜디 OS 연결 도구로 list_youtube_ai_jobs를 실행해 내 작업을 확인하고, 작업이 있으면 process_youtube_ai_job으로 하나씩 claim → 받은 지시대로 처리 → complete 하세요. 작업이 없으면 끝내세요.";
 
-function Step({ index, state, children }: { index: number; state: StepState; children: ReactNode }) {
+/** One step card; the 마이인 v13 panel reuses it with its own titles and ids. */
+export function Step({ index, state, children, title, idBase = "yt-step" }: { index: number; state: StepState; children: ReactNode; title?: string; idBase?: string }) {
   const pill = STEP_PILL[state];
-  return <section id={`yt-step-${index + 1}`} className={`panel yt-step yt-step-${state}`} aria-current={state === "current" ? "step" : undefined} aria-labelledby={`yt-step-title-${index + 1}`}>
-    <header className="panel-header"><h2 id={`yt-step-title-${index + 1}`}><span className="yt-step-no" aria-hidden="true">{state === "done" ? "✓" : index + 1}</span>{index + 1}. {STEPS[index]}</h2>
+  return <section id={`${idBase}-${index + 1}`} className={`panel yt-step yt-step-${state}`} aria-current={state === "current" ? "step" : undefined} aria-labelledby={`${idBase}-title-${index + 1}`}>
+    <header className="panel-header"><h2 id={`${idBase}-title-${index + 1}`}><span className="yt-step-no" aria-hidden="true">{state === "done" ? "✓" : index + 1}</span>{index + 1}. {title ?? STEPS[index]}</h2>
       <span className="status-pill" data-status={pill.status}>{pill.label}</span></header>
     <div className="panel-pad-lg yt-step-body">{children}</div>
   </section>;
