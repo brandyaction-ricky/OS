@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
 import type { YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { MINDMAP_DECKS, YOUTUBE_VISUAL_TEMPLATE_VERSION, type MindmapDeck } from "@/lib/youtube-visual-template";
+import { MyAiConnect } from "./my-ai-connect";
 import { useSession } from "./session-provider";
 import "./youtube-production-steps.css";
 
@@ -257,10 +258,11 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
     {!connected || (open && (lastSeen === null || lastSeen > 30 * 60)) ? <details className="yt-details">
       <summary>{connected ? "내 AI가 30분 넘게 확인하지 않았어요 · 확인할 것" : "내 AI가 아직 연결되지 않았어요 · 연결 방법"}</summary>
       <ol className="yt-list">
-        <li>관리자에게 내 이름으로 된 AI 접근 키와 OS 연결 주소를 받아, Claude(데스크톱 · Claude Code) 또는 Codex의 OS 연결에 넣습니다.</li>
-        <li>내 AI에 아래 문장을 10분마다 실행하도록 맡깁니다. 컴퓨터가 켜져 있는 동안 처리돼요.</li>
-        <li>확인했는데도 안 되면 키가 회수되지 않았는지 관리자에게 물어봐 주세요.</li>
+        <li>아래에서 연결 주소를 만들어 내 AI의 커넥터 추가에 붙여 넣습니다. 처음 한 번만 하면 됩니다.</li>
+        <li>[내 AI에 보내기]를 누른 뒤 내 AI에 아래 문장을 보냅니다. 예약 실행이 되는 AI라면 10분마다 실행하도록 맡겨 두면 알아서 가져가요.</li>
+        <li>그래도 가져가지 않으면 연결 주소를 다시 만들어 붙여 넣어 주세요.</li>
       </ol>
+      <MyAiConnect />
       <p className="yt-note">{MY_AI_PROMPT}</p>
     </details> : null}
   </>;

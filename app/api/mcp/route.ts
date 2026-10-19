@@ -57,8 +57,12 @@ export async function POST(request: Request) {
   if (body.method !== "tools/call") return jsonRpcError(body.id, -32601, "지원하지 않는 MCP 메서드입니다.");
 
   try {
-    const organizationId = organizationIdSchema.parse(new URL(request.url).searchParams.get("organizationId"));
-    const authorization = request.headers.get("authorization") ?? "";
+    const query = new URL(request.url).searchParams;
+    const organizationId = organizationIdSchema.parse(query.get("organizationId"));
+    // [내 AI 연결] hands out a URL with ?key= so a staff member pastes one line into Claude's 커넥터 추가 (no header field there).
+    // ponytail: the key then sits in request logs; it is a 초안 쓰기, 90-day, self-revocable key. Move to OAuth if that matters.
+    const urlKey = query.get("key");
+    const authorization = request.headers.get("authorization") ?? (urlKey ? `Bearer ${urlKey}` : "");
     if (!authorization.startsWith("Bearer bos_pat_")) return jsonRpcError(body.id, -32001, "유효한 AI 접근 키가 필요합니다.", 401);
     const params = z.object({ name: z.string().min(1), arguments: z.unknown().optional() }).parse(body.params);
     const fetchApi = async (path: string, init: RequestInit = {}) => {
@@ -81,7 +85,9 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Streamable HTTP clients open a GET for server-sent events; this server has none, which the spec says to answer with 405.
+  if (request.headers.get("accept")?.includes("text/event-stream")) return new NextResponse(null, { status: 405, headers: { Allow: "POST" } });
   return NextResponse.json({
     name: "Brandy OS MCP",
     transport: "streamable-http",

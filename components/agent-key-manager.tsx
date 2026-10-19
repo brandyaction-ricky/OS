@@ -12,6 +12,7 @@ import {
   type AgentAccessResponse,
   type OsMember,
 } from "@/lib/api-client";
+import { MyAiConnect } from "./my-ai-connect";
 
 interface Props {
   accessToken: string | null;
@@ -157,8 +158,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
 
   if (!isAdmin) return (
     <section className="panel agent-key-manager">
-      <div className="panel-header"><div><h2>AI 접근 키</h2><p>Claude Code·Codex용 MCP 연결</p></div><ShieldCheck size={18} /></div>
-      <div className="quiet-state"><KeyRound /><strong>관리자만 발급할 수 있습니다.</strong><span>발급된 키의 원문은 관리자에게도 다시 표시되지 않습니다.</span></div>
+      <div className="panel-header"><div><h2>내 AI 연결</h2><p>내 Claude·Codex가 OS를 읽고 내 작업을 처리하게 연결합니다. 다른 사람의 키와 정본 쓰기 키는 관리자가 발급합니다.</p></div><ShieldCheck size={18} /></div>
+      <div style={{ padding: "12px 15px" }}><MyAiConnect /></div>
     </section>
   );
 
