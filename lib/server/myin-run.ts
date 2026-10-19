@@ -43,6 +43,11 @@ const runSchema = z.object({
     path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).optional(),
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional() }).strict()).optional(),
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime() }).strict().optional(),
+  // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
+  clips: z.object({ items: z.array(z.object({ name: z.string(), label: z.string(), path: z.string() }).strict()), at: z.string().datetime() }).strict().optional(),
+  clipsReview: z.object({ by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
+  final: z.object({ video: z.string(), summary: z.string(), deck: z.string(), srt: z.string(), bytes: z.number().int().positive(),
+    durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime() }).strict().optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
   lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
 }).strict();
@@ -83,6 +88,8 @@ export function presentMyinRun(record: OsRecord) {
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
+    clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null,
+    final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
 }
 
@@ -129,11 +136,11 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   const record = data as OsRecord;
   const run = parse(record);
   // Confirm from review; a change of mind (revise) is still possible after confirming, until the preview clips start.
-  const open = decision === "confirmed" ? ["storyboard_review"] : ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready"];
+  const open = decision === "confirmed" ? ["storyboard_review"] : ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"];
   if (!open.includes(record.stage ?? "") || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
   if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
-  if (decision === "revise") { delete next.prepared; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
+  if (decision === "revise") { delete next.prepared; delete next.clips; delete next.clipsReview; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // Owner decision 2026-10-19: confirming the storyboard is the approval of the photos it uses; preparation starts at once.
   const saved = await save(service, record, "done", "storyboard_confirmed", next);
   return presentMyinRun(await beginPrep(service, saved, parse(saved), actor.id));
@@ -445,13 +452,16 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const { record, run } = await leased(service, input.runId, input.lease);
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(prepBundlePath(record, run));
   if (!data) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "준비 결과 파일을 찾지 못했습니다.");
-  const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0) }).passthrough().parse(JSON.parse(await data.text()));
-  const credits = (run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved").map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`);
+  const bundle = z.object({ misses: z.array(z.string()), sheets: z.number().int().min(0), musicCredits: z.array(z.string()).default([]) }).passthrough().parse(JSON.parse(await data.text()));
+  const credits = [...(run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved").map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`),
+    ...bundle.musicCredits.slice(0, 30)];
   const next: MyinRun = { ...run, attempts: 0, prepared: { path: prepBundlePath(record, run), misses: bundle.misses.slice(0, 60),
     sheets: Array.from({ length: bundle.sheets }, (_, i) => sheetPath(record, run, i + 1)), credits, at: new Date().toISOString() } };
-  delete next.lease; delete next.lastError;
-  await save(service, record, "done", "prep_ready", next);
-  return { runId: record.id, stage: "prep_ready", misses: bundle.misses.length };
+  delete next.lease; delete next.lastError; delete next.clips; delete next.clipsReview; delete next.final;
+  // Nothing missing: the clips are next, without anyone pressing a button.
+  const stage = bundle.misses.length ? "prep_ready" : "clips_pending";
+  await save(service, record, bundle.misses.length ? "done" : "backlog", stage, next);
+  return { runId: record.id, stage, misses: bundle.misses.length };
 }
 
 export async function failMyinPrep(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
@@ -465,4 +475,95 @@ export async function myinPreviewSheets(actor: RequestActor, runId: string) {
   const { run } = await ownedRun(actor, runId);
   const service = createServiceSupabase();
   return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))) };
+}
+
+// ── Stage 4: clips for Logan, then the full render, mix and handouts ──
+
+const OUTPUT_BUCKET = "os-content-media"; // private; accepts PNG, PDF and SRT
+const outPath = (record: OsRecord, run: MyinRun, name: string) => `${record.owner_id}/${run.sourceId}/${record.id}/${name}`;
+const uploadUrl = async (service: Service, bucket: string, path: string) => {
+  const { data, error } = await service.storage.from(bucket).createSignedUploadUrl(path, { upsert: true });
+  if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "업로드 주소를 만들지 못했습니다.");
+  return data.signedUrl;
+};
+
+/** Render PC: which clips to cut (the opening with its reel, then each metaphor scene) and where to put them. */
+export async function claimMyinClips(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "clips_pending", WORDS_LEASE_MS);
+  if (!claimed) return { idle: true as const };
+  const { record, run, lease } = claimed;
+  try {
+    const items = [{ name: "clip_opening", label: "오프닝 + 쇼릴", scene: 1 }, ...(run.storyboard?.metaphors ?? []).map((m) => ({ name: `clip_scene_${m.scene}`, label: `${m.scene}번 장면 · ${m.type}`, scene: m.scene }))];
+    const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}.mp4`))));
+    return { runId: record.id, lease: lease.token, clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })) };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLIPS_CLAIM_FAILED");
+    throw error;
+  }
+}
+const ASSET_VIDEO_BUCKET = "os-youtube-video";
+
+export async function completeMyinClips(input: { runId: string; lease: string; names: string[] }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  const labels = new Map([["clip_opening", "오프닝 + 쇼릴"], ...(run.storyboard?.metaphors ?? []).map((m) => [`clip_scene_${m.scene}`, `${m.scene}번 장면 · ${m.type}`] as [string, string])]);
+  const items = input.names.filter((name) => labels.has(name)).map((name) => ({ name, label: labels.get(name)!, path: outPath(record, run, `${name}.mp4`) }));
+  if (!items.length) throw new ApiError(409, "MYIN_CLIPS_MISSING", "시안 영상이 올라오지 않았습니다.");
+  const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString() } };
+  delete next.lease; delete next.lastError; delete next.clipsReview;
+  await save(service, record, "done", "clips_review", next);
+  return { runId: record.id, stage: "clips_review" };
+}
+
+/** Logan's OK on the clips starts the full render; changes go back through 수정 요청 on the storyboard. */
+export async function confirmMyinClips(actor: RequestActor, runId: string, note: string) {
+  const service = createServiceSupabase();
+  const { record, run } = await runRecord(service, runId);
+  if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 시안이 없습니다.");
+  const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
+  delete next.final;
+  return presentMyinRun(await save(service, record, "backlog", "final_pending", next));
+}
+
+/** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
+export async function claimMyinFinal(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "final_pending", 60 * 60_000);
+  if (!claimed) return { idle: true as const };
+  const { record, run, lease } = claimed;
+  try {
+    return { runId: record.id, lease: lease.token,
+      videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, "final_myin.mp4")),
+      summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, outPath(record, run, "summary.png")),
+      deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, outPath(record, run, "deck.pdf")),
+      srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, outPath(record, run, "subs_youtube.srt")) };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_FINAL_CLAIM_FAILED");
+    throw error;
+  }
+}
+
+export async function completeMyinFinal(input: { runId: string; lease: string; bytes: number; durationSeconds: number; lufs: number; peak: number }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  const next: MyinRun = { ...run, attempts: 0, final: { video: outPath(record, run, "final_myin.mp4"), summary: outPath(record, run, "summary.png"), deck: outPath(record, run, "deck.pdf"),
+    srt: outPath(record, run, "subs_youtube.srt"), bytes: input.bytes, durationSeconds: input.durationSeconds, lufs: input.lufs, peak: input.peak, at: new Date().toISOString() } };
+  delete next.lease; delete next.lastError;
+  await save(service, record, "done", "final_ready", next);
+  return { runId: record.id, stage: "final_ready" };
+}
+
+export async function failMyinStage(input: { runId: string; lease: string; code: string }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  await failed(service, record, run, input.code);
+  return { runId: record.id, retry: run.attempts < 3 };
+}
+
+/** Short-lived addresses of the clips and the finished files for the ③ panel. */
+export async function myinOutputs(actor: RequestActor, runId: string) {
+  const { run } = await ownedRun(actor, runId);
+  const service = createServiceSupabase();
+  const read = (bucket: string, path?: string) => path ? sign(service, bucket, path) : Promise.resolve(null);
+  return {
+    clips: await Promise.all((run.clips?.items ?? []).map(async (item) => ({ label: item.label, url: await read(ASSET_VIDEO_BUCKET, item.path) }))),
+    video: await read(ASSET_VIDEO_BUCKET, run.final?.video), summary: await read(OUTPUT_BUCKET, run.final?.summary),
+    deck: await read(OUTPUT_BUCKET, run.final?.deck), srt: await read(OUTPUT_BUCKET, run.final?.srt),
+  };
 }

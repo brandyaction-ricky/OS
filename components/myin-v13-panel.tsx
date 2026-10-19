@@ -13,11 +13,16 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
-  prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null }
+  prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
+  clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
+  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null }
+interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
   storyboard_review: "기획표 확인 대기 (로건님)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
-  prep_pending: "렌더 PC가 자료 준비·미리보기 점검 중", prep_ready: "미리보기 점검 끝" };
+  prep_pending: "렌더 PC가 자료 준비·미리보기 점검 중", prep_ready: "미리보기 점검 끝", clips_pending: "렌더 PC가 시안 영상 만드는 중",
+  clips_review: "시안 확인 대기 (로건님)", final_pending: "렌더 PC가 전체 영상 만드는 중 (10~15분)", final_ready: "완성" };
+const LATER = ["clips_pending", "clips_review", "final_pending", "final_ready"];
 
 const KIND: Record<string, string> = { people: "인물 사진", situations: "상황 사진", bgm: "음악" };
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
@@ -36,16 +41,18 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   const [qc, setQc] = useState("");
   const [note, setNote] = useState("");
   const [sheets, setSheets] = useState<string[]>([]);
+  const [outputs, setOutputs] = useState<Outputs | null>(null);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
       const next = (await apiRequest<{ run: MyinRun | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${sourceId}`, { token: accessToken })).run;
       setRun(next); setAvailable(true);
+      if (next?.clips || next?.final) setOutputs(await apiRequest<Outputs>(`/api/v1/content/youtube-automation/myin?outputs=${next.id}`, { token: accessToken }));
       if (next?.words) setJob(await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${sourceId}&task=storyboard`, { token: accessToken }));
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [accessToken, sourceId]);
   useEffect(() => { void load(); }, [load]);
-  const working = Boolean(run && (["voice_pending", "words_pending", "cta_pending", "prep_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
+  const working = Boolean(run && (["voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
   useEffect(() => {
     if (!working) return;
     const timer = window.setInterval(() => void load(), 20_000);
@@ -76,7 +83,9 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
 
   const step1: StepState = run?.words ? "done" : "current";
   const step2: StepState = !run?.words ? "waiting" : run.review?.decision === "confirmed" ? "done" : "current";
-  const step3: StepState = run?.review?.decision !== "confirmed" ? "waiting" : run.prepared && !run.prepared.misses.length && run.stage === "prep_ready" ? "done" : "current";
+  const step3: StepState = run?.review?.decision !== "confirmed" ? "waiting" : LATER.includes(run.stage) ? "done" : "current";
+  const step4: StepState = !run || !LATER.includes(run.stage) ? "waiting" : ["final_pending", "final_ready"].includes(run.stage) ? "done" : "current";
+  const step5: StepState = run?.stage === "final_ready" ? "done" : run?.stage === "final_pending" ? "current" : "waiting";
   const assetsUsed = board ? board.assets.filter((a) => run?.assetDecisions[a.file]?.decision === "approved") : [];
 
   return <div className="yt-steps" role="region" aria-label="마이인 v13 시험">
@@ -163,6 +172,36 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
       {run && (run.stage === "prep_ready" || (run.status === "blocked" && ["cta_pending", "prep_pending"].includes(run.stage))) ? <div className="yt-actions">
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("prep", () => post("/myin", "PATCH", { action: "prepare", runId: run.id }))}>{busy === "prep" ? "시작하는 중…" : "자료 준비 다시 하기"}</button>
         <small>사진을 다시 받고 점검을 다시 돌립니다. 같은 구독 대사면 음성은 그대로 씁니다.</small></div> : null}
+    </Step>
+
+    <Step index={3} state={step4} title="시안 확인 (로건님)" idBase="myin-step">
+      <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건님이 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 2번 카드의 수정 요청으로 기획표를 고칩니다.</p>
+      {run && ["clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
+        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
+      {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
+        <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={{ width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
+      {run?.stage === "clips_review" ? <div className="yt-note">
+        <strong>로건님 확인</strong>
+        <label>메모 (선택)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음" /></label>
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }))}>{busy === "clips" ? "저장 중…" : "시안 확인 완료 · 전체 영상 만들기"}</button></div>
+      </div> : null}
+      {run?.clipsReview ? <small>{run.clipsReview.name} 확인 · {when(run.clipsReview.at)}{run.clipsReview.note ? ` · ${run.clipsReview.note}` : ""}</small> : null}
+    </Step>
+
+    <Step index={4} state={step5} title="완성 영상과 자료" idBase="myin-step">
+      <p>1080p 전체 영상, 음향 마스터링, 한 장 정리 이미지와 덱 PDF, 유튜브 자막 파일을 렌더 PC가 만들어 올립니다.</p>
+      {run?.stage === "final_pending" ? <div className="yt-run"><div className="yt-run-head">
+        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
+      {run?.final ? <div className="yt-run"><div className="yt-run-head">
+        <span className="status-pill" data-status={Math.abs(run.final.lufs + 14) <= 1 && run.final.peak <= -1 ? "approved" : "review"}>완성 · {Math.floor(run.final.durationSeconds / 60)}분 {Math.round(run.final.durationSeconds % 60)}초</span>
+        <small>{(run.final.bytes / 1e6).toFixed(1)}MB · 음량 {run.final.lufs} LUFS · 최대 {run.final.peak} dB · {when(run.final.at)}</small></div></div> : null}
+      {outputs?.video ? <video src={outputs.video} controls preload="metadata" style={{ width: "100%", borderRadius: 8, background: "#000" }} /> : null}
+      {run?.final && outputs ? <ul className="yt-list">
+        {outputs.summary ? <li><a href={outputs.summary} target="_blank" rel="noreferrer">한 장 정리 이미지 (PNG)</a></li> : null}
+        {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
+        {outputs.srt ? <li><a href={outputs.srt} target="_blank" rel="noreferrer">유튜브 자막 파일 (SRT)</a></li> : null}
+      </ul> : null}
+      {run?.final ? <p className="yt-note">이어폰으로 소리를 확인한 뒤 다음은 대표 최종 승인과 ⑥ 발행입니다. 엔드 스크린 설정은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
     </Step>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;

@@ -10,7 +10,7 @@
  * Once a minute it reports disk, memory and the current step to the OS (렌더 PC 상태); with under 60 GB free it takes no new render.
  */
 import { createHash } from "node:crypto";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -295,13 +295,96 @@ export async function processMyinPrep() {
     current.step = "upload";
     for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");
     const bundle = path.join(videoDir, "myin-prep.json");
-    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, log: log.slice(-20_000) }));
+    // Credits for the music actually used, from the CREDITS.md lines kept next to the tracks (package and library).
+    const creditLines = [path.join(bgmDir, "CREDITS.md"), path.join(myinLibrary, "bgm", "CREDITS.md")].filter(existsSync)
+      .flatMap((file) => readFileSync(file, "utf8").split("\n")).map((line) => line.replace(/^-\s*/, "").trim());
+    const musicCredits = [...new Set(music)].map((file) => creditLines.find((line) => line.startsWith(`${file} `)) ?? `${file} — 출처 기록 없음`);
+    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, musicCredits, log: log.slice(-20_000) }));
     await upload(job.bundleUploadUrl, bundle, "application/json");
     await call({ action: "myin_prep_complete", ...lease });
     console.log(`myin prep ready: ${job.runId} (문구 못 찾음 ${misses.length})`);
   } catch (error) {
     console.error(`myin prep failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
     await call({ action: "myin_prep_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
+const myinEnv = () => ({ ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" });
+const myinDirs = (runId) => {
+  const work = path.join(myinWork, runId);
+  if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
+  return { work, videoDir: path.join(work, "voice", "os_myin"), myinDir: path.join(work, "tools", "myin_pipeline") };
+};
+// Scene times exactly as his renderer resolves them (source seconds, before holds): the clip ranges come from these.
+const RESOLVE_PY = `import json, myin_engine as M
+st = json.load(open("../../voice/os_myin/myin_storyboard.json", encoding="utf-8"))
+w = json.load(open("../../voice/os_myin/words.json", encoding="utf-8"))
+print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
+
+/** v13 stage 4a: his 720p clips of the opening with its reel and of each metaphor scene, for Logan to check before the full render. */
+export async function processMyinClips() {
+  if (!myinPkg) return false;
+  const job = await call({ action: "myin_clips_claim" });
+  if (job.idle) return false;
+  current = { step: "drawing" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const { videoDir, myinDir } = myinDirs(job.runId);
+    const env = myinEnv();
+    const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
+    const times = JSON.parse(out.split("\n").find((line) => line.startsWith("TIMES ")).slice(6));
+    const names = [];
+    for (const clip of job.clips) {
+      const [t0, t1] = times[clip.scene - 1];
+      const [a, b] = clip.name === "clip_opening" ? [0, times[1][0] + 0.3] : [Math.max(0, t0 - 0.5), t1 + 0.3];
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "clip", a.toFixed(2), b.toFixed(2), clip.name, "4"], { cwd: myinDir, env });
+      current.step = "upload";
+      await upload(clip.uploadUrl, path.join(videoDir, `${clip.name}.mp4`), "video/mp4");
+      current.step = "drawing";
+      names.push(clip.name);
+    }
+    await call({ action: "myin_clips_complete", ...lease, names });
+    console.log(`myin clips ready: ${job.runId} (${names.length})`);
+  } catch (error) {
+    console.error(`myin clips failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
+    await call({ action: "myin_stage_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
+/** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
+export async function processMyinFinal() {
+  if (!myinPkg) return false;
+  const job = await call({ action: "myin_final_claim" });
+  if (job.idle) return false;
+  current = { step: "drawing" };
+  const lease = { runId: job.runId, lease: job.lease };
+  try {
+    const { videoDir, myinDir } = myinDirs(job.runId);
+    const env = myinEnv();
+    await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...env, OUTNAME: "final_myin_v1_raw.mp4" } });
+    await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env });
+    await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env });
+    const video = path.join(videoDir, "final_myin_v1.mp4");
+    const report = spawnSync("ffmpeg", ["-hide_banner", "-i", video, "-af", "ebur128=peak=true", "-f", "null", "-"], { encoding: "utf8", env }).stderr ?? "";
+    const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
+    const lufs = last(/\bI:\s+(-?\d+(?:\.\d+)?) LUFS/g), peak = last(/Peak:\s+(-?\d+(?:\.\d+)?) dBFS/g);
+    if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
+    current.step = "upload";
+    await upload(job.videoUploadUrl, video, "video/mp4");
+    await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");
+    await upload(job.deckUploadUrl, path.join(videoDir, "handouts", "덱_전체.pdf"), "application/pdf");
+    await upload(job.srtUploadUrl, path.join(videoDir, "subs_youtube.srt"), "application/x-subrip");
+    await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak });
+    console.log(`myin final ready: ${job.runId} (${lufs} LUFS, peak ${peak})`);
+  } catch (error) {
+    console.error(`myin final failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
+    await call({ action: "myin_stage_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
   } finally {
     current = null;
   }
@@ -315,7 +398,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
+    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
+      .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
     }).finally(() => { current = null; }))
