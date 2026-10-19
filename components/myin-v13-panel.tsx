@@ -106,7 +106,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
     <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건님 확인)" idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
-        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건님 수정 요청</strong> · {when(run.review.at)}<p>{run.review.note}</p></div> : null}
+        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건님 수정 요청 · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
         <p>내 AI가 로건님 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다.</p>
         <StaffDesign status={job} busy={busy === "send"} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
