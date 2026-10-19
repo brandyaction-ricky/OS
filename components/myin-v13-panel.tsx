@@ -28,14 +28,15 @@ const KIND: Record<string, string> = { people: "인물 사진", situations: "상
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
 /**
- * ③ › 마이인 v13 (시험), built in stages next to the mind-map steps above: 1) voice, transcription and subtitles; 2) the storyboard
- * by the staff member's AI and Logan's confirmation. Hidden where the DEV pilot is closed.
+ * ③ 영상 제작: every new video is made in Logan's 마이인 v13 format (owner decision 2026-10-19) — voice and subtitles, the staff AI's
+ * storyboard and its confirmation, preparation, preview clips, then the finished video and handouts. Where the pilot is closed
+ * (production today) it says so instead.
  */
 export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   const { accessToken, profile } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
   const [job, setJob] = useState<StaffJobStatus | null>(null);
-  const [available, setAvailable] = useState(false);
+  const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [qc, setQc] = useState("");
@@ -58,7 +59,8 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
     const timer = window.setInterval(() => void load(), 20_000);
     return () => window.clearInterval(timer);
   }, [working, load]);
-  if (!available) return null;
+  if (available === null) return <section className="panel load-error" role="status">영상 제작 정보를 불러오는 중…</section>;
+  if (!available) return <section className="panel empty-state"><div><h3>영상 자동 제작은 아직 연결 전입니다</h3><p>지금은 개발용 시험 서버에서만 시범 운영 중입니다. 운영 연결은 대표 승인 후 진행합니다.</p></div></section>;
 
   const act = async (label: string, request: () => Promise<unknown>) => {
     setBusy(label); setError("");
@@ -88,10 +90,10 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   const step5: StepState = run?.stage === "final_ready" ? "done" : run?.stage === "final_pending" ? "current" : "waiting";
   const assetsUsed = board ? board.assets.filter((a) => run?.assetDecisions[a.file]?.decision === "approved") : [];
 
-  return <div className="yt-steps" role="region" aria-label="마이인 v13 시험">
+  return <div className="yt-steps" role="region" aria-label="마이인 영상 만들기">
     <section className="panel">
-      <header className="panel-header"><div><span className="eyebrow">마이인 v13 · 시험</span><h2>v13으로 만들기</h2>
-        <p>승인된 원고로 대표 목소리를 만들고, 렌더 PC가 받아쓰기·자막을 만든 뒤, 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 확인하면 렌더 PC가 자료를 준비해 점검합니다. 위 마인드맵 단계와는 따로 움직입니다.</p></div></header>
+      <header className="panel-header"><div><span className="eyebrow">마이인 형식 · 로건님 v13</span><h2>영상 만들기</h2>
+        <p>승인된 원고로 대표 목소리를 만들고, 렌더 PC가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 기획표와 시안을 확인하면, 렌더 PC가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
     </section>
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
