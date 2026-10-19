@@ -169,6 +169,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
         <div><h2>AI 접근 키</h2><p>Claude Code·Codex가 OS 지식을 읽고 개인 초안을 관리하는 MCP 권한</p></div>
         <div className="header-actions"><button className="secondary-button" type="button" onClick={() => { setTestStatus(""); setTestOpen(true); }}><ShieldCheck size={14} />연결 검증</button><button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button></div>
       </div>
+      <details style={{ margin: "12px 15px" }}><summary>내 AI 연결 (내 이름 · 초안 쓰기 · 주소 한 줄)</summary><div style={{ marginTop: 10 }}><MyAiConnect /></div></details>
       {error ? <div className="inline-alert danger">{error}</div> : null}
       {notice ? <div className="inline-alert success" role="status">{notice}</div> : null}
       {result ? (
