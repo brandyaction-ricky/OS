@@ -11,7 +11,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -179,6 +179,8 @@ export async function drawMindmap(brief, parts, name) {
 const myinPkg = process.env.MYIN_PKG ?? "";
 const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
 const myinPython = process.env.MYIN_PYTHON || "python3";
+// 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
+const myinLibrary = process.env.MYIN_LIBRARY || path.join(os.homedir(), "myin", "library");
 const runAsync = (command, args, options) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: "inherit", ...options });
   child.on("error", reject);
@@ -268,6 +270,12 @@ export async function processMyinPrep() {
       mkdirSync(path.join(work, "assets", asset.kind), { recursive: true });
       await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file));
     }
+    const bgmDir = path.join(work, "assets", "bgm");
+    mkdirSync(bgmDir, { recursive: true });
+    if (existsSync(path.join(myinLibrary, "bgm"))) for (const name of readdirSync(path.join(myinLibrary, "bgm")).filter((n) => n.endsWith(".mp3")))
+      copyFileSync(path.join(myinLibrary, "bgm", name), path.join(bgmDir, name), fsConstants.COPYFILE_FICLONE);
+    const music = [...Object.values(job.storyboard.music_cues ?? {}).map((cue) => cue.file), ...(job.storyboard.bgm ?? []).map((b) => b.file)].filter(Boolean);
+    const missingMusic = [...new Set(music)].filter((file) => !existsSync(path.join(bgmDir, file))).map((file) => `음악 파일 없음(음악 창고에 없는 곡): ${file}`);
     const ctaDir = path.join(videoDir, "cta");
     mkdirSync(ctaDir, { recursive: true });
     for (const cta of job.cta) {
@@ -282,7 +290,7 @@ export async function processMyinPrep() {
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
     const log = await runCapture(myinPython, ["render_myin.py", "os_myin", "preview"], { cwd: myinDir, env });
-    const misses = log.split("\n").filter((line) => line.includes("못 찾음"));
+    const misses = [...missingMusic, ...log.split("\n").filter((line) => line.includes("못 찾음"))];
     const sheets = readdirSync(videoDir).filter((name) => /^preview_\d+\.png$/.test(name)).sort().slice(0, job.sheetUploadUrls.length);
     current.step = "upload";
     for (const [i, name] of sheets.entries()) await upload(job.sheetUploadUrls[i], path.join(videoDir, name), "image/png");

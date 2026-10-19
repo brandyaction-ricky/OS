@@ -37,8 +37,8 @@ const runSchema = z.object({
     assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
     fuzzy: z.array(z.string()), notes: z.array(z.string()) }).strict().optional(),
   review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
-  // Stage 3: each candidate's download decision (by file name), files people uploaded (Pixabay blocks automated downloads),
-  // the CTA lines' voice, and the render PC's preparation with Logan's preview check.
+  // Stage 3: the photos approved with the storyboard (by file name), the CTA lines' voice, and the render PC's preparation
+  // with Logan's preview check. Music comes from the 음악 창고 on the render PC (owner decision 2026-10-19).
   assets: z.record(z.string(), z.object({ decision: z.enum(["approved", "excluded"]), by: z.string().uuid(), at: z.string().datetime(),
     path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).optional(),
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional() }).strict()).optional(),
@@ -80,7 +80,7 @@ export function presentMyinRun(record: OsRecord) {
   return { id: record.id, status: record.status, stage: record.stage, paragraphs: run.paragraphs.length,
     paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
-    assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision, uploaded: Boolean(value.path) }])),
+    assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
@@ -128,10 +128,15 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
   const record = data as OsRecord;
   const run = parse(record);
-  if (record.stage !== "storyboard_review" || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
+  // Confirm from review; a change of mind (revise) is still possible after confirming, until the preview clips start.
+  const open = decision === "confirmed" ? ["storyboard_review"] : ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready"];
+  if (!open.includes(record.stage ?? "") || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
   if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
-  return presentMyinRun(await save(service, record, decision === "confirmed" ? "done" : "backlog", decision === "confirmed" ? "storyboard_confirmed" : "words_ready", next));
+  if (decision === "revise") { delete next.prepared; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
+  // Owner decision 2026-10-19: confirming the storyboard is the approval of the photos it uses; preparation starts at once.
+  const saved = await save(service, record, "done", "storyboard_confirmed", next);
+  return presentMyinRun(await beginPrep(service, saved, parse(saved), actor.id));
 }
 
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {
@@ -305,7 +310,6 @@ export async function myinWordsReport(actor: RequestActor, runId: string) {
 
 // ── Stage 3: photos, music, CTA voice and the render PC's preparation with Logan's preview check ──
 
-const ASSET_BUCKET = "os-youtube-video"; // private, accepts audio/mpeg; uploaded music lives next to the video
 const SHEET_BUCKET = "os-youtube-character"; // private, accepts PNG: Logan's preview sheets for the ③ panel
 const md5 = (value: string) => createHash("md5").update(value).digest("hex");
 
@@ -339,71 +343,36 @@ export function myinReferencedFiles(storyboard: unknown) {
   return files;
 }
 const pageId = (url: string) => url.split("/photos/")[1]?.split(/[?#/]/)[0]?.split("-").pop() ?? "";
-/** Where the render PC fetches an approved file: what a person uploaded, else the photo site's own download address. */
-function fetchUrl(asset: { url: string }, uploaded: string | undefined) {
-  if (uploaded) return { storage: uploaded };
+/** Where the render PC fetches a photo: the photo site's own download address. Music comes from the 음악 창고 on the render PC. */
+function fetchUrl(asset: { url: string }) {
   const url = new URL(asset.url);
-  if (url.hostname === "unsplash.com" && pageId(asset.url)) return { url: `https://unsplash.com/photos/${pageId(asset.url)}/download?force=true` };
-  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return { url: `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}` };
-  return null; // Pixabay and others: a person downloads it and uploads the file here
+  if (url.hostname === "unsplash.com" && pageId(asset.url)) return `https://unsplash.com/photos/${pageId(asset.url)}/download?force=true`;
+  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
+  return null;
 }
 
-/** [허락] / [빼기] on one candidate. */
-export async function decideMyinAsset(actor: RequestActor, runId: string, file: string, decision: "approved" | "excluded") {
-  const { record, run } = await ownedRun(actor, runId);
-  if (!["storyboard_confirmed", "prep_ready"].includes(record.stage ?? "") || !run.storyboard?.assets.some((a) => a.file === file))
-    throw new ApiError(409, "MYIN_ASSET_NOT_OPEN", "기획표가 확인된 뒤 후보 목록에 있는 파일만 정할 수 있습니다.");
-  const prior = run.assets?.[file];
-  const next: MyinRun = { ...run, assets: { ...run.assets, [file]: { ...(prior ?? {}), decision, by: actor.id, at: new Date().toISOString() } } };
-  return presentMyinRun(await save(createServiceSupabase(), record, record.status ?? "done", record.stage ?? "storyboard_confirmed", next));
+/** Approve the photos the storyboard uses (the confirmation covers them) and queue the CTA voice, then the render PC's preparation. */
+async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: string) {
+  const story = await storyboardJson(service, run);
+  const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
+  const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
+  const unreachable = used.filter((file) => !fetchUrl(byFile.get(file)!));
+  if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(Unsplash·위키미디어만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
+  const at = new Date().toISOString();
+  const assets = Object.fromEntries(used.map((file) => [file, { decision: "approved" as const, by, at }]));
+  const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) =>
+    run.cta?.find((p) => p.index === index && p.textHash === sha(c.line)) ?? { index, textHash: sha(c.line), status: "pending" as const });
+  const next: MyinRun = { ...run, assets, cta, attempts: 0 }; delete next.prepared; delete next.lastError;
+  return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
 
-/** A signed address to upload one approved file a person downloaded (mp3 for music). */
-export async function myinAssetUploadUrl(actor: RequestActor, runId: string, file: string) {
-  const { record, run } = await ownedRun(actor, runId);
-  if (run.assets?.[file]?.decision !== "approved") throw new ApiError(409, "MYIN_ASSET_NOT_APPROVED", "허락한 파일만 올릴 수 있습니다.");
-  const path = `${record.owner_id}/${run.sourceId}/${record.id}/assets/${file}`;
-  const { data, error } = await createServiceSupabase().storage.from(ASSET_BUCKET).createSignedUploadUrl(path, { upsert: true });
-  if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "업로드 주소를 만들지 못했습니다.");
-  return { signedUrl: data.signedUrl, path };
-}
-
-/** After the browser's upload: the OS checks the file is there before counting it. */
-export async function confirmMyinAssetUpload(actor: RequestActor, runId: string, file: string) {
-  const { record, run } = await ownedRun(actor, runId);
-  const path = `${record.owner_id}/${run.sourceId}/${record.id}/assets/${file}`;
-  const folder = path.slice(0, path.lastIndexOf("/"));
-  const { data } = await createServiceSupabase().storage.from(ASSET_BUCKET).list(folder, { search: file, limit: 5 });
-  const object = data?.find((item) => item.name === file);
-  if (!object || run.assets?.[file]?.decision !== "approved") throw new ApiError(409, "MYIN_ASSET_UPLOAD_MISSING", "올린 파일을 찾지 못했습니다. 다시 올려 주세요.");
-  const bytes = Number((object.metadata as { size?: number } | null)?.size ?? 0) || undefined;
-  const next: MyinRun = { ...run, assets: { ...run.assets, [file]: { ...run.assets[file], path, ...(bytes ? { bytes } : {}) } } };
-  return presentMyinRun(await save(createServiceSupabase(), record, record.status ?? "done", record.stage ?? "storyboard_confirmed", next));
-}
-
-/** [자료 준비 시작]: every file the storyboard uses is approved and fetchable; the CTA lines go to Fish next. */
+/** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt. */
 export async function startMyinPrep(actor: RequestActor, runId: string) {
-  const service = createServiceSupabase();
   const { record, run } = await ownedRun(actor, runId);
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "");
-  if ((!["storyboard_confirmed", "prep_ready"].includes(record.stage ?? "") && !restart) || !run.storyboard) throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 시작할 수 있습니다.");
-  const story = await storyboardJson(service, run);
-  const byFile = new Map(run.storyboard.assets.map((a) => [a.file, a]));
-  const problems: string[] = [];
-  for (const file of myinReferencedFiles(story)) {
-    const asset = byFile.get(file);
-    if (!asset) continue; // a package file (end screen) or the render PC's site capture
-    const decision = run.assets?.[file];
-    if (decision?.decision !== "approved") problems.push(`${file}: 기획표에 쓰였는데 아직 허락하지 않았습니다.`);
-    else if (!fetchUrl(asset, decision.path)) problems.push(`${file}: 이 사이트는 자동으로 받을 수 없어 파일을 직접 올려야 합니다.`);
-  }
-  if (problems.length) throw new ApiError(409, "MYIN_PREP_ASSETS", problems.join(" / "));
-  const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) => {
-    const prior = run.cta?.find((p) => p.index === index && p.textHash === sha(c.line));
-    return prior ?? { index, textHash: sha(c.line), status: "pending" as const };
-  });
-  const next: MyinRun = { ...run, cta, attempts: 0 }; delete next.prepared; delete next.lastError;
-  return presentMyinRun(await save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next));
+  if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
+    throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
+  return presentMyinRun(await beginPrep(createServiceSupabase(), record, run, actor.id));
 }
 
 /** One CTA line of voice per call, the same Fish request as the paragraphs. */
@@ -450,11 +419,8 @@ export async function claimMyinPrep(service: Service = createServiceSupabase()) 
     const story = await storyboardJson(service, run);
     const assets = [];
     for (const asset of run.storyboard?.assets ?? []) {
-      const decision = run.assets?.[asset.file];
-      if (decision?.decision !== "approved") continue;
-      const where = fetchUrl(asset, decision.path);
-      if (!where) continue;
-      assets.push({ kind: asset.kind, file: asset.file, url: "storage" in where ? await sign(service, ASSET_BUCKET, where.storage!) : where.url });
+      const url = run.assets?.[asset.file]?.decision === "approved" ? fetchUrl(asset) : null;
+      if (url) assets.push({ kind: asset.kind, file: asset.file, url });
     }
     const cta = [];
     for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });
