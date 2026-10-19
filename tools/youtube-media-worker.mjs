@@ -10,7 +10,7 @@
  * Once a minute it reports disk, memory and the current step to the OS (렌더 PC 상태); with under 60 GB free it takes no new render.
  */
 import { createHash } from "node:crypto";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -78,7 +78,7 @@ export async function processOne() {
     await upload(job.audioUploadUrl, narration, "audio/mpeg");
     const render = await call({ action: "brief", ...lease, segmentDurations: parts.map(seconds), durationSeconds: seconds(narration) });
     current.step = "drawing";
-    const video = drawMindmap(render.brief, parts, job.renderId);
+    const video = await drawMindmap(render.brief, parts, job.renderId);
     current.step = "upload";
     await upload(render.videoUploadUrl, video, "video/mp4");
     const bytes = readFileSync(video);
@@ -99,7 +99,7 @@ export async function processOne() {
  * Lay out Logan's work folder (voice.wav, timings, plan with the OS's decks and sections, items) and run
  * his stages 2, 5a, 4a, 4b, 5b and 6 exactly as his manual does. Returns the finished MP4's path.
  */
-export function drawMindmap(brief, parts, name) {
+export async function drawMindmap(brief, parts, name) {
   const work = path.join(mindmapDir, "voice", name);
   mkdirSync(work, { recursive: true });
   const wavs = parts.map((file, index) => {
@@ -126,10 +126,16 @@ export function drawMindmap(brief, parts, name) {
   symlinkSync(execFileSync("which", ["ffprobe"], { encoding: "utf8" }).trim(), path.join(shim, "ffprobe.exe"));
   const fonts = path.join(mindmapDir, "voice", "fonts");
   if (!existsSync(fonts)) symlinkSync(path.join(mindmapDir, "assets", "repro", "fonts"), fonts);
-  const stage = (script, env = {}) => execFileSync(process.env.MINDMAP_PYTHON || "python3", [script, name],
-    { cwd: stages, stdio: "inherit", env: { ...process.env, FFMPEG: path.join(shim, "ffmpeg.exe"), ...env } });
+  // Stages run without blocking so the once-a-minute heartbeat keeps going: a 10-minute video renders for ~13 minutes, and a
+  // blocking call left 렌더 PC showing "연결 끊김" the whole time.
+  const stage = (script, env = {}) => new Promise((resolve, reject) => {
+    const child = spawn(process.env.MINDMAP_PYTHON || "python3", [script, name],
+      { cwd: stages, stdio: "inherit", env: { ...process.env, FFMPEG: path.join(shim, "ffmpeg.exe"), ...env } });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolve() : reject(Object.assign(new Error(`${script} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
+  });
   try {
-    stage("stage_plan.py");
+    await stage("stage_plan.py");
     // Logan's stage 2 builds the mind-map tree; the decks and sections are the OS design, not his defaults.
     const plan = JSON.parse(readFileSync(path.join(work, "plan.json"), "utf8"));
     plan.sections = brief.sections;
@@ -137,12 +143,12 @@ export function drawMindmap(brief, parts, name) {
     writeFileSync(path.join(work, "plan.json"), JSON.stringify(plan));
     writeFileSync(path.join(work, "items.json"), JSON.stringify(Object.fromEntries(plan.beats.map((beat, i) =>
       [beat.id, beat.deck === "35" ? brief.beats[i].items[0] : brief.beats[i].items]))));
-    stage("stage_subs.py");
-    stage("stage_decks.py");
-    stage("stage_render.py", { RES: "720", PARALLEL: "3", OFF: "3" });
-    stage("stage_audio.py", { NO_BGM: "1", OFF: "3" });
+    await stage("stage_subs.py");
+    await stage("stage_decks.py");
+    await stage("stage_render.py", { RES: "720", PARALLEL: "3", OFF: "3" });
+    await stage("stage_audio.py", { NO_BGM: "1", OFF: "3" });
     const video = path.join(work, "final.mp4");
-    stage("stage_final.py", { NO_AD: "1", OFF: "3", VIDEO: path.join(work, "mindmap_video.mp4"), OUT: video });
+    await stage("stage_final.py", { NO_AD: "1", OFF: "3", VIDEO: path.join(work, "mindmap_video.mp4"), OUT: video });
     return video;
   } finally {
     rmSync(shim, { recursive: true, force: true });
