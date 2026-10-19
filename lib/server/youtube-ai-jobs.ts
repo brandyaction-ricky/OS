@@ -90,7 +90,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     const myin = await myinRunWithWords(service(), input.sourceId, actor.id);
     if (myin.record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_READY_FOR_STORYBOARD", "받아쓰기가 끝났고 확인 중인 기획표가 없을 때 보낼 수 있습니다.");
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
-    source = (await readPipeline(actor, input.sourceId)).source; title = source.title; myinRunId = myin.record.id;
+    const state = await readPipeline(actor, input.sourceId);
+    source = state.source; title = state.writing.packageTitle || source.title; myinRunId = myin.record.id;
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
   } else if (input.task === "scene-plan") {
     const { state, plan, scriptText, title: adopted } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
