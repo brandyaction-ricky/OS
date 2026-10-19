@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
+import { MYIN_METAPHOR_TYPES } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -27,6 +28,15 @@ const runSchema = z.object({
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).min(1).max(150),
   words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime() }).strict().optional(),
+  // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
+  storyboard: z.object({ path: z.string(), scenes: z.number().int().positive(), model: z.string(), at: z.string().datetime(),
+    metaphors: z.array(z.object({ scene: z.number().int(), type: z.string(), at: z.string() }).strict()),
+    cta: z.array(z.object({ after: z.string(), line: z.string() }).strict()),
+    summary: z.object({ title: z.string(), points: z.array(z.string()) }).strict().nullable(),
+    reasons: z.object({ metaphors: z.string(), cta: z.string(), summary: z.string() }).strict(),
+    assets: z.array(z.object({ kind: z.enum(["people", "situations", "bgm"]), file: z.string(), url: z.string(), source: z.string(), license: z.string(), use: z.string() }).strict()),
+    fuzzy: z.array(z.string()), notes: z.array(z.string()) }).strict().optional(),
+  review: z.object({ decision: z.enum(["confirmed", "revise"]), by: z.string().uuid(), name: z.string(), note: z.string(), at: z.string().datetime() }).strict().optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
   lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
 }).strict();
@@ -63,7 +73,56 @@ export function presentMyinRun(record: OsRecord) {
   const run = parse(record);
   return { id: record.id, status: record.status, stage: record.stage, paragraphs: run.paragraphs.length,
     paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
+    storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
+}
+
+/** The content owner's latest v13 run for one video, with the frozen transcription (words, speech) once it exists. */
+export async function myinRunWithWords(service: Service, sourceId: string, ownerId: string) {
+  const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("owner_id", ownerId)
+    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
+  const record = data?.[0] as OsRecord | undefined;
+  if (!record) throw new ApiError(409, "MYIN_RUN_REQUIRED", "먼저 v13 음성과 받아쓰기·자막을 만들어 주세요.");
+  const run = parse(record);
+  if (!run.words) throw new ApiError(409, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 끝난 뒤에 기획표를 쓸 수 있습니다.");
+  const { data: file } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
+  if (!file) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
+  const bundle = JSON.parse(await file.text()) as { words: [number, number, string][]; speech: string };
+  const input = await currentInput(service, sourceId);
+  return { record, run, words: bundle.words, markdown: input.markdown, title: input.state.source.title };
+}
+
+/** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */
+export async function saveMyinStoryboard(service: Service, record: OsRecord, run: MyinRun, value: {
+  storyboard: Record<string, unknown>; assets: NonNullable<MyinRun["storyboard"]>["assets"]; reasons: NonNullable<MyinRun["storyboard"]>["reasons"];
+  fuzzy: string[]; notes: string[]; model: string;
+}) {
+  const path = `${record.owner_id}/${run.sourceId}/${record.id}/myin-storyboard.json`;
+  const { error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).upload(path, Buffer.from(JSON.stringify(value.storyboard)), { contentType: "application/json", upsert: true });
+  if (error) throw new ApiError(502, "MYIN_STORYBOARD_UPLOAD_FAILED", "기획표를 저장하지 못했습니다.");
+  const scenes = value.storyboard.scenes as { type: string; at?: string; title?: unknown; points?: { h?: string }[] }[];
+  const metaphorTypes = new Set(MYIN_METAPHOR_TYPES);
+  const summary = scenes.find((sc) => sc.type === "summary");
+  const next: MyinRun = { ...run, storyboard: { path, scenes: scenes.length, model: value.model, at: new Date().toISOString(),
+    metaphors: scenes.flatMap((sc, i) => metaphorTypes.has(sc.type) ? [{ scene: i + 1, type: sc.type, at: String(sc.at ?? "") }] : []),
+    cta: (value.storyboard.cta as { after: string; line: string }[]).map(({ after, line }) => ({ after, line })),
+    summary: summary ? { title: typeof summary.title === "string" ? summary.title : JSON.stringify(summary.title ?? ""), points: (summary.points ?? []).map((p) => String(p.h ?? "")) } : null,
+    reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes } };
+  delete next.review;
+  return save(service, record, "backlog", "storyboard_review", next);
+}
+
+/** Logan (연출자) confirms the storyboard, or sends it back with a note for the staff AI's next pass. */
+export async function reviewMyinStoryboard(actor: RequestActor, runId: string, decision: "confirmed" | "revise", note: string) {
+  const service = createServiceSupabase();
+  const { data } = await service.from("os_records").select("*").eq("id", runId).eq("record_type", "ai_job").is("archived_at", null).maybeSingle();
+  if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
+  const record = data as OsRecord;
+  const run = parse(record);
+  if (record.stage !== "storyboard_review" || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
+  if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
+  const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
+  return presentMyinRun(await save(service, record, decision === "confirmed" ? "done" : "backlog", decision === "confirmed" ? "storyboard_confirmed" : "words_ready", next));
 }
 
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {

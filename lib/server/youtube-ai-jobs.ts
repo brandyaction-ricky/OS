@@ -11,20 +11,22 @@ import { assertScriptInputs, saveScriptBundle, scriptBundleSchema, scriptInputKe
 import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRuleRefs } from "./youtube-scenes";
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
+import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
+import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
 
 // Staff AI jobs (owner decision 2026-10-17, method B): the requester's own Claude or Codex reaches the OS through
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120 } as const;
-const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)" } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90 } as const;
+const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
-  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), requestedAt: z.string(),
+  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
 }).passthrough();
@@ -35,6 +37,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   // attachments = 원고 공정 정본 §2 "카드 첨부": what the staff member hands the AI with the job (댓글 원문, 직접 고른 재료).
   z.object({ task: z.literal("script"), sourceId: z.string().uuid(), targetMinutes: z.number().int().min(1).max(60).default(10),
     role: z.enum(SCRIPT_ROLES).default("유입형"), attachments: z.string().trim().max(20_000).optional() }).strict(),
+  // 마이인 v13 ③ 기획표 after the render PC's transcription; a resend after Logan asked for changes carries his note.
+  z.object({ task: z.literal("storyboard"), sourceId: z.string().uuid() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -80,7 +84,15 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
  */
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
   let source: OsRecord; let title: string; let inputKey: string;
-  if (input.task === "scene-plan") {
+  let myinRunId: string | undefined;
+  let note = "";
+  if (input.task === "storyboard") {
+    const myin = await myinRunWithWords(service(), input.sourceId, actor.id);
+    if (myin.record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_READY_FOR_STORYBOARD", "받아쓰기가 끝났고 확인 중인 기획표가 없을 때 보낼 수 있습니다.");
+    note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
+    source = (await readPipeline(actor, input.sourceId)).source; title = source.title; myinRunId = myin.record.id;
+    inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
+  } else if (input.task === "scene-plan") {
     const { state, plan, scriptText, title: adopted } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
     if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
     source = state.source; title = adopted; inputKey = input.inputKey;
@@ -100,7 +112,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   }
   const now = new Date().toISOString();
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
-    ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : { targetMinutes, role, ...(attachments ? { attachments } : {}) }) };
+    ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
+      : { targetMinutes, role, ...(attachments ? { attachments } : {}) }) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
@@ -153,6 +166,15 @@ async function currentInput(job: OsRecord) {
   return { automation, segments: splitFishNarration(automation.scriptText!) };
 }
 
+/** The v13 run and its frozen transcription for a storyboard job; closed when the run moved on (new voice, or a storyboard already in review). */
+async function currentStoryboardInput(job: OsRecord) {
+  const m = meta(job);
+  const myin = await myinRunWithWords(service(), m.sourceId, job.owner_id ?? "").catch(() => null);
+  const note = myin?.run.review?.decision === "revise" ? myin.run.review.note : "";
+  if (!myin || myin.record.id !== m.myinRunId || myin.record.stage !== "words_ready" || myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note) !== m.inputKey) return closeStale(job, m);
+  return myin;
+}
+
 /** The approved plan and adopted title for a ② job; closed the same way when they moved on. */
 async function currentScriptInput(job: OsRecord) {
   const m = meta(job);
@@ -172,6 +194,13 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     await saveJob(job, { status: "active", stage: "claimed", metadata: { ...m, lease, claimedAt: new Date().toISOString(), issues: [] } });
     return lease;
   };
+  if (m.task === "storyboard") {
+    const myin = await currentStoryboardInput(job);
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+      instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
+        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes }) };
+  }
   if (m.task === "script") {
     const state = await currentScriptInput(job);
     const lease = await take();
@@ -207,6 +236,14 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
+  if (m.task === "storyboard") {
+    const myin = await currentStoryboardInput(job);
+    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words));
+    await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
+      fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: "로건님이 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
+  }
   const { automation, segments } = await currentInput(job);
   const { plan, pronunciation } = await keepIssues(job, m, () => ({
     plan: checkScenePlan(input.result.plan, segments, 422),

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { createMyinRun, latestMyinRun, myinWordsReport } from "@/lib/server/myin-run";
+import { createMyinRun, latestMyinRun, myinWordsReport, reviewMyinStoryboard } from "@/lib/server/myin-run";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -21,6 +21,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ run: await latestMyinRun(actor, z.string().uuid().parse(query.get("sourceId"))) }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
+    return apiErrorResponse(error);
+  }
+}
+
+/** Logan (연출자) confirms the storyboard or sends it back with a note. */
+export async function PATCH(request: Request) {
+  try {
+    pilot();
+    const actor = await authenticateRequest(request, { allowAgent: false });
+    const input = z.object({ runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default("") }).passthrough().parse(await parseJson(request, 4_000));
+    return NextResponse.json({ run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note) }, { headers });
+  } catch (error) {
+    if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "확인 내용을 확인해 주세요."));
     return apiErrorResponse(error);
   }
 }
