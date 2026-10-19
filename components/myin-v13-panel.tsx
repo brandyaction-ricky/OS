@@ -19,9 +19,9 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
-  storyboard_review: "기획표 확인 대기 (로건님)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
+  storyboard_review: "기획표 확인 대기 (로건, 유쓰)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
   prep_pending: "렌더 PC가 자료 준비·미리보기 점검 중", prep_ready: "미리보기 점검 끝", clips_pending: "렌더 PC가 시안 영상 만드는 중",
-  clips_review: "시안 확인 대기 (로건님)", final_pending: "렌더 PC가 전체 영상 만드는 중 (10~15분)", final_ready: "완성" };
+  clips_review: "시안 확인 대기 (로건, 유쓰)", final_pending: "렌더 PC가 전체 영상 만드는 중 (10~15분)", final_ready: "완성" };
 const LATER = ["clips_pending", "clips_review", "final_pending", "final_ready"];
 
 const KIND: Record<string, string> = { people: "인물 사진", situations: "상황 사진", bgm: "음악" };
@@ -91,7 +91,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   return <div className="yt-steps" role="region" aria-label="마이인 v13 시험">
     <section className="panel">
       <header className="panel-header"><div><span className="eyebrow">마이인 v13 · 시험</span><h2>v13으로 만들기</h2>
-        <p>승인된 원고로 대표 목소리를 만들고, 렌더 PC가 받아쓰기·자막을 만든 뒤, 내 AI가 장면 기획표를 쓰고 로건님이 확인하면 렌더 PC가 자료를 준비해 점검합니다. 위 마인드맵 단계와는 따로 움직입니다.</p></div></header>
+        <p>승인된 원고로 대표 목소리를 만들고, 렌더 PC가 받아쓰기·자막을 만든 뒤, 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 확인하면 렌더 PC가 자료를 준비해 점검합니다. 위 마인드맵 단계와는 따로 움직입니다.</p></div></header>
     </section>
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
@@ -112,15 +112,15 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
       </details> : null}
     </Step>
 
-    <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건님 확인)" idBase="myin-step">
+    <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건, 유쓰 확인)" idBase="myin-step">
       {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
-        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건님 수정 요청 · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
+        {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건, 유쓰 수정 요청 · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
         <p>내 AI가 로건님 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다.</p>
         <StaffDesign status={job} busy={busy === "send"} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
-        <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건님 확인 완료" : "로건님 확인 대기"}</span>
+        <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건, 유쓰 확인 완료" : "로건, 유쓰 확인 대기"}</span>
           <small>장면 {board.scenes}개 · 직원 AI {board.model} · {when(board.at)}</small></div></div>
         <details className="yt-details" open={run.stage === "storyboard_review"}><summary>비유 포인트 {board.metaphors.length}곳</summary>
           <ul className="yt-list">{board.metaphors.map((m) => <li key={m.scene}>{m.scene}번 장면 · {m.type} · “{m.at}”</li>)}</ul>
@@ -138,7 +138,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
         {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>
           <ul className="yt-list">{board.notes.map((n) => <li key={n}>{n}</li>)}</ul></details> : null}
         {["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready"].includes(run.stage) ? <div className="yt-note">
-          <strong>{run.stage === "storyboard_review" ? "로건님 확인" : "기획표 다시 고치기"}</strong>
+          <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>확인 완료를 누르면 기획표에 쓰인 사진이 허락되고 3단계가 바로 시작됩니다. 음악은 음악 창고 곡이라 따로 받을 것이 없습니다.</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로" /></label>
           <div className="yt-actions">
@@ -151,7 +151,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
     </Step>
 
     <Step index={2} state={step3} title="자료 준비와 미리보기 점검" idBase="myin-step">
-      <p>로건님 확인이 끝나면 자동으로 시작합니다. 구독 대사 음성을 만들고, 렌더 PC가 허락된 사진을 받아 음악 창고 곡과 함께 놓은 뒤 로건님 점검 기능으로 문구 위치를 확인합니다.</p>
+      <p>로건, 유쓰 확인이 끝나면 자동으로 시작합니다. 구독 대사 음성을 만들고, 렌더 PC가 허락된 사진을 받아 음악 창고 곡과 함께 놓은 뒤 로건님 점검 기능으로 문구 위치를 확인합니다.</p>
       {run?.review?.decision === "confirmed" && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) =>
         <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul> : null}
       {run && ["cta_pending", "prep_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
@@ -174,14 +174,14 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
         <small>사진을 다시 받고 점검을 다시 돌립니다. 같은 구독 대사면 음성은 그대로 씁니다.</small></div> : null}
     </Step>
 
-    <Step index={3} state={step4} title="시안 확인 (로건님)" idBase="myin-step">
-      <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건님이 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 2번 카드의 수정 요청으로 기획표를 고칩니다.</p>
+    <Step index={3} state={step4} title="시안 확인 (로건, 유쓰)" idBase="myin-step">
+      <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건, 유쓰가 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 2번 카드의 수정 요청으로 기획표를 고칩니다.</p>
       {run && ["clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
         <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
       {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
         <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={{ width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
       {run?.stage === "clips_review" ? <div className="yt-note">
-        <strong>로건님 확인</strong>
+        <strong>로건, 유쓰 확인</strong>
         <label>메모 (선택)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음" /></label>
         <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }))}>{busy === "clips" ? "저장 중…" : "시안 확인 완료 · 전체 영상 만들기"}</button></div>
       </div> : null}

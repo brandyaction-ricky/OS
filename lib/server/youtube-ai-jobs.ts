@@ -243,7 +243,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: "로건님이 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
+    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
   }
   const { automation, segments } = await currentInput(job);
   const { plan, pronunciation } = await keepIssues(job, m, () => ({
