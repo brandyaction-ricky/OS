@@ -10,6 +10,7 @@ const STEPS: Record<Tool, string[]> = {
   claude: [
     "Claude 앱(또는 claude.ai)에서 설정 › 커넥터로 갑니다.",
     "‘사용자 지정 커넥터 추가’를 누르고 이름은 브랜디 OS, 주소 칸에 복사한 주소를 붙여 넣습니다. 인증은 ‘로그인 없음’을 고르고, 나머지는 그대로 둔 채 추가합니다.",
+    "도구 권한은 읽기 전용 도구 전부와 ‘Process youtube ai job’만 항상 허용, ‘Delete document’·‘Delete record’는 차단, 나머지 쓰기 도구는 손 모양(매번 확인)으로 둡니다.",
     "새 대화에서 ‘브랜디 OS로 원고 공정 정본 찾아줘’라고 해 보고, 문서가 나오면 연결된 것입니다.",
   ],
   codex: [
