@@ -179,6 +179,26 @@ export async function synthesizeFishSegment(text: string, options: {
   return { bytes, mimeType: "audio/mpeg" as const };
 }
 
+/**
+ * 마이인 v13: exactly the request in Logan's stage_voice.py (text, wav, reference_id; model header; nothing else), so the render
+ * PC's post-processing gives his result. The model is pinned by the caller: Fish serves an unknown name as 2.1 without an error.
+ */
+export async function synthesizeFishWav(text: string, options: { apiKey: string; referenceId: string; model: string; fetcher?: Fetcher }) {
+  if (!text.trim() || text.length > FISH_SEGMENT_MAX_CHARS) throw new ApiError(400, "VOICE_SEGMENT_INVALID", "음성 단락의 길이를 확인해 주세요.");
+  if (!options.apiKey.trim() || !options.referenceId.trim()) throw new ApiError(503, "FISH_NOT_CONFIGURED", "Fish Audio API 키와 비공개 목소리 ID가 필요합니다.");
+  const response = await (options.fetcher ?? fetch)(FISH_TTS_ENDPOINT, {
+    method: "POST", cache: "no-store", signal: AbortSignal.timeout(120_000),
+    headers: { authorization: `Bearer ${options.apiKey.trim()}`, "content-type": "application/json", model: options.model },
+    body: JSON.stringify({ text, format: "wav", reference_id: options.referenceId.trim() }),
+  });
+  if (!response.ok) throw new ApiError(502, "FISH_TTS_FAILED", `Fish Audio 음성 생성에 실패했습니다 (${response.status}).`);
+  if (Number(response.headers.get("content-length") ?? 0) > MAX_AUDIO_BYTES) throw new ApiError(502, "FISH_AUDIO_TOO_LARGE", "음성 응답 크기가 허용 범위를 넘었습니다.");
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > MAX_AUDIO_BYTES || bytes.subarray(0, 4).toString("ascii") !== "RIFF" || bytes.subarray(8, 12).toString("ascii") !== "WAVE")
+    throw new ApiError(502, "FISH_AUDIO_INVALID", "Fish Audio가 wav 음성을 반환하지 않았습니다.");
+  return { bytes, mimeType: "audio/wav" as const };
+}
+
 /** Generate one narration segment and its word timing in the same Fish request. */
 export async function synthesizeFishSegmentWithTimestamps(text: string, options: {
   apiKey: string; referenceId: string; model?: string; settings?: FishVoiceSettings; fetcher?: Fetcher; signal?: AbortSignal;

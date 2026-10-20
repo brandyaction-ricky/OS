@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import { pickedPackaging, pipelineArtifacts } from "@/lib/content-pipeline";
-import { buildYoutubeAutomationPlan, type YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
+import { buildYoutubeAutomationPlan, documentInputKey, type YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { APPROVED_SCRIPT_STATUSES, narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
 import { readPipeline } from "./content-pipeline";
@@ -36,7 +36,7 @@ export async function readYoutubeAutomationInput(supabase: Supabase, sourceId: s
     const ready = Boolean(doc && doc.version === ref.version && doc.contentSha256 === ref.contentSha256);
     const plan: YoutubeAutomationPlan = {
       format: "narrated_visual", privacyStatus: "private", judgmentMode: "advisory_only", sourceId,
-      inputKey: ready && doc ? sha256(JSON.stringify(["narrated-document-v1", sourceId, doc.id, doc.version, doc.contentSha256])) : null,
+      inputKey: ready && doc ? documentInputKey(sourceId, doc) : null,
       currentStage: ready ? "ready_for_voice" : "needs_input",
       missing: ready ? [] : ["승인된 원고 문서의 연결 당시 버전 (문서가 수정됐거나 승인 상태가 아니면 새로 연결)"],
       script: ready && doc ? { id: doc.id, version: doc.version } : null, packaging: null, kit: null,

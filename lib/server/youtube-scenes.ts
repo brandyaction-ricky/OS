@@ -63,6 +63,18 @@ export async function readYoutubeSceneRules(actor: Pick<RequestActor, "supabase"
   };
 }
 
+/**
+ * A staff AI is connected to the OS and opens these documents itself when it needs them, so its job lists titles and ids
+ * instead of 46,000 characters of script rules; a design no longer depends on their versions or status. Only documents that are
+ * still canonical are listed, so a retired rule document drops out instead of being read.
+ */
+export async function youtubeSceneRuleRefs(actor: Pick<RequestActor, "supabase">) {
+  const ids = (process.env.YOUTUBE_SCENE_RULE_IDS ?? "").split(",").map((value) => value.trim()).filter((id) => UUID.test(id));
+  const { data } = ids.length ? await actor.supabase.from("os_documents").select("id,title").in("id", ids).eq("status", "canonical") : { data: [] };
+  if (!data?.length) return "없음. 위 화면 원칙과 원고만으로 설계하세요.";
+  return `내용·근거·표현을 확인할 때만 OS 연결(get_document)로 직접 열어 읽으세요. 화면 형식은 위 원칙을 따릅니다.\n${data.map((doc) => `- ${doc.title} (doc_id: ${doc.id})`).join("\n")}`;
+}
+
 const outputSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -101,7 +113,11 @@ ${mindmapDeckIds.map((id) => { const deck = MINDMAP_DECKS[id]; return `${id} · 
 unresolved에는 도식으로 보여주기 어려운 단락, 원고와 덱이 약하게 맞는 단락, 근거가 부족한 부분을 적습니다. 화면 형식(덱·섹션)은 위 원칙을 따르고, 적용 정본은 내용·근거·표현 기준으로 적용합니다. 정본과 내용이 충돌하면 정본을 우선하고 충돌을 적습니다.`;
 
 /** Design the whole mind map in one call: a deck, its items and a section for every paragraph. */
-export async function generateYoutubeScenePlan(input: { script: string; title: string; thumbnailCopy: string; evidence: string; rules: string }) {
+export const SCENE_PLAN_JSON_SCHEMA = outputSchema;
+type ScenePlanInput = { script: string; title: string; thumbnailCopy: string; evidence: string; rules: string };
+
+/** The instruction both the company API path and a staff AI job use. */
+export function scenePlanPrompt(input: ScenePlanInput) {
   const segments = splitFishNarration(input.script);
   const prompt = `브랜디액션 내레이션 영상의 화면을 설계하세요. 포맷 버전은 ${YOUTUBE_VISUAL_TEMPLATE_VERSION}입니다.
 
@@ -119,16 +135,25 @@ ${input.rules}
 ${segments.map((segment, index) => `${index}. ${segment}`).join("\n")}
 
 scenes에는 0~${segments.length - 1}번 단락을 모두 순서대로 원래 번호(segmentIndex)로 하나씩 담으세요.`;
+  return { prompt, segments };
+}
+
+export async function generateYoutubeScenePlan(input: ScenePlanInput) {
+  const { prompt, segments } = scenePlanPrompt(input);
   const raw = await generateContentText({ prompt, model: SCENE_MODEL, jsonSchema: outputSchema, maxTokens: 16_000, effort: "medium", timeoutMs: 780_000 });
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { throw new ApiError(502, "SCENE_PLAN_INVALID", "영상 설계 결과를 읽지 못했습니다."); }
-  const result = scenePlanSchema.safeParse(trimNotes(parsed));
-  if (!result.success) throw new ApiError(502, "SCENE_PLAN_INVALID", `영상 설계 형식이 맞지 않습니다: ${result.error.issues[0]?.message}`);
+  return { plan: checkScenePlan(parsed, segments), segmentCount: segments.length };
+}
+
+/** Logan's deck rules and one scene per paragraph; a staff AI gets every problem at once (status 422) so it can fix and resubmit. */
+export function checkScenePlan(value: unknown, segments: string[], status = 502) {
+  const result = scenePlanSchema.safeParse(trimNotes(value));
+  if (!result.success) throw new ApiError(status, "SCENE_PLAN_INVALID", `영상 설계 형식이 맞지 않습니다: ${result.error.issues.slice(0, status === 502 ? 1 : 10).map((issue) => issue.message).join(" / ")}`);
   if (result.data.scenes.length !== segments.length || result.data.scenes.some((scene, index) => scene.segmentIndex !== index))
-    throw new ApiError(502, "SCENE_PLAN_INVALID", "영상 장면이 원고 단락과 일치하지 않습니다.");
+    throw new ApiError(status, "SCENE_PLAN_INVALID", `영상 장면이 원고 단락과 일치하지 않습니다. 단락 ${segments.length}개를 0번부터 순서대로 하나씩 담아 주세요.`);
   const repeated = result.data.scenes.flatMap((scene, index) => index > 0 && scene.deck === result.data.scenes[index - 1].deck ? [`${index + 1}단락`] : []);
-  const plan = repeated.length ? { ...result.data, unresolved: [...result.data.unresolved, `같은 덱 연속: ${repeated.join(", ")}`].slice(0, 20) } : result.data;
-  return { plan, segmentCount: segments.length };
+  return repeated.length ? { ...result.data, unresolved: [...result.data.unresolved, `같은 덱 연속: ${repeated.join(", ")}`].slice(0, 20) } : result.data;
 }
 
 /** Advisory text and section labels are shortened instead of discarding a paid answer; Logan's top bar shows 8 characters. */

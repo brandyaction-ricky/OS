@@ -62,18 +62,39 @@ async function leased(service: Service, renderId: string, token: string) {
   return { record: data as OsRecord, run: parsed.data };
 }
 
+/**
+ * [영상 다시 만들기]: a render that failed three times (blocked) goes back to the queue with fresh attempts, keeping its last
+ * error for the record. Only the content owner, only a blocked run; the voice is reused, so it costs no Fish call.
+ */
+export async function retryYoutubeRender(actor: RequestActor, sourceId: string, runId: string, service: Service = createServiceSupabase()) {
+  const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("owner_id", actor.id)
+    .eq("metadata->>kind", YOUTUBE_RENDER_RUN_KIND).eq("metadata->>voiceRunId", runId).eq("status", "blocked").is("archived_at", null).maybeSingle();
+  const parsed = renderRunSchema.safeParse(data?.metadata);
+  if (!data || !parsed.success) throw new ApiError(409, "RENDER_NOT_RETRYABLE", "다시 만들 수 있는 실패한 영상 작업이 없습니다.");
+  await save(service, data as OsRecord, "backlog", "render_pending", { ...parsed.data, attempts: 0 });
+  return { retried: true };
+}
+
 /** Create or claim the render run for one finished voice run, and hand the worker its inputs. */
 export async function claimYoutubeRender(service: Service = createServiceSupabase(), targetVoiceRunId?: string) {
   let query = service.from("os_records").select("*").eq("record_type", "ai_job")
     .eq("metadata->>kind", YOUTUBE_VOICE_RUN_KIND).eq("status", "done").eq("stage", "voice_ready").is("archived_at", null);
   if (targetVoiceRunId) query = query.eq("id", targetVoiceRunId);
-  const { data: voiceRuns, error } = await query.order("updated_at").limit(20);
+  const { data: voiceRuns, error } = await query.order("updated_at").limit(100);
   if (error) throw new ApiError(500, "RENDER_QUEUE_READ_FAILED", "영상 제작 대기열을 읽지 못했습니다.");
+  // Only a voice run made for the design its content still carries (same design, current template, passing today's
+  // deck rules) can render; older ones would fail at the brief three times each after downloading and uploading audio.
+  const sourceIds = [...new Set((voiceRuns ?? []).map((row) => row.parent_id as string | null).filter((id): id is string => Boolean(id)))];
+  const { data: sources, error: sourceError } = sourceIds.length ? await service.from("os_records").select("id,metadata").in("id", sourceIds) : { data: [], error: null };
+  if (sourceError) throw new ApiError(500, "RENDER_QUEUE_READ_FAILED", "영상 제작 대기열을 읽지 못했습니다.");
+  const designs = new Map((sources ?? []).map((row) => [row.id as string, (row.metadata as Record<string, unknown> | null)?.narratedScenePlan as { plan?: unknown; generatedAt?: unknown; templateVersion?: unknown } | undefined]));
   for (const candidate of voiceRuns ?? []) {
     const voiceRecord = candidate as OsRecord;
     let voice;
     try { voice = parseVoiceRun(voiceRecord); } catch { continue; }
     if (!voice.timingMode || !voiceRecord.owner_id) continue;
+    const design = designs.get(voice.sourceId);
+    if (!design || design.generatedAt !== voice.scenePlanGeneratedAt || design.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION || !scenePlanSchema.safeParse(design.plan).success) continue;
     const id = voiceRunId(digestVoiceValue([YOUTUBE_RENDER_RUN_KIND, voiceRecord.id, voice.scenePlanGeneratedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION]));
     const base = `${voiceRecord.owner_id}/${voice.sourceId}/${id}`;
     let { data: existing } = await service.from("os_records").select("*").eq("id", id).maybeSingle();
@@ -121,7 +142,9 @@ export async function buildYoutubeRenderBrief(input: { renderId: string; lease: 
   const { data: source } = await service.from("os_records").select("metadata").eq("id", run.sourceId).maybeSingle();
   const stored = (source?.metadata as Record<string, unknown> | undefined)?.narratedScenePlan as { plan?: unknown; generatedAt?: unknown; templateVersion?: unknown } | undefined;
   const plan = scenePlanSchema.safeParse(stored?.plan);
-  if (!plan.success || stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
+  // A design made before a deck rule tightened (e.g. checklist 06 down to 3 items) no longer passes; say so plainly.
+  if (!plan.success) throw new ApiError(409, "RENDER_SCENE_PLAN_INVALID", "화면 설계가 지금 도식 규칙에 맞지 않습니다. 영상 제작 화면에서 다시 설계해 주세요.");
+  if (stored?.generatedAt !== run.scenePlanGeneratedAt || stored?.templateVersion !== YOUTUBE_VISUAL_TEMPLATE_VERSION ||
     plan.data.scenes.length !== scriptSegments.length)
     throw new ApiError(409, "RENDER_SCENE_PLAN_CHANGED", "화면 설계가 음성 제작 이후 변경됐습니다. 새 작업이 필요합니다.");
   const brief = { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, sections: plan.data.sections,

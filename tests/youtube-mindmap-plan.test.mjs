@@ -51,3 +51,12 @@ test('sections follow the script: start at 0, step by one, end on the last name,
   assert.equal(scenePlanSchema.safeParse(plan(n6, ['도입', '걱정과 고침', '마무리'])).success, false);
   assert.equal(scenePlanSchema.safeParse(plan([n6[0], { ...n6[1], section: 0 }, { ...n6[1], section: 1 }])).success, false);
 });
+
+test('a staff AI gets every deck problem at once (422) so it can fix and resubmit', () => {
+  const { checkScenePlan } = load('../lib/server/youtube-scenes.ts', (name) => ({ zod: { z }, '@/lib/http': { ApiError: class extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } } },
+    '@/lib/youtube-visual-template': template, './content-model': {}, './fish-audio': {} })[name] ?? (() => { throw Error(name); })());
+  const bad = plan([{ deck: '41', items: ['라벨|2'], section: 0 }, { deck: '35', items: ['a', 'b'], section: 1 }]);
+  assert.throws(() => checkScenePlan(bad, ['첫 단락', '둘째 단락'], 422), (error) => error.status === 422 && error.message.includes(' / '));
+  assert.throws(() => checkScenePlan(plan(n6), ['한 단락뿐'], 422), (error) => error.status === 422 && /단락 1개/.test(error.message));
+  assert.equal(checkScenePlan(plan(n6), ['가', '나', '다'], 422).scenes.length, 3);
+});

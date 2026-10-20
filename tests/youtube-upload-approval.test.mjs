@@ -4,6 +4,7 @@ import { runInNewContext } from "node:vm";
 import test from "node:test";
 import ts from "typescript";
 import * as zod from "zod";
+import * as myinStoryboard from "../lib/myin-storyboard.ts";
 
 const kitId = "4c345370-6af6-425a-9b28-c769f7ee9a30";
 const sourceId = "56d9ff8b-acde-4b95-8d8f-91b395643854";
@@ -19,24 +20,28 @@ function setup(options = {}) {
   const rows = [
     { id: kitId, record_type: "content_package", title: "발행 키트", parent_id: sourceId, archived_at: null, metadata: { packageKind: "youtube_kit", result: { title: "영상 제목" } } },
     { id: sourceId, record_type: "content_topic", archived_at: null, metadata: { pipelineEnabled: true } },
+    ...(options.myinCredits ? [{ id: "myin", record_type: "ai_job", parent_id: sourceId, archived_at: null, stage: "final_ready", metadata: { kind: "youtube_myin_v13", prepared: { credits: options.myinCredits } } }] : []),
   ];
   const actor = { id: "owner", type: "user", role: "member", supabase: { from() {
     const filters = [];
-    const builder = { select() { return builder; }, eq(key, value) { filters.push((row) => row[key] === value); return builder; }, is(key, value) { filters.push((row) => row[key] === value); return builder; }, async maybeSingle() { return { data: structuredClone(rows.find((row) => filters.every((match) => match(row))) ?? null), error: null }; } };
+    const field = (row, key) => key.startsWith("metadata->>") ? row.metadata?.[key.slice(11)] : row[key];
+    const builder = { select() { return builder; }, eq(key, value) { filters.push((row) => field(row, key) === value); return builder; }, is(key, value) { filters.push((row) => row[key] === value); return builder; }, order() { return builder; },
+      async limit(count) { return { data: structuredClone(rows.filter((row) => filters.every((match) => match(row))).slice(0, count)), error: null }; },
+      async maybeSingle() { return { data: structuredClone(rows.find((row) => filters.every((match) => match(row))) ?? null), error: null }; } };
     return builder;
   } } };
   const modules = {
-    "next/server": { NextResponse: Response }, zod,
+    "next/server": { NextResponse: Response }, zod, "@/lib/myin-storyboard": myinStoryboard,
     "@/lib/http": { ApiError, parseJson: (request) => request.json(), apiErrorResponse: (error) => Response.json({ code: error.code }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => actor },
     "@/lib/server/content-pipeline": { readPipeline: async () => ({ approved: controls.approved, release: { approved: controls.releaseApproved, plan: { channelId: controls.approvedChannel, privacyStatus: controls.approvedPrivacy } } }) },
     "@/lib/server/channel-access": { auditChannelAction: async () => {} },
     "@/lib/server/youtube-oauth": { authorizeYoutubeConnection: async () => { if (controls.denyChannel) throw new ApiError(403, "CHANNEL_ACCESS_DENIED", "denied"); }, youtubeConnectionStatus: async () => ({ channelId: controls.connectedChannel, channelTitle: "Main" }), getYoutubeAccessToken: async () => "token" },
   };
-  const commonJsModule = { exports: {} }; let fetchCount = 0;
-  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { Response, URLSearchParams, fetch: async () => { fetchCount++; return new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }); } })((key) => modules[key], commonJsModule, commonJsModule.exports);
+  const commonJsModule = { exports: {} }; let fetchCount = 0; let sent = null;
+  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { Response, URLSearchParams, fetch: async (_url, init) => { fetchCount++; sent = JSON.parse(init.body); return new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }); } })((key) => modules[key], commonJsModule, commonJsModule.exports);
   const post = (privacyStatus = "private") => commonJsModule.exports.POST(new Request("https://os.example/api/v1/youtube/upload/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kitId, fileName: "final.mp4", fileSize: 1024, mimeType: "video/mp4", privacyStatus, finalApproval: true }) }));
-  return { controls, post, fetchCount: () => fetchCount };
+  return { controls, post, fetchCount: () => fetchCount, sent: () => sent };
 }
 
 test("pipeline video upload requires a persisted release approval", async () => {
@@ -68,4 +73,10 @@ test("current final review and matching release approval create the upload sessi
   assert.equal(response.status, 200);
   assert.equal(state.fetchCount(), 1);
   assert.equal((await response.json()).channelId, "channel-a");
+});
+
+test("a finished 마이인 v13 run puts its credits at the end of the description", async () => {
+  const state = setup({ releaseApproved: true, myinCredits: ["situ_a.jpg — Unsplash · Kim · https://unsplash.com/photos/x"] });
+  assert.equal((await state.post()).status, 200);
+  assert.equal(state.sent().snippet.description, "\n\n사진·음악 출처\n- Unsplash · Kim · https://unsplash.com/photos/x");
 });

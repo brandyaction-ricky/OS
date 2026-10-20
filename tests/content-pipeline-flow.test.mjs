@@ -9,6 +9,7 @@ import * as productionWorkflow from '../lib/content-production-workflow.ts';
 import * as releaseWorkflow from '../lib/content-release-workflow.ts';
 import * as scriptReview from '../lib/content-script-review.ts';
 import * as writingWorkflow from '../lib/content-writing-workflow.ts';
+import * as automationPlan from '../lib/youtube-automation-plan.ts';
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const base = (id, extra = {}) => ({ id, record_type: 'content_topic', title: 'Example', description: 'Brief', source_url: null, parent_id: null, version: 1, metadata: {}, created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z', archived_at: null, ...extra });
@@ -34,7 +35,7 @@ function harness() {
   } };
   const compiled = { exports: {} };
   const source = readFileSync(new URL('../lib/server/content-pipeline.ts', import.meta.url), 'utf8');
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-production-workflow') return productionWorkflow; if (name === '@/lib/content-release-workflow') return releaseWorkflow; if (name === '@/lib/content-script-review') return scriptReview; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === './content-generation') return generation; throw Error(name); } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiled, exports: compiled.exports, Date, console, require(name) { if (name === 'node:crypto') return crypto; if (name === '@/lib/http') return { ApiError }; if (name === '@/lib/content-pipeline') return pipeline; if (name === '@/lib/content-production-workflow') return productionWorkflow; if (name === '@/lib/content-release-workflow') return releaseWorkflow; if (name === '@/lib/content-script-review') return scriptReview; if (name === '@/lib/content-writing-workflow') return writingWorkflow; if (name === '@/lib/youtube-automation-plan') return automationPlan; if (name === './content-generation') return generation; throw Error(name); } });
   return { api: compiled.exports, rows, actor: { id: 'human', supabase: client }, calls: () => calls, fail(value) { fail = value; }, pause(value) { pause = value; } };
 }
 const input = (action) => ({ sourceId: 'source', action, count: 5 });
@@ -199,6 +200,26 @@ test('production assets are approved in order and upstream changes invalidate do
   assert.equal(state.production.ready, false);
   assert.deepEqual(state.production.steps.map((step) => step.approved), [false, false, false, false]);
   assert.equal(state.source.metadata.productionWorkflow.reviews.length, 4);
+});
+test('a 마이인 v13 final made from the current approved script stands in for the four production steps and the final URL', async () => {
+  const h = harness();
+  await prepareApprovedScript(h);
+  let state = await h.api.readPipeline(h.actor, 'source');
+  const signature = state.signatures[2];
+  const run = base('myin', { record_type: 'ai_job', parent_id: 'source', stage: 'final_ready', metadata: { kind: 'youtube_myin_v13', inputKey: automationPlan.automationInputKey(state) } });
+  h.rows.push(run);
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.production.myinFinal, true);
+  assert.deepEqual(state.production.steps.map((step) => step.approved), [true, true, true, true]);
+  assert.ok(!state.missing[2].includes('검토할 최종 영상 HTTPS URL') && !state.missing[2].includes('보이스 MP3'));
+  assert.notEqual(state.signatures[2], signature);
+  run.metadata.inputKey = 'made-from-an-older-script';
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.production.myinFinal, false);
+  assert.ok(state.missing[2].includes('검토할 최종 영상 HTTPS URL'));
+  run.stage = 'clips_review';
+  state = await h.api.readPipeline(h.actor, 'source');
+  assert.equal(state.signatures[2], signature);
 });
 test('private local production assets satisfy the same approval flow without public URLs', () => {
   const sourceId = '00000000-0000-4000-8000-000000000010';
