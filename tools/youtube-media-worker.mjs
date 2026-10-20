@@ -399,7 +399,7 @@ export async function processShortform(){
   const job=await call({action:"shorts_claim"});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
-  current={renderId:job.renderId,step:"shorts"};void heartbeat();
+  current={renderId:job.renderId,step:"drawing"};void heartbeat();
   try{
     const sourceFile=job.mode==="reuse"?path.join(dir,"source.mp4"):undefined;
     if(sourceFile)await fetchShortformTo(job.sourceUrl,sourceFile,1_000_000_000);

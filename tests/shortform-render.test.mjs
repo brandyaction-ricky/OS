@@ -175,11 +175,16 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
     const h=await setup();h.item().metadata.cuts[0].voice="";
     await h.enqueue(false);
     const png=execFileSync("ffmpeg",["-v","error","-f","lavfi","-i","color=c=blue:s=640x480","-frames:v","1","-f","image2pipe","-vcodec","png","pipe:1"]);
+    const {renderPcSignalSchema}=await load("lib/server/youtube-render-pc.ts",{
+      zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},
+      "./youtube-render-run":{},"./youtube-voice-run":{},
+    });
+    const signals=[];
     const originalFetch=globalThis.fetch;
     globalThis.fetch=async(url,options={})=>{
       if(String(url).endsWith("/media")){
         const input=JSON.parse(options.body);let result;
-        if(input.action==="heartbeat")result={ok:true};
+        if(input.action==="heartbeat"){signals.push(input);result={ok:true};}
         else if(input.action==="shorts_claim")result=await h.api.claimShortformRender(h.service);
         else if(input.action==="shorts_complete")result=await h.api.completeShortformRender(input,h.service);
         else if(input.action==="shorts_fail")result=await h.api.failShortformRender(input,h.service);
@@ -200,6 +205,8 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       assert.equal(run.status,"done",run.metadata.error);
       assert.equal(h.item().metadata.mp4Path,run.metadata.outputPath);
       assert.equal(h.item().status,"draft");assert.equal(h.voiceCalls,0);
+      assert.ok(signals.length>0);
+      for(const signal of signals)assert.equal(renderPcSignalSchema.safeParse(signal).success,true,"Worker heartbeat must satisfy the live API schema");
       assert.ok(h.objects.get("os-content-media:"+run.metadata.outputPath).size>1000);
     }finally{globalThis.fetch=originalFetch;}
   });
