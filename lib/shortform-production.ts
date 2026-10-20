@@ -47,9 +47,10 @@ export const shortformCutsSchema=z.object({
     voice:z.string().max(3000).optional(),
     asset:z.string().max(3000).optional(),
     missingAsset:z.boolean().optional(),
+    assetId:z.string().uuid().optional(),
   })).min(1).max(100),
 });
-function seconds(value:string){
+export function shortformSeconds(value:string){
   if(!/^\d{2}:\d{2}(?::\d{2})?(?:\.\d{1,3})?$/.test(value))return NaN;
   const parts=value.split(":").map(Number);
   if(parts.slice(1).some(part=>part>=60))return NaN;
@@ -60,7 +61,7 @@ export function validateDirectCuts(value:unknown,duration:number){
   if(!result.success)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","장면별 시간·자막·화면 구성을 확인해 주세요.");
   let end=0;
   for(const cut of result.data.cuts){
-    const from=seconds(cut.start),to=seconds(cut.end);
+    const from=shortformSeconds(cut.start),to=shortformSeconds(cut.end);
     if(!Number.isFinite(from)||!Number.isFinite(to)||Math.abs(from-end)>0.001||to<=from||to>duration
       ||cut.voice===undefined||cut.asset===undefined||cut.missingAsset===undefined)
       throw new ApiError(422,"SHORTFORM_TIMELINE_INVALID","직접 제작은 00:00부터 빈틈 없이 시간·내레이션·소재·미확보 여부를 적어 주세요.");

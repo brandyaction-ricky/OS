@@ -11,10 +11,11 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { constants as fsConstants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
 const secret = process.env.YOUTUBE_MEDIA_WORKER_SECRET ?? "";
@@ -392,18 +393,64 @@ export async function processMyinFinal() {
   return true;
 }
 
+export async function processShortform(){
+  if(runId||diskFreeGb()<2)return false;
+  checkShortformRuntime();
+  const job=await call({action:"shorts_claim"});
+  if(job.idle)return false;
+  const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
+  current={renderId:job.renderId,step:"shorts"};void heartbeat();
+  try{
+    const sourceFile=job.mode==="reuse"?path.join(dir,"source.mp4"):undefined;
+    if(sourceFile)await fetchShortformTo(job.sourceUrl,sourceFile,1_000_000_000);
+    const scenes=[];
+    for(const [index,scene] of job.scenes.entries()){
+      const input={...scene};
+      if(scene.imageUrl){input.imageFile=path.join(dir,`image-${index}`);await fetchShortformTo(scene.imageUrl,input.imageFile,25_000_000);}
+      if(job.mode==="direct"&&scene.hasVoice){
+        const audio=await call({action:"shorts_voice",...lease,index});
+        input.audioFile=path.join(dir,`voice-${index}.mp3`);await fetchShortformTo(audio.url,input.audioFile,12*1024*1024);
+      }
+      scenes.push(input);
+    }
+    const result=await renderShortform({mode:job.mode,scenes,sourceFile,dir});
+    await upload(job.uploadUrl,result.file,"video/mp4");
+    const bytes=readFileSync(result.file);
+    await call({action:"shorts_complete",...lease,bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),duration:result.duration});
+    console.log(`shortform ready: ${job.renderId}`);
+  }catch(error){
+    const code=String(error.code??"SHORTFORM_RENDER_FAILED");
+    console.error(`shortform failed: ${job.renderId}: ${code}`);
+    await call({action:"shorts_fail",...lease,code}).catch(()=>{});
+  }finally{current=null;rmSync(dir,{recursive:true,force:true});}
+  return true;
+}
+async function fetchShortformTo(url,file,max){
+  const response=await fetch(url,{signal:AbortSignal.timeout(180_000)});
+  if(!response.ok||!response.body||Number(response.headers.get("content-length"))>max)
+    throw Object.assign(new Error("download rejected"),{code:"SHORTFORM_DOWNLOAD_FAILED"});
+  const reader=response.body.getReader();let size=0;writeFileSync(file,"");
+  try{
+    for(;;){const {value,done}=await reader.read();if(done)break;
+      size+=value.length;if(size>max)throw Object.assign(new Error("download too large"),{code:"SHORTFORM_DOWNLOAD_TOO_LARGE"});
+      appendFileSync(file,value);
+    }
+  }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
-  if (!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
+  const shortsOnly=process.argv.includes("--shorts-only");
+  if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
+    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;
-    }).finally(() => { current = null; }))
+    }).finally(() => { current = null; })).then(rendered=>rendered||processShortform()))
       .catch((error) => { console.error(error.message); return false; });
     if (process.argv.includes("--once")) break;
     if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));

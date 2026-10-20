@@ -14,7 +14,7 @@ const finalSchema = z.object({
 });
 
 /** Resolve only the latest final made from the currently approved inputs, after checking the caller's source access. */
-export async function readShortformLongform(actor: RequestActor, sourceId: string, expectedKey?: string,
+export async function readShortformLongform(actor: Pick<RequestActor,"supabase">, sourceId: string, expectedKey?: string,
   serviceFactory = createServiceSupabase): Promise<ShortformLongformInput> {
   const { state, plan } = await readYoutubeAutomationInput(actor.supabase, sourceId);
   const run = pipelineArtifacts(state.records).myin;

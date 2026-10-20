@@ -42,7 +42,7 @@ export function ShortformProductionFields({metadata,onChange,onAppeals}:Props){
       <label>선택한 구매 이유<textarea rows={3} value={brief.appeal} onChange={event=>set({appeal:event.target.value})}/></label>
       <p className="ca-v07-note">광고 문구와 실제 상품·연결 페이지의 약속을 함께 확인합니다. 후보 채택은 광고 집행 승인이 아닙니다.</p>
     </>:null}
-    {brief.mode==="direct"?<p className="ca-v07-note">장면 시간은 완성 영상의 00:00부터 이어집니다. 내레이션·실제 소재·추가 촬영할 화면을 함께 준비합니다. 현재는 구성안을 바탕으로 제작한 MP4를 아래에 올려 검수합니다. 제작 조건·구성을 바꾸면 수정한 MP4를 다시 올려 주세요.</p>:null}
+    {brief.mode==="direct"?<p className="ca-v07-note">장면 시간은 완성 영상의 00:00부터 이어집니다. 내레이션·실제 소재·추가 촬영할 화면을 함께 준비합니다. 아래에서 장면별 이미지를 선택해 MP4를 만들거나 직접 제작한 MP4를 올릴 수 있습니다. 구성 변경 후에는 영상을 다시 확인해 주세요.</p>:null}
   </div>;
 }
 

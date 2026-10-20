@@ -14,6 +14,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { THREADS_POST_MAX,threadsPostLength,threadsPostRole,threadsPostsProblem } from "@/lib/threads-posts";
 import { useSession } from "./session-provider";
 import { ShortformProductionFields,ShortformCutEditor } from "./shortform-production-fields";
+import { ShortformRenderPanel } from "./shortform-render-panel";
 import "./content-automation-v07.css";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
@@ -190,7 +191,7 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
       :error?<div className="ca-v07-error" role="alert"><strong>—</strong> 불러오지 못했습니다 · 저장된 데이터는 바뀌지 않았습니다. <button type="button" onClick={()=>void load()}>다시 시도</button><p>{error}</p></div>
       :page==="dashboard"?<DashboardView data={data} />
       :page==="topics"?<TopicsView data={data} mutate={mutate} />
-      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} />
+      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={load}/>
       :page==="review"?<ReviewView data={data} mutate={mutate} />
       :page==="calendar"?<CalendarView data={data} mutate={mutate} />
       :page==="performance"?<PerformanceView data={data} mutate={mutate} />
@@ -375,7 +376,7 @@ function ReviewerRoster({team,mutate}:{team:TeamInfo;mutate:ViewProps["mutate"]}
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}</div>;
 }
 
-function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
+function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;refresh:()=>Promise<void>}){
   const router=useRouter(),search=useSearchParams(),channel=page==="cardnews"?"card":page;
   const {accessToken}=useSession();
   const all=data.items.filter(row=>row.metadata.channel===channel);
@@ -454,7 +455,7 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
     <div className="ca-v07-tabs">{tabs.map(([key,label])=><button type="button" role="tab" aria-selected={tab===key} className={tab===key?"active":""} key={key} onClick={()=>setTab(key)}>{label} {items.filter(row=>key==="all"||key==="making"&&["draft","blocked"].includes(row.status)||key===row.status||key==="ready"&&row.status==="scheduled").length}</button>)}</div>
     <div className="ca-v07-split"><section className="ca-v07-card"><h2>{scope==="team"?"팀 검수함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검수함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검수함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>
       {selected?<section className="ca-v07-card ca-v07-edit"><div className="ca-v07-detail-head"><h2>{CHANNEL_LABELS[channel]} · v{selected.version}</h2><button onClick={()=>router.replace("/automation/"+page+(scope==="team"?"?scope=team":""))}>닫기</button></div>
-        <p><Status value={selected.status}/> · {topic?.title??"주제 없음"}{isTeam(selected)?` · 팀 검수함 · 작성 ${own?"나":ownerName(selected)}`:" · 나만 보임"}</p>
+        <p><Status value={selected.status}/> · {topic?.title??(selected.metadata.originalSourceId?"롱폼에서 가져온 숏폼":"주제 없음")}{isTeam(selected)?` · 팀 검수함 · 작성 ${own?"나":ownerName(selected)}`:" · 나만 보임"}</p>
         {channel==="threads"?<div className="ca-v07-actions">
           {own&&!isTeam(selected)&&selected.status!=="published"?<button type="button" disabled={busy} onClick={()=>void act("share",{version:selected.version})}>팀 검수함에 공유</button>:null}
           {isTeam(selected)&&selected.status!=="published"&&(data.team.canReview||own&&["draft","blocked"].includes(selected.status))?<button type="button" disabled={busy} onClick={()=>void act("unshare",{version:selected.version})}>공유 해제</button>:null}
@@ -469,6 +470,8 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
           :channel==="shorts"?<><ShortformProductionFields metadata={meta} onChange={setMeta} onAppeals={()=>{setJobSub("appeals");setJobOpen("shorts-cut");}}/>
             <label>원본 영상·구성 메모<textarea rows={3} value={body} onChange={event=>setBody(event.target.value)}/></label>
             <ShortformCutEditor value={cutsText} onChange={setCutsText}/>
+            <ShortformRenderPanel item={selected} metadata={meta} cutsText={cutsText} assets={data.assets}
+              onMetadata={setMeta} onCuts={setCutsText} save={save} refresh={refresh}/>
             <label>MP4 올리기<input type="file" accept="video/mp4" onChange={event=>setVideoFile(event.target.files?.[0]??null)}/></label><button onClick={()=>void uploadVideo()} disabled={!videoFile||uploading}>{uploading?"올리는 중…":"MP4 파일 올리기"}</button>
             <label>MP4 파일 주소<input value={str(meta.mp4Path)} readOnly/></label>
             <label>MP4 출처<input value={str(meta.mp4Source)} onChange={event=>setMeta({...meta,mp4Source:event.target.value})}/></label>

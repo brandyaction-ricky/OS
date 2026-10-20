@@ -19,6 +19,7 @@ export function shortformJobInput(target:OsRecord,proc:string,sub:string){
   return {id:target.id,title:target.title,brand:target.brand,channel:"shorts",
     description:target.description??"",brief:target.metadata.brief??null,
     shortformBrief:brief,stage,
+    ...(brief?.mode==="reuse"?{source:target.metadata.shortformSource??null,transcript:target.metadata.shortformTranscript??""}:{}),
     cuts:proc==="shorts-desc"?target.metadata.cuts??[]:[],
   };
 }
@@ -64,6 +65,7 @@ export function validateShortformReview(metadata:Record<string,unknown>){
 export function invalidateShortformVideo(current:OsRecord,metadata:Record<string,unknown>,description?:string){
   if(metadata.channel!=="shorts"||!metadata.shortformBrief)return metadata;
   const changed=JSON.stringify(current.metadata.shortformBrief)!==JSON.stringify(metadata.shortformBrief)
+    ||JSON.stringify(current.metadata.shortformSource)!==JSON.stringify(metadata.shortformSource)
     ||JSON.stringify(current.metadata.cuts)!==JSON.stringify(metadata.cuts)
     ||description!==undefined&&description!==current.description;
   // A replacement upload can be submitted with the edited plan. Never delete files.

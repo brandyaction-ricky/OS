@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { ContentGenerationButton } from "./content-generation-button";
 import { ContentStageTabs } from "./content-stage-tabs";
 import { GENERATION_QUEUED_NOTICE, type GenerationMode } from "@/lib/content-generation-mode";
@@ -22,7 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, getShortformLongform, listAllRecordsOfType, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
+import { apiRequest,archiveRecord, createContentMediaUpload, createRecord, generateContent, getContentMediaUrl, getShortformLongform, listAllRecordsOfType, listRecords, updateRecord, uploadContentMedia } from "@/lib/api-client";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import type { ShortformLongformRef } from "@/lib/shortform-longform";
@@ -283,7 +284,16 @@ export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceCh
 
   const requestRender = async () => {
     if (!selectedSource || !selected.length) return;
-    if (longform) return setError("OS 롱폼 원본의 연결은 준비됐습니다. 숏폼 영상 제작 연결은 아직 준비 중입니다.");
+    if (longform) {
+      setBusy(true);setError("");
+      try{
+        const result=await apiRequest<{items:{id:string}[]}>("/api/v1/content/shorts/cards",{
+          method:"POST",token:accessToken,body:JSON.stringify({sourceId:selectedSource.id,sourceKey:longform.key,clipIds:selected.map(clip=>clip.id)})});
+        window.location.assign("/automation/shorts?sel="+result.items[0].id);
+      }catch(reason){setError(reason instanceof Error?reason.message:"제작 카드를 만들지 못했습니다.");}
+      finally{setBusy(false);}
+      return;
+    }
     const mediaPath = meta<string>(selectedSource, "contentMediaPath", "");
     if (!selectedSource.source_url && !mediaPath) return setError("원본 파일을 저장하거나 워커용 원본 URL을 입력해 주세요.");
     if (localFile) return setError("새로 선택한 원본 파일을 먼저 템플릿과 함께 저장해 주세요.");
@@ -335,7 +345,8 @@ export function ContentShortformWorkspace({lockedSource,sourceOptions,onSourceCh
     </section> : null}
 
     {tab === "clips" ? <>
-      <section className="panel clips-toolbar"><div><span><strong>{visible.length}</strong> 전체 클립</span><span><strong>{selected.length}</strong> 채택</span><span><strong>{finished.length}</strong> 제작 완료</span></div><div><button className="secondary-button" disabled={!sourceId || busy} onClick={addManualClip}><Plus size={14} /> 수동 구간</button><button className="primary-button" disabled={!selected.length || busy} onClick={requestRender}><Play size={14} /> 채택 {selected.length}개 제작 요청</button></div></section>
+      {longform?<p>OS 롱폼은 제작 카드에서 720×1280 기본 템플릿으로 만듭니다. 이 화면의 별도 스타일 설정은 아직 적용되지 않습니다. <Link href="/automation/shorts">제작 카드·직접 제작 열기</Link></p>:null}
+      <section className="panel clips-toolbar"><div><span><strong>{visible.length}</strong> 전체 클립</span><span><strong>{selected.length}</strong> 채택</span><span><strong>{finished.length}</strong> 제작 완료</span></div><div><button className="secondary-button" disabled={!sourceId || busy} onClick={addManualClip}><Plus size={14} /> 수동 구간</button><button className="primary-button" disabled={!selected.length || busy} onClick={requestRender}><Play size={14} /> 채택 {selected.length}개 {longform?"제작 카드로 보내기":"제작 요청"}</button></div></section>
       <section className="clip-production-grid">{visible.map((clip, index) => {
         const start = Number(meta(clip, "start", 0)); const end = Number(meta(clip, "end", 0)); const picked = meta(clip, "selected", true); const preview = meta(clip, "previewUrl", "");
         return <article className={`panel clip-production-card ${picked ? "selected" : ""}`} key={clip.id}><div className="vertical-clip-preview" style={{ backgroundColor: style.backgroundColor }}>{preview ? <video src={preview} muted controls /> : <><Film size={34} /><span>CLIP {String(index + 1).padStart(2, "0")}</span></>}</div><div><header><button className={picked ? "clip-picked" : ""} onClick={() => toggle(clip)}>{picked ? <Check size={13} /> : <Plus size={13} />} {picked ? "채택" : "채택하기"}</button><span className={`status-pill status-${clip.status}`}>{clip.stage || clip.status}</span></header><h3>{clip.title}</h3><p>{clip.description}</p><div className="clip-time"><span>{formatTime(start)}</span><i /><span>{formatTime(end)}</span><em>{Math.max(0, Math.round(end - start))}초</em></div><footer><button className="ghost-button" onClick={() => setEditClip(clip)}><Pencil size={13} /> 구간·문구 수정</button>{preview ? <a className="ghost-button" href={preview} download><Download size={13} /> 다운로드</a> : <button className="ghost-button" disabled><Download size={13} /> 제작 후 다운로드</button>}<button className="ghost-button danger" onClick={() => removeClip(clip)}><Trash2 size={13} /> 삭제</button></footer></div></article>;
