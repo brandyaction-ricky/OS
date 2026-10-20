@@ -13,6 +13,7 @@ import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { OsRecord } from "@/lib/record-types";
 import { THREADS_POST_MAX,threadsPostLength,threadsPostRole,threadsPostsProblem } from "@/lib/threads-posts";
 import { useSession } from "./session-provider";
+import { ShortformProductionFields,ShortformCutEditor } from "./shortform-production-fields";
 import "./content-automation-v07.css";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
@@ -389,6 +390,7 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
   const locked=statusLocked||!canEdit;
   const [tab,setTab]=useState("all"),[title,setTitle]=useState(""),[body,setBody]=useState(""),[busy,setBusy]=useState(false);
   const [meta,setMeta]=useState<Record<string,unknown>>({}),[cutsText,setCutsText]=useState("[]");
+  const [jobSub,setJobSub]=useState("");
   const [jobOpen,setJobOpen]=useState<string|null>(null),[error,setError]=useState(""),[videoFile,setVideoFile]=useState<File|null>(null),[uploading,setUploading]=useState(false);
   useEffect(()=>{setTitle(selected?.title??"");setBody(selected?.description??"");setMeta(selected?.metadata??{});
     setCutsText(JSON.stringify(selected?.metadata.cuts??[],null,2));},[selected]);
@@ -396,6 +398,9 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
     ||tab==="review"&&row.status==="review"||tab==="ready"&&["ready","scheduled"].includes(row.status)
     ||tab==="published"&&row.status==="published");
   const posts=Array.isArray(meta.posts)?(meta.posts as unknown[]).map(post=>String(post)):[];
+  const shortformDirty=channel==="shorts"&&Boolean(selected)&&(title!==selected?.title||body!==(selected?.description??"")
+    ||JSON.stringify(meta)!==JSON.stringify(selected?.metadata)
+    ||cutsText!==JSON.stringify(selected?.metadata.cuts??[],null,2));
   const postsProblem=channel==="threads"?threadsPostsProblem(posts):null;
   // One click at a time: a slow response must not send the same request twice.
   const once=async(work:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);try{await work();}finally{setBusy(false);}};
@@ -422,7 +427,8 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
     catch(issue){setError(issue instanceof Error?issue.message:"최종 확인으로 보내지 못했습니다.");}
   });
   const createJob=async(rush:boolean)=>{
-    try{await mutate("/api/v1/content/automation/jobs","POST",{proc:jobOpen,targetId:selected?.id,rush});
+    try{if(channel==="shorts"&&!await save())return;
+      await mutate("/api/v1/content/automation/jobs","POST",{proc:jobOpen,targetId:selected?.id,rush,...(jobSub?{sub:jobSub}:{})});
       setJobOpen(null);if(rush)await navigator.clipboard.writeText(workerInstruction("now"));}
     catch(issue){setError(issue instanceof Error?issue.message:"AI 작업을 만들지 못했습니다.");}
   };
@@ -460,27 +466,30 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
         {channel==="card"?<><CardDetail meta={meta} setMeta={setMeta} templates={data.templates} assets={data.assets}/>
           <label>캡션<textarea rows={4} value={str(meta.caption)} onChange={event=>setMeta({...meta,caption:event.target.value})}/></label>
           <button onClick={()=>setJobOpen("card-fill")}>내 AI로 글 받기</button><button onClick={()=>setJobOpen("card-caption")}>내 AI로 캡션 받기</button></>
-          :channel==="shorts"?<><label>원본 영상·구성 메모<textarea rows={3} value={body} onChange={event=>setBody(event.target.value)}/></label>
-            <label>컷 구성(JSON)<textarea rows={6} value={cutsText} onChange={event=>setCutsText(event.target.value)}/></label>
+          :channel==="shorts"?<><ShortformProductionFields metadata={meta} onChange={setMeta} onAppeals={()=>{setJobSub("appeals");setJobOpen("shorts-cut");}}/>
+            <label>원본 영상·구성 메모<textarea rows={3} value={body} onChange={event=>setBody(event.target.value)}/></label>
+            <ShortformCutEditor value={cutsText} onChange={setCutsText}/>
             <label>MP4 올리기<input type="file" accept="video/mp4" onChange={event=>setVideoFile(event.target.files?.[0]??null)}/></label><button onClick={()=>void uploadVideo()} disabled={!videoFile||uploading}>{uploading?"올리는 중…":"MP4 파일 올리기"}</button>
             <label>MP4 파일 주소<input value={str(meta.mp4Path)} readOnly/></label>
             <label>MP4 출처<input value={str(meta.mp4Source)} onChange={event=>setMeta({...meta,mp4Source:event.target.value})}/></label>
             <label>커버 이미지<select value={str(meta.coverAssetId)} onChange={event=>{const asset=data.assets.find(row=>row.id===event.target.value);setMeta({...meta,coverAssetId:asset?.id??"",coverPath:asset?.metadata.storagePath??"",coverLicense:asset?.metadata.license??{source:"unknown"},coverConsent:asset?.metadata.consent??{}});}}><option value="">내 이미지에서 선택</option>{data.assets.map(row=><option key={row.id} value={row.id}>{row.title} · {str((row.metadata.license as Record<string,unknown>|undefined)?.source)||"불명"}</option>)}</select></label>
             <label>음원 출처<input value={str(meta.bgmSource)} onChange={event=>setMeta({...meta,bgmSource:event.target.value})}/></label>
-            <button onClick={()=>setJobOpen("shorts-cut")}>내 AI로 컷 구성 받기</button><button onClick={()=>setJobOpen("shorts-desc")}>내 AI로 설명 받기</button></>
+            <label>커버 문구<input value={str(meta.coverText)} onChange={event=>setMeta({...meta,coverText:event.target.value})}/></label>
+            <label>게시 설명<textarea rows={3} value={str(meta.description)} onChange={event=>setMeta({...meta,description:event.target.value})}/></label>
+            <button onClick={()=>{setJobSub("");setJobOpen("shorts-cut");}}>내 AI로 대본·장면 구성 받기</button><button onClick={()=>{setJobSub("");setJobOpen("shorts-desc");}}>내 AI로 설명 받기</button></>
           :<><ThreadPostsEditor posts={posts} setPosts={next=>setMeta({...meta,posts:next})} disabled={locked}/>
             {own?<button onClick={()=>setJobOpen("threads")}>내 AI로 초안 받기</button>:null}</>}</fieldset>
         {channel==="threads"?<><h3>모바일 미리보기</h3><ThreadsPreview posts={posts}/></>:null}
         {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.owner_id===selected.owner_id&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]} · 미승인</strong>
           {job.metadata.proc==="threads"&&Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.posts)?<ThreadsPreview posts={((job.metadata.result as {posts:unknown[]}).posts).map(post=>String(post))}/>:<pre>{JSON.stringify(job.metadata.result,null,2)}</pre>}
-          {canEdit?<><button disabled={busy} onClick={()=>void act("adopt",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button disabled={busy} onClick={()=>void act("reject",{jobId:job.id,version:selected.version})}>채택 안 함</button></>:null}</div>)}
+          {canEdit?<>{shortformDirty?<p>수정한 내용을 먼저 저장한 뒤 결과를 채택해 주세요.</p>:null}<button disabled={busy||shortformDirty} onClick={()=>void act("adopt",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button disabled={busy} onClick={()=>void act("reject",{jobId:job.id,version:selected.version})}>채택 안 함</button></>:null}</div>)}
         {canEdit?<div className="ca-v07-actions"><button onClick={()=>void once(save)} disabled={locked||busy||Boolean(postsProblem)}>저장</button>
           <button className="primary" onClick={()=>void send()} disabled={locked||busy||Boolean(postsProblem)}>최종 확인으로 보내기</button></div>:null}
         {channel==="threads"?<ReviewHistory rows={data.reviews.filter(row=>row.publish_record_id===selected.id)}/>:null}
         {isTeam(selected)?<ReviewComments item={selected}/>:null}</section>
       :missing?<div className="ca-v07-note" role="status">찾을 수 없는 콘텐츠입니다. <Link href="/automation/dashboard">자동화 현황으로 →</Link></div>:<Empty text="목록에서 콘텐츠를 선택해 주세요."/>}</div>
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}
-    {jobOpen?<JobPrompt proc={jobOpen} targetId={selected?.id} onClose={()=>setJobOpen(null)} onSubmit={createJob}/>:null}</>;
+    {jobOpen?<JobPrompt proc={jobOpen} targetId={selected?.id} onClose={()=>setJobOpen(null)} onSubmit={rush=>once(()=>createJob(rush))}/>:null}</>;
 }
 
 type CardSlot={name:string;type:string;x:number;y:number;w:number;h:number;size:number;color:string;weight:number;align:string;lines:number;fit:string};
