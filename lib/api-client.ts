@@ -818,3 +818,7 @@ export async function getMenuAccess(token: string | null, all = false) {
 export async function saveMenuAccess(token: string | null, input: { memberId: string; allowedMenus: string[] | null; expectedVersion: number }) {
   return apiRequest<{ policy: import("./menu-access").MenuAccessPolicy }>("/api/v1/members/menu-access", { token, method: "PATCH", body: JSON.stringify(input) });
 }
+
+export async function saveMemberFinanceAccess(token: string | null, input: { memberId: string; financeAccess: boolean; expectedFinanceAccess: boolean }) {
+  return apiRequest<{ memberId: string; financeAccess: boolean }>("/api/v1/members/finance-access", { token, method: "PATCH", body: JSON.stringify(input) });
+}
