@@ -240,11 +240,12 @@
       "purpose": "private bucket os-youtube-voice for narration audio (service role writes, signed URLs only)",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-09-23",
-      "productionApprovedAt": null,
+      "productionApprovedAt": "2026-10-20",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ],
-      "notes": "Applied to the isolated DEV project (2026-09-23) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 12 MiB, audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production apply pending its own step."
+      "notes": "Applied to the isolated DEV project (2026-09-23) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 12 MiB, audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 12 MB, audio/mpeg and audio/wav (after the wav change); the project-wide upload limit is 50 MB."
     },
     {
       "file": "20260924010000_youtube_voice_timing.sql",
@@ -252,11 +253,12 @@
       "purpose": "private bucket os-youtube-voice-timing for word timing, transcription bundles and the render PC status (JSON only)",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-09-24",
-      "productionApprovedAt": null,
+      "productionApprovedAt": "2026-10-20",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ],
-      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 1 MiB, application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production apply pending its own step."
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 1 MiB, application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 1 MB, application/json; the project-wide upload limit is 50 MB."
     },
     {
       "file": "20260924090000_youtube_character_assets.sql",
@@ -264,11 +266,12 @@
       "purpose": "private bucket os-youtube-character for character art and v13 preview sheets (PNG/JSON)",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-09-24",
-      "productionApprovedAt": null,
+      "productionApprovedAt": "2026-10-20",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ],
-      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 10 MiB, image/png and application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production apply pending its own step."
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 10 MiB, image/png and application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 10 MB, image/png and application/json; the project-wide upload limit is 50 MB."
     },
     {
       "file": "20260924150000_youtube_narrated_video.sql",
@@ -276,11 +279,12 @@
       "purpose": "private bucket os-youtube-video for rendered videos, clips and narration audio",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-09-24",
-      "productionApprovedAt": null,
+      "productionApprovedAt": "2026-10-20",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ],
-      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 2 GiB, video/mp4 and audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production apply pending its own step."
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 2 GiB, video/mp4 and audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 2 GB, video/mp4 and audio/mpeg; the project-wide upload limit is 50 MB."
     },
     {
       "file": "20260929013627_knowledge_document_attachments.sql",
@@ -778,11 +782,12 @@
       "purpose": "os-youtube-voice also accepts audio/wav, the exact Fish output the 마이인 v13 pipeline keeps",
       "requiresApproval": true,
       "developmentApprovedAt": "2026-10-19",
-      "productionApprovedAt": null,
+      "productionApprovedAt": "2026-10-20",
       "appliedEnvironments": [
-        "development"
+        "development",
+        "production"
       ],
-      "notes": "Owner approved the DEV change on 2026-10-19; it was made through the DEV dashboard (bucket MIME list read back as audio/mpeg, audio/wav), so DEV schema history has no entry for this file. Production apply pending its own step."
+      "notes": "Owner approved the DEV change on 2026-10-19; it was made through the DEV dashboard (bucket MIME list read back as audio/mpeg, audio/wav), so DEV schema history has no entry for this file. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: os-youtube-voice allows audio/mpeg and audio/wav; the project-wide upload limit is 50 MB."
     }
   ],
   "legacyMigrations": [
