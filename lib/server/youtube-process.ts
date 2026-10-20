@@ -31,8 +31,8 @@ export async function youtubeActor(request: Request) {
   return actor;
 }
 
-const readFailed = () => new ApiError(503, "YOUTUBE_PROJECT_READ_FAILED", "프로젝트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
-const conflict = () => new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
+export const readFailed = () => new ApiError(503, "YOUTUBE_PROJECT_READ_FAILED", "프로젝트를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+export const conflict = () => new ApiError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
 
 function asProject(row: Parameters<typeof projectFromRecord>[0] | null) {
   const project = row && projectFromRecord(row);
@@ -72,7 +72,7 @@ async function insertProject(actor: RequestActor, title: string, assigneeId: str
   return asProject(data);
 }
 
-async function saveProject(actor: RequestActor, project: YpProject, expectedVersion: number, changes: { title?: string; assigneeId?: string | null; yp?: YpMeta }) {
+export async function saveProject(actor: RequestActor, project: YpProject, expectedVersion: number, changes: { title?: string; assigneeId?: string | null; yp?: YpMeta }) {
   const payload: Record<string, unknown> = { updated_by: actor.id };
   if (changes.title !== undefined) payload.title = changes.title;
   if (changes.assigneeId !== undefined) payload.assignee_id = changes.assigneeId;
@@ -123,18 +123,28 @@ const apply = (project: YpProject, gate: YpGate, action: Parameters<typeof apply
   try { return applyGateAction(project, gate, action, input); } catch (error) { throw gateError(error); }
 };
 
-/** Topic confirm request (with an optional PD reply) and its cancel (8-1). A multi-line topic becomes one waiting project per line. */
-export async function actOnTopicGate(actor: RequestActor, id: string, input: z.infer<typeof gateActionSchema>) {
+/**
+ * A confirm request (with an optional PD reply) and its cancel (8-1). `missing` says why 기획안 · 최종 검수 are not ready;
+ * a multi-line topic becomes one waiting project per line.
+ */
+export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>, missing: (project: YpProject) => Promise<string>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
   const now = new Date().toISOString();
   const gateInput = { actor: actor.ownerId, now, reply: input.reply };
   if (input.action === "cancel") {
-    const yp = apply(project, "topic", "cancel", gateInput);
+    const yp = apply(project, gate, "cancel", gateInput);
     return { project: await saveProject(actor, project, input.expectedVersion, { yp }), created: [] as YpProject[] };
   }
-  const missing = topicMissing(project.title, project.yp.topic);
-  if (missing) throw new ApiError(400, "TOPIC_INCOMPLETE", missing);
+  const reason = gate === "topic" ? topicMissing(project.title, project.yp.topic) : await missing(project);
+  if (reason) throw new ApiError(400, gate === "topic" ? "TOPIC_INCOMPLETE" : "GATE_INCOMPLETE", reason);
+  if (gate !== "topic") {
+    const yp = apply(project, gate, "request", gateInput);
+    const saved = await saveProject(actor, project, input.expectedVersion, { yp });
+    await recordConfirmation(saved, gate, "request", actor.ownerId, { memo: input.reply });
+    if (!quietHours(now)) await notify(await approverIds(), "yt_confirm_request", saved.id, `confirm:${saved.id}:${gate}:${yp.gates[gate].round}:0`);
+    return { project: saved, created: [] as YpProject[] };
+  }
   const [first, ...rest] = topicLines(project.title);
   if (rest.length >= YP_MAX_LINES) throw new ApiError(400, "TOPIC_INCOMPLETE", `주제는 한 번에 ${YP_MAX_LINES}줄까지 보낼 수 있어요`);
   const yp = { ...apply(project, "topic", "request", gateInput), ...(rest.length ? { contentUpdatedAt: now } : {}) };
@@ -211,7 +221,7 @@ export async function remindConfirmations(now = new Date().toISOString()) {
   return { reminded: due.length, batched: due.length > 1 };
 }
 
-async function approverIds() {
+export async function approverIds() {
   const today = new Date().toISOString().slice(0, 10);
   const { data } = await createServiceSupabase().from("os_approval_assignments").select("user_id,starts_on,ends_on").eq("kind", "approver").is("revoked_at", null);
   return [...new Set((data ?? []).filter(row => (!row.starts_on || row.starts_on <= today) && (!row.ends_on || row.ends_on >= today)).map(row => row.user_id as string))];
@@ -219,7 +229,7 @@ async function approverIds() {
 
 // History and notices need the M1 migration (history table, yt_* notification reasons). Until it is applied they are
 // skipped and the decision itself still stands; each call says so in the server log.
-async function recordConfirmation(project: YpProject, gate: YpGate, action: string, actorId: string, extra: { fields?: string[]; memo?: string }) {
+export async function recordConfirmation(project: YpProject, gate: YpGate, action: string, actorId: string, extra: { fields?: string[]; memo?: string }) {
   const { error } = await createServiceSupabase().from("os_youtube_confirmations").insert({
     project_id: project.id, gate, round: Math.max(1, project.yp.gates[gate].round), action, fields: extra.fields ?? [], memo: extra.memo ?? null,
     snapshot: { title: projectName(project), topic: project.yp.topic, stage: project.yp.stage }, actor_id: actorId,
@@ -227,7 +237,7 @@ async function recordConfirmation(project: YpProject, gate: YpGate, action: stri
   if (error) console.warn(`youtube confirm history skipped (${error.code ?? "error"})`);
 }
 
-async function notify(recipients: string[], reason: string, sourceId: string, dedupeKey: string) {
+export async function notify(recipients: string[], reason: string, sourceId: string, dedupeKey: string) {
   const service = createServiceSupabase();
   for (const ownerId of new Set(recipients)) {
     // Written as the recipient, like content automation notices; the guard keeps the metadata to these five keys.
