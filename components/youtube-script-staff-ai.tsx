@@ -62,7 +62,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
 
   return <section className="panel writing-workflow" aria-label="내 AI로 원고 쓰기">
     <header className="panel-header"><div><span className="eyebrow">원고 공정 정본대로</span><h2>내 AI로 원고 쓰기</h2>
-      <p>내 AI(Claude 또는 Codex)가 정본·기획·자료를 직접 읽고 축 → 설계 → 초안 → 검수를 돌려 원고를 제출합니다. OS가 형식을 세고, 담당 직원이 읽고 한 번 확인하면 대표 최종 승인으로 넘어갑니다.</p></div></header>
+      <p>내 AI(Claude 또는 Codex)가 정본·기획·자료를 직접 읽고 축 → 설계 → 초안 → 검수를 돌려 원고를 제출합니다. OS가 형식을 세고, 직원이 읽고 한 번 확인하면 대표 최종 승인으로 넘어갑니다.</p></div></header>
     {!ready ? <p className="yt-note">{writing.steps[0]?.blocker || "기획 승인과 제목·썸네일 채택이 먼저 필요합니다."}</p> : (() => {
       const send = <>
         <label className="yt-actions">목표 길이 <input type="number" min={1} max={60} value={minutes} onChange={(event) => setMinutes(Number(event.target.value) || 10)} style={{ width: 72 }} /> 분 (공백 포함 약 {minutes * 600}자)</label>

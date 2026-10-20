@@ -153,11 +153,9 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   return data?.[0] ? presentMyinRun(data[0] as OsRecord) : null;
 }
 
-/** [v13 음성 만들기]: the content owner (an admin, as for today's voice runs) starts one run for the approved script. */
+/** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
 export async function createMyinRun(actor: RequestActor, sourceId: string) {
-  if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 음성 제작을 시작할 수 있습니다.");
   const input = await currentInput(actor.supabase, sourceId);
-  if (input.state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당자만 음성 제작을 시작할 수 있습니다.");
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);

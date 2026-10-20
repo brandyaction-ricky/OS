@@ -139,7 +139,7 @@ export async function saveScriptBundle(client: Client, sourceId: string, bundle:
 }
 
 /**
- * 담당 직원 확인 (one click): approves 패키징 · 자료 · 축 · 설계 and the four 원고 검수 items for the current script at once.
+ * 직원 확인 (one click, any member who can read the video): approves 패키징 · 자료 · 축 · 설계 and the four 원고 검수 items for the current script at once.
  * A script the staff member edited is re-counted (관문 1 body rules) and its 검수 기록 is moved to the edited version.
  */
 export async function confirmScriptPreparation(client: Client, sourceId: string, expectedVersion: number) {
@@ -147,7 +147,6 @@ export async function confirmScriptPreparation(client: Client, sourceId: string,
   assertExpectedVersion(state.source, expectedVersion);
   assertScriptInputs(state);
   const source = state.source;
-  if (source.owner_id !== client.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당 직원만 확인할 수 있습니다.");
   const script = pipelineArtifacts(state.records).script;
   if (!script?.description.trim()) throw new ApiError(409, "SCRIPT_REQUIRED", "확인할 원고가 없습니다.");
   if (!state.writing.currentPackage) throw new ApiError(409, "WRITING_PACKAGE_CHANGED", "제목·썸네일이 바뀌었습니다. 내 AI에 다시 보내 주세요.");

@@ -83,7 +83,8 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
 }
 
 /**
- * [내 AI에 보내기] on ② 원고 or ③ 영상 제작. The content owner asks; an open job of the same kind for the same input is reused,
+ * [내 AI에 보내기] on ② 원고, ③ 영상 제작 or ⑦ 유튜브 관리. Any member may ask (owner decision 2026-10-20); the job is theirs and their
+ * own AI takes it. An open job of the same kind for the same input is reused,
  * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
  */
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
@@ -110,7 +111,6 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     assertScriptInputs(state);
     source = state.source; title = state.writing.packageTitle; inputKey = scriptInputKey(state);
   }
-  if (source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당 직원만 내 AI에 보낼 수 있습니다.");
   const targetMinutes = input.task === "script" ? input.targetMinutes : undefined;
   const attachments = input.task === "script" ? input.attachments || undefined : undefined;
   const role = input.task === "script" ? input.role : undefined;
