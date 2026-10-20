@@ -45,7 +45,7 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     const visual=source?.video??probeShortform(scene.imageFile).video;
     if(!visual?.width||!visual?.height)throw fail("SHORTFORM_IMAGE_INVALID");
     const wide=visual.width/visual.height>1;
-    const caption=path.join(dir,`caption-${index}.png`),data=path.join(dir,`caption-${index}.json`),output=path.join(dir,`scene-${index}.mp4`);
+    const caption=path.join(dir,`caption-${index}.png`),data=path.join(dir,`caption-${index}.json`),output=path.join(dir,`scene-${index}.mov`);
     writeFileSync(data,JSON.stringify({text:scene.text,compact:wide}));
     await run(python,[captionTool,data,caption]);
     const inputs=mode==="reuse"?["-ss",String(scene.start),"-t",String(duration),"-i",sourceFile]:
@@ -64,13 +64,18 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     await run(ffmpeg,["-v","error","-y",...inputs,"-filter_complex",composition,
       "-map","[v]","-map",mode==="reuse"?"0:a:0":"2:a:0","-af","apad","-t",String(duration),"-r","30",
       "-c:v","libx264","-preset","veryfast","-crf","23","-maxrate","2500k","-bufsize","5000k","-threads","2",
-      "-c:a","aac","-ar","48000","-ac","2","-b:a","128k","-movflags","+faststart",output]);
-    segments.push(output);
+      "-c:a","pcm_s16le","-ar","48000","-ac","2","-movflags","+faststart",output]);
+    segments.push({file:output,duration});
   }
   const list=path.join(dir,"segments.txt"),output=path.join(dir,"shortform.mp4");
   // Generated basenames avoid quoting user-supplied filenames in the concat manifest.
-  writeFileSync(list,segments.map(file=>`file '${path.basename(file)}'`).join("\n"));
-  await run(ffmpeg,["-v","error","-y","-f","concat","-safe","1","-i",list,"-c","copy","-movflags","+faststart",output]);
+  // PCM intermediates avoid AAC priming at every cut. Use editorial durations
+  // for the next cut's timestamp, then encode audio once on the joined timeline.
+  writeFileSync(list,segments.map(({file,duration})=>`file '${path.basename(file)}'\nduration ${duration}`).join("\n"));
+  await run(ffmpeg,["-v","error","-y","-f","concat","-safe","1","-i",list,
+    "-af","aresample=async=1:first_pts=0","-t",String(total),"-r","30",
+    "-c:v","libx264","-preset","veryfast","-crf","23","-threads","2",
+    "-c:a","aac","-ar","48000","-ac","2","-b:a","128k","-movflags","+faststart",output]);
   const result=probeShortform(output);
   if(result.video?.width!==720||result.video?.height!==1280||!result.audio||Math.abs(result.duration-total)>0.2
     ||readFileSync(output).length>50_000_000)throw fail("SHORTFORM_OUTPUT_INVALID");

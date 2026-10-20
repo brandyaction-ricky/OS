@@ -28,9 +28,18 @@ test("real direct and reuse MP4s have vertical frames, audio, captions and exact
     assert.ok(Math.max(...pixel(360,50))>5,"Unused vertical space must contain the source background instead of black bars");
     assert.ok(pixel(360,400)[2]>80,"Foreground content must remain visible without being darkened");
     const source=path.join(dir,"source.mp4");copyFileSync(direct.file,source);
+    const toneSource=path.join(dir,"tone-source.mp4");
+    execFileSync("ffmpeg",["-v","error","-y","-i",source,"-f","lavfi","-i","sine=frequency=440:duration=2",
+      "-map","0:v","-map","1:a","-c:v","copy","-c:a","aac","-t","2",toneSource]);
     const reused=await renderShortform({mode:"reuse",dir,sourceFile:source,
       scenes:[{start:0.25,end:1.25,text:"원본 음성과 화면 활용"}]});
     assert.ok(Math.abs(reused.duration-1)<0.2);
+    const many=await renderShortform({mode:"reuse",dir,sourceFile:toneSource,
+      scenes:Array.from({length:14},()=>({start:0.2,end:0.57,text:"문장별 자막"}))});
+    assert.ok(Math.abs(many.duration-14*0.37)<0.1,"AAC/frame padding must not accumulate across caption cuts");
+    const samples=execFileSync("ffmpeg",["-v","error","-i",many.file,"-vn","-f","f32le","pipe:1"],{maxBuffer:8_000_000});
+    let peak=0;for(let offset=0;offset<samples.length;offset+=4)peak=Math.max(peak,Math.abs(samples.readFloatLE(offset)));
+    assert.ok(peak<0.2,"Joining low-volume narration must not introduce full-scale audio spikes");
     const audio=path.join(dir,"long.wav");
     execFileSync("ffmpeg",["-v","error","-y","-f","lavfi","-i","sine=frequency=440:duration=2",audio]);
     await assert.rejects(renderShortform({mode:"direct",dir,scenes:[
