@@ -66,6 +66,18 @@ test("source permission is checked before creating privileged storage access", a
   assert.equal(h.factories, 0);
 });
 
+test("existing v13 finals with exact unsuffixed basenames remain readable in their own run folder", async () => {
+  const h = setup();
+  h.state.records[0].metadata.final = { ...final, video: `${prefix}final_myin.mp4`, srt: `${prefix}subs_youtube.srt` };
+  const result = await h.read();
+  assert.equal(result.transcript, srt);
+  assert.deepEqual(h.signed, [["os-youtube-video", `${prefix}final_myin.mp4`, 3600]]);
+  for (const name of ["../final_myin.mp4", "final_myin-other.mp4", "final_myin.mp4/extra"]) {
+    h.state.records[0].metadata.final.video = prefix + name;
+    await assert.rejects(h.read(), errorCode("SHORTFORM_LONGFORM_INVALID"));
+  }
+});
+
 test("revoked approval, a changed script or a newer unfinished run cannot reuse an old final", async () => {
   for (const change of [
     (h) => { h.plan.inputKey = null; },

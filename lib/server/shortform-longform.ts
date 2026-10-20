@@ -25,8 +25,9 @@ export async function readShortformLongform(actor: Pick<RequestActor,"supabase">
   const final = parsed.data;
   // Metadata is untrusted: never sign or download a path outside this exact run, including traversal paths.
   const prefix = `${run.owner_id}/${sourceId}/${run.id}/`;
-  if (!final.video.startsWith(prefix) || !/^final_myin-[a-f0-9]{8}\.mp4$/.test(final.video.slice(prefix.length))
-    || !final.srt.startsWith(prefix) || !/^subs_youtube-[a-f0-9]{8}\.srt$/.test(final.srt.slice(prefix.length)))
+  // Completed v13 runs before immutable lease suffixes used these exact unsuffixed basenames.
+  if (!final.video.startsWith(prefix) || !/^final_myin(?:-[a-f0-9]{8})?\.mp4$/.test(final.video.slice(prefix.length))
+    || !final.srt.startsWith(prefix) || !/^subs_youtube(?:-[a-f0-9]{8})?\.srt$/.test(final.srt.slice(prefix.length)))
     throw new ApiError(409, "SHORTFORM_LONGFORM_INVALID", "롱폼 완성본의 저장 경로를 확인해 주세요.");
   const key = createHash("sha256").update(JSON.stringify(["shortform-longform-v1", sourceId, run.id, plan.inputKey, final])).digest("hex");
   if (expectedKey && expectedKey !== key)
