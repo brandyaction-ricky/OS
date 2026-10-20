@@ -27,6 +27,7 @@ function secret(){
   return value;
 }
 type Plan={
+  layoutVersion:2;
   mode:"reuse"|"direct";duration:number;brief:unknown;memo:string;
   cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string}[];
   source?:{id:string;key:string};
@@ -68,7 +69,7 @@ async function buildPlan(service:Service,item:OsRecord):Promise<Plan>{
   const parsed=shortformCutsSchema.safeParse({cuts:item.metadata.cuts});
   if(!parsed.success||parsed.data.cuts.length>20)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","1~20개 장면을 준비해 주세요.");
   if(brief.mode==="direct")validateDirectCuts(parsed.data,brief.duration);
-  const plan:Plan={mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
+  const plan:Plan={layoutVersion:2,mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
   let sourceDuration=0;
   if(brief.mode==="reuse"){
     const source=z.object({id:z.string().uuid(),key:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(item.metadata.shortformSource);

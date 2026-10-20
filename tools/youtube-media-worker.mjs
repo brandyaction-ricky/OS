@@ -396,7 +396,7 @@ export async function processMyinFinal() {
 export async function processShortform(){
   if(runId||diskFreeGb()<2)return false;
   checkShortformRuntime();
-  const job=await call({action:"shorts_claim"});
+  const job=await call({action:"shorts_claim",layoutVersion:2});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();

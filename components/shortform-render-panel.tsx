@@ -80,7 +80,7 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
         const next=cuts.map((value,i)=>i===index?{...value,assetId:event.target.value||undefined,missingAsset:!event.target.value}:value);
         onCuts(JSON.stringify(next,null,2));
       }}><option value="">확보한 이미지 선택</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.title}</option>)}</select></label>)}
-      <p>720×1280 세로 영상으로 만듭니다. 사진 전체를 보여 주고 아래쪽에 자막을 넣습니다. 내레이션이 장면보다 길면 대본을 고치도록 멈춥니다.</p>
+      <p>720×1280 세로 영상으로 만듭니다. 사진 전체를 보존하고 여백에는 흐린 배경을 채웁니다. 가로 소재의 자막은 화면 바로 아래에 놓습니다. 내레이션이 장면보다 길면 대본을 고치도록 멈춥니다.</p>
       {cuts.some(cut=>cut.voice?.trim())?<label><input type="checkbox" checked={consent} onChange={event=>setConsent(event.target.checked)}/>선택한 대본의 Fish 내레이션 생성 비용이 발생할 수 있음을 확인했습니다.</label>:null}
     </>:<p>제작 방식과 조건을 먼저 선택해 주세요.</p>}
     <button type="button" disabled={busy||!mode||mode==="direct"&&cuts.some(cut=>cut.voice?.trim())&&!consent}

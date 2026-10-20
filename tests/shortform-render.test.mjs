@@ -185,7 +185,7 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       if(String(url).endsWith("/media")){
         const input=JSON.parse(options.body);let result;
         if(input.action==="heartbeat"){signals.push(input);result={ok:true};}
-        else if(input.action==="shorts_claim")result=await h.api.claimShortformRender(h.service);
+        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,2);result=await h.api.claimShortformRender(h.service);}
         else if(input.action==="shorts_complete")result=await h.api.completeShortformRender(input,h.service);
         else if(input.action==="shorts_fail")result=await h.api.failShortformRender(input,h.service);
         else throw new Error("Unexpected paid/network operation "+input.action);

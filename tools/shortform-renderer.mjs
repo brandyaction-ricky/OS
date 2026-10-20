@@ -42,8 +42,11 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     if(mode==="direct"&&scene.audioFile&&probeShortform(scene.audioFile).duration>duration+0.1)
       throw fail("SHORTFORM_VOICE_TOO_LONG");
     if(mode==="direct"&&scene.hasVoice&&!scene.audioFile)throw fail("SHORTFORM_VOICE_MISSING");
+    const visual=source?.video??probeShortform(scene.imageFile).video;
+    if(!visual?.width||!visual?.height)throw fail("SHORTFORM_IMAGE_INVALID");
+    const wide=visual.width/visual.height>1;
     const caption=path.join(dir,`caption-${index}.png`),data=path.join(dir,`caption-${index}.json`),output=path.join(dir,`scene-${index}.mp4`);
-    writeFileSync(data,JSON.stringify({text:scene.text}));
+    writeFileSync(data,JSON.stringify({text:scene.text,compact:wide}));
     await run(python,[captionTool,data,caption]);
     const inputs=mode==="reuse"?["-ss",String(scene.start),"-t",String(duration),"-i",sourceFile]:
       ["-loop","1","-framerate","30","-i",scene.imageFile];
@@ -52,8 +55,13 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
       if(scene.audioFile)inputs.push("-i",scene.audioFile);
       else inputs.push("-f","lavfi","-i","anullsrc=channel_layout=stereo:sample_rate=48000");
     }
-    await run(ffmpeg,["-v","error","-y",...inputs,"-filter_complex",
-      "[0:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2:black,setsar=1[base];[base][1:v]overlay=0:0,format=yuv420p[v]",
+    // Never crop the readable foreground. A low-resolution, blurred duplicate fills unused space.
+    const composition="[0:v]split=2[back][front];"+
+      "[back]scale=180:320:force_original_aspect_ratio=increase,crop=180:320,boxblur=12:2,eq=brightness=-0.18:saturation=0.55,scale=720:1280,setsar=1[bg];"+
+      `[front]scale=720:${wide?600:1280}:force_original_aspect_ratio=decrease,setsar=1[fg];`+
+      `[bg][fg]overlay=(W-w)/2:${wide?"220+(600-h)/2":"(H-h)/2"}[base];`+
+      "[base][1:v]overlay=0:0,format=yuv420p[v]";
+    await run(ffmpeg,["-v","error","-y",...inputs,"-filter_complex",composition,
       "-map","[v]","-map",mode==="reuse"?"0:a:0":"2:a:0","-af","apad","-t",String(duration),"-r","30",
       "-c:v","libx264","-preset","veryfast","-crf","23","-maxrate","2500k","-bufsize","5000k","-threads","2",
       "-c:a","aac","-ar","48000","-ac","2","-b:a","128k","-movflags","+faststart",output]);
