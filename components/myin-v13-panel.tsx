@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { StaffDesign, Step, type StaffJobStatus, type StepState } from "./youtube-production-steps";
@@ -32,7 +32,7 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, preparation, preview clips, then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId }: { sourceId: string }) {
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void }) {
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
   const [job, setJob] = useState<StaffJobStatus | null>(null);
@@ -43,15 +43,19 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   const [note, setNote] = useState("");
   const [sheets, setSheets] = useState<string[]>([]);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
+  const lastStage = useRef<string | null>(null);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
       const next = (await apiRequest<{ run: MyinRun | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${sourceId}`, { token: accessToken })).run;
       setRun(next); setAvailable(true);
+      // A final that appears while the screen is open tells the page (제작 counts it as a new version).
+      if (next?.stage === "final_ready" && lastStage.current && lastStage.current !== "final_ready") onFinal?.();
+      lastStage.current = next?.stage ?? null;
       if (next?.clips || next?.final) setOutputs(await apiRequest<Outputs>(`/api/v1/content/youtube-automation/myin?outputs=${next.id}`, { token: accessToken }));
       if (next?.words) setJob(await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${sourceId}&task=storyboard`, { token: accessToken }));
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
-  }, [accessToken, sourceId]);
+  }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
   const working = Boolean(run && (["voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
   useEffect(() => {
@@ -91,10 +95,10 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
   const assetsUsed = board ? board.assets.filter((a) => run?.assetDecisions[a.file]?.decision === "approved") : [];
 
   return <div className="yt-steps" role="region" aria-label="마이인 영상 만들기">
-    <section className="panel">
+    {embedded ? null : <section className="panel">
       <header className="panel-header"><div><span className="eyebrow">마이인 형식 · 로건님 v13</span><h2>영상 만들기</h2>
         <p>승인된 원고로 대표 목소리를 만들고, 렌더 PC가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 기획표와 시안을 확인하면, 렌더 PC가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
-    </section>
+    </section>}
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
       <p>승인된 원고를 대표 목소리(drama-3)로 만들고, 렌더 PC가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다.</p>
@@ -204,7 +208,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
         {outputs.deck ? <li><a href={outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF) — 설명란·고정 댓글용</a></li> : null}
         {outputs.srt ? <li><a href={outputs.srt} target="_blank" rel="noreferrer">유튜브 자막 파일 (SRT)</a></li> : null}
       </ul> : null}
-      {run?.final ? <p className="yt-note">이어폰으로 소리를 확인한 뒤 <a href={`/content/production?sourceId=${sourceId}`}>제작 현황 › 제작 자산·전체 승인 현황</a>에서 대표가 관문 3(최종 영상·발행키트)을 승인하고, <a href={`/content/publishing?sourceId=${sourceId}`}>⑥ 발행·업로드</a>에서 [OS 완성본 쓰기]로 올립니다. 발행키트는 ⑦ 유튜브 관리에서 만듭니다. 자막 파일과 엔드 스크린은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
+      {run?.final ? finalNote ?? <p className="yt-note">이어폰으로 소리를 확인한 뒤 <a href={`/content/production?sourceId=${sourceId}`}>제작 현황 › 제작 자산·전체 승인 현황</a>에서 대표가 관문 3(최종 영상·발행키트)을 승인하고, <a href={`/content/publishing?sourceId=${sourceId}`}>⑥ 발행·업로드</a>에서 [OS 완성본 쓰기]로 올립니다. 발행키트는 ⑦ 유튜브 관리에서 만듭니다. 자막 파일과 엔드 스크린은 유튜브 스튜디오에서 사람이 합니다.</p> : null}
     </Step>
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
   </div>;

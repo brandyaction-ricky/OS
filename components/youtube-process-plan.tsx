@@ -13,6 +13,8 @@ import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { editedSinceDecision, GATE_FIELDS } from "@/lib/youtube-process/confirm";
+import { YoutubeDraftScreen } from "./youtube-process-draft";
+import { YoutubeOutlineScreen } from "./youtube-process-outline";
 
 const LAST_KEY = "brandy-yp-last-project";
 const VIEWS = ["topic", "draft", "outline"] as const;
@@ -29,8 +31,16 @@ function Field({ n, title, question, need, rev, children }: { n: number; title: 
   </section>;
 }
 
-/** 기획 (S2 주제 · S3 기획안 · S4 구성안). T3 fills 주제; 기획안 and 구성안 follow in T5 and T6. */
+/** 기획 (S2 주제 · S3 기획안 · S4 구성안): ?view= picks the screen. */
 export function YoutubePlanScreen({ header }: { header: ReactNode }) {
+  const view = useSearchParams().get("view");
+  if (view === "draft") return <YoutubeDraftScreen header={header} />;
+  if (view === "outline") return <YoutubeOutlineScreen header={header} />;
+  return <YoutubeTopicScreen header={header} />;
+}
+
+/** S2 주제. */
+function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const router = useRouter();
   const params = useSearchParams();
   const projectParam = params.get("project");

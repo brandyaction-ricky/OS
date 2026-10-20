@@ -11,7 +11,7 @@ import "./youtube-production-steps.css";
 
 interface Render { status: string; stage: string; lastErrorCode: string | null }
 interface VoiceRun { id: string; status: string; stage: string; segmentCount: number; segmentsReady: number; readyIndexes: number[]; needsAttention: string[]; lastErrorCode: string | null; createdAt: string; render: Render | null }
-interface StaffJob { id: string; status: string; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean; targetMinutes?: number | null; role?: string | null }
+export interface StaffJob { id: string; status: string; requestedAt: string; claimedAt: string | null; model: string | null; issues: string[]; failReason: string | null; processing: boolean; targetMinutes?: number | null; role?: string | null }
 export interface StaffJobStatus { job: StaffJob | null; myAi: { keys: number; lastUsedAt: string | null } }
 interface RenderPc { state: "online" | "offline" | "unknown"; ageSeconds: number | null; diskFreeGb: number | null; lowDisk: boolean; job: { step: string } | null; queue: { voice: number; render: number }; averageRenderMinutes: number | null }
 interface StoredPlan {
@@ -39,7 +39,7 @@ const ago = (seconds: number) => seconds < 90 ? `${seconds}초` : seconds < 5400
 const sinceIso = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null;
 const RENDER_STEP: Record<string, string> = { voice: "목소리 만드는 중", download: "음성 받는 중", narration: "음성 잇는 중", drawing: "영상 그리는 중", upload: "영상 올리는 중" };
 // What staff paste into their own Claude or Codex once (the OS connection is set up with a personal agent key).
-const MY_AI_PROMPT = "브랜디 OS 연결 도구로 list_youtube_ai_jobs를 실행해 내 작업을 확인하고, 작업이 있으면 process_youtube_ai_job으로 하나씩 claim → 받은 지시대로 처리 → complete 하세요. 작업이 없으면 끝내세요.";
+export const MY_AI_PROMPT = "브랜디 OS 연결 도구로 list_youtube_ai_jobs를 실행해 내 작업을 확인하고, 작업이 있으면 process_youtube_ai_job으로 하나씩 claim → 받은 지시대로 처리 → complete 하세요. 작업이 없으면 끝내세요.";
 
 /** One step card; the 마이인 v13 panel reuses it with its own titles and ids. */
 export function Step({ index, state, children, title, idBase = "yt-step" }: { index: number; state: StepState; children: ReactNode; title?: string; idBase?: string }) {

@@ -1,0 +1,151 @@
+"use client";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ImagePlus, Plus, X } from "lucide-react";
+import { editableFields } from "@/lib/youtube-process/confirm";
+import { parseYoutubeRef } from "@/lib/youtube-process/project";
+import { draftMissing, PLAN_FIELD_KEY, slotOf, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
+import { GateBanner, gateAction, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import { ThumbView } from "./youtube-process-media";
+
+const id = () => crypto.randomUUID().slice(0, 12);
+const SlotTag = ({ index }: { index: number }) => {
+  const slot = slotOf(index);
+  return slot === "예비" ? <span className="yp-tag" title="예비 후보 — 컨펌 · 검수 · 업로드 테스트에 안 들어가요">예비</span>
+    : <span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`} title={slot === "C" ? "C안 · 선택" : `${slot}안 · 필수`}>{slot}</span>;
+};
+const move = <T,>(list: T[], from: number, to: number) => { const next = [...list]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
+
+/** S3 기획안: 제목 후보 · 썸네일 시안 · 영상 흐름 · 전달 사항, then the 기획안 컨펌 (4-4). */
+export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
+  const page = useYpBundle();
+  const control = useGate(page, "draft");
+  const [form, setForm] = useState<YpPlan | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [savedAt, setSavedAt] = useState("");
+  const [size, setSize] = useState<"s" | "l">("s");
+  const [refUrl, setRefUrl] = useState("");
+  const [uploading, setUploading] = useState("");
+  const editRev = useRef(0);
+  const saving = useRef(false);
+  const plan = page.bundle?.stages.plan;
+  useEffect(() => { if (plan && !dirty) setForm(plan.data); }, [plan, dirty]);
+
+  const project = page.bundle?.project;
+  const fields = project ? editableFields(project, "draft") : [];
+  const can = (key: keyof typeof PLAN_FIELD_KEY) => Boolean(project && project.yp.stage === "draft" && (fields === "all" || fields.includes(PLAN_FIELD_KEY[key])));
+  const rev = (key: string) => project?.yp.gates.draft.state === "changes" && (project.yp.gates.draft.fields ?? []).includes(key);
+
+  const save = async (next: YpPlan | null = form) => {
+    if (!page.client || !project || !plan || !next || saving.current) return;
+    saving.current = true;
+    const rev0 = editRev.current;
+    const patch = Object.fromEntries((Object.keys(PLAN_FIELD_KEY) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => can(key)).map(key => [key, next[key]]));
+    try {
+      const result = await page.client.saveStage(project.id, "plan", plan.version, patch);
+      page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current);
+      setSavedAt(hhmm());
+      if (editRev.current === rev0) setDirty(false);
+    } catch (reason) { page.fail(reason); } finally { saving.current = false; }
+  };
+  const edit = (patch: Partial<YpPlan>, now = false) => {
+    editRev.current += 1;
+    const next = { ...form!, ...patch };
+    setForm(next); setDirty(true); page.setError("");
+    if (now) void save(next);
+  };
+  const upload = async (index: number, file: File) => {
+    if (!page.client || !project || !form) return;
+    setUploading(form.thumbs[index].id);
+    try {
+      const saved = await page.client.uploadAsset(project.id, "plan_thumb", file);
+      edit({ thumbs: form.thumbs.map((thumb, at) => at === index ? { ...thumb, mode: "img", path: saved.path } : thumb) }, true);
+    } catch (reason) { page.fail(reason); } finally { setUploading(""); }
+  };
+
+  const missing = form ? draftMissing(form) : "";
+  const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
+  return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub="제목 · 썸네일을 먼저 정하고, 그 약속에 맞게 영상 흐름을 써요." savedAt={savedAt}
+    onSave={project?.yp.stage === "draft" ? () => void save() : undefined} saveDisabled={!dirty}>
+    {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="기획안" /> : <div onBlur={() => { if (dirty) void save(); }}>
+      {project.yp.stage === "draft" && project.yp.gates.draft.state === "none" ? <div className="yp-note yp-ok" role="status"><div><b>주제 컨펌 OK</b> — 이제 기획안을 써요. 필수는 1 · 2번이에요.</div></div> : null}
+      <GateBanner page={page} gate="draft" />
+      <ReplyForm control={control} />
+      <Subject page={page} />
+      <div className="yp-wrap2"><div>
+        <YpSection n={1} title="제목 · 썸네일" gq="어떻게 클릭하게 만드나요?" need rev={rev("draft.tt")}>
+          <div className="yp-field"><div className="yp-fld-h"><b>제목 후보</b><span className="yp-gq">첫째 줄 = A · 둘째 = B (필수) · 셋째 = C (선택) · 넷째부터 예비</span></div>
+            {form.titles.map((title, index) => <div key={title.id} className={`yp-tr3${index < 3 ? " yp-on" : ""}`}>
+              {can("titles") ? <span className="yp-row-btns">
+                <button type="button" className="yp-ib yp-xs" aria-label="위로" disabled={!index} onClick={() => edit({ titles: move(form.titles, index, index - 1) }, true)}><ArrowUp size={12} /></button>
+                <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={index === form.titles.length - 1} onClick={() => edit({ titles: move(form.titles, index, index + 1) }, true)}><ArrowDown size={12} /></button></span> : null}
+              <SlotTag index={index} />
+              <input className="yp-in" aria-label={`제목 ${slotOf(index)}`} value={title.text} readOnly={!can("titles")} placeholder={index < 2 ? `${slotOf(index)}안 · 필수` : index === 2 ? "C안 · 선택" : "예비 후보"}
+                onChange={event => edit({ titles: form.titles.map(row => row.id === title.id ? { ...row, text: event.target.value } : row) })} />
+              {can("titles") && form.titles.length > 1 ? <button type="button" className="yp-ib" aria-label="후보 빼기" onClick={() => edit({ titles: form.titles.filter(row => row.id !== title.id) }, true)}><X size={14} /></button> : null}
+            </div>)}
+            {can("titles") ? <button type="button" className="yp-btn yp-sm" onClick={() => edit({ titles: [...form.titles, { id: id(), text: "" }] })}><Plus size={14} /> 제목 후보 추가</button> : null}
+            <p className="yp-hint">순서를 바꾸면 A · B · C도 따라 바뀌어요. 예비 후보는 컨펌 · 최종 검수 · 업로드 테스트에 들어가지 않아요.</p></div>
+          <div className="yp-field"><div className="yp-fld-h"><b>썸네일 시안</b><span className="yp-gq">이미지를 올리거나 ‘화면 + 큰 글자’로 써요 · 순서대로 A · B · C</span><span className="yp-sp" />
+            <div className="yp-seg2 yp-sm" role="group" aria-label="시안 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>
+            <div className={`yp-thg2 yp-sz-${size}`} style={size === "l" ? { gridTemplateColumns: "repeat(2,minmax(0,1fr))" } : undefined}>
+              {form.thumbs.map((thumb, index) => <ThumbCard key={thumb.id} page={page} thumb={thumb} index={index} can={can("thumbs")} busy={uploading === thumb.id}
+                onChange={next => edit({ thumbs: form.thumbs.map(row => row.id === thumb.id ? next : row) })}
+                onMode={mode => edit({ thumbs: form.thumbs.map(row => row.id === thumb.id ? { ...row, mode } : row) }, true)}
+                onMove={to => edit({ thumbs: move(form.thumbs, index, to) }, true)} last={index === form.thumbs.length - 1}
+                onRemove={form.thumbs.length > 1 ? () => edit({ thumbs: form.thumbs.filter(row => row.id !== thumb.id) }, true) : undefined}
+                onUpload={file => void upload(index, file)} />)}
+              {can("thumbs") ? <button type="button" className="yp-th-add" onClick={() => edit({ thumbs: [...form.thumbs, { id: id(), mode: "text" }] })}><Plus size={16} /> 시안 추가</button> : null}
+            </div>
+            <p className="yp-hint">유튜브 미리보기는 대표 컨펌 화면에서 크게 보여요.</p></div>
+        </YpSection>
+        <YpSection n={2} title="영상 흐름 (뼈대)" gq="어떤 순서로 보여주나요?" need>
+          <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+            <input className="yp-in" aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
+            <p className="yp-hint">제목 · 썸네일에서 한 약속을 바로 보여줄 장면</p></div>
+          <div className={`yp-field${rev("draft.body") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>본론</b><span className="yp-gq">본론은 어떻게 이어지나요?</span>{rev("draft.body") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+            <textarea className="yp-in" rows={6} aria-label="본론" value={form.body} readOnly={!can("body")} placeholder={"예) 내용 – 불거리 형식으로 써요\n1. 남 탓을 하지 않는다 – 같은 실수, 두 사람 반응 비교\n2. 끝까지 듣는다 – 말 끊는 사람 vs 듣는 사람\n3. …"} onChange={event => edit({ body: event.target.value })} /></div>
+          <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+            <input className="yp-in" aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
+        </YpSection>
+        <YpSection n={3} title="전달 사항" gq="추가로 설명이 필요한 부분이 있으면 적어주세요" need={false} rev={rev("draft.note")}>
+          <textarea className="yp-in" rows={2} aria-label="전달 사항" value={form.note} readOnly={!can("note")} placeholder="예) 지난주 댓글에서 비슷한 질문이 많았어요 · 레퍼런스 1번은 제목 구조만 참고했어요" onChange={event => edit({ note: event.target.value })} />
+        </YpSection>
+      </div>
+      <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">레퍼런스 <span className="yp-opt">선택</span></div><div className="yp-card-b">
+        <p className="yp-hint" style={{ margin: "0 0 8px" }}>보면서 써요. 주제 단계에서 넣은 영상이 자동으로 들어와요.</p>
+        <ul className="yp-open-list">{[...project.yp.topic.refs.map(ref => ({ ref, own: false })), ...form.extraRefs.map(ref => ({ ref, own: true }))].map(({ ref, own }, index) => <li key={`${ref.url}-${index}`}>
+          <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
+          {own && can("extraRefs") ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => edit({ extraRefs: form.extraRefs.filter(row => row.url !== ref.url) }, true)}><X size={14} /></button> : null}</li>)}</ul>
+        {!project.yp.topic.refs.length && !form.extraRefs.length ? <p className="yp-pempty">아직 없어요</p> : null}
+        {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; } setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
+          <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
+      </div></section></aside></div>
+    </div> : null}
+  </YpFrame>;
+}
+
+/** One 썸네일 시안 card: 이미지 (upload) or 글 설명 (화면 + 큰 글자), with its A · B · C letter (시안 thCard). */
+function ThumbCard({ page, thumb, index, can, busy, last, onChange, onMode, onMove, onRemove, onUpload }: {
+  page: ReturnType<typeof useYpBundle>; thumb: YpThumb; index: number; can: boolean; busy: boolean; last: boolean;
+  onChange: (thumb: YpThumb) => void; onMode: (mode: YpThumb["mode"]) => void; onMove: (to: number) => void; onRemove?: () => void; onUpload: (file: File) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  return <div className={`yp-thc${index < 3 ? " yp-on" : ""}`}>
+    <div className="yp-thc-h"><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><SlotTag index={index} /><span className="yp-muted" style={{ fontSize: 11 }}>시안 {index + 1}</span></span>
+      {can ? <span className="yp-row-btns"><button type="button" className="yp-ib yp-xs" aria-label="앞으로" disabled={!index} onClick={() => onMove(index - 1)}><ArrowUp size={12} /></button>
+        <button type="button" className="yp-ib yp-xs" aria-label="뒤로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
+        {onRemove ? <button type="button" className="yp-ib yp-xs" aria-label="시안 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
+    {can ? <div className="yp-seg2 yp-sm"><button type="button" className={thumb.mode === "img" ? "yp-on" : ""} onClick={() => onMode("img")}>이미지</button><button type="button" className={thumb.mode === "text" ? "yp-on" : ""} onClick={() => onMode("text")}>글 설명</button></div> : null}
+    {thumb.mode === "img" ? thumb.path ? <ThumbView page={page} thumb={thumb} alt={`썸네일 시안 ${index + 1}`} />
+      : <div className="yp-th-drop"><ImagePlus size={18} aria-hidden="true" /><span>png · jpg · gif · webp · 10MB</span>{can ? <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : "파일 고르기"}</button> : null}</div>
+      : <>
+        <ThumbView page={page} thumb={thumb} alt={`썸네일 시안 ${index + 1}`} />
+        <label className="yp-lbl yp-tl2" style={{ margin: 0 }}>화면</label>
+        <textarea className="yp-in yp-sm2" rows={2} aria-label="화면 설명" value={thumb.screen ?? ""} readOnly={!can} placeholder="어떤 장면인가요?" onChange={event => onChange({ ...thumb, screen: event.target.value })} />
+        <label className="yp-lbl yp-tl2" style={{ margin: 0 }}>큰 글자</label>
+        <input className="yp-in yp-sm2" aria-label="큰 글자" value={thumb.copy ?? ""} readOnly={!can} placeholder="예) 쓸 곳이 없었어요" onChange={event => onChange({ ...thumb, copy: event.target.value })} />
+      </>}
+    {thumb.mode === "img" && thumb.path && can ? <button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : "다른 이미지"}</button> : null}
+    <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/gif,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
+  </div>;
+}

@@ -1,20 +1,44 @@
 "use client";
 
-import { apiRequest, ApiRequestError, listMembers } from "@/lib/api-client";
+import { apiRequest, ApiRequestError, listMembers, uploadContentMedia } from "@/lib/api-client";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
+import { confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
+export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
+export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
+export interface YpFinalView { v: number; at: string; source: "myin" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
+export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[] }
+export interface YpFeedbackView {
+  id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
+  kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: { by: string; text: string; at: string }[];
+}
+export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
+export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt";
 export interface YpClient {
   list(): Promise<YpProject[]>;
   get(id: string): Promise<YpProject>;
+  bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
   topicGate(id: string, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  gate(id: string, gate: YpGate, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
+  move(id: string, to: "make" | "review" | "done", expectedVersion: number): Promise<YpProject>;
+  uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
+  assetUrl(id: string, path: string): Promise<string>;
+  finalUrl(id: string, final: YpFinalView): Promise<string | null>;
+  feedback(id: string): Promise<YpFeedbackView[]>;
+  addFeedback(id: string, input: YpFeedbackInput): Promise<YpFeedbackView>;
+  actFeedback(id: string, itemId: string, expectedVersion: number, action: "resolve" | "reopen" | "decline" | "reply", text?: string): Promise<YpFeedbackView>;
+  uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
+  uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
   confirm(id: string, gate: YpGate, action: YpApproverAction, expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
   confirmList(tab: "wait" | "done" | "hold"): Promise<{ project: YpProject; gate: YpGate }[]>;
   members(): Promise<YpMember[]>;
+  demo: boolean;
 }
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
@@ -22,12 +46,33 @@ const json = (body: unknown) => JSON.stringify(body);
 
 function apiClient(token: string): YpClient {
   const base = "/api/v1/content/youtube/projects";
+  const gate: YpClient["gate"] = (id, name, action, expectedVersion, reply) => apiRequest(`${base}/${id}/gates/${name}`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}) }) });
+  const assetUrl = async (id: string, path: string) => (await apiRequest<{ url: string }>(`${base}/${id}/assets?path=${encodeURIComponent(path)}`, { token })).url;
   return {
+    demo: false,
     list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
-    get: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}`, { token })).project,
+    get: async id => (await apiRequest<YpBundle>(`${base}/${id}`, { token })).project,
+    bundle: id => apiRequest<YpBundle>(`${base}/${id}`, { token }),
     create: async input => (await apiRequest<{ project: YpProject }>(base, { token, method: "POST", body: json(input) })).project,
     update: async (id, expectedVersion, patch) => (await apiRequest<{ project: YpProject }>(`${base}/${id}`, { token, method: "PATCH", body: json({ ...patch, expectedVersion }) })).project,
-    topicGate: (id, action, expectedVersion, reply) => apiRequest(`${base}/${id}/gates/topic`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}) }) }),
+    topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
+    gate,
+    saveStage: (id, kind, expectedVersion, patch) => apiRequest(`${base}/${id}/stages/${kind}`, { token, method: "PATCH", body: json({ expectedVersion, patch }) }),
+    move: async (id, to, expectedVersion) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/stage`, { token, method: "POST", body: json({ to, expectedVersion }) })).project,
+    uploadAsset: async (id, kind, file, onProgress) => {
+      const upload = await apiRequest<{ path: string; token: string; mimeType: string }>(`${base}/${id}/assets`, { token, method: "POST", body: json({ kind, fileName: file.name, fileSize: file.size, mimeType: file.type || "" }) });
+      await uploadContentMedia(upload.path, upload.token, file, upload.mimeType, onProgress);
+      return { path: upload.path, name: file.name, bytes: file.size };
+    },
+    assetUrl,
+    finalUrl: async (id, final) => final.runId
+      ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
+      : final.path ? assetUrl(id, final.path) : null,
+    feedback: async id => (await apiRequest<{ items: YpFeedbackView[] }>(`${base}/${id}/feedback`, { token })).items,
+    addFeedback: async (id, input) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "POST", body: json(input) })).item,
+    actFeedback: async (id, itemId, expectedVersion, action, text = "") => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "PATCH", body: json({ itemId, expectedVersion, action, text }) })).item,
+    uploadSession: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "session", ...input }) }),
+    uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
     confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
     members: async () => (await listMembers(token)).members
@@ -36,7 +81,7 @@ function apiClient(token: string): YpClient {
   };
 }
 
-// The demo has no database; this in-memory store follows the same rules as lib/server/youtube-process.ts.
+// The demo has no database; this in-memory store follows the same rules as lib/server/youtube-process*.ts.
 const DEMO_ME = "demo-ricky";
 const DEMO_MEMBERS: YpMember[] = [{ id: DEMO_ME, name: "리키" }, { id: "demo-logan", name: "로건" }, { id: "demo-pd", name: "예시 PD" }];
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
@@ -44,6 +89,7 @@ function demoProject(id: string, title: string, kind: YpKind, stage: YpProject["
   const meta = newProjectMeta({ type: kind, target: "퇴근 후 2시간 안에서 무엇부터 할지 막힌 30대 직장인", note: "", refs: [] }, daysAgo(days));
   if (stage !== "topic") meta.yp.gates.topic = { state: "ok", round: 1 };
   if (!["topic", "draft"].includes(stage)) meta.yp.gates.draft = { state: "ok", round: 1 };
+  if (["upload", "done"].includes(stage)) meta.yp.gates.review = { state: "ok", round: 1 };
   return { id, version: 1, title, assigneeId, ownerId: DEMO_ME, updatedAt: daysAgo(days), yp: { ...meta.yp, stage } };
 }
 let demoStore: YpProject[] | null = null;
@@ -61,6 +107,23 @@ const demoProjects = () => demoStore ??= [
 function waitingDemo(project: YpProject): YpProject {
   return { ...project, yp: applyGateAction(project, "topic", "request", { actor: "demo-logan", now: daysAgo(1) }) };
 }
+/** Example step contents for the projects past 기획안, so each screen has something to show. */
+function demoFilledStages(project: YpProject): YpStagesView {
+  const kind = project.yp.topic.type;
+  const at = project.yp.stage === "topic" ? 0 : ["draft"].includes(project.yp.stage) ? 1 : 2;
+  const plan = emptyStage("plan", kind);
+  if (at >= 1) Object.assign(plan, { titles: [{ id: "t1", text: "[예시] 저녁마다 지치는 진짜 이유" }, { id: "t2", text: "[예시] 일이 두 개뿐인데 왜 힘들까" }, { id: "t3", text: "" }],
+    thumbs: [{ id: "h1", mode: "text", screen: "책상에 엎드린 사람", copy: "일은 두 개인데" }, { id: "h2", mode: "text", screen: "시계와 할 일 목록", copy: "왜 지칠까" }],
+    opening: "[예시] 퇴근길 지하철에서 한숨 쉬는 장면", body: "1. 결핍: 할 일이 아니라 결정이 많다\n2. 욕구: 내 기준으로 고르고 싶다\n3. 강점: 고르는 기준 세우기", closing: "[예시] 진단으로 내 기준 찾기" });
+  if (at >= 2) plan.confirmed = confirmPlan(plan, daysAgo(2));
+  const outline = emptyStage("outline", kind);
+  if (at >= 2) Object.assign(outline, withScriptVersion({ ...outline, spec: { ...outline.spec, runtimeMin: 9 } }, scriptFromPlan(plan), "리키", daysAgo(2), "manual"));
+  return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) } };
+}
+const demoStages = new Map<string, YpStagesView>();
+const demoFinals = new Map<string, YpFinalView[]>();
+const demoFeedback = new Map<string, YpFeedbackView[]>();
+const demoFiles = new Map<string, string>();
 const demoError = (status: number, code: string, message: string) => new ApiRequestError(message, code, status);
 const gateApply = (...args: Parameters<typeof applyGateAction>) => {
   try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
@@ -71,7 +134,9 @@ function demoClient(): YpClient {
     if (!project) throw demoError(404, "YOUTUBE_PROJECT_NOT_FOUND", "프로젝트를 찾지 못했습니다.");
     return project;
   };
+  const stagesOf = (project: YpProject) => { if (!demoStages.has(project.id)) demoStages.set(project.id, demoFilledStages(project)); return demoStages.get(project.id)!; };
   const put = (next: YpProject) => { demoStore = demoProjects().map(row => row.id === next.id ? next : row); return structuredClone(next); };
+  const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
   const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
     const now = new Date().toISOString();
     const meta = newProjectMeta({ type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [] }, now, multiFrom);
@@ -79,16 +144,39 @@ function demoClient(): YpClient {
     demoStore = [project, ...demoProjects()];
     return project;
   };
-  const checkVersion = (project: YpProject, expected: number) => {
-    if (project.version !== expected) throw demoError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
+  const checkVersion = (version: number, expected: number) => {
+    if (version !== expected) throw demoError(409, "RECORD_VERSION_CONFLICT", "다른 사람이 먼저 고쳤어요. 새로 불러와 주세요.");
+  };
+  const gate: YpClient["gate"] = async (id, name, action, expectedVersion, reply) => {
+    const project = find(id);
+    checkVersion(project.version, expectedVersion);
+    const now = new Date().toISOString();
+    if (action === "cancel") return { project: bump(project, gateApply(project, name, "cancel", { actor: DEMO_ME, now })), created: [] };
+    if (name !== "topic") {
+      const stages = stagesOf(project);
+      const missing = name === "draft" ? draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
+      if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
+      return { project: bump(project, gateApply(project, name, "request", { actor: DEMO_ME, now, reply })), created: [] };
+    }
+    const missing = topicMissing(project.title, project.yp.topic);
+    if (missing) throw demoError(400, "TOPIC_INCOMPLETE", missing);
+    const [first, ...rest] = topicLines(project.title).slice(0, YP_MAX_LINES);
+    const saved = put({ ...project, title: first, version: project.version + 1, updatedAt: now, yp: gateApply(project, "topic", "request", { actor: DEMO_ME, now, reply }) });
+    const created = rest.map(line => {
+      const extra = add(line, { kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId }, project.id);
+      return put({ ...extra, yp: gateApply(extra, "topic", "request", { actor: DEMO_ME, now }) });
+    });
+    return { project: saved, created };
   };
   return {
+    demo: true,
     list: async () => structuredClone(demoProjects()),
     get: async id => structuredClone(find(id)),
+    bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),
     update: async (id, expectedVersion, { assigneeId, ...fields }) => {
       const project = find(id);
-      checkVersion(project, expectedVersion);
+      checkVersion(project.version, expectedVersion);
       const content = Object.keys(fields).length > 0;
       if ((Object.keys(fields) as (keyof typeof TOPIC_FIELD_OF)[]).some(key => !topicFieldEditable(project, key))) throw demoError(409, "FIELD_LOCKED", "지금은 이 칸을 고칠 수 없어요.");
       const topic = project.yp.topic;
@@ -98,27 +186,75 @@ function demoClient(): YpClient {
         yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs } } : project.yp,
       });
     },
-    topicGate: async (id, action, expectedVersion, reply) => {
+    topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
+    gate,
+    saveStage: async (id, kind, expectedVersion, patch) => {
       const project = find(id);
-      checkVersion(project, expectedVersion);
+      const stages = stagesOf(project);
+      const current = stages[kind];
+      checkVersion(current.version, expectedVersion);
       const now = new Date().toISOString();
-      const bump = (yp: YpProject["yp"], title = project.title) => ({ ...project, title, version: project.version + 1, updatedAt: now, yp });
-      if (action === "cancel") return { project: put(bump(gateApply(project, "topic", "cancel", { actor: DEMO_ME, now }))), created: [] };
-      const missing = topicMissing(project.title, project.yp.topic);
-      if (missing) throw demoError(400, "TOPIC_INCOMPLETE", missing);
-      const [first, ...rest] = topicLines(project.title).slice(0, YP_MAX_LINES);
-      const saved = put(bump(gateApply(project, "topic", "request", { actor: DEMO_ME, now, reply }), first));
-      const created = rest.map(line => {
-        const extra = add(line, { kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId }, project.id);
-        return put({ ...extra, yp: gateApply(extra, "topic", "request", { actor: DEMO_ME, now }) });
-      });
-      return { project: saved, created };
+      let data = { ...current.data, ...patch } as YpStageData[typeof kind];
+      if (kind === "outline") {
+        const { saveVersion, restore, ...fields } = patch as { saveVersion?: boolean; restore?: number };
+        const outline = { ...current.data, ...fields } as YpStageData["outline"];
+        data = (restore ? withScriptVersion(outline, outline.versions.find(item => item.v === restore)?.md ?? outline.script, "리키", now, "restore")
+          : saveVersion ? withScriptVersion(outline, outline.script, "리키", now, "manual") : outline) as YpStageData[typeof kind];
+      }
+      if (kind === "make") {
+        const make = { ...(current.data as YpStageData["make"]) }; const p = patch as Record<string, unknown>;
+        if (typeof p.editDue === "string" && p.editDue !== make.editDue) { make.log = [{ at: now, by: "리키", from: make.editDue, to: p.editDue, why: String(p.editDueWhy ?? "") }, ...make.log]; make.editDue = p.editDue; }
+        if (typeof p.status === "string") { make.status = p.status as typeof make.status; make.statusAt = { ...make.statusAt, [p.status]: now }; }
+        const thumb = p.thumb as { slot: "A" | "B" | "C"; path: string; name: string } | undefined;
+        if (thumb) make.thumbs = { ...make.thumbs, [thumb.slot]: { path: thumb.path, name: thumb.name, at: now } };
+        const final = p.addFinal as { path: string; name: string; bytes: number } | undefined;
+        if (final) { make.finals = [...make.finals, { v: make.finals.length + 1, at: now, by: "리키", ...final }]; demoFinals.set(id, [...(demoFinals.get(id) ?? []), { v: (demoFinals.get(id) ?? []).length + 1, at: now, source: "upload", name: final.name, bytes: final.bytes, durationSeconds: null, path: final.path }]); }
+        if (typeof p.aTitle === "string") make.aTitle = p.aTitle; if (typeof p.aReason === "string") make.aReason = p.aReason;
+        if (make.status !== "done" && (final || thumb) && (demoFinals.get(id) ?? []).length && !thumbsMissing(make)) make.status = "done";
+        data = make as YpStageData[typeof kind];
+      }
+      const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
+      demoStages.set(id, { ...stages, [kind]: stage });
+      return structuredClone({ stage, project });
     },
-    confirm: async (id, gate, action, expectedVersion, extra = {}) => {
+    move: async (id, to, expectedVersion) => {
       const project = find(id);
-      checkVersion(project, expectedVersion);
+      checkVersion(project.version, expectedVersion);
+      const stages = stagesOf(project);
+      const reason = to === "make" ? outlineMissing(stages.outline.data) : to === "review" ? ((demoFinals.get(id) ?? []).length ? thumbsMissing(stages.make.data) : "최종본을 올려주세요") : "";
+      if (reason) throw demoError(409, "STAGE_NOT_READY", reason);
+      return bump(project, { ...project.yp, stage: to });
+    },
+    uploadAsset: async (_id, kind, file) => {
+      const path = `youtube/demo/${kind}/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase() ?? "bin"}`;
+      demoFiles.set(path, URL.createObjectURL(file));
+      return { path, name: file.name, bytes: file.size };
+    },
+    assetUrl: async (_id, path) => demoFiles.get(path) ?? "",
+    finalUrl: async (_id, final) => final.path ? demoFiles.get(final.path) ?? null : null,
+    feedback: async id => structuredClone(demoFeedback.get(id) ?? []),
+    addFeedback: async (id, input) => {
+      const item: YpFeedbackView = { id: crypto.randomUUID(), version: 1, text: input.text ?? "", who: "리키", whoId: DEMO_ME, at: new Date().toISOString(), target: input.target, ver: input.ver,
+        t: input.t ?? null, range: input.range ?? null, kind: input.kind ?? "", sug: input.sug ?? "", reaction: input.reaction ?? false, status: "open", declinedWhy: "", fixedIn: null, replies: [] };
+      demoFeedback.set(id, [...(demoFeedback.get(id) ?? []), item]);
+      return structuredClone(item);
+    },
+    actFeedback: async (id, itemId, _expected, action, text = "") => {
+      const items = demoFeedback.get(id) ?? [];
+      const next = items.map(item => item.id !== itemId ? item : { ...item, version: item.version + 1,
+        ...(action === "reply" ? { replies: [...item.replies, { by: "리키", text, at: new Date().toISOString() }] } : action === "decline" ? { status: "declined" as const, declinedWhy: text } : { status: action === "resolve" ? "done" as const : "open" as const }) });
+      demoFeedback.set(id, next);
+      return structuredClone(next.find(item => item.id === itemId)!);
+    },
+    uploadSession: async () => { throw demoError(409, "DEMO", "데모에서는 유튜브에 올리지 않아요."); },
+    uploadComplete: async () => { throw demoError(409, "DEMO", "데모에서는 유튜브에 올리지 않아요."); },
+    confirm: async (id, gateName, action, expectedVersion, extra = {}) => {
+      const project = find(id);
+      checkVersion(project.version, expectedVersion);
       const now = new Date().toISOString();
-      return put({ ...project, version: project.version + 1, updatedAt: now, yp: gateApply(project, gate, action, { actor: DEMO_ME, now, ...extra }) });
+      const next = bump(project, gateApply(project, gateName, action, { actor: DEMO_ME, now, ...extra }));
+      if (gateName === "draft" && action === "ok") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
+      return next;
     },
     confirmList: async tab => confirmTab(structuredClone(demoProjects()), tab, DEMO_ME).map(row => ({ project: row.project, gate: row.gate })),
     members: async () => DEMO_MEMBERS,

@@ -13,7 +13,7 @@ export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" |
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
 /** Row i of the title or thumbnail list: A · B · C, then 예비. */
-export const slotOf = (index: number) => SLOTS[index] ?? "예비";
+export const slotOf = (index: number): YpSlot | "예비" => index < SLOTS.length ? SLOTS[index] : "예비";
 
 export interface YpThumb { id: string; mode: "img" | "text"; path?: string; screen?: string; copy?: string }
 export interface YpPick { title: string; thumb: YpThumb | null }

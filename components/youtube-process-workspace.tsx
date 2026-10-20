@@ -10,6 +10,9 @@ import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { YoutubeConfirmScreen } from "./youtube-process-confirm";
 import { YoutubePlanScreen } from "./youtube-process-plan";
 import { YoutubeProjectsScreen } from "./youtube-process-projects";
+import { YoutubeMakeScreen } from "./youtube-process-make";
+import { YoutubeFinalCheckScreen } from "./youtube-process-final";
+import { YoutubeUploadScreen } from "./youtube-process-upload";
 
 // 지시서 4장. Each screen is filled in by its own step (T3 ~ T11); until then it says what will appear here.
 const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: string }> = {
@@ -31,6 +34,9 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen })
   const header = <header className="page-header"><div className="page-title-group"><PageTitle /><p>{info.sub}</p></div></header>;
   // 기획 draws the progress line above its header (the line sits at the very top of the screen).
   if (screen === "plan") return <section className="yp ui-v2"><YoutubePlanScreen header={header} /></section>;
+  if (screen === "make") return <section className="yp ui-v2"><YoutubeMakeScreen header={header} /></section>;
+  if (screen === "final-check") return <section className="yp ui-v2"><YoutubeFinalCheckScreen header={header} /></section>;
+  if (screen === "upload") return <section className="yp ui-v2"><YoutubeUploadScreen header={header} /></section>;
   return <section className="yp ui-v2">
     {header}
     {screen === "projects" ? <YoutubeProjectsScreen />
