@@ -63,14 +63,14 @@ const paragraphPath = (record: OsRecord, run: MyinRun, index: number) => `${reco
 
 /** The approved script as Logan's pipeline reads it, and the paragraphs his stage_voice speaks. */
 async function currentInput(supabase: Service | RequestActor["supabase"], sourceId: string) {
-  const { state, plan, scriptText } = await readYoutubeAutomationInput(supabase, sourceId);
+  const { state, plan, scriptText, title } = await readYoutubeAutomationInput(supabase, sourceId);
   if (!plan.inputKey || !plan.script || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "승인된 원고와 패키징을 먼저 확인해 주세요.");
   const script = state.records.find((record) => record.id === plan.script?.id);
   const manuscript = typeof script?.metadata.manuscript === "string" ? script.metadata.manuscript : null;
   const markdown = myinScriptMarkdown(manuscript, scriptText);
   const { spoken } = myinCleanScript(markdown);
   if (!spoken.length) throw new ApiError(409, "MYIN_SCRIPT_EMPTY", "읽을 문단이 없는 원고입니다.");
-  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken };
+  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title };
 }
 
 async function save(service: Service, record: OsRecord, status: string, stage: string, run: MyinRun) {
@@ -108,7 +108,7 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
   if (!file) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await file.text()) as { words: [number, number, string][]; speech: string };
   const input = await currentInput(service, sourceId);
-  return { record, run, words: bundle.words, markdown: input.markdown, title: input.state.writing.packageTitle || input.state.source.title };
+  return { record, run, words: bundle.words, markdown: input.markdown, title: input.title };
 }
 
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */

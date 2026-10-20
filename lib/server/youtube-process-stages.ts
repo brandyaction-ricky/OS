@@ -11,7 +11,6 @@ import {
   type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
-import { MYIN_RUN_KIND } from "./myin-run";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
@@ -19,6 +18,8 @@ import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActio
 type Supabase = RequestActor["supabase"];
 export const MEDIA_BUCKET = "os-content-media";
 const STAGE_TYPES = ["content_package", "content_script"];
+// MYIN_RUN_KIND in myin-run.ts (not imported: myin-run reads this module through the automation input).
+const MYIN_RUN_KIND = "youtube_myin_v13";
 
 /** The four step records of a project; a step nobody saved yet reads as its empty shape (id null, version 0). */
 export async function readStages(supabase: Supabase, project: YpProject): Promise<YpStages & { records: OsRecord[] }> {
@@ -52,8 +53,8 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { records: _records, ...stages } = await readStages(actor.supabase, project);
-  return { project, stages, finals: await readFinals(actor.supabase, project.id, stages.make.data) };
+  const { plan, outline, make, upload } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload }, finals: await readFinals(actor.supabase, project.id, make.data) };
 }
 
 // ── Saving a step ──

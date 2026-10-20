@@ -28,7 +28,7 @@ export interface YpOutline {
   spec: { runtimeMin: number | null; res: string; fps: string; ratio: string };
   script: string; versions: YpScriptVersion[];
   /** The staff AI's working notes behind its draft (원고 공정 정본 §8-2): kept for reading, not edited. */
-  ai?: { jobId: string; model: string; at: string; by: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] };
+  ai?: { jobId: string; model: string; at: string; by: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[]; head?: string };
 }
 export type YpMakeStatus = "prep" | "shoot" | "edit" | "done";
 export interface YpFinalUpload { v: number; at: string; by: string; path: string; name: string; bytes: number }
@@ -46,6 +46,8 @@ export interface YpUpload {
   srt: { path: string; name: string } | null;
   desc: string; pinned: string; hiddenTags: string[];
   descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string } | null;
+  /** The AI's pinned comment when a person had already edited the description (shown beside it, not applied). */
+  pinnedDraft?: string;
   privacy: "private" | "unlisted";
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string } | null;
 }

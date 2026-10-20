@@ -14,7 +14,9 @@ class ApiError extends Error { constructor(status, code, message) { super(messag
 const source = await readFile(new URL("../lib/server/youtube-kit-job.ts", import.meta.url), "utf8");
 const compiled = { exports: {} };
 const modules = { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib/content-pipeline": pipeline, "@/lib/content-input": contentInput, "@/lib/content-safety": contentSafety,
-  "./content-generation": { procedureRefs: async () => [{ id: "doc", title: "유튜브 발행키트 절차" }] } };
+  "./content-generation": { procedureRefs: async () => [{ id: "doc", title: "유튜브 발행키트 절차" }] },
+  // 유튜브 공정 v1 projects take their own path (tests/youtube-process-ai.test.mjs); these sources are pipeline topics.
+  "./youtube-process-ai": { isYoutubeV1: (row) => row.metadata?.workflow === "youtube_v1" } };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
   { module: compiled, exports: compiled.exports, require: (name) => modules[name] });
 const job = compiled.exports;

@@ -14,6 +14,10 @@ import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
 import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
+import { isYoutubeV1, v1Stages, v1Title } from "./youtube-process-ai";
+
+/** The name a job carries: the adopted title, or a v1 project's confirmed A. */
+const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
 
 // Staff AI jobs (owner decision 2026-10-17, method B): the requester's own Claude or Codex reaches the OS through
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
@@ -96,12 +100,12 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (myin.record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_READY_FOR_STORYBOARD", "받아쓰기가 끝났고 확인 중인 기획표가 없을 때 보낼 수 있습니다.");
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
     const state = await readPipeline(actor, input.sourceId);
-    source = state.source; title = state.writing.packageTitle || source.title; myinRunId = myin.record.id;
+    source = state.source; title = jobTitle(state); myinRunId = myin.record.id;
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
   } else if (input.task === "kit") {
     const state = await readPipeline(actor, input.sourceId);
     assertKitInputs(state);
-    source = state.source; title = state.writing.packageTitle || source.title; inputKey = kitInputKey(state);
+    source = state.source; title = jobTitle(state); inputKey = kitInputKey(state);
   } else if (input.task === "scene-plan") {
     const { state, plan, scriptText, title: adopted } = await readYoutubeAutomationInput(actor.supabase, input.sourceId);
     if (!plan.inputKey || plan.inputKey !== input.inputKey || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "원고나 승인 상태가 변경됐습니다. 새로 불러와 주세요.");
@@ -109,7 +113,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   } else {
     const state = await readPipeline(actor, input.sourceId);
     assertScriptInputs(state);
-    source = state.source; title = state.writing.packageTitle; inputKey = scriptInputKey(state);
+    source = state.source; title = jobTitle(state); inputKey = scriptInputKey(state);
   }
   const targetMinutes = input.task === "script" ? input.targetMinutes : undefined;
   const attachments = input.task === "script" ? input.attachments || undefined : undefined;
@@ -261,7 +265,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
   if (m.task === "kit") {
     const state = await currentKitInput(job);
-    const saved = await keepIssues(job, m, () => saveStaffKit(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id }));
+    const saved = await keepIssues(job, m, () => saveStaffKit(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당 직원이 ⑦ 유튜브 관리에서 문안과 업로드 체크리스트를 검수합니다." };
   }
@@ -298,7 +302,7 @@ async function completeScriptJob(agent: RequestActor, job: OsRecord, m: JobMeta,
   const saved = await keepIssues(job, m, () => {
     const parsed = scriptBundleSchema.safeParse(input.result);
     if (!parsed.success) throw new ApiError(422, "SCRIPT_BUNDLE_INVALID", `제출 묶음 형식이 맞지 않습니다: ${parsed.error.issues.slice(0, 10).map((issue) => `${issue.path.join(".") || "result"} ${issue.message}`).join(" / ")}`);
-    return saveScriptBundle({ supabase: service(), id: agent.ownerId }, m.sourceId, parsed.data, { type: "staff_ai", model: input.model, jobId: job.id, targetMinutes: m.targetMinutes ?? 10 });
+    return saveScriptBundle({ supabase: service(), id: agent.ownerId, name: agent.name }, m.sourceId, parsed.data, { type: "staff_ai", model: input.model, jobId: job.id, targetMinutes: m.targetMinutes ?? 10 });
   });
   await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
   return { done: true, ...saved, next: "담당 직원이 ② 원고 화면에서 읽고 확인한 뒤 대표 최종 승인으로 넘깁니다." };
