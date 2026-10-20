@@ -33,7 +33,7 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * (production today) it says so instead.
  */
 export function MyinV13Panel({ sourceId }: { sourceId: string }) {
-  const { accessToken, profile } = useSession();
+  const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
   const [job, setJob] = useState<StaffJobStatus | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
@@ -99,7 +99,7 @@ export function MyinV13Panel({ sourceId }: { sourceId: string }) {
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
       <p>승인된 원고를 대표 목소리(drama-3)로 만들고, 렌더 PC가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다.</p>
       {!run || (run.status === "blocked" && !run.words) ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy) || profile?.role !== "admin"} onClick={() => void act("start", () => post("/myin", "POST", { sourceId }))}>{busy === "start" ? "시작하는 중…" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("start", () => post("/myin", "POST", { sourceId }))}>{busy === "start" ? "시작하는 중…" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
         <small>새 원고라 Fish 음성 비용이 듭니다. 같은 원고로 다시 누르면 만든 음성을 그대로 이어 씁니다.</small>
       </div> : null}
       {run ? <div className="yt-run">

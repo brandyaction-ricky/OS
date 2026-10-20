@@ -93,9 +93,12 @@ export function presentMyinRun(record: OsRecord) {
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
 }
 
-/** The latest v13 run for one video (made by the content owner), with the frozen transcription (words, speech) once it exists. */
-export async function myinRunWithWords(service: Service, sourceId: string, ownerId: string) {
-  const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job").eq("owner_id", ownerId)
+/**
+ * The latest v13 run for one video, with the frozen transcription (words, speech) once it exists. An admin starts the run (Fish
+ * cost) and the content owner's AI writes its storyboard, so the run is found by video, not by who started it.
+ */
+export async function myinRunWithWords(service: Service, sourceId: string) {
+  const { data } = await service.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
   const record = data?.[0] as OsRecord | undefined;
   if (!record) throw new ApiError(409, "MYIN_RUN_REQUIRED", "먼저 v13 음성과 받아쓰기·자막을 만들어 주세요.");
@@ -150,11 +153,9 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   return data?.[0] ? presentMyinRun(data[0] as OsRecord) : null;
 }
 
-/** [v13 음성 만들기]: the content owner (an admin, as for today's voice runs) starts one run for the approved script. */
+/** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
 export async function createMyinRun(actor: RequestActor, sourceId: string) {
-  if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 음성 제작을 시작할 수 있습니다.");
   const input = await currentInput(actor.supabase, sourceId);
-  if (input.state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당자만 음성 제작을 시작할 수 있습니다.");
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
@@ -333,11 +334,6 @@ async function visibleRun(actor: RequestActor, runId: string) {
   if (!data) throw new ApiError(404, "MYIN_RUN_NOT_FOUND", "v13 작업을 찾지 못했습니다.");
   return runRecord(createServiceSupabase(), runId);
 }
-async function ownedRun(actor: RequestActor, runId: string) {
-  const found = await runRecord(createServiceSupabase(), runId);
-  if (found.record.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당자만 자료를 정할 수 있습니다.");
-  return found;
-}
 async function storyboardJson(service: Service, run: MyinRun) {
   const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.storyboard?.path ?? "");
   if (!data) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표 파일을 찾지 못했습니다.");
@@ -382,7 +378,7 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
 
 /** [자료 준비 다시 하기]: after a finished check (e.g. a library track was missing) or a blocked attempt. */
 export async function startMyinPrep(actor: RequestActor, runId: string) {
-  const { record, run } = await ownedRun(actor, runId);
+  const { record, run } = await visibleRun(actor, runId);
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
   if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");

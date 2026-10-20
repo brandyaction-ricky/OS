@@ -23,8 +23,6 @@ export async function POST(request: Request) {
     const actor = await authenticateRequest(request, { allowAgent: false });
     const input = inputSchema.parse(await parseJson(request, 200_000));
     if (input.action === "confirm") return NextResponse.json({ source: await confirmScriptPreparation(actor, input.sourceId, input.expectedVersion) }, { headers });
-    const { data: source } = await actor.supabase.from("os_records").select("owner_id").eq("id", input.sourceId).maybeSingle();
-    if (source?.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 담당 직원만 원고를 넣을 수 있습니다.");
     return NextResponse.json(await saveScriptBundle(actor, input.sourceId, input.bundle, { type: "staff", model: "직원 직접 입력", targetMinutes: input.targetMinutes }, input.expectedVersion), { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "SCRIPT_INPUT_INVALID", `입력을 확인해 주세요: ${error.issues.slice(0, 5).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`));
