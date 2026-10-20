@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError,apiErrorResponse,parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { assertHumanOwner,assertSameOrigin,getPersonalRecord,updatePersonalRecord } from "@/lib/server/content-automation-v07";
+import { assertCanEdit,assertHumanOwner,assertSameOrigin,getContentRecord,TEAM_FIELDS,updatePersonalRecord } from "@/lib/server/content-automation-v07";
 import { validatePersonalAsset,validatePersonalItem,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { AUTOMATION_PROCS } from "@/lib/server/content-automation-v07";
 
@@ -24,8 +24,8 @@ export async function GET(request:Request,{params}:Params){
   try{
     const actor=await authenticateRequest(request),{resource,id}=await params;
     if(!(resource in types)||!z.string().uuid().safeParse(id).success)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
-    const record=await getPersonalRecord(actor,id,types[resource as keyof typeof types]);
-    return NextResponse.json({record});
+    const {record,own,canEdit,canReview}=await getContentRecord(actor,id,types[resource as keyof typeof types]);
+    return NextResponse.json({record,access:{own,canEdit,canReview}});
   }catch(error){return apiErrorResponse(error);}
 }
 export async function PATCH(request:Request,{params}:Params){
@@ -35,7 +35,8 @@ export async function PATCH(request:Request,{params}:Params){
     if(!(resource in types)||!z.string().uuid().safeParse(id).success)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
     if(resource==="jobs")throw new ApiError(405,"JOB_ACTION_REQUIRED","작업 상태는 작업 버튼에서 바꿔 주세요.");
     const input=patchSchema.parse(await parseJson(request,250_000));
-    const current=await getPersonalRecord(actor,id,types[resource as keyof typeof types]);
+    const access=await getContentRecord(actor,id,types[resource as keyof typeof types]);
+    const current=assertCanEdit(access);
     if(current.version!==input.expectedVersion)throw new ApiError(409,"AUTOMATION_CHANGED","최신 내용으로 다시 불러와 주세요.");
     if(resource==="topics"&&(current.stage==="confirmed"||input.status!==undefined
       ||input.stage==="confirmed"||input.stage!==undefined&&! ["candidate","brief"].includes(input.stage)))
@@ -52,8 +53,11 @@ export async function PATCH(request:Request,{params}:Params){
     if(input.metadata){
       const metadata:Record<string,unknown>={...current.metadata,...input.metadata,space:"personal",
         ...(resource==="items"?{channel:current.metadata.channel}:{}),
+        // Sharing changes only through the share/unshare actions.
+        ...Object.fromEntries(TEAM_FIELDS.map(key=>[key,current.metadata[key]])),
         ...(resource==="templates"?{packageKind:"cardnews_template_v2"}:{})};
-      if(resource==="items")validatePersonalItem(metadata,String(current.metadata.channel),assertHumanOwner(actor));
+      // File paths belong to the draft's owner, also when a reviewer edits a shared draft.
+      if(resource==="items")validatePersonalItem(metadata,String(current.metadata.channel),String(current.owner_id));
       if(resource==="assets"){
         if(metadata.storagePath!==current.metadata.storagePath)
           throw new ApiError(422,"ASSET_FILE_IMMUTABLE","이미지 파일은 바꿀 수 없습니다. 새 이미지를 올려 주세요.");
@@ -69,7 +73,7 @@ export async function PATCH(request:Request,{params}:Params){
       }
       changes.metadata=metadata;
     }
-    const record=await updatePersonalRecord(actor,current,changes);
+    const record=await updatePersonalRecord(actor,current,changes,{team:!access.own});
     return NextResponse.json({record});
   }catch(error){
     if(error instanceof ZodError)return apiErrorResponse(new ApiError(422,"AUTOMATION_INPUT_INVALID","입력값을 확인해 주세요.",error.flatten()));

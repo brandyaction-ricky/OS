@@ -8,8 +8,8 @@ import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingSchedule
 import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
-  createJob,createPersonalRecord,getPersonalRecord,getRunRules,listPersonalRecords,
-  orderedJobs,validateRunRules,
+  createJob,createPersonalRecord,getPersonalRecord,getRunRules,isContentReviewer,listPersonalRecords,
+  listTeamItems,memberNames,orderedJobs,validateRunRules,
 } from "@/lib/server/content-automation-v07";
 
 export const runtime="nodejs";
@@ -20,6 +20,8 @@ const topicSchema=z.object({
   title:z.string().trim().min(1).max(240),brand:z.string().trim().max(120).default(""),
   source:z.enum(["longform","comment","reference","ai","direct"]).default("direct"),
   sourceRef:z.string().max(2000).optional(),
+  // Same value on a retry (double click, slow response, an automation run re-sending a candidate) returns the same topic.
+  requestId:z.string().regex(/^[A-Za-z0-9:_-]{8,200}$/).optional(),
 }).strict();
 const itemSchema=z.object({
   title:z.string().trim().min(1).max(240),channel:z.enum(AUTOMATION_CHANNELS),
@@ -143,12 +145,55 @@ async function exportPublications(ownerId:string,url:URL){
         row.content_version,row.permalink,row.external_id,row.status,row.error?JSON.stringify(row.error):""];
     }));
 }
+async function withReviewerNames<T extends {created_by:string}>(rows:T[]){
+  const names=await memberNames(rows.map(row=>row.created_by));
+  return rows.map(row=>({...row,reviewer_name:names.get(row.created_by)??"구성원"}));
+}
+// Team review inbox: shared Threads drafts of any owner, with their topic (brief and
+// evidence), the AI jobs that target them and their review history. Read-only lists;
+// who may edit or approve is decided per draft by the item routes.
+async function teamList(resource:string,limit:number){
+  if(!["items","topics","jobs","review-log"].includes(resource))throw new ApiError(400,"INVALID_SCOPE","팀 검수함에서 볼 수 없는 목록입니다.");
+  const items=await listTeamItems(limit),db=createServiceSupabase();
+  if(resource==="items"){
+    const names=await memberNames(items.flatMap(row=>[row.owner_id,row.updated_by]));
+    return NextResponse.json({items:items.map(row=>({...row,owner_name:names.get(String(row.owner_id))??"구성원",
+      updated_by_name:names.get(String(row.updated_by))??"구성원"}))});
+  }
+  if(!items.length)return NextResponse.json(resource==="topics"?{topics:[]}:resource==="jobs"?{jobs:[]}:{reviews:[]});
+  const ids=items.map(row=>row.id),owners=new Map(items.map(row=>[row.id,row.owner_id]));
+  if(resource==="topics"){
+    const parents=[...new Set(items.map(row=>row.parent_id).filter((id):id is string=>Boolean(id)))];
+    const {data,error}=await db.from("os_records").select("*").in("id",parents).eq("record_type","content_topic")
+      .eq("metadata->>space","personal").is("archived_at",null);
+    if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","팀 원고의 주제를 불러오지 못했습니다.");
+    return NextResponse.json({topics:(data??[]).filter(topic=>items.some(item=>item.parent_id===topic.id&&item.owner_id===topic.owner_id))});
+  }
+  if(resource==="jobs"){
+    const {data,error}=await db.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>space","personal")
+      .in("metadata->>targetId",ids).is("archived_at",null).order("updated_at",{ascending:false}).limit(500);
+    if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","팀 원고의 AI 작업을 불러오지 못했습니다.");
+    return NextResponse.json({jobs:(data??[]).filter(job=>owners.get(String(job.metadata?.targetId))===job.owner_id)});
+  }
+  const {data,error}=await db.from("os_content_review_log").select("*").in("publish_record_id",ids)
+    .order("created_at",{ascending:false}).limit(500);
+  if(error)throw new ApiError(503,"REVIEW_LOG_FAILED","팀 원고의 검수 기록을 불러오지 못했습니다.");
+  return NextResponse.json({reviews:await withReviewerNames(data??[])});
+}
 export async function GET(request:Request,{params}:Params) {
   try {
     const actor=await authenticateRequest(request),ownerId=assertHumanOwner(actor);
     const {resource}=await params,url=new URL(request.url),limit=limitFrom(request),db=createServiceSupabase();
     if(resource==="runs.csv")return exportRuns(ownerId,url);
     if(resource==="publications.csv")return exportPublications(ownerId,url);
+    if(url.searchParams.get("scope")==="team")return teamList(resource,limit);
+    if(resource==="reviewers"){
+      const {data,error}=await db.from("os_content_reviewers").select("user_id,created_at").order("created_at");
+      if(error)throw new ApiError(503,"REVIEWERS_FAILED","검수자 명단을 불러오지 못했습니다.");
+      const names=await memberNames((data??[]).map(row=>row.user_id));
+      return NextResponse.json({reviewers:(data??[]).map(row=>({id:row.user_id,name:names.get(row.user_id)??"구성원"})),
+        canReview:await isContentReviewer(ownerId),canManage:actor.role==="admin"});
+    }
     if(resource==="topics")return NextResponse.json({topics:await listPersonalRecords(actor,"content_topic",limit)});
     if(resource==="items"){
       const channel=url.searchParams.get("channel");
@@ -211,7 +256,7 @@ export async function GET(request:Request,{params}:Params) {
       const {data,error}=await db.from("os_content_review_log").select("*").eq("owner_id",ownerId)
         .order("created_at",{ascending:false}).limit(limit);
       if(error)throw new ApiError(503,"REVIEW_LOG_FAILED","확인 기록을 불러오지 못했습니다.");
-      return NextResponse.json({reviews:data??[]});
+      return NextResponse.json({reviews:await withReviewerNames(data??[])});
     }
     if(resource==="comments"||resource==="metrics"){
       const items=await listPersonalRecords(actor,"content_publish",500);
@@ -243,9 +288,26 @@ export async function POST(request:Request,{params}:Params) {
       const input=topicSchema.parse(raw);
       const topic=await createPersonalRecord(actor,"content_topic",{
         title:input.title,brand:input.brand,status:"draft",stage:"candidate",
-        metadata:{source:input.source,sourceRef:input.sourceRef??"",brief:{},channels:[]},
+        metadata:{source:input.source,sourceRef:input.sourceRef??"",brief:{},channels:[],
+          ...(input.requestId?{requestId:input.requestId}:{})},
       });
       return NextResponse.json({topic},{status:201});
+    }
+    if(resource==="reviewers"){
+      const ownerId=assertHumanOwner(actor);
+      if(actor.role!=="admin")throw new ApiError(403,"REVIEWERS_ADMIN_ONLY","관리자만 검수자를 바꿀 수 있습니다.");
+      const input=z.object({action:z.enum(["add","remove"]),userId:uuid}).strict().parse(raw);
+      const db=createServiceSupabase();
+      if(input.action==="add"){
+        const {data:member}=await db.from("os_profiles").select("id").eq("id",input.userId).eq("is_active",true).maybeSingle();
+        if(!member)throw new ApiError(422,"REVIEWER_INVALID","활성 구성원을 선택해 주세요.");
+        const {error}=await db.from("os_content_reviewers").upsert({user_id:input.userId,created_by:ownerId},{onConflict:"user_id",ignoreDuplicates:true});
+        if(error)throw new ApiError(503,"REVIEWERS_SAVE_FAILED","검수자를 저장하지 못했습니다.");
+      }else{
+        const {error}=await db.from("os_content_reviewers").delete().eq("user_id",input.userId);
+        if(error)throw new ApiError(503,"REVIEWERS_SAVE_FAILED","검수자를 저장하지 못했습니다.");
+      }
+      return NextResponse.json({saved:true});
     }
     if(resource==="items"){
       const input=itemSchema.parse(raw);

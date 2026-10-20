@@ -35,8 +35,10 @@ export async function POST(request: Request) {
       if (result.error) throw new ApiError(503, "APPROVAL_SETUP_PENDING", "승인 규칙을 확인하지 못했습니다.");
       return result.data === true ? profile.id : null;
     }));
-    const recipients = [...new Set(decisions.filter((id): id is string => Boolean(id) && id !== actor.id))];
-    if (!recipients.length) throw new ApiError(409, "APPEAL_APPROVER_MISSING", "활성 승인자나 유효한 위임자가 없습니다. 회사 설정에서 지정해 주세요.");
+    const approvers = decisions.filter((id): id is string => Boolean(id));
+    if (!approvers.length) throw new ApiError(409, "APPEAL_APPROVER_MISSING", "활성 승인자나 유효한 위임자가 없습니다. 회사 설정에서 지정해 주세요.");
+    // The requester may be the only approver; they can approve directly, so nobody else is notified.
+    const recipients = [...new Set(approvers.filter((id) => id !== actor.id))];
     for (const recipient of recipients) {
       const { error } = await service.rpc("os_enqueue_work_notification", {
         recipient, actor: actor.id, source_type: "record", source_id: appeal.id,

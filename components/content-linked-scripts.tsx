@@ -10,6 +10,7 @@ import type { WritingPreparationStep, WritingWorkflowState, WritingWorkflowStep 
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
 import { ContentPlanningHandoff } from "./content-planning-handoff";
+import { YoutubeScriptStaffAi } from "./youtube-script-staff-ai";
 
 interface LinkedPipelineState { source: OsRecord; records: OsRecord[]; writing: WritingWorkflowState; scriptReview: ScriptReviewState }
 const PREPARATION_PLACEHOLDERS: Record<WritingPreparationStep, string> = {
@@ -92,6 +93,7 @@ export function ContentLinkedScripts({ showPlanningHandoff = false, lockedSource
   const source = state?.source ?? null; const writing = state?.writing ?? null;
   return <>
     {showPlanningHandoff && source ? <ContentPlanningHandoff key={`${source.id}:${source.version}`} source={source} /> : null}
+    <YoutubeScriptStaffAi sourceId={sourceId} state={state} onChange={load} />
     {writing ? <section className="panel writing-workflow" aria-label="자료와 원고 전 작업">
       <header className="panel-header"><div><span className="eyebrow">같은 콘텐츠 기록에서 이어서 작업</span><h2>자료 → 핵심 축 → 영상 설계 → 원고</h2><p>각 단계를 저장한 뒤 사람이 승인해야 다음 단계가 열립니다. 상위 패키징이 바뀌면 기존 내용은 남고 승인만 다시 필요합니다.</p></div><Link className="secondary-button" href={`/content/packages?sourceId=${sourceId}`}>패키징 확인</Link></header>
       <dl className="writing-workflow-summary"><div><dt>현재 산출물</dt><dd>{writing.packageTitle || "채택한 제목 없음"}<small>{writing.packageCopy || "채택한 썸네일 카피 없음"}</small></dd></div><div><dt>다음 행동</dt><dd>{writing.nextAction}</dd></div><div><dt>막힌 이유</dt><dd>{writing.blocker || "없음"}</dd></div></dl>

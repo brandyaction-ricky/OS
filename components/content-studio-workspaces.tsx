@@ -13,6 +13,11 @@ import type { ReleaseWorkflowState } from "@/lib/content-release-workflow";
 import { sanitizePublicCopyValue } from "@/lib/content-safety";
 import { normalizeYoutubeKitCopy } from "@/lib/content-input";
 import { finalizeYoutubeUpload, type PendingYoutubeCompletion } from "@/lib/youtube-upload-flow";
+import { myinCreditsBlock } from "@/lib/myin-storyboard";
+import { YoutubeKitStaffAi } from "./youtube-kit-staff-ai";
+
+interface MyinFinal { runId: string; credits: string[]; final: { bytes: number; durationSeconds: number; lufs: number; peak: number } }
+interface MyinOutputs { video: string | null; summary: string | null; deck: string | null; srt: string | null }
 import type { OsRecord } from "@/lib/record-types";
 import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
 import { ContentOriginFilter } from "./content-origin-filter";
@@ -79,6 +84,8 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
   const [releaseNote, setReleaseNote] = useState(""); const [scheduledAt, setScheduledAt] = useState(""); const [uploadProgress, setUploadProgress] = useState(0); const [uploadedUrl, setUploadedUrl] = useState("");
   const [pendingCompletions, setPendingCompletions] = useState<Record<string, PendingYoutubeCompletion | null>>({});
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [copied, setCopied] = useState(""); const [editing, setEditing] = useState(false); const [draft, setDraft] = useState<Record<string, string>>({});
+  const [myin, setMyin] = useState<(MyinFinal & { outputs: MyinOutputs }) | null>(null);
+  const [staffKit, setStaffKit] = useState(false);
   const load = useCallback(async () => {
     if (demo) return;
     try {
@@ -93,6 +100,27 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
     setPipeline(await apiRequest<{ source: OsRecord; approved: boolean[]; release: ReleaseWorkflowState }>(`/api/v1/content/pipeline?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken }));
   }, [accessToken, demo, sourceId]);
   useEffect(() => { loadPipeline().catch((reason) => setError(reason instanceof Error ? reason.message : "발행 승인 상태를 불러오지 못했습니다.")); }, [loadPipeline]);
+  const reloadKits = useCallback(async () => { await Promise.all([load(), loadPipeline()]); }, [load, loadPipeline]);
+  // ③ 마이인 v13 finished video for this source (the pilot route answers 404 where it is off; then nothing shows).
+  const myinOutputs = useCallback((runId: string) => apiRequest<MyinOutputs>(`/api/v1/content/youtube-automation/myin?outputs=${runId}`, { token: accessToken }), [accessToken]);
+  useEffect(() => {
+    let active = true;
+    if (view !== "publish" || !sourceId || demo) { setMyin(null); return () => { active = false; }; }
+    apiRequest<{ run: { id: string; stage: string; final: MyinFinal["final"] | null; prepared: { credits: string[] } | null } | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${encodeURIComponent(sourceId)}`, { token: accessToken })
+      .then(async ({ run }) => run?.final && run.stage === "final_ready" ? { runId: run.id, credits: run.prepared?.credits ?? [], final: run.final, outputs: await myinOutputs(run.id) } : null)
+      .then((value) => { if (active) setMyin(value); }, () => { if (active) setMyin(null); });
+    return () => { active = false; };
+  }, [accessToken, demo, myinOutputs, sourceId, view]);
+  const pickMyinVideo = async () => {
+    if (!myin) return;
+    setBusy(true); setError("");
+    try {
+      const { video } = await myinOutputs(myin.runId);
+      const response = video ? await fetch(video) : null;
+      if (!response?.ok) throw new Error("OS 완성본을 불러오지 못했습니다.");
+      setFile(new File([await response.blob()], "final_myin.mp4", { type: "video/mp4" }));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "OS 완성본을 불러오지 못했습니다."); } finally { setBusy(false); }
+  };
   useEffect(() => {
     const result = new URLSearchParams(window.location.search).get("youtube");
     if (result === "connected") setUploadedUrl("");
@@ -144,17 +172,25 @@ export function YoutubeKitWorkspace({lockedSource,sourceOptions,onSourceChange,v
     } catch (reason) { setError(reason instanceof Error ? reason.message : "YouTube 업로드를 완료하지 못했습니다."); } finally { setBusy(false); }
   };
   return <>
-    <header className="page-header"><div className="page-title-group"><PageTitle /><p>{view === "manage" ? "YouTube 발행 키트를 만들고 제목·설명·체크리스트를 검수합니다." : "유튜브 관리에서 준비한 키트를 확인한 뒤 발행 조건을 승인하고 최종 영상을 업로드합니다."}</p></div><div className="header-actions">{view === "manage" ? <>{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}<ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</ContentGenerationButton></> : <Link className="secondary-button" href={`/content/youtube${sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : ""}`}>유튜브 관리에서 키트 확인 →</Link>}</div></header>
+    <header className="page-header"><div className="page-title-group"><PageTitle /><p>{view === "manage" ? "YouTube 발행 키트를 만들고 제목·설명·체크리스트를 검수합니다." : "유튜브 관리에서 준비한 키트를 확인한 뒤 발행 조건을 승인하고 최종 영상을 업로드합니다."}</p></div><div className="header-actions">{view === "manage" ? <>{kit ? editing ? <button className="primary-button" disabled={busy} onClick={save}><Save size={15} /> 수정 저장</button> : <button className="secondary-button" onClick={() => setEditing(true)}><Pencil size={15} /> 키트 수정</button> : null}{staffKit ? null : <ContentGenerationButton className="primary-button" disabled={!sourceId || busy} onGenerate={generate}><Youtube size={15} /> {busy ? "처리 중…" : kit ? "발행 키트 재생성" : "발행 키트 만들기"}</ContentGenerationButton>}</> : <Link className="secondary-button" href={`/content/youtube${sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : ""}`}>유튜브 관리에서 키트 확인 →</Link>}</div></header>
     <div className="fullscreen-source-row"><span>기준 콘텐츠</span>{!lockedSource ? <ContentOriginFilter value={origin} onChange={value => { setOrigin(value); setSourceId(""); }} /> : null}<SourcePicker sources={sources} value={sourceId} onChange={onSourceChange ?? setSourceId} /><span>작업 중인 영상과 같은 값</span></div>
     {sourceId ? <div className="youtube-derivatives-link"><span>이 주제의 다른 채널용 콘텐츠는 콘텐츠 자동화에서 관리합니다.</span><Link className="secondary-button" href={`/automation/review?tab=create&sourceId=${encodeURIComponent(sourceId)}`}>파생 콘텐츠 관리 →</Link></div> : null}
     {error ? <div className={`inline-alert ${error === GENERATION_QUEUED_NOTICE ? "success" : "danger"}`}><CircleAlert size={16} /> {error}</div> : null}
     {view === "manage" ? <section className="panel youtube-connection"><div><span className="platform-icon youtube"><Youtube size={17}/></span><span><strong>{oauth?.connected?oauth.channelTitle:"YouTube 채널 동의 확인 필요"}</strong><small>채널 연결과 팀 공유는 내 계정에서 관리합니다.</small></span></div><Link className="secondary-button" href="/settings/account">내 계정 · 채널 연결</Link></section> : null}
     {view === "manage" ? <section className="panel kit-guide"><span><strong>1</strong> 기준 롱폼 선택</span><span><strong>2</strong> 정본으로 키트 만들기</span><span><strong>3</strong> 문안·체크리스트 검수</span><span><strong>4</strong> 발행·업로드로 이동</span></section> : <section className="panel kit-guide"><span><strong>1</strong> 기준 영상 선택</span><span><strong>2</strong> 발행 키트 준비 확인</span><span><strong>3</strong> 발행 조건 승인</span><span><strong>4</strong> 최종 영상 업로드</span></section>}
+    {view === "manage" && sourceId && !demo ? <YoutubeKitStaffAi key={sourceId} sourceId={sourceId} hasKit={Boolean(kit)} onAvailable={setStaffKit} onDone={reloadKits} /> : null}
     {kitIsStale ? <div className="inline-alert warning"><CircleAlert size={16} /><span><strong>이 키트는 이전 규칙으로 만들어졌습니다.</strong> 최신 정본과 공개 문안 필터를 적용하려면 {view === "manage" ? "‘발행 키트 만들기’를 다시 실행하세요." : "유튜브 관리에서 발행 키트를 다시 만들어 주세요."}</span></div> : null}
     {view === "manage" ? <section className="kit-grid">{KIT_FIELDS.map(([key, label]) => { const value = result[key]; return <article className="panel kit-card" key={key}><header><div><PackageCheck size={15} /><strong>{label}</strong></div><button className="ghost-button" disabled={!value && !draft[key]} onClick={() => copy(key, editing ? draft[key] : value)}><Clipboard size={13} /> {copied === key ? "복사됨" : "복사"}</button></header>{editing ? <textarea aria-label={`${label} 수정`} value={draft[key] ?? ""} onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.value }))} /> : key === "checklist" && Array.isArray(value) ? <div className="kit-checklist">{value.map((item, index) => <label key={index}><input type="checkbox" disabled={busy} checked={metadata<number[]>(kit, "checkedItems", []).includes(index)} onChange={() => toggleChecklist(index)} />{String(item)}</label>)}</div> : <pre>{Array.isArray(value) ? value.join("\n") : String(value ?? "생성된 내용이 없습니다.")}</pre>}</article>; })}</section> : null}
     {view === "publish" && pendingCompletion ? <div className="inline-alert warning"><CircleAlert size={16} /><span>영상 전송은 완료됐습니다. 업로드 결과를 다시 확인하면 기존 영상의 OS 기록만 저장합니다.</span></div> : null}
     {view === "publish" ? <>
     <section className="panel youtube-upload-panel"><div className="panel-header"><div><h2>발행 승인</h2><p>최종 영상 검수와 별개로 채널·공개 범위를 저장하고 승인합니다. 조건이 바뀌면 재승인이 필요합니다.</p></div><span className={`status-pill status-${releaseMatches ? "ready" : "review"}`}>{releaseMatches ? "발행 승인 완료" : "승인 대기"}</span></div><div className="youtube-upload-form"><label><span>연결 채널</span><select aria-label="게시할 YouTube 계정" value={oauth?.ownerId??""} disabled={busy||Boolean(pendingCompletion)} onChange={event=>{const row=connections.find(item=>item.ownerId===event.target.value);setOauth(row?{configured:true,canManage:true,connected:row.status==="connected",ownerId:row.ownerId,teamShared:row.teamShared,channelId:row.channelId??null,channelTitle:row.accountName,connectedAt:row.connectedAt}:null);}}><option value="">내 계정에서 연결하세요</option>{connections.map(row=><option key={row.ownerId} value={row.ownerId}>{row.accountName}{row.teamShared?" · 팀 공유":" · 나만"}</option>)}</select></label><label><span>공개 범위</span><select value={privacy} disabled={busy || Boolean(pendingCompletion)} onChange={(event) => setPrivacy(event.target.value as typeof privacy)}><option value="private">비공개</option><option value="unlisted">일부공개</option></select></label><label><span>예정 시각 (선택)</span><input type="datetime-local" value={scheduledAt} disabled={busy} onChange={(event) => setScheduledAt(event.target.value)} /></label><button className="secondary-button" disabled={busy || !oauth?.connected || !pipeline?.approved[2]} onClick={saveRelease}>현재 조건 저장</button><label className="youtube-final-approval"><span>승인·수정 메모</span><input value={releaseNote} onChange={(event) => setReleaseNote(event.target.value)} placeholder="확인 내용 또는 수정 사유" /></label><div className="pipeline-actions"><button className="primary-button" disabled={busy || !pipeline?.release.canApprove || pipeline?.release.approved} onClick={() => decideRelease(true)}>발행 승인</button><button className="secondary-button" disabled={busy || !releaseNote.trim()} onClick={() => decideRelease(false)}>수정 요청</button></div></div>{pipeline?.release.blocker ? <p className="inline-alert warning">{pipeline.release.blocker}</p> : null}{pipeline?.release.lastDecision ? <p className="metric-caption">최근 기록 · {pipeline.release.lastDecision.approved ? "승인" : "수정 요청"} · {new Date(pipeline.release.lastDecision.at).toLocaleString("ko-KR")}</p> : null}</section>
+    {myin ? <section className="panel youtube-upload-panel"><div className="panel-header"><div><h2>③ 마이인 완성본</h2><p>{Math.floor(myin.final.durationSeconds / 60)}분 {Math.round(myin.final.durationSeconds % 60)}초 · {(myin.final.bytes / 1e6).toFixed(1)}MB · 음량 {myin.final.lufs} LUFS. 아래 업로드에 이 영상을 쓰고, 자막 파일은 업로드 뒤 유튜브 스튜디오 › 자막에 올립니다.</p></div><Film size={18} /></div>
+      <div className="youtube-upload-form"><button className="secondary-button" disabled={busy || Boolean(pendingCompletion)} onClick={() => void pickMyinVideo()}>{file?.name === "final_myin.mp4" ? <><CheckCircle2 size={15} /> 완성본 선택됨</> : "OS 완성본 쓰기"}</button>
+        {myin.outputs.srt ? <a className="secondary-button" href={myin.outputs.srt} target="_blank" rel="noreferrer">자막 파일 (SRT)</a> : null}
+        {myin.outputs.deck ? <a className="secondary-button" href={myin.outputs.deck} target="_blank" rel="noreferrer">덱 전체 (PDF)</a> : null}
+        {myin.outputs.summary ? <a className="secondary-button" href={myin.outputs.summary} target="_blank" rel="noreferrer">한 장 정리 (PNG)</a> : null}</div>
+      {myin.credits.length ? <details><summary>설명란 끝에 자동으로 붙는 출처 {myin.credits.length}줄</summary><pre>{myinCreditsBlock(myin.credits).trim()}</pre></details> : null}
+    </section> : null}
     <section className="panel youtube-upload-panel"><div className="panel-header"><div><h2>최종 영상 업로드</h2><p>발행 승인된 조건일 때만 영상이 브라우저에서 Google로 직접 전송됩니다.</p></div><UploadCloud size={18} /></div><div className="youtube-upload-form"><label><span>영상 파일</span><input type="file" accept="video/*" disabled={busy || Boolean(pendingCompletion)} onChange={(event) => setFile(event.target.files?.[0] ?? null)} /></label><button className="primary-button" disabled={!kit || (!pendingCompletion && (!file || !releaseMatches)) || !oauth?.connected || editing || busy} onClick={upload}><UploadCloud size={15} /> {pendingCompletion ? (busy ? "업로드 결과 확인 중…" : "업로드 결과 다시 확인") : busy && uploadProgress ? `업로드 ${uploadProgress}%` : "승인 조건으로 YouTube 업로드"}</button></div>{uploadProgress > 0 ? <progress aria-label="YouTube 업로드 진행률" max="100" value={uploadProgress}>{uploadProgress}%</progress> : null}{uploadedUrl || previousUpload.videoUrl ? <a className="youtube-upload-result" href={uploadedUrl || previousUpload.videoUrl} target="_blank" rel="noreferrer"><CheckCircle2 size={15} /> 업로드된 영상 확인 <ExternalLink size={13} /></a> : null}</section>
     </> : null}
   </>;

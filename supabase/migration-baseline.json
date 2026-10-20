@@ -235,6 +235,58 @@
       ]
     },
     {
+      "file": "20260923070000_youtube_voice_media.sql",
+      "sha256": "3ed7ec12d42f2f24ff36ee4ae2d4f2bced3abb0ebc47345038daeb7ec13c182d",
+      "purpose": "private bucket os-youtube-voice for narration audio (service role writes, signed URLs only)",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-09-23",
+      "productionApprovedAt": "2026-10-20",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Applied to the isolated DEV project (2026-09-23) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 12 MiB, audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 12 MB, audio/mpeg and audio/wav (after the wav change); the project-wide upload limit is 50 MB."
+    },
+    {
+      "file": "20260924010000_youtube_voice_timing.sql",
+      "sha256": "9f75cfa6bec2733df717d820214c92e0881fd518a776bc4eb81ec06e1a6de69f",
+      "purpose": "private bucket os-youtube-voice-timing for word timing, transcription bundles and the render PC status (JSON only)",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-09-24",
+      "productionApprovedAt": "2026-10-20",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 1 MiB, application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 1 MB, application/json; the project-wide upload limit is 50 MB."
+    },
+    {
+      "file": "20260924090000_youtube_character_assets.sql",
+      "sha256": "ba34c12c030162cf6f23c65d1244db9b056545b0a8f37e53ded120f19c4fb4c0",
+      "purpose": "private bucket os-youtube-character for character art and v13 preview sheets (PNG/JSON)",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-09-24",
+      "productionApprovedAt": "2026-10-20",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 10 MiB, image/png and application/json. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 10 MB, image/png and application/json; the project-wide upload limit is 50 MB."
+    },
+    {
+      "file": "20260924150000_youtube_narrated_video.sql",
+      "sha256": "ff29c53d1e3288d08dbacf0f100eae78736e3111a6b33e1dd371c05c731eb874",
+      "purpose": "private bucket os-youtube-video for rendered videos, clips and narration audio",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-09-24",
+      "productionApprovedAt": "2026-10-20",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Applied to the isolated DEV project (2026-09-24) after owner approval, in one SQL Editor transaction with its schema history entry; readback public=false, 2 GiB, video/mp4 and audio/mpeg. Committed first on codex/youtube-automation-20260923 and brought into the release branch on 2026-10-20 when the owner approved the YouTube automation production rollout. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: 2 GB, video/mp4 and audio/mpeg; the project-wide upload limit is 50 MB."
+    },
+    {
       "file": "20260929013627_knowledge_document_attachments.sql",
       "sha256": "f02e600e7be5224269ef8758c916744298cd18a03f267a685bc105eb89757dc5",
       "purpose": "add a private, size-limited Storage bucket for authenticated knowledge document attachments",
@@ -704,6 +756,48 @@
       "approvedAt": "2026-10-17",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner approved per-document canonical read restriction on 2026-10-17. Applied to brandyaction-os-dev, then Production, before the matching app code was deployed."
+    },
+    {
+      "file": "20261018020000_designated_approver_solo_canon.sql",
+      "sha256": "861d8d3bd733174f2834968ebde5ae4469f1cb2989fc78e750a127a9cee98b71",
+      "purpose": "the designated approver may submit, approve and publish their own and own-AI documents alone; others keep the two-person rules",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner decision 2026-10-18. Rollback-only DEV test (tests/designated-approver-solo-canon.sql) 6 checks, 0 failures; without the migration the old table check reproduces the reported failure. Applied to brandyaction-os-dev, then Production."
+    },
+    {
+      "file": "20261018100000_remove_self_approval_block.sql",
+      "sha256": "2e150a479deefddbd7a901e173900f7be70654c7afce924728b7a987f0bb9001",
+      "purpose": "anyone with approval authority may approve their own documents, proposals, candidates and appeal candidates; who holds approval authority is unchanged; finance refunds keep their own rule",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner request 2026-10-18; owner approved DEV apply, then Production apply, the same day. Production: live definitions matched the repository; a rollback-only check (migration plus read-only os_can_approve checks: active approvers may approve their own work, the 8 active members without authority still may not) passed and rolled back; then applied, recorded in schema history, read back; privileges unchanged. The app code was not deployed with it. DEV: Before applying, the live DEV os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate matched the latest repository definitions. Rollback-only DEV test (tests/designated-approver-solo-canon.sql with this migration) 7 checks, 0 failures, then applied to brandyaction-os-dev and recorded in schema history; privileges unchanged. A rollback-only check of the reported case (no approver assigned, admin creator) returned true."
+    },
+    {
+      "file": "20261018120000_threads_team_review.sql",
+      "sha256": "1dd88ada0917bf111a16fb4f0d1eee65ec614392a21bee7aa21cc6c445566032",
+      "purpose": "Threads team review inbox: a shared Threads draft is readable by active members, edited and approved by named reviewers (os_content_reviewers); review notes table; topic create request id; personal-record history no longer readable by other members; review command records the human reviewer",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "2026-10-18 Threads handoff P0. DEV: live os_content_review_command matched the v07 definition; rollback-only test (tests/threads-team-review.sql with this migration) 18 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back (one 7-argument review command, 4 split personal-space policies, both new tables). Production (owner approved 2026-10-18): live os_content_review_command and os_workspace_record_read matched the repository; a rollback-only run (migration plus read checks as each of the 10 active members: other members' personal rows 0, their history 0, own rows all visible) passed and rolled back; then applied, recorded in schema history and read back. Reviewers are data, assigned after the app deploy."
+    },
+    {
+      "file": "20261020010000_youtube_voice_wav.sql",
+      "sha256": "75ebb965ae8e73b071d21ef185b994bc2f75f80798710c9e652c87f4b5b7e848",
+      "purpose": "os-youtube-voice also accepts audio/wav, the exact Fish output the 마이인 v13 pipeline keeps",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-19",
+      "productionApprovedAt": "2026-10-20",
+      "appliedEnvironments": [
+        "development",
+        "production"
+      ],
+      "notes": "Owner approved the DEV change on 2026-10-19; it was made through the DEV dashboard (bucket MIME list read back as audio/mpeg, audio/wav), so DEV schema history has no entry for this file. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: os-youtube-voice allows audio/mpeg and audio/wav; the project-wide upload limit is 50 MB."
     }
   ],
   "legacyMigrations": [

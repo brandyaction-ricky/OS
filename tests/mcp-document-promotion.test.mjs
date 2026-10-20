@@ -12,9 +12,9 @@ test("AI-written (MCP) team documents can be submitted as canon candidates and s
   assert.match(editor, /\{canSubmitCandidate&&<button onClick=\{\(\)=>void transition\("candidate"\)\}>정본 후보로 올리기/);
   assert.match(editor, /current\.status==="draft"\?"팀에 공유":"내 노트로 이동"/);
   assert.match(editor, /searchParams\?\.get\("candidate"\)==="1"&&canSubmitCandidate/);
-  // The designated approver sees their own candidates and proposals to review.
-  assert.match(review, /\(c\.submitted_by!==actor\.ownerId\|\|actor\.designatedApprover===true\)/);
-  assert.match(review, /\(p\.author_id!==actor\.ownerId\|\|actor\.designatedApprover===true\)/);
+  // Approvers see their own candidates and proposals to review.
+  assert.match(review, /c\.status==="open"&&c\.requested_approver_id===actor\.ownerId/);
+  assert.doesNotMatch(review, /submitted_by!==actor\.ownerId|author_id!==actor\.ownerId/);
   // The vault no longer moves team → review without a candidate; it links to the candidate dialog and can withdraw review.
   assert.match(vault, /team: ""/);
   assert.match(vault, /\/knowledge\/doc\/\$\{selected\.id\}\?candidate=1/);

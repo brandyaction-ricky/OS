@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { readYoutubeAutomationInput } from "@/lib/server/youtube-automation-input";
+import { scenePlanSchema } from "@/lib/server/youtube-scenes";
 import { splitFishNarration, fishVoiceSettings, synthesizeFishSegment } from "@/lib/server/fish-audio";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -20,7 +21,10 @@ export async function GET(request: Request) {
     const sourceId = z.string().uuid().parse(new URL(request.url).searchParams.get("sourceId"));
     const { state, plan } = await readYoutubeAutomationInput(actor.supabase, sourceId);
     if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 자동 제작을 준비할 수 있습니다.");
-    return NextResponse.json({ plan, voicePreviewConfigured: Boolean(process.env.FISH_API_KEY?.trim() && process.env.FISH_VOICE_REFERENCE_ID?.trim()) }, { headers });
+    // designValid=false: the stored design no longer passes today's deck rules, so ③ asks for a new design.
+    const stored = state.source.metadata.narratedScenePlan as { plan?: unknown } | undefined;
+    const designValid = stored ? scenePlanSchema.safeParse(stored.plan).success : null;
+    return NextResponse.json({ plan, designValid, voicePreviewConfigured: Boolean(process.env.FISH_API_KEY?.trim() && process.env.FISH_VOICE_REFERENCE_ID?.trim()) }, { headers });
   } catch (error) { return apiErrorResponse(error); }
 }
 

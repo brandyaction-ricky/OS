@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { pickedPackaging, pipelineArtifacts } from "./content-pipeline";
+import { pickedPackaging, pipelineArtifacts } from "./content-pipeline.ts";
 import type { OsRecord } from "./record-types";
 
 export interface YoutubeAutomationPipelineState {
@@ -43,4 +43,15 @@ export function buildYoutubeAutomationPlan(state: YoutubeAutomationPipelineState
     : null;
   return { format: "narrated_visual", privacyStatus: "private", judgmentMode: "advisory_only", sourceId: source.id,
     inputKey, currentStage: inputKey ? "ready_for_voice" : "needs_input", missing, script, packaging, kit: null };
+}
+
+/** The key a linked script document gives a run: the document's id, version and content at the time it was linked. */
+export function documentInputKey(sourceId: string, doc: { id: unknown; version: unknown; contentSha256: unknown }) {
+  return createHash("sha256").update(JSON.stringify(["narrated-document-v1", sourceId, doc.id, doc.version, doc.contentSha256])).digest("hex");
+}
+
+/** The input key a voice or v13 run must carry to count for the current approvals (document-backed or pipeline script). */
+export function automationInputKey(state: YoutubeAutomationPipelineState) {
+  const ref = state.source.metadata.scriptDocument as { id?: unknown; version?: unknown; contentSha256?: unknown } | undefined;
+  return ref ? documentInputKey(state.source.id, { id: ref.id, version: ref.version, contentSha256: ref.contentSha256 }) : buildYoutubeAutomationPlan(state).inputKey;
 }

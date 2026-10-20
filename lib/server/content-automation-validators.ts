@@ -1,4 +1,5 @@
 import { ApiError } from "@/lib/http";
+import { threadsPostsProblem } from "@/lib/threads-posts";
 
 const ownPath=(path:unknown,ownerId:string,kind:string)=>
   typeof path==="string"&&new RegExp("^automation/"+ownerId+"/" +kind+"/[0-9a-f-]{36}\\.(png|jpg|webp|mp4)$").test(path);
@@ -58,8 +59,8 @@ export function validatePersonalTemplate(metadata:Record<string,unknown>,ownerId
 export function validatePersonalItem(metadata:Record<string,unknown>,channel:string,ownerId:string){
   if(metadata.channel!==channel)throw new ApiError(422,"CHANNEL_IMMUTABLE","채널을 바꿀 수 없습니다.");
   if(channel==="threads"){
-    if(!Array.isArray(metadata.posts)||metadata.posts.some(value=>typeof value!=="string"||Array.from(value).length>500))
-      throw new ApiError(422,"THREADS_LENGTH","쓰레드 글마다 500자 이내로 입력해 주세요.");
+    const problem=threadsPostsProblem(metadata.posts);
+    if(problem)throw new ApiError(422,"THREADS_POSTS_INVALID",problem);
   }
   if(channel==="card"&&metadata.pages!==undefined&&(!Array.isArray(metadata.pages)||metadata.pages.length>30))
     throw new ApiError(422,"CARD_PAGES_INVALID","카드뉴스 페이지를 확인해 주세요.");

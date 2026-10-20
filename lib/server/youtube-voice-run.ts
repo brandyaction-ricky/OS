@@ -7,7 +7,7 @@ import type { RequestActor } from "./auth";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { fishVoiceSettings, splitFishNarration } from "./fish-audio";
 import { hasClaudeKey } from "./content-model";
-import { readYoutubeSceneRules, scenePlanSchema } from "./youtube-scenes";
+import { scenePlanSchema } from "./youtube-scenes";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 
 export const YOUTUBE_VOICE_RUN_KIND = "youtube_narration_voice_v1";
@@ -26,7 +26,7 @@ const segmentSchema = z.object({
 }).strict();
 export const voiceRunMetadataSchema = z.object({
   kind: z.literal(YOUTUBE_VOICE_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex,
-  script: versionRef, packaging: versionRef.optional(), sceneRuleVersions: z.array(versionRef).length(4),
+  script: versionRef, packaging: versionRef.optional(), sceneRuleVersions: z.array(versionRef).length(4).optional(),
   scenePlanGeneratedAt: z.string().datetime(), sceneTemplateVersion: z.string().min(1).max(100).optional(),
   voiceReferenceFingerprint: hex, voiceModel: z.string().min(1),
   voiceSettings: z.object({ speed: z.number().optional(), temperature: z.number().optional(), topP: z.number().optional() }).strict().optional(),
@@ -75,6 +75,14 @@ export function presentVoiceRun(record: OsRecord) {
   };
 }
 
+/** The staff AI's { ready, issues: [{ segmentIndex, issue }] } in the voice run's review shape, or null. */
+function staffPronunciation(value: { ready?: unknown; issues?: unknown } | undefined, segmentCount: number, at: string) {
+  const issues = Array.isArray(value?.issues) ? value.issues as { segmentIndex?: unknown; issue?: unknown }[] : null;
+  if (typeof value?.ready !== "boolean" || !issues || issues.length > 20 || value.ready !== (issues.length === 0)) return null;
+  if (issues.some((item) => !Number.isInteger(item.segmentIndex) || Number(item.segmentIndex) >= segmentCount || typeof item.issue !== "string")) return null;
+  return { ready: value.ready, issues: issues.map((item) => `${Number(item.segmentIndex) + 1}단락: ${String(item.issue).slice(0, 250)}`), at };
+}
+
 export async function createVoiceRun(actor: RequestActor, sourceId: string, inputKey: string) {
   if (actor.role !== "admin") throw new ApiError(403, "ADMIN_REQUIRED", "관리자만 음성 제작 작업을 시작할 수 있습니다.");
   const automation = await readYoutubeAutomationInput(actor.supabase, sourceId);
@@ -82,8 +90,8 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (state.source.owner_id !== actor.id) throw new ApiError(403, "CONTENT_OWNER_REQUIRED", "이 콘텐츠의 소유자만 음성 제작을 시작할 수 있습니다.");
   if (!plan.inputKey || plan.inputKey !== inputKey || !plan.script || !automation.scriptText)
     throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "현재 승인된 원고와 패키징을 다시 확인해 주세요.");
-  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; ruleVersions?: unknown; templateVersion?: unknown; plan?: unknown;
-    unresolvedAcknowledged?: { by?: unknown; count?: unknown } } | undefined;
+  const scenePlan = state.source.metadata.narratedScenePlan as { inputKey?: unknown; generatedAt?: unknown; templateVersion?: unknown; plan?: unknown;
+    unresolvedAcknowledged?: { by?: unknown; count?: unknown }; pronunciation?: { ready?: unknown; issues?: unknown } } | undefined;
   const parsedScenes = scenePlanSchema.safeParse(scenePlan?.plan);
   // Open notes block voice until the owner has read them (acknowledged the exact list).
   const acknowledged = parsedScenes.success && scenePlan?.unresolvedAcknowledged?.by === actor.id &&
@@ -93,15 +101,14 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
     !parsedScenes.success || (parsedScenes.data.unresolved.length && !acknowledged) ||
     parsedScenes.data.scenes.some((scene, index) => scene.segmentIndex !== index) || !Number.isFinite(Date.parse(generatedAt)))
     throw new ApiError(409, "SCENE_PLAN_REQUIRED", "현재 원고의 화면 설계를 완료하고 확인할 항목을 먼저 해결해 주세요.");
-  const rules = await readYoutubeSceneRules(actor);
-  if (JSON.stringify(scenePlan.ruleVersions) !== JSON.stringify(rules.ruleVersions))
-    throw new ApiError(409, "SCENE_RULES_CHANGED", "OS 영상 기준이 변경됐습니다. 화면 설계를 다시 만드세요.");
   const segments = splitFishNarration(automation.scriptText);
   if (segments.length !== parsedScenes.data.scenes.length) throw new ApiError(409, "SCENE_PLAN_MISMATCH", "원고 단락과 장면 수가 다릅니다. 화면 설계를 다시 만드세요.");
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   const voiceModel = process.env.FISH_TTS_MODEL?.trim() || "s2.1-pro";
   const voiceSettings = fishVoiceSettings(process.env);
-  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || !hasClaudeKey())
+  // A design made by a staff AI already carries the pronunciation check, so no company Claude call is needed.
+  const staffReview = staffPronunciation(scenePlan?.pronunciation, segments.length, generatedAt);
+  if (!process.env.FISH_API_KEY?.trim() || !voiceReference || (!staffReview && !hasClaudeKey()))
     throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio와 Claude API 연결을 확인해 주세요.");
   const { data: bucket, error: bucketError } = await createServiceSupabase().storage.getBucket(YOUTUBE_VOICE_BUCKET);
   if (bucketError || !bucket || bucket.public) throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 저장소를 확인해 주세요.");
@@ -109,15 +116,16 @@ export async function createVoiceRun(actor: RequestActor, sourceId: string, inpu
   if (timingBucketError || !timingBucket || timingBucket.public)
     throw new ApiError(503, "VOICE_STORAGE_NOT_CONFIGURED", "비공개 음성 시간표 저장소를 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
-  const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey, rules.ruleVersions,
+  const runKey = digestVoiceValue([YOUTUBE_VOICE_RUN_KIND, sourceId, inputKey,
     generatedAt, YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceModel, fingerprint, YOUTUBE_VOICE_TIMING_MODE, YOUTUBE_VOICE_EXECUTOR_MODEL, voiceSettings]);
   const id = voiceRunId(runKey);
   const metadata: VoiceRunMetadata = {
     kind: YOUTUBE_VOICE_RUN_KIND, runKey, sourceId, inputKey, script: plan.script, ...(plan.packaging ? { packaging: plan.packaging } : {}),
-    sceneRuleVersions: rules.ruleVersions, scenePlanGeneratedAt: generatedAt,
+    scenePlanGeneratedAt: generatedAt,
     sceneTemplateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION, voiceReferenceFingerprint: fingerprint,
     voiceModel, voiceSettings, timingMode: YOUTUBE_VOICE_TIMING_MODE, executorModel: YOUTUBE_VOICE_EXECUTOR_MODEL,
     segments: segments.map((text, index) => ({ index, textHash: digestVoiceValue(text), status: "pending" })), attempts: 0,
+    ...(staffReview ? { lunaReview: staffReview } : {}),
   };
   // A new scene design over the same script and voice reuses finished narration instead of paying for it again.
   const { data: earlier } = await actor.supabase.from("os_records").select("*").eq("record_type", "ai_job").eq("parent_id", sourceId)

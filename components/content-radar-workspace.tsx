@@ -178,7 +178,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
   useEffect(() => {
     if (!appealSet) { setAppealCanApprove(false); setAppealApprovalLoaded(true); setAppealAssignments([]); return; }
     if (demo) {
-      setAppealCanApprove(profile?.role === "admin" && appealSet.created_by !== profile?.id);
+      setAppealCanApprove(profile?.role === "admin");
       setAppealApprovalLoaded(true);
       return;
     }
@@ -190,7 +190,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       .catch(() => { if (!cancelled) { setAppealCanApprove(false); setAppealAssignments([]); } })
       .finally(() => { if (!cancelled) setAppealApprovalLoaded(true); });
     return () => { cancelled = true; };
-  }, [appealSet, accessToken, demo, profile?.id, profile?.role]);
+  }, [appealSet, accessToken, demo, profile?.role]);
   const planResult = meta<Record<string, unknown>>(plan, "result", {});
   const candidates = Array.isArray(planResult.candidates) ? planResult.candidates as Array<Record<string, unknown>> : [];
   const planningReady = Boolean(selected && planningSelectionReady(selected, plan));
@@ -458,7 +458,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const decideAppeals = async (indices: number[], decision: AppealDecision) => {
     if (!appealSet || !indices.length) return;
-    if (!appealCanApprove) return setError("작성자와 승인자를 분리해야 합니다. 회사 설정의 승인자 또는 위임자에게 요청해 주세요.");
+    if (!appealCanApprove) return setError("승인 권한이 없습니다. 회사 설정의 승인자 또는 위임자에게 요청해 주세요.");
     if (decision === "revision" && !appealNote.trim()) return setError("수정 요청 사유를 적어 주세요.");
     setBusy(true); setError(""); setNotice("");
     try {
@@ -487,7 +487,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         method: "POST", token: accessToken,
         body: JSON.stringify({ packageId: appealSet.id, expectedVersion: appealSet.version }),
       });
-      setNotice(`승인자·위임자 ${result.recipientCount}명에게 알림을 보냈습니다.`);
+      setNotice(result.recipientCount ? `승인자·위임자 ${result.recipientCount}명에게 알림을 보냈습니다.` : "승인자가 본인뿐이라 바로 승인하시면 됩니다.");
     } catch (reason) { setError(reason instanceof Error ? reason.message : "승인 요청을 보내지 못했습니다."); }
     finally { setBusy(false); }
   };

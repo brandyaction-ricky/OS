@@ -31,7 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error) {
       const denied = error.message.includes("OS_STATUS_TRANSITION_DENIED");
       throw new ApiError(denied ? 403 : 400, denied ? "STATUS_CHANGE_DENIED" : "STATUS_CHANGE_FAILED",
-        denied ? "작성자와 승인자를 분리한 승인 규칙에 따라 상태를 변경할 수 없습니다." : "문서 상태를 변경하지 못했습니다.", error.message);
+        denied ? "승인 권한 규칙에 따라 상태를 변경할 수 없습니다." : "문서 상태를 변경하지 못했습니다.", error.message);
     }
     return NextResponse.json({ document: data });
   } catch (error) {
