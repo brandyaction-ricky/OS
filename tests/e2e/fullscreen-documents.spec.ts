@@ -17,7 +17,8 @@ test("canonical list reads existing documents and keeps promotion in review",asy
   await page.getByRole("link",{name:"변경 제안",exact:true}).click();
   await expect(page).toHaveURL(/\/propose$/);
   await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("목적과 근거");
-  await expect(page.getByText("작성자·문서 소유자는 이 제안을 승인할 수 없습니다.",{exact:true})).toBeVisible();
+  // Approvers may approve their own proposals (owner decision 2026-10-18): no author-exclusion notice.
+  await expect(page.getByText("작성자·문서 소유자는 이 제안을 승인할 수 없습니다.",{exact:true})).toHaveCount(0);
 });
 test("canonical folders and result count remain inside their columns",async({page})=>{
   await page.setViewportSize({width:1280,height:900});

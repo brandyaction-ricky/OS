@@ -5,7 +5,6 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { knowledgeAccessContext } from "@/lib/server/knowledge-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
-import { isDesignatedApprover } from "@/lib/server/document-proposals";
 import { DEFAULT_TEMPLATES } from "@/lib/knowledge/default-templates";
 import { emptyKnowledgeState, type KnowledgeState } from "@/lib/knowledge/model";
 import { projectMeetings } from "@/lib/knowledge/meetings";
@@ -70,7 +69,7 @@ export async function GET(request: Request) {
     // Keyset pagination avoids re-evaluating hierarchical RLS for every skipped row.
     const rows: KnowledgeDocument[] = [];
     for (let cursor="00000000-0000-0000-0000-000000000000";;) {
-      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id").gt("id",cursor).order("id").limit(1000);
+      const result = await db.from("os_documents").select("id,title,folder,parent_document_id,page_order,status,brand,team,tags,source,source_ref,owner_id,steward_id,created_by,current_version,created_at,updated_at,category_id,work_state,due_on,daily_on,review_due_on,archived_at,archived_by,archived_from_status,retention_hold,meeting_record_id,reader_scope").gt("id",cursor).order("id").limit(1000);
       if(result.error) throw readError(result.error,"documents");
       const batch = (result.data ?? []).map(row=>({...row,content_md:""})) as KnowledgeDocument[];
       rows.push(...batch);
@@ -99,11 +98,10 @@ export async function GET(request: Request) {
       const result=await db.rpc("os_can_approve",{p_actor:row.id,p_author:null});
       if(result.error) throw readError(result.error,"approvers");
       const canApprove=row.member_kind==="staff"&&result.data===true;
-      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove,designated:canApprove&&await isDesignatedApprover(row.id)};
+      return {id:row.id,display_name:row.display_name,role:row.role,member_kind:row.member_kind,can_approve:canApprove};
     }));
     const me=state.people.find(p=>p.id===user.ownerId);
     access.actor.canApprove=me?.can_approve===true;
-    access.actor.designatedApprover=me?.designated===true;
     for(const page of await proposalsRead){
       if(page.error) throw readError(page.error,"proposals");
       state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)));

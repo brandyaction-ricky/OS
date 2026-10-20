@@ -7,10 +7,10 @@ import { canReadDocument } from "../lib/knowledge/access.ts";
 
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const actor = { ownerId: "reader", type: "user", role: "member", memberKind: "staff", active: true, allowedStatuses: ["canonical"] };
-const policyFields = "id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source";
+const policyFields = "id,owner_id,status,parent_document_id,category_id,meeting_record_id,archived_from_status,archived_by,source,reader_scope,steward_id";
 const doc = (i, patch = {}) => ({ id: `10000000-0000-0000-0000-${String(i).padStart(12, "0")}`, title: `정본 ${i}`, folder: "규칙",
   owner_id: "reader", status: "canonical", parent_document_id: null, category_id: null, meeting_record_id: null,
-  archived_from_status: null, archived_by: null, source: "manual", steward_id: "steward", review_due_on: null,
+  archived_from_status: null, archived_by: null, source: "manual", steward_id: "steward", reader_scope: "all", review_due_on: null,
   current_version: 2, updated_at: "2026-10-11T00:00:00Z", content_md: "should never be loaded", ...patch });
 
 function load(path, modules) {

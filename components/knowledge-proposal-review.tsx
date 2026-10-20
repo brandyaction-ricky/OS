@@ -53,16 +53,15 @@ export function KnowledgeProposalReview() {
     let active = true;
     setCanApprove(false);
     Promise.all([
-      apiRequest<{ canApprove: boolean; assignments?: Array<{ user_id: string; kind: string }> }>(`/api/v1/approvals?documentId=${encodeURIComponent(document.id)}`, { token: accessToken }),
+      apiRequest<{ canApprove: boolean }>(`/api/v1/approvals?documentId=${encodeURIComponent(document.id)}`, { token: accessToken }),
       apiRequest<ProposalResponse>(`/api/v1/documents/proposals?id=${encodeURIComponent(selected.id)}`, { token: accessToken }),
     ]).then(([permission, detail]) => {
       if (!active) return;
-      const designated = permission.assignments?.some((row) => row.kind === "approver" && row.user_id === profile?.id) === true;
-      setCanApprove(designated || (permission.canApprove && selected.author_id !== profile?.id));
+      setCanApprove(permission.canApprove);
       setComments(detail.comments);
     }).catch((reason) => { if (active) { setCanApprove(false); setError(reason instanceof Error ? reason.message : "제안을 확인하지 못했습니다."); } });
     return () => { active = false; };
-  }, [selected, document, accessToken, demo, profile?.id]);
+  }, [selected, document, accessToken, demo]);
 
   const decide = async (action: "approve" | "return" | "withdraw") => {
     if (!selected || busy) return;
@@ -108,7 +107,7 @@ export function KnowledgeProposalReview() {
         {tab === "preview" ? <div className="review-content"><KnowledgeInlineProvider documentId={document.id} revision={selected.base_version}><MarkdownView content={selected.content_md} onOpenLink={() => {}} /></KnowledgeInlineProvider></div> : null}
         {tab === "comments" ? <div className="knowledge-proposal-comments"><label>줄 번호 <input type="number" min={1} max={selected.content_md.split("\n").length} value={lineNo ?? ""} onChange={(event) => setLineNo(Number(event.target.value) || null)} /></label><textarea aria-label="줄 댓글" placeholder="이 줄에서 확인할 내용을 적어주세요" value={comment} onChange={(event) => setComment(event.target.value)} /><button type="button" className="secondary-button" disabled={busy || !lineNo || !comment.trim()} onClick={() => void addComment()}>댓글 저장</button>{comments.map((item) => <p key={item.id}><strong>{item.line_no}줄</strong> · {item.body}</p>)}</div> : null}
         <div className="review-note"><input aria-label="승인 또는 보완 이유" placeholder="승인 또는 보완 이유" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} /></div>
-        {!canApprove ? <p className="review-approval-hint">작성자는 자신의 제안을 승인할 수 없습니다. 지정 승인자 또는 위임자에게 검토를 요청해 주세요.</p> : null}
+        {!canApprove ? <p className="review-approval-hint">승인 권한이 없습니다. 지정 승인자 또는 위임자에게 검토를 요청해 주세요.</p> : null}
         <footer><button type="button" className="secondary-button" disabled={busy || selected.author_id !== profile?.id} onClick={() => void decide("withdraw")}>제안 철회</button><button type="button" className="secondary-button" disabled={busy || !canApprove} onClick={() => void decide("return")}>보완 요청</button><button type="button" className="primary-button" disabled={busy || !canApprove || document.current_version !== selected.base_version} onClick={() => void decide("approve")}>승인하고 반영</button></footer>
       </> : <div className="empty-state"><div><h3>변경 제안을 선택해 주세요</h3><p>새 제안이 들어오면 현재 정본과 비교해 승인할 수 있습니다.</p></div></div>}
     </article>

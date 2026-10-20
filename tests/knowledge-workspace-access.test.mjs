@@ -31,7 +31,7 @@ test("partner reads only allowed categories, own team work and canonical, never 
   assert.equal(canReadDocument(partner, doc, context), false);
   assert.equal(canReadDocument(partner, { ...doc, category_id: "public" }, context), true);
   assert.equal(canReadDocument(partner, { ...doc, owner_id: "a" }), true);
-  assert.equal(canReadDocument(partner, { ...doc, status: "canonical" }), true);
+  assert.equal(canReadDocument(partner, { ...doc, status: "canonical", reader_scope: "all" }), true);
   assert.equal(canReadDocument(partner, { ...doc, owner_id: "a", source: "mcp" }), false);
   assert.equal(canReadDocument(partner, { ...doc, owner_id: "a", source: "mcp", status:"draft" }), false);
   assert.equal(canReadDocument(partner, { ...doc, owner_id: "a", source: "mcp", status:"archived", archived_from_status:"draft" }), false);
@@ -45,15 +45,15 @@ test("attendee-only meeting beats admin privileges, missing context denies", () 
   assert.equal(canReadDocument(actor, meetingDoc), false);
   assert.equal(canReadDocument({ ...partner, ownerId: "b" }, meetingDoc, context), true);
 });
-test("category and approval operations keep separation of duties", () => {
+test("category and approval operations follow approval authority, own work included", () => {
   assert.equal(canManageCategory(actor, { space: "team" }), true);
   assert.equal(canManageCategory(actor, { space: "team" }, true), false);
   assert.equal(canManageCategory(partner, { space: "team" }), false);
   assert.equal(canManageCategory(partner, { space: "mine", owner_id: "a" }), true);
-  assert.equal(canDecideProposal(actor, { author_id: "a" }, doc), false);
-  assert.equal(canDecideProposal(actor, { author_id: "c", agent_owner_id: "a" }, doc), false);
-  assert.equal(canDecideProposal(actor, { author_id: "c", requested_approver_id: "b" }, doc), false);
-  assert.equal(canDecideProposal({ ...actor, role: "admin" }, { author_id: "c", requested_approver_id: "b" }, doc, "대리 사유"), true);
+  assert.equal(canDecideProposal(actor, { author_id: "a", agent_owner_id: "a" }), true);
+  assert.equal(canDecideProposal({ ...actor, canApprove: false }, { author_id: "c" }), false);
+  assert.equal(canDecideProposal(actor, { author_id: "c", requested_approver_id: "b" }), false);
+  assert.equal(canDecideProposal({ ...actor, role: "admin" }, { author_id: "c", requested_approver_id: "b" }, "대리 사유"), true);
 });
 test("archived meeting documents still deny non-attendees, including owners and admins", () => {
   const context = { meetings: new Map([["m", { visibility: "attendees", attendees: ["b"] }]]) };
@@ -72,4 +72,22 @@ test("graph resolves before filtering: hidden documents never become missing-lin
   assert.equal(JSON.stringify(graph).includes("Private"), false);
   assert.equal(JSON.stringify(graph).includes('"hidden"'), false);
   assert.equal(filterReadable(actor, rows).length, 1);
+});
+
+test("restricted canon is read only by admins, its owner, its steward and named readers; AI keys mirror their owner", () => {
+  const canon = { ...doc, status: "canonical", owner_id: "owner", steward_id: "steward", reader_scope: "restricted" };
+  assert.equal(canReadDocument(actor, { ...canon, reader_scope: "all" }), true, "unrestricted canon stays open to every member");
+  assert.equal(canReadDocument(actor, canon), false);
+  assert.equal(canReadDocument(actor, canon, { canonReaders: new Set(["d"]) }), true, "a named reader");
+  assert.equal(canReadDocument({ ...actor, role: "admin" }, canon), true);
+  assert.equal(canReadDocument({ ...actor, ownerId: "owner" }, canon), true);
+  assert.equal(canReadDocument({ ...actor, ownerId: "steward" }, canon), true);
+  assert.equal(canReadDocument(partner, canon), false);
+  const agent = { ...actor, type: "agent", role: "member" };
+  assert.equal(canReadDocument(agent, canon), false);
+  assert.equal(canReadDocument(agent, canon, { ownerAdmin: true }), true, "an admin's AI key");
+  assert.equal(canReadDocument(agent, canon, { canonReaders: new Set(["d"]) }), true, "a named reader's AI key");
+  assert.equal(canReadDocument(actor, { ...canon, meeting_record_id: "m" }, { meetings: new Map([["m", { visibility: "team", attendees: [] }]]) }), false, "a meeting link cannot bypass it");
+  const unknown = { ...canon }; delete unknown.reader_scope;
+  assert.equal(canReadDocument(actor, unknown), false, "a row without the field is treated as restricted");
 });

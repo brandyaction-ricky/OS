@@ -685,6 +685,44 @@
       "productionApprovedAt": "2026-10-14",
       "appliedEnvironments": ["development", "production"],
       "notes": "Applied to brandyaction-os-dev and Production on 2026-10-14 with owner approval after a rollback-only DEV check and a guard that the live function was unchanged; privileges unchanged. Replaces os_can_approve from the 2026-10-14 Production definition (identical on DEV) with only the designated-approver condition added. No table, row or grant changes."
+    },
+    {
+      "file": "20261017020000_canonical_reader_scope.sql",
+      "sha256": "bb4f4201a0184f0a91e13a49f53beaf94237f640abc1bc930edef794421087a0",
+      "purpose": "let admins limit a canonical document to named members; default reader_scope 'all' keeps every existing document as is",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-17",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner approved per-document canonical read restriction on 2026-10-17. Applied to brandyaction-os-dev, then Production, before the matching app code was deployed."
+    },
+    {
+      "file": "20261018020000_designated_approver_solo_canon.sql",
+      "sha256": "861d8d3bd733174f2834968ebde5ae4469f1cb2989fc78e750a127a9cee98b71",
+      "purpose": "the designated approver may submit, approve and publish their own and own-AI documents alone; others keep the two-person rules",
+      "requiresApproval": false,
+      "approvedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner decision 2026-10-18. Rollback-only DEV test (tests/designated-approver-solo-canon.sql) 6 checks, 0 failures; without the migration the old table check reproduces the reported failure. Applied to brandyaction-os-dev, then Production."
+    },
+    {
+      "file": "20261018100000_remove_self_approval_block.sql",
+      "sha256": "2e150a479deefddbd7a901e173900f7be70654c7afce924728b7a987f0bb9001",
+      "purpose": "anyone with approval authority may approve their own documents, proposals, candidates and appeal candidates; who holds approval authority is unchanged; finance refunds keep their own rule",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Owner request 2026-10-18; owner approved DEV apply, then Production apply, the same day. Production: live definitions matched the repository; a rollback-only check (migration plus read-only os_can_approve checks: active approvers may approve their own work, the 8 active members without authority still may not) passed and rolled back; then applied, recorded in schema history, read back; privileges unchanged. The app code was not deployed with it. DEV: Before applying, the live DEV os_can_approve, os_knowledge_workflow_command, os_submit_candidate and os_publish_candidate matched the latest repository definitions. Rollback-only DEV test (tests/designated-approver-solo-canon.sql with this migration) 7 checks, 0 failures, then applied to brandyaction-os-dev and recorded in schema history; privileges unchanged. A rollback-only check of the reported case (no approver assigned, admin creator) returned true."
+    },
+    {
+      "file": "20261018120000_threads_team_review.sql",
+      "sha256": "1dd88ada0917bf111a16fb4f0d1eee65ec614392a21bee7aa21cc6c445566032",
+      "purpose": "Threads team review inbox: a shared Threads draft is readable by active members, edited and approved by named reviewers (os_content_reviewers); review notes table; topic create request id; personal-record history no longer readable by other members; review command records the human reviewer",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-18",
+      "productionApprovedAt": "2026-10-18",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "2026-10-18 Threads handoff P0. DEV: live os_content_review_command matched the v07 definition; rollback-only test (tests/threads-team-review.sql with this migration) 18 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back (one 7-argument review command, 4 split personal-space policies, both new tables). Production (owner approved 2026-10-18): live os_content_review_command and os_workspace_record_read matched the repository; a rollback-only run (migration plus read checks as each of the 10 active members: other members' personal rows 0, their history 0, own rows all visible) passed and rolled back; then applied, recorded in schema history and read back. Reviewers are data, assigned after the app deploy."
     }
   ],
   "legacyMigrations": [

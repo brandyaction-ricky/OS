@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError } from "./http";
+import { threadsPostsProblem } from "./threads-posts";
 import type { AutomationProc } from "./server/content-automation-v07";
 
 export const RESULT_EXAMPLES: Record<AutomationProc,string> = {
@@ -23,7 +24,7 @@ const schemas:Record<AutomationProc,z.ZodTypeAny>={
   image:z.object({request:text,ratio:z.string().max(20),noText:z.literal(true)}),
   "shorts-cut":z.object({cuts:z.array(z.object({start:text,end:text,text:text,note:z.string().max(3000)})).min(1)}),
   "shorts-desc":z.object({cover:text,title:text,description:text}),
-  threads:z.object({posts:z.array(z.string().trim().min(1).max(500)).min(1).max(30)}),
+  threads:z.object({posts:z.array(z.string().trim())}).refine(value=>!threadsPostsProblem(value.posts,1),{message:"posts"}),
   review:z.object({score:z.number().min(0).max(5),checks:z.array(z.object({key:text,ok:z.boolean(),note:z.string().max(3000)})).min(1)}),
   reply:z.object({replies:z.array(z.object({commentId:text,text:text})).min(1)}),
 };

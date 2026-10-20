@@ -48,5 +48,17 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
     }
     context.meetings=map;
   }
+  context.ownerAdmin = profile.role === "admin";
+  // Restricted canon: only named readers need a lookup (admins, owners and stewards pass on their own).
+  const admin = actor.type === "user" ? actor.role === "admin" : context.ownerAdmin;
+  const restricted = admin ? [] : [...new Set(documents.filter(doc => doc.status === "canonical" && doc.reader_scope !== "all"
+    && doc.owner_id !== actor.ownerId && doc.steward_id !== actor.ownerId).map(doc => doc.id).filter((id): id is string => Boolean(id)))];
+  const readers = new Set<string>();
+  for (let offset = 0; offset < restricted.length; offset += 200) {
+    const result = await service.from("os_document_readers").select("document_id").eq("user_id", actor.ownerId).in("document_id", restricted.slice(offset, offset + 200));
+    if (result.error) throw new ApiError(503, "KNOWLEDGE_ACCESS_UNAVAILABLE", "문서 열람 권한을 확인하지 못했습니다.");
+    for (const row of result.data ?? []) readers.add(row.document_id);
+  }
+  context.canonReaders = readers;
   return { actor: policyActor, context };
 }

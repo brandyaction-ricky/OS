@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       const rows: KnowledgeDocument[] = [];
       for (let cursor = "00000000-0000-0000-0000-000000000000";;) {
         const result = await user.supabase.from("os_documents")
-          .select(`title,folder,steward_id,review_due_on,current_version,updated_at,${POLICY_FIELDS}`)
+          .select(`title,folder,review_due_on,current_version,updated_at,${POLICY_FIELDS}`)
           .eq("status", "canonical").gt("id", cursor).order("id").limit(500);
         if (result.error) throw readError();
         const batch = (result.data ?? []) as unknown as KnowledgeDocument[];

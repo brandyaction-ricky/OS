@@ -5,7 +5,6 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { canReadKnowledgeDocument } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
 import { indexDocument } from "@/lib/server/indexing";
-import { isDesignatedApprover } from "@/lib/server/document-proposals";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentProposal, KnowledgeDocument } from "@/lib/types";
 
@@ -21,7 +20,7 @@ const actionSchema = z.discriminatedUnion("action", [
 
 function proposalError(error: { code?: string; message?: string } | null) {
   if (error?.message?.includes("OS_PROPOSAL_VERSION_CONFLICT")) return new ApiError(409, "PROPOSAL_VERSION_CONFLICT", "정본이 그새 바뀌었습니다. 현재 문서와 제안을 다시 비교해 주세요.");
-  if (error?.message?.includes("OS_PROPOSAL_APPROVAL_DENIED")) return new ApiError(403, "PROPOSAL_APPROVAL_DENIED", "작성자와 다른 승인자 또는 유효한 위임자만 반영할 수 있습니다.");
+  if (error?.message?.includes("OS_PROPOSAL_APPROVAL_DENIED")) return new ApiError(403, "PROPOSAL_APPROVAL_DENIED", "지정 승인자 또는 유효한 위임자만 반영할 수 있습니다.");
   if (error?.message?.includes("OS_PROPOSAL_NOT_OPEN")) return new ApiError(409, "PROPOSAL_NOT_OPEN", "이미 처리된 변경 제안입니다.");
   if (error?.code === "42P01" || error?.code === "42883") return new ApiError(503, "PROPOSAL_SETUP_PENDING", "개발 DB의 변경 제안 기능 적용이 필요합니다.");
   return new ApiError(400, "PROPOSAL_FAILED", "변경 제안을 처리하지 못했습니다.", error?.message);
@@ -102,10 +101,9 @@ export async function POST(request: Request) {
     if (proposal.status !== "open") throw new ApiError(409, "PROPOSAL_NOT_OPEN", "이미 처리된 변경 제안입니다.");
     if (input.action === "withdraw") {
       if (proposal.author_id !== actor.id) throw new ApiError(403, "PROPOSAL_WITHDRAW_DENIED", "제안 작성자만 철회할 수 있습니다.");
-    } else if (!(await isDesignatedApprover(actor.id))) {
-      const { data: authorAllowed, error: approvalError } = await actor.supabase.rpc("os_can_approve", { p_actor: actor.id, p_author: proposal.author_id });
-      const { data: ownerAllowed, error: ownerError } = await actor.supabase.rpc("os_can_approve", { p_actor: actor.id, p_author: document.owner_id });
-      if (approvalError || ownerError || !authorAllowed || !ownerAllowed) throw new ApiError(403, "PROPOSAL_APPROVAL_DENIED", "작성자와 다른 승인자 또는 유효한 위임자만 결정할 수 있습니다.");
+    } else {
+      const { data: allowed, error: approvalError } = await actor.supabase.rpc("os_can_approve", { p_actor: actor.id, p_author: proposal.author_id });
+      if (approvalError || !allowed) throw new ApiError(403, "PROPOSAL_APPROVAL_DENIED", "지정 승인자 또는 유효한 위임자만 결정할 수 있습니다.");
     }
     if (input.action === "approve") {
       const { data, error: applyError } = await actor.supabase.rpc("os_apply_document_proposal", { p_proposal_id: proposal.id, p_note: input.note });

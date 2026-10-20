@@ -63,7 +63,7 @@ export function ApprovalSettings({ token, members, actorId, isAdmin, demo }: {
   };
 
   return <section className="panel company-block" aria-label="승인자 설정">
-    <div className="panel-header"><div><h2>승인자</h2><p>지정 승인자는 자신의 문서와 자기 AI가 올린 제안도 승인합니다. 그 밖의 사람은 자신의 문서를 승인할 수 없고, 승인자 부재 기간에는 유효한 위임자가 검토합니다.</p></div></div>
+    <div className="panel-header"><div><h2>승인자</h2><p>승인자와 위임자는 자신이 만든 문서와 자기 AI가 올린 제안도 직접 승인합니다. 승인자 부재 기간에는 유효한 위임자가 검토합니다.</p></div></div>
     {demo ? <p>실제 승인자 지정은 연결된 개발 환경에서 확인합니다.</p> : null}
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     {message ? <p className="inline-alert" role="status">{message}</p> : null}

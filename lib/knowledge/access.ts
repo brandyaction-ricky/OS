@@ -7,8 +7,6 @@ export interface KnowledgeActor {
   active?: boolean;
   allowedStatuses: readonly string[];
   canApprove?: boolean;
-  /** Explicitly assigned approver: may also decide proposals on own documents or drafted by own AI key. */
-  designatedApprover?: boolean;
   canPublishCanonical?: boolean;
 }
 export interface AccessDocument {
@@ -20,11 +18,23 @@ export interface AccessDocument {
   meeting_record_id?: string | null;
   archived_from_status?: string | null;
   archived_by?: string | null;
+  /** 'all' (every active member) or 'restricted'; a missing value is treated as restricted. */
+  reader_scope?: string | null;
+  steward_id?: string | null;
 }
 export interface KnowledgeAccessContext {
   categories?: ReadonlyMap<string, { partner_ids: readonly string[]; archived_at?: string | null }>;
   meetings?: ReadonlyMap<string, { visibility: string; attendees: readonly string[] }>;
   noteGrants?: ReadonlySet<string>;
+  /** Restricted canonical documents on which the actor (an AI key: its owner) is a named reader. */
+  canonReaders?: ReadonlySet<string>;
+  /** An AI key's owner is an admin; keys otherwise act with the member role. */
+  ownerAdmin?: boolean;
+}
+/** Restricted canon: admins, the owner, the steward and named readers. An AI key mirrors its owner. */
+function canReadRestrictedCanon(actor: KnowledgeActor, doc: AccessDocument, context: KnowledgeAccessContext) {
+  const admin = actor.type === "user" ? actor.role === "admin" : context.ownerAdmin === true;
+  return admin || doc.owner_id === actor.ownerId || doc.steward_id === actor.ownerId || Boolean(doc.id && context.canonReaders?.has(doc.id));
 }
 export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, context: KnowledgeAccessContext = {}) {
   if (actor.active === false) return false;
@@ -44,6 +54,8 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
     return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id));
   }
   if (doc.status === "archived") return actor.type === "user" && (actor.role === "admin" || doc.owner_id === actor.ownerId || doc.archived_by === actor.ownerId);
+  // Same order as the database rule: before the meeting shortcut, so a link cannot bypass it.
+  if (doc.status === "canonical" && doc.reader_scope !== "all" && !canReadRestrictedCanon(actor, doc, context)) return false;
   if (doc.meeting_record_id) return true;
   if (actor.type === "agent") return actor.allowedStatuses.includes(doc.status) && ["team", "canonical"].includes(doc.status);
   if (doc.status === "canonical") return true;
@@ -78,12 +90,12 @@ export function canManageCategory(actor: KnowledgeActor, category: { space: stri
   if (category.space === "mine") return category.owner_id === actor.ownerId;
   return actor.memberKind !== "partner" && (!destructive || actor.role === "admin");
 }
-export function canDecideProposal(actor: KnowledgeActor, proposal: { author_id: string; requested_approver_id?: string | null; agent_owner_id?: string | null }, doc: AccessDocument, proxyReason = "") {
+/** Approvers may decide their own proposals and candidates too (owner decision 2026-10-18). */
+export function canDecideProposal(actor: KnowledgeActor, proposal: { requested_approver_id?: string | null }, proxyReason = "") {
   return actor.type === "user" && actor.memberKind !== "partner" && actor.active !== false && actor.canApprove === true
-    && (actor.designatedApprover === true || ![proposal.author_id, proposal.agent_owner_id, doc.owner_id].includes(actor.ownerId))
     && (!proposal.requested_approver_id || proposal.requested_approver_id === actor.ownerId || (actor.role === "admin" && proxyReason.trim().length > 0));
 }
-/** Approvers a proposal or candidate may name. The designated approver is offered even for their own documents. */
-export function approverChoices<P extends { id: string; can_approve: boolean; member_kind: string; designated?: boolean }>(people: P[], actor: KnowledgeActor, doc: { owner_id: string }) {
-  return people.filter(p => p.can_approve && p.member_kind === "staff" && (p.designated === true || ![actor.ownerId, doc.owner_id].includes(p.id)));
+/** Approvers a proposal or candidate may name, the author included. */
+export function approverChoices<P extends { id: string; can_approve: boolean; member_kind: string }>(people: P[]) {
+  return people.filter(p => p.can_approve && p.member_kind === "staff");
 }

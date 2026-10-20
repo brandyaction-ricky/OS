@@ -5,9 +5,11 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { parseAutomationResult } from "@/lib/content-automation-results";
 import { validatePersonalItem } from "@/lib/server/content-automation-validators";
+import { threadsPostsProblem } from "@/lib/threads-posts";
+import type { OsRecord } from "@/lib/record-types";
 import { mayHideComment } from "@/lib/content-comments";
 import { moderateChannelComment } from "@/lib/server/channel-comments";
-import { assertHumanOwner,assertSameOrigin,AUTOMATION_PROCS,browserCookieKey,hashBrowserKey,createJob,createPersonalRecord,getPersonalRecord,updatePersonalRecord } from "@/lib/server/content-automation-v07";
+import { assertCanEdit,assertHumanOwner,assertSameOrigin,AUTOMATION_PROCS,browserCookieKey,hashBrowserKey,createJob,createPersonalRecord,getContentRecord,getItemJob,getPersonalRecord,memberNames,updatePersonalRecord } from "@/lib/server/content-automation-v07";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -27,6 +29,7 @@ const topicStartSchema=z.object({
     shorts:z.object({due:z.string().date().optional()}).strict().optional(),
     threads:z.object({due:z.string().date().optional()}).strict().optional(),
   }).strict().refine(channels=>Object.keys(channels).length>0),
+  teamThreads:z.boolean().optional(),
 }).strict();
 const checks=["shortcutsRemoved","scheduleRemoved","osSignedOut","localFilesRemoved"] as const;
 const savedSkillSchema=z.object({
@@ -40,6 +43,14 @@ export async function GET(request:Request,{params}:Params){
   try{
     const actor=await authenticateRequest(request),ownerId=assertHumanOwner(actor);
     const {resource,id,action}=await params;
+    if(resource==="items"&&action==="comments"&&z.string().uuid().safeParse(id).success){
+      await getContentRecord(actor,id,"content_publish");
+      const {data,error}=await createServiceSupabase().from("os_content_review_comments")
+        .select("id,author_id,content_version,body,created_at").eq("publish_record_id",id).order("created_at").limit(500);
+      if(error)throw new ApiError(503,"COMMENTS_FAILED","검수 의견을 불러오지 못했습니다.");
+      const names=await memberNames((data??[]).map(row=>row.author_id));
+      return NextResponse.json({comments:(data??[]).map(row=>({...row,author_name:names.get(row.author_id)??"구성원"}))});
+    }
     if(resource!=="skills"||action!=="versions"||!z.string().uuid().safeParse(id).success)
       throw new ApiError(404,"AUTOMATION_ROUTE_NOT_FOUND","찾을 수 없는 요청입니다.");
     const current=await getPersonalRecord(actor,id,"skill");
@@ -76,6 +87,14 @@ export async function POST(request:Request,{params}:Params){
         const status=error.code==="PT404"?404:error.code==="PT409"?409:error.code==="PT422"?422:503;
         throw new ApiError(status,"TOPIC_START_FAILED",status===409?"주제가 이미 바뀌었거나 제작이 시작됐습니다. 다시 불러와 주세요.":
           status===422?"채널과 마감 날짜를 확인해 주세요.":"제작을 시작하지 못했습니다.");
+      }
+      if(input.teamThreads&&input.channels.threads){
+        const {data:draft}=await db.from("os_records").select("*").eq("record_type","content_publish")
+          .eq("owner_id",ownerId).eq("parent_id",id).eq("metadata->>space","personal")
+          .eq("metadata->>channel","threads").is("archived_at",null).maybeSingle();
+        // Best effort: if this fails the draft stays private and can be shared from the Threads screen.
+        if(draft)await updatePersonalRecord(actor,draft as OsRecord,{metadata:{...(draft as OsRecord).metadata,
+          shared:"team",sharedAt:new Date().toISOString(),sharedBy:ownerId}}).catch(()=>null);
       }
       return NextResponse.json(data);
     }
@@ -127,40 +146,66 @@ export async function POST(request:Request,{params}:Params){
       return NextResponse.json({topic,job:savedJob});
     }
     if(resource==="items"){
-      const current=await getPersonalRecord(actor,id,"content_publish");
+      const access=await getContentRecord(actor,id,"content_publish"),current=access.record,team=!access.own;
+      if(action==="comment"){
+        const input=z.object({body:z.string().trim().min(1).max(3000)}).strict().parse(await parseJson(request,10_000));
+        const {data,error}=await db.from("os_content_review_comments").insert({
+          publish_record_id:id,author_id:ownerId,content_version:current.version,body:input.body,
+        }).select("id,author_id,content_version,body,created_at").single();
+        if(error||!data)throw new ApiError(503,"COMMENT_SAVE_FAILED","검수 의견을 저장하지 못했습니다.");
+        return NextResponse.json({comment:data},{status:201});
+      }
+      if(action==="share"||action==="unshare"){
+        const input=z.object({version:z.number().int().positive()}).strict().parse(await parseJson(request,1000));
+        if(current.version!==input.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 원고를 다시 불러와 주세요.");
+        if(current.metadata.channel!=="threads")throw new ApiError(422,"TEAM_THREADS_ONLY","팀 검수함은 쓰레드 원고만 올릴 수 있습니다.");
+        if(current.status==="published")throw new ApiError(409,"ITEM_STATUS_CHANGED","게시된 원고는 공유 상태를 바꿀 수 없습니다.");
+        if(action==="share"&&!access.own)throw new ApiError(403,"TEAM_SHARE_OWNER_ONLY","작성자만 팀 검수함에 공유할 수 있습니다.");
+        // Once review started, only a named reviewer takes a draft back out of the team inbox.
+        if(action==="unshare"&&!(access.canReview||access.own&&["draft","blocked"].includes(current.status)))
+          throw new ApiError(403,"TEAM_UNSHARE_FORBIDDEN","검수 중인 원고의 공유 해제는 지정 검수자만 할 수 있습니다.");
+        const metadata={...current.metadata,
+          ...(action==="share"?{shared:"team",sharedAt:new Date().toISOString(),sharedBy:ownerId}
+            :{shared:null,unsharedAt:new Date().toISOString(),unsharedBy:ownerId})};
+        return NextResponse.json({item:await updatePersonalRecord(actor,current,{metadata},{team})});
+      }
+      if(["reopen","send-to-review","adopt","reject"].includes(action))assertCanEdit(access);
       if(action==="reopen"){
         if(!["review","ready","scheduled"].includes(current.status))
           throw new ApiError(409,"ITEM_STATUS_CHANGED","확인 중이거나 확인된 콘텐츠만 다시 고칠 수 있습니다.");
         const saved=await updatePersonalRecord(actor,current,{status:"draft",stage:"making",
-          starts_at:null,metadata:{...current.metadata,needsRecheck:true,space:"personal"}});
+          starts_at:null,metadata:{...current.metadata,needsRecheck:true,space:"personal"}},{team});
         return NextResponse.json({item:saved});
       }
       if(action==="send-to-review"){
         if(!["draft","blocked"].includes(current.status))throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠만 확인으로 보낼 수 있습니다.");
-        validatePersonalItem(current.metadata,String(current.metadata.channel),ownerId);
+        validatePersonalItem(current.metadata,String(current.metadata.channel),String(current.owner_id));
         if(current.metadata.channel==="card"&&(!Array.isArray(current.metadata.pages)||!current.metadata.pages.length))
           throw new ApiError(422,"CARD_PAGES_REQUIRED","카드뉴스 페이지를 준비해 주세요.");
-        if(current.metadata.channel==="threads"&&(!Array.isArray(current.metadata.posts)||!current.metadata.posts.length||!current.metadata.posts[0]?.trim()))
-          throw new ApiError(422,"THREADS_POST_REQUIRED","첫 글을 입력해 주세요.");
+        if(current.metadata.channel==="threads"&&threadsPostsProblem(current.metadata.posts,1))
+          throw new ApiError(422,"THREADS_POST_REQUIRED",threadsPostsProblem(current.metadata.posts,1)!);
         if(current.metadata.channel==="shorts"&&(!current.metadata.mp4Path||!current.metadata.coverPath))
           throw new ApiError(422,"SHORTS_MEDIA_REQUIRED","쇼츠 MP4와 커버를 준비해 주세요.");
-        const saved=await updatePersonalRecord(actor,current,{status:"review",stage:"review",metadata:{...current.metadata,space:"personal"}});
+        const saved=await updatePersonalRecord(actor,current,{status:"review",stage:"review",metadata:{...current.metadata,space:"personal"}},{team});
         return NextResponse.json({item:saved});
       }
       if(action==="review"){
+        if(!access.canReview)throw new ApiError(403,"TEAM_REVIEWER_REQUIRED","팀 원고는 지정 검수자만 승인하거나 수정 요청할 수 있습니다.");
         const input=reviewSchema.parse(await parseJson(request,30_000));
         const {data,error}=await db.rpc("os_content_review_command",{
-          p_owner:ownerId,p_record:id,p_expected_version:input.version,p_result:input.result,
-          p_checks:input.checks,p_note:input.note??null,
+          p_owner:current.owner_id,p_record:id,p_expected_version:input.version,p_result:input.result,
+          p_checks:input.checks,p_note:input.note??null,p_actor:ownerId,
         });
         if(error){
-          const status=error.code==="PT404"?404:error.code==="PT409"?409:error.code==="PT422"?422:503;
+          const status=error.code==="PT404"?404:error.code==="PT403"?403:error.code==="PT409"?409:error.code==="PT422"?422:503;
           throw new ApiError(status,error.message==="REVIEW_CHECKS_REQUIRED"?"REVIEW_CHECKS_REQUIRED":"REVIEW_FAILED",
-            status===422?"직접 확인 5개와 이미지 라이선스를 다시 확인해 주세요.":"최종 확인을 저장하지 못했습니다.");
+            status===422?"직접 확인 5개와 이미지 라이선스를 다시 확인해 주세요.":status===403?"지정 검수자만 승인할 수 있습니다.":
+            status===409?"다른 사람이 먼저 원고를 바꿨습니다. 최신 버전을 다시 불러와 주세요.":"최종 확인을 저장하지 못했습니다.");
         }
         return NextResponse.json({item:data});
       }
       if(action==="schedule"||action==="manual-done"){
+        if(!access.own)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
         const input=z.object({
           version:z.number().int().positive(),
           startsAt:z.string().datetime().optional(),
@@ -191,7 +236,7 @@ export async function POST(request:Request,{params}:Params){
       }
       if(action==="adopt"||action==="reject"){
         const raw=z.object({jobId:z.string().uuid(),version:z.number().int().positive()}).strict().parse(await parseJson(request,30_000));
-        const job=await getPersonalRecord(actor,raw.jobId,"ai_job");
+        const job=await getItemJob(actor,access,raw.jobId);
         if(job.metadata.targetId!==id||job.stage!=="completed")throw new ApiError(409,"JOB_RESULT_UNAVAILABLE","채택할 AI 결과가 없습니다.");
         if(current.version!==raw.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 초안을 다시 불러와 주세요.");
         let item=current;
@@ -210,10 +255,10 @@ export async function POST(request:Request,{params}:Params){
             proc==="review"?{aiReview:result}:proc==="image"?{imageRequest:result}:
             proc==="reply"?{replyDraft:result}:null;
           if(!fields)throw new ApiError(422,"JOB_RESULT_INVALID","이 콘텐츠에 맞는 AI 결과가 아닙니다.");
-          item=await updatePersonalRecord(actor,current,{metadata:{...current.metadata,...fields,space:"personal"},stage:"making"});
+          item=await updatePersonalRecord(actor,current,{metadata:{...current.metadata,...fields,space:"personal"},stage:"making"},{team});
         }
         const savedJob=await updatePersonalRecord(actor,job,{stage:action==="adopt"?"adopted":"rejected",
-          metadata:{...job.metadata,closedReason:action==="adopt"?"adopted":"rejected",space:"personal"}});
+          metadata:{...job.metadata,closedReason:action==="adopt"?"adopted":"rejected",closedBy:ownerId,space:"personal"}},{team});
         return NextResponse.json({item,job:savedJob});
       }
     }

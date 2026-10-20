@@ -7,15 +7,14 @@ import { canDecideProposal } from "../lib/knowledge/access.ts";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const file = "20261013060000_designated_approver_own_proposals.sql";
 
-test("designated approver may decide proposals on own documents and own-AI drafts; others keep the exclusion", () => {
-  const approver = { ownerId: "a", type: "user", role: "admin", memberKind: "staff", allowedStatuses: ["canonical"], canApprove: true };
-  const own = { id: "d", owner_id: "a", status: "canonical" };
+test("any approver may decide proposals on own documents and own-AI drafts (owner decision 2026-10-18)", () => {
+  const approver = { ownerId: "a", type: "user", role: "member", memberKind: "staff", allowedStatuses: ["canonical"], canApprove: true };
   const aiDraft = { author_id: "a", agent_owner_id: "a" };
-  assert.equal(canDecideProposal(approver, aiDraft, own), false);
-  assert.equal(canDecideProposal({ ...approver, designatedApprover: true }, aiDraft, own), true);
+  assert.equal(canDecideProposal(approver, aiDraft), true);
   // still needs approval authority and must respect a requested approver
-  assert.equal(canDecideProposal({ ...approver, designatedApprover: true, canApprove: false }, aiDraft, own), false);
-  assert.equal(canDecideProposal({ ...approver, role: "member", designatedApprover: true }, { ...aiDraft, requested_approver_id: "b" }, own), false);
+  assert.equal(canDecideProposal({ ...approver, canApprove: false }, aiDraft), false);
+  assert.equal(canDecideProposal(approver, { ...aiDraft, requested_approver_id: "b" }), false);
+  assert.equal(canDecideProposal({ ...approver, role: "admin" }, { ...aiDraft, requested_approver_id: "b" }, "대리 처리"), true);
 });
 
 test("migration only widens proposal.decide for explicitly assigned approvers and is tracked for approval", async () => {
@@ -30,25 +29,20 @@ test("migration only widens proposal.decide for explicitly assigned approvers an
   assert.equal(entry?.requiresApproval, true);
 });
 
-test("API and review screens use the same designated-approver exception", async () => {
+test("API and review screens rely on approval authority alone, without an author exclusion", async () => {
   const [route, workspace, review] = await Promise.all([
     read("app/api/v1/documents/proposals/route.ts"), read("app/api/v1/knowledge/workspace/route.ts"), read("components/knowledge-proposal-review.tsx"),
   ]);
-  assert.match(route, /else if \(!\(await isDesignatedApprover\(actor\.id\)\)\)/);
-  assert.match(workspace, /designated:canApprove&&await isDesignatedApprover\(row\.id\)/);
-  assert.match(workspace, /designatedApprover=me\?\.designated===true/);
-  assert.match(review, /row\.kind === "approver" && row\.user_id === profile\?\.id/);
+  assert.match(route, /rpc\("os_can_approve", \{ p_actor: actor\.id, p_author: proposal\.author_id \}\)/);
+  assert.doesNotMatch(route + workspace, /isDesignatedApprover/);
+  assert.match(review, /setCanApprove\(permission\.canApprove\)/);
+  assert.doesNotMatch(review, /author_id !== profile\?\.id\)\)/);
 });
 
-test("designated approver is offered as approver and passes every approval check; others keep the exclusion", async () => {
+test("every approver is offered, the author included", async () => {
   const { approverChoices } = await import("../lib/knowledge/access.ts");
-  const actor = { ownerId: "a", type: "user", role: "admin", allowedStatuses: [] };
-  const people = [{ id: "a", can_approve: true, member_kind: "staff", designated: true }, { id: "b", can_approve: true, member_kind: "staff" }];
-  assert.deepEqual(approverChoices(people, actor, { owner_id: "a" }).map((p) => p.id), ["a", "b"]);
-  assert.deepEqual(approverChoices(people, { ...actor, ownerId: "b" }, { owner_id: "b" }).map((p) => p.id), ["a"]);
-  const sql = await read("supabase/migrations/20261014031500_designated_approver_everywhere.sql");
-  assert.match(sql, /select public\.os_is_designated_approver\(p_actor\) or coalesce\(\s+p_actor is not null\s+and p_actor is distinct from p_author/);
-  assert.doesNotMatch(sql, /os_publish_candidate/);
+  const people = [{ id: "a", can_approve: true, member_kind: "staff" }, { id: "b", can_approve: true, member_kind: "staff" }, { id: "c", can_approve: false, member_kind: "staff" }, { id: "p", can_approve: true, member_kind: "partner" }];
+  assert.deepEqual(approverChoices(people).map((p) => p.id), ["a", "b"]);
   const [canon, editor] = await Promise.all([read("components/knowledge/canon.tsx"), read("components/knowledge/editor.tsx")]);
-  assert.doesNotMatch(canon + editor, /!\[actor\.ownerId,doc\.owner_id\]\.includes\(p\.id\)/);
+  assert.doesNotMatch(canon + editor, /designatedApprover|author_id!==actor\.ownerId|submitted_by!==actor\.ownerId/);
 });

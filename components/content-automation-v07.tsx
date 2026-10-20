@@ -11,6 +11,7 @@ import { CHANNEL_LABELS,CONTENT_STATUS_LABELS,JOB_STATUS_LABELS,PROC_LABELS } fr
 import { PAGE_GUIDES } from "@/lib/page-guides";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { OsRecord } from "@/lib/record-types";
+import { THREADS_POST_MAX,threadsPostLength,threadsPostRole,threadsPostsProblem } from "@/lib/threads-posts";
 import { useSession } from "./session-provider";
 import "./content-automation-v07.css";
 
@@ -20,12 +21,20 @@ export type AutomationPage="dashboard"|"topics"|"cardnews"|"shorts"|"threads"|"r
 type BrowserRow={id:string;name:string;os:string;is_main:boolean;registered_at:string;last_run_at:string|null;login_expired_at:string|null};
 type RunRow={id:string;browser_id:string;via:string;slot:string|null;status:string;started_at:string;ended_at:string|null;job_ids:string[];done_count:number;blocked_count:number};
 type PublicationRow={publish_record_id:string;platform:string;at:string;status:string;content_title:string;permalink:string|null;format:string|null;channel:string|null;method:string|null;posted_by:string|null;content_version:number|null;account_handle:string|null;external_id:string|null;error:Record<string,unknown>|null};
-type ReviewRow={id:string;publish_record_id:string;content_version:number;result:string;checks:{key:string;ok:boolean;by:string}[];created_at:string};
+type ReviewRow={id:string;publish_record_id:string;content_version:number;result:string;checks:{key:string;ok:boolean;by:string}[];note?:string|null;reviewer_name?:string;created_at:string};
+type TeamInfo={reviewers:{id:string;name:string}[];canReview:boolean;canManage:boolean};
 type RunRules={enabled:boolean;days:string;times:string[];per_run:number;daily_max:number;order_by:string;long_only_now:boolean;grace_minutes:number;lease_minutes:number;notify:boolean;defaults?:Record<string,unknown>};
 type Data={topics:OsRecord[];items:OsRecord[];jobs:OsRecord[];browsers:BrowserRow[];runs:RunRow[];publications:PublicationRow[];reviews:ReviewRow[];
-  skills:OsRecord[];templates:OsRecord[];assets:OsRecord[];comments:OsRecord[];metrics:OsRecord[];rules:RunRules|null;accounts:Record<string,unknown>[];silent:boolean};
+  skills:OsRecord[];templates:OsRecord[];assets:OsRecord[];comments:OsRecord[];metrics:OsRecord[];rules:RunRules|null;accounts:Record<string,unknown>[];silent:boolean;
+  team:TeamInfo;me:string};
 const EMPTY:Data={topics:[],items:[],jobs:[],browsers:[],runs:[],publications:[],reviews:[],
-  skills:[],templates:[],assets:[],comments:[],metrics:[],rules:null,accounts:[],silent:false};
+  skills:[],templates:[],assets:[],comments:[],metrics:[],rules:null,accounts:[],silent:false,
+  team:{reviewers:[],canReview:false,canManage:false},me:""};
+// A shared Threads draft in the team inbox (any owner's). Other drafts stay owner-only.
+const isTeam=(row:OsRecord)=>row.metadata.shared==="team";
+// The team list adds owner names to rows I already loaded as my own, so a repeat row is combined.
+const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows.map(row=>({...row,...more.find(extra=>extra.id===row.id)})),
+  ...more.filter(row=>!rows.some(existing=>existing.id===row.id))];
 const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:string}>={
   dashboard:{title:"자동화 현황",description:"내가 만든 콘텐츠·AI 작업·내 채널 계정만 봅니다.",next:"/automation/topics"},
   topics:{title:"① 주제 기획",description:"주제 후보를 모으고 브리프와 제작 채널을 정합니다.",next:"/automation/cardnews"},
@@ -68,13 +77,14 @@ function workerInstruction(via:"sched"|"now",name="내 컴퓨터"){
 }
 
 function PageHead({page,name}:{page:AutomationPage;name:string}){
+  const scope=page==="threads"||page==="review"?"내 초안은 나만 보임 · 팀 검수함은 사내 구성원 열람":"나만 보임";
   const info=PAGE_INFO[page],guide=PAGE_GUIDES[`/automation/${page}`];
   const process=info.title.match(/^([①-⑦])\s/),title=process?info.title.slice(2):info.title;
-  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · 나만 보임</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{info.description}</p></div></header>
+  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{info.description}</p></div></header>
     <div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span><Link href={info.next}>다음 단계 →</Link></div></>;
 }
-function Tabs({base,tabs,active}:{base:string;tabs:{id:string;label:string}[];active:string}){
-  return <div className="ca-v07-tabs" role="tablist">{tabs.map(tab=><Link key={tab.id} role="tab" aria-selected={active===tab.id} className={active===tab.id?"active":""} href={`${base}?tab=${tab.id}`}>{tab.label}</Link>)}</div>;
+function Tabs({base,tabs,active,param="tab"}:{base:string;tabs:{id:string;label:string}[];active:string;param?:string}){
+  return <div className="ca-v07-tabs" role="tablist">{tabs.map(tab=><Link key={tab.id} role="tab" aria-selected={active===tab.id} className={active===tab.id?"active":""} href={`${base}?${param}=${tab.id}`}>{tab.label}</Link>)}</div>;
 }
 function Status({value,job=false}:{value:string;job?:boolean}){
   return <span className="ca-v07-status" data-status={value}>{job?JOB_STATUS_LABELS[value]??value:CONTENT_STATUS_LABELS[value]??value}</span>;
@@ -121,8 +131,10 @@ function JobPrompt({proc,targetId,onClose,onSubmit}:{proc:string;targetId?:strin
 }
 const RESOURCES:Record<AutomationPage,string[]>={
   dashboard:["topics","items","jobs","browsers","runs","publications","accounts"],
-  topics:["topics","items","jobs"],cardnews:["items","topics","templates","assets","jobs"],shorts:["items","topics","assets","jobs"],
-  threads:["items","topics","jobs"],review:["items","review-log","jobs"],calendar:["items","publications","review-log"],
+  topics:["topics","items","jobs","reviewers"],cardnews:["items","topics","templates","assets","jobs"],shorts:["items","topics","assets","jobs"],
+  threads:["items","topics","jobs","review-log","reviewers","items?scope=team","topics?scope=team","jobs?scope=team","review-log?scope=team"],
+  review:["items","review-log","jobs","topics","reviewers","items?scope=team","review-log?scope=team","jobs?scope=team","topics?scope=team"],
+  calendar:["items","publications","review-log"],
   performance:["comments","metrics","publications"],requests:["jobs","browsers","runs"],
   settings:["run-rules","skills","templates","assets"],
 };
@@ -136,17 +148,19 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
     setLoading(true);setError("");
     try{
       const entries=await Promise.all(RESOURCES[page].map(async resource=>{
-        const path=resource==="accounts"?"/api/v1/channels?scope=mine":`/api/v1/content/automation/${resource}?limit=500`;
+        const path=resource==="accounts"?"/api/v1/channels?scope=mine":`/api/v1/content/automation/${resource}${resource.includes("?")?"&":"?"}limit=500`;
         return [resource,await apiRequest<Record<string,unknown>>(path,{token:accessToken})] as const;
       }));
-      const next={...EMPTY};
-      for(const [resource,response] of entries){
+      const next={...EMPTY,me:profile?.id??""};
+      for(const [key,response] of entries){
+        const resource=key.split("?")[0];
         if(resource==="run-rules")next.rules=response.rules as RunRules;
-        else if(resource==="review-log")next.reviews=response.reviews as ReviewRow[];
+        else if(resource==="review-log")next.reviews=[...next.reviews,...(response.reviews as ReviewRow[]).filter(row=>!next.reviews.some(existing=>existing.id===row.id))];
+        else if(resource==="reviewers")next.team=response as unknown as TeamInfo;
         else if(resource==="accounts")next.accounts=response.connections as Record<string,unknown>[];
-        else if(resource==="topics")next.topics=response.topics as OsRecord[];
-        else if(resource==="items")next.items=response.items as OsRecord[];
-        else if(resource==="jobs")next.jobs=response.jobs as OsRecord[];
+        else if(resource==="topics")next.topics=merge(next.topics,response.topics as OsRecord[]);
+        else if(resource==="items")next.items=merge(next.items,response.items as OsRecord[]);
+        else if(resource==="jobs")next.jobs=merge(next.jobs,response.jobs as OsRecord[]);
         else if(resource==="browsers")next.browsers=response.browsers as BrowserRow[];
         else if(resource==="runs"){next.runs=response.runs as RunRow[];next.silent=response.silent===true;}
         else if(resource==="publications")next.publications=response.publications as PublicationRow[];
@@ -159,7 +173,7 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
       setData(next);
     }catch(issue){setError(issue instanceof Error?issue.message:"화면을 불러오지 못했습니다.");}
     finally{setLoading(false);}
-  },[accessToken,demo,page,sessionLoading]);
+  },[accessToken,demo,page,profile?.id,sessionLoading]);
   useEffect(()=>{void load();},[load]);
   const mutate=useCallback(async(path:string,method:"POST"|"PATCH"|"PUT",body:unknown)=>{
     if(demo)throw new Error("데모 모드에서는 저장할 수 없습니다.");
@@ -216,6 +230,9 @@ function TopicsView({data,mutate}:ViewProps){
   const missing=search.has("sel")&&!selected;
   const [brief,setBrief]=useState({one:"",who:"",message:"",sources:"",warn:""}),[channels,setChannels]=useState<string[]>([]);
   const [dues,setDues]=useState<Record<string,string>>({}),[jobOpen,setJobOpen]=useState<string|null>(null),[localError,setLocalError]=useState("");
+  // busy blocks a second click; requestId makes a retried create return the same topic.
+  const [busy,setBusy]=useState(false),[requestId,setRequestId]=useState(()=>crypto.randomUUID()),[teamThreads,setTeamThreads]=useState<boolean|null>(null);
+  const shareThreads=teamThreads??data.team.canReview;
   useEffect(()=>{const value=selected?.metadata.brief as Record<string,unknown>|undefined;setBrief({
     one:str(value?.one),who:str(value?.who),message:str(value?.message),sources:str(value?.sources),warn:str(value?.warn)});
     setChannels(Array.isArray(selected?.metadata.channels)?selected.metadata.channels as string[]:[]);
@@ -228,23 +245,31 @@ function TopicsView({data,mutate}:ViewProps){
       topic.stage==="brief"?"브리프 작성":"후보";
   };
   const create=async(event:FormEvent)=>{
-    event.preventDefault();setLocalError("");
-    try{const response=await mutate("/api/v1/content/automation/topics","POST",{title:newTitle,source:newSource,sourceRef:newNote});
-      setNewOpen(false);setNewTitle("");setNewNote("");router.replace(`/automation/topics?sel=${(response.topic as OsRecord).id}`);}
+    event.preventDefault();if(busy)return;setLocalError("");setBusy(true);
+    try{const response=await mutate("/api/v1/content/automation/topics","POST",{title:newTitle,source:newSource,sourceRef:newNote,requestId});
+      setNewOpen(false);setNewTitle("");setNewNote("");setRequestId(crypto.randomUUID());router.replace(`/automation/topics?sel=${(response.topic as OsRecord).id}`);}
     catch(issue){setLocalError(issue instanceof Error?issue.message:"주제를 추가하지 못했습니다.");}
+    finally{setBusy(false);}
+  };
+  const addCandidate=async(jobId:string,index:number,candidate:{title:string;source:string})=>{
+    if(busy)return;setBusy(true);setLocalError("");
+    try{await mutate("/api/v1/content/automation/topics","POST",{title:candidate.title,source:"ai",sourceRef:candidate.source,requestId:`job:${jobId}:${index}`});}
+    catch(issue){setLocalError(issue instanceof Error?issue.message:"후보를 추가하지 못했습니다.");}
+    finally{setBusy(false);}
   };
   const save=async(start:boolean)=>{
-    if(!selected)return;
+    if(!selected||busy)return;
     if(start&&!channels.length){setLocalError("만들 채널을 하나 이상 선택해 주세요.");return;}
-    setLocalError("");
+    setLocalError("");setBusy(true);
     try{
       if(start){
         const channelOptions=Object.fromEntries(channels.map(channel=>[channel,dues[channel]?{due:dues[channel]}:{}]));
         await mutate(`/api/v1/content/automation/topics/${selected.id}/start`,"POST",{
-          version:selected.version,brief,channels:channelOptions});
+          version:selected.version,brief,channels:channelOptions,...(channels.includes("threads")&&shareThreads?{teamThreads:true}:{})});
       }else await mutate(`/api/v1/content/automation/topics/${selected.id}`,"PATCH",{
         expectedVersion:selected.version,stage:"brief",metadata:{brief,channels,dues}});
     }catch(issue){setLocalError(issue instanceof Error?issue.message:"주제를 저장하지 못했습니다.");}
+    finally{setBusy(false);}
   };
   const createJob=async(rush:boolean)=>{
     try{await mutate("/api/v1/content/automation/jobs","POST",{proc:jobOpen,targetId:selected?.id,rush});
@@ -254,29 +279,115 @@ function TopicsView({data,mutate}:ViewProps){
   return <><div className="ca-v07-toolbar"><input aria-label="주제 검색" placeholder="주제·출처 검색" value={query} onChange={event=>setQuery(event.target.value)}/>
     <select aria-label="출처" value={source} onChange={event=>setSource(event.target.value)}><option value="all">전체 출처</option>{Object.entries(SOURCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
     <button type="button" onClick={()=>setJobOpen("topic")}>AI로 후보 받기</button><button type="button" className="primary" onClick={()=>setNewOpen(true)}>+ 주제 추가</button></div>
-    {newOpen?<form className="ca-v07-card ca-v07-form" onSubmit={event=>void create(event)}><h2>주제 추가</h2><label>출처<select value={newSource} onChange={event=>setNewSource(event.target.value)}>{Object.entries(SOURCES).filter(([key])=>key!=="ai").map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>제목<input required value={newTitle} onChange={event=>setNewTitle(event.target.value)}/></label><label>출처·메모<input value={newNote} onChange={event=>setNewNote(event.target.value)}/></label><div className="ca-v07-actions"><button type="button" onClick={()=>setNewOpen(false)}>취소</button><button className="primary">후보에 추가</button></div></form>:null}
+    {newOpen?<form className="ca-v07-card ca-v07-form" onSubmit={event=>void create(event)}><h2>주제 추가</h2><label>출처<select value={newSource} onChange={event=>setNewSource(event.target.value)}>{Object.entries(SOURCES).filter(([key])=>key!=="ai").map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>제목<input required value={newTitle} onChange={event=>setNewTitle(event.target.value)}/></label><label>출처·메모<input value={newNote} onChange={event=>setNewNote(event.target.value)}/></label><div className="ca-v07-actions"><button type="button" onClick={()=>setNewOpen(false)}>취소</button><button className="primary" disabled={busy}>{busy?"추가하는 중…":"후보에 추가"}</button></div></form>:null}
     <div className="ca-v07-board">{["후보","브리프 작성","확정 · 제작 대기","제작 중"].map(name=><section className="ca-v07-card" key={name}><h2>{name} <small>{filtered.filter(row=>column(row)===name).length}</small></h2>{filtered.filter(row=>column(row)===name).map(row=><button className="ca-v07-topic" key={row.id} onClick={()=>router.replace(`/automation/topics?sel=${row.id}`)}><small>{SOURCES[str(row.metadata.source)]??"직접"} · {DATE(row.updated_at)}</small><strong>{row.title}</strong><span>{data.items.filter(item=>item.parent_id===row.id).map(item=>CHANNEL_LABELS[str(item.metadata.channel)]).join(" · ")}</span></button>)}</section>)}</div>
-    {data.jobs.filter(job=>job.metadata.proc==="topic"&&job.stage==="completed").map(job=><section className="ca-v07-card" key={job.id}><h2>AI 주제 후보 도착</h2>{Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.candidates)?((job.metadata.result as Record<string,unknown>).candidates as {title:string;why:string;source:string}[]).map((candidate,index)=><div className="ca-v07-row" key={index}><span><strong>{candidate.title}</strong><small>{candidate.why} · {candidate.source}</small></span><button onClick={()=>void mutate("/api/v1/content/automation/topics","POST",{title:candidate.title,source:"ai",sourceRef:candidate.source})}>후보에 추가</button></div>):null}</section>)}
+    {data.jobs.filter(job=>job.metadata.proc==="topic"&&job.stage==="completed").map(job=><section className="ca-v07-card" key={job.id}><h2>AI 주제 후보 도착</h2>{Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.candidates)?((job.metadata.result as Record<string,unknown>).candidates as {title:string;why:string;source:string}[]).map((candidate,index)=><div className="ca-v07-row" key={index}><span><strong>{candidate.title}</strong><small>{candidate.why} · {candidate.source}</small></span><button disabled={busy} onClick={()=>void addCandidate(job.id,index,candidate)}>후보에 추가</button></div>):null}</section>)}
     {missing?<div className="ca-v07-note" role="status">찾을 수 없는 주제입니다. <Link href="/automation/dashboard">자동화 현황으로 →</Link></div>:null}
     {selected?<section className="ca-v07-card ca-v07-detail"><div className="ca-v07-detail-head"><h2>{selected.title}</h2><button onClick={()=>router.replace("/automation/topics")}>닫기</button></div>
       <p>{SOURCES[str(selected.metadata.source)]??"직접"} · {selected.brand||"브랜드 미선택"} · v{selected.version}</p>
-      {data.items.some(item=>item.parent_id===selected.id)?<div className="ca-v07-note">제작이 시작된 주제입니다. 연결된 채널 콘텐츠에서 작업을 이어가세요.</div>:<>
-      <div className="ca-v07-form-grid">{([["one","한 줄 주제"],["who","누구에게"],["message","핵심 메시지"],["sources","근거·자료"],["warn","주의할 표현"]] as const).map(([key,label])=><label key={key}>{label}<textarea value={brief[key]} onChange={event=>setBrief({...brief,[key]:event.target.value})}/></label>)}</div>
+      {data.items.some(item=>item.parent_id===selected.id)?<><div className="ca-v07-note">제작이 시작된 주제입니다. 브리프는 읽기 전용으로 남기고, 연결된 채널 콘텐츠에서 작업을 이어가세요.</div><BriefPanel topic={selected}/></>:<>
+      <div className="ca-v07-form-grid">{BRIEF_FIELDS.map(([key,label])=><label key={key}>{label}<textarea value={brief[key]} onChange={event=>setBrief({...brief,[key]:event.target.value})}/></label>)}</div>
       <h3>만들 채널</h3><div className="ca-v07-channel-picks">{CHANNELS.map(channel=><div key={channel}><label><input type="checkbox" checked={channels.includes(channel)} onChange={event=>setChannels(event.target.checked?[...channels,channel]:channels.filter(value=>value!==channel))}/>{CHANNEL_LABELS[channel]}</label>{channels.includes(channel)?<input type="date" aria-label={`${CHANNEL_LABELS[channel]} 마감`} value={dues[channel]??""} onChange={event=>setDues({...dues,[channel]:event.target.value})}/>:null}</div>)}</div>
-      <div className="ca-v07-actions"><button onClick={()=>setJobOpen("brief")}>내 AI로 브리프 초안</button><button onClick={()=>void save(false)}>저장</button><button className="primary" onClick={()=>void save(true)}>확정하고 제작 시작</button></div>
+      {channels.includes("threads")?<label className="ca-v07-check"><input type="checkbox" checked={shareThreads} onChange={event=>setTeamThreads(event.target.checked)}/>쓰레드 원고를 처음부터 팀 검수함에 올리기 (사내 구성원 열람·의견, 수정·승인은 작성자와 지정 검수자)</label>:null}
+      <div className="ca-v07-actions"><button onClick={()=>setJobOpen("brief")}>내 AI로 브리프 초안</button><button disabled={busy} onClick={()=>void save(false)}>저장</button><button className="primary" disabled={busy} onClick={()=>void save(true)}>{busy?"처리 중…":"확정하고 제작 시작"}</button></div>
       {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="brief"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 브리프 도착</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>브리프 채택</button><button onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}</>}</section>:null}
     {localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
     {jobOpen?<JobPrompt proc={jobOpen} targetId={selected?.id} onClose={()=>setJobOpen(null)} onSubmit={createJob}/>:null}</>;
 }
 
+const BRIEF_FIELDS=[["one","한 줄 주제"],["who","누구에게"],["message","핵심 메시지"],["sources","근거·자료"],["warn","주의할 표현"]] as const;
+// The topic's brief and sources stay readable after production starts, so a reviewer
+// checks the draft against the same evidence.
+function BriefPanel({topic}:{topic:OsRecord|undefined}){
+  if(!topic)return <div className="ca-v07-note">연결된 주제 브리프를 볼 수 없습니다.</div>;
+  const brief=(topic.metadata.brief??{}) as Record<string,unknown>;
+  return <details className="ca-v07-brief" open><summary>근거·브리프 · {topic.title} · v{topic.version}</summary>
+    <dl>{BRIEF_FIELDS.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{str(brief[key])||"—"}</dd></div>)}</dl>
+    {str(topic.metadata.sourceRef)?<p><small>출처 메모 · {str(topic.metadata.sourceRef)}</small></p>:null}</details>;
+}
+// One box per post. A line break inside a post is a paragraph; a new post comes only from "+ 글 추가".
+function ThreadPostsEditor({posts,setPosts,disabled}:{posts:string[];setPosts:(posts:string[])=>void;disabled:boolean}){
+  const problem=threadsPostsProblem(posts);
+  const update=(index:number,value:string)=>setPosts(posts.map((post,i)=>i===index?value:post));
+  const move=(index:number,step:number)=>{const next=[...posts];[next[index],next[index+step]]=[next[index+step],next[index]];setPosts(next);};
+  return <div className="ca-v07-thread-editor"><h3>글타래 · 글 {posts.length}개</h3>
+    <p><small>글 안의 줄바꿈은 문단입니다. 새 글은 ‘+ 글 추가’로만 만듭니다.</small></p>
+    {posts.map((post,index)=><div className="ca-v07-thread-post" key={index}>
+      <div className="ca-v07-thread-post-head"><strong>{index+1}번 글</strong><small>{threadsPostRole(posts,index)}</small>
+        <small className={threadsPostLength(post)>THREADS_POST_MAX?"ca-v07-error":""}>{threadsPostLength(post)}/{THREADS_POST_MAX}자</small>
+        <span><button type="button" aria-label={`${index+1}번 글 위로`} disabled={disabled||index===0} onClick={()=>move(index,-1)}>↑</button>
+          <button type="button" aria-label={`${index+1}번 글 아래로`} disabled={disabled||index===posts.length-1} onClick={()=>move(index,1)}>↓</button>
+          <button type="button" disabled={disabled} onClick={()=>setPosts(posts.filter((_,i)=>i!==index))}>글 삭제</button></span></div>
+      <textarea aria-label={`${index+1}번 글`} disabled={disabled} rows={Math.min(14,Math.max(3,post.split("\n").length+1))} value={post} onChange={event=>update(index,event.target.value)}/>
+    </div>)}
+    <button type="button" disabled={disabled} onClick={()=>setPosts([...posts,""])}>+ 글 추가</button>
+    {problem?<p className="ca-v07-error" role="alert">{problem}</p>:null}</div>;
+}
+// Mobile-width preview: each post is its own block with its paragraphs, replying to the one above.
+function ThreadsPreview({posts}:{posts:string[]}){
+  if(!posts.length)return <div className="ca-v07-preview">아직 글이 없습니다.</div>;
+  return <div className="ca-v07-thread-preview" aria-label="모바일 미리보기">{posts.map((post,index)=><div className="ca-v07-thread-bubble" key={index}>
+    <small>{index+1}/{posts.length} · {threadsPostRole(posts,index)} · {threadsPostLength(post)}자</small><p>{post}</p></div>)}</div>;
+}
+type CommentRow={id:string;author_name:string;content_version:number;body:string;created_at:string};
+function ReviewComments({item}:{item:OsRecord}){
+  const {accessToken}=useSession();
+  const [rows,setRows]=useState<CommentRow[]>([]),[body,setBody]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
+  const load=useCallback(async()=>{
+    if(!accessToken)return;
+    try{setRows((await apiRequest<{comments:CommentRow[]}>(`/api/v1/content/automation/items/${item.id}/comments`,{token:accessToken})).comments);setError("");}
+    catch(issue){setError(issue instanceof Error?issue.message:"검수 의견을 불러오지 못했습니다.");}
+  },[accessToken,item.id]);
+  useEffect(()=>{void load();},[load]);
+  const submit=async()=>{
+    if(busy||!body.trim())return;
+    setBusy(true);
+    try{await apiRequest(`/api/v1/content/automation/items/${item.id}/comment`,{method:"POST",token:accessToken,body:JSON.stringify({body})});setBody("");await load();}
+    catch(issue){setError(issue instanceof Error?issue.message:"검수 의견을 저장하지 못했습니다.");}
+    finally{setBusy(false);}
+  };
+  return <section className="ca-v07-comments"><h3>검수 의견 {rows.length}</h3>
+    {rows.map(row=><div className="ca-v07-note" key={row.id}><small><strong>{row.author_name}</strong> · v{row.content_version} · {DATE(row.created_at)}</small><p>{row.body}</p></div>)}
+    <label>의견 남기기<textarea rows={3} maxLength={3000} value={body} onChange={event=>setBody(event.target.value)} placeholder="사내 구성원 누구나 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검수자만 합니다."/></label>
+    <button type="button" disabled={busy||!body.trim()} onClick={()=>void submit()}>{busy?"남기는 중…":"의견 남기기"}</button>
+    {error?<p role="alert" className="ca-v07-error">{error}</p>:null}</section>;
+}
+function ReviewHistory({rows}:{rows:ReviewRow[]}){
+  if(!rows.length)return null;
+  return <section><h3>검수 이력</h3>{rows.map(row=><p className="ca-v07-note" key={row.id}>{row.result==="ready"?"승인":"수정 요청"} · {row.reviewer_name??"구성원"} · v{row.content_version} · {DATE(row.created_at)}{row.note?` · ${row.note}`:""}</p>)}</section>;
+}
+function ReviewerRoster({team,mutate}:{team:TeamInfo;mutate:ViewProps["mutate"]}){
+  const {accessToken}=useSession();
+  const [open,setOpen]=useState(false),[members,setMembers]=useState<{id:string;display_name:string;is_active:boolean}[]>([]),[target,setTarget]=useState(""),[error,setError]=useState("");
+  useEffect(()=>{if(!open||!accessToken||members.length)return;
+    void apiRequest<{members:{id:string;display_name:string;is_active:boolean}[]}>("/api/v1/members",{token:accessToken})
+      .then(result=>setMembers(result.members.filter(member=>member.is_active&&!member.id.startsWith("directory:")))).catch(()=>setError("구성원 목록을 불러오지 못했습니다."));},[open,accessToken,members.length]);
+  const save=async(action:"add"|"remove",userId:string)=>{
+    try{await mutate("/api/v1/content/automation/reviewers","POST",{action,userId});setTarget("");setError("");}
+    catch(issue){setError(issue instanceof Error?issue.message:"검수자를 저장하지 못했습니다.");}
+  };
+  return <div className="ca-v07-note"><small>팀 검수함 · 사내 구성원 누구나 열람·의견 · 수정·승인: 작성자와 지정 검수자 {team.reviewers.map(row=>row.name).join(", ")||"(없음)"}</small>
+    {team.canManage?<button type="button" onClick={()=>setOpen(!open)}>{open?"닫기":"검수자 관리"}</button>:null}
+    {open?<div className="ca-v07-actions">{team.reviewers.map(row=><button type="button" key={row.id} onClick={()=>void save("remove",row.id)}>{row.name} 빼기</button>)}
+      <select aria-label="검수자 추가" value={target} onChange={event=>setTarget(event.target.value)}><option value="">구성원 선택</option>{members.filter(member=>!team.reviewers.some(row=>row.id===member.id)).map(member=><option key={member.id} value={member.id}>{member.display_name}</option>)}</select>
+      <button type="button" disabled={!target} onClick={()=>void save("add",target)}>검수자로 지정</button></div>:null}
+    {error?<p role="alert" className="ca-v07-error">{error}</p>:null}</div>;
+}
+
 function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
   const router=useRouter(),search=useSearchParams(),channel=page==="cardnews"?"card":page;
   const {accessToken}=useSession();
-  const items=data.items.filter(row=>row.metadata.channel===channel);
-  const selected=items.find(row=>row.id===search.get("sel"))??null;
+  const all=data.items.filter(row=>row.metadata.channel===channel);
+  const selected=all.find(row=>row.id===search.get("sel"))??null;
   const missing=search.has("sel")&&!selected;
-  const locked=Boolean(selected&&["review","ready","scheduled","published"].includes(selected.status));
-  const [tab,setTab]=useState("all"),[title,setTitle]=useState(""),[body,setBody]=useState("");
+  // Threads has two boxes: my drafts (private unless shared) and the team inbox (shared drafts of anyone).
+  const scope=channel==="threads"&&(search.get("scope")==="team"||selected&&selected.owner_id!==data.me)?"team":"mine";
+  const items=all.filter(row=>scope==="team"?isTeam(row):row.owner_id===data.me);
+  const own=Boolean(selected&&selected.owner_id===data.me);
+  const canEdit=own||Boolean(selected&&isTeam(selected)&&data.team.canReview);
+  const statusLocked=Boolean(selected&&["review","ready","scheduled","published"].includes(selected.status));
+  const locked=statusLocked||!canEdit;
+  const [tab,setTab]=useState("all"),[title,setTitle]=useState(""),[body,setBody]=useState(""),[busy,setBusy]=useState(false);
   const [meta,setMeta]=useState<Record<string,unknown>>({}),[cutsText,setCutsText]=useState("[]");
   const [jobOpen,setJobOpen]=useState<string|null>(null),[error,setError]=useState(""),[videoFile,setVideoFile]=useState<File|null>(null),[uploading,setUploading]=useState(false);
   useEffect(()=>{setTitle(selected?.title??"");setBody(selected?.description??"");setMeta(selected?.metadata??{});
@@ -284,8 +395,18 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
   const filtered=items.filter(row=>tab==="all"||tab==="making"&&["draft","blocked"].includes(row.status)
     ||tab==="review"&&row.status==="review"||tab==="ready"&&["ready","scheduled"].includes(row.status)
     ||tab==="published"&&row.status==="published");
+  const posts=Array.isArray(meta.posts)?(meta.posts as unknown[]).map(post=>String(post)):[];
+  const postsProblem=channel==="threads"?threadsPostsProblem(posts):null;
+  // One click at a time: a slow response must not send the same request twice.
+  const once=async(work:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);try{await work();}finally{setBusy(false);}};
+  const act=(action:string,body:Record<string,unknown>={})=>once(async()=>{
+    if(!selected)return;
+    try{await mutate(`/api/v1/content/automation/items/${selected.id}/${action}`,"POST",body);setError("");}
+    catch(issue){setError(issue instanceof Error?issue.message:"저장하지 못했습니다.");}
+  });
   const save=async()=>{
     if(!selected)return false;
+    if(postsProblem){setError(postsProblem);return false;}
     try{
       const nextMeta={...meta};
       if(channel==="shorts")nextMeta.cuts=JSON.parse(cutsText);
@@ -293,13 +414,13 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
         expectedVersion:selected.version,title,description:body,metadata:nextMeta});setError("");return true;}
     catch(issue){setError(issue instanceof Error?issue.message:"저장하지 못했습니다.");return false;}
   };
-  const send=async()=>{
+  const send=()=>once(async()=>{
     if(!selected||!accessToken)return;
     try{if(!await save())return;const latest=await apiRequest<{record:OsRecord}>("/api/v1/content/automation/items/"+selected.id,{token:accessToken});
       await mutate("/api/v1/content/automation/items/"+selected.id+"/send-to-review","POST",{version:latest.record.version});
       router.push("/automation/review?sel="+selected.id);}
     catch(issue){setError(issue instanceof Error?issue.message:"최종 확인으로 보내지 못했습니다.");}
-  };
+  });
   const createJob=async(rush:boolean)=>{
     try{await mutate("/api/v1/content/automation/jobs","POST",{proc:jobOpen,targetId:selected?.id,rush});
       setJobOpen(null);if(rush)await navigator.clipboard.writeText(workerInstruction("now"));}
@@ -319,12 +440,22 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
     finally{setUploading(false);}
   };
   const tabs=[["all","전체"],["making","만드는 중"],["review","확인 대기"],["ready","발행 준비"],["published","게시됨"]];
+  const topic=selected?data.topics.find(row=>row.id===selected.parent_id&&row.owner_id===selected.owner_id):undefined;
+  const ownerName=(row:OsRecord)=>str((row as OsRecord&{owner_name?:string}).owner_name)||"작성자";
   return <><div className="ca-v07-toolbar"><span>확정한 주제에서 채널별 콘텐츠를 만듭니다.</span><Link href="/automation/topics">+ 확정한 주제에서 만들기</Link></div>
+    {channel==="threads"?<><Tabs base="/automation/threads" active={scope} tabs={[{id:"mine",label:"내 초안 "+all.filter(row=>row.owner_id===data.me).length},{id:"team",label:"팀 검수함 "+all.filter(isTeam).length}]} param="scope"/>
+      {scope==="team"?<ReviewerRoster team={data.team} mutate={mutate}/>:null}</>:null}
     <div className="ca-v07-tabs">{tabs.map(([key,label])=><button type="button" role="tab" aria-selected={tab===key} className={tab===key?"active":""} key={key} onClick={()=>setTab(key)}>{label} {items.filter(row=>key==="all"||key==="making"&&["draft","blocked"].includes(row.status)||key===row.status||key==="ready"&&row.status==="scheduled").length}</button>)}</div>
-    <div className="ca-v07-split"><section className="ca-v07-card"><h2>{PAGE_INFO[page].title} 목록</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}</small></span><Status value={row.status}/></button>):<Empty text="이 상태의 내 콘텐츠가 없습니다."/>}</section>
-      {selected?<section className="ca-v07-card ca-v07-edit"><div className="ca-v07-detail-head"><h2>{CHANNEL_LABELS[channel]} · v{selected.version}</h2><button onClick={()=>router.replace("/automation/"+page)}>닫기</button></div>
-        <p><Status value={selected.status}/> · {data.topics.find(row=>row.id===selected.parent_id)?.title??"주제 없음"}</p>
-        {locked?<div className="ca-v07-note">확인 중이거나 확인된 버전입니다. 내용을 바꾸면 다시 최종 확인을 거쳐야 합니다. {selected.status!=="published"?<button onClick={()=>void mutate("/api/v1/content/automation/items/"+selected.id+"/reopen","POST",{})}>다시 고치기</button>:null}</div>:null}
+    <div className="ca-v07-split"><section className="ca-v07-card"><h2>{scope==="team"?"팀 검수함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검수함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검수함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>
+      {selected?<section className="ca-v07-card ca-v07-edit"><div className="ca-v07-detail-head"><h2>{CHANNEL_LABELS[channel]} · v{selected.version}</h2><button onClick={()=>router.replace("/automation/"+page+(scope==="team"?"?scope=team":""))}>닫기</button></div>
+        <p><Status value={selected.status}/> · {topic?.title??"주제 없음"}{isTeam(selected)?` · 팀 검수함 · 작성 ${own?"나":ownerName(selected)}`:" · 나만 보임"}</p>
+        {channel==="threads"?<div className="ca-v07-actions">
+          {own&&!isTeam(selected)&&selected.status!=="published"?<button type="button" disabled={busy} onClick={()=>void act("share",{version:selected.version})}>팀 검수함에 공유</button>:null}
+          {isTeam(selected)&&selected.status!=="published"&&(data.team.canReview||own&&["draft","blocked"].includes(selected.status))?<button type="button" disabled={busy} onClick={()=>void act("unshare",{version:selected.version})}>공유 해제</button>:null}
+          {selected.status==="review"?<Link href={"/automation/review?sel="+selected.id}>검수 화면 →</Link>:null}</div>:null}
+        {!canEdit?<div className="ca-v07-note">팀 원고는 읽고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검수자만 합니다.</div>
+          :statusLocked?<div className="ca-v07-note">확인 중이거나 확인된 버전입니다. 내용을 바꾸면 다시 최종 확인을 거쳐야 합니다. {selected.status!=="published"?<button disabled={busy} onClick={()=>void act("reopen")}>다시 고치기</button>:null}</div>:null}
+        {channel==="threads"?<BriefPanel topic={topic}/>:null}
         <fieldset disabled={locked} className="ca-v07-fields"><label>제목<input value={title} onChange={event=>setTitle(event.target.value)}/></label>
         {channel==="card"?<><CardDetail meta={meta} setMeta={setMeta} templates={data.templates} assets={data.assets}/>
           <label>캡션<textarea rows={4} value={str(meta.caption)} onChange={event=>setMeta({...meta,caption:event.target.value})}/></label>
@@ -337,12 +468,16 @@ function ItemsView({page,data,mutate}:ViewProps&{page:AutomationPage}){
             <label>커버 이미지<select value={str(meta.coverAssetId)} onChange={event=>{const asset=data.assets.find(row=>row.id===event.target.value);setMeta({...meta,coverAssetId:asset?.id??"",coverPath:asset?.metadata.storagePath??"",coverLicense:asset?.metadata.license??{source:"unknown"},coverConsent:asset?.metadata.consent??{}});}}><option value="">내 이미지에서 선택</option>{data.assets.map(row=><option key={row.id} value={row.id}>{row.title} · {str((row.metadata.license as Record<string,unknown>|undefined)?.source)||"불명"}</option>)}</select></label>
             <label>음원 출처<input value={str(meta.bgmSource)} onChange={event=>setMeta({...meta,bgmSource:event.target.value})}/></label>
             <button onClick={()=>setJobOpen("shorts-cut")}>내 AI로 컷 구성 받기</button><button onClick={()=>setJobOpen("shorts-desc")}>내 AI로 설명 받기</button></>
-          :<><label>글타래 · 한 줄에 한 글<textarea rows={10} value={Array.isArray(meta.posts)?meta.posts.join("\n"):body} onChange={event=>setMeta({...meta,posts:event.target.value.split("\n")})}/></label>
-            {(Array.isArray(meta.posts)?meta.posts:[]).map((post,i)=><small key={i} className={String(post).length>500?"ca-v07-error":""}>{i+1}번 글 {String(post).length}/500자</small>)}
-            <button onClick={()=>setJobOpen("threads")}>내 AI로 초안 받기</button></>}</fieldset>
-        {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]}</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button onClick={()=>void mutate("/api/v1/content/automation/items/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button onClick={()=>void mutate("/api/v1/content/automation/items/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}
-        <div className="ca-v07-actions"><button onClick={()=>void save()} disabled={locked}>저장</button>
-          <button className="primary" onClick={()=>void send()} disabled={locked}>최종 확인으로 보내기</button></div></section>
+          :<><ThreadPostsEditor posts={posts} setPosts={next=>setMeta({...meta,posts:next})} disabled={locked}/>
+            {own?<button onClick={()=>setJobOpen("threads")}>내 AI로 초안 받기</button>:null}</>}</fieldset>
+        {channel==="threads"?<><h3>모바일 미리보기</h3><ThreadsPreview posts={posts}/></>:null}
+        {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.owner_id===selected.owner_id&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]} · 미승인</strong>
+          {job.metadata.proc==="threads"&&Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.posts)?<ThreadsPreview posts={((job.metadata.result as {posts:unknown[]}).posts).map(post=>String(post))}/>:<pre>{JSON.stringify(job.metadata.result,null,2)}</pre>}
+          {canEdit?<><button disabled={busy} onClick={()=>void act("adopt",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button disabled={busy} onClick={()=>void act("reject",{jobId:job.id,version:selected.version})}>채택 안 함</button></>:null}</div>)}
+        {canEdit?<div className="ca-v07-actions"><button onClick={()=>void once(save)} disabled={locked||busy||Boolean(postsProblem)}>저장</button>
+          <button className="primary" onClick={()=>void send()} disabled={locked||busy||Boolean(postsProblem)}>최종 확인으로 보내기</button></div>:null}
+        {channel==="threads"?<ReviewHistory rows={data.reviews.filter(row=>row.publish_record_id===selected.id)}/>:null}
+        {isTeam(selected)?<ReviewComments item={selected}/>:null}</section>
       :missing?<div className="ca-v07-note" role="status">찾을 수 없는 콘텐츠입니다. <Link href="/automation/dashboard">자동화 현황으로 →</Link></div>:<Empty text="목록에서 콘텐츠를 선택해 주세요."/>}</div>
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}
     {jobOpen?<JobPrompt proc={jobOpen} targetId={selected?.id} onClose={()=>setJobOpen(null)} onSubmit={createJob}/>:null}</>;
@@ -432,32 +567,41 @@ function ReviewView({data,mutate}:ViewProps){
   const selected=rows.find(row=>row.id===search.get("sel"))??null;
   useEffect(()=>{if(selected){setChecked([]);setNote("");setTab(selected.status==="blocked"?"blocked":["ready","scheduled"].includes(selected.status)?"ready":"review");}},[selected]);
   const shown=rows.filter(row=>tab==="ready"?["ready","scheduled"].includes(row.status):row.status===tab);
+  // My own private drafts I approve myself; a shared (team inbox) draft only a named reviewer approves.
+  const mayReview=Boolean(selected&&(isTeam(selected)?data.team.canReview:selected.owner_id===data.me));
+  const [busy,setBusy]=useState(false);
   const unknown=Number((selected?.metadata.licenseSummary as Record<string,unknown>|undefined)?.unknown??0);
   const shortsBlocked=selected?.metadata.channel==="shorts"&&(
     !selected.metadata.mp4Path||!selected.metadata.mp4Source||!selected.metadata.coverPath
     ||!selected.metadata.bgmSource||!selected.metadata.coverLicense
     ||(selected.metadata.coverLicense as Record<string,unknown>).source==="unknown");
   const review=async(result:"ready"|"changes")=>{
-    if(!selected)return;
+    if(!selected||busy)return;
+    setBusy(true);
     try{await mutate("/api/v1/content/automation/items/"+selected.id+"/review","POST",{
       result,version:selected.version,note:result==="changes"?note:undefined,
       checks:DIRECT_CHECKS.map(([key])=>({key,ok:checked.includes(key),by:"me"}))});
-      setError("");if(result==="ready")router.push("/automation/calendar?pub="+selected.id);}
+      setError("");if(result==="ready"&&selected.owner_id===data.me)router.push("/automation/calendar?pub="+selected.id);}
     catch(issue){setError(issue instanceof Error?issue.message:"확인을 저장하지 못했습니다.");}
+    finally{setBusy(false);}
   };
   return <><Tabs base="/automation/review" active={tab} tabs={[{id:"review",label:"확인 대기 "+rows.filter(row=>row.status==="review").length},
     {id:"blocked",label:"고칠 것 "+rows.filter(row=>row.status==="blocked").length},
     {id:"ready",label:"발행 준비·게시 예정 "+rows.filter(row=>["ready","scheduled"].includes(row.status)).length}]}/>
     <div className="ca-v07-toolbar"><select value={channel} onChange={event=>setChannel(event.target.value)} aria-label="채널 선택"><option value="all">전체 채널</option>{CHANNELS.map(value=><option key={value} value={value}>{CHANNEL_LABELS[value]}</option>)}</select></div>
-    <div className="ca-v07-split"><section className="ca-v07-card"><h2>내 콘텐츠</h2>{shown.length?shown.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/review?tab="+tab+"&sel="+row.id)}><span><strong>{row.title}</strong><small>{CHANNEL_LABELS[str(row.metadata.channel)]} · v{row.version} · {row.due_date??"마감 없음"}</small></span><Status value={row.status}/></button>):<Empty text="이 상태의 내 콘텐츠가 없습니다."/>}</section>
+    <div className="ca-v07-split"><section className="ca-v07-card"><h2>내 콘텐츠 · 팀 검수함</h2>{shown.length?shown.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/review?tab="+tab+"&sel="+row.id)}><span><strong>{row.title}</strong><small>{CHANNEL_LABELS[str(row.metadata.channel)]} · v{row.version} · {row.due_date??"마감 없음"}{isTeam(row)?" · 팀 검수함"+(row.owner_id===data.me?"":" · 작성 "+(str((row as OsRecord&{owner_name?:string}).owner_name)||"구성원")):""}</small></span><Status value={row.status}/></button>):<Empty text="이 상태의 콘텐츠가 없습니다."/>}</section>
       {selected?<section className="ca-v07-card"><h2>{selected.title}</h2><p><Status value={selected.status}/> · v{selected.version} · <Link href={"/automation/"+(selected.metadata.channel==="card"?"cardnews":selected.metadata.channel)+"?sel="+selected.id}>편집 화면 →</Link></p>
-        <div className="ca-v07-preview">{selected.metadata.channel==="threads"?String((selected.metadata.posts as string[]|undefined)?.join("\n\n")??selected.description):selected.metadata.channel==="shorts"?"쇼츠 MP4 · 커버: "+(selected.metadata.coverPath?"준비됨":"없음"):String(selected.metadata.caption??selected.description??"미리보기 없음")}</div>
+        {selected.metadata.channel==="threads"?<><ThreadsPreview posts={Array.isArray(selected.metadata.posts)?(selected.metadata.posts as unknown[]).map(post=>String(post)):[]}/>
+          <BriefPanel topic={data.topics.find(row=>row.id===selected.parent_id&&row.owner_id===selected.owner_id)}/></>:
+        <div className="ca-v07-preview">{selected.metadata.channel==="shorts"?"쇼츠 MP4 · 커버: "+(selected.metadata.coverPath?"준비됨":"없음"):String(selected.metadata.caption??selected.description??"미리보기 없음")}</div>}
         <h3>자동 검사</h3><div className="ca-v07-note">이미지 라이선스 불명 {unknown}곳 · 넘침 {Number(selected.metadata.overflowSlots??0)}곳 {selected.metadata.channel==="shorts"?"· MP4 "+(selected.metadata.mp4Path?"준비됨":"없음")+" · 커버 "+(selected.metadata.coverPath?"준비됨":"없음"):""} {shortsBlocked?"· 쇼츠 출처·라이선스를 확인해 주세요.":""}</div>
-        <h3>AI 자가검수</h3>{data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="review"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>자가검수 결과</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre></div>)}<button onClick={()=>setJobOpen(true)}>자가검수 다시 받기</button>
+        <h3>AI 자가검수</h3>{data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="review"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>자가검수 결과</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre></div>)}{selected.owner_id===data.me?<button onClick={()=>setJobOpen(true)}>자가검수 다시 받기</button>:null}
         <h3>직접 확인 5개</h3>{DIRECT_CHECKS.map(([key,label])=><label className="ca-v07-check" key={key}><input type="checkbox" checked={checked.includes(key)} onChange={event=>setChecked(event.target.checked?[...checked,key]:checked.filter(value=>value!==key))}/>{label}</label>)}
         <label>고칠 점<textarea value={note} onChange={event=>setNote(event.target.value)} placeholder="고칠 것으로 표시할 때 이유를 남겨 주세요."/></label>
-        {data.reviews.filter(row=>row.publish_record_id===selected.id).map(row=><p className="ca-v07-note" key={row.id}>확인 기록 · {DATE(row.created_at)} · v{row.content_version} · {row.result}</p>)}
-        {selected.status==="review"?<div className="ca-v07-actions"><button onClick={()=>void review("changes")} disabled={!note.trim()}>고칠 것으로 표시</button><button className="primary" onClick={()=>void review("ready")} disabled={checked.length!==5||unknown>0||Boolean(shortsBlocked)}>발행 준비로</button></div>:null}</section>
+        <ReviewHistory rows={data.reviews.filter(row=>row.publish_record_id===selected.id)}/>
+        {!mayReview?<div className="ca-v07-note">팀 검수함 원고는 지정 검수자({data.team.reviewers.map(row=>row.name).join(", ")||"없음"})만 승인하거나 수정 요청할 수 있습니다. 의견은 누구나 남길 수 있습니다.</div>:null}
+        {selected.status==="review"&&mayReview?<div className="ca-v07-actions"><button onClick={()=>void review("changes")} disabled={busy||!note.trim()}>{isTeam(selected)?"수정 요청":"고칠 것으로 표시"}</button><button className="primary" onClick={()=>void review("ready")} disabled={busy||checked.length!==5||unknown>0||Boolean(shortsBlocked)}>{isTeam(selected)?"승인 (발행은 따로)":"발행 준비로"}</button></div>:null}
+        {isTeam(selected)?<ReviewComments item={selected}/>:null}</section>
       :<Empty text="확인할 콘텐츠를 선택해 주세요."/>}</div>
     {jobOpen?<JobPrompt proc="review" targetId={selected?.id} onClose={()=>setJobOpen(false)} onSubmit={async rush=>{if(!selected)return;try{await mutate("/api/v1/content/automation/jobs","POST",{proc:"review",targetId:selected.id,rush});setJobOpen(false);}catch(issue){setError(issue instanceof Error?issue.message:"AI 작업을 만들지 못했습니다.");}}}/>:null}
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}</>;

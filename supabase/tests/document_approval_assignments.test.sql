@@ -1,4 +1,5 @@
--- Run only in approved DEV after the additive migration. All fixture writes roll back.
+-- Run only in approved DEV after the additive migration (and 20261018100000, which lets approvers
+-- approve their own work). All fixture writes roll back.
 begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions, auth;
@@ -19,9 +20,9 @@ insert into public.os_records(id,record_type,title,status,owner_id,created_by,me
  '00000000-0000-4000-8000-000000003001','00000000-0000-4000-8000-000000003001',
  '{"packageKind":"appeal_candidates","candidateSetVersion":"v1","result":{"candidates":[{"text":"A"}]}}'::jsonb);
 
-select is(public.os_can_approve('00000000-0000-4000-8000-000000003001','00000000-0000-4000-8000-000000003001'),false,'author cannot approve own document');
+select is(public.os_can_approve('00000000-0000-4000-8000-000000003001','00000000-0000-4000-8000-000000003001'),false,'author without approval authority cannot approve own document');
 select is(public.os_can_approve('00000000-0000-4000-8000-000000003002','00000000-0000-4000-8000-000000003001'),true,'admin is fallback when approver list is empty');
-select is(public.os_can_approve('00000000-0000-4000-8000-000000003002','00000000-0000-4000-8000-000000003002'),false,'admin cannot approve own document');
+select is(public.os_can_approve('00000000-0000-4000-8000-000000003002','00000000-0000-4000-8000-000000003002'),true,'fallback admin may approve own document');
 
 insert into public.os_approval_assignments(id,user_id,kind,created_by) values
 ('00000000-0000-4000-8000-000000003005','00000000-0000-4000-8000-000000003002','approver','00000000-0000-4000-8000-000000003002');
@@ -30,7 +31,7 @@ select is(public.os_can_approve('00000000-0000-4000-8000-000000003002','00000000
 insert into public.os_approval_assignments(id,user_id,kind,delegated_by,starts_on,ends_on,created_by) values
 ('00000000-0000-4000-8000-000000003006','00000000-0000-4000-8000-000000003003','delegate','00000000-0000-4000-8000-000000003002',current_date,current_date + 1,'00000000-0000-4000-8000-000000003002');
 select is(public.os_can_approve('00000000-0000-4000-8000-000000003003','00000000-0000-4000-8000-000000003001'),true,'dated delegate can approve someone else');
-select is(public.os_can_approve('00000000-0000-4000-8000-000000003003','00000000-0000-4000-8000-000000003003'),false,'delegate cannot approve own document');
+select is(public.os_can_approve('00000000-0000-4000-8000-000000003003','00000000-0000-4000-8000-000000003003'),true,'delegate may approve own document');
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub','00000000-0000-4000-8000-000000003003',true);

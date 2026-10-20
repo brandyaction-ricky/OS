@@ -65,6 +65,8 @@ export async function prepareMeetingBrief(
       .select("title,content_md,updated_at")
       .like("folder", `02_Wiki/${business.wikiFolderSegment}/운영/주간회의요약%`)
       .neq("status", "archived")
+      // Shared with Telegram chats as well: never a restricted canonical summary.
+      .eq("reader_scope", "all")
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
