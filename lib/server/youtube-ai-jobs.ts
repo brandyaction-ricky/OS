@@ -91,7 +91,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let myinRunId: string | undefined;
   let note = "";
   if (input.task === "storyboard") {
-    const myin = await myinRunWithWords(service(), input.sourceId, actor.id);
+    const myin = await myinRunWithWords(service(), input.sourceId);
     if (myin.record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_READY_FOR_STORYBOARD", "받아쓰기가 끝났고 확인 중인 기획표가 없을 때 보낼 수 있습니다.");
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
     const state = await readPipeline(actor, input.sourceId);
@@ -178,7 +178,7 @@ async function currentInput(job: OsRecord) {
 /** The v13 run and its frozen transcription for a storyboard job; closed when the run moved on (new voice, or a storyboard already in review). */
 async function currentStoryboardInput(job: OsRecord) {
   const m = meta(job);
-  const myin = await myinRunWithWords(service(), m.sourceId, job.owner_id ?? "").catch(() => null);
+  const myin = await myinRunWithWords(service(), m.sourceId).catch(() => null);
   const note = myin?.run.review?.decision === "revise" ? myin.run.review.note : "";
   if (!myin || myin.record.id !== m.myinRunId || myin.record.stage !== "words_ready" || myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note) !== m.inputKey) return closeStale(job, m);
   return myin;
