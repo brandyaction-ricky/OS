@@ -35,3 +35,5 @@ jobs:
           HR_WORKSPACE_ENABLED: "true"
           HR_E2E_DEMO: "true"
           NEXT_PUBLIC_DEMO_MODE: "true"
+      - name: Verify meeting recording across menu navigation
+        run: npx playwright test --config playwright.recording.config.ts
