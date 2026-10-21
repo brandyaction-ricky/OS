@@ -1020,3 +1020,16 @@
 .linear-shell .ui-v2.yp.yp-w-m>:not(.yp-flow):not(dialog){max-width:960px}
 .linear-shell .ui-v2.yp.yp-w-l>:not(.yp-flow):not(dialog){max-width:1360px}
 .linear-shell .ui-v2.yp [data-ui="guide-strip"]{display:none}
+/* 주제 찾기 (owner request 2026-10-21): search, category chips, niche topics, reference video cards */
+.linear-shell .ui-v2.yp .yp-disc-search{position:relative;display:flex;gap:8px;margin:0 0 10px}
+.linear-shell .ui-v2.yp .yp-disc-search .yp-i{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.linear-shell .ui-v2.yp .yp-disc-search .yp-in{flex:1;height:40px;padding-left:34px;font-size:14px}
+.linear-shell .ui-v2.yp .yp-disc-search .yp-btn{height:40px}
+.linear-shell .ui-v2.yp .yp-disc-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 0 10px}
+.linear-shell .ui-v2.yp .yp-ref-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.linear-shell .ui-v2.yp .yp-ref{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;min-width:0}
+.linear-shell .ui-v2.yp .yp-ref-thumb{position:relative;display:block;aspect-ratio:16/9;background:var(--media-bg) center/cover no-repeat}
+.linear-shell .ui-v2.yp .yp-ref-thumb span{position:absolute;right:6px;bottom:6px;padding:1px 6px;border-radius:4px;background:color-mix(in srgb,var(--media-shadow) 70%,transparent);color:var(--media-text);font-size:11px}
+.linear-shell .ui-v2.yp .yp-ref-b{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px 12px;font-size:12px}
+.linear-shell .ui-v2.yp .yp-ref-t{color:var(--text);font-size:13px;font-weight:700;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.linear-shell .ui-v2.yp .yp-ref-b .yp-row-btns{margin-top:6px}
