@@ -86,7 +86,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
       // 주제 찾기 › [이 영상으로 새 프로젝트] opens here with the found video as the first reference.
       const found = parseYoutubeRef(params.get("ref") ?? "");
       const ref = found ? { ...found, title: params.get("refTitle")?.slice(0, 200) || undefined } : null;
-      setLoading(false); setForm(current => ({ ...current, assigneeId: current.assigneeId ?? profile?.id ?? null, refs: ref && !current.refs.some(row => row.url === ref.url) ? [ref, ...current.refs] : current.refs })); return;
+      // 틈새 › [기획으로 넘기기] also hands over its name as the 주제 and the title formula as the first 전달 사항.
+      setLoading(false); setForm(current => ({ ...current, title: current.title || params.get("title")?.slice(0, 120) || "", note: current.note || params.get("note")?.slice(0, 2000) || "", assigneeId: current.assigneeId ?? profile?.id ?? null, refs: ref && !current.refs.some(row => row.url === ref.url) ? [ref, ...current.refs] : current.refs })); return;
     }
     if (!force && loadedId.current === projectParam) return;
     const found = await client.get(projectParam);

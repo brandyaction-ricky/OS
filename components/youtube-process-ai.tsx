@@ -8,8 +8,11 @@ import type { YpPage } from "./youtube-process-frame";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "script" | "kit" | "plan" | "shorts" | "short";
+type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche";
+/** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
+type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
+  niche: { name: "틈새 묶기", skill: "OS가 보낸 묶기 규칙", reads: "터진 영상(채널 평소의 2배 이상) 제목 · 채널 · 배수", result: "같은 제목 공식끼리 묶은 틈새 → 틈새 판 (OS가 채널 수를 세어 확인된 주제 · 지켜보는 것 · 혼자 터뜨린 것으로 나눔)" },
   short: { name: "숏폼 장면 쓰기", skill: "숏폼 · 쇼츠 정본 · (광고) 소구점 정본 (OS 문서)", reads: "주제 · 무엇을 만들지(용도 · 길이 · 상품 · 행동 · 근거)", result: "(광고) 구매 이유 후보 + 장면 3~8개(자막 · 내레이션 · 필요한 이미지) → 장면 칸 (사람이 이미지를 넣고 다듬음)" },
   shorts: { name: "쇼츠 구간 제안", skill: "숏폼 · 쇼츠 정본 (OS 문서)", reads: "최종본 자막(SRT) · 컨펌된 제목", result: "쇼츠 구간 5개 안팎(시작 · 끝 · 제목 · 첫 문장) → 쇼츠 구간 목록 (사람이 채택)" },
   plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 (OS 문서)", reads: "주제 · 정밀 타겟 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
@@ -20,7 +23,7 @@ const since = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() -
 const agoLabel = (minutes: number) => minutes < 1 ? "방금" : minutes < 90 ? `${minutes}분 전` : `${Math.round(minutes / 60)}시간 전`;
 
 /** The latest job of one kind for this project, refreshed every 20 seconds while it is open. */
-export function useStaffJob(page: YpPage, task: Task, onDone: () => void) {
+export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
   const [status, setStatus] = useState<StaffJobStatus | null>(null);
   const [available, setAvailable] = useState(true);
   const projectId = page.bundle?.project.id;
@@ -61,7 +64,7 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
 
 /** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
 export function SendDialog({ page, task, open, onClose, job, defaults }: {
-  page: YpPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
+  page: JobPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<"queue" | "now" | "paste">("queue");
@@ -97,7 +100,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
       await apiRequest("/api/v1/content/youtube-automation/script", { method: "POST", token: page.accessToken,
         body: JSON.stringify({ sourceId: projectId, action: "submit", expectedVersion: page.bundle.project.version, targetMinutes: minutes, bundle: { ...paste, canonBundle: "" } }) });
       setPaste({ manuscript: "", materials: "", axis: "", design: "", review: "" });
-      onClose(); await page.reload();
+      onClose(); await page.reload?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "넣지 못했어요."); } finally { setBusy(false); }
   };
   const tabs: ["queue" | "now" | "paste", string][] = [["queue", "대기열에 두기 (권장)"], ["now", "지금 실행"], ...(task === "script" ? [["paste", "복사해서 처리"] as ["paste", string]] : [])];

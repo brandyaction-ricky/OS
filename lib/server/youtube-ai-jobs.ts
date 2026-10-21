@@ -17,6 +17,8 @@ import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtub
 import { assertV1PlanInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Plan, saveV1Shorts, v1PlanCard, v1PlanInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
 import { assertShortJobOpen, checkShortResult, saveShortJob, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
 import { procedureRefs } from "./content-generation";
+import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
+import type { NicheVideo } from "@/lib/youtube-process/discover";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -25,14 +27,14 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30 } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30 } as const;
 const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
-  kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)" } as const;
+  kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", niche: "틈새 묶기(같은 제목 공식)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -55,6 +57,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("shorts"), sourceId: z.string().uuid(), count: z.number().int().min(1).max(12).default(5) }).strict(),
   // 유튜브 공정 v1 숏폼: 구매 이유 (광고) and the scenes, from the topic and what to make.
   z.object({ task: z.literal("short"), sourceId: z.string().uuid() }).strict(),
+  // 주제 찾기 › 틈새: 터진 영상 grouped by title formula; the source is the shared board.
+  z.object({ task: z.literal("niche"), sourceId: z.string().uuid() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -66,6 +70,8 @@ export const staffJobWorkerSchema = z.discriminatedUnion("action", [
 const service = () => createServiceSupabase();
 const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "AI 작업을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 const meta = (job: OsRecord) => jobMetaSchema.parse(job.metadata) as JobMeta;
+/** A 틈새 job carries the videos it was asked to group, frozen when it was requested. */
+const jobPool = (m: JobMeta) => (m.pool ?? []) as NicheVideo[];
 const leaseLive = (value?: JobMeta["lease"]) => Boolean(value && Date.parse(value.expiresAt) > Date.now());
 
 /** What the 영상 제작 screen shows for a job: never the lease token. */
@@ -103,7 +109,13 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
   let note = "";
-  if (input.task === "storyboard") {
+  let pool: NicheVideo[] | undefined;
+  if (input.task === "niche") {
+    if (input.sourceId !== NICHE_BOARD_ID) throw new ApiError(404, "NICHE_BOARD_NOT_FOUND", "틈새 판을 찾지 못했어요.");
+    pool = await nichePool(service());
+    if (pool.length < 3) throw new ApiError(409, "NICHE_POOL_TOO_SMALL", "터진 영상이 3개 이상 모이면 묶을 수 있어요. 먼저 터진 영상을 찾아 주세요.");
+    source = await nicheBoardRecord(service(), actor); title = "주제 찾기 · 틈새"; inputKey = nicheInputKey(pool);
+  } else if (input.task === "storyboard") {
     const myin = await myinRunWithWords(service(), input.sourceId);
     if (myin.record.stage !== "words_ready") throw new ApiError(409, "MYIN_NOT_READY_FOR_STORYBOARD", "받아쓰기가 끝났고 확인 중인 기획표가 없을 때 보낼 수 있습니다.");
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
@@ -152,7 +164,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const now = new Date().toISOString();
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
-      : { targetMinutes, role, ...(attachments ? { attachments } : {}) }) };
+      : { targetMinutes, role, ...(attachments ? { attachments } : {}) }), ...(pool ? { pool } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
@@ -278,6 +290,10 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
         note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes }) };
   }
+  if (m.task === "niche") {
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: nicheJobCard(jobPool(m), minutes) };
+  }
   if (m.task === "shorts") {
     const state = await currentShortsInput(job);
     const lease = await take();
@@ -335,6 +351,12 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   const job = await ownJob(agent, input.jobId);
   const m = liveLease(job, input.lease);
   if (m.task === "script") return completeScriptJob(agent, job, m, input);
+  if (m.task === "niche") {
+    const clusters = await keepIssues(job, m, () => checkNicheResult(input.result, jobPool(m)));
+    const saved = await saveNicheBoard(service(), clusters, { ownerId: agent.ownerId, name: await displayName(service(), agent.ownerId, agent.name), model: input.model });
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, ...saved, next: "팀이 유튜브 공정 › 주제 찾기 › 틈새에서 기획으로 넘길지 정합니다." };
+  }
   if (m.task === "shorts") {
     const state = await currentShortsInput(job);
     const saved = await keepIssues(job, m, () => saveV1Shorts(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id }));
