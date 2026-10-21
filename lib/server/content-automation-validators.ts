@@ -1,3 +1,4 @@
+import { parseShortformBrief } from "@/lib/shortform-production";
 import { ApiError } from "@/lib/http";
 import { threadsPostsProblem } from "@/lib/threads-posts";
 
@@ -58,6 +59,7 @@ export function validatePersonalTemplate(metadata:Record<string,unknown>,ownerId
 
 export function validatePersonalItem(metadata:Record<string,unknown>,channel:string,ownerId:string){
   if(metadata.channel!==channel)throw new ApiError(422,"CHANNEL_IMMUTABLE","채널을 바꿀 수 없습니다.");
+  if(channel==="shorts"&&metadata.shortformBrief!==undefined)parseShortformBrief(metadata.shortformBrief);
   if(channel==="threads"){
     const problem=threadsPostsProblem(metadata.posts);
     if(problem)throw new ApiError(422,"THREADS_POSTS_INVALID",problem);

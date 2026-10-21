@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidateShortformVideo } from "@/lib/server/shortform-production";
 import { z, ZodError } from "zod";
 import { ApiError,apiErrorResponse,parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
@@ -71,8 +72,10 @@ export async function PATCH(request:Request,{params}:Params){
           ||typeof metadata.slug!=="string"||!/^([a-z0-9]+)(-[a-z0-9]+)*$/.test(metadata.slug))
           throw new ApiError(422,"SKILL_FIELDS_INVALID","공정과 영문 소문자 스킬 이름을 확인해 주세요.");
       }
-      changes.metadata=metadata;
+      changes.metadata=resource==="items"?invalidateShortformVideo(current,metadata,input.description):metadata;
     }
+    if(resource==="items"&&!input.metadata&&input.description!==undefined)
+      changes.metadata=invalidateShortformVideo(current,current.metadata,input.description);
     const record=await updatePersonalRecord(actor,current,changes,{team:!access.own});
     return NextResponse.json({record});
   }catch(error){

@@ -1,3 +1,4 @@
+import { assertShortformJobCurrent,shortformJobInput,shortformInputKey } from "./shortform-production";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import type { OsRecord, RecordType } from "@/lib/record-types";
@@ -235,13 +236,15 @@ export async function createJob(actor:RequestActor,input:{
   if(!AUTOMATION_PROCS.includes(input.proc))throw new ApiError(422,"INVALID_PROCESS","공정을 확인해 주세요.");
   const target=input.targetId?await getPersonalRecord(actor,input.targetId):null;
   const sub=input.sub??"";
+  const shortformInput=target?shortformJobInput(target,input.proc,sub):null;
+  if(!target&&["shorts-cut","shorts-desc"].includes(input.proc))throw new ApiError(422,"SHORTFORM_TARGET_REQUIRED","숏폼 카드를 먼저 선택해 주세요.");
   let open=db.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",ownerId)
     .eq("metadata->>space","personal").eq("metadata->>proc",input.proc)
     .eq("metadata->>sub",sub).in("status",["backlog","active"]).is("archived_at",null);
   open=input.targetId?open.eq("metadata->>targetId",input.targetId):open.is("metadata->>targetId",null);
   const {data:existing,error:readError}=await open.limit(1).maybeSingle();
   if(readError)throw new ApiError(503,"JOB_CHECK_FAILED","기존 작업을 확인하지 못했습니다.");
-  if(existing)return {job:existing as OsRecord,reused:true};
+  if(existing){if(target)assertShortformJobCurrent(target,existing as OsRecord);return {job:existing as OsRecord,reused:true};}
   const {data:skill,error:skillError}=await db.from("os_records").select("id,version")
     .eq("record_type","skill").eq("owner_id",ownerId).eq("metadata->>space","personal")
     .eq("metadata->>process",input.proc).eq("metadata->>active","true")
@@ -256,7 +259,7 @@ export async function createJob(actor:RequestActor,input:{
     metadata:{space:"personal",proc:input.proc,targetId:input.targetId??null,sub,
       fix:input.fix??"",rush:input.rush===true,attempt:0,
       skillId:skill?.id??null,skillVersion:skill?.version??null,
-      createdVia:"automation-v07"},
+      createdVia:"automation-v07",...(shortformInput?{shortformInput,shortformInputKey:shortformInputKey(shortformInput)}:{})},
   }).select("*").single();
   if(error?.code==="23505") {
     let retryQuery=db.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",ownerId)
@@ -264,7 +267,7 @@ export async function createJob(actor:RequestActor,input:{
       .eq("metadata->>sub",sub).in("status",["backlog","active"]).is("archived_at",null);
     retryQuery=input.targetId?retryQuery.eq("metadata->>targetId",input.targetId):retryQuery.is("metadata->>targetId",null);
     const retry=await retryQuery.limit(1).maybeSingle();
-    if(retry.data)return {job:retry.data as OsRecord,reused:true};
+    if(retry.data){if(target)assertShortformJobCurrent(target,retry.data as OsRecord);return {job:retry.data as OsRecord,reused:true};}
   }
   if(error||!data)throw new ApiError(503,"JOB_CREATE_FAILED","AI 작업을 대기열에 넣지 못했습니다.");
   return {job:data as OsRecord,reused:false};

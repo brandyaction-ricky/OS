@@ -1,4 +1,4 @@
-import { ACCOUNT_PAGE, findPage, NAV_STAGES } from "./navigation";
+import { ACCOUNT_PAGE, findPage, NAV_STAGES, YOUTUBE_V1_HREFS } from "./navigation";
 
 export interface MenuAccessPolicy {
   member_id: string;
@@ -23,6 +23,8 @@ const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
   "/automation/settings": ["/automation/templates"],
   "/automation/performance": ["/content/comments"],
 };
+// 유튜브 공정 v1 screens open for anyone allowed any existing YouTube process screen (지시서 5-3).
+const YOUTUBE_PROCESS_HREFS = NAV_STAGES.find(stage => stage.id === "content")!.pages.map(page => page.href);
 
 /** Navigation preferences never grant document, finance, or mutation privileges. */
 export function canOpenMenu(profile: MenuAccessProfile | null, href: string, allowed: string[] | null = null) {
@@ -38,7 +40,7 @@ export function canOpenMenu(profile: MenuAccessProfile | null, href: string, all
   // detail route. This is navigation only: document-level authorization stays server-side.
   if (href.split(/[?#]/)[0].startsWith("/knowledge/doc/") && allowed?.some(menu => ["/knowledge/vault", "/knowledge/notes", "/knowledge/docs", "/knowledge/canon", "/knowledge/review", "/knowledge/search", "/knowledge/graph"].includes(menu))) return true;
   if (canonical === "/knowledge/vault" && allowed?.some(menu => LEGACY_DOCUMENT_MENUS.includes(menu))) return true;
-  return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || AUTOMATION_PERMISSION_ALIASES[canonical]?.some(previous => allowed.includes(previous)) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
+  return REQUIRED_MENUS.includes(canonical) || allowed === null || allowed.includes(canonical) || AUTOMATION_PERMISSION_ALIASES[canonical]?.some(previous => allowed.includes(previous)) || (YOUTUBE_V1_HREFS.includes(canonical) && YOUTUBE_PROCESS_HREFS.some(previous => allowed.includes(previous))) || (href.split(/[?#]/)[0] === "/knowledge/search" && allowed.includes("/knowledge/search")) || (companyDocument && allowed.includes("/knowledge"));
 }
 
 export function availableMenuGroups(profile: MenuAccessProfile, hrEnabled = false) {

@@ -152,3 +152,13 @@ test("disabled HR rollout leaves existing menu configuration choices unchanged",
   assert.ok(access.availableMenuGroups(profile).every(g => !g.requiresHr));
   assert.equal(access.availableMenuGroups(profile, true).filter(g => g.requiresHr).length, 1);
 });
+
+test("유튜브 공정 v1 screens open for anyone allowed any existing YouTube process screen (navigation only)", () => {
+  for (const href of navigation.YOUTUBE_V1_HREFS) {
+    assert.equal(access.canOpenMenu(member, href, ["/content/scripts"]), true, href);
+    assert.equal(access.canOpenMenu(member, href, ["/content/video"]), true, href);
+    assert.equal(access.canOpenMenu(member, href, ["/automation/topics"]), false, href);
+    assert.equal(access.canOpenMenu({ ...member, role: "admin" }, href, []), true, href);
+    assert.equal(access.canOpenMenu({ ...member, isActive: false }, href, null), false, href);
+  }
+});

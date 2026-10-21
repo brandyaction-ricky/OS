@@ -563,6 +563,12 @@ export async function getContentMediaUrl(token: string | null, path: string) {
   return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/content/media?path=${encodeURIComponent(path)}`, { token });
 }
 
+export async function getShortformLongform(token: string | null, sourceId: string, expectedKey?: string) {
+  const query = new URLSearchParams({ sourceId });
+  if (expectedKey) query.set("expectedKey", expectedKey);
+  return apiRequest<import("./shortform-longform").ShortformLongformInput>(`/api/v1/content/shorts/longform?${query}`, { token });
+}
+
 export async function deleteContentMedia(token: string | null, path: string) {
   return apiRequest<{ deleted: true }>(`/api/v1/content/media?path=${encodeURIComponent(path)}`, { method: "DELETE", token });
 }

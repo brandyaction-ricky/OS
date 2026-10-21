@@ -1,0 +1,271 @@
+"use client";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, Download, ImagePlus, Plus, Sparkles, X } from "lucide-react";
+import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
+import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import type { YpBundle, YpClient, YpFinalView, YpRenderView, YpShortPatch, YpShortView } from "./youtube-process-data";
+import { GateBanner, LockedStep, stepAction, Subject, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+
+// 유튜브 공정 v1 숏폼 (owner decision 2026-10-21) on Codex's shortform render (PR #205): scenes with one image each become a
+// 720×1280 MP4 on the render PC; longform clips become vertical shorts with their subtitles.
+const REASON: Record<string, string> = {
+  SHORTFORM_VOICE_TOO_LONG: "내레이션이 장면보다 길어요. 내레이션을 줄이거나 장면을 늘려 주세요.",
+  SHORTFORM_CAPTION_TOO_LONG: "한 장면 자막이 너무 길어요. 네 줄 안으로 줄여 주세요.",
+  SHORTFORM_INPUT_CHANGED: "만드는 사이 내용이 바뀌었어요. 다시 만들어 주세요.",
+  SHORTFORM_FILES_UNAVAILABLE: "이미지나 원본 파일을 열지 못했어요. 이미지를 다시 올리고 만들어 주세요.",
+  SHORTFORM_DOWNLOAD_FAILED: "이미지나 원본 파일을 받지 못했어요. 다시 만들어 주세요.",
+  SHORTFORM_RANGE_INVALID: "구간이 영상 길이를 넘어요. 구간을 다시 골라 주세요.",
+  SHORTFORM_RUNTIME_MISSING: "렌더 PC에 영상 도구가 준비되지 않았어요. 관리자에게 알려 주세요.",
+};
+const working = (render: YpRenderView | null | undefined) => Boolean(render && ["backlog", "in_progress"].includes(render.status));
+/** One line for a render: waiting · making · done · stopped with its reason. */
+export function RenderTag({ render }: { render: YpRenderView | null | undefined }) {
+  if (!render) return null;
+  if (render.status === "done") return <span className="yp-tag yp-ok">완성 · {render.duration}초</span>;
+  if (render.status === "in_progress") return <span className="yp-tag yp-warn">렌더 PC가 만드는 중 (1~3분)</span>;
+  if (render.status === "backlog") return <span className="yp-tag yp-acc">렌더 PC 차례를 기다려요</span>;
+  return <span className="yp-tag yp-bad" title={render.error ?? ""}>{REASON[render.error ?? ""] ?? "렌더 PC에서 멈췄어요. 다시 만들어 보고, 또 멈추면 관리자에게 알려 주세요."}</span>;
+}
+
+/** The latest MP4 with its download (숏폼 제작 · 내보내기). */
+export function ShortVideo({ page, final }: { page: YpPage; final: YpFinalView | null }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const client = page.client, id = page.bundle?.project.id;
+  useEffect(() => {
+    let active = true;
+    if (!client || !id || !final) { setSrc(null); return; }
+    client.finalUrl(id, final).then(url => { if (active) setSrc(url); }, () => undefined);
+    return () => { active = false; };
+  }, [client, id, final]);
+  if (!final) return null;
+  const download = async () => {
+    if (!client || !id) return;
+    try { const url = final.source === "short" && final.runId ? await client.shortVideoUrl(id, final.runId, true) : src; if (url) window.location.assign(url); }
+    catch (reason) { page.fail(reason); }
+  };
+  return <div className="yp-short-out">
+    {src ? <video className="yp-vid9" src={src} controls preload="metadata" /> : <div className="yp-vid9" />}
+    <div className="yp-row-btns"><span className="yp-muted" style={{ fontSize: 12 }}>v{final.v} · {final.source === "short" ? "렌더 PC" : final.name}{final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}</span>
+      <button type="button" className="yp-btn yp-sm" onClick={() => void download()}><Download size={14} /> MP4 내려받기</button></div>
+  </div>;
+}
+
+const blank = (seconds: number): YpShortScene => ({ seconds, text: "", voice: "", note: "", asset: "" });
+const move = <T,>(list: T[], from: number, to: number) => { const next = [...list]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
+
+/** 제작 of a 숏폼: 무엇을 만들까요 → 장면 (내 AI or 직접, one image each) → MP4 (render PC). Numbered after the sections before it. */
+export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: boolean; n0: number }) {
+  const project = page.bundle!.project;
+  const client = page.client, id = project.id, fail = page.fail, reloadBundle = page.reload;
+  const [view, setView] = useState<YpShortView | null>(null);
+  const [brief, setBrief] = useState<YpShortBrief | null>(null);
+  const [scenes, setScenes] = useState<YpShortScene[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [voiceOk, setVoiceOk] = useState(false);
+  const [send, setSend] = useState(false);
+  const editRev = useRef(0);
+  const saving = useRef(false);
+  const apply = useCallback((next: YpShortView) => { setView(next); setBrief(next.brief); setScenes(next.scenes); setDirty(false); }, []);
+  const load = useCallback(async () => { if (!client) return; try { apply(await client.short(id)); } catch (reason) { fail(reason); } }, [client, id, apply, fail]);
+  useEffect(() => { void load(); }, [load]);
+  const job = useStaffJob(page, "short", load);
+  const render = view?.render;
+  useEffect(() => {
+    if (!client || !working(render)) return;
+    const timer = window.setInterval(() => void client.short(id).then(next => {
+      setView(current => current ? { ...current, render: next.render } : next);
+      if (next.render?.status === "done") void reloadBundle();
+    }, () => undefined), 15_000);
+    return () => window.clearInterval(timer);
+  }, [client, id, render, reloadBundle]);
+
+  const save = async (patch?: YpShortPatch) => {
+    if (!client || !view || !brief || saving.current) return null;
+    saving.current = true;
+    const rev = editRev.current;
+    try {
+      const next = await client.saveShort(id, view.version, patch ?? { brief, scenes });
+      setView(next);
+      if (editRev.current === rev) { setBrief(next.brief); setScenes(next.scenes); setDirty(false); }
+      return next;
+    } catch (reason) { fail(reason); return null; } finally { saving.current = false; }
+  };
+  if (!view || !brief) return <p className="yp-hint" role="status">숏폼을 불러오는 중이에요…</p>;
+  const editBrief = (patch: Partial<YpShortBrief>, now = false) => {
+    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); setDirty(true);
+    if (now) void save({ brief: next, scenes });
+  };
+  const editScenes = (next: YpShortScene[], now = false) => {
+    editRev.current += 1; setScenes(next); setDirty(true);
+    if (now) void save({ brief, scenes: next });
+  };
+  const upload = async (index: number, file: File) => {
+    if (!client) return;
+    setBusy(`img-${index}`);
+    try {
+      const image = await client.shortImage(id, file);
+      setView(current => current ? { ...current, images: { ...current.images, [image.assetId]: { name: file.name, url: image.url } } } : current);
+      editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId } : scene), true);
+    } catch (reason) { fail(reason); } finally { setBusy(""); }
+  };
+  const make = async () => {
+    if (!client) return;
+    setBusy("render");
+    try {
+      const saved = dirty ? await save() : view;
+      if (!saved) return;
+      await client.renderShort(id, saved.version, voiceOk);
+      await load();
+    } catch (reason) { fail(reason); } finally { setBusy(""); }
+  };
+
+  const ad = brief.purpose === "ad";
+  const missing = shortMissing(brief, scenes);
+  const hasVoice = scenes.some(scene => scene.voice.trim());
+  const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
+  const finals = page.bundle?.finals ?? [];
+  const field = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence", label: string, placeholder: string, need: boolean, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>
+    {label} {need ? <span className="yp-need">필수</span> : <span className="yp-opt">선택</span>}
+    {rows ? <textarea className="yp-in" rows={rows} value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />
+      : <input className="yp-in" value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />}</label>;
+  const pageFields = <>{field("landingUrl", "연결할 페이지", "https://", ad)}{field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", ad, 3)}</>;
+
+  return <div onBlur={() => { if (dirty) void save(); }}>
+    <YpSection n={n0 + 1} title="무엇을 만들까요" gq="용도 · 길이 · 보는 사람 · 할 행동" need>
+      <div className="yp-row-btns" style={{ flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+        <div className="yp-seg2" role="group" aria-label="용도">{([["organic", "일반 콘텐츠"], ["ad", "광고"]] as const).map(([key, label]) =>
+          <button key={key} type="button" className={brief.purpose === key ? "yp-on" : ""} disabled={!editable} onClick={() => editBrief({ purpose: key }, true)}>{label}</button>)}</div>
+        <div className="yp-seg2" role="group" aria-label="길이">{([15, 30, 60] as const).map(seconds =>
+          <button key={seconds} type="button" className={brief.duration === seconds ? "yp-on" : ""} disabled={!editable} onClick={() => editBrief({ duration: seconds }, true)}>{seconds}초</button>)}</div></div>
+      <div className="yp-g2">
+        {field("product", ad ? "광고할 상품 · 서비스" : "다룰 내용", ad ? "예) 강점 진단 결과지" : "예) 저녁마다 지치는 이유 한 가지", ad)}
+        {field("audience", "누구에게", "예) 퇴근 후에도 할 일이 머리에 남는 30대 직장인", true)}
+        {field("goal", "보고 나서 할 행동", "예) 프로필 링크에서 진단 받기", true, 1)}
+        {ad ? pageFields : null}
+      </div>
+      {ad ? null : <details className="yp-more-fields" open={Boolean(brief.landingUrl || brief.evidence)}><summary>연결 페이지 · 근거 더 쓰기 (선택)</summary><div className="yp-g2">{pageFields}</div></details>}
+      {ad ? <div className="yp-field"><div className="yp-fld-h"><b>구매 이유</b> <span className="yp-need">필수</span><span className="yp-gq">하나만 골라요 · 내 AI가 장면을 쓸 때 후보도 같이 줘요</span></div>
+        {view.appeals.length ? <div className="yp-ways">{view.appeals.map(appeal => { const text = appealText(appeal);
+          return <button key={appeal.title} type="button" className={`yp-way${brief.appeal === text ? " yp-rec" : ""}`} disabled={!editable} onClick={() => editBrief({ appeal: text }, true)}>
+            <b>{appeal.title}</b><span>{appeal.reason}</span><span>{appeal.basis === "evidence" ? "입력한 근거 있음" : "검증할 가설"} · {appeal.evidence || "추가 확인 필요"}</span></button>; })}</div> : null}
+        <textarea className="yp-in" rows={2} aria-label="구매 이유" value={brief.appeal} readOnly={!editable} placeholder="예) 30분 만에 내 강점을 정리해 주는 결과지" onChange={event => editBrief({ appeal: event.target.value })} /></div> : null}
+    </YpSection>
+
+    <YpSection n={n0 + 2} title="장면" gq={`${brief.duration}초 · 장면마다 이미지 한 장`} need>
+      {editable && project.yp.gates.review.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
+        : !scenes.length ? <div className="yp-ways">
+          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분 안팎)</span></button>
+          <button type="button" className="yp-way" onClick={() => editScenes([blank(Math.round(brief.duration / 3)), blank(Math.round(brief.duration / 3)), blank(0)], true)}><b>직접 쓰기</b><span>장면 세 개로 시작해요</span></button></div>
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+          {view.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 장면 · {view.ai.by}의 Claude</span> : null}</div>) : null}
+      {view.aiScenes && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 장면 도착</b> · 이미 쓴 장면이 있어 바로 넣지 않았어요. 바꿔도 넣어 둔 이미지는 같은 번호 장면에 남아요.
+        <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 초안으로 바꾸기</button>
+        <details><summary>초안 보기</summary><ol style={{ fontSize: 13 }}>{view.aiScenes.map((scene, index) => <li key={index}>{scene.seconds}초 · {scene.text}{scene.voice ? ` — “${scene.voice}”` : ""}</li>)}</ol></details></div></div> : null}
+      {scenes.map((scene, index) => <SceneRow key={index} index={index} scene={scene} last={index === scenes.length - 1} remain={Math.max(0, brief.duration - before)} count={scenes.length}
+        image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
+        onChange={patch => editScenes(scenes.map((row, at) => at === index ? { ...row, ...patch } : row))} onUpload={file => void upload(index, file)}
+        onMove={to => editScenes(move(scenes, index, to), true)} onRemove={() => editScenes(scenes.filter((_, at) => at !== index), true)} />)}
+      {editable && scenes.length && scenes.length < 20 ? <button type="button" className="yp-btn yp-sm" onClick={() => editScenes([...scenes, blank(0)], true)}><Plus size={14} /> 장면 추가</button> : null}
+      <p className="yp-hint">이미지는 세로 화면에 그대로 들어가고 남는 곳은 흐린 배경으로 채워져요. 직접 만들었거나 쓸 수 있게 허락받은 이미지만 올려요.</p>
+    </YpSection>
+
+    <YpSection n={n0 + 3} title="MP4 만들기" gq="720 × 1280 세로 · 렌더 PC가 만들어요" need>
+      {missing.length && editable ? <ul className="yp-hist" style={{ marginBottom: 8 }}>{missing.map(item => <li key={item}><span>○ {item}</span></li>)}</ul> : null}
+      {hasVoice && editable ? <label className="yp-lbl" style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={voiceOk} onChange={event => setVoiceOk(event.target.checked)} /> 내레이션 음성을 만들어요 (Fish 음성 비용이 들어요)</label> : null}
+      <div className="yp-row-btns" style={{ flexWrap: "wrap", marginBottom: 10 }}>
+        {editable ? <button type="button" className="yp-btn yp-pri" disabled={missing.length > 0 || (hasVoice && !voiceOk) || busy === "render" || working(render) || page.demo}
+          onClick={() => void make()}>{busy === "render" ? "보내는 중…" : render?.status === "done" ? "고친 내용으로 다시 만들기" : "MP4 만들기"}</button> : null}
+        <RenderTag render={render} />
+        {page.demo ? <span className="yp-muted" style={{ fontSize: 12 }}>데모에서는 MP4를 만들지 않아요.</span> : null}</div>
+      <ShortVideo page={page} final={finals.at(-1) ?? null} />
+    </YpSection>
+    <SendDialog page={page} task="short" open={send} onClose={() => setSend(false)} job={job} />
+  </div>;
+}
+
+function SceneRow({ index, scene, last, remain, count, image, editable, busy, onChange, onUpload, onMove, onRemove }: {
+  index: number; scene: YpShortScene; last: boolean; remain: number; count: number; image?: { name: string; url: string }; editable: boolean; busy: boolean;
+  onChange: (patch: Partial<YpShortScene>) => void; onUpload: (file: File) => void; onMove: (to: number) => void; onRemove: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  return <div className="yp-scn">
+    <button type="button" className="yp-scn-img" disabled={!editable || busy} onClick={() => input.current?.click()} aria-label={`장면 ${index + 1} 이미지 ${image ? "바꾸기" : "넣기"}`}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
+      {image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 넣기"}</span></>}</button>
+    <div className="yp-scn-f">
+      <div className="yp-scn-h"><span className="yp-n">{index + 1}</span>
+        {last ? <span className="yp-tag">나머지 {Math.round(remain * 10) / 10}초</span>
+          : <label className="yp-scn-sec"><input className="yp-in" type="number" min={1} max={60} step={0.5} value={scene.seconds} readOnly={!editable} aria-label={`장면 ${index + 1} 길이(초)`}
+            onChange={event => onChange({ seconds: Math.max(0, Number(event.target.value) || 0) })} />초</label>}
+        {scene.asset ? <span className="yp-gq">필요한 이미지: {scene.asset}</span> : null}<span className="yp-sp" />
+        {editable ? <span className="yp-row-btns"><button type="button" className="yp-ib yp-xs" aria-label="위로" disabled={!index} onClick={() => onMove(index - 1)}><ArrowUp size={12} /></button>
+          <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
+          {count > 1 ? <button type="button" className="yp-ib yp-xs" aria-label="장면 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
+      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder="화면 자막 (네 줄 안)" onChange={event => onChange({ text: event.target.value })} />
+      <input className="yp-in" aria-label={`장면 ${index + 1} 내레이션`} value={scene.voice} readOnly={!editable} maxLength={1800} placeholder="내레이션 (선택 · 1초에 6자 안팎)" onChange={event => onChange({ voice: event.target.value })} />
+    </div>
+    <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
+  </div>;
+}
+
+/** 내보내기 of a 숏폼 (in place of the YouTube upload): the approved MP4 to download, what goes with it, then 끝내기. */
+export function ShortExportScreen({ header, page }: { header: ReactNode; page: YpPage }) {
+  const [moving, setMoving] = useState(false);
+  const [view, setView] = useState<YpShortView | null>(null);
+  const project = page.bundle?.project;
+  const client = page.client, id = project?.id;
+  useEffect(() => { if (client && id) client.short(id).then(setView, () => undefined); }, [client, id]);
+  const last = page.bundle?.finals.at(-1) ?? null;
+  const finish = async () => {
+    if (!page.client || !project) return;
+    setMoving(true);
+    try { const next = await page.client.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); }
+    catch (reason) { page.fail(reason); } finally { setMoving(false); }
+  };
+  const action = page.bundle ? stepAction(page, 5, project?.yp.stage === "done" ? { kind: "status", status: "끝난 영상" }
+    : { kind: "button", label: "다 올렸어요 · 끝내기", reason: last ? "" : "MP4가 없어요", busy: moving, onClick: () => void finish() }) : null;
+  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="완성한 MP4를 내려받아 릴스 · 광고 · 쇼츠에 올려요. 다 올렸으면 끝내요.">
+    {page.bundle && project ? !["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
+      <GateBanner page={page} gate="review" />
+      <Subject page={page} />
+      <YpSection n={1} title="완성 MP4" gq="대표 OK가 난 마지막 버전">
+        <ShortVideo page={page} final={last} />
+      </YpSection>
+      {view ? <YpSection n={2} title="올릴 때 같이 쓸 것">
+        <dl className="yp-kv">
+          <dt>용도</dt><dd>{view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · {view.brief.duration}초</dd>
+          <dt>할 행동</dt><dd>{view.brief.goal || "—"}</dd>
+          <dt>연결 페이지</dt><dd>{view.brief.landingUrl ? <a className="yp-lnk" href={view.brief.landingUrl} target="_blank" rel="noreferrer">{view.brief.landingUrl}</a> : "—"}</dd>
+          {view.brief.purpose === "ad" ? <><dt>구매 이유</dt><dd style={{ whiteSpace: "pre-wrap" }}>{view.brief.appeal || "—"}</dd></> : null}
+        </dl>
+        <p className="yp-hint">광고 문구와 연결 페이지의 약속이 맞는지 올리기 전에 한 번 더 봐요.</p>
+      </YpSection> : null}
+    </> : null}
+  </YpFrame>;
+}
+
+/** What the 대표 decides on for a 숏폼's 최종 검수: the vertical MP4, what it was made for, and the open feedback. */
+export function ShortConfirmDetail({ client, bundle, open }: { client: YpClient; bundle: YpBundle; open: number | null }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [view, setView] = useState<YpShortView | null>(null);
+  const final = bundle.finals.at(-1) ?? null;
+  const id = bundle.project.id;
+  useEffect(() => {
+    let active = true;
+    if (final) client.finalUrl(id, final).then(url => { if (active) setSrc(url); }, () => undefined);
+    client.short(id).then(next => { if (active) setView(next); }, () => undefined);
+    return () => { active = false; };
+  }, [client, id, final]);
+  return <div className="yp-g2" style={{ marginBottom: 12, alignItems: "start" }}>
+    {src ? <video className="yp-vid9" src={src} controls preload="metadata" /> : <div className="yp-vid9" />}
+    <dl className="yp-kv" style={{ gridTemplateColumns: "96px minmax(0,1fr)" }}>
+      <dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "short" ? "렌더 PC" : final.name}${final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}` : "—"}</dd>
+      <dt>용도</dt><dd>{view ? `${view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · ${view.brief.duration}초` : "—"}</dd>
+      <dt>할 행동</dt><dd>{view?.brief.goal || "—"}</dd>
+      <dt>연결 페이지</dt><dd>{view?.brief.landingUrl || "—"}</dd>
+      {view?.brief.purpose === "ad" ? <><dt>구매 이유</dt><dd style={{ whiteSpace: "pre-wrap" }}>{view.brief.appeal || "—"}</dd><dt>근거</dt><dd style={{ whiteSpace: "pre-wrap" }}>{view.brief.evidence || "—"}</dd></> : null}
+      <dt>해결 안 된 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd>
+    </dl>
+  </div>;
+}

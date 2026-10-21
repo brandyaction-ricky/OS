@@ -5,6 +5,7 @@ import { buildYoutubeAutomationPlan, documentInputKey, type YoutubeAutomationPla
 import { APPROVED_SCRIPT_STATUSES, narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import type { RequestActor } from "./auth";
 import { readPipeline } from "./content-pipeline";
+import { isYoutubeV1, v1AutomationInput } from "./youtube-process-ai";
 
 type Supabase = Pick<RequestActor, "supabase">["supabase"];
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -30,6 +31,7 @@ export async function readApprovedScriptDocument(supabase: Supabase, documentId:
 export async function readYoutubeAutomationInput(supabase: Supabase, sourceId: string) {
   // readPipeline only reads through actor.supabase; workers call this with the service client.
   const state = await readPipeline({ supabase } as RequestActor, sourceId);
+  if (isYoutubeV1(state.source)) return v1AutomationInput(state);
   const ref = state.source.metadata.scriptDocument as { id?: unknown; version?: unknown; contentSha256?: unknown } | undefined;
   if (ref) {
     const doc = typeof ref.id === "string" ? await readApprovedScriptDocument(supabase, ref.id).catch(() => null) : null;

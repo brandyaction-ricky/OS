@@ -35,6 +35,8 @@ import {
   Repeat,
   Receipt,
 } from "lucide-react";
+import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
+export { YOUTUBE_V1_HREFS };
 
 export interface NavPage {
   label: string;
@@ -171,11 +173,15 @@ export function findPage(path: string): NavPage {
     const page = pages.find(item => item.href === NAV_ALIASES[alias])!;
     return { ...page, href: alias, navHref: page.href };
   }
-  return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
+  return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href))
+    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
 }
 export function findStage(pathname: string) {
   const page = findPage(pathname);
-  return NAV_STAGES.find(stage => stage.pages.some(item => item.href === (page.navHref ?? page.href))) ?? HOME_STAGE;
+  const href = page.navHref ?? page.href;
+  if (href === YOUTUBE_V1_CEO_STAGE.href) return YOUTUBE_V1_CEO_STAGE;
+  return NAV_STAGES.find(stage => stage.pages.some(item => item.href === href))
+    ?? (YOUTUBE_V1_HREFS.includes(href) ? NAV_STAGES.find(stage => stage.id === "content") : undefined) ?? HOME_STAGE;
 }
 export function searchNavigation(query: string, financeAccess = false, canVisit: (href: string) => boolean = () => true, hrEnabled = false) {
   const normalized = query.trim().toLocaleLowerCase("ko-KR");
