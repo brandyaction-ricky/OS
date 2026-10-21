@@ -29,7 +29,8 @@ import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
-import { useYoutubeCanConfirm } from "./use-youtube-confirm";
+import { useYoutubeCanConfirm, useYoutubeV1Access } from "./use-youtube-confirm";
+import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
 import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "@/lib/youtube-process/navigation";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
@@ -53,8 +54,9 @@ function Initials({ name }: { name: string }) {
   return <span>{name.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, youtubeV1Enabled = false }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean; youtubeV1Enabled?: boolean }) {
+export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, youtubeV1Mode = "off" }: { children: React.ReactNode; hrEnabled?: boolean; teamV1Enabled?: boolean; youtubeV1Mode?: YoutubeV1Mode }) {
   // The server owns the rollout flag; no environment values are read in the browser.
+  const youtubeV1Enabled = useYoutubeV1Access(youtubeV1Mode);
   const pathname = usePathname();
   const params = useSearchParams();
   const navigationPath = `${pathname}?${params.toString()}`;

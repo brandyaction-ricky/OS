@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
+import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
+import { useSession } from "./session-provider";
 
 /** Whether this person may confirm in 유튜브 공정 v1 (D1: the company approver). null while unknown. */
 export function useYoutubeCanConfirm(enabled: boolean, token: string | null, demo: boolean, demoAdmin: boolean) {
@@ -18,4 +20,25 @@ export function useYoutubeCanConfirm(enabled: boolean, token: string | null, dem
     return () => { active = false; };
   }, [enabled, token, demo, demoAdmin]);
   return enabled ? canConfirm : false;
+}
+
+// One question per page load: whether v1 is on for this person when it is rolled out to some people only.
+let accessAsked: { token: string; result: Promise<boolean> } | null = null;
+/** Whether 유튜브 공정 v1 is on for this person: off · on for all · on for the listed people (asked once; false while unknown). */
+export function useYoutubeV1Access(mode: YoutubeV1Mode) {
+  const { accessToken, demo } = useSession();
+  const [allowed, setAllowed] = useState(false);
+  useEffect(() => {
+    if (mode !== "some" || demo || !accessToken) return;
+    if (accessAsked?.token !== accessToken) accessAsked = { token: accessToken, result: apiRequest("/api/v1/content/youtube/me", { token: accessToken }).then(() => true, () => false) };
+    let active = true;
+    void accessAsked.result.then(result => { if (active) setAllowed(result); });
+    return () => { active = false; };
+  }, [mode, demo, accessToken]);
+  return mode === "all" || (mode === "some" && (demo || allowed));
+}
+
+/** A shared address (쇼츠 · 성과) that shows the v1 screen to the people v1 is on for and the earlier screen to everyone else. */
+export function YoutubeV1Switch({ mode, v1, old }: { mode: YoutubeV1Mode; v1: ReactNode; old: ReactNode }) {
+  return useYoutubeV1Access(mode) ? v1 : old;
 }

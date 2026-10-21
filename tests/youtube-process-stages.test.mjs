@@ -101,3 +101,12 @@ test("숏폼 scenes run on without gaps, the last one takes what is left, and wh
   assert.equal(merged.length, 15);
   assert.equal(merged.at(-1).end, "01:00.000");
 });
+
+test("v1 rolls out per person: off, everyone, or only the listed ids (the ids never reach the browser)", async () => {
+  const { youtubeV1AllowedFor, youtubeV1Mode } = await import("../lib/youtube-process/gate.ts");
+  assert.equal(youtubeV1Mode({}), "off");
+  assert.equal(youtubeV1Mode({ YOUTUBE_V1_ENABLED: "true" }), "all");
+  const some = { YOUTUBE_V1_ENABLED: "true", YOUTUBE_V1_USERS: " a , b " };
+  assert.equal(youtubeV1Mode(some), "some");
+  assert.deepEqual([youtubeV1AllowedFor("a", some), youtubeV1AllowedFor("c", some), youtubeV1AllowedFor("c", { YOUTUBE_V1_ENABLED: "true" }), youtubeV1AllowedFor("a", { YOUTUBE_V1_USERS: "a" })], [true, false, true, false]);
+});

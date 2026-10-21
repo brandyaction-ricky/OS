@@ -31,7 +31,8 @@ import { legacyTeamMenusHidden } from "@/lib/server/hr-legacy-menus";
 import { teamV1Enabled } from "@/lib/team/gate";
 import { TeamWorkspaceV1 } from "@/components/team/team-workspace-v1";
 import { YoutubeProcessWorkspace } from "@/components/youtube-process-workspace";
-import { youtubeV1Enabled } from "@/lib/youtube-process/gate";
+import { youtubeV1Enabled, youtubeV1Mode } from "@/lib/youtube-process/gate";
+import { YoutubeV1Switch } from "@/components/use-youtube-confirm";
 import { youtubeV1Screen } from "@/lib/youtube-process/navigation";
 
 type GenericPageProps = { params: Promise<{ stage: string; page: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
@@ -68,7 +69,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
     return <YoutubeProcessWorkspace screen={youtubeScreen} />;
   }
   // With v1 on, 쇼츠 is a step of the project (the earlier 숏폼 편집 stays at this address when it is off).
-  if (href === "/content/shorts" && youtubeV1Enabled()) return <YoutubeProcessWorkspace screen="shorts" />;
+  if (href === "/content/shorts" && youtubeV1Enabled()) return <YoutubeV1Switch mode={youtubeV1Mode()} v1={<YoutubeProcessWorkspace screen="shorts" />} old={<ContentStepWorkspace step="shorts" />} />;
   if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
   if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
   if (teamEnabled && href === "/home/decisions") {
@@ -97,7 +98,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if (href === "/content/automation") redirect("/automation/topics");
   if (href === "/content/review") redirect("/automation/review");
   if (href === "/content/calendar") return <PublishingCalendarWorkspace />;
-  if (href === "/content/performance") return youtubeV1Enabled() ? <YoutubeProcessWorkspace screen="performance" /> : <ContentPerformanceWorkspace youtubeOnly />;
+  if (href === "/content/performance") return youtubeV1Enabled() ? <YoutubeV1Switch mode={youtubeV1Mode()} v1={<YoutubeProcessWorkspace screen="performance" />} old={<ContentPerformanceWorkspace youtubeOnly />} /> : <ContentPerformanceWorkspace youtubeOnly />;
   if (href === "/content/comments") redirect("/automation/performance?tab=comments");
   if (href === "/automation/topics") return <ContentAutomationV07 page="topics" />;
   if (href === "/automation/cardnews") return <ContentAutomationV07 page="cardnews" />;
