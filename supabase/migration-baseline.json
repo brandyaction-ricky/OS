@@ -743,10 +743,10 @@
       "sha256": "74873d798f73d4887632631a17ea83483bf57d75c2ecccf4c9612c5f807bac75",
       "purpose": "유튜브 공정 v1: content_feedback record type, append-only confirmation history, one open YouTube AI job per target, browser recording audio types, six notification reasons",
       "requiresApproval": true,
-      "developmentApprovedAt": null,
+      "developmentApprovedAt": "2026-10-21",
       "productionApprovedAt": null,
-      "appliedEnvironments": [],
-      "notes": "Draft, not applied anywhere. Additive only; the notification guard is the v0.7 definition with yt_* reasons added. Confirm decisions are checked by the server (lib/youtube-process/confirm.ts); this migration only adds their history table and notice reasons (all six yt_* reasons also allowed as self-notices)."
+      "appliedEnvironments": ["development"],
+      "notes": "Owner approved the DEV apply on 2026-10-21. Before applying, the live DEV os_notification_guard body was the v0.7 definition (read back in the SQL Editor) and os_records_record_type_check listed the same 37 types; os_content_append_only existed. Applied to brandyaction-os-dev in one SQL Editor transaction with its schema history row, then read back: the history table and its append-only trigger, content_feedback in the type check, the yt_* reasons in the guard, the open-job index and audio/webm · audio/ogg on os-content-media. Production needs v0.7 first (os_content_append_only and the v0.7 guard are not there) and separate approval. Additive only; the notification guard is the v0.7 definition with yt_* reasons added. Confirm decisions are checked by the server (lib/youtube-process/confirm.ts); this migration only adds their history table and notice reasons (all six yt_* reasons also allowed as self-notices)."
     },
     {
       "file": "20261017020000_canonical_reader_scope.sql",
