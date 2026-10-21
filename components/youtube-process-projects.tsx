@@ -68,7 +68,8 @@ export function YoutubeProjectsScreen() {
 
   if (discover) return <>
     <div className="yp-mv-head"><h1>주제 찾기</h1><span className="yp-sp" style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>
-    <ContentRadarWorkspace startProjectHref={video => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(`${video.title} · ${video.channel}`)}`} />
+    {/* The radar keeps its own screen styles (components/fullscreen-content.css, scoped to .screen-topics). */}
+    <div className="ui-v2 screen-topics"><ContentRadarWorkspace startProjectHref={video => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(`${video.title} · ${video.channel}`)}`} /></div>
   </>;
 
   return <>

@@ -1015,3 +1015,8 @@
 @media (max-width:640px){
   .linear-shell .ui-v2.yp .yp-scn{grid-template-columns:72px minmax(0,1fr)}
 }
+/* Page widths (owner request 2026-10-21): each screen keeps a readable width in the middle; the progress line and dialogs keep their own */
+.linear-shell .ui-v2.yp>:not(.yp-flow):not(dialog){max-width:1200px;margin-left:auto;margin-right:auto}
+.linear-shell .ui-v2.yp.yp-w-m>:not(.yp-flow):not(dialog){max-width:960px}
+.linear-shell .ui-v2.yp.yp-w-l>:not(.yp-flow):not(dialog){max-width:1360px}
+.linear-shell .ui-v2.yp [data-ui="guide-strip"]{display:none}
