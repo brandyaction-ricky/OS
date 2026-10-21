@@ -21,6 +21,9 @@ type Source = "found" | "tracked" | "kept";
 type Query = { category: string } | { q: string };
 type Found = { videos: DiscoverVideo[]; channels: DiscoverChannel[]; at: string; cached: boolean };
 type Board = { boardId: string; clusters: NicheCluster[]; settled: NicheCluster[]; at: string | null; by: string | null; model: string | null; pool: number };
+// One request per search while the page is open: the screen can mount twice and the session token can refresh as it loads,
+// and an uncached 전체 search spends about 1,460 YouTube quota units.
+const inflight = new Map<string, Promise<Found>>();
 const meta = <T,>(record: OsRecord, key: string, fallback: T) => (record.metadata?.[key] ?? fallback) as T;
 const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const newVideoHref = (video: Pick<DiscoverVideo, "url" | "title" | "channelTitle">, extra?: { title: string; note: string }) => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(extra?.title ?? `${video.title} · ${video.channelTitle}`)}${extra ? `&title=${encodeURIComponent(extra.title)}&note=${encodeURIComponent(extra.note.slice(0, 600))}` : ""}`;
@@ -79,8 +82,14 @@ export function YoutubeDiscoverScreen() {
     if (!accessToken) return;
     setBusy(true);
     try {
-      const params = new URLSearchParams({ days, ...("q" in pick ? { q: pick.q } : { category: pick.category }), ...(refresh ? { refresh: "1" } : {}) });
-      setFound(await apiRequest<Found>(`/api/v1/content/youtube/discover?${params}`, { token: accessToken }));
+      const key = new URLSearchParams({ days, ...("q" in pick ? { q: pick.q } : { category: pick.category }) }).toString();
+      let request = refresh ? undefined : inflight.get(key);
+      if (!request) {
+        request = apiRequest<Found>(`/api/v1/content/youtube/discover?${key}${refresh ? "&refresh=1" : ""}`, { token: accessToken });
+        inflight.set(key, request);
+        request.catch(() => inflight.delete(key));
+      }
+      setFound(await request);
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   }, [accessToken, demo, days, pick]);
   useEffect(() => { void search(); }, [search]);
