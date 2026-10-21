@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { shortformAppealsSchema,shortformCutsSchema } from "./shortform-production";
 import { ApiError } from "./http";
 import { threadsPostsProblem } from "./threads-posts";
 import type { AutomationProc } from "./server/content-automation-v07";
@@ -22,7 +23,7 @@ const schemas:Record<AutomationProc,z.ZodTypeAny>={
   "card-fill":z.object({pages:z.array(z.object({page:z.number().int().positive(),slots:z.record(z.string().max(5000))})).min(1),selfCheck:z.array(z.string()).optional()}),
   "card-caption":z.object({caption:text,hashtags:z.array(z.string().max(80)).max(30)}),
   image:z.object({request:text,ratio:z.string().max(20),noText:z.literal(true)}),
-  "shorts-cut":z.object({cuts:z.array(z.object({start:text,end:text,text:text,note:z.string().max(3000)})).min(1)}),
+  "shorts-cut":z.union([shortformCutsSchema,shortformAppealsSchema]),
   "shorts-desc":z.object({cover:text,title:text,description:text}),
   threads:z.object({posts:z.array(z.string().trim())}).refine(value=>!threadsPostsProblem(value.posts,1),{message:"posts"}),
   review:z.object({score:z.number().min(0).max(5),checks:z.array(z.object({key:text,ok:z.boolean(),note:z.string().max(3000)})).min(1)}),

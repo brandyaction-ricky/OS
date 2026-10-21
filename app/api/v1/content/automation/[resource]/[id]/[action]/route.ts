@@ -1,3 +1,4 @@
+import { assertShortformJobCurrent,validateShortformJobResult,validateShortformReview,invalidateShortformVideo } from "@/lib/server/shortform-production";
 import { NextResponse } from "next/server";
 import { z,ZodError } from "zod";
 import { ApiError,apiErrorResponse,parseJson } from "@/lib/http";
@@ -180,6 +181,7 @@ export async function POST(request:Request,{params}:Params){
       if(action==="send-to-review"){
         if(!["draft","blocked"].includes(current.status))throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠만 확인으로 보낼 수 있습니다.");
         validatePersonalItem(current.metadata,String(current.metadata.channel),String(current.owner_id));
+        validateShortformReview(current.metadata);
         if(current.metadata.channel==="card"&&(!Array.isArray(current.metadata.pages)||!current.metadata.pages.length))
           throw new ApiError(422,"CARD_PAGES_REQUIRED","카드뉴스 페이지를 준비해 주세요.");
         if(current.metadata.channel==="threads"&&threadsPostsProblem(current.metadata.posts,1))
@@ -243,19 +245,21 @@ export async function POST(request:Request,{params}:Params){
         if(action==="adopt"){
           if(!["draft","blocked"].includes(current.status))
             throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠에만 AI 결과를 반영할 수 있습니다.");
-          const candidate=job.metadata.result;
+          assertShortformJobCurrent(current,job);
+          const candidate=validateShortformJobResult(job,job.metadata.result);
           if(typeof candidate!=="object"||candidate===null)throw new ApiError(422,"JOB_RESULT_INVALID","AI 결과 형식을 확인해 주세요.");
           const result=candidate as Record<string,unknown>;
           const proc=String(job.metadata.proc);
           const fields=proc==="card-fill"?{pages:result.pages,selfCheck:result.selfCheck}:
             proc==="card-caption"?{caption:result.caption,hashtags:result.hashtags}:
-            proc==="shorts-cut"?{cuts:result.cuts}:
+            proc==="shorts-cut"?(result.appeals?{shortformAppeals:result.appeals}:{cuts:result.cuts}):
             proc==="shorts-desc"?{coverText:result.cover,description:result.description}:
             proc==="threads"?{posts:result.posts}:
             proc==="review"?{aiReview:result}:proc==="image"?{imageRequest:result}:
             proc==="reply"?{replyDraft:result}:null;
           if(!fields)throw new ApiError(422,"JOB_RESULT_INVALID","이 콘텐츠에 맞는 AI 결과가 아닙니다.");
-          item=await updatePersonalRecord(actor,current,{metadata:{...current.metadata,...fields,space:"personal"},stage:"making"},{team});
+          item=await updatePersonalRecord(actor,current,{metadata:invalidateShortformVideo(current,{...current.metadata,...fields,space:"personal"}),stage:"making",
+            ...(proc==="shorts-desc"&&typeof result.title==="string"?{title:result.title.slice(0,240)}:{})},{team});
         }
         const savedJob=await updatePersonalRecord(actor,job,{stage:action==="adopt"?"adopted":"rejected",
           metadata:{...job.metadata,closedReason:action==="adopt"?"adopted":"rejected",closedBy:ownerId,space:"personal"}},{team});
@@ -287,7 +291,7 @@ export async function POST(request:Request,{params}:Params){
         const proc=String(job.metadata.proc);
         if(!AUTOMATION_PROCS.includes(proc as typeof AUTOMATION_PROCS[number]))
           throw new ApiError(422,"JOB_PROCESS_INVALID","작업 공정을 확인해 주세요.");
-        const result=parseAutomationResult(proc as typeof AUTOMATION_PROCS[number],input.result);
+        const result=validateShortformJobResult(job,parseAutomationResult(proc as typeof AUTOMATION_PROCS[number],input.result));
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"done",stage:"completed",
           metadata:{...job.metadata,result,via:"copy",completedAt:new Date().toISOString(),space:"personal"}})});
       }
