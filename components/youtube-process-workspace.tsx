@@ -1,8 +1,6 @@
 "use client";
 import "./youtube-process.css";
-import Link from "next/link";
 import { Info, Lock } from "lucide-react";
-import { NAV_STAGES } from "@/lib/navigation";
 import type { YoutubeV1Screen } from "@/lib/youtube-process/navigation";
 import { PageTitle } from "./page-title";
 import { useSession } from "./session-provider";
@@ -24,7 +22,6 @@ const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: stri
   schedule: { sub: "모든 프로젝트의 편집 완료 · 업로드(예상) · 컨펌 대기 · 피드백 기한을 달력으로 봐요.", coming: "이번 주 · 이번 달 달력 · 끌어서 날짜 옮기기 · 현황 카드", step: "T11" },
   confirm: { sub: "주제 · 기획안 · 최종 검수 컨펌을 모아 봐요. OK · 수정 요청 · 보류 중에 고르기만 하면 돼요.", coming: "컨펌 대기 · 내가 처리한 것 · 보류함", step: "T4" },
 };
-const LEGACY_PAGES = NAV_STAGES.find(stage => stage.id === "content")!.pages;
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen }) {
@@ -44,10 +41,5 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen })
       : screen === "confirm" && !canConfirm ? <div className="yp-locked"><Lock size={18} className="yp-i" aria-hidden="true" /><div><b>대표 메뉴예요</b><p>컨펌 목록은 회사 승인자에게만 보여요. 컨펌 대기 중인 단계 화면에서는 누구나 상태를 볼 수 있어요.</p></div></div>
         : screen === "confirm" ? <YoutubeConfirmScreen />
         : <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div><b>이 화면은 만드는 중이에요.</b> 다음 개발 단계({info.step})에서 {info.coming}이 들어와요.</div></div>}
-    {screen === "projects" ? <nav aria-label="기존 화면" className="yp-legacy">
-      <h2>기존 화면</h2>
-      <p className="yp-hint">진행 중이던 옛 주제는 기존 화면에서 마무리해요. 주소는 그대로 열려요.</p>
-      <ul>{LEGACY_PAGES.map(page => <li key={page.href}><Link href={page.href}>{page.processNumber ? `${page.processNumber}. ` : ""}{page.label}</Link></li>)}</ul>
-    </nav> : null}
   </section>;
 }

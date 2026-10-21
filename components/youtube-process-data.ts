@@ -16,6 +16,7 @@ export interface YpFeedbackView {
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: { by: string; text: string; at: string }[];
 }
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
+export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt";
 export interface YpClient {
   list(): Promise<YpProject[]>;
@@ -38,6 +39,8 @@ export interface YpClient {
   confirm(id: string, gate: YpGate, action: YpApproverAction, expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
   confirmList(tab: "wait" | "done" | "hold"): Promise<{ project: YpProject; gate: YpGate }[]>;
   members(): Promise<YpMember[]>;
+  legacy(): Promise<YpLegacyTopic[]>;
+  adopt(id: string): Promise<YpProject>;
   demo: boolean;
 }
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
@@ -75,6 +78,8 @@ function apiClient(token: string): YpClient {
     uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
     confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
+    legacy: async () => (await apiRequest<{ topics: YpLegacyTopic[] }>("/api/v1/content/youtube/legacy", { token })).topics,
+    adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -258,6 +263,8 @@ function demoClient(): YpClient {
     },
     confirmList: async tab => confirmTab(structuredClone(demoProjects()), tab, DEMO_ME).map(row => ({ project: row.project, gate: row.gate })),
     members: async () => DEMO_MEMBERS,
+    legacy: async () => [],
+    adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
   };
 }
 
