@@ -23,6 +23,8 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   const [step, setStep] = useState("");
   const [copied, setCopied] = useState("");
   const [myinSrt, setMyinSrt] = useState<string | null>(null);
+  const [handouts, setHandouts] = useState<{ deck: string | null; summary: string | null }>({ deck: null, summary: null });
+  const [extraTab, setExtraTab] = useState<"kakao" | "cafe" | "post">("kakao");
   const srtInput = useRef<HTMLInputElement>(null);
   const editRev = useRef(0);
   const saving = useRef(false);
@@ -44,7 +46,8 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   useEffect(() => {
     let active = true;
     if (!last?.runId || page.demo || !page.accessToken) { setMyinSrt(null); return; }
-    apiRequest<{ srt: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}`, { token: page.accessToken }).then(result => { if (active) setMyinSrt(result.srt); }, () => undefined);
+    apiRequest<{ srt: string | null; deck: string | null; summary: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${last.runId}`, { token: page.accessToken })
+      .then(result => { if (active) { setMyinSrt(result.srt); setHandouts({ deck: result.deck, summary: result.summary }); } }, () => undefined);
     return () => { active = false; };
   }, [last?.runId, page.demo, page.accessToken]);
 
@@ -148,6 +151,18 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
             <textarea className="yp-in yp-box yp-pin" rows={4} readOnly={!editable} value={form.pinned || pinnedDraft(form.utm)} onChange={event => edit({ pinned: event.target.value })} aria-label="고정 댓글" />
             <p className="yp-hint">유튜브 API에는 댓글 ‘고정’이 없어요. 올린 뒤 스튜디오에서 이 글을 댓글로 달고 고정해요.</p></>}
         </YpSection>
+        {form.extras ? <YpSection title="다른 채널 문안 · 업로드 체크리스트" gq="설명란과 같은 내 AI 결과">
+          <div className="yp-seg2 yp-sm" role="tablist" style={{ marginBottom: 8 }}>{([["kakao", "카카오톡"], ["cafe", "네이버 카페"], ["post", "게시글"]] as const).map(([key, label]) =>
+            <button key={key} type="button" role="tab" aria-selected={extraTab === key} className={extraTab === key ? "yp-on" : ""} onClick={() => setExtraTab(key)}>{label}</button>)}</div>
+          <div className="yp-box" style={{ whiteSpace: "pre-wrap", fontSize: 13, maxHeight: 260, overflow: "auto" }}>{form.extras[extraTab] || "없음"}</div>
+          <div className="yp-row-btns" style={{ marginTop: 6 }}><button type="button" className="yp-btn yp-sm" disabled={!form.extras[extraTab]} onClick={() => void copy(extraTab, form.extras![extraTab])}><Copy size={14} /> {copied === extraTab ? "복사됨" : "복사"}</button></div>
+          {form.extras.checklist.length ? <><label className="yp-lbl">업로드 체크리스트 <span className="yp-gq">올린 뒤 스튜디오에서 할 일 · 체크하면 저장돼요</span></label>
+            <ul className="yp-chk2">{form.extras.checklist.map((item, index) => <li key={item}><label style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <input type="checkbox" checked={form.extras!.checked.includes(index)} disabled={project.yp.stage !== "upload"} onChange={event => {
+                const checked = event.target.checked ? [...form.extras!.checked, index] : form.extras!.checked.filter(value => value !== index);
+                setForm({ ...form, extras: { ...form.extras!, checked } }); void save(form, { checked });
+              }} /><span>{item}</span></label></li>)}</ul></> : null}
+        </YpSection> : null}
         <YpSection n={4} title="최종 화면" need={false}><p className="yp-hint" style={{ margin: 0 }}>유튜브 API로는 최종 화면을 넣을 수 없어요. 업로드 뒤 스튜디오 › 최종 화면에서 마지막 20초 안에 넣어요(구성안 클로징의 ‘마지막 20초’ 자리). 설정안 저장은 다음 차례에 들어와요.</p></YpSection>
         <YpSection n={5} title="공개 일정" need>
           <div className="yp-radio-row">{([["private", "비공개"], ["unlisted", "일부 공개"]] as const).map(([value, text]) => <label key={value} className={`yp-radio${form.privacy === value ? " yp-on" : ""}`}>
@@ -159,6 +174,7 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
             : page.demo ? <span className="yp-hint">데모에서는 채널 연결이 없어요</span> : <span className="yp-hint">유튜브 채널이 연결되지 않았어요. <Link className="yp-lnk" href="/settings/account">내 계정 › 채널 연결</Link>에서 연결해요.</span>}</div>
         </YpSection>
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "OS 자동 제작" : last.name} · 최종 검수에서 마지막 버전 (자동)` : "최종본이 없어요"}</span>
+          {handouts.deck || handouts.summary ? <span style={{ fontSize: 12 }}>{handouts.deck ? <a className="yp-lnk" href={handouts.deck} target="_blank" rel="noreferrer">덱 PDF</a> : null}{handouts.deck && handouts.summary ? " · " : ""}{handouts.summary ? <a className="yp-lnk" href={handouts.summary} target="_blank" rel="noreferrer">한 장 정리 이미지</a> : null} — 설명란 · 고정 댓글 링크용 (공개 링크는 따로 만들어요)</span> : null}
           <span className="yp-muted" style={{ fontSize: 12 }}>[업로드]를 누르면 위 내용 그대로 유튜브에 올라가요. 컨펌된 제목 A{make.aTitle ? "(바꾼 제목)" : ""}와 썸네일 A가 들어가요. 화면을 닫으면 멈춰요.</span></div>
           <div className="yp-upgo-r">{done ? <><button type="button" className="yp-btn yp-lg" disabled><Check size={16} /> 업로드</button><small className="yp-upok">✓ 유튜브 업로드 완료</small></>
             : <><button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(reason) || progress !== null || !editable} onClick={() => void go()}><Upload size={16} /> {progress !== null ? `${step} ${progress ? `${progress}%` : ""}` : "업로드"}</button>

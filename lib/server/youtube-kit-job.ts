@@ -102,7 +102,7 @@ export async function saveStaffKit(supabase: RequestActor["supabase"], ownerId: 
   // 유튜브 공정 v1: the draft goes into the 업로드 step's 설명란 · 고정 댓글 (the timeline is inside the description).
   if (isYoutubeV1(state.source)) {
     const clean = sanitizePublicCopyValue(parsed.data) as typeof parsed.data;
-    const saved = await saveV1Kit(supabase, ownerId, author.name ?? "직원", state, { description: clean.description, pinnedComment: clean.pinnedComment, tags: clean.tags }, author);
+    const saved = await saveV1Kit(supabase, ownerId, author.name ?? "직원", state, { description: clean.description, pinnedComment: clean.pinnedComment, tags: clean.tags, kakao: clean.kakao, cafe: clean.cafe, post: clean.post, checklist: clean.checklist }, author);
     return { kitId: "", chapters: 0, chapterTimingVerified: false, ...saved };
   }
   const { srt } = await kitInputs(supabase, state);

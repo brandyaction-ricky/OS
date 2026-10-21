@@ -71,7 +71,8 @@ export const stagePatchSchemas = {
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240) }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
     aTitle: text(100), aReason: text(200) }).partial().strict(),
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200) }).strict(),
-    srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]) }).partial().strict(),
+    srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]),
+    checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
 } as const;
 export const stageSaveSchema = z.object({ expectedVersion: z.number().int().min(0), patch: z.record(z.unknown()) }).strict();
 type Patch<K extends YpStageKind> = z.infer<(typeof stagePatchSchemas)[K]>;
@@ -131,7 +132,9 @@ function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, no
 }
 function nextUpload(current: YpUpload, patch: Patch<"upload">, projectId: string): YpUpload {
   if (patch.srt && !assetPath(projectId, "srt").test(patch.srt.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "SRT 파일을 다시 올려 주세요.");
-  const upload = { ...current, ...patch };
+  const { checked, ...rest } = patch;
+  const upload: YpUpload = { ...current, ...rest };
+  if (checked && current.extras) upload.extras = { ...current.extras, checked: [...new Set(checked)].filter(index => index < current.extras!.checklist.length) };
   if (patch.desc !== undefined) upload.hiddenTags = hiddenTagsOf(patch.desc);
   return upload;
 }

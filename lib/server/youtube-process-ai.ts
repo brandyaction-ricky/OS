@@ -130,14 +130,15 @@ export function v1KitCardInputs(state: Pipeline) {
   };
 }
 /** The AI draft goes into the empty (or untouched AI) description; a description a person edited keeps its text and gets the draft beside it (9-5). */
-export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: string, ownerName: string, state: Pipeline, result: { description: string; pinnedComment: string; tags: string[] }, author: { model: string; jobId: string }) {
+export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: string, ownerName: string, state: Pipeline, result: { description: string; pinnedComment: string; tags: string[]; kakao: string; cafe: string; post: string; checklist: string[] }, author: { model: string; jobId: string }) {
   const stages = v1Stages(state);
   const current = stages.upload.data;
   const untouched = !current.desc.trim() || (current.descBy && current.desc === current.descBy.draft);
   const descBy = { userId: ownerId, name: await displayName(supabase, ownerId, ownerName), model: author.model, jobId: author.jobId, at: new Date().toISOString(), draft: result.description };
+  const extras = { kakao: result.kakao, cafe: result.cafe, post: result.post, checklist: result.checklist, checked: [] as number[] };
   const upload = untouched
-    ? { ...current, desc: result.description, pinned: result.pinnedComment || current.pinned, hiddenTags: result.tags, descBy }
-    : { ...current, descBy, pinnedDraft: result.pinnedComment };
+    ? { ...current, desc: result.description, pinned: result.pinnedComment || current.pinned, hiddenTags: result.tags, descBy, extras }
+    : { ...current, descBy, pinnedDraft: result.pinnedComment, extras };
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "upload", stages.upload, upload);
   return { replaced: Boolean(untouched) };
 }

@@ -50,6 +50,8 @@ export interface YpUpload {
   descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string } | null;
   /** The AI's pinned comment when a person had already edited the description (shown beside it, not applied). */
   pinnedDraft?: string;
+  /** The same AI pass's copy for other channels and the upload checklist (the earlier 유튜브 관리 kit). */
+  extras?: { kakao: string; cafe: string; post: string; checklist: string[]; checked: number[] };
   privacy: "private" | "unlisted";
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string } | null;
 }
