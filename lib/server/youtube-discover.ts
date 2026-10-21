@@ -61,7 +61,7 @@ async function channelStats(row: Channel, key: string): Promise<DiscoverChannel>
 export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof discoverSchema>) {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
-  const cacheKey = createHash("sha256").update(JSON.stringify(["v3", input.category ?? "", input.q ?? "", input.days, "KR"])).digest("hex");
+  const cacheKey = createHash("sha256").update(JSON.stringify(["v4", input.category ?? "", input.q ?? "", input.days, "KR"])).digest("hex");
   const service = createServiceSupabase();
   if (!input.refresh) {
     const { data } = await service.from("os_records").select("metadata").eq("record_type", "content_package").eq("metadata->>packageKind", CACHE_KIND)
