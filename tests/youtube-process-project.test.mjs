@@ -77,5 +77,5 @@ test("a project opens on its current step", () => {
   assert.equal(stepHref(1, "p 1"), "/content/plan?project=p%201&view=draft");
   assert.equal(projectHref(project("p", "x", "review")), "/content/final-check?project=p&tab=video");
   assert.equal(projectHref(project("p", "x", "done")), "/content/plan?project=p&view=topic");
-  assert.equal(stepHref(6, "p"), "/content/shorts");
+  assert.equal(stepHref(6, "p"), "/content/shorts?project=p");
 });

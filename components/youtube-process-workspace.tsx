@@ -12,9 +12,11 @@ import { YoutubeMakeScreen } from "./youtube-process-make";
 import { YoutubeFinalCheckScreen } from "./youtube-process-final";
 import { YoutubeUploadScreen } from "./youtube-process-upload";
 import { YoutubeScheduleScreen } from "./youtube-process-schedule";
+import { YoutubeShortsScreen } from "./youtube-process-shorts";
 
 // 지시서 4장. Each screen is filled in by its own step (T3 ~ T11); until then it says what will appear here.
-const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: string }> = {
+const SCREENS: Record<YoutubeV1Screen | "shorts", { sub: string; coming: string; step: string }> = {
+  shorts: { sub: "올린 롱폼에서 쇼츠로 자를 구간을 골라요.", coming: "", step: "" },
   projects: { sub: "영상 한 편이 프로젝트 하나예요. 주제부터 업로드까지 이 안에서 이어져요.", coming: "새 프로젝트 · 최근 프로젝트 6개 · 이름 검색", step: "T3" },
   plan: { sub: "주제 → 기획안 → 구성안 순서로 채워요. 주제와 기획안은 대표 컨펌을 받아요.", coming: "주제 · 기획안(제목 A · B · C, 썸네일 시안) · 구성안(영상 스펙 · 원고)", step: "T3 · T5 · T6" },
   make: { sub: "편집 완료 일정을 정하고 최종본과 최종 썸네일을 올려요.", coming: "편집 완료 일정 · 진행 상태 · 최종본 올리기(버전) · 최종 썸네일 A · B · C", step: "T7" },
@@ -25,7 +27,7 @@ const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: stri
 };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
-export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen }) {
+export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | "shorts" }) {
   const { accessToken, demo, profile } = useSession();
   const canConfirm = useYoutubeCanConfirm(screen === "confirm", accessToken, demo, profile?.role === "admin");
   const info = SCREENS[screen];
@@ -35,6 +37,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen })
   if (screen === "make") return <section className="yp ui-v2"><YoutubeMakeScreen header={header} /></section>;
   if (screen === "final-check") return <section className="yp ui-v2"><YoutubeFinalCheckScreen header={header} /></section>;
   if (screen === "upload") return <section className="yp ui-v2"><YoutubeUploadScreen header={header} /></section>;
+  if (screen === "shorts") return <section className="yp ui-v2"><YoutubeShortsScreen header={header} /></section>;
   return <section className="yp ui-v2">
     {header}
     {screen === "projects" ? <YoutubeProjectsScreen />

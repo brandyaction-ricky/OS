@@ -67,6 +67,8 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
     if (!youtubeV1Enabled()) redirect("/content/topics");
     return <YoutubeProcessWorkspace screen={youtubeScreen} />;
   }
+  // With v1 on, 쇼츠 is a step of the project (the earlier 숏폼 편집 stays at this address when it is off).
+  if (href === "/content/shorts" && youtubeV1Enabled()) return <YoutubeProcessWorkspace screen="shorts" />;
   if (teamEnabled && href === "/organization/tasks") return <TeamWorkspaceV1 section="tasks" />;
   if (teamEnabled && href === "/organization/schedule") return <TeamWorkspaceV1 section="schedule" />;
   if (teamEnabled && href === "/home/decisions") {

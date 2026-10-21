@@ -107,7 +107,7 @@ const PLAN_VIEWS = ["topic", "draft", "outline"] as const;
 /** Screen for flow step i (0 주제 … 6 쇼츠) of a project. */
 export function stepHref(index: number, id: string) {
   if (index <= 2) return `/content/plan?project=${encodeURIComponent(id)}&view=${PLAN_VIEWS[index]}`;
-  return [`/content/make?project=${encodeURIComponent(id)}`, `/content/final-check?project=${encodeURIComponent(id)}&tab=video`, `/content/upload?project=${encodeURIComponent(id)}`, "/content/shorts"][index - 3];
+  return [`/content/make?project=${encodeURIComponent(id)}`, `/content/final-check?project=${encodeURIComponent(id)}&tab=video`, `/content/upload?project=${encodeURIComponent(id)}`, `/content/shorts?project=${encodeURIComponent(id)}`][index - 3];
 }
 /** Where a project row opens: its current step (a finished project opens its topic). */
 export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage], project.id);
