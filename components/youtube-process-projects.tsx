@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ContentRadarWorkspace } from "./content-radar-workspace";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Film, FolderOpen, Plus, Search, Sparkles, X } from "lucide-react";
 import { projectHref, projectName, recentProjects, searchProjects, stageLabel, YP_KIND_SHORT, type YpKind, type YpProject } from "@/lib/youtube-process/project";
@@ -61,7 +62,14 @@ export function YoutubeProjectsScreen() {
     }
   }
 
+  const discover = useSearchParams().get("view") === "discover";
+  const tabs = <div className="yp-seg2" role="tablist" aria-label="프로젝트 화면" style={{ marginBottom: 12 }}>
+    <button type="button" role="tab" aria-selected={!discover} className={discover ? "" : "yp-on"} onClick={() => router.replace("/content/projects")}>프로젝트</button>
+    <button type="button" role="tab" aria-selected={discover} className={discover ? "yp-on" : ""} onClick={() => router.replace("/content/projects?view=discover&tab=discovery")}>주제 찾기</button></div>;
+  // 주제 찾기 (owner request 2026-10-21): the earlier 주제·기획 channel and discovery tools, starting v1 projects.
+  if (discover) return <>{tabs}<ContentRadarWorkspace startProjectHref={video => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(`${video.title} · ${video.channel}`)}`} /></>;
   return <>
+    {tabs}
     <div className="yp-ptop">
       <Link className="yp-btn yp-pri yp-lg" href="/content/plan?project=new&view=topic"><Plus size={16} className="yp-i" aria-hidden="true" />새 프로젝트</Link>
       <button type="button" className="yp-btn yp-lg" onClick={() => { setOpenQuery(""); dialog.current?.showModal(); }}><FolderOpen size={16} className="yp-i" aria-hidden="true" />프로젝트 열기</button>

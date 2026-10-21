@@ -81,13 +81,18 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     setError(""); setConflict(false);
     const [list, people] = await Promise.all([client.list(), client.members().catch(() => [] as YpMember[])]);
     setProjects(list); setMembers(people);
-    if (projectParam === "new") { setLoading(false); setForm(current => ({ ...current, assigneeId: current.assigneeId ?? profile?.id ?? null })); return; }
+    if (projectParam === "new") {
+      // 주제 찾기 › [이 영상으로 새 프로젝트] opens here with the found video as the first reference.
+      const found = parseYoutubeRef(params.get("ref") ?? "");
+      const ref = found ? { ...found, title: params.get("refTitle")?.slice(0, 200) || undefined } : null;
+      setLoading(false); setForm(current => ({ ...current, assigneeId: current.assigneeId ?? profile?.id ?? null, refs: ref && !current.refs.some(row => row.url === ref.url) ? [ref, ...current.refs] : current.refs })); return;
+    }
     if (!force && loadedId.current === projectParam) return;
     const found = await client.get(projectParam);
     loadedId.current = found.id;
     setProject(found); setForm(formOf(found)); setDirty(false); setLoading(false);
     try { localStorage.setItem(LAST_KEY, found.id); } catch { /* convenience only */ }
-  }, [client, projectParam, profile?.id]);
+  }, [client, projectParam, profile?.id, params]);
   useEffect(() => { load().catch(reason => { setError(errorMessage(reason)); setLoading(false); }); }, [load]);
 
   const editable = project ? topicEditable(project) : projectParam === "new";
