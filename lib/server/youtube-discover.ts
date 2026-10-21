@@ -3,12 +3,13 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { categoryQuery, DISCOVER_LETTERS, type DiscoverLetter, type DiscoverVideo } from "@/lib/youtube-process/discover";
+import { categoryQuery, DISCOVER_LETTERS, NOT_A_TOPIC, type DiscoverLetter, type DiscoverVideo } from "@/lib/youtube-process/discover";
 import type { RequestActor } from "./auth";
 
 // 유튜브 공정 v1 주제 찾기: one search per category (or the keyword), the videos' and channels' numbers, and a 12-hour shared cache
 // so a category clicked again — or 전체, twelve searches at 100 quota units each — does not spend the daily YouTube quota twice.
-// The search itself follows app/api/v1/youtube/search/route.ts.
+// The search itself follows app/api/v1/youtube/search/route.ts; it asks for 50 results, which cost the same 100 units as fewer,
+// because a viewCount search returns many Shorts that the longform view leaves out.
 const CACHE_HOURS = 12;
 const CACHE_KIND = "youtube_discover_cache";
 export const discoverSchema = z.object({
@@ -31,7 +32,7 @@ const chunks = <T,>(list: T[], size: number) => Array.from({ length: Math.ceil(l
 export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof discoverSchema>) {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
-  const cacheKey = createHash("sha256").update(JSON.stringify(["v1", input.category ?? "", input.q ?? "", input.days, "KR"])).digest("hex");
+  const cacheKey = createHash("sha256").update(JSON.stringify(["v2", input.category ?? "", input.q ?? "", input.days, "KR"])).digest("hex");
   const service = createServiceSupabase();
   if (!input.refresh) {
     const { data } = await service.from("os_records").select("metadata").eq("record_type", "content_package").eq("metadata->>packageKind", CACHE_KIND)
@@ -43,11 +44,11 @@ export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof
   const letters: (DiscoverLetter | null)[] = input.q ? [null] : input.category === "all" ? DISCOVER_LETTERS : [input.category as DiscoverLetter];
   const after: Record<string, string> = input.days === "all" ? {} : { publishedAfter: new Date(Date.now() - Number(input.days) * 86_400_000).toISOString() };
   const searches = await Promise.all(letters.map(letter => youtube<{ items?: SearchItem[] }>("search", {
-    part: "snippet", type: "video", order: "viewCount", regionCode: "KR", relevanceLanguage: "ko", maxResults: input.category === "all" ? "15" : "25",
+    part: "snippet", type: "video", order: "viewCount", regionCode: "KR", relevanceLanguage: "ko", maxResults: "50",
     q: letter ? categoryQuery(letter) : input.q!, ...after,
   }, key).then(body => (body.items ?? []).map(item => ({ item, letter })))));
   const seen = new Set<string>();
-  const found = searches.flat().filter(({ item }) => { const id = item.id?.videoId; if (!id || seen.has(id)) return false; seen.add(id); return true; });
+  const found = searches.flat().filter(({ item }) => { const id = item.id?.videoId; if (!id || seen.has(id) || NOT_A_TOPIC.test(decodeHtmlEntities(item.snippet?.title ?? ""))) return false; seen.add(id); return true; });
   const videoIds = found.map(({ item }) => item.id!.videoId!);
   const channelIds = [...new Set(found.map(({ item }) => item.snippet?.channelId).filter((id): id is string => Boolean(id)))];
   const [videos, channels] = await Promise.all([

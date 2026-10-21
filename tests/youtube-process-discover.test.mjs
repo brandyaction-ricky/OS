@@ -18,3 +18,9 @@ test("niche themes count only videos above the ratio and need two of them; most 
   assert.deepEqual(themes.map(theme => [theme.word, theme.count, theme.avgRatio]), [["강점", 2, 3.5], ["단점", 2, 3]]);
   assert.equal(ageLabel(new Date(Date.now() - 40 * 86_400_000).toISOString()), "1개월 전");
 });
+
+test("background sound and music are not topics; long videos show hours", async () => {
+  const { NOT_A_TOPIC, durationLabel } = await import("../lib/youtube-process/discover.ts");
+  assert.deepEqual(["relaxing rain sounds☔ - 빗소리 8시간 수면용 백색소음 ASMR", "공부할 때 듣는 플레이리스트", "단점이 강점이 되는 이유"].map(title => NOT_A_TOPIC.test(title)), [true, true, false]);
+  assert.deepEqual([durationLabel(28801), durationLabel(1587)], ["8:00:01", "26:27"]);
+});

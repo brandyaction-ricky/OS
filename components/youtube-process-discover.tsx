@@ -5,7 +5,7 @@ import { ExternalLink, Plus, RefreshCw, Search, X } from "lucide-react";
 import { apiRequest, createRecord, listAllRecordsOfType, resolveYoutubeChannel, type YoutubeChannelIdentity } from "@/lib/api-client";
 import { contentOrigin } from "@/lib/content-origin";
 import type { OsRecord } from "@/lib/record-types";
-import { ageLabel, compactCount, DISCOVER_CATEGORIES, NICHE_RATIO, nicheThemes, type DiscoverVideo } from "@/lib/youtube-process/discover";
+import { ageLabel, compactCount, DISCOVER_CATEGORIES, durationLabel, NICHE_RATIO, nicheThemes, type DiscoverVideo } from "@/lib/youtube-process/discover";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
@@ -119,7 +119,7 @@ export function YoutubeDiscoverScreen() {
     {busy ? <p className="yp-pempty" role="status">유튜브에서 {label} 영상을 찾는 중이에요… {"category" in pick && pick.category === "all" ? "(전체는 10초쯤 걸려요)" : ""}</p>
       : shown.length ? <div className="yp-ref-grid">{shown.map(video => <article key={video.id} className="yp-ref">
         <a className="yp-ref-thumb" href={video.url} target="_blank" rel="noreferrer" style={video.thumbnail ? { backgroundImage: `url(${video.thumbnail})` } : undefined} aria-label={`${video.title} 유튜브에서 보기`}>
-          {video.durationSeconds ? <span>{Math.floor(video.durationSeconds / 60)}:{String(video.durationSeconds % 60).padStart(2, "0")}</span> : null}</a>
+          {video.durationSeconds ? <span>{durationLabel(video.durationSeconds)}</span> : null}</a>
         <div className="yp-ref-b">
           <a className="yp-ref-t" href={video.url} target="_blank" rel="noreferrer" title={video.title}>{video.title}</a>
           <span className="yp-muted">{video.channelTitle}{video.subscribers ? ` · 구독자 ${compactCount(video.subscribers)}` : ""}</span>

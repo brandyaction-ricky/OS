@@ -10,7 +10,7 @@ export const DISCOVER_CATEGORIES = [
   ["G", "마음·감정", ["불안", "자존감", "번아웃 회복"]],
   ["H", "돈·경제", ["재테크", "소비 습관", "경제적 자유"]],
   ["I", "공부·성장", ["공부법", "독서", "자기계발"]],
-  ["J", "건강·생활", ["수면", "운동 루틴", "생활 습관"]],
+  ["J", "건강·생활", ["수면 습관", "운동 루틴", "건강한 생활 습관"]],
   ["K", "리더십", ["리더십", "팀 관리", "리더의 판단"]],
   ["L", "라이프 전환", ["퇴사", "인생 전환기", "인생 설계"]],
 ] as const;
@@ -54,6 +54,14 @@ export function nicheThemes(videos: DiscoverVideo[], minRatio = NICHE_RATIO, lim
   return [...byWord.entries()].filter(([, entry]) => entry.ids.length >= 2)
     .map(([word, entry]) => ({ word, count: entry.ids.length, avgRatio: Math.round(entry.ratios.reduce((a, b) => a + b, 0) / entry.ratios.length * 10) / 10, ids: entry.ids }))
     .sort((a, b) => b.count - a.count || b.avgRatio - a.avgRatio).slice(0, limit);
+}
+
+/** Background sound, music and playlists answer no topic: they are left out of the references. */
+export const NOT_A_TOPIC = /asmr|백색\s*소음|빗소리|플레이\s*리스트|playlist|\bmusic\b|\bbgm\b|노동요|수면\s*음악|명상\s*음악/i;
+/** 8:00:01 for videos past an hour, 26:27 below. */
+export function durationLabel(seconds: number) {
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = String(seconds % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
 export const compactCount = (value: number) => new Intl.NumberFormat("ko-KR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
