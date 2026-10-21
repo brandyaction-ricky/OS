@@ -34,7 +34,9 @@ export type YpMakeStatus = "prep" | "shoot" | "edit" | "done";
 export interface YpFinalUpload { v: number; at: string; by: string; path: string; name: string; bytes: number }
 export interface YpMake {
   editDue: string; status: YpMakeStatus; statusAt: Partial<Record<YpMakeStatus, string>>;
-  log: { at: string; by: string; from: string; to: string; why: string }[];
+  /** 업로드 일정 (예상), set on the 스케줄 screen; never before 편집 완료 (4-9). */
+  uploadPlan?: string;
+  log: { at: string; by: string; from: string; to: string; why: string; field?: "editDue" | "uploadPlan" }[];
   /** Finals uploaded by hand (실사). The OS-made 마이인 finals come from their run records. */
   finals: YpFinalUpload[];
   thumbs: Partial<Record<YpSlot, { path: string; at: string; name: string }>>;

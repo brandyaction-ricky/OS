@@ -11,6 +11,7 @@ import { YoutubeProjectsScreen } from "./youtube-process-projects";
 import { YoutubeMakeScreen } from "./youtube-process-make";
 import { YoutubeFinalCheckScreen } from "./youtube-process-final";
 import { YoutubeUploadScreen } from "./youtube-process-upload";
+import { YoutubeScheduleScreen } from "./youtube-process-schedule";
 
 // 지시서 4장. Each screen is filled in by its own step (T3 ~ T11); until then it says what will appear here.
 const SCREENS: Record<YoutubeV1Screen, { sub: string; coming: string; step: string }> = {
@@ -37,6 +38,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen })
   return <section className="yp ui-v2">
     {header}
     {screen === "projects" ? <YoutubeProjectsScreen />
+      : screen === "schedule" ? <YoutubeScheduleScreen />
       : screen === "confirm" && canConfirm === null ? <p className="yp-hint" role="status">권한을 확인하는 중이에요…</p>
       : screen === "confirm" && !canConfirm ? <div className="yp-locked"><Lock size={18} className="yp-i" aria-hidden="true" /><div><b>대표 메뉴예요</b><p>컨펌 목록은 회사 승인자에게만 보여요. 컨펌 대기 중인 단계 화면에서는 누구나 상태를 볼 수 있어요.</p></div></div>
         : screen === "confirm" ? <YoutubeConfirmScreen />

@@ -16,6 +16,7 @@ export interface YpFeedbackView {
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: { by: string; text: string; at: string }[];
 }
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
+export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt";
 export interface YpClient {
@@ -40,6 +41,8 @@ export interface YpClient {
   confirmList(tab: "wait" | "done" | "hold"): Promise<{ project: YpProject; gate: YpGate }[]>;
   members(): Promise<YpMember[]>;
   legacy(): Promise<YpLegacyTopic[]>;
+  schedule(): Promise<YpScheduleItem[]>;
+  moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
   adopt(id: string): Promise<YpProject>;
   demo: boolean;
 }
@@ -79,6 +82,8 @@ function apiClient(token: string): YpClient {
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
     confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
     legacy: async () => (await apiRequest<{ topics: YpLegacyTopic[] }>("/api/v1/content/youtube/legacy", { token })).topics,
+    schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
+    moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
@@ -264,6 +269,22 @@ function demoClient(): YpClient {
     confirmList: async tab => confirmTab(structuredClone(demoProjects()), tab, DEMO_ME).map(row => ({ project: row.project, gate: row.gate })),
     members: async () => DEMO_MEMBERS,
     legacy: async () => [],
+    schedule: async () => demoProjects().map(project => {
+      const make = stagesOf(project).make;
+      const waiting = (["topic", "draft", "review"] as const).find(gate => project.yp.gates[gate].state === "wait");
+      return structuredClone({ project, makeVersion: make.version, editDue: make.data.editDue, uploadPlan: make.data.uploadPlan ?? "", log: make.data.log.filter(item => item.field).slice(0, 5),
+        waiting: waiting ? { gate: waiting, requestedAt: project.yp.gates[waiting].requestedAt ?? "" } : null });
+    }),
+    moveDates: async (id, makeVersion, patch) => {
+      const project = find(id); const stages = stagesOf(project); const make = stages.make;
+      checkVersion(make.version, makeVersion);
+      const editDue = patch.editDue ?? make.data.editDue; const uploadPlan = patch.uploadPlan ?? make.data.uploadPlan ?? "";
+      if (editDue && uploadPlan && uploadPlan < editDue) throw demoError(409, "DATE_ORDER", "업로드 일정은 편집 완료 일정보다 앞으로 옮길 수 없어요.");
+      const now = new Date().toISOString();
+      const log = [...(patch.editDue !== undefined ? [{ at: now, by: "리키", from: make.data.editDue, to: patch.editDue, why: patch.why ?? "", field: "editDue" as const }] : []),
+        ...(patch.uploadPlan !== undefined ? [{ at: now, by: "리키", from: make.data.uploadPlan ?? "", to: patch.uploadPlan, why: patch.why ?? "", field: "uploadPlan" as const }] : []), ...make.data.log];
+      demoStages.set(id, { ...stages, make: { ...make, version: make.version + 1, data: { ...make.data, editDue, uploadPlan, log } } });
+    },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
   };
 }

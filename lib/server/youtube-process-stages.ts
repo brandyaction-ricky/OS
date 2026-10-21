@@ -5,13 +5,13 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { projectName, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { projectFromRecord, projectName, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
   type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
-import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, readFailed, saveProject } from "./youtube-process";
+import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
 // edit on a step never fight over one version number.
@@ -275,4 +275,47 @@ export async function youtubeAssetUrl(actor: RequestActor, id: string, path: str
   const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).createSignedUrl(path, 3600);
   if (error || !data) throw new ApiError(404, "ASSET_NOT_FOUND", "파일을 찾지 못했습니다.");
   return data.signedUrl;
+}
+
+// ── 스케줄 (S9) ──
+export const datesSchema = z.object({ expectedVersion: z.number().int().min(0), editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(),
+  uploadPlan: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/).optional(), why: text(200).optional() }).strict();
+/** Moves 편집 완료 or 업로드 (예상) from the calendar, any time before the upload; 업로드 cannot go before 편집 완료 (4-9). */
+export async function moveYoutubeDates(actor: RequestActor, id: string, input: z.infer<typeof datesSchema>) {
+  const project = await getYoutubeProject(actor, id);
+  if (["done", "shorts"].includes(project.yp.stage)) throw locked("끝난 프로젝트예요.");
+  const stages = await readStages(actor.supabase, project);
+  if (stages.make.version !== input.expectedVersion) throw conflict();
+  const now = new Date().toISOString();
+  const make = { ...stages.make.data };
+  const editDue = input.editDue ?? make.editDue;
+  const uploadPlan = input.uploadPlan ?? make.uploadPlan ?? "";
+  if (editDue && uploadPlan && uploadPlan < editDue) throw new ApiError(409, "DATE_ORDER", "업로드 일정은 편집 완료 일정보다 앞으로 옮길 수 없어요.");
+  const log = [...make.log];
+  if (input.editDue !== undefined && input.editDue !== make.editDue) log.unshift({ at: now, by: actor.name, from: make.editDue, to: input.editDue, why: input.why ?? "", field: "editDue" });
+  if (input.uploadPlan !== undefined && input.uploadPlan !== (make.uploadPlan ?? "")) log.unshift({ at: now, by: actor.name, from: make.uploadPlan ?? "", to: input.uploadPlan, why: input.why ?? "", field: "uploadPlan" });
+  const data = { ...make, editDue, uploadPlan, log: log.slice(0, 20) };
+  const saved = await writeStage(actor.supabase, actor.id, actor.team, project, "make", stages.make, data);
+  // 4-9: someone else moving a date tells the PD.
+  if (project.assigneeId && project.assigneeId !== actor.id) await notify([project.assigneeId], "yt_due", project.id, `dates:${project.id}:${saved.version}`);
+  return { ...saved, data };
+}
+
+/** Every project with its dates, for the calendar: one read of the projects and one of their 제작 records. */
+export async function youtubeSchedule(actor: RequestActor) {
+  const { data: rows, error } = await actor.supabase.from("os_records").select("id,version,title,assignee_id,owner_id,updated_at,metadata")
+    .eq("record_type", "content_topic").eq("metadata->>workflow", "youtube_v1").is("archived_at", null).limit(500);
+  if (error) throw readFailed();
+  const projects = (rows ?? []).map(row => projectFromRecord(row)).filter((row): row is YpProject => Boolean(row));
+  const ids = projects.map(row => row.id);
+  const { data: makes, error: makeError } = ids.length ? await actor.supabase.from("os_records").select("id,version,parent_id,metadata").in("parent_id", ids)
+    .eq("record_type", "content_package").eq("metadata->>packageKind", "yp_make").is("archived_at", null) : { data: [], error: null };
+  if (makeError) throw readFailed();
+  return projects.map(project => {
+    const record = (makes ?? []).find(row => row.parent_id === project.id);
+    const make = stageData("make", record?.metadata?.yp, project.yp.topic.type);
+    const waiting = (Object.keys(project.yp.gates) as YpGate[]).find(gate => project.yp.gates[gate].state === "wait");
+    return { project, makeVersion: record?.version ?? 0, editDue: make.editDue, uploadPlan: make.uploadPlan ?? "", log: make.log.filter(item => item.field).slice(0, 5),
+      waiting: waiting ? { gate: waiting, requestedAt: project.yp.gates[waiting].requestedAt ?? "" } : null };
+  });
 }

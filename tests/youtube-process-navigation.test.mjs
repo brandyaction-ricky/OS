@@ -11,9 +11,9 @@ test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
   assert.equal(youtubeV1Enabled({ YOUTUBE_V1_ENABLED: "true" }), true);
 });
 
-test("v1 menu is seven pages in prototype order, plus 컨펌 under 대표 메뉴", () => {
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["프로젝트", "기획", "제작", "최종 검수", "업로드", "쇼츠", "스케줄"]);
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.href), ["/content/projects", "/content/plan", "/content/make", "/content/final-check", "/content/upload", "/content/shorts", "/content/schedule"]);
+test("v1 menu is the prototype's seven pages plus 성과 (owner request 2026-10-21), and 컨펌 under 대표 메뉴", () => {
+  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["프로젝트", "기획", "제작", "최종 검수", "업로드", "쇼츠", "스케줄", "성과"]);
+  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.href), ["/content/projects", "/content/plan", "/content/make", "/content/final-check", "/content/upload", "/content/shorts", "/content/schedule", "/content/performance"]);
   assert.ok(YOUTUBE_V1_PAGES.every(page => page.processNumber === undefined), "no legacy process bar on v1 screens");
   assert.equal(findStage("/content/confirm").id, "ceo");
   assert.equal(findStage("/content/confirm").label, "대표 메뉴");

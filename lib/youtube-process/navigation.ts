@@ -1,4 +1,4 @@
-import { CalendarDays, CheckCircle2, Eye, Film, LayoutGrid, PenLine, Scissors, UploadCloud } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, Eye, Film, LayoutGrid, PenLine, Scissors, UploadCloud } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // D2: the prototype's side menu has no step numbers, so these pages carry no processNumber (and no legacy process bar).
@@ -11,6 +11,8 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
   // Shorts stay on the existing 숏폼 편집 screen (보류-2); only the menu name changes.
   { label: "쇼츠", href: "/content/shorts", icon: Scissors, ready: true },
   { label: "스케줄", href: "/content/schedule", icon: CalendarDays, aliases: ["업로드 일정", "편집 일정"], ready: true },
+  // After upload the flow goes on to how the video did (owner request 2026-10-21: one flow, nothing left on the old menu).
+  { label: "성과", href: "/content/performance", icon: BarChart3, aliases: ["영상 성과", "조회수", "CTR"], ready: true },
 ];
 /** 대표 메뉴 › 컨펌: shown only to the company approver (D1). */
 export const YOUTUBE_V1_CONFIRM_PAGE: NavPage = { label: "컨펌", href: "/content/confirm", icon: CheckCircle2, aliases: ["대표 메뉴", "대표 컨펌"], ready: true };

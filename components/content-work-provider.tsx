@@ -14,7 +14,7 @@ import {youtubeV1Screen} from "@/lib/youtube-process/navigation";
 type WorkContext = {topics:OsRecord[];publications:OsRecord[];selected?:OsRecord;topicId:string;loading:boolean;error:string;generationMode:GenerationMode;select:(id:string)=>void;reload:()=>void};
 const Context=createContext<WorkContext|null>(null);
 const TYPES:RecordType[]=["content_topic","content_script","content_package","content_short","content_publish","company_setting"];
-export function ContentWorkProvider({children}:{children:React.ReactNode}) {
+export function ContentWorkProvider({children,youtubeV1=false}:{children:React.ReactNode;youtubeV1?:boolean}) {
   const path=usePathname(), search=useSearchParams(), {accessToken,demo,profile}=useSession();
   // 유튜브 공정 v1 screens read their own project data instead of the legacy topic list.
   const enabled=path.startsWith("/content/")&&!youtubeV1Screen(path);
@@ -32,8 +32,8 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
     return()=>{active=false;};
   },[enabled,accessToken,demo,profile?.id,revision]);
   const requested=search.get("topic")??search.get("sourceId");
-  const topicId=workTopicSelection(records,requested,saved,defaultsToAll(path,search.get("tab")));
-  const topics=useMemo(()=>workTopics(records),[records]);
+  const topicId=workTopicSelection(records,requested,saved,defaultsToAll(path,search.get("tab")),youtubeV1);
+  const topics=useMemo(()=>workTopics(records,youtubeV1),[records,youtubeV1]);
   const selected=topics.find(row=>row.id===topicId);
   const select=useCallback((id:string)=>{
     setSaved(id);try{localStorage.setItem(storageKey,id);}catch{/* URL remains the source of truth. */}
@@ -41,7 +41,8 @@ export function ContentWorkProvider({children}:{children:React.ReactNode}) {
   },[path,search,storageKey]);
   const reload=useCallback(()=>setRevision(value=>value+1),[]);
   const page=findPage(path), content=NAV_STAGES.find(stage=>stage.id==="content")!;
-  const showProcess=enabled && Boolean(page.processNumber);
+  // With 유튜브 공정 v1 on, its progress line replaces the earlier 8-step bar.
+  const showProcess=enabled && Boolean(page.processNumber) && !youtubeV1;
   const currentStep=selected?productionStep(selected,records):null;
   // Done marks follow the saved-output board, matched by page; 영상 제작 is optional and never marked done here.
   const boardHref={planning:"/content/topics",script:"/content/scripts",package:"/content/packages",short:"/content/shorts",publish:"/content/publishing"} satisfies Record<ProductionStep,string>;
