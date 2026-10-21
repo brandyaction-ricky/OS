@@ -9,6 +9,7 @@ import { SLOTS } from "@/lib/youtube-process/stages";
 import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
+import { ShortConfirmDetail } from "./youtube-process-short";
 
 const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -33,7 +34,7 @@ export function ConfirmActions({ project, gate, client, onDone }: { project: YpP
   };
   return <>
     <div className="yp-abar">
-      <span className="yp-abar-msg">{gate === "review" ? "대표 OK가 나야 업로드로 넘어가요" : "OK를 누르면 다음 단계가 바로 열려요"}</span>
+      <span className="yp-abar-msg">{gate === "review" ? `대표 OK가 나야 ${project.yp.topic.type === "short" ? "내보내기" : "업로드"}로 넘어가요` : "OK를 누르면 다음 단계가 바로 열려요"}</span>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "hold"} onClick={() => setMode(mode === "hold" ? null : "hold")}>보류</button>
       <button type="button" className="yp-btn" disabled={busy} aria-expanded={mode === "changes"} onClick={() => setMode(mode === "changes" ? null : "changes")}>수정 요청</button>
       <button type="button" className="yp-btn yp-pri yp-lg" disabled={busy} onClick={() => void run("ok")}><Check size={16} aria-hidden="true" />OK</button>
@@ -140,6 +141,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
   if (error) return <div className="yp-note yp-warn"><div>{error}</div></div>;
   if (!bundle) return <p className="yp-hint">불러오는 중이에요…</p>;
   const media = { client, bundle };
+  if (project.yp.topic.type === "short") return <ShortConfirmDetail client={client} bundle={bundle} open={open} />;
   const plan = bundle.stages.plan.data;
   const make = bundle.stages.make.data;
   const pairs = gate === "draft" ? plan.titles.slice(0, 3).map((title, index) => ({ slot: SLOTS[index], title: title.text, thumb: plan.thumbs[index] ?? null, path: null as string | null }))

@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, topicEditable, topicFieldEditable, topicLines, topicMissing,
+  parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -156,7 +156,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const rev = (field: string) => topicGate.state === "changes" && (topicGate.fields ?? []).includes(field);
   const lines = topicLines(form.title);
   const action: YpAction = view !== current && current < YP_FLOW.length
-    ? { kind: "link", label: `이어서 하기 · ${YP_FLOW[current]}`, href: stepHref(current, shell.id) }
+    ? { kind: "link", label: `이어서 하기 · ${stepName(current, shell.yp.topic.type)}`, href: stepHref(current, shell.id) }
     : topicGate.state === "wait"
       ? { kind: "status", status: `대표 컨펌 대기 · ${daysSince(topicGate.requestedAt)}일`, secondary: { label: "요청 취소", onClick: () => void gate("cancel") } }
       : { kind: "button", label: `${["changes", "hold"].includes(topicGate.state) ? "주제 컨펌 다시 요청" : "주제 컨펌 요청"}${lines.length > 1 ? ` (${lines.length}개)` : ""}`, reason: topicMissing(form.title, { type: form.kind, target: form.target }), busy, onClick: () => void gate("request") };
@@ -166,7 +166,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   return <>
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
-      <p>{topicGate.state === "wait" ? "대표 컨펌을 기다리는 중이에요. 지금 할 일은 없어요. 결과가 나오면 알림이 가요." : topicGate.state === "changes" ? "대표가 고르라고 한 칸만 고치고 다시 요청해요." : topicGate.state === "ok" ? "주제가 확정됐어요. 기획안으로 넘어가요." : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌을 요청해요."}</p></div>
+      <p>{topicGate.state === "wait" ? "대표 컨펌을 기다리는 중이에요. 지금 할 일은 없어요. 결과가 나오면 알림이 가요." : topicGate.state === "changes" ? "대표가 고르라고 한 칸만 고치고 다시 요청해요." : topicGate.state === "ok" ? `주제가 확정됐어요. ${shell.yp.topic.type === "short" ? "제작" : "기획안"}으로 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌을 요청해요."}</p></div>
       <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">프로젝트를 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
@@ -198,9 +198,9 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </Field>
         <Field n={2} title="유형" question="기본값이 없어요. 꼭 골라주세요." need rev={rev("topic.type")}>
           <div className="yp-radio-c" role="radiogroup" aria-label="유형">
-            {(["live", "anim"] as const).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
+            {(["live", "anim", "short"] as const).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
               <input type="radio" name="yp-topic-kind" value={kind} checked={form.kind === kind} disabled={!open("kind")} onChange={() => editAndSave({ kind })} />
-              <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : "작화 · 생성 · 편집"}</small></span>
+              <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : kind === "anim" ? "작화 · 생성 · 편집" : "15 ~ 60초 세로 영상"}</small></span>
             </label>)}
           </div>
         </Field>

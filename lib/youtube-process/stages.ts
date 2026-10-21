@@ -66,6 +66,7 @@ const id = () => (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.ran
 export const SPEC_DEFAULT: Record<YpKind, YpOutline["spec"]> = {
   live: { runtimeMin: null, res: "4K (선명 · 기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
   anim: { runtimeMin: null, res: "FHD 1080p (기본)", fps: "30fps (기본)", ratio: "16:9 가로 (롱폼 · 기본)" },
+  short: { runtimeMin: null, res: "720 × 1280", fps: "30fps (기본)", ratio: "9:16 세로" },
 };
 export const SPEC_OPTIONS = {
   res: ["4K (선명 · 기본)", "FHD 1080p (기본)", "QHD 1440p"],
@@ -161,6 +162,7 @@ export function withScriptVersion(outline: YpOutline, md: string, by: string, at
 export const MAKE_STEPS: Record<YpKind, [YpMakeStatus, string][]> = {
   live: [["prep", "준비"], ["shoot", "촬영"], ["edit", "편집 중"], ["done", "완료"]],
   anim: [["prep", "준비"], ["edit", "편집"], ["done", "완료"]],
+  short: [["prep", "준비"], ["done", "완료"]],
 };
 export function thumbsMissing(make: YpMake) {
   for (const slot of ["A", "B"] as const) if (!make.thumbs[slot]) return `최종 썸네일 ${slot}를 올려주세요`;

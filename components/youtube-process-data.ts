@@ -4,12 +4,20 @@ import { apiRequest, ApiRequestError, listMembers, uploadContentMedia } from "@/
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
+import { cutsFromScenes, scenesFromCuts, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
-export interface YpFinalView { v: number; at: string; source: "myin" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
+export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
+/** A render PC job for a 숏폼 or a clip: backlog (기다림) · in_progress (만드는 중) · done · blocked (멈춤, with the reason code). */
+export interface YpRenderView { id: string; status: string; error: string | null; at: string; duration: number }
+export interface YpShortView {
+  id: string; version: number; brief: YpShortBrief; scenes: YpShortScene[]; aiScenes: YpShortScene[] | null; appeals: YpShortAppeal[];
+  ai: { by: string; model: string; at: string } | null; images: Record<string, { name: string; url: string }>; render: YpRenderView | null;
+}
+export type YpShortPatch = { brief?: Partial<YpShortBrief>; scenes?: YpShortScene[]; useAiScenes?: true };
 export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[] }
 export interface YpFeedbackView {
   id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
@@ -44,6 +52,13 @@ export interface YpClient {
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
   adopt(id: string): Promise<YpProject>;
+  short(id: string): Promise<YpShortView>;
+  saveShort(id: string, expectedVersion: number, patch: YpShortPatch): Promise<YpShortView>;
+  shortImage(id: string, file: File): Promise<{ assetId: string; url: string }>;
+  renderShort(id: string, expectedVersion: number, voiceApproved: boolean): Promise<void>;
+  renderClip(id: string, clipId: string): Promise<void>;
+  clipRenders(id: string): Promise<Record<string, YpRenderView>>;
+  shortVideoUrl(id: string, renderId: string, download?: boolean): Promise<string>;
   demo: boolean;
 }
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
@@ -54,6 +69,7 @@ function apiClient(token: string): YpClient {
   const base = "/api/v1/content/youtube/projects";
   const gate: YpClient["gate"] = (id, name, action, expectedVersion, reply) => apiRequest(`${base}/${id}/gates/${name}`, { token, method: "POST", body: json({ action, expectedVersion, ...(reply ? { reply } : {}) }) });
   const assetUrl = async (id: string, path: string) => (await apiRequest<{ url: string }>(`${base}/${id}/assets?path=${encodeURIComponent(path)}`, { token })).url;
+  const shortVideoUrl = async (id: string, renderId: string, download = false) => (await apiRequest<{ url: string }>(`${base}/${id}/short?video=${renderId}${download ? "&download=1" : ""}`, { token })).url;
   return {
     demo: false,
     list: async () => (await apiRequest<{ projects: YpProject[] }>(base, { token })).projects,
@@ -71,8 +87,8 @@ function apiClient(token: string): YpClient {
       return { path: upload.path, name: file.name, bytes: file.size };
     },
     assetUrl,
-    finalUrl: async (id, final) => final.runId
-      ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
+    finalUrl: async (id, final) => final.source === "short" && final.runId ? shortVideoUrl(id, final.runId)
+      : final.runId ? (await apiRequest<{ video: string | null }>(`/api/v1/content/youtube-automation/myin?outputs=${final.runId}`, { token })).video
       : final.path ? assetUrl(id, final.path) : null,
     feedback: async id => (await apiRequest<{ items: YpFeedbackView[] }>(`${base}/${id}/feedback`, { token })).items,
     addFeedback: async (id, input) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "POST", body: json(input) })).item,
@@ -85,6 +101,26 @@ function apiClient(token: string): YpClient {
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
+    short: async id => (await apiRequest<{ short: YpShortView }>(`${base}/${id}/short`, { token })).short,
+    saveShort: async (id, expectedVersion, patch) => (await apiRequest<{ short: YpShortView }>(`${base}/${id}/short`, { token, method: "PATCH", body: json({ expectedVersion, ...patch }) })).short,
+    shortImage: async (id, file) => {
+      // The render PC keeps the whole picture, so its size is all the OS needs to know.
+      const size = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const image = new Image(); const url = URL.createObjectURL(file);
+        image.onload = () => { resolve({ width: image.naturalWidth, height: image.naturalHeight }); URL.revokeObjectURL(url); };
+        image.onerror = () => { reject(new Error("이미지를 읽지 못했어요. png · jpg · webp 파일로 올려 주세요.")); URL.revokeObjectURL(url); };
+        image.src = url;
+      });
+      if (size.width > 8000 || size.height > 8000) throw new Error("이미지는 가로 · 세로 8,000px 이하로 올려 주세요.");
+      const upload = await apiRequest<{ assetId: string; path: string; token: string; mimeType: string }>(`${base}/${id}/short`, { token, method: "POST",
+        body: json({ action: "image", fileName: file.name.slice(0, 240), mimeType: file.type, fileSize: file.size, ...size }) });
+      await uploadContentMedia(upload.path, upload.token, file, upload.mimeType);
+      return { assetId: upload.assetId, url: URL.createObjectURL(file) };
+    },
+    renderShort: async (id, expectedVersion, voiceApproved) => { await apiRequest(`${base}/${id}/short`, { token, method: "POST", body: json({ action: "render", expectedVersion, voiceApproved }) }); },
+    renderClip: async (id, clipId) => { await apiRequest(`${base}/${id}/short`, { token, method: "POST", body: json({ action: "clip", clipId }) }); },
+    clipRenders: async id => (await apiRequest<{ clips: Record<string, YpRenderView> }>(`${base}/${id}/short?clips=1`, { token })).clips,
+    shortVideoUrl,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -112,6 +148,7 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p6", "[예시] 처음 쓰는 사업계획서의 순서", "anim", "upload", 8, "demo-logan"),
   demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13),
   waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
+  demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
 ];
 /** One example waiting for the 대표 컨펌, so the confirm menu has something to show in the demo. */
 function waitingDemo(project: YpProject): YpProject {
@@ -132,6 +169,9 @@ function demoFilledStages(project: YpProject): YpStagesView {
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) } };
 }
 const demoStages = new Map<string, YpStagesView>();
+const demoShorts = new Map<string, YpShortView>();
+const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id) ?? { id: `demo-short-${project.id}`, version: 1, scenes: [], aiScenes: null, appeals: [], ai: null, images: {}, render: null,
+  brief: { purpose: "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
@@ -287,6 +327,26 @@ function demoClient(): YpClient {
       demoStages.set(id, { ...stages, make: { ...make, version: make.version + 1, data: { ...make.data, editDue, uploadPlan, log } } });
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
+    short: async id => structuredClone(demoShort(find(id))),
+    saveShort: async (id, expectedVersion, patch) => {
+      const current = demoShort(find(id));
+      checkVersion(current.version, expectedVersion);
+      const brief = { ...current.brief, ...patch.brief };
+      const scenes = patch.useAiScenes ? current.aiScenes ?? current.scenes : patch.scenes ?? current.scenes;
+      const next = { ...current, version: current.version + 1, brief, scenes: scenesFromCuts(cutsFromScenes(scenes, brief.duration)), aiScenes: patch.useAiScenes ? null : current.aiScenes };
+      demoShorts.set(id, next);
+      return structuredClone(next);
+    },
+    shortImage: async (id, file) => {
+      const assetId = crypto.randomUUID(), url = URL.createObjectURL(file);
+      const current = demoShort(find(id));
+      demoShorts.set(id, { ...current, images: { ...current.images, [assetId]: { name: file.name, url } } });
+      return { assetId, url };
+    },
+    renderShort: async () => { throw demoError(409, "DEMO", "데모에서는 MP4를 만들지 않아요. 실제 화면에서 렌더 PC가 만들어요."); },
+    renderClip: async () => { throw demoError(409, "DEMO", "데모에서는 세로 영상을 만들지 않아요."); },
+    clipRenders: async () => ({}),
+    shortVideoUrl: async () => "",
   };
 }
 

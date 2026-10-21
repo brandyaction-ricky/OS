@@ -11,7 +11,7 @@ const COLUMNS = "id,version,title,assignee_id,owner_id,updated_at,metadata";
 const ref = z.object({ url: z.string().url().max(300), videoId: z.string().max(20).optional(), title: z.string().max(200).optional() }).strict();
 const topicFields = {
   title: z.string().max(4000),
-  kind: z.enum(["live", "anim"]).nullable(),
+  kind: z.enum(["live", "anim", "short"]).nullable(),
   target: z.string().max(300),
   note: z.string().max(2000),
   refs: z.array(ref).max(50),

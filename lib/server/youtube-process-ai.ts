@@ -17,7 +17,7 @@ type Pipeline = Awaited<ReturnType<typeof readPipeline>>;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** The person behind an AI key, as the screens name them ('○○의 Claude'); the key's own name is not shown. */
-async function displayName(supabase: RequestActor["supabase"], ownerId: string, fallback: string) {
+export async function displayName(supabase: RequestActor["supabase"], ownerId: string, fallback: string) {
   const { data } = await supabase.from("os_profiles").select("display_name").eq("id", ownerId).maybeSingle();
   return String(data?.display_name ?? "") || fallback;
 }

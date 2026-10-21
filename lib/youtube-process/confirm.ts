@@ -82,8 +82,9 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
     case "ok":
       waitingNeeded();
       // A decision taken back (revert) and confirmed again returns to the step the project had reached.
+      // A 숏폼 has no 기획안 · 구성안: its 주제 OK opens 제작.
       return put({ state: "ok", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor },
-        info.revertedFrom ?? NEXT_STAGE[gate]);
+        info.revertedFrom ?? (gate === "topic" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate]));
     case "changes": {
       waitingNeeded();
       const allowed = Object.keys(GATE_FIELDS[gate]);

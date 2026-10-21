@@ -4,7 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
 import { editedSinceDecision, GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
-import { projectName, stepHref, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -72,7 +72,7 @@ export function useGate(page: YpPage, gate: YpGate) {
 export function gateAction(page: YpPage, gate: YpGate, view: number, control: ReturnType<typeof useGate>, missing: string): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${YP_FLOW[current]}`, href: stepHref(current, project.id) };
+  if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
   const info = project.yp.gates[gate];
   if (info.state === "wait") return { kind: "status", status: `대표 컨펌 대기 · ${daysSince(info.requestedAt)}일`, secondary: { label: "요청 취소", onClick: () => void control.act("cancel") } };
   return { kind: "button", label: `${GATE_NAME[gate]} ${["changes", "hold"].includes(info.state) ? "다시 요청" : "요청"}`, reason: missing, busy: control.busy, onClick: () => void control.act("request") };
@@ -81,7 +81,7 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `이어서 하기 · ${YP_FLOW[current]}`, href: stepHref(current, project.id) } : own;
+  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
 }
 
 /** The sentence under a confirm step's title: what to do now, or that there is nothing to do while the 대표 decides. */
@@ -185,5 +185,5 @@ export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { l
 export function LockedStep({ page, name }: { page: YpPage; name: string }) {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage];
-  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>지금 단계는 {YP_FLOW[current]}이에요. <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
+  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>지금 단계는 {stepName(current, project.yp.topic.type)}이에요. <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
 }

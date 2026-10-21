@@ -1,7 +1,7 @@
 // 유튜브 공정 v1 project rules shared by the API, the screens and the demo store (지시서 6-2 · 8-1).
 import { editableFields } from "./confirm.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
-export type YpKind = "live" | "anim";
+export type YpKind = "live" | "anim" | "short";
 export type YpGate = "topic" | "draft" | "review";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
 export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string }
@@ -12,8 +12,17 @@ export interface YpProject { id: string; version: number; title: string; assigne
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검수", "업로드", "쇼츠"] as const;
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };
-export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션" };
-export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션" };
+export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션", short: "숏폼 (릴스 · 광고)" };
+export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션", short: "숏폼" };
+/**
+ * The steps a project goes through (index into YP_FLOW and the name shown). A 숏폼 (owner decision 2026-10-21) has no
+ * 기획안 · 구성안 — what to make and the scenes sit in 제작 — and ends with 내보내기 instead of the YouTube upload and 쇼츠.
+ */
+export function flowOf(kind: YpKind | null) {
+  return kind === "short" ? [{ index: 0, name: "주제" }, { index: 3, name: "제작" }, { index: 4, name: "최종 검수" }, { index: 5, name: "내보내기" }]
+    : YP_FLOW.map((name, index) => ({ index, name: name as string }));
+}
+export const stepName = (index: number, kind: YpKind | null) => flowOf(kind).find(step => step.index === index)?.name ?? YP_FLOW[index] ?? "완료";
 export const YP_MAX_LINES = 20;
 export const YP_RECENT = 6;
 
@@ -111,4 +120,4 @@ export function stepHref(index: number, id: string) {
 }
 /** Where a project row opens: its current step (a finished project opens its topic). */
 export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage], project.id);
-export const stageLabel = (project: Pick<YpProject, "yp">) => project.yp.stage === "done" ? "완료" : YP_FLOW[YP_STAGE_INDEX[project.yp.stage]];
+export const stageLabel = (project: Pick<YpProject, "yp">) => project.yp.stage === "done" ? "완료" : stepName(YP_STAGE_INDEX[project.yp.stage], project.yp.topic.type);

@@ -116,7 +116,13 @@ async function save(service:Service,row:OsRecord,status:string,stage:string,run:
   return data as OsRecord;
 }
 export async function enqueueShortformRender(actor:RequestActor,itemId:string,version:number,voiceApproved:boolean){
-  const owner=assertHumanOwner(actor),item=await getPersonalRecord(actor,itemId,"content_publish"),service=createServiceSupabase();
+  const owner=assertHumanOwner(actor),item=await getPersonalRecord(actor,itemId,"content_publish");
+  return enqueueShortformRenderFor(owner,item,version,voiceApproved);
+}
+/** The queueing itself, for a card the caller was already allowed to (유튜브 공정 v1: a project member making its 숏폼, owned by the project owner). */
+export async function enqueueShortformRenderFor(owner:string,item:OsRecord,version:number,voiceApproved:boolean){
+  const itemId=item.id,service=createServiceSupabase();
+  if(item.owner_id!==owner)throw new ApiError(403,"SHORTFORM_OWNER_MISMATCH","제작 카드의 주인을 확인해 주세요.");
   if(item.version!==version)throw new ApiError(409,"SHORTFORM_INPUT_CHANGED","최신 내용을 저장하고 다시 요청해 주세요.");
   const plan=await buildPlan(service,item),inputKey=renderDigest(plan);
   if(plan.voice&&!voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","내레이션 생성 비용을 확인해 주세요.");

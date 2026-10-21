@@ -7,12 +7,18 @@ import type { ChannelConnection } from "@/lib/channel-types";
 import { stepHref } from "@/lib/youtube-process/project";
 import { descChecks, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { ShortExportScreen } from "./youtube-process-short";
 import { YtCard } from "./youtube-process-media";
 
-/** S7 업로드: UTM · SRT · 설명란 · 고정 댓글 (내 AI) · 공개 범위, then one [업로드] to YouTube (4-8 · 10-2). */
+/** S7 업로드, or 내보내기 for a 숏폼 (download, no YouTube upload). */
 export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
+  return page.bundle?.project.yp.topic.type === "short" ? <ShortExportScreen header={header} page={page} /> : <LongUploadScreen header={header} page={page} />;
+}
+
+/** S7 업로드: UTM · SRT · 설명란 · 고정 댓글 (내 AI) · 공개 범위, then one [업로드] to YouTube (4-8 · 10-2). */
+function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage }) {
   const [form, setForm] = useState<YpUpload | null>(null);
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");

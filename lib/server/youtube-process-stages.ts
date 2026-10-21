@@ -1,11 +1,11 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { projectFromRecord, projectName, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
   type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
@@ -18,8 +18,12 @@ import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActio
 type Supabase = RequestActor["supabase"];
 export const MEDIA_BUCKET = "os-content-media";
 const STAGE_TYPES = ["content_package", "content_script"];
-// MYIN_RUN_KIND in myin-run.ts (not imported: myin-run reads this module through the automation input).
+// MYIN_RUN_KIND in myin-run.ts and SHORTFORM_RENDER_KIND in shortform-render.ts (not imported: both read this module through the automation input).
 const MYIN_RUN_KIND = "youtube_myin_v13";
+const SHORT_RENDER_KIND = "shortform_render_v1";
+/** A stable record id from a seed (the shortform card of a 숏폼 project or of a longform clip). */
+export const ypUuid = (seed: string) => { const key = createHash("sha256").update(seed).digest("hex"); return `${key.slice(0, 8)}-${key.slice(8, 12)}-5${key.slice(13, 16)}-a${key.slice(17, 20)}-${key.slice(20, 32)}`; };
+export const shortCardId = (projectId: string) => ypUuid(`yp-short:${projectId}`);
 
 /** The four step records of a project; a step nobody saved yet reads as its empty shape (id null, version 0). */
 export async function readStages(supabase: Supabase, project: YpProject): Promise<YpStages & { records: OsRecord[] }> {
@@ -37,9 +41,19 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
   return stages;
 }
 
-export interface YpFinal { v: number; at: string; source: "myin" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
-/** Every final in time order: the OS-made 마이인 finals (from their runs) and the files uploaded by hand. */
-export async function readFinals(supabase: Supabase, projectId: string, make: YpMake): Promise<YpFinal[]> {
+export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
+/** Every final in time order: the OS-made 마이인 finals (from their runs), a 숏폼's MP4s from the render PC, and the files uploaded by hand. */
+export async function readFinals(supabase: Supabase, projectId: string, make: YpMake, kind?: YpKind | null): Promise<YpFinal[]> {
+  if (kind === "short") {
+    // The 숏폼 card belongs to the project owner; the caller has already been allowed to the project. The video link checks the run's signature.
+    const { data, error } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
+      .eq("metadata->>itemId", shortCardId(projectId)).eq("status", "done").is("archived_at", null).limit(50);
+    if (error) throw readFailed();
+    const made = (data ?? []).map(row => ({ at: row.updated_at as string, source: "short" as const, name: "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
+      durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string }));
+    const uploads = make.finals.map(item => ({ at: item.at, source: "upload" as const, name: item.name, bytes: item.bytes, durationSeconds: null, path: item.path }));
+    return [...made, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
+  }
   const { data, error } = await supabase.from("os_records").select("id,stage,metadata").eq("parent_id", projectId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).limit(50);
   if (error) throw readFailed();
@@ -54,7 +68,7 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
   const { plan, outline, make, upload } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload }, finals: await readFinals(actor.supabase, project.id, make.data) };
+  return { project, stages: { plan, outline, make, upload }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type) };
 }
 
 // ── Saving a step ──
@@ -218,9 +232,13 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     await writeStage(actor.supabase, actor.id, actor.team, project, "outline", stages.outline, withScriptVersion(stages.outline.data, stages.outline.data.script, actor.name, now, "make"));
   } else if (input.to === "review") {
     need(project.yp.stage === "make", "제작 단계에서만 최종 검수로 넘어갈 수 있어요.");
-    need((await readFinals(actor.supabase, project.id, stages.make.data)).length > 0, "최종본을 올려주세요");
-    const missing = thumbsMissing(stages.make.data);
+    const short = project.yp.topic.type === "short";
+    need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려주세요" : "최종본을 올려주세요");
+    // A 숏폼 has no YouTube thumbnails.
+    const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
+  } else if (project.yp.topic.type === "short") {
+    need(project.yp.stage === "upload", "최종 검수 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     need(project.yp.stage === "upload" && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 마칠 수 있어요.");
   }
@@ -232,7 +250,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (gate === "draft") return draftMissing(stages.plan.data);
-  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data)).length ? "" : "최종본을 올려주세요";
+  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려주세요";
   return "";
 }
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {

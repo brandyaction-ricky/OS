@@ -93,11 +93,13 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const stamp = view === "video" ? (range ? `▷ ${fmt(range[0])}~${fmt(range[1])}` : `▷ ${fmt(time)}`) : `🖼 ${thumbTarget}`;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const make = page.bundle?.stages.make.data;
+  // A 숏폼 is a vertical video with no YouTube thumbnails.
+  const short = project?.yp.topic.type === "short";
 
-  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검수" sub={gateSub(project, "review", "완성본을 끝까지 보고, 고칠 곳은 그 시간에 남겨요. 다 보면 컨펌을 요청해요.", "최종 검수가 끝났어요. 업로드로 넘어가요.")}
+  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검수" sub={gateSub(project, "review", "완성본을 끝까지 보고, 고칠 곳은 그 시간에 남겨요. 다 보면 컨펌을 요청해요.", short ? "최종 검수가 끝났어요. 내보내기로 넘어가요." : "최종 검수가 끝났어요. 업로드로 넘어가요.")}
     todo={project?.yp.stage === "review" && project.yp.gates.review.state !== "wait" ? [{ label: "최종본", done: finals.length > 0 }, ...(unresolved ? [{ label: `남은 피드백 ${unresolved}개 (그래도 요청 가능)`, done: false }] : [])] : undefined}>
     {page.bundle && project && make ? ["topic", "draft", "outline", "make"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검수" /> : <>
-      <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>업로드로 →</Link></> : null} />
+      <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>{short ? "내보내기로" : "업로드로"} →</Link></> : null} />
       <ReplyForm control={control} />
       <Subject page={page} />
       <div className="yp-rvbar"><span className="yp-muted" style={{ fontSize: 13 }}>해결 안 된 피드백이 있어도 최종 검수 컨펌을 요청할 수 있어요{unresolved ? ` (지금 ${unresolved}개)` : ""}. 업로드는 대표 OK가 나야 열려요.</span><span style={{ flex: 1 }} />
@@ -105,9 +107,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <div className="yp-seg2 yp-sm yp-pc-only" role="group" aria-label="플레이어 크기"><button type="button" className={size === "s" ? "yp-on" : ""} onClick={() => setSize("s")}>작게</button><button type="button" className={size === "l" ? "yp-on" : ""} onClick={() => setSize("l")}>크게</button></div></div>
       <div className={`yp-rv yp-sz-${size}${hidePanel ? " yp-nop" : ""}`}><div>
         <div className="yp-player">
-          <div className="yp-vtabs"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>롱폼</button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일</button></div>
+          {short ? null : <div className="yp-vtabs"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>롱폼</button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일</button></div>}
           {view === "video" ? <>
-            <div className="yp-frame" onClick={toggle} role="button" tabIndex={0} aria-label={playing ? "멈추고 쓰기" : "재생"} onKeyDown={event => { if (event.key === " " || event.key.toLowerCase() === "f") { event.preventDefault(); toggle(); } }}>
+            <div className={`yp-frame${short ? " yp-vert" : ""}`} onClick={toggle} role="button" tabIndex={0} aria-label={playing ? "멈추고 쓰기" : "재생"} onKeyDown={event => { if (event.key === " " || event.key.toLowerCase() === "f") { event.preventDefault(); toggle(); } }}>
               {src ? <video ref={video} src={src} preload="metadata" style={{ width: "100%", height: "100%", display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
                 onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(event.currentTarget.duration)} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>{final ? "영상을 불러오는 중이에요…" : "아직 최종본이 없어요"}</div>}
@@ -126,7 +128,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
                 <span className="yp-knob" style={{ left: `${duration ? time / duration * 100 : 0}%` }} /></div>
               <span className="yp-tm">{fmt(time)} / {fmt(duration)}</span></div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="롱폼 버전">
-              {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" ? "OS 자동 제작" : item.name}</option>)}</select></label>
+              {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" ? "OS 자동 제작" : item.source === "short" ? "렌더 PC" : item.name}</option>)}</select></label>
               <span style={{ flex: 1 }} />
               {project.yp.stage === "review" ? <Link className="yp-cb" href={`/content/make?project=${encodeURIComponent(project.id)}`}><Upload size={14} /> 새 버전 올리기</Link> : null}
               <button type="button" className="yp-cb" onClick={exportList}><Download size={14} /> 편집용 목록 내려받기</button></div>
@@ -138,7 +140,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         <p className="yp-hint">{view === "video" ? "영상을 클릭하면 멈추고 그 시간에 쓸 수 있어요. 재생 바를 끌면 구간 피드백이 돼요." : "썸네일을 누르면 그 썸네일에 피드백을 남겨요."}</p>
       </div>
       <aside className="yp-fbp"><div className="yp-fbp-h"><b>남은 피드백 {openCount("video") + openCount("thumb")}</b><span className="yp-muted" style={{ fontSize: 12 }}>{view === "video" ? `v${ver} · 러닝타임 순서` : "A → B → C"}</span></div>
-        <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>롱폼 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>
+        {short ? null : <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>롱폼 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>}
         <div className="yp-fbl">{openItems.length ? openItems.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
             onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value) => void act(item, action, value)} reply={reply} setReply={setReply} />)
           : <p className="yp-muted" style={{ padding: 8 }}>남은 피드백이 없어요</p>}

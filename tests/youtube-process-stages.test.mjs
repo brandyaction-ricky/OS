@@ -69,3 +69,35 @@ test("내 영상 says what each video needs next in one sentence and one button"
   assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /제목 · 썸네일을 고쳐요/);
   assert.equal(nextAction(project("done")).tone, "done");
 });
+
+test("숏폼: 주제 → 제작 → 최종 검수 → 내보내기; the 주제 OK opens 제작 and each step says what to do", async () => {
+  const { flowOf, stageLabel } = await import("../lib/youtube-process/project.ts");
+  const { nextAction } = await import("../lib/youtube-process/next.ts");
+  assert.deepEqual(flowOf("short").map(step => step.name), ["주제", "제작", "최종 검수", "내보내기"]);
+  const meta = newProjectMeta({ type: "short", target: "t", note: "", refs: [] }, "2026-10-21T00:00:00Z");
+  let project = { id: "p", yp: applyGateAction({ yp: meta.yp }, "topic", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
+  project = { ...project, yp: applyGateAction(project, "topic", "ok", { actor: "ceo", now: "2026-10-21T02:00:00Z" }) };
+  assert.equal(project.yp.stage, "make");
+  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project)], ["숏폼 만들기", 1, 4, "제작"]);
+  assert.equal(nextAction({ ...project, yp: { ...project.yp, stage: "upload" } }).button, "내보내기");
+  assert.equal(nextAction({ id: "q", yp: { ...meta.yp, topic: { ...meta.yp.topic, type: "anim" }, stage: "make" } }).total, 7);
+});
+
+test("숏폼 scenes run on without gaps, the last one takes what is left, and what is missing is said in one line each", async () => {
+  const { clipCuts, cutsFromScenes, scenesFromCuts, shortMissing } = await import("../lib/youtube-process/short.ts");
+  const scene = (seconds, assetId) => ({ seconds, text: "자막", voice: "", note: "", asset: "", ...(assetId ? { assetId } : {}) });
+  const cuts = cutsFromScenes([scene(4, "a"), scene(10), scene(99, "c")], 30);
+  assert.deepEqual(cuts.map(cut => [cut.start, cut.end, cut.missingAsset]), [["00:00.000", "00:04.000", false], ["00:04.000", "00:14.000", true], ["00:14.000", "00:30.000", false]]);
+  assert.deepEqual(scenesFromCuts(cuts).map(item => item.seconds), [4, 10, 16]);
+  const brief = { purpose: "ad", duration: 30, product: "결과지", audience: "직장인", goal: "진단", landingUrl: "", evidence: "", appeal: "" };
+  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써주세요", "광고에 쓸 실제 근거를 써주세요", "구매 이유를 하나 골라주세요", "장면마다 이미지를 넣어주세요"]);
+  assert.deepEqual(shortMissing({ ...brief, duration: 15 }, [scene(10, "a"), scene(6, "b"), scene(0, "c")]).at(-1), "앞 장면들이 15초를 넘어요");
+  // A longform clip: one cut per subtitle line in source time, joined end to start; lines starting within 0.3s share one caption.
+  const cues = [{ start: 9, end: 12, text: "앞" }, { start: 12, end: 14, text: "하나" }, { start: 12.2, end: 16, text: "둘" }, { start: 17, end: 30, text: "셋" }];
+  assert.deepEqual(clipCuts(cues, 10, 20, "제목").map(cut => [cut.start, cut.end, cut.text]), [["00:10.000", "00:12.000", "앞"], ["00:12.000", "00:17.000", "하나 둘"], ["00:17.000", "00:20.000", "셋"]]);
+  assert.deepEqual(clipCuts([], 5, 20, "제목").map(cut => [cut.start, cut.end, cut.text]), [["00:05.000", "00:20.000", "제목"]]);
+  const many = Array.from({ length: 30 }, (_, i) => ({ start: i * 2, end: i * 2 + 2, text: `${i}` }));
+  const merged = clipCuts(many, 0, 60, "제목");
+  assert.equal(merged.length, 15);
+  assert.equal(merged.at(-1).end, "01:00.000");
+});

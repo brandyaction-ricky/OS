@@ -37,7 +37,8 @@ function setup() {
     }) } };
   };
   h.api = compile(serverSource, { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib/content-pipeline": pipeline, "@/lib/content-input": contentInput,
-    "@/lib/supabase/server": { createServiceSupabase: h.factory }, "./youtube-automation-input": { readYoutubeAutomationInput: async (client, id) => {
+    "@/lib/supabase/server": { createServiceSupabase: h.factory }, "./youtube-process-ai": { isYoutubeV1: (source) => source?.metadata?.workflow === "youtube_v1", v1Stages: (state) => state.v1 },
+    "./youtube-automation-input": { readYoutubeAutomationInput: async (client, id) => {
       assert.equal(client, h.actor.supabase); assert.equal(id, sourceId);
       if (h.accessError) throw h.accessError;
       return { state: h.state, plan: h.plan };
@@ -136,4 +137,33 @@ test("route authenticates, validates query identifiers and marks signed URLs as 
   denied = true;
   assert.equal((await api.GET(new Request(`https://os.example/longform?sourceId=${sourceId}`))).status, 401);
   assert.equal(reads, 1);
+});
+
+// 유튜브 공정 v1 (2026-10-21): the project's latest final, OS-made or uploaded, whatever step the project is on.
+function v1Setup(finals, srtPath) {
+  const h = setup();
+  h.plan = { inputKey: null };
+  h.state.source = { id: sourceId, metadata: { workflow: "youtube_v1" } };
+  h.state.v1 = { project: { id: sourceId }, make: { data: { finals } }, upload: { data: { srt: srtPath ? { path: srtPath, name: "s.srt" } : null } } };
+  return h;
+}
+const upload = { v: 1, at: "2026-10-21T00:00:00.000Z", by: "PD", path: `youtube/${sourceId}/final/00000000-0000-4000-8000-0000000000aa.mp4`, name: "final.mp4", bytes: 10 };
+const uploadSrt = `youtube/${sourceId}/srt/00000000-0000-4000-8000-0000000000bb.srt`;
+
+test("a v1 project past 제작 still reads its OS-made final (no approval key is needed after 최종 검수)", async () => {
+  const h = v1Setup([], null);
+  const result = await h.read();
+  assert.equal(result.reference.runId, runId);
+  assert.deepEqual(h.signed, [["os-youtube-video", final.video, 3600]]);
+});
+
+test("a v1 final uploaded by hand is cut with the 업로드 SRT; a newer upload wins over the OS-made one", async () => {
+  const h = v1Setup([upload], uploadSrt);
+  const result = await h.read();
+  assert.equal(result.reference.runId, "upload-v1");
+  assert.deepEqual(h.storageReads, [["os-content-media", uploadSrt]]);
+  assert.deepEqual(h.signed, [["os-content-media", upload.path, 3600]]);
+  assert.equal(result.durationSeconds, 36);
+  await assert.rejects(v1Setup([upload], null).read(), errorCode("SHORTFORM_LONGFORM_CAPTIONS_MISSING"));
+  await assert.rejects(v1Setup([{ ...upload, path: "youtube/other/final/x.mp4" }], uploadSrt).read(), errorCode("SHORTFORM_LONGFORM_CAPTIONS_MISSING"));
 });

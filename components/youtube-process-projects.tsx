@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Plus, Radar, Search, X } from "lucide-react";
-import { projectName, searchProjects, stepHref, YP_FLOW, type YpProject } from "@/lib/youtube-process/project";
+import { projectName, searchProjects, stepHref, type YpProject } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
 import { ContentRadarWorkspace } from "./content-radar-workspace";
 import { useSession } from "./session-provider";
@@ -96,7 +96,7 @@ export function YoutubeProjectsScreen() {
             return <div key={project.id} className="yp-mv">
               <div className="yp-mv-m"><Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link>
                 <div className={`yp-mv-s yp-${next.tone}`}>{next.text}</div>
-                <div className="yp-mv-bar"><span>{Math.min(next.step + 1, YP_FLOW.length)}/{YP_FLOW.length} {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(Math.min(next.step + (next.tone === "done" ? 0 : 0.5), YP_FLOW.length) / YP_FLOW.length * 100)}%` }} /></span>{pd ? <span>담당 {pd}</span> : null}</div></div>
+                <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total * 100)}%` }} /></span>{pd ? <span>담당 {pd}</span> : null}</div></div>
               <Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>
             </div>; })}
           {legacyShown.map(topic => <div key={topic.id} className="yp-mv">

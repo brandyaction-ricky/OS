@@ -50,7 +50,7 @@ export async function createFeedback(actor: RequestActor, id: string, input: z.i
   if (!["review", "upload"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검수 단계에서 피드백을 남겨요.");
   if (input.target === "video") {
     const stages = await readStages(actor.supabase, project);
-    const latest = (await readFinals(actor.supabase, project.id, stages.make.data)).at(-1)?.v ?? 0;
+    const latest = (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).at(-1)?.v ?? 0;
     if (input.ver !== latest) throw new ApiError(409, "OLD_VERSION", `v${input.ver}은 이전 버전이라 보기만 해요. 피드백은 최신 v${latest}에 남겨요.`);
   }
   const { data, error } = await actor.supabase.from("os_records").insert({
@@ -84,7 +84,7 @@ export async function actOnFeedback(actor: RequestActor, id: string, input: z.in
     metadata = { ...m, status: "declined", declinedWhy: input.text };
   } else {
     const stages = await readStages(actor.supabase, project);
-    const latest = (await readFinals(actor.supabase, project.id, stages.make.data)).at(-1)?.v ?? null;
+    const latest = (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).at(-1)?.v ?? null;
     metadata = { ...m, status: input.action === "resolve" ? "done" : "open", fixedIn: input.action === "resolve" && item.target === "video" ? latest : null };
   }
   const { data: saved, error: saveError } = await actor.supabase.from("os_records").update({ metadata, status: String(metadata.status ?? "open"), updated_by: actor.id })

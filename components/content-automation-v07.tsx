@@ -379,7 +379,8 @@ function ReviewerRoster({team,mutate}:{team:TeamInfo;mutate:ViewProps["mutate"]}
 function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;refresh:()=>Promise<void>}){
   const router=useRouter(),search=useSearchParams(),channel=page==="cardnews"?"card":page;
   const {accessToken}=useSession();
-  const all=data.items.filter(row=>row.metadata.channel===channel);
+  // 유튜브 공정 v1 숏폼 cards are edited on the project's 제작 screen only.
+  const all=data.items.filter(row=>row.metadata.channel===channel&&!row.metadata.ypProjectId);
   const selected=all.find(row=>row.id===search.get("sel"))??null;
   const missing=search.has("sel")&&!selected;
   // Threads has two boxes: my drafts (private unless shared) and the team inbox (shared drafts of anyone).

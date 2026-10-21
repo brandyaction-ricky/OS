@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Download, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Check, Download, Film, Plus, Sparkles, Trash2 } from "lucide-react";
 import { apiRequest, archiveRecord, createRecord, listRecords, updateRecord } from "@/lib/api-client";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import type { YpRenderView } from "./youtube-process-data";
 import { LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import { RenderTag } from "./youtube-process-short";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 0);
@@ -21,6 +23,9 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [send, setSend] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [renders, setRenders] = useState<Record<string, YpRenderView>>({});
+  const [making, setMaking] = useState("");
+  const [watch, setWatch] = useState<{ clipId: string; url: string } | null>(null);
   const video = useRef<HTMLVideoElement>(null);
   const project = page.bundle?.project;
   const finals = useMemo(() => page.bundle?.finals ?? [], [page.bundle?.finals]);
@@ -33,6 +38,29 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     catch (reason) { page.fail(reason); }
   }, [project, page]);
   useEffect(() => { void loadClips(); }, [loadClips]);
+  // Each adopted clip can become a vertical short on the render PC (Codex's shortform render, PR #205): 720×1280 with the subtitles.
+  const client = page.client, projectId = project?.id;
+  const loadRenders = useCallback(async () => {
+    if (!client || !projectId || page.demo) return;
+    try { setRenders(await client.clipRenders(projectId)); } catch { /* the list still works without it */ }
+  }, [client, projectId, page.demo]);
+  useEffect(() => { void loadRenders(); }, [loadRenders]);
+  const anyWorking = Object.values(renders).some(render => ["backlog", "in_progress"].includes(render.status));
+  useEffect(() => {
+    if (!anyWorking) return;
+    const timer = window.setInterval(() => void loadRenders(), 15_000);
+    return () => window.clearInterval(timer);
+  }, [anyWorking, loadRenders]);
+  const makeVertical = async (clip: OsRecord) => {
+    if (!client || !projectId) return;
+    setMaking(clip.id);
+    try { await client.renderClip(projectId, clip.id); await loadRenders(); } catch (reason) { page.fail(reason); } finally { setMaking(""); }
+  };
+  const open = async (clipId: string, renderId: string, download = false) => {
+    if (!client || !projectId) return;
+    try { const url = await client.shortVideoUrl(projectId, renderId, download); if (download) window.location.assign(url); else setWatch({ clipId, url }); }
+    catch (reason) { page.fail(reason); }
+  };
   const job = useStaffJob(page, "shorts", loadClips);
   useEffect(() => {
     let active = true;
@@ -76,14 +104,14 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     catch (reason) { page.fail(reason); } finally { setMoving(false); }
   };
 
-  const open = project && ["upload", "shorts", "done"].includes(project.yp.stage);
+  const reached = project && ["upload", "shorts", "done"].includes(project.yp.stage);
   const uploaded = page.bundle?.stages.upload.data.run?.status === "done";
   const action = page.bundle ? stepAction(page, 6, project?.yp.stage === "done" ? { kind: "status", status: "끝난 프로젝트" }
     : { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브 업로드가 끝나면 마칠 수 있어요", busy: moving, onClick: () => void finish() }) : null;
   const adopted = clips.filter(clip => clip.metadata?.selected !== false);
 
   return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠" sub="올린 롱폼에서 쇼츠로 자를 구간을 골라요. 내 AI가 자막을 읽고 구간을 제안해요.">
-    {page.bundle && project ? !open ? <LockedStep page={page} name="쇼츠" /> : <>
+    {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠" /> : <>
       <Subject page={page} />
       {page.demo ? <div className="yp-note yp-gray"><div>데모에서는 쇼츠 구간을 저장하지 않아요.</div></div> : null}
       <div className="yp-wrap2"><div>
@@ -108,10 +136,13 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
             <span style={{ flex: 1, minWidth: 0 }}><b>{clip.title}</b> <span className="yp-muted">~{fmt(num(clip, "end"))} · {Math.round(num(clip, "end") - num(clip, "start"))}초</span>
               {clip.metadata?.hook ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>첫 문장: {String(clip.metadata.hook)}</span></> : null}
               {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 제안</span> : null}</span>
+            {clip.metadata?.selected !== false ? <ClipRender render={renders[clip.id]} busy={making === clip.id} demo={page.demo} onMake={() => void makeVertical(clip)}
+              onWatch={renderId => void open(clip.id, renderId)} onDownload={renderId => void open(clip.id, renderId, true)} /> : null}
             <button type="button" className={`yp-btn yp-sm${clip.metadata?.selected !== false ? " yp-pri" : ""}`} onClick={() => void toggle(clip)}>{clip.metadata?.selected !== false ? <><Check size={14} /> 채택</> : "채택하기"}</button>
             <button type="button" className="yp-ib" aria-label="빼기" onClick={() => void remove(clip)}><Trash2 size={14} /></button></li>)}</ul>
             : <p className="yp-pempty">아직 구간이 없어요. 영상을 보며 시작 · 끝을 정하거나 내 AI에 제안을 맡겨요.</p>}
-          <p className="yp-hint">채택한 구간은 [편집용 목록]으로 내려받아 편집해요. 렌더 PC가 쇼츠를 바로 자르는 기능은 다음 차례에 들어와요.</p>
+          {watch ? <div className="yp-short-out" style={{ marginTop: 10 }}><video className="yp-vid9" src={watch.url} controls autoPlay preload="metadata" /><button type="button" className="yp-btn yp-sm" onClick={() => setWatch(null)}>닫기</button></div> : null}
+          <p className="yp-hint">채택한 구간은 [세로 영상 만들기]를 누르면 렌더 PC가 자막을 넣은 720 × 1280 쇼츠로 만들어요. 편집자에게 맡길 때는 [편집용 목록]을 내려받아요.</p>
         </YpSection>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">자막 <span className="yp-gq">누르면 그 시각으로 가요</span></div><div className="yp-card-b" style={{ maxHeight: 560, overflow: "auto" }}>
@@ -122,4 +153,13 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
       <SendDialog page={page} task="shorts" open={send} onClose={() => setSend(false)} job={job} />
     </> : null}
   </YpFrame>;
+}
+
+/** One clip's vertical short: make it, watch it while it is made, then 보기 · 내려받기 (or the reason it stopped). */
+function ClipRender({ render, busy, demo, onMake, onWatch, onDownload }: { render?: YpRenderView; busy: boolean; demo: boolean; onMake: () => void; onWatch: (id: string) => void; onDownload: (id: string) => void }) {
+  if (render && ["backlog", "in_progress"].includes(render.status)) return <RenderTag render={render} />;
+  if (render?.status === "done") return <span className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => onWatch(render.id)}><Film size={14} /> 세로 영상 보기</button>
+    <button type="button" className="yp-ib" aria-label="세로 영상 내려받기" onClick={() => onDownload(render.id)}><Download size={14} /></button></span>;
+  return <span className="yp-row-btns">{render ? <RenderTag render={render} /> : null}
+    <button type="button" className="yp-btn yp-sm" disabled={busy || demo} title={demo ? "데모에서는 만들지 않아요" : undefined} onClick={onMake}><Film size={14} /> {busy ? "보내는 중…" : render ? "다시 만들기" : "세로 영상 만들기"}</button></span>;
 }

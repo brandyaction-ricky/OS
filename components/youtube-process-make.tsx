@@ -8,6 +8,7 @@ import { MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/li
 import { MyinV13Panel } from "./myin-v13-panel";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
+import { ShortMake } from "./youtube-process-short";
 
 const dayDiff = (date: string) => Math.round((Date.parse(`${date}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000);
 const md2 = (date: string) => { const at = new Date(`${date}T00:00:00`); return `${at.getMonth() + 1}/${at.getDate()} (${"일월화수목금토"[at.getDay()]})`; };
@@ -33,7 +34,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const project = bundle?.project;
   const make = bundle?.stages.make;
   const kind = project?.yp.topic.type ?? "anim";
-  const anim = kind !== "live";
+  const anim = kind === "anim";
+  const short = kind === "short";
 
   const save = async (patch: Record<string, unknown>, label: string) => {
     if (!page.client || !project || !make) return false;
@@ -71,15 +73,15 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const reviewFields = project ? editableFields(project, "review") : [];
   const canFinal = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.final"));
   const canThumb = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
-  const reason = !finals.length ? "최종본을 올려주세요" : data ? thumbsMissing(data) : "";
+  const reason = !finals.length ? (short ? "MP4를 만들거나 올려주세요" : "최종본을 올려주세요") : data && !short ? thumbsMissing(data) : "";
   const action = bundle ? stepAction(page, 3, project?.yp.stage === "make" ? { kind: "button", label: "다음: 최종 검수", reason, busy: moving, onClick: () => void move() } : { kind: "status", status: "제작 끝남" }) : null;
   const confirmed = bundle?.stages.plan.data.confirmed;
   const steps = MAKE_STEPS[kind];
   const statusIndex = data ? Math.max(0, steps.findIndex(([key]) => key === (anim && data.status === "shoot" ? "prep" : data.status))) : 0;
   let n = 0;
 
-  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검수 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : anim ? "OS가 원고로 영상을 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
-    todo={data && project?.yp.stage === "make" ? [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
+  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검수 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? "무엇을 만들지 정하고, 장면마다 이미지를 넣어 MP4를 만들어요." : anim ? "OS가 원고로 영상을 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
+    todo={data && project?.yp.stage === "make" ? short ? [{ label: "MP4", done: finals.length > 0 }] : [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
     {bundle && data && project ? ["topic", "draft", "outline"].includes(project.yp.stage) ? <LockedStep page={page} name="제작" /> : <>
       {project.yp.stage === "review" ? <GateBanner page={page} gate="review" /> : null}
       <Subject page={page} />
@@ -96,7 +98,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <p className="yp-hint">업로드 일정(예상)과 기한 알림은 스케줄 화면에서 다음 차례에 들어와요.</p>
       </YpSection>
       {/* The OS-made video moves on by itself; the manual 준비 · 편집 · 완료 buttons are for 실사. */}
-      {anim ? null : <>
+      {short ? <ShortMake page={page} editable={canFinal} n0={n} /> : null}
+      {anim || short ? null : <>
       <YpSection n={++n} title="진행 상태">
         <div className="yp-pstat2">{steps.map(([key, label], index) => <span key={key} style={{ display: "contents" }}>
           {index ? <span className="yp-arw" aria-hidden="true"><ChevronRight size={14} /></span> : null}
@@ -105,10 +108,15 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <p className="yp-hint">잘못 눌렀으면 앞 단계를 다시 눌러요. 최종본과 최종 썸네일 A · B가 있으면 자동으로 ‘완료’가 돼요.</p>
       </YpSection>
       </>}
-      {anim ? null : <YpSection n={++n} title="작업 자료"><div className="yp-mats">
+      {anim || short ? null : <YpSection n={++n} title="작업 자료"><div className="yp-mats">
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>원고 (최신)</b><div className="yp-muted" style={{ fontSize: 12 }}>v{bundle.stages.outline.data.versions.at(-1)?.v ?? "—"}{bundle.stages.outline.data.versions.find(item => item.why === "make") ? ` · 제작 시작 원고 v${bundle.stages.outline.data.versions.filter(item => item.why === "make").at(-1)!.v}` : ""}</div></div><Link className="yp-btn yp-sm" href={stepHref(2, project.id)}>열기</Link></div>
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>컨펌받은 제목 · 썸네일</b><div className="yp-muted" style={{ fontSize: 12 }}>{SLOTS.filter(slot => confirmed?.[slot]?.title).map(slot => <div key={slot}>{slot}: {confirmed?.[slot]?.title}</div>)}</div></div></div>
       </div></YpSection>}
+      {short ? <details className="yp-more-fields" open={finals.some(final => final.source === "upload")}><summary>직접 편집한 MP4가 있으면 올려요 (선택)</summary>
+        {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}% · 이 화면을 닫지 마세요</span></div>
+          : canFinal ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 선택</button><span className="yp-muted" style={{ fontSize: 12 }}>올린 파일이 최종 검수 새 버전이 돼요</span></div> : null}
+        <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
+      </details> : <>
       <YpSection n={++n} title={anim ? "최종본 만들기" : "최종본 올리기"} gq={anim ? "구성안 원고로 OS가 마이인 형식 영상을 만들어요" : undefined} need>
         {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>
           <span>{final.source === "myin" ? "OS 자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
@@ -127,7 +135,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`}
           onUpload={file => void uploadThumb(slot, file)} onTitle={(title, reasonText) => void save({ aTitle: title, aReason: reasonText }, "title")} />)}</div>
         <p className="yp-hint">기획안 컨펌본(제목 · 썸네일 A · B · C)이 그대로 이어져요. 썸네일 이미지는 jpg · png 파일로 올려요(유튜브가 받는 형식).</p>
-      </YpSection>
+      </YpSection></>}
     </> : null}
   </YpFrame>;
 }
