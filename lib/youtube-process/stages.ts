@@ -20,6 +20,9 @@ export interface YpPick { title: string; thumb: YpThumb | null }
 export interface YpPlan {
   titles: { id: string; text: string }[]; thumbs: YpThumb[];
   opening: string; body: string; closing: string; note: string; extraRefs: YpRef[];
+  /** The staff AI's last draft: who made it, and (when the PD had already written) the draft waiting beside the fields. */
+  ai?: { by: string; model: string; at: string; jobId: string };
+  aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note">;
   /** Copied when the 기획안 컨펌 is OK: the A · B · (C) pairs that later screens compare against. */
   confirmed?: { at: string } & Partial<Record<YpSlot, YpPick>>;
 }

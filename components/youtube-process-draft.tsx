@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ImagePlus, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
+import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 
 const id = () => crypto.randomUUID().slice(0, 12);
 const SlotTag = ({ index }: { index: number }) => {
@@ -27,8 +28,12 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const [uploading, setUploading] = useState("");
   const editRev = useRef(0);
   const saving = useRef(false);
+  const [send, setSend] = useState(false);
   const plan = page.bundle?.stages.plan;
   useEffect(() => { if (plan && !dirty) setForm(plan.data); }, [plan, dirty]);
+  const reload = page.reload;
+  const onJobDone = useCallback(() => { setDirty(false); void reload(); }, [reload]);
+  const job = useStaffJob(page, "plan", onJobDone);
 
   const project = page.bundle?.project;
   const fields = project ? editableFields(project, "draft") : [];
@@ -71,6 +76,19 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
       <GateBanner page={page} gate="draft" />
       <ReplyForm control={control} />
       <Subject page={page} />
+      {project.yp.stage === "draft" && project.yp.gates.draft.state !== "wait" ? <div className="yp-gen0" style={{ marginBottom: 12 }}>
+        <b>내 AI가 기획 정본대로 제목 후보 · 썸네일 시안 · 영상 흐름 초안을 써요</b>
+        <span className="yp-muted" style={{ fontSize: 12 }}>주제 · 정밀 타겟 · 레퍼런스를 읽고 소구점 · 기획 · 제목 정본을 따라요 · 사람은 다듬기만 해요 · 내 Claude(내 구독)가 처리</span>
+        {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
+          : <button type="button" className="yp-btn yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 기획안 쓰기"}</button>}
+        {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}의 Claude</span> : null}
+      </div> : null}
+      {form.aiDraft && project.yp.stage === "draft" ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 기획안 도착</b> · 이미 쓴 내용이 있어 바로 넣지 않았어요.
+        <button type="button" className="yp-lnk" disabled={!can("titles")} onClick={() => { const draft = form.aiDraft!; editRev.current += 1; const next = { ...form, ...draft, aiDraft: undefined }; setForm(next); setDirty(true);
+          if (page.client && project && plan) void page.client.saveStage(project.id, "plan", plan.version, { ...draft, aiDraft: null }).then(result => { page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current); setDirty(false); }, page.fail); }}>이 초안으로 바꾸기</button>
+        <details><summary>초안 보기</summary><div style={{ fontSize: 13 }}><b>제목</b><ol>{form.aiDraft.titles.map(title => <li key={title.id}>{title.text}</li>)}</ol>
+          <b>썸네일</b><ol>{form.aiDraft.thumbs.map(thumb => <li key={thumb.id}>{thumb.copy} — {thumb.screen}</li>)}</ol>
+          <b>오프닝</b><p>{form.aiDraft.opening}</p><b>본론</b><p style={{ whiteSpace: "pre-wrap" }}>{form.aiDraft.body}</p><b>클로징</b><p>{form.aiDraft.closing}</p></div></details></div></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="제목 · 썸네일" gq="어떻게 클릭하게 만드나요?" need rev={rev("draft.tt")}>
           <div className="yp-field"><div className="yp-fld-h"><b>제목 후보</b><span className="yp-gq">첫째 줄 = A · 둘째 = B (필수) · 셋째 = C (선택) · 넷째부터 예비</span></div>
@@ -120,6 +138,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
         {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; } setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
       </div></section></aside></div>
+      <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} />
     </div> : null}
   </YpFrame>;
 }

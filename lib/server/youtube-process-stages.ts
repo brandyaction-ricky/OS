@@ -64,7 +64,7 @@ const refSchema = z.object({ url: z.string().url().max(300), videoId: z.string()
 const thumbSchema = z.object({ id: text(40), mode: z.enum(["img", "text"]), path: text(300).optional(), screen: text(500).optional(), copy: text(120).optional() }).strict();
 export const stagePatchSchemas = {
   plan: z.object({ titles: z.array(z.object({ id: text(40), text: text(200) }).strict()).min(1).max(12), thumbs: z.array(thumbSchema).min(1).max(8),
-    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50) }).partial().strict(),
+    opening: text(2000), body: text(6000), closing: text(2000), note: text(2000), extraRefs: z.array(refSchema).max(50), aiDraft: z.null() }).partial().strict(),
   outline: z.object({ spec: z.object({ runtimeMin: z.number().int().min(1).max(120).nullable(), res: text(60), fps: text(60), ratio: text(60) }).strict(),
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive() }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
@@ -82,7 +82,7 @@ function assertPlanEditable(project: YpProject, patch: Patch<"plan">) {
   const fields = editableFields(project, "draft");
   if (fields === "all") return;
   if (project.yp.gates.draft.state === "wait") throw new ApiError(409, "GATE_WAITING", "대표 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
-  const keys = Object.keys(patch) as (keyof typeof PLAN_FIELD_KEY)[];
+  const keys = (Object.keys(patch) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => key in PLAN_FIELD_KEY);
   if (!fields.length || keys.some(key => !fields.includes(PLAN_FIELD_KEY[key])))
     throw project.yp.gates.draft.state === "changes" ? new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.") : locked("기획안은 대표 컨펌을 받아 확정됐어요.");
 }
@@ -98,7 +98,9 @@ function assertMakeEditable(project: YpProject, patch: Patch<"make">) {
 
 function nextPlan(current: YpPlan, patch: Patch<"plan">, projectId: string): YpPlan {
   for (const thumb of patch.thumbs ?? []) if (thumb.path && !assetPath(projectId, "plan_thumb").test(thumb.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "썸네일 시안 파일을 다시 올려 주세요.");
-  return { ...current, ...patch };
+  const { aiDraft, ...fields } = patch;
+  // [이 초안으로 바꾸기] sends the draft's fields and aiDraft: null together.
+  return { ...current, ...fields, ...(aiDraft === null ? { aiDraft: undefined } : {}) };
 }
 function nextOutline(current: YpOutline, patch: Patch<"outline">, actor: RequestActor, now: string): YpOutline {
   let outline: YpOutline = { ...current, ...(patch.spec ? { spec: patch.spec } : {}), ...(patch.script !== undefined ? { script: patch.script } : {}) };

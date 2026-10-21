@@ -8,8 +8,9 @@ import type { YpPage } from "./youtube-process-frame";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "script" | "kit";
+type Task = "script" | "kit" | "plan";
 const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
+  plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 (OS 문서)", reads: "주제 · 정밀 타겟 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
   script: { name: "구성안 원고 쓰기", skill: "원고 공정 정본 · 구조 · 말투 · 검수 정본 (OS 문서)", reads: "컨펌된 기획안(제목 A · B · C, 영상 흐름) · 정밀 타겟 · 레퍼런스 · OS 인사이트", result: "원고 초안 + 자료 · 축 · 설계 · 검수 기록 → 구성안 원고 새 버전 (사람이 다듬음)" },
   kit: { name: "설명란 · 고정 댓글 만들기", skill: "유튜브 발행 키트 절차 (OS 문서)", reads: "UTM 설정(1번) · 자막 SRT · 구성안 원고 · 컨펌된 제목 A", result: "설명란 6구역 + 고정 댓글 + 히든 태그 → 설명란 초안 (사람이 다듬음)" },
 };
