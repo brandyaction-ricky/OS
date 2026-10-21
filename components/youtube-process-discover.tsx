@@ -254,7 +254,7 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
   return <>
     <section className="yp-card" style={{ marginBottom: 12 }}><div className="yp-card-b">
       <div className="yp-row-btns" style={{ marginTop: 0, alignItems: "center" }}>
-        <span style={{ flex: 1, minWidth: 220 }}><b>묶을 재료: 터진 영상 {board.pool}개</b><br /><span className="yp-muted">담아 둔 영상 · 매일 보는 채널 · 최근 7일 찾은 영상{board.at ? ` · 마지막 묶음 ${ageLabel(board.at)}${board.by ? ` (${board.by})` : ""}` : ""}</span></span>
+        <span style={{ flex: 1, minWidth: 220 }}><b>묶을 재료: 터진 영상 {board.pool}개</b><br /><span className="yp-muted">담아 둔 영상 · 매일 보는 채널 · 지금까지 찾은 터진 영상{board.at ? ` · 마지막 묶음 ${ageLabel(board.at)}${board.by ? ` (${board.by})` : ""}` : ""}</span></span>
         <button type="button" className="yp-btn yp-pri" disabled={demo || board.pool < 3 || job.open} onClick={() => setSend(true)}><Sparkles size={14} aria-hidden="true" /> 내 AI로 틈새 묶기</button></div>
       <JobLine job={job} onRetry={() => setSend(true)} />
       {board.pool < 3 ? <p className="yp-hint" style={{ margin: "8px 0 0" }}>터진 영상이 3개 이상 모이면 묶을 수 있어요. ② 터진 영상에서 분류를 눌러 찾아요.</p> : null}

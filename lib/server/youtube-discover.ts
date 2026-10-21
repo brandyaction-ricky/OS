@@ -8,6 +8,7 @@ import {
   type DiscoverChannel, type DiscoverLetter, type DiscoverVideo,
 } from "@/lib/youtube-process/discover";
 import type { RequestActor } from "./auth";
+import { keepFoundBreakouts } from "./youtube-niche";
 
 // 유튜브 공정 v1 주제 찾기 (the 기획실 concept): a category or keyword search, then each found channel's normal — the median of
 // its recent long uploads — so a video counts as 터진 영상 against its own channel, and each channel shows how often it breaks out.
@@ -93,11 +94,11 @@ export async function discoverYoutube(actor: RequestActor, input: z.infer<typeof
     channels: channels.filter(channel => channel.median !== null).sort((a, b) => b.breakouts - a.breakouts || (b.best ?? 0) - (a.best ?? 0)),
   };
   const at = new Date().toISOString();
-  // 틈새 reads only these (the search's 터진 영상 and each channel's best), not the whole result.
-  const breakouts = [...new Map([...kept.videos.filter(isBreakout), ...kept.channels.flatMap(channel => channel.top)].map(video => [video.id, video])).values()];
+  // The search's 터진 영상 and each channel's best stay as 틈새 재료 after the 12-hour cache.
+  await keepFoundBreakouts(service, actor, [...kept.videos.filter(isBreakout), ...kept.channels.flatMap(channel => channel.top)]);
   // ponytail: one cache row per fresh search, never cleaned up; archive rows older than a week if they pile up.
   await service.from("os_records").insert({ record_type: "content_package", title: `주제 찾기 · ${input.q ?? input.category}`, description: "", status: "done", priority: "normal",
     owner_id: actor.ownerId, created_by: actor.ownerId, updated_by: actor.ownerId, team: actor.team, tags: ["주제찾기"],
-    metadata: { packageKind: CACHE_KIND, cacheKey, query: { category: input.category ?? null, q: input.q ?? null, days: input.days }, at, ...kept, breakouts } });
+    metadata: { packageKind: CACHE_KIND, cacheKey, query: { category: input.category ?? null, q: input.q ?? null, days: input.days }, at, ...kept } });
   return { ...kept, at, cached: false };
 }

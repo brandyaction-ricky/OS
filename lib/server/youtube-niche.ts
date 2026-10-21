@@ -15,24 +15,38 @@ type Service = RequestActor["supabase"];
 export const NICHE_BOARD_ID = ypUuid("yp-niche-board");
 const BOARD_KIND = "yp_niche_board";
 const POOL_MAX = 200;
-const POOL_DAYS = 7;
+// Every 터진 영상 a search found stays as 틈새 재료 (owner 2026-10-21: "계속 쌓이게"); the biggest multiples are kept.
+const FOUND_ID = ypUuid("yp-niche-found");
+const FOUND_MAX = 1000;
 interface Board { clusters: NicheCluster[]; settled: NicheCluster[]; at: string | null; by: string | null; model: string | null }
 
 const lite = (video: DiscoverVideo): NicheVideo => ({ id: video.id, title: video.title, channelId: video.channelId, channelTitle: video.channelTitle, viewCount: video.viewCount,
   median: video.median, ratio: video.ratio, thumbnail: video.thumbnail || `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`, url: video.url });
 const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 
-/**
- * What the AI groups: videos staff kept as 틈새 재료, 매일 보는 채널's outliers, and the 터진 영상 that 주제 찾기 found in the last
- * week — once each, the biggest multiples first.
- */
+/** A fresh search's 터진 영상 join the found list; the newest numbers win. */
+export async function keepFoundBreakouts(service: Service, actor: Pick<RequestActor, "ownerId" | "team">, videos: DiscoverVideo[]) {
+  if (!videos.length) return;
+  const { data } = await service.from("os_records").select("id,metadata").eq("id", FOUND_ID).maybeSingle();
+  const merged = new Map(((data?.metadata?.videos ?? []) as NicheVideo[]).map(video => [video.id, video]));
+  for (const video of videos) merged.set(video.id, lite(video));
+  const list = [...merged.values()].sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0)).slice(0, FOUND_MAX);
+  // ponytail: last write wins — two searches finishing at once can drop the other's new videos until they are found again.
+  const { error } = data
+    ? await service.from("os_records").update({ metadata: { ...data.metadata, videos: list }, updated_by: actor.ownerId }).eq("id", FOUND_ID)
+    : await service.from("os_records").insert({ id: FOUND_ID, record_type: "content_package", title: "주제 찾기 · 모은 터진 영상", description: "", status: "active", priority: "normal",
+      brand: "브랜디액션", team: actor.team || "콘텐츠", owner_id: actor.ownerId, created_by: actor.ownerId, updated_by: actor.ownerId, tags: ["주제찾기", "틈새"],
+      metadata: { packageKind: "yp_niche_found", videos: list } });
+  if (error) console.error(JSON.stringify({ event: "niche_found_save_failed", code: error.code }));
+}
+
+/** What the AI groups: videos staff kept as 틈새 재료, 매일 보는 채널's outliers and every 터진 영상 주제 찾기 found — once each, the biggest multiples first. */
 export async function nichePool(service: Service): Promise<NicheVideo[]> {
-  const since = new Date(Date.now() - POOL_DAYS * 86_400_000).toISOString();
-  const [{ data: kept, error }, { data: caches, error: cacheError }] = await Promise.all([
+  const [{ data: kept, error }, { data: found, error: foundError }] = await Promise.all([
     service.from("os_records").select("*").eq("record_type", "content_topic").eq("metadata->>studioKind", "outlier").is("archived_at", null).order("created_at", { ascending: false }).limit(400),
-    service.from("os_records").select("breakouts:metadata->breakouts").eq("record_type", "content_package").eq("metadata->>packageKind", "youtube_discover_cache").gte("created_at", since).is("archived_at", null).order("created_at", { ascending: false }).limit(30),
+    service.from("os_records").select("metadata").eq("id", FOUND_ID).maybeSingle(),
   ]);
-  if (error || cacheError) throw new ApiError(503, "NICHE_POOL_UNAVAILABLE", "틈새 재료를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+  if (error || foundError) throw new ApiError(503, "NICHE_POOL_UNAVAILABLE", "틈새 재료를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
   const pool = new Map<string, NicheVideo>();
   for (const record of (kept ?? []) as OsRecord[]) {
     const m = record.metadata ?? {}; const id = String(m.youtubeId ?? "");
@@ -43,7 +57,7 @@ export async function nichePool(service: Service): Promise<NicheVideo[]> {
     pool.set(id, { id, title: record.title, channelId: String(m.channelId ?? ""), channelTitle: String(m.channelTitle ?? ""), viewCount: Number(m.views ?? record.metric_current ?? 0),
       median, ratio, thumbnail: String(m.thumbnail ?? "") || `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, url: record.source_url ?? `https://www.youtube.com/watch?v=${id}` });
   }
-  for (const row of caches ?? []) for (const video of (row.breakouts ?? []) as unknown as DiscoverVideo[]) if (!pool.has(video.id)) pool.set(video.id, lite(video));
+  for (const video of (found?.metadata?.videos ?? []) as NicheVideo[]) if (!pool.has(video.id)) pool.set(video.id, video);
   return [...pool.values()].sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0)).slice(0, POOL_MAX);
 }
 export const nicheInputKey = (pool: NicheVideo[]) => createHash("sha256").update(pool.map(video => video.id).sort().join(",")).digest("hex");
