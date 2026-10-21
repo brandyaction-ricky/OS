@@ -131,9 +131,10 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
           <button type="button" className="yp-btn yp-sm" disabled={!adopted.length} onClick={exportList}><Download size={14} /> 편집용 목록</button></>}>
           {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
           {!srt ? <p className="yp-hint">자막(SRT)이 있어야 내 AI가 구간을 제안해요. OS가 만든 영상은 자막이 자동으로 있고, 직접 올린 영상은 업로드 단계에서 SRT를 올려요.</p> : null}
-          {clips.length ? <ul className="yp-hist">{clips.map(clip => <li key={clip.id} style={{ alignItems: "center" }}>
+          {clips.length ? <ul className="yp-hist">{clips.map(clip => <li key={clip.id} style={{ alignItems: "center", flexWrap: "wrap" }}>
             <time><button type="button" className="yp-lnk yp-tlink" onClick={() => { if (video.current) { video.current.currentTime = num(clip, "start"); void video.current.play(); } }}>▷ {fmt(num(clip, "start"))}</button></time>
-            <span style={{ flex: 1, minWidth: 0 }}><b>{clip.title}</b> <span className="yp-muted">~{fmt(num(clip, "end"))} · {Math.round(num(clip, "end") - num(clip, "start"))}초</span>
+            {/* The title keeps a readable width; the buttons wrap under it on a narrow screen. */}
+            <span style={{ flex: "1 1 220px", minWidth: 0 }}><b>{clip.title}</b> <span className="yp-muted">~{fmt(num(clip, "end"))} · {Math.round(num(clip, "end") - num(clip, "start"))}초</span>
               {clip.metadata?.hook ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>첫 문장: {String(clip.metadata.hook)}</span></> : null}
               {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 제안</span> : null}</span>
             {clip.metadata?.selected !== false ? <ClipRender render={renders[clip.id]} busy={making === clip.id} demo={page.demo} onMake={() => void makeVertical(clip)}
