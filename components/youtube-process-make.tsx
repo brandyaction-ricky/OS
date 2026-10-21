@@ -108,7 +108,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
       <YpSection n={++n} title={anim ? "최종본 만들기" : "최종본 올리기"} gq={anim ? "구성안 원고로 OS가 마이인 형식 영상을 만들어요" : undefined} need>
         {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>
           <span>{final.source === "myin" ? "OS 자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
-        {anim ? <MyinV13Panel sourceId={project.id} embedded onFinal={onFinal}
+        {anim && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 OS 자동 제작(음성 → 장면 기획표 → 로건, 유쓰 확인 → 시안 → 완성)을 실행하지 않아요. 실제 화면에서는 여기서 바로 만들어요.</div></div> : null}
+        {anim && !page.demo ? <MyinV13Panel sourceId={project.id} embedded onFinal={onFinal}
           finalNote={<p className="yt-note">완성 영상이 최종본 v{finals.length || 1}로 들어갔어요. 이어폰으로 소리를 확인하고 최종 썸네일 A · B를 올린 뒤 위 [다음: 최종 검수]를 눌러요. 자막 파일은 업로드 단계에서 자동으로 쓰여요.</p>} /> : null}
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>final_v{finals.length + 1} 올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}% · 이 화면을 닫지 마세요</span></div>
           : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={anim ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}

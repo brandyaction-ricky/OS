@@ -1,10 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { YpThumb } from "@/lib/youtube-process/stages";
-import type { YpPage } from "./youtube-process-frame";
+import type { YpClient } from "./youtube-process-data";
+
+/** What a thumbnail needs to sign its file: the screen's client and project (a step screen's page, or the confirm menu). */
+export interface YpMediaSource { client: YpClient | null; bundle: { project: { id: string } } | null }
 
 /** A one-hour link for a project file (thumbnail images live in private storage). */
-export function useAssetUrl(page: YpPage, path?: string | null) {
+export function useAssetUrl(page: YpMediaSource, path?: string | null) {
   const [url, setUrl] = useState<string | null>(null);
   const projectId = page.bundle?.project.id;
   const client = page.client;
@@ -18,7 +21,7 @@ export function useAssetUrl(page: YpPage, path?: string | null) {
 }
 
 /** A 16:9 thumbnail: the uploaded image, or the 글 설명 drawn as big text (시안 thumbArt 'T'). */
-export function ThumbView({ page, thumb, path, alt }: { page: YpPage; thumb?: YpThumb | null; path?: string | null; alt: string }) {
+export function ThumbView({ page, thumb, path, alt }: { page: YpMediaSource; thumb?: YpThumb | null; path?: string | null; alt: string }) {
   const url = useAssetUrl(page, path ?? (thumb?.mode === "img" ? thumb.path : null));
   // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage
   if (url) return <div className="yp-thumb"><img src={url} alt={alt} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
@@ -28,7 +31,7 @@ export function ThumbView({ page, thumb, path, alt }: { page: YpPage; thumb?: Yp
 }
 
 /** The YouTube list look (시안 ytCard): thumbnail, channel mark, title. */
-export function YtCard({ page, thumb, path, title }: { page: YpPage; thumb?: YpThumb | null; path?: string | null; title: string }) {
+export function YtCard({ page, thumb, path, title }: { page: YpMediaSource; thumb?: YpThumb | null; path?: string | null; title: string }) {
   return <div className="yp-yt"><ThumbView page={page} thumb={thumb} path={path} alt={`${title} 썸네일`} />
     <div className="yp-yt-r"><div className="yp-yt-av">BA</div><div style={{ minWidth: 0 }}><div className="yp-yt-t">{title.trim() || <span style={{ color: "var(--muted)" }}>제목을 골라주세요</span>}</div><div className="yp-yt-m">브랜디액션 · 조회수 — · 방금</div></div></div>
   </div>;

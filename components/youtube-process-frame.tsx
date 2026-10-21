@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
 import { editedSinceDecision, GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate } from "@/lib/youtube-process/project";
+import { PageGuide } from "./page-guide";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -106,7 +107,7 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
   </div>;
   if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />고칠 칸: {(info.fields ?? []).map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}. 고친 뒤 위 [{name} 다시 요청]을 누르세요. 고칠 게 없다고 판단하면 이유와 함께 그대로 다시 요청할 수 있어요.</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 다시 요청할 수 있어요.</div></div>;
-  if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK · {md(info.decidedAt)} · 대표</b>{okExtra}</div></div>;
+  if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · 대표</b>{okExtra}</div></div>;
   return null;
 }
 
@@ -146,9 +147,9 @@ export function YpFrame({ page, view, action, header, title, sub, savedAt, onSav
     : <p className="yp-hint" role="status">프로젝트를 불러오는 중이에요…</p>}</>;
   return <>
     {action ? <YoutubeFlow project={page.bundle.project} view={view} action={action} /> : null}
-    {header}
-    <div className="yp-shead"><div><h2>{title}</h2><p className="yp-sub">{sub}</p></div>
-      {onSave ? <div className="yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}<button type="button" className="yp-btn yp-sm" disabled={saveDisabled} onClick={onSave}>임시 저장</button></div> : null}</div>
+    {/* The step is the page heading here (시안 stageHead); the menu name stays in the breadcrumb. */}
+    <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{title}</h1><PageGuide /><p>{sub}</p></div>
+      {onSave ? <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}<button type="button" className="yp-btn yp-sm" disabled={saveDisabled} onClick={onSave}>임시 저장</button></div> : null}</header>
     {page.conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void page.reload()}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
     {page.error ? <div className="yp-note yp-warn" role="alert"><div>{page.error}</div></div> : null}
     {children}

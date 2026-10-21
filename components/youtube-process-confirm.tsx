@@ -5,8 +5,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
 import { GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_KIND_LABEL, type YpGate, type YpProject } from "@/lib/youtube-process/project";
+import { SLOTS } from "@/lib/youtube-process/stages";
 import { useSession } from "./session-provider";
-import { errorMessage, youtubeProcessClient, type YpClient, type YpMember } from "./youtube-process-data";
+import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
+import { YtCard } from "./youtube-process-media";
 
 const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -107,12 +109,13 @@ export function YoutubeConfirmScreen() {
         <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} 올라옴` : ""}</span></div>
         <div className="yp-cv-b">
           <h2>{projectName(project)}</h2>
+          {gate !== "topic" && client ? <StepDetail project={project} gate={gate} client={client} /> : null}
           <dl className="yp-kv"><dt>유형</dt><dd>{project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "—"}</dd><dt>담당자</dt><dd>{pd(project.assigneeId)}</dd>
             <dt>정밀 타겟</dt><dd>{project.yp.topic.target || "—"}</dd>
             {project.yp.topic.refs.length ? <><dt>레퍼런스</dt><dd>{project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>)}</dd></> : null}
             <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd></dl>
           {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
-          <p><Link className="yp-lnk" href={stepHref(0, project.id)}>프로젝트 화면에서 보기 →</Link></p>
+          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : 4, project.id)}>{gate === "review" ? "최종 검수 화면에서 보기 →" : "프로젝트 화면에서 보기 →"}</Link></p>
         </div>
         {tab === "wait" && client ? <ConfirmActions project={project} gate={gate} client={client} onDone={() => { go({ item: null }); void load(); }} />
           : tab === "hold" ? <div className="yp-abar"><span className="yp-abar-msg">보류한 건이에요. 담당 PD가 손보고 다시 요청하면 대기로 와요.</span></div>
@@ -121,4 +124,36 @@ export function YoutubeConfirmScreen() {
       </div>; })() : null}</div>
     </div>
   </>;
+}
+
+/** What the approver decides on for 기획안 (A · B · (C) as they look on YouTube, the 영상 흐름) and 최종 검수 (final, thumbnails, open feedback). */
+function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGate; client: YpClient }) {
+  const [bundle, setBundle] = useState<YpBundle | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    client.bundle(project.id).then(next => { if (active) setBundle(next); }, reason => { if (active) setError(errorMessage(reason)); });
+    if (gate === "review") client.feedback(project.id).then(items => { if (active) setOpen(items.filter(item => item.status === "open" && !item.reaction).length); }, () => undefined);
+    return () => { active = false; };
+  }, [client, project.id, gate]);
+  if (error) return <div className="yp-note yp-warn"><div>{error}</div></div>;
+  if (!bundle) return <p className="yp-hint">불러오는 중이에요…</p>;
+  const media = { client, bundle };
+  const plan = bundle.stages.plan.data;
+  const make = bundle.stages.make.data;
+  const pairs = gate === "draft" ? plan.titles.slice(0, 3).map((title, index) => ({ slot: SLOTS[index], title: title.text, thumb: plan.thumbs[index] ?? null, path: null as string | null }))
+      .filter(pair => pair.title || pair.thumb)
+    : SLOTS.filter(slot => plan.confirmed?.[slot]).map(slot => ({ slot, title: slot === "A" && make.aTitle ? make.aTitle : plan.confirmed?.[slot]?.title ?? "", thumb: plan.confirmed?.[slot]?.thumb ?? null, path: make.thumbs[slot]?.path ?? null }));
+  const final = bundle.finals.at(-1);
+  return <div style={{ marginBottom: 12 }}>
+    <div className="yp-fld-h"><b>제목 · 썸네일 A · B · (C)</b><span className="yp-gq">{gate === "draft" ? "유튜브에서 이렇게 보여요 · 바꾸고 싶으면 [수정 요청]에 메모" : "최종 썸네일 · 기획안 컨펌본과 다르면 표시돼요"}</span></div>
+    <div className="yp-g3">{pairs.map(pair => <div key={pair.slot} className="yp-abc"><div className="yp-abc-h"><span className={`yp-ltag${pair.slot === "C" ? " yp-c" : ""}`}>{pair.slot}</span>
+      {gate === "review" ? pair.slot === "A" && make.aTitle ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본 그대로</span> : null}</div>
+      <YtCard page={media} thumb={pair.thumb} path={pair.path} title={pair.title} /></div>)}</div>
+    {gate === "draft" ? <div className="yp-field"><div className="yp-fld-h"><b>영상 흐름</b></div><ul className="yp-fl2"><li><b>오프닝 (첫 30초)</b>{plan.opening || "—"}</li><li><b>본론</b><div style={{ whiteSpace: "pre-wrap" }}>{plan.body || "—"}</div></li><li><b>클로징 · 다음 행동</b>{plan.closing || "—"}</li></ul>
+      {plan.note ? <><div className="yp-fld-h" style={{ marginTop: 8 }}><b>전달 사항</b></div><p style={{ margin: 0 }}>{plan.note}</p></> : null}</div>
+      : <dl className="yp-kv" style={{ gridTemplateColumns: "110px minmax(0,1fr)", marginTop: 12 }}><dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "myin" ? "OS 자동 제작" : final.name}${final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}` : "—"}</dd>
+        <dt>해결 안 된 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd></dl>}
+  </div>;
 }

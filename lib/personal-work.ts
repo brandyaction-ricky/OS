@@ -1,5 +1,5 @@
 import type { OsRecord } from "./record-types";
-import { projectHref, type YpMeta } from "./youtube-process/project.ts";
+import { projectHref, stepHref, type YpMeta } from "./youtube-process/project.ts";
 import type { KnowledgeDocument } from "./types";
 import { contentOrigin } from "./content-origin.ts";
 import { developmentStatusLabel, requestPlainSummary } from "./development-status.ts";
@@ -21,6 +21,10 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
   // 유튜브 공정 v1 projects open on their current step (지시서 5-5).
   if (record.record_type === "content_topic" && record.metadata.workflow === "youtube_v1" && (record.metadata.yp as { stage?: string } | undefined)?.stage)
     return projectHref({ id: record.id, yp: record.metadata.yp as YpMeta });
+  // Its step records and feedback carry metadata.projectId and open that project's step.
+  const step = String(record.metadata.packageKind ?? record.metadata.scriptKind ?? "");
+  if (typeof record.metadata.projectId === "string" && ((record.record_type as string) === "content_feedback" || step.startsWith("yp_")))
+    return stepHref(({ yp_plan: 1, yp_outline: 2, yp_make: 3, yp_upload: 5 } as Record<string, number>)[step] ?? 4, record.metadata.projectId);
   if (record.record_type.startsWith("content_")) {
     const sourceId = encodeURIComponent(String(record.metadata.sourceId || record.metadata.contentId || record.id));
     const route = ({ content_topic: "/content/topics", content_script: "/content/scripts", content_package: "/content/packages", content_short: "/content/shorts", content_kit: "/content/publishing" } as Record<string, string>)[record.record_type] ?? "/automation/review";
