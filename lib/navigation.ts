@@ -35,7 +35,7 @@ import {
   Repeat,
   Receipt,
 } from "lucide-react";
-import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES } from "./youtube-process/navigation.ts";
+import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "./youtube-process/navigation.ts";
 export { YOUTUBE_V1_HREFS };
 
 export interface NavPage {
@@ -174,7 +174,7 @@ export function findPage(path: string): NavPage {
     return { ...page, href: alias, navHref: page.href };
   }
   return [...pages].sort((a, b) => b.href.length - a.href.length).find(page => matchesPath(pathname, page.href))
-    ?? [...YOUTUBE_V1_PAGES, YOUTUBE_V1_CONFIRM_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
+    ?? [...YOUTUBE_V1_PAGES, ...YOUTUBE_V1_STEP_PAGES, YOUTUBE_V1_CONFIRM_PAGE].find(page => matchesPath(pathname, page.href)) ?? HOME_PAGE;
 }
 export function findStage(pathname: string) {
   const page = findPage(pathname);

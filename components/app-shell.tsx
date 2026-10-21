@@ -30,7 +30,7 @@ import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
-import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_PAGES } from "@/lib/youtube-process/navigation";
+import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "@/lib/youtube-process/navigation";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -62,8 +62,10 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const page = useMemo(() => {
     const found = findPage(navigationPath);
     if (teamV1Enabled && pathname === "/organization/people") return { ...found, navHref: "/organization/people" };
+    // With v1, 쇼츠 is a step of a video: it carries the step's name and sits under 내 영상.
+    if (youtubeV1Enabled && pathname === "/content/shorts") return YOUTUBE_V1_STEP_PAGES.find(item => item.href === pathname)!;
     return teamV1Enabled && pathname === "/organization/schedule" ? { ...found, label: "팀 일정" } : found;
-  }, [navigationPath, pathname, teamV1Enabled]);
+  }, [navigationPath, pathname, teamV1Enabled, youtubeV1Enabled]);
   const screen = fullscreenScreen(pathname, params.get("tab"));
   const { profile, accessToken, loading, demo, signOut } = useSession();
   const hrShell = useHrShell(hrEnabled);
@@ -348,7 +350,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
         </header>
         <ContentWorkProvider youtubeV1={youtubeV1Enabled}><main className={`page-content${screen ? ` ui-v2 screen-${screen}` : ""}`}>
           <MovedMenuNotice />
-          {menuGuide ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 {youtubeV1Enabled ? "유튜브 공정의 프로젝트에서" : "콘텐츠의 8단계에서"}, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
+          {menuGuide && !(youtubeV1Enabled && pathname.startsWith("/content/")) ? <section className="menu-guide" aria-label="메뉴 안내"><div><strong>새 메뉴에서 내 일을 찾아보세요</strong><p>유튜브 제작은 {youtubeV1Enabled ? "유튜브 공정의 프로젝트에서" : "콘텐츠의 8단계에서"}, 채널 자동화와 댓글은 콘텐츠 자동화에서 확인합니다. 회사 정본은 전체 문서에서, 채널 연결은 내 계정에서 관리합니다.</p></div><button className="secondary-button" onClick={dismissGuide}>확인했어요</button></section> : null}
           {menuAccess.loading ? <section className="panel settings-loading-state" role="status">메뉴 권한을 확인하는 중입니다.</section> : menuAccess.error ? <section className="panel menu-access-denied" role="alert"><h1>메뉴 권한을 확인하지 못했습니다.</h1><p>{menuAccess.error}</p><button className="secondary-button" onClick={menuAccess.retry}>다시 확인</button></section> : canOpenMenu(profile, navigationPath, menuAccess.allowed) ? children : <section className="panel menu-access-denied"><ShieldCheck size={24} /><h1>이 메뉴에 접근 권한이 없습니다.</h1><p>관리자에게 메뉴 권한 설정을 요청해 주세요.</p><Link className="secondary-button" href="/home">내 할 일로 이동</Link></section>}
         </main></ContentWorkProvider>
       </div>

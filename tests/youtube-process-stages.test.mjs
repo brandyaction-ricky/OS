@@ -59,3 +59,13 @@ test("기획안 수정 요청 opens only the ticked fields; 최종 검수 OK mov
   review = { yp: applyGateAction(review, "review", "ok", { actor: "ceo", now: "2026-10-21T04:00:00Z" }) };
   assert.equal(review.yp.stage, "upload");
 });
+
+test("내 영상 says what each video needs next in one sentence and one button", async () => {
+  const { nextAction } = await import("../lib/youtube-process/next.ts");
+  const meta = newProjectMeta({ type: "anim", target: "t", note: "", refs: [] }, "2026-10-21T00:00:00Z");
+  const project = (stage, gates = {}) => ({ id: "p", yp: { ...meta.yp, stage, gates: { ...meta.yp.gates, ...gates } } });
+  assert.deepEqual([nextAction(project("outline")).tone, nextAction(project("outline")).button], ["todo", "원고 쓰기"]);
+  assert.equal(nextAction(project("draft", { draft: { state: "wait", round: 1 } })).tone, "wait");
+  assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /제목 · 썸네일을 고쳐요/);
+  assert.equal(nextAction(project("done")).tone, "done");
+});

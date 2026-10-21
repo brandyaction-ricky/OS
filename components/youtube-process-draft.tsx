@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef } from "@/lib/youtube-process/project";
-import { draftMissing, PLAN_FIELD_KEY, slotOf, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
-import { GateBanner, gateAction, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
+import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 
@@ -29,6 +29,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const editRev = useRef(0);
   const saving = useRef(false);
   const [send, setSend] = useState(false);
+  const [manual, setManual] = useState(false);
   const plan = page.bundle?.stages.plan;
   useEffect(() => { if (plan && !dirty) setForm(plan.data); }, [plan, dirty]);
   const reload = page.reload;
@@ -68,21 +69,22 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   };
 
   const missing = form ? draftMissing(form) : "";
+  const started = Boolean(form && (form.titles.some(row => row.text.trim()) || form.opening.trim() || form.body.trim() || form.closing.trim()));
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
-  return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub="제목 · 썸네일을 먼저 정하고, 그 약속에 맞게 영상 흐름을 써요." savedAt={savedAt}
+  return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌을 요청해요.", "기획안이 확정됐어요. 구성안으로 넘어가요.")} savedAt={savedAt}
+    todo={form && project?.yp.stage === "draft" ? [{ label: "제목 A", done: Boolean(form.titles[0]?.text.trim()) }, { label: "제목 B", done: Boolean(form.titles[1]?.text.trim()) }, { label: "썸네일 A", done: thumbFilled(form.thumbs[0]) }, { label: "썸네일 B", done: thumbFilled(form.thumbs[1]) }, { label: "오프닝", done: Boolean(form.opening.trim()) }, { label: "본론", done: Boolean(form.body.trim()) }, { label: "클로징", done: Boolean(form.closing.trim()) }] : undefined}
     onSave={project?.yp.stage === "draft" ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="기획안" /> : <div onBlur={() => { if (dirty) void save(); }}>
-      {project.yp.stage === "draft" && project.yp.gates.draft.state === "none" ? <div className="yp-note yp-ok" role="status"><div><b>주제 컨펌 OK</b> — 이제 기획안을 써요. 필수는 1 · 2번이에요.</div></div> : null}
       <GateBanner page={page} gate="draft" />
       <ReplyForm control={control} />
       <Subject page={page} />
-      {project.yp.stage === "draft" && project.yp.gates.draft.state !== "wait" ? <div className="yp-gen0" style={{ marginBottom: 12 }}>
-        <b>내 AI가 기획 정본대로 제목 후보 · 썸네일 시안 · 영상 흐름 초안을 써요</b>
-        <span className="yp-muted" style={{ fontSize: 12 }}>주제 · 정밀 타겟 · 레퍼런스를 읽고 소구점 · 기획 · 제목 정본을 따라요 · 사람은 다듬기만 해요 · 내 Claude(내 구독)가 처리</span>
-        {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
-          : <button type="button" className="yp-btn yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 기획안 쓰기"}</button>}
-        {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}의 Claude</span> : null}
-      </div> : null}
+      {project.yp.stage === "draft" && project.yp.gates.draft.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
+        // An empty 기획안 starts with the choice of how to fill it; a started one keeps a small re-run button.
+        : !started && !manual ? <div className="yp-ways">
+          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>기획 정본대로 제목 후보 · 썸네일 시안 · 영상 흐름 초안을 채워 줘요 (10분 안팎)</span></button>
+          <button type="button" className="yp-way" onClick={() => { setManual(true); window.setTimeout(() => document.querySelector<HTMLInputElement>("[aria-label='제목 A']")?.focus(), 50); }}><b>직접 쓰기</b><span>아래 칸을 바로 채워요</span></button></div>
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+          {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}의 Claude</span> : null}</div>) : null}
       {form.aiDraft && project.yp.stage === "draft" ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 기획안 도착</b> · 이미 쓴 내용이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" disabled={!can("titles")} onClick={() => { const draft = form.aiDraft!; editRev.current += 1; const next = { ...form, ...draft, aiDraft: undefined }; setForm(next); setDirty(true);
           if (page.client && project && plan) void page.client.saveStage(project.id, "plan", plan.version, { ...draft, aiDraft: null }).then(result => { page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current); setDirty(false); }, page.fail); }}>이 초안으로 바꾸기</button>
@@ -125,9 +127,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
             <input className="yp-in" aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
         </YpSection>
-        <YpSection n={3} title="전달 사항" gq="추가로 설명이 필요한 부분이 있으면 적어주세요" need={false} rev={rev("draft.note")}>
+        <details className="yp-more-fields" open={Boolean(form.note) || rev("draft.note")}><summary>전달 사항 더 쓰기 (선택)</summary>
           <textarea className="yp-in" rows={2} aria-label="전달 사항" value={form.note} readOnly={!can("note")} placeholder="예) 지난주 댓글에서 비슷한 질문이 많았어요 · 레퍼런스 1번은 제목 구조만 참고했어요" onChange={event => edit({ note: event.target.value })} />
-        </YpSection>
+        </details>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">레퍼런스 <span className="yp-opt">선택</span></div><div className="yp-card-b">
         <p className="yp-hint" style={{ margin: "0 0 8px" }}>보면서 써요. 주제 단계에서 넣은 영상이 자동으로 들어와요.</p>

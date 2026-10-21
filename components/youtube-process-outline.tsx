@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
-import { lengthEstimate, outlineMissing, runtimeError, SPEC_OPTIONS, type YpOutline } from "@/lib/youtube-process/stages";
+import { lengthEstimate, outlineMissing, runtimeError, scriptChars, SPEC_OPTIONS, type YpOutline } from "@/lib/youtube-process/stages";
 import { KnowledgeRichEditor } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
@@ -21,6 +21,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const [send, setSend] = useState(false);
   const [moving, setMoving] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [manual, setManual] = useState(false);
   const editRev = useRef(0);
   const saving = useRef(false);
   const timer = useRef<number | null>(null);
@@ -72,13 +73,18 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const anim = project?.yp.topic.type !== "live";
   const aiOpen = job.open || Boolean(job.status?.job && job.status.job.status === "blocked");
 
-  return <YpFrame page={page} view={2} action={action} header={header} title="구성안" sub={`${anim ? "" : "촬영 전에 "}스펙과 원고를 정해요. 대표 컨펌은 없어요.`} savedAt={savedAt}
+  return <YpFrame page={page} view={2} action={action} header={header} title="구성안" sub={project?.yp.stage === "outline" ? "러닝타임을 정하고 원고를 써요. 내 AI에 맡기면 10~20분 걸려요. 대표 컨펌은 없어요." : "제작이 시작된 원고예요. 고치면 버전이 남아요."} savedAt={savedAt}
+    todo={form && project?.yp.stage === "outline" ? [{ label: "러닝타임", done: form.spec.runtimeMin !== null && !runtimeError(form.spec.runtimeMin) }, { label: "원고", done: scriptChars(form.script) > 0 }] : undefined}
     onSave={editable ? () => saveNow() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project ? ["topic", "draft"].includes(project.yp.stage) ? <LockedStep page={page} name="구성안" /> : <>
       {project.yp.stage === "outline" ? <><GateBanner page={page} gate="draft" />
         <div className="yp-note yp-gray" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>구성안은 대표 컨펌 없이 바로 제작으로 넘어가요. 러닝타임과 원고만 채우면 돼요.</div></div></> : null}
       {project.yp.stage !== "outline" && editable ? <div className="yp-note yp-warn" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>제작이 시작된 원고예요. 고치면 버전이 남고, OS가 만드는 영상은 음성부터 다시 만들어야 해요.</div></div> : null}
       <Subject page={page} />
+      {/* Before any 원고 is saved, the step starts with how to write it (owner request 2026-10-21: no guide text). */}
+      {project.yp.stage === "outline" && !form.versions.length && !aiOpen && !manual ? <div className="yp-ways">
+        <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>원고 정본대로 원고를 써서 넣어 줘요 (10~20분)</span></button>
+        <button type="button" className="yp-way" onClick={() => setManual(true)}><b>직접 쓰기</b><span>기획안 흐름이 들어간 편집기에서 바로 써요</span></button></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title={anim ? "완성본 스펙" : "영상 스펙"} gq={anim ? "완성 영상 기준" : "촬영 · 완성본 기준"} need className="yp-compact">
           <div className="yp-spec1">

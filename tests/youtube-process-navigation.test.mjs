@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { findPage, findStage, NAV_STAGES } from "../lib/navigation.ts";
 import { youtubeV1Enabled } from "../lib/youtube-process/gate.ts";
-import { YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, youtubeV1Screen } from "../lib/youtube-process/navigation.ts";
+import { YOUTUBE_V1_CONFIRM_PAGE, YOUTUBE_V1_HREFS, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES, youtubeV1Screen } from "../lib/youtube-process/navigation.ts";
 import { YOUTUBE_V1_GUIDES } from "../lib/youtube-process/guides.ts";
 
 test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
@@ -11,9 +11,9 @@ test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
   assert.equal(youtubeV1Enabled({ YOUTUBE_V1_ENABLED: "true" }), true);
 });
 
-test("v1 menu is the prototype's seven pages plus 성과 (owner request 2026-10-21), and 컨펌 under 대표 메뉴", () => {
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["프로젝트", "기획", "제작", "최종 검수", "업로드", "쇼츠", "스케줄", "성과"]);
-  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.href), ["/content/projects", "/content/plan", "/content/make", "/content/final-check", "/content/upload", "/content/shorts", "/content/schedule", "/content/performance"]);
+test("v1 menu is 내 영상 · 스케줄 · 성과 (owner decision 2026-10-21); the steps sit under 내 영상; 컨펌 under 대표 메뉴", () => {
+  assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "성과"]);
+  assert.deepEqual(YOUTUBE_V1_STEP_PAGES.map(page => [page.href, page.navHref]), [["/content/plan", "/content/projects"], ["/content/make", "/content/projects"], ["/content/final-check", "/content/projects"], ["/content/upload", "/content/projects"], ["/content/shorts", "/content/projects"]]);
   assert.ok(YOUTUBE_V1_PAGES.every(page => page.processNumber === undefined), "no legacy process bar on v1 screens");
   assert.equal(findStage("/content/confirm").id, "ceo");
   assert.equal(findStage("/content/confirm").label, "대표 메뉴");

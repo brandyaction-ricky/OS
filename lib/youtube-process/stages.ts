@@ -96,7 +96,7 @@ export function stageData<K extends YpStageKind>(kind: K, stored: unknown, proje
 }
 
 // ── 기획안 (S3) ──
-const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.mode === "img" ? thumb.path : (thumb.copy?.trim() || thumb.screen?.trim())));
+export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.mode === "img" ? thumb.path : (thumb.copy?.trim() || thumb.screen?.trim())));
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
 export function draftMissing(plan: YpPlan) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `제목 ${slotOf(index)}(${name} 줄)를 써주세요`;

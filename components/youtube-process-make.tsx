@@ -6,7 +6,7 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { stepHref } from "@/lib/youtube-process/project";
 import { MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
-import { GateBanner, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
+import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 
 const dayDiff = (date: string) => Math.round((Date.parse(`${date}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000);
@@ -78,7 +78,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const statusIndex = data ? Math.max(0, steps.findIndex(([key]) => key === (anim && data.status === "shoot" ? "prep" : data.status))) : 0;
   let n = 0;
 
-  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={anim ? "일정을 정하고, OS가 원고로 영상을 만들면 최종 썸네일을 올려요." : "일정을 정하고, 다 만들면 최종본과 최종 썸네일을 올려요."}>
+  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검수 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : anim ? "OS가 원고로 영상을 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
+    todo={data && project?.yp.stage === "make" ? [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
     {bundle && data && project ? ["topic", "draft", "outline"].includes(project.yp.stage) ? <LockedStep page={page} name="제작" /> : <>
       {project.yp.stage === "review" ? <GateBanner page={page} gate="review" /> : null}
       <Subject page={page} />
@@ -94,6 +95,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
             {data.log.length ? <><div className="yp-lbl">바꾼 기록</div><ul className="yp-hist">{data.log.slice(0, 5).map(item => <li key={item.at}><time>{md(item.at)}</time><span>편집 완료 {item.from ? md2(item.from) : "없음"} → {md2(item.to)} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</>}
         <p className="yp-hint">업로드 일정(예상)과 기한 알림은 스케줄 화면에서 다음 차례에 들어와요.</p>
       </YpSection>
+      {/* The OS-made video moves on by itself; the manual 준비 · 편집 · 완료 buttons are for 실사. */}
+      {anim ? null : <>
       <YpSection n={++n} title="진행 상태">
         <div className="yp-pstat2">{steps.map(([key, label], index) => <span key={key} style={{ display: "contents" }}>
           {index ? <span className="yp-arw" aria-hidden="true"><ChevronRight size={14} /></span> : null}
@@ -101,6 +104,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
             {index < statusIndex ? "✓ " : ""}{label}<small>{data.statusAt[key] ? md(data.statusAt[key]).split(" ")[0] : ""}</small></button></span>)}</div>
         <p className="yp-hint">잘못 눌렀으면 앞 단계를 다시 눌러요. 최종본과 최종 썸네일 A · B가 있으면 자동으로 ‘완료’가 돼요.</p>
       </YpSection>
+      </>}
       {anim ? null : <YpSection n={++n} title="작업 자료"><div className="yp-mats">
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>원고 (최신)</b><div className="yp-muted" style={{ fontSize: 12 }}>v{bundle.stages.outline.data.versions.at(-1)?.v ?? "—"}{bundle.stages.outline.data.versions.find(item => item.why === "make") ? ` · 제작 시작 원고 v${bundle.stages.outline.data.versions.filter(item => item.why === "make").at(-1)!.v}` : ""}</div></div><Link className="yp-btn yp-sm" href={stepHref(2, project.id)}>열기</Link></div>
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>컨펌받은 제목 · 썸네일</b><div className="yp-muted" style={{ fontSize: 12 }}>{SLOTS.filter(slot => confirmed?.[slot]?.title).map(slot => <div key={slot}>{slot}: {confirmed?.[slot]?.title}</div>)}</div></div></div>

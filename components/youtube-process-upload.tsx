@@ -106,7 +106,8 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   const checks = form ? descChecks(form.desc, { ...form, srt: form.srt ?? (myinSrt ? { path: "myin", name: "final.srt" } : null) }) : [];
   const aiDraftWaiting = Boolean(form?.descBy && form.desc !== form.descBy.draft);
 
-  return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub="최종 검수 컨펌이 끝난 영상을 유튜브에 올려요. 업로드에는 링크 공유가 없어요." savedAt={savedAt}
+  return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 쇼츠로 이어 가거나 여기서 끝내요." : "설명란을 채우고 [업로드]를 누르면 끝나요."} savedAt={savedAt}
+    todo={form && !done ? [{ label: "설명란", done: Boolean(form.desc.trim()) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
     onSave={editable ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project && make ? !["upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>
       {done ? <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요</b> · {form.run?.thumbnail === "ok" ? "썸네일 A도 넣었어요" : form.run?.thumbnail === "fail" ? "썸네일은 유튜브 스튜디오에서 직접 넣어 주세요(채널 맞춤 썸네일 권한 확인)" : "썸네일은 스튜디오에서 넣어 주세요"} · 최종 검수 컨펌은 이제 되돌릴 수 없어요<br />
@@ -131,10 +132,9 @@ export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
           <input ref={srtInput} type="file" hidden accept=".srt,application/x-subrip" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadSrt(file); }} />
         </YpSection>
         <YpSection n={3} title="설명란 · 고정 댓글" gq="1 · 2번 기준 자동" need>
-          {!form.desc.trim() && !aiDraftWaiting ? <div className="yp-gen0"><b>1 · 2번을 채우면 내 AI가 설명란과 고정 댓글 초안을 만들어요</b>
-            <span className="yp-muted" style={{ fontSize: 12 }}>{myinSrt || form.srt ? "SRT ✓" : "SRT가 없으면 타임라인은 자리표시로 들어가요"} · 사람은 다듬기만 해요 · 내 Claude(내 구독)가 처리</span>
-            {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : editable ? <button type="button" className="yp-btn yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 만들기</button> : null}
-            {editable ? <button type="button" className="yp-lnk" onClick={() => edit({ desc: "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n" })}>직접 쓰기</button> : null}</div> : <>
+          {!form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : editable ? <div className="yp-ways">
+            <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{myinSrt || form.srt ? "자막(SRT) 시간으로" : "자막이 없어 타임라인은 자리표시로"} 설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요</span></button>
+            <button type="button" className="yp-way" onClick={() => edit({ desc: "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n" })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
             <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
               {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><RefreshCw size={14} /> 내 AI로 다시 만들기</button> : null}
               {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.descBy.name}의 Claude</span> : null}</div>

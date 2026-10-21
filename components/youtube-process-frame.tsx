@@ -4,8 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
 import { editedSinceDecision, GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
-import { projectName, stepHref, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate } from "@/lib/youtube-process/project";
-import { PageGuide } from "./page-guide";
+import { projectName, stepHref, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
@@ -73,7 +72,7 @@ export function useGate(page: YpPage, gate: YpGate) {
 export function gateAction(page: YpPage, gate: YpGate, view: number, control: ReturnType<typeof useGate>, missing: string): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `지금 단계로: ${YP_FLOW[current]}`, href: stepHref(current, project.id) };
+  if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${YP_FLOW[current]}`, href: stepHref(current, project.id) };
   const info = project.yp.gates[gate];
   if (info.state === "wait") return { kind: "status", status: `대표 컨펌 대기 · ${daysSince(info.requestedAt)}일`, secondary: { label: "요청 취소", onClick: () => void control.act("cancel") } };
   return { kind: "button", label: `${GATE_NAME[gate]} ${["changes", "hold"].includes(info.state) ? "다시 요청" : "요청"}`, reason: missing, busy: control.busy, onClick: () => void control.act("request") };
@@ -82,7 +81,17 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `지금 단계로: ${YP_FLOW[current]}`, href: stepHref(current, project.id) } : own;
+  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `이어서 하기 · ${YP_FLOW[current]}`, href: stepHref(current, project.id) } : own;
+}
+
+/** The sentence under a confirm step's title: what to do now, or that there is nothing to do while the 대표 decides. */
+export function gateSub(project: YpProject | undefined, gate: YpGate, todo: string, done: string) {
+  const state = project?.yp.gates[gate].state;
+  if (state === "wait") return "대표 컨펌을 기다리는 중이에요. 지금 할 일은 없어요. 결과가 나오면 알림이 가요.";
+  if (state === "changes") return "대표가 고르라고 한 칸만 고치고 다시 요청해요.";
+  if (state === "hold") return "보류됐어요. 손본 뒤 다시 요청할 수 있어요.";
+  if (state === "ok") return done;
+  return todo;
 }
 
 /** 칸 묶음 (시안 fsec). */
@@ -139,8 +148,10 @@ export function Subject({ page }: { page: YpPage }) {
 }
 
 /** Every step screen: progress line, page title, the step's own heading (시안 stageHead) and the shared notices. */
-export function YpFrame({ page, view, action, header, title, sub, savedAt, onSave, saveDisabled, children }: {
-  page: YpPage; view: number; action: YpAction | null; header: ReactNode; title: string; sub: string; savedAt?: string; onSave?: () => void; saveDisabled?: boolean; children?: ReactNode;
+export function YpFrame({ page, view, action, header, title, sub, savedAt, onSave, saveDisabled, todo, children }: {
+  page: YpPage; view: number; action: YpAction | null; header: ReactNode; title: string; sub: string; savedAt?: string; onSave?: () => void; saveDisabled?: boolean;
+  /** What this step still needs, shown with the next button at the end of the step (owner request 2026-10-21: no guide text). */
+  todo?: { label: string; done: boolean }[]; children?: ReactNode;
 }) {
   if (!page.id) return <>{header}<p className="yp-hint" role="status">프로젝트를 여는 중이에요…</p></>;
   if (!page.bundle) return <>{header}{page.error ? <div className="yp-note yp-warn" role="alert"><div>{page.error} <button type="button" className="yp-lnk" onClick={() => void page.reload()}>다시 불러오기</button></div></div>
@@ -148,12 +159,26 @@ export function YpFrame({ page, view, action, header, title, sub, savedAt, onSav
   return <>
     {action ? <YoutubeFlow project={page.bundle.project} view={view} action={action} /> : null}
     {/* The step is the page heading here (시안 stageHead); the menu name stays in the breadcrumb. */}
-    <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{title}</h1><PageGuide /><p>{sub}</p></div>
+    <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{title}</h1><p>{sub}</p></div>
       {onSave ? <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}<button type="button" className="yp-btn yp-sm" disabled={saveDisabled} onClick={onSave}>임시 저장</button></div> : null}</header>
     {page.conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void page.reload()}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
     {page.error ? <div className="yp-note yp-warn" role="alert"><div>{page.error}</div></div> : null}
     {children}
+    {action ? <StepFooter action={action} todo={todo} /> : null}
   </>;
+}
+
+/** The end of every step: what is left (✓ done · ○ to do) and the same one button as the progress line. */
+export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { label: string; done: boolean }[] }) {
+  const left = todo.filter(item => !item.done);
+  return <div className="yp-foot">
+    <div className="yp-foot-left">{action.kind === "status" ? <span>{action.status}</span> : todo.length ? <>
+      <span>{left.length ? `남은 것 ${left.length}개` : "다 채웠어요"}</span>
+      {todo.map(item => <span key={item.label} className={item.done ? "yp-o" : "yp-x"}>{item.done ? "✓" : "○"} {item.label}</span>)}</> : action.kind === "button" && action.reason ? <span>{action.reason}</span> : null}</div>
+    {action.kind === "status" ? (action.secondary ? <button type="button" className="yp-btn" onClick={action.secondary.onClick}>{action.secondary.label}</button> : null)
+      : action.kind === "link" ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label} →</Link>
+      : <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} onClick={action.onClick}>{action.busy ? "보내는 중…" : action.label} →</button>}
+  </div>;
 }
 
 /** A step not reached yet (시안 lockedPage). */

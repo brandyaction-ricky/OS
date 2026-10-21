@@ -2,7 +2,6 @@
 import "./youtube-process.css";
 import { Info, Lock } from "lucide-react";
 import type { YoutubeV1Screen } from "@/lib/youtube-process/navigation";
-import { PageTitle } from "./page-title";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { YoutubeConfirmScreen } from "./youtube-process-confirm";
@@ -22,16 +21,19 @@ const SCREENS: Record<YoutubeV1Screen | "shorts", { sub: string; coming: string;
   make: { sub: "편집 완료 일정을 정하고 최종본과 최종 썸네일을 올려요.", coming: "편집 완료 일정 · 진행 상태 · 최종본 올리기(버전) · 최종 썸네일 A · B · C", step: "T7" },
   "final-check": { sub: "영상을 멈추고 그 시간에 피드백을 남겨요. 대표 OK가 나야 업로드가 열려요.", coming: "플레이어 시간 · 구간 피드백 · 썸네일 보기 · 버전 · 구성원 의견", step: "T8" },
   upload: { sub: "최종 검수 컨펌 뒤에 열려요. [업로드] 한 번으로 유튜브와 백업이 같이 돼요.", coming: "UTM · SRT · 설명란 · 고정 댓글 · 최종 화면 · 공개 일정", step: "T10" },
-  schedule: { sub: "모든 프로젝트의 편집 완료 · 업로드(예상) · 컨펌 대기 · 피드백 기한을 달력으로 봐요.", coming: "이번 주 · 이번 달 달력 · 끌어서 날짜 옮기기 · 현황 카드", step: "T11" },
-  confirm: { sub: "주제 · 기획안 · 최종 검수 컨펌을 모아 봐요. OK · 수정 요청 · 보류 중에 고르기만 하면 돼요.", coming: "컨펌 대기 · 내가 처리한 것 · 보류함", step: "T4" },
+  schedule: { sub: "편집 완료일과 업로드 예상일을 한눈에 봐요. 날짜를 끌어서 옮겨요.", coming: "", step: "" },
+  confirm: { sub: "기다리는 컨펌을 오래된 순서로 봐요.", coming: "", step: "" },
 };
+
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검수", upload: "업로드", shorts: "쇼츠", schedule: "스케줄", confirm: "컨펌" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | "shorts" }) {
   const { accessToken, demo, profile } = useSession();
   const canConfirm = useYoutubeCanConfirm(screen === "confirm", accessToken, demo, profile?.role === "admin");
   const info = SCREENS[screen];
-  const header = <header className="page-header"><div className="page-title-group"><PageTitle /><p>{info.sub}</p></div></header>;
+  // Owner request 2026-10-21: no "이 화면에서 할 일" guide on these screens; each screen shows what to do itself.
+  const header = <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">{TITLES[screen]}</h1>{info.sub ? <p>{info.sub}</p> : null}</div></header>;
   // 기획 draws the progress line above its header (the line sits at the very top of the screen).
   if (screen === "plan") return <section className="yp ui-v2"><YoutubePlanScreen header={header} /></section>;
   if (screen === "make") return <section className="yp ui-v2"><YoutubeMakeScreen header={header} /></section>;
@@ -39,7 +41,7 @@ export function YoutubeProcessWorkspace({ screen }: { screen: YoutubeV1Screen | 
   if (screen === "upload") return <section className="yp ui-v2"><YoutubeUploadScreen header={header} /></section>;
   if (screen === "shorts") return <section className="yp ui-v2"><YoutubeShortsScreen header={header} /></section>;
   return <section className="yp ui-v2">
-    {header}
+    {screen === "projects" ? null : header}
     {screen === "projects" ? <YoutubeProjectsScreen />
       : screen === "schedule" ? <YoutubeScheduleScreen />
       : screen === "confirm" && canConfirm === null ? <p className="yp-hint" role="status">권한을 확인하는 중이에요…</p>

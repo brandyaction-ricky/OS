@@ -120,7 +120,8 @@ function waitingDemo(project: YpProject): YpProject {
 /** Example step contents for the projects past 기획안, so each screen has something to show. */
 function demoFilledStages(project: YpProject): YpStagesView {
   const kind = project.yp.topic.type;
-  const at = project.yp.stage === "topic" ? 0 : ["draft"].includes(project.yp.stage) ? 1 : 2;
+  // Only the seeded examples carry content; a project made in the demo starts empty like a real one.
+  const at = !/^demo-p\d+$/.test(project.id) || project.yp.stage === "topic" ? 0 : ["draft"].includes(project.yp.stage) ? 1 : 2;
   const plan = emptyStage("plan", kind);
   if (at >= 1) Object.assign(plan, { titles: [{ id: "t1", text: "[예시] 저녁마다 지치는 진짜 이유" }, { id: "t2", text: "[예시] 일이 두 개뿐인데 왜 힘들까" }, { id: "t3", text: "" }],
     thumbs: [{ id: "h1", mode: "text", screen: "책상에 엎드린 사람", copy: "일은 두 개인데" }, { id: "h2", mode: "text", screen: "시계와 할 일 목록", copy: "왜 지칠까" }],

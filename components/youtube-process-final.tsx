@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ChevronDown, ChevronUp, Download, MessageSquare, Pause, Play, ThumbsUp, Upload } from "lucide-react";
 import { stepHref } from "@/lib/youtube-process/project";
 import { SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
-import { GateBanner, gateAction, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
+import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
 
@@ -94,7 +94,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const make = page.bundle?.stages.make.data;
 
-  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검수" sub="완성본을 보고 피드백을 남겨요">
+  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검수" sub={gateSub(project, "review", "완성본을 끝까지 보고, 고칠 곳은 그 시간에 남겨요. 다 보면 컨펌을 요청해요.", "최종 검수가 끝났어요. 업로드로 넘어가요.")}
+    todo={project?.yp.stage === "review" && project.yp.gates.review.state !== "wait" ? [{ label: "최종본", done: finals.length > 0 }, ...(unresolved ? [{ label: `남은 피드백 ${unresolved}개 (그래도 요청 가능)`, done: false }] : [])] : undefined}>
     {page.bundle && project && make ? ["topic", "draft", "outline", "make"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검수" /> : <>
       <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>업로드로 →</Link></> : null} />
       <ReplyForm control={control} />

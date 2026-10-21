@@ -962,3 +962,41 @@
 .linear-shell .ui-v2.yp .yp-confirm-form label{display:grid;gap:4px;font-size:13px}
 .linear-shell .ui-v2.yp .yp-confirm-fields{display:flex;flex-wrap:wrap;gap:8px 14px}
 .linear-shell .ui-v2.yp .yp-confirm-fields label{display:inline-flex;align-items:center;gap:6px}
+/* ── 내 영상 (owner request 2026-10-21): one row per video, what to do now and one button ── */
+.linear-shell .ui-v2.yp .yp-mv-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 14px}
+.linear-shell .ui-v2.yp .yp-mv-head h1{margin:0;font-size:22px}
+.linear-shell .ui-v2.yp .yp-mv-new{display:flex;gap:8px;flex-wrap:wrap;align-items:center;border:1.5px solid var(--accent);background:var(--accent-soft);border-radius:10px;padding:12px;margin:0 0 14px}
+.linear-shell .ui-v2.yp .yp-mv-new .yp-in{flex:1;min-width:220px;height:40px;font-size:15px}
+.linear-shell .ui-v2.yp .yp-mv-list{display:flex;flex-direction:column;gap:8px}
+.linear-shell .ui-v2.yp .yp-mv{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card)}
+.linear-shell .ui-v2.yp .yp-mv:hover{border-color:var(--accent)}
+.linear-shell .ui-v2.yp .yp-mv-m{flex:1;min-width:0}
+.linear-shell .ui-v2.yp .yp-mv-t{font-size:15px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.linear-shell .ui-v2.yp .yp-mv-s{font-size:13px;color:var(--text-2);margin-top:2px}
+.linear-shell .ui-v2.yp .yp-mv-s.yp-wait{color:var(--warning)}
+.linear-shell .ui-v2.yp .yp-mv-s.yp-fix{color:var(--danger)}
+.linear-shell .ui-v2.yp .yp-mv-s.yp-hold{color:var(--danger)}
+.linear-shell .ui-v2.yp .yp-mv-s.yp-done{color:var(--mint)}
+.linear-shell .ui-v2.yp .yp-mv-bar{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--muted)}
+.linear-shell .ui-v2.yp .yp-mv-track{flex:1;max-width:280px;height:4px;border-radius:2px;background:var(--panel-2);overflow:hidden}
+.linear-shell .ui-v2.yp .yp-mv-track i{display:block;height:4px;background:var(--accent)}
+.linear-shell .ui-v2.yp .yp-mv-track i.yp-wait{background:var(--warning)}
+.linear-shell .ui-v2.yp .yp-mv-track i.yp-fix{background:var(--danger)}
+.linear-shell .ui-v2.yp .yp-mv-track i.yp-done{background:var(--mint)}
+.linear-shell .ui-v2.yp .yp-mv-empty{border:1.5px dashed var(--line);border-radius:12px;padding:36px 16px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
+.linear-shell .ui-v2.yp .yp-mv-empty b{font-size:17px}
+/* ── step footer: what is left and the one next button, at the end of every step ── */
+.linear-shell .ui-v2.yp .yp-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;background:var(--card);padding:12px 14px;margin:16px 0 4px}
+.linear-shell .ui-v2.yp .yp-foot-left{flex:1;min-width:0;display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-foot-left .yp-o{color:var(--mint);font-weight:700}
+.linear-shell .ui-v2.yp .yp-foot-left .yp-x{color:var(--text);font-weight:700}
+.linear-shell .ui-v2.yp .yp-task{display:flex;align-items:flex-start;gap:12px;margin:0 0 14px}
+.linear-shell .ui-v2.yp .yp-task-t{font-size:18px;font-weight:800;line-height:1.35;color:var(--text)}
+.linear-shell .ui-v2.yp .yp-task-s{font-size:13px;color:var(--muted);margin-top:2px}
+.linear-shell .ui-v2.yp .yp-ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:0 0 14px}
+.linear-shell .ui-v2.yp .yp-way{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--card);color:var(--text)}
+.linear-shell .ui-v2.yp .yp-way:hover{border-color:var(--accent)}
+.linear-shell .ui-v2.yp .yp-way.yp-rec{border:2px solid var(--accent)}
+.linear-shell .ui-v2.yp .yp-way b{font-size:15px}
+.linear-shell .ui-v2.yp .yp-way span{font-size:12px;color:var(--muted)}
+.linear-shell .ui-v2.yp .yp-more-fields>summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent-2);padding:8px 0}
