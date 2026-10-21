@@ -6,7 +6,8 @@ export function youtubeV1Enabled(env: NodeJS.ProcessEnv = process.env) {
 
 /**
  * Who sees v1 while it is rolled out (owner decision 2026-10-21: one environment, production, the 대표 first): YOUTUBE_V1_USERS is a
- * comma-separated list of user ids; empty means everyone. The ids stay on the server; the shell only learns off · all · some.
+ * comma-separated list of user ids, and "approver" for the company approvers (설정 › 회사 › 승인자; the server checks it);
+ * empty means everyone. The list stays on the server; the shell only learns off · all · some.
  */
 export function youtubeV1Users(env: NodeJS.ProcessEnv = process.env) {
   return (env.YOUTUBE_V1_USERS ?? "").split(",").map(id => id.trim()).filter(Boolean);

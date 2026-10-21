@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, type RequestActor } from "./auth";
-import { youtubeV1AllowedFor } from "@/lib/youtube-process/gate";
+import { youtubeV1AllowedFor, youtubeV1Enabled, youtubeV1Users } from "@/lib/youtube-process/gate";
 import { newProjectMeta, projectFromRecord, projectName, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpMeta, type YpProject, type YpTopic } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, dueReminders, GateError, nextRemindAt, quietHours, type YpApproverAction, type YpGateInput } from "@/lib/youtube-process/confirm";
 import { isDesignatedApprover } from "./document-proposals";
@@ -24,10 +24,16 @@ export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
 export const confirmTabSchema = z.enum(["wait", "done", "hold"]);
 
+/** Whether v1 is on for this person: everyone, a listed id, or a listed "approver" who is the company approver. */
+export async function youtubeV1Allowed(actor: RequestActor) {
+  if (youtubeV1AllowedFor(actor.ownerId)) return true;
+  return youtubeV1Enabled() && youtubeV1Users().includes("approver") && actor.type === "user" && await isDesignatedApprover(actor.ownerId);
+}
+
 /** Every 유튜브 공정 v1 route: a signed-in staff member, and only while the switch is on for them. */
 export async function youtubeActor(request: Request) {
   const actor = await authenticateRequest(request);
-  if (!youtubeV1AllowedFor(actor.ownerId)) throw new ApiError(404, "YOUTUBE_V1_DISABLED", "유튜브 공정 화면을 사용할 수 없습니다.");
+  if (!(await youtubeV1Allowed(actor))) throw new ApiError(404, "YOUTUBE_V1_DISABLED", "유튜브 공정 화면을 사용할 수 없습니다.");
   return actor;
 }
 
