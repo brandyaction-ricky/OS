@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Plus, Radar, Search, X } from "lucide-react";
 import { projectName, searchProjects, stepHref, type YpProject } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
-import { ContentRadarWorkspace } from "./content-radar-workspace";
+import { YoutubeDiscoverScreen } from "./youtube-process-discover";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpLegacyTopic, type YpMember } from "./youtube-process-data";
@@ -66,11 +66,7 @@ export function YoutubeProjectsScreen() {
   const waitingMine = canConfirm ? all.filter(row => nextAction(row).tone === "wait").length : 0;
   const pdName = (id: string | null) => members.find(member => member.id === id)?.name ?? "";
 
-  if (discover) return <>
-    <div className="yp-mv-head"><h1>주제 찾기</h1><span className="yp-sp" style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>
-    {/* The radar keeps its own screen styles (components/fullscreen-content.css, scoped to .screen-topics). */}
-    <div className="ui-v2 screen-topics"><ContentRadarWorkspace startProjectHref={video => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(`${video.title} · ${video.channel}`)}`} /></div>
-  </>;
+  if (discover) return <YoutubeDiscoverScreen />;
 
   return <>
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">내 영상</h1><span style={{ flex: 1 }} />
