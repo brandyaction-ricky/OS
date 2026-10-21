@@ -7,7 +7,8 @@ const upload = (views, durationSeconds = 600, title = "영상") => ({ views, dur
 const video = (viewCount, median, durationSeconds = 600, title = "영상") => ({ viewCount, median, ratio: median ? viewCount / median : null, durationSeconds, title });
 
 test("a category searches its words with OR; multi-word ones stay together", () => {
-  assert.equal(categoryQuery("A"), '"강점 찾기"|재능|"잘하는 것"');
+  assert.equal(categoryQuery("A"), '"강점 찾기"|"재능 찾는 법"|"잘하는 일 찾기"');
+  assert.equal(categoryQuery("G"), '번아웃|자존감|"일하기 싫을 때"');
 });
 
 test("a channel's normal is the median of five or more long uploads; Shorts and short videos do not count", () => {

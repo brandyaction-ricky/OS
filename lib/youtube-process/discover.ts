@@ -2,19 +2,21 @@
 // 1 채널 모으기 → 2 터진 영상 (a channel's own normal views ×2) → 3 틈새 (the same title formula at 2 · 3 different channels).
 import { median } from "../youtube-outliers.ts";
 
+// The words follow the 2026-10-21 target (BRANDYACTION 핵심 컨텍스트): people who have worked and are weighing a move, a role or
+// their own line of work. Shop promotion, investing, fitness and study tips are not this audience's topics, so no word invites them.
 export const DISCOVER_CATEGORIES = [
-  ["A", "강점·재능", ["강점 찾기", "재능", "잘하는 것"]],
-  ["B", "성향·기질", ["성격 유형", "기질", "나다운 삶"]],
-  ["C", "직업·커리어", ["이직", "직무 선택", "커리어 고민"]],
-  ["D", "사업·창업", ["1인 사업", "창업", "수익화"]],
-  ["E", "생산성", ["실행력", "습관 만들기", "시간 관리"]],
-  ["F", "관계·소통", ["인간관계", "갈등 해결", "말 잘하는 법"]],
-  ["G", "마음·감정", ["불안", "자존감", "번아웃 회복"]],
-  ["H", "돈·경제", ["재테크", "소비 습관", "경제적 자유"]],
-  ["I", "공부·성장", ["공부법", "독서", "자기계발"]],
-  ["J", "건강·생활", ["수면 습관", "운동 루틴", "건강한 생활 습관"]],
-  ["K", "리더십", ["리더십", "팀 관리", "리더의 판단"]],
-  ["L", "라이프 전환", ["퇴사", "인생 전환기", "인생 설계"]],
+  ["A", "강점·재능", ["강점 찾기", "재능 찾는 법", "잘하는 일 찾기"]],
+  ["B", "성향·기질", ["성향에 맞는 직업", "MBTI 직업", "내향인 직장"]],
+  ["C", "직업·커리어", ["이직 고민", "직무 전환", "커리어 고민"]],
+  ["D", "나만의 업", ["나만의 업", "평생 직업", "좋아하는 일로 먹고살기"]],
+  ["E", "실행·습관", ["실행력", "작심삼일", "미루는 습관"]],
+  ["F", "일터 관계", ["직장 인간관계", "회사 사람 스트레스", "상사 갈등"]],
+  ["G", "마음·감정", ["번아웃", "자존감", "일하기 싫을 때"]],
+  ["H", "먹고살 일", ["먹고살 걱정", "직장인 미래 불안", "오래 할 수 있는 일"]],
+  ["I", "자기이해", ["자기이해", "나를 알아가는 법", "진짜 원하는 것 찾기"]],
+  ["J", "일과 삶", ["워라밸", "일과 삶의 균형", "직장인 지칠 때"]],
+  ["K", "리더십", ["리더십", "팀장 고민", "관리자 스트레스"]],
+  ["L", "라이프 전환", ["퇴사 고민", "인생 전환기", "진로 고민"]],
 ] as const;
 export type DiscoverLetter = (typeof DISCOVER_CATEGORIES)[number][0];
 export const DISCOVER_LETTERS = DISCOVER_CATEGORIES.map(([letter]) => letter) as DiscoverLetter[];
