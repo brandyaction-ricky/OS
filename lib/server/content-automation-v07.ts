@@ -1,3 +1,5 @@
+import { readDiagramCatalog } from "./diagram-catalog";
+import { diagramCatalogItems } from "@/lib/diagram-catalog";
 import { assertShortformJobCurrent,shortformJobInput,shortformInputKey } from "./shortform-production";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http";
@@ -250,6 +252,8 @@ export async function createJob(actor:RequestActor,input:{
     .eq("metadata->>process",input.proc).eq("metadata->>active","true")
     .is("archived_at",null).limit(1).maybeSingle();
   if(skillError)throw new ApiError(503,"SKILL_CHECK_FAILED","내 스킬을 확인하지 못했습니다.");
+  const reportedCatalog=shortformInput?.stage==="cuts"?await readDiagramCatalog():null;
+  const shortformDiagramCatalog=reportedCatalog?{...reportedCatalog,items:diagramCatalogItems(reportedCatalog,"9:16")}:null;
   const title=`${target?.title??"새 주제"} · ${input.proc}`.slice(0,240);
   const {data,error}=await db.from("os_records").insert({
     id:randomUUID(),record_type:"ai_job",title,description:"내 Chrome의 Claude in Chrome에서 처리할 초안 작업입니다.",
@@ -259,7 +263,7 @@ export async function createJob(actor:RequestActor,input:{
     metadata:{space:"personal",proc:input.proc,targetId:input.targetId??null,sub,
       fix:input.fix??"",rush:input.rush===true,attempt:0,
       skillId:skill?.id??null,skillVersion:skill?.version??null,
-      createdVia:"automation-v07",...(shortformInput?{shortformInput,shortformInputKey:shortformInputKey(shortformInput)}:{})},
+      createdVia:"automation-v07",...(shortformInput?{shortformInput,shortformInputKey:shortformInputKey(shortformInput),shortformDiagramCatalog}:{})},
   }).select("*").single();
   if(error?.code==="23505") {
     let retryQuery=db.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",ownerId)

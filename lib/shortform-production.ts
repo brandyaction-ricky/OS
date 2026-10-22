@@ -41,6 +41,11 @@ export const shortformAppealsSchema=z.object({
     title:line,reason:line,evidence:z.string().max(5000),basis:z.enum(["evidence","hypothesis"]),
   }).strict()).min(2).max(5),
 }).strict();
+export const shortformDiagramSchema=z.object({
+  type:z.string().regex(/^lib_[a-z0-9_]{1,60}$/),
+  aspectRatio:z.literal("9:16"),
+  params:z.record(z.unknown()).refine(value=>JSON.stringify(value).length<=12000),
+}).strict();
 export const shortformCutsSchema=z.object({
   cuts:z.array(z.object({
     start:line,end:line,text:line,note:z.string().max(3000),
@@ -48,6 +53,7 @@ export const shortformCutsSchema=z.object({
     asset:z.string().max(3000).optional(),
     missingAsset:z.boolean().optional(),
     assetId:z.string().uuid().optional(),
+    diagram:shortformDiagramSchema.optional(),
   })).min(1).max(100),
 });
 export function shortformSeconds(value:string){
