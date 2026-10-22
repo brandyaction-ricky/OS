@@ -32,7 +32,7 @@ import {
 import "@mdxeditor/editor/style.css";
 import type { ForwardedRef } from "react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import type { ContainerDirective } from "mdast-util-directive";
+import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
@@ -93,6 +93,22 @@ const toggleDescriptor: DirectiveDescriptor<ContainerDirective> = {
   attributes: ["title"],
   hasChildren: true,
   Editor: ToggleDirectiveEditor,
+};
+
+// Directive syntax turns ordinary text such as "HH:MM" into a ":MM" text directive. Only
+// the toggle is a real directive here; any other is shown as the text it came from and saved
+// back unchanged.
+function PlainDirectiveEditor({ mdastNode }: DirectiveEditorProps<TextDirective | LeafDirective>) {
+  const label = mdastNode.children.map(child => "value" in child ? child.value : "").join("");
+  return <span>{(mdastNode.type === "leafDirective" ? "::" : ":") + mdastNode.name + (label ? `[${label}]` : "")}</span>;
+}
+
+const plainDirectiveDescriptor: DirectiveDescriptor<TextDirective | LeafDirective> = {
+  name: "plain",
+  testNode: node => node.type !== "containerDirective",
+  attributes: [],
+  hasChildren: false,
+  Editor: PlainDirectiveEditor,
 };
 
 const BLOCKS = [
@@ -204,7 +220,7 @@ export default function KnowledgeRichEditorInitialized({
         return (await getKnowledgeAttachmentUrl(accessToken, attachment.path)).url;
       },
     }),
-    directivesPlugin({ directiveDescriptors: [toggleDescriptor] }),
+    directivesPlugin({ directiveDescriptors: [toggleDescriptor, plainDirectiveDescriptor] }),
     knowledgeImageDragPlugin(),
     ...(hasInlineOptions ? [knowledgeInlinePickerPlugin()] : []),
     maxLengthPlugin(1_500_000),
