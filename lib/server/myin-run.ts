@@ -123,7 +123,7 @@ export async function saveMyinStoryboard(service: Service, record: OsRecord, run
   const metaphorTypes = new Set(MYIN_METAPHOR_TYPES);
   const summary = scenes.find((sc) => sc.type === "summary");
   const next: MyinRun = { ...run, storyboard: { path, scenes: scenes.length, model: value.model, at: new Date().toISOString(),
-    metaphors: scenes.flatMap((sc, i) => metaphorTypes.has(sc.type) ? [{ scene: i + 1, type: sc.type, at: String(sc.at ?? "") }] : []),
+    metaphors: scenes.flatMap((sc, i) => metaphorTypes.has(sc.type) || sc.type.startsWith("lib_") ? [{ scene: i + 1, type: sc.type, at: String(sc.at ?? "") }] : []),
     cta: (value.storyboard.cta as { after: string; line: string }[]).map(({ after, line }) => ({ after, line })),
     summary: summary ? { title: typeof summary.title === "string" ? summary.title : JSON.stringify(summary.title ?? ""), points: (summary.points ?? []).map((p) => String(p.h ?? "")) } : null,
     reasons: value.reasons, assets: value.assets, fuzzy: value.fuzzy.slice(0, 60), notes: value.notes } };

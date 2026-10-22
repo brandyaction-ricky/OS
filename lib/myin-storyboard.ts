@@ -119,8 +119,9 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
   return { misses, fuzzy };
 }
 
-/** Shape and cue problems as a list the staff AI can fix (empty = passes), plus notes for Logan that do not block. */
-export function checkMyinStoryboard(value: unknown, words: [number, number, string][]) {
+/** Shape and cue problems as a list the staff AI can fix (empty = passes), plus notes for Logan that do not block.
+ *  catalogTypes: the lib_ diagrams the render PC reported (도식 창고); they count as known types. */
+export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = []) {
   const parsed = myinStoryboardSchema.safeParse(value);
   if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], story: null };
   const story = parsed.data;
@@ -130,7 +131,11 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   for (const required of ["outro", "summary", "endscreen"]) if (!types.includes(required)) issues.push(`${required} 장면이 없습니다.`);
   const cues = myinCueMisses(story, words);
   issues.push(...cues.misses);
-  const notes = [...new Set(types.filter((type) => !(MYIN_SCENE_TYPES as readonly string[]).includes(type)))]
+  const known = new Set<string>([...MYIN_SCENE_TYPES, ...catalogTypes]);
+  const unknown = [...new Set(types.filter((type) => !known.has(type)))];
+  // A lib_ type outside the render PC's list would fail the render, so the staff AI must swap it; other new types stay notes for Logan.
+  issues.push(...unknown.filter((type) => type.startsWith("lib_")).map((type) => `"${type}"는 렌더 PC가 그릴 수 없는 도식입니다. 도식 창고 목록에 있는 것으로 바꿔 주세요.`));
+  const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
 }
