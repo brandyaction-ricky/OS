@@ -156,3 +156,24 @@
 .kw-tree-row{display:flex;align-items:center;min-width:0}.kw-tree-row>a{flex:1;min-width:0}.kw-tree-row>button{flex:0 0 24px;min-height:28px!important;padding:0!important;border:0!important;background:transparent!important}
 .kw-tree-row[draggable="true"]{cursor:grab}.kw-tree-row[draggable="true"]:active{cursor:grabbing}
 .kw-tree .kw-tree-drop-target{background:var(--accent-soft);outline:1px solid var(--accent);border-radius:5px}
+/* 공유·링크 dialog */
+.kw-share > section { display: grid; gap: 8px; }
+.kw-share > section + section { padding-top: 16px; border-top: 1px solid var(--kw-line); }
+.kw-share h3 { margin: 0; font-size: 14px; }
+.kw-share p { margin: 0; color: var(--kw-muted); font-size: 13px; }
+.kw-share-field, .kw-share-row { display: flex; align-items: center; gap: 8px; }
+.kw-share-field input { flex: 1; min-width: 0; }
+.kw-share-field button { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.kw-share-row small { margin-right: auto; color: var(--kw-muted); }
+.kw-share-row select { flex: 1; min-width: 0; }
+.kw-share-people { border: 1px solid var(--kw-line); border-radius: 10px; overflow: hidden; }
+.kw-share-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--kw-line); color: var(--kw-muted); }
+.kw-share-search input { flex: 1; border: 0; background: transparent; padding: 4px 0; outline: none; }
+.kw-share-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; padding: 8px; max-height: 196px; overflow-y: auto; scrollbar-gutter: stable; }
+.kw-share-list label { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.kw-share-list label:hover { background: var(--kw-soft); }
+.kw-share-list label.on { background: var(--kw-accent-soft); }
+.kw-share-list input { margin: 0; flex: none; }
+.kw-share-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kw-share-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.kw-share-links li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--kw-line); border-radius: 8px; font-size: 13px; }
