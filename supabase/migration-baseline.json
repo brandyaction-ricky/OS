@@ -804,8 +804,8 @@
       "sha256": "624e44361570857828f7e4fed7a36e6f420a2590cbe719c91100ea15a6667c0b",
       "purpose": "document sharing: an owner shares a personal note read-only with named active staff (os_document_readers now also grants read of a draft; trashed notes stay owner-only), and external share links stored as token hashes for a login-free read-only page",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Owner request 2026-10-22. Not applied yet."
+      "appliedEnvironments": ["development"],
+      "notes": "Owner request 2026-10-22. DEV: live os_workspace_document_row_read, os_workspace_document_read and os_documents_select matched the latest repository definitions; rollback-only test (tests/document-sharing.sql with this migration) 13 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back. Production: not applied."
     }
   ],
   "legacyMigrations": [
