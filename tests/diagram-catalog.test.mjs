@@ -44,3 +44,34 @@ test("a lib_ type the render PC did not report blocks; another new type is only 
   assert.deepEqual(other.issues, []);
   assert.equal(other.notes.length, 1);
 });
+
+
+test("saved catalog survives JSON storage with its timestamp", () => {
+  const stored = JSON.parse(JSON.stringify({ ...catalog, at: "2026-10-22T05:00:00.000Z" }));
+  const restored = diagramCatalogSchema.parse(stored);
+  assert.deepEqual(diagramCatalogTypes(restored), diagramCatalogTypes(catalog));
+  assert.equal(restored.at, stored.at);
+  assert.equal(diagramCatalogSchema.safeParse({ ...stored, at: "invalid" }).success, false);
+});
+
+test("shared diagrams are selected by verified output ratio; legacy reports remain landscape only", () => {
+  const shared = diagramCatalogSchema.parse({ ...catalog, items: [
+    catalog.items[0],
+    { ...catalog.items[1], aspectRatios: ["16:9", "9:16"] },
+    { ...catalog.items[2], aspectRatios: ["9:16"] },
+  ] });
+  assert.deepEqual(diagramCatalogTypes(shared), ["lib_stage_road", "lib_lighthouse"]);
+  assert.deepEqual(diagramCatalogTypes(shared, "9:16"), ["lib_lighthouse", "lib_row_contrast"]);
+  assert.deepEqual(diagramCatalogTypes(catalog, "9:16"), []);
+  const card = diagramCatalogCardSection(shared, "9:16");
+  assert.ok(card.includes("2종 · 9:16"));
+  assert.ok(!card.includes("lib_stage_road"));
+  assert.ok(card.includes("lib_lighthouse") && card.includes("lib_row_contrast"));
+  assert.ok(!card.includes("8종 이상"));
+});
+
+test("invalid, empty and duplicate aspect-ratio capabilities are rejected", () => {
+  for (const aspectRatios of [[], ["1:1"], ["9:16", "9:16"]]) {
+    assert.equal(diagramCatalogSchema.safeParse({ ...catalog, items: [{ ...catalog.items[0], aspectRatios }] }).success, false);
+  }
+});
