@@ -91,3 +91,12 @@ test("restricted canon is read only by admins, its owner, its steward and named 
   const unknown = { ...canon }; delete unknown.reader_scope;
   assert.equal(canReadDocument(actor, unknown), false, "a row without the field is treated as restricted");
 });
+
+test("a personal note shared with a member is readable by that member only, never by their AI key or from Trash", () => {
+  const note = { ...doc, status: "draft" }, shared = { canonReaders: new Set(["d"]) };
+  assert.equal(canReadDocument(actor, note), false, "not shared");
+  assert.equal(canReadDocument(actor, note, shared), true, "shared with this member");
+  assert.equal(canReadDocument({ ...actor, type: "agent" }, note, shared), false, "the member's AI key");
+  assert.equal(canReadDocument(actor, { ...note, status: "archived", archived_from_status: "draft" }, shared), false, "a trashed note");
+  assert.equal(canReadDocument(actor, { ...note, id: "other" }, shared), false, "another note");
+});

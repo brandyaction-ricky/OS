@@ -26,7 +26,8 @@ export interface KnowledgeAccessContext {
   categories?: ReadonlyMap<string, { partner_ids: readonly string[]; archived_at?: string | null }>;
   meetings?: ReadonlyMap<string, { visibility: string; attendees: readonly string[] }>;
   noteGrants?: ReadonlySet<string>;
-  /** Restricted canonical documents on which the actor (an AI key: its owner) is a named reader. */
+  /** Documents on which the actor (an AI key: its owner) is a named reader: a restricted canon,
+   * or a personal note its owner shared with them. */
   canonReaders?: ReadonlySet<string>;
   /** An AI key's owner is an admin; keys otherwise act with the member role. */
   ownerAdmin?: boolean;
@@ -51,7 +52,9 @@ export function canReadDocument(actor: KnowledgeActor, doc: AccessDocument, cont
     // notes or imported vault. Archived drafts remain unavailable to agents.
     if (actor.type === "agent") return doc.status === "draft" && doc.source === "mcp"
       && doc.owner_id === actor.ownerId && actor.allowedStatuses.includes("draft");
-    return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id));
+    return doc.owner_id === actor.ownerId || Boolean(actor.role === "admin" && doc.id && context.noteGrants?.has(doc.id))
+      // A note shared read-only with this member; a trashed note stays the owner's.
+      || Boolean(doc.status === "draft" && doc.id && context.canonReaders?.has(doc.id));
   }
   if (doc.status === "archived") return actor.type === "user" && (actor.role === "admin" || doc.owner_id === actor.ownerId || doc.archived_by === actor.ownerId);
   // Same order as the database rule: before the meeting shortcut, so a link cannot bypass it.

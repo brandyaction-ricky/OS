@@ -49,10 +49,12 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
     context.meetings=map;
   }
   context.ownerAdmin = profile.role === "admin";
-  // Restricted canon: only named readers need a lookup (admins, owners and stewards pass on their own).
+  // Named readers: restricted canon (admins, owners and stewards pass on their own) and other
+  // members' personal notes, which a member reads only when the owner shared it with them.
   const admin = actor.type === "user" ? actor.role === "admin" : context.ownerAdmin;
-  const restricted = admin ? [] : [...new Set(documents.filter(doc => doc.status === "canonical" && doc.reader_scope !== "all"
-    && doc.owner_id !== actor.ownerId && doc.steward_id !== actor.ownerId).map(doc => doc.id).filter((id): id is string => Boolean(id)))];
+  const restricted = [...new Set(documents.filter(doc => doc.owner_id !== actor.ownerId && (
+    !admin && doc.status === "canonical" && doc.reader_scope !== "all" && doc.steward_id !== actor.ownerId
+    || actor.type === "user" && doc.status === "draft")).map(doc => doc.id).filter((id): id is string => Boolean(id)))];
   const readers = new Set<string>();
   for (let offset = 0; offset < restricted.length; offset += 200) {
     const result = await service.from("os_document_readers").select("document_id").eq("user_id", actor.ownerId).in("document_id", restricted.slice(offset, offset + 200));
