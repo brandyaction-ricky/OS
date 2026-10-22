@@ -167,8 +167,8 @@
 .kw-share-row small { margin-right: auto; color: var(--kw-muted); }
 .kw-share-row select { flex: 1; min-width: 0; }
 .kw-share-people { border: 1px solid var(--kw-line); border-radius: 10px; overflow: hidden; }
-.kw-share-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--kw-line); color: var(--kw-muted); }
-.kw-share-search input { flex: 1; border: 0; background: transparent; padding: 4px 0; outline: none; }
+.kw-root label.kw-share-search { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--kw-line); color: var(--kw-muted); }
+.kw-root .kw-share-people .kw-share-search input { flex: 1; width: auto; min-height: 0; border: 0; background: transparent; padding: 4px 0; outline: none; }
 .kw-share-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; padding: 8px; max-height: 196px; overflow-y: auto; scrollbar-gutter: stable; }
 .kw-share-list label { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
 .kw-share-list label:hover { background: var(--kw-soft); }
