@@ -17,8 +17,9 @@ async function load(file,modules){
   return compiled.exports;
 }
 const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError}});
+const catalogContract=await load("lib/diagram-catalog.ts",{zod});
 const api=await load("lib/server/shortform-production.ts",{
-  "node:crypto":crypto,"@/lib/http":{ApiError},"@/lib/shortform-production":contract,
+  "@/lib/diagram-catalog":catalogContract,"node:crypto":crypto,"@/lib/http":{ApiError},"@/lib/shortform-production":contract,
 });
 const results=await load("lib/content-automation-results.ts",{
   zod,"./http":{ApiError},"./shortform-production":contract,"./threads-posts":{threadsPostsProblem:()=>null},
@@ -123,4 +124,32 @@ test("direct ad fields and shot editor expose user-facing choices without claimi
     assert.ok(html.includes(label));
   const plan=renderToStaticMarkup(fields.ShortformCutEditor({value:JSON.stringify(cuts().cuts),onChange:()=>{}}));
   for(const label of ["장면 1","내레이션","사용할 소재","소재 확보 필요"])assert.ok(plan.includes(label));
+});
+
+test("portrait diagram data survives worker parsing, validation and card adoption; changing it detaches the old MP4",()=>{
+  const row=target(),job=jobFor(row);
+  job.metadata.shortformDiagramCatalog={engine:"python",package:"test",items:[
+    {type:"lib_stage_road",name:"Road",kind:"stage",when:"Process",slots:"beats",aspectRatios:["16:9","9:16"]},
+  ]};
+  const raw=cuts();raw.cuts[0].diagram={type:"lib_stage_road",aspectRatio:"9:16",params:{beats:[{cue:"Opening",do:"add",id:"a",text:"Start"}]}};
+  const parsed=results.parseAutomationResult("shorts-cut",raw);
+  const accepted=api.validateShortformJobResult(job,parsed);
+  const saved=JSON.parse(JSON.stringify({...row.metadata,cuts:accepted.cuts}));
+  assert.deepEqual(saved.cuts[0].diagram,raw.cuts[0].diagram);
+  row.metadata={...JSON.parse(JSON.stringify(saved)),mp4Path:"existing.mp4"};
+  saved.cuts[0].diagram.params.beats[0].text="Changed";
+  const changed=api.invalidateShortformVideo(row,{...saved,mp4Path:"existing.mp4"});
+  assert.equal(changed.mp4Path,"");assert.equal(changed.needsRecheck,true);
+});
+
+test("diagram results cannot bypass the job's portrait capability snapshot",()=>{
+  const raw=cuts();raw.cuts[0].diagram={type:"lib_stage_road",aspectRatio:"9:16",params:{}};
+  const job=jobFor(target());
+  assert.throws(()=>api.validateShortformJobResult(job,raw),code("SHORTFORM_DIAGRAM_UNAVAILABLE"));
+  job.metadata.shortformDiagramCatalog={engine:"python",package:"test",items:[
+    {type:"lib_stage_road",name:"Road",kind:"stage",when:"Process",slots:"beats",aspectRatios:["16:9"]},
+  ]};
+  assert.throws(()=>api.validateShortformJobResult(job,raw),code("SHORTFORM_DIAGRAM_UNAVAILABLE"));
+  raw.cuts[0].diagram.aspectRatio="16:9";
+  assert.throws(()=>results.parseAutomationResult("shorts-cut",raw),code("JOB_RESULT_INVALID"));
 });

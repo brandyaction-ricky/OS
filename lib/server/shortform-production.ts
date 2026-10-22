@@ -1,7 +1,8 @@
+import { diagramCatalogSchema, diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { createHash } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
-import { parseShortformBrief,shortformBriefProblem,shortformAppealsSchema,validateDirectCuts } from "@/lib/shortform-production";
+import { parseShortformBrief,shortformBriefProblem,shortformAppealsSchema,shortformCutsSchema,validateDirectCuts } from "@/lib/shortform-production";
 
 export function shortformJobInput(target:OsRecord,proc:string,sub:string){
   if(!["shorts-cut","shorts-desc"].includes(proc))return null;
@@ -43,6 +44,14 @@ export function validateShortformJobResult(job:OsRecord,result:unknown){
     const parsed=shortformAppealsSchema.safeParse(result);
     if(!parsed.success)throw new ApiError(422,"SHORTFORM_APPEALS_INVALID","구매 이유 후보·근거·가설 여부를 확인해 주세요.");
     return parsed.data;
+  }
+  if(input.stage==="cuts"){
+    const plan=shortformCutsSchema.safeParse(result);
+    if(!plan.success)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","장면 구성을 확인해 주세요.");
+    const catalog=diagramCatalogSchema.safeParse(job.metadata.shortformDiagramCatalog);
+    const allowed=catalog.success?diagramCatalogTypes(catalog.data,"9:16"):[];
+    if(plan.data.cuts.some(cut=>cut.diagram&&!allowed.includes(cut.diagram.type)))
+      throw new ApiError(422,"SHORTFORM_DIAGRAM_UNAVAILABLE","이 작업의 세로 지원 목록에 없는 도식입니다. 도식 목록을 확인하고 다시 기획해 주세요.");
   }
   if(input.stage==="cuts"&&input.shortformBrief?.mode==="direct")
     return validateDirectCuts(result,input.shortformBrief.duration);

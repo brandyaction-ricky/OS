@@ -68,6 +68,8 @@ async function buildPlan(service:Service,item:OsRecord):Promise<Plan>{
   if(problem)throw new ApiError(422,"SHORTFORM_INPUT_REQUIRED",problem);
   const parsed=shortformCutsSchema.safeParse({cuts:item.metadata.cuts});
   if(!parsed.success||parsed.data.cuts.length>20)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","1~20개 장면을 준비해 주세요.");
+  if(parsed.data.cuts.some(cut=>cut.diagram))
+    throw new ApiError(422,"SHORTFORM_DIAGRAM_RENDER_PENDING","도식 기획은 보관되어 있습니다. 도식 영상 제작 연결 후 다시 요청해 주세요. 현재는 도식을 제외한 이미지 장면으로 제작할 수 있습니다.");
   if(brief.mode==="direct")validateDirectCuts(parsed.data,brief.duration);
   const plan:Plan={layoutVersion:2,mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
   let sourceDuration=0;

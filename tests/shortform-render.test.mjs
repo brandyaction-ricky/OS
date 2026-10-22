@@ -210,3 +210,12 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       assert.ok(h.objects.get("os-content-media:"+run.metadata.outputPath).size>1000);
     }finally{globalThis.fetch=originalFetch;}
   });
+
+test("diagram plans wait for their render adapter before queueing or buying voice, even with an image selected",async()=>{
+  const h=await setup();
+  h.item().metadata.cuts[0].diagram={type:"lib_stage_road",aspectRatio:"9:16",params:{}};
+  const count=h.rows.length;
+  await assert.rejects(h.enqueue(),code("SHORTFORM_DIAGRAM_RENDER_PENDING"));
+  assert.equal(h.rows.length,count);assert.equal(h.voiceCalls,0);assert.equal(h.signed.length,0);
+  assert.equal(h.item().metadata.cuts[0].diagram.type,"lib_stage_road");
+});
