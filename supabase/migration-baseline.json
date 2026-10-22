@@ -798,6 +798,14 @@
         "production"
       ],
       "notes": "Owner approved the DEV change on 2026-10-19; it was made through the DEV dashboard (bucket MIME list read back as audio/mpeg, audio/wav), so DEV schema history has no entry for this file. Production: applied 2026-10-20 after owner approval, all five files in one SQL Editor transaction with schema history (version, name); the owner pressed Run. Read back on the Storage page: os-youtube-voice allows audio/mpeg and audio/wav; the project-wide upload limit is 50 MB."
+    },
+    {
+      "file": "20261022090000_document_sharing.sql",
+      "sha256": "624e44361570857828f7e4fed7a36e6f420a2590cbe719c91100ea15a6667c0b",
+      "purpose": "document sharing: an owner shares a personal note read-only with named active staff (os_document_readers now also grants read of a draft; trashed notes stay owner-only), and external share links stored as token hashes for a login-free read-only page",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Owner request 2026-10-22. Not applied yet."
     }
   ],
   "legacyMigrations": [

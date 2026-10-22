@@ -1,0 +1,12 @@
+.share-page{max-width:760px;margin:0 auto;padding:40px 16px 80px;line-height:1.75;color:var(--text,#1f2328);background:var(--bg,transparent);overflow-wrap:anywhere}
+.share-page h1{font-size:28px;line-height:1.35;margin:8px 0 24px}
+.share-page h2,.share-page h3,.share-page h4{margin:28px 0 8px;line-height:1.4}
+.share-page .share-meta{font-size:12px;color:var(--text-2,#656d76);margin:0}
+.share-page .share-note{color:var(--text-2,#656d76);font-size:13px}
+.share-page pre{padding:12px;border-radius:8px;background:var(--panel-2,#f6f8fa);overflow-x:auto}
+.share-page blockquote{margin:12px 0;padding:4px 14px;border-left:3px solid var(--line-soft,#d0d7de);white-space:pre-wrap}
+.share-page img{max-width:100%;height:auto;border-radius:6px}
+.share-page details{margin:12px 0;padding:8px 12px;border:1px solid var(--line-soft,#d0d7de);border-radius:8px}
+.share-page .share-table{overflow-x:auto}
+.share-page table{border-collapse:collapse}
+.share-page th,.share-page td{border:1px solid var(--line-soft,#d0d7de);padding:6px 10px;text-align:left}
