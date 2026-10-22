@@ -14,7 +14,7 @@ import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
@@ -182,6 +182,23 @@ const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work"
 const myinPython = process.env.MYIN_PYTHON || "python3";
 // 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
 const myinLibrary = process.env.MYIN_LIBRARY || path.join(os.homedir(), "myin", "library");
+// 도식 창고 목록 (owner decision 2026-10-22): what the installed v13 engine can draw, sent to the OS when it changes, so the
+// storyboard staff AI picks only diagrams this PC renders. The script sits next to this file, like shortform-caption.py.
+const catalogScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin-diagram-catalog.py");
+let catalogSent = "";
+export async function reportDiagramCatalog() {
+  if (!myinPkg || !existsSync(catalogScript)) return;
+  try {
+    const result = spawnSync(myinPython, [catalogScript], { cwd: path.join(myinPkg, "tools", "myin_pipeline"), encoding: "utf8", maxBuffer: 8e6, timeout: 120_000,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONPATH: [process.env.MYIN_DIAGRAM_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) } });
+    if (result.status !== 0) throw new Error(`catalog script exited with ${result.status}: ${String(result.stderr).slice(-300)}`);
+    const hash = createHash("sha256").update(result.stdout).digest("hex");
+    if (hash === catalogSent) return;
+    const saved = await call(JSON.parse(result.stdout), "catalog");
+    catalogSent = hash;
+    console.log(`diagram catalog: ${saved.items} types`);
+  } catch (error) { console.error(`diagram catalog: ${error.message}`); } // never stops the worker
+}
 const runAsync = (command, args, options) => new Promise((resolve, reject) => {
   const child = spawn(command, args, { stdio: "inherit", ...options });
   child.on("error", reject);
@@ -444,6 +461,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
   void heartbeat();
   setInterval(() => void heartbeat(), 60_000).unref();
+  void reportDiagramCatalog();
+  setInterval(() => void reportDiagramCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
     const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())

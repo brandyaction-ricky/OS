@@ -13,6 +13,8 @@ import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } fr
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
 import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
+import { diagramCatalogTypes } from "@/lib/diagram-catalog";
+import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
 import { assertV1PlanInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Plan, saveV1Shorts, v1PlanCard, v1PlanInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
 import { assertShortJobOpen, checkShortResult, saveShortJob, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
@@ -288,7 +290,7 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     const lease = await take();
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
-        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes }) };
+        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog() }) };
   }
   if (m.task === "niche") {
     const lease = await take();
@@ -384,7 +386,8 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   }
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
-    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words));
+    const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
+    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words, catalogTypes));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
