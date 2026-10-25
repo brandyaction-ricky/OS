@@ -364,7 +364,7 @@ function renderMeetingPrepSection(label: string, brief: MeetingPrepResult) {
     ...(todos.length ? todos.map((item) => `- ${item.title ?? ""}${item.due_date ? ` · ${item.due_date}` : ""}`) : ["미완료 업무가 없습니다."]),
     "",
     "▪ 최근 KPI 신호",
-    ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `- ${item.title} ${item.current}${item.unit} · ${item.signal}`) : ["최근 KPI가 없습니다."]),
+    ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `- ${item.title} · ${item.signal}`) : ["최근 KPI가 없습니다."]),
   ].join("\n");
 }
 

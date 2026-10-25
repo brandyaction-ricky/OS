@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/http";
-import { resolveMeetingBusiness } from "@/lib/meeting-business";
+import { meetingBusinessOf, resolveMeetingBusiness } from "@/lib/meeting-business";
 import { buildPerformanceSignal } from "@/lib/performance-signals";
-import { KPI_BUSINESSES, currentCohorts, formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
-import { cohortRevenue, listCohorts, monthRevenue } from "@/lib/server/kpi";
+import { KPI_BUSINESSES, formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
+import { activeRuns } from "@/lib/kpi-runs";
+import { eduRounds, monthRevenue } from "@/lib/server/kpi";
 
 // Shared by the web meeting workspace (app/api/v1/meeting-prep) and the
 // Telegram /회의준비 command, so both surfaces build the same prep brief.
@@ -46,14 +47,17 @@ export async function prepareMeetingBrief(
   const error = meetings.error || tasks.error || kpis.error;
   if (error) throw new ApiError(400, "MEETING_PREP_FAILED", "회의 준비 자료를 불러오지 못했습니다.", error.message);
   const wantedBusiness = brand ? resolveMeetingBusiness(brand)?.recordBrand ?? brand : "";
-  const brandedMeetings = (meetings.data ?? []).filter(item => !wantedBusiness || (resolveMeetingBusiness(item.brand ?? "")?.recordBrand ?? item.brand) === wantedBusiness);
-  const matchingMeetings = (brandedMeetings.length ? brandedMeetings : (meetings.data ?? []).filter(item => !item.brand))
+  const meetingBrand = (item: { brand?: string | null; title?: string | null }) => meetingBusinessOf(item.brand ?? "", item.title ?? "")?.recordBrand ?? item.brand ?? "";
+  const brandedMeetings = (meetings.data ?? []).filter(item => !wantedBusiness || meetingBrand(item) === wantedBusiness);
+  const matchingMeetings = (brandedMeetings.length ? brandedMeetings : (meetings.data ?? []).filter(item => !meetingBrand(item)))
     .sort((a,b) => (b.starts_at ?? "").localeCompare(a.starts_at ?? ""));
-  const latest = matchingMeetings.find(item => item.status === "done") ?? null;
+  // The newest meeting with a summary or a transcript, finished or not: meetings left unclosed still count.
+  const latest = matchingMeetings.find(item => item.status !== "cancelled" && (item.metadata?.summary || item.metadata?.transcript)) ?? null;
   let pending = Array.isArray(latest?.metadata?.pending) ? latest.metadata.pending.map(String) : [];
   if (Array.isArray(latest?.metadata?.items)) pending = [...pending, ...latest.metadata.items.filter((item: {kind?:string;state?:string}) => item.kind === "open" && item.state !== "discarded").map((item: {text?:string}) => String(item.text ?? "")).filter(Boolean)];
   pending = [...new Set([...pending, ...matchingMeetings.filter(item => item.status === "review").flatMap(item => Array.isArray(item.metadata?.items) ? item.metadata.items.filter((candidate: {kind?:string;state?:string}) => candidate.kind === "decision" && candidate.state !== "discarded").map((candidate: {text?:string}) => String(candidate.text ?? "")).filter(Boolean) : [])])];
-  let latestSummary = typeof latest?.metadata?.summary === "string" ? latest.metadata.summary : "";
+  let latestSummary = typeof latest?.metadata?.summary === "string" && latest.metadata.summary ? latest.metadata.summary
+    : typeof latest?.metadata?.transcript === "string" ? latest.metadata.transcript.slice(0, 800) : "";
   let latestTitle = latest?.title ?? "";
   let latestDate = latest?.starts_at ?? null;
 
@@ -82,17 +86,17 @@ export async function prepareMeetingBrief(
 
   const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
   const completed = (tasks.data ?? []).filter(item => item.status === "done" && (!latestDate || item.updated_at >= latestDate)).slice(0, 20);
-  // KPI-tab rows when the business has them: 마이인 this month, 브랜디에듀 its current cohorts.
+  // KPI-tab rows when the business has them: 마이인 this month, 브랜디에듀 its active sales rounds.
   // Each shows actual against target (revenue from the Toss ledger). Otherwise older KPI rows.
   const month = kstMonth(), today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
   const kpiBiz = KPI_BUSINESSES.find(item => item.brand === wantedBusiness);
-  const cohorts = kpiBiz?.mode === "cohort" ? currentCohorts(await listCohorts(), today) : [];
+  const cohorts = kpiBiz?.mode === "cohort" ? activeRuns(await eduRounds(), today).flatMap(round => round.settings ? [{ id: round.settings.id, name: round.label, net: round.net }] : []) : [];
   const tabRows = (kpis.data ?? []).filter(item => kpiBiz && item.metadata?.workspace === "kpi" && item.metadata?.business === kpiBiz.key
     && (kpiBiz.mode === "month" ? item.metadata?.periodMonth === month : cohorts.some(cohort => cohort.id === item.metadata?.cohortId)));
   const revenueOf = new Map<string, number>();
   for (const item of tabRows.filter(row => row.metadata?.metric === "revenue")) {
     const cohort = cohorts.find(entry => entry.id === item.metadata?.cohortId);
-    revenueOf.set(item.id, cohort ? (await cohortRevenue(cohort)).net : (await monthRevenue(month))[kpiBiz!.key].net);
+    revenueOf.set(item.id, cohort ? cohort.net : (await monthRevenue(month))[kpiBiz!.key].net);
   }
   const latestKpis = tabRows.length ? tabRows.map(item => {
     const current = item.metadata?.metric === "revenue" ? revenueOf.get(item.id) ?? 0 : Number(item.metric_current ?? 0), target = item.metric_target === null ? null : Number(item.metric_target);
@@ -102,7 +106,7 @@ export async function prepareMeetingBrief(
   }) : (kpis.data ?? []).filter(item => item.metadata?.workspace !== "kpi").slice(0, 12).map((item) => {
     const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);
     const signal = buildPerformanceSignal({ title: item.title, current, previous, target: Number(item.metric_target ?? 0) || null, unit: item.metric_unit });
-    return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: signal.label };
+    return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: `${formatKpiValue(current, item.metric_unit)} · ${signal.label}` };
   });
   const unreviewed = matchingMeetings.filter(item => item.status === "review").map(item => ({ id: item.id, title: item.title, date: item.starts_at ?? null }));
   return { latestMeeting: (latest || latestSummary) ? { id: latest?.id ?? "", title: latestTitle, date: latestDate, pending, summary: latestSummary } : null, pending, todos: openTodos, completed, kpis: latestKpis, unreviewed };

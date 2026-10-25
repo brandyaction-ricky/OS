@@ -1,9 +1,9 @@
 /* KPI tab of 회의·결정 */
 .tm-kpi { display: grid; gap: 12px; }
-.tm-kpi-head { align-items: center; gap: 8px; flex-wrap: wrap; }
+.tm-kpi-head { align-items: center; gap: 8px; }
 .tm-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
 .tm-kpi-card { display: grid; gap: 10px; align-content: start; }
-.tm-kpi-card header { justify-content: space-between; align-items: center; }
+.tm-kpi-card header { justify-content: space-between; align-items: center; gap: 12px; min-height: 34px; }
 .tm-kpi-card h4 { margin: 6px 0 0; font-size: 13px; }
 .tm-kpi-revenue { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 10px; }
 .tm-kpi-revenue > strong { font-size: 24px; }
@@ -20,9 +20,28 @@
 .tm-kpi-tasks summary { cursor: pointer; font-size: 13px; }
 .tm-kpi-tasks ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
 .tm-kpi-tasks li span { margin-left: 6px; }
-.tm-kpi-cohort { display: grid; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
-.tm-kpi-cohort summary { cursor: pointer; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
-.tm-kpi-cohort-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tm-kpi-cohort-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tm-kpi-wide { grid-column: 1 / -1; }
 .tm-kpi-cohort-form label { display: grid; gap: 4px; font-size: 13px; }
 .tm-kpi-cohort-form .tm-row { grid-column: 1 / -1; gap: 6px; }
-.tm-kpi-revenue > .tm-row:first-child { justify-content: space-between; }
+.tm-kpi-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--line-soft); white-space: nowrap; }
+.tm-kpi-chip[data-live] { background: var(--mint); color: #062b22; }
+.tm-kpi-revenue b { font-weight: 700; }
+/* One control height and look for every input, select and button in the tab */
+.tm-kpi input, .tm-kpi select { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+.tm-kpi input:focus, .tm-kpi select:focus { outline: none; border-color: var(--accent, var(--mint)); }
+.tm-kpi .compact { height: 32px; white-space: nowrap; }
+.tm-kpi-head select { width: min(260px, 100%); }
+.tm-kpi-head strong { min-width: 92px; text-align: center; }
+.tm-kpi-top { justify-content: space-between; min-height: 22px; }
+.tm-kpi-top > .tm-row { gap: 10px; align-items: center; font-size: 13px; }
+.tm-kpi-goal { min-height: 20px; }
+.tm-kpi-link { border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+.tm-kpi-link:hover, .tm-kpi-top a:hover { color: var(--text); }
+dialog.tm-kpi-dialog { width: min(440px, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); }
+dialog.tm-kpi-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.tm-kpi-dialog-head { justify-content: space-between; align-items: center; }
+.tm-kpi-dialog-foot { justify-content: flex-end; }
+.tm-kpi-dialog hr { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 0; width: 100%; }
+.tm-kpi-dialog label .tm-row { gap: 6px; }
+.tm-kpi-dialog label input { width: 100%; }

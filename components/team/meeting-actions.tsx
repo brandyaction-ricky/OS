@@ -7,7 +7,8 @@ import { apiRequest, summarizeMeeting, transcribeMeeting, type OsMember } from "
 import { RecorderProgress, useSegmentedRecorder } from "@/components/meeting-recorder";
 import { matchMeetingAssignee } from "@/lib/meeting-review";
 import { downloadMarkdown, meetingFileName, meetingMarkdown } from "@/lib/meeting-markdown";
-import { currentCohorts } from "@/lib/kpi";
+import { kstMonth } from "@/lib/kpi";
+import { activeRuns } from "@/lib/kpi-runs";
 import type { Meeting, MeetingItem } from "@/lib/knowledge/model";
 import type { OsRecord } from "@/lib/record-types";
 import { wordSimilarity } from "@/lib/team/duplicates";
@@ -117,12 +118,12 @@ export function TeamMeetingReview({ meeting, token, userId, admin, members, task
   useEffect(() => {
     if (business !== "myin" && business !== "edu") return;
     type Listed = { id: string; title: string };
-    void apiRequest<{ businesses: { key: string; kpis?: Listed[]; cohorts?: { name: string; salesFrom: string; courseTo: string; kpis: Listed[] }[] }[] }>(`/api/v1/kpi?month=${month}`, { token })
+    void apiRequest<{ businesses: { key: string; kpis?: Listed[]; rounds?: { label: string; from: string; to: string; courseTo: string | null; kpis: Listed[] }[] }[] }>(`/api/v1/kpi?month=${month}`, { token })
       .then(result => {
         const found = result.businesses.find(item => item.key === business);
-        // 브랜디에듀 KPIs belong to cohorts: offer those of the cohorts this meeting is about.
-        setKpis(found?.cohorts ? currentCohorts(found.cohorts, month === new Date().toISOString().slice(0, 7) ? new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) : `${month}-01`)
-          .flatMap(cohort => cohort.kpis.map(kpi => ({ id: kpi.id, title: `${cohort.name} · ${kpi.title}` }))) : found?.kpis ?? []);
+        // 브랜디에듀 KPIs belong to sales rounds: offer those of the rounds active at the meeting.
+        const day = month === kstMonth() ? new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }) : `${month}-28`;
+        setKpis(found?.rounds ? activeRuns(found.rounds, day).flatMap(round => round.kpis.map(kpi => ({ id: kpi.id, title: `${round.label} · ${kpi.title}` }))) : found?.kpis ?? []);
       }).catch(() => setKpis([]));
   }, [business, month, token]);
   const similarTask = (item: MeetingItem) => tasks.filter(task => task.status !== "done" && task.status !== "cancelled" && task.brand === meeting.brand && wordSimilarity(task.title, item.text) >= 0.6).sort((a, b) => wordSimilarity(b.title, item.text) - wordSimilarity(a.title, item.text))[0];
