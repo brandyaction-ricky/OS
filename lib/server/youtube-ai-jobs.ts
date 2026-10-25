@@ -23,7 +23,7 @@ import { projectName } from "@/lib/youtube-process/project";
 import { packagingReferences } from "./youtube-discover";
 import type { PackagingMarket } from "./youtube-process-ai";
 import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCopy, saveShortJob, shortCopyCard, shortCopyInputKey, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
-import { procedureRefs } from "./content-generation";
+import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 
@@ -376,14 +376,14 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
   if (m.task === "short-copy") {
     const { project, brief, scenes } = await currentShortCopyInput(job);
     const lease = await take();
-    const docs = await procedureRefs(service(), "shorts_proposal").catch(() => []);
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortCopyCard(project, brief, scenes, docs.slice(0, 4), minutes) };
+    const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), await procedureRefs(service(), "shorts_proposal").catch(() => []), 4);
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortCopyCard(project, brief, scenes, docs, minutes) };
   }
   if (m.task === "short") {
     const { project, brief } = await currentShortInput(job);
     const lease = await take();
     const lists = await Promise.all((brief.purpose === "ad" ? ["shorts_proposal", "appeal_candidates"] as const : ["shorts_proposal"] as const).map(action => procedureRefs(service(), action).catch(() => [])));
-    const docs = [...new Map(lists.flat().map(doc => [doc.id, doc])).values()].slice(0, 8);
+    const docs = withNamed(await namedProcedures(service(), [SHORTFORM_CANON_TITLE]), lists.flat(), 8);
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes) };
   }
   if (m.task === "retitle") {
