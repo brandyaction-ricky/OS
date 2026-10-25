@@ -34,6 +34,9 @@ test("knowledge attachment markdown round-trips safe image, video and file metad
   const video = { ...image, path: path.replace(/\.png$/, ".mp4"), name: "설명.mp4", type: "video/mp4" };
   assert.match(knowledgeAttachmentMarkdown(video), /^\[설명.mp4\]\(knowledge-attachment:\?/);
   assert.equal(parseKnowledgeAttachmentTarget("knowledge-attachment:?path=../secret&type=image%2Fpng&name=x"), null);
+  // The editor saves "&" as "\&" inside link targets.
+  const zip = { path: path.replace(/\.png$/, ".zip"), name: "runtime.zip", type: "application/zip", size: 5351927 };
+  assert.deepEqual(parseKnowledgeAttachmentTarget(knowledgeAttachmentTarget(zip).replaceAll("&", "\\&")), zip);
 });
 
 test("knowledge attachment API checks document access and keeps storage private", async () => {
