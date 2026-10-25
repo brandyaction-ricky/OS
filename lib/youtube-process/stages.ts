@@ -77,6 +77,16 @@ export interface YpColumnItem {
   fills: Record<string, { path?: string; url?: string; name?: string }>;
   /** The AI's HTML as it arrived; a column whose HTML still equals it is replaced by the next AI pass, an edited one is kept. */
   ai: { by: string; model: string; at: string; jobId: string; html: string } | null;
+  /** Where it went on the MYIN 아티클 (2026-10-25): sent as a draft, made public from OS; `sig` is what was sent, to show a later edit. */
+  myin?: YpColumnMyin;
+}
+export interface YpColumnMyin { id: string; slug: string; status: "draft" | "published"; url: string; at: string; by: string; publishedAt: string | null; sig: string }
+/** A short fingerprint of a column's HTML and places, compared with the one last sent to MYIN (the same on both sides). */
+export function columnSignature(item: Pick<YpColumnItem, "html" | "fills">) {
+  const text = `${item.html}\u0000${JSON.stringify(Object.entries(item.fills).sort(([a], [b]) => a.localeCompare(b)))}`;
+  let hash = 5381;
+  for (let index = 0; index < text.length; index++) hash = (hash * 33 + text.charCodeAt(index)) | 0;
+  return `${text.length.toString(36)}-${(hash >>> 0).toString(36)}`;
 }
 /** The columns of one longform: as many as the PD asked for, each aimed at its own search question. */
 export interface YpColumn { items: YpColumnItem[] }

@@ -8,12 +8,13 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
-  type YpColumn, type YpColumnItem, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
+  columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
-import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
+import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
 import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
+import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
@@ -268,6 +269,58 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     data = nextUpload(stages.upload.data, patch, project.id);
   }
   const saved = await writeStage(actor.supabase, actor.id, actor.team, project, kind, current, data);
+  const next = await touchProject(actor, project);
+  return { stage: { ...saved, data }, project: next };
+}
+
+// ── 마이인 칼럼 (owner request 2026-10-25, 「초안 → 공개 버튼」): a column goes to the MYIN 아티클 as a draft with its uploaded
+// images, and the PD makes it public (or takes it back) from here. Where it went is kept on the column.
+export const myinColumnSchema = z.object({ item: z.string().trim().min(1).max(40), action: z.enum(["send", "publish", "unpublish"]), expectedVersion: z.number().int().min(0) }).strict();
+const MYIN_IMAGE_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+export async function columnToMyin(actor: RequestActor, id: string, input: z.infer<typeof myinColumnSchema>) {
+  const project = await getYoutubeProject(actor, id);
+  assertColumnOpen(project);
+  const stages = await readStages(actor.supabase, project);
+  const current = stages.column;
+  if (current.version !== input.expectedVersion) throw conflict();
+  const item = current.data.items.find(row => row.id === input.item);
+  if (!item) throw new ApiError(404, "COLUMN_ITEM_MISSING", "칼럼을 찾지 못했어요.");
+  const source = myinSourceId(project.id, item.id);
+  let article: MyinArticle;
+  if (input.action === "send") {
+    const check = checkColumnHtml(item.html);
+    if (check.unsafe.length) throw new ApiError(422, "COLUMN_UNSAFE", "칼럼에 실행 코드가 있어 보낼 수 없어요.");
+    if (!check.meta.title) throw new ApiError(422, "COLUMN_TITLE_REQUIRED", "칼럼 제목(<title>)이 없어요.");
+    if (!MYIN_SLUG.test(check.meta.slug)) throw new ApiError(422, "COLUMN_SLUG_INVALID", "칼럼 주소(slug)를 영문 소문자 · 숫자 · -로 써 주세요.");
+    const fills: Record<string, ColumnFill> = {};
+    const images: { key: string; mime: string; base64: string }[] = [];
+    for (const [slot, fill] of Object.entries(item.fills)) {
+      if (fill.url) { fills[slot] = { src: fill.url }; continue; }
+      if (!fill.path) continue;
+      const mime = MYIN_IMAGE_TYPES[fill.path.split(".").pop()?.toLowerCase() ?? ""];
+      if (!mime) throw new ApiError(422, "COLUMN_IMAGE_TYPE", `${slot === "hero" ? "대표 이미지" : `이미지 ${slot}`}는 PNG · JPG · WEBP만 마이인에 올라가요.`);
+      const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(fill.path);
+      if (error || !data) throw readFailed();
+      const key = `img-${slot}`.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
+      images.push({ key, mime, base64: Buffer.from(await data.arrayBuffer()).toString("base64") });
+      fills[slot] = { src: `myin-image:${key}` };
+    }
+    // The video place shows the longform on YouTube unless the PD put another link there (as on the export).
+    const videoUrl = stages.upload.data.run?.videoUrl;
+    if (!fills.video && videoUrl) fills.video = { src: videoUrl };
+    const page = columnForMyin(item.html, fills);
+    const body = { slug: page.meta.slug, title: page.meta.title.slice(0, 160), excerpt: page.meta.description.slice(0, 500), category: "칼럼", html: page.html, jsonLd: page.jsonLd, images,
+      ...(images.some(image => image.key === "img-hero") ? { coverKey: "img-hero" } : {}) };
+    if (Buffer.byteLength(JSON.stringify(body)) > MYIN_BODY_MAX) throw new ApiError(413, "MYIN_TOO_LARGE", "이미지가 너무 커요. 합계 3MB 안으로 줄여 주세요.");
+    article = await callMyin(`/api/integrations/brandy-os/articles/${source}`, "PUT", body);
+  } else {
+    if (!item.myin) throw new ApiError(409, "MYIN_NOT_SENT", "먼저 마이인에 초안을 올려 주세요.");
+    article = await callMyin(`/api/integrations/brandy-os/articles/${source}/publish`, "POST", { published: input.action === "publish" });
+  }
+  const myin: YpColumnMyin = { id: article.id, slug: article.slug, status: article.status, url: article.url, at: new Date().toISOString(), by: actor.name,
+    publishedAt: article.publishedAt ?? (article.status === "published" ? item.myin?.publishedAt ?? null : null), sig: input.action === "send" ? columnSignature(item) : item.myin?.sig ?? "" };
+  const data: YpColumn = { items: current.data.items.map(row => row.id === item.id ? { ...row, myin } : row) };
+  const saved = await writeStage(actor.supabase, actor.id, actor.team, project, "column", current, data);
   const next = await touchProject(actor, project);
   return { stage: { ...saved, data }, project: next };
 }

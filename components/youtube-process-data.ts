@@ -4,7 +4,8 @@ import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMed
 import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
-import { confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
+import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
+import { columnMeta } from "@/lib/seo-column";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
@@ -37,6 +38,8 @@ export interface YpClient {
   topicGate(id: string, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   gate(id: string, gate: YpGate, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
+  /** One SEO 칼럼 to the MYIN 아티클: send (draft or update), publish, or back to draft. */
+  columnMyin(id: string, item: string, action: "send" | "publish" | "unpublish", expectedVersion: number): Promise<{ stage: YpStageView<"column">; project: YpProject }>;
   move(id: string, to: "make" | "review" | "shorts" | "done", expectedVersion: number): Promise<YpProject>;
   uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
   assetUrl(id: string, path: string): Promise<string>;
@@ -85,6 +88,7 @@ function apiClient(token: string): YpClient {
     topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
     gate,
     saveStage: (id, kind, expectedVersion, patch) => apiRequest(`${base}/${id}/stages/${kind}`, { token, method: "PATCH", body: json({ expectedVersion, patch }) }),
+    columnMyin: (id, item, action, expectedVersion) => apiRequest(`${base}/${id}/column/myin`, { token, method: "POST", body: json({ item, action, expectedVersion }) }),
     move: async (id, to, expectedVersion) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/stage`, { token, method: "POST", body: json({ to, expectedVersion }) })).project,
     uploadAsset: async (id, kind, file, onProgress) => {
       const upload = await apiRequest<{ path: string; token: string; mimeType: string }>(`${base}/${id}/assets`, { token, method: "POST", body: json({ kind, fileName: file.name, fileSize: file.size, mimeType: file.type || "" }) });
@@ -292,6 +296,24 @@ function demoClient(): YpClient {
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });
+      return structuredClone({ stage, project });
+    },
+    // The demo has no MYIN site: it records what MYIN would answer, with the production address shape.
+    columnMyin: async (id, itemId, action, expectedVersion) => {
+      const project = find(id);
+      const stages = stagesOf(project);
+      checkVersion(stages.column.version, expectedVersion);
+      const now = new Date().toISOString();
+      const items = stages.column.data.items.map(item => {
+        if (item.id !== itemId) return item;
+        if (action !== "send" && !item.myin) throw demoError(409, "MYIN_NOT_SENT", "먼저 마이인에 초안을 올려 주세요.");
+        const slug = columnMeta(item.html).slug || "demo-column";
+        const status = action === "send" ? item.myin?.status ?? "draft" : action === "publish" ? "published" : "draft";
+        return { ...item, myin: { id: item.myin?.id ?? `demo-${item.id}`, slug, status, url: `https://www.myinlab.co.kr/articles/${slug}`, at: now, by: "리키",
+          publishedAt: status === "published" ? item.myin?.publishedAt ?? now : null, sig: action === "send" ? columnSignature(item) : item.myin?.sig ?? "" } as const };
+      });
+      const stage = { ...stages.column, version: stages.column.version + 1, data: { items } };
+      demoStages.set(id, { ...stages, column: stage });
       return structuredClone({ stage, project });
     },
     move: async (id, to, expectedVersion) => {

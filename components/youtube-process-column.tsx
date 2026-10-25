@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Code2, Download, ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { checkColumnHtml, columnMeta, columnSlots, renderColumn, type ColumnFill } from "@/lib/seo-column";
-import type { YpColumnItem } from "@/lib/youtube-process/stages";
+import { columnSignature, type YpColumnItem } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { md, YpSection, type YpPage } from "./youtube-process-frame";
 
@@ -166,5 +166,36 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
       <iframe title={`칼럼 ${index + 1} 미리보기`} sandbox="allow-scripts allow-popups" srcDoc={preview} style={{ width: "100%", height: 880, border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }} />
       <p className="yp-hint">이미지는 파일 안에 함께 들어가요.</p>
     </YpSection>
+    <ColumnMyin page={page} item={item} issues={check.issues.length} blocked={check.unsafe.length > 0} />
   </>;
+}
+
+/** 마이인 칼럼 (owner decision 2026-10-25, 「초안 → 공개 버튼」): sent to the MYIN 아티클 as a draft, checked in the preview above, then made public here. */
+function ColumnMyin({ page, item, issues, blocked }: { page: YpPage; item: YpColumnItem; issues: number; blocked: boolean }) {
+  const [busy, setBusy] = useState("");
+  const sent = item.myin, published = sent?.status === "published", changed = Boolean(sent && sent.sig !== columnSignature(item));
+  const act = async (action: "send" | "publish" | "unpublish") => {
+    const bundle = page.bundle;
+    if (!page.client || !bundle) return;
+    if (action === "publish" && !window.confirm("마이인 칼럼에 공개할까요? 누구나 볼 수 있게 돼요.")) return;
+    setBusy(action); page.setError("");
+    try {
+      const result = await page.client.columnMyin(bundle.project.id, item.id, action, bundle.stages.column.version);
+      page.setBundle(state => state ? { ...state, project: result.project, stages: { ...state.stages, column: result.stage } } : state);
+    } catch (reason) { page.fail(reason); } finally { setBusy(""); }
+  };
+  return <YpSection n={5} title="마이인 칼럼" gq={!sent ? "초안으로 올리고, 위 미리보기로 확인한 뒤 공개해요" : published ? "공개 중" : "초안 · 공개 전"}>
+    {sent ? <dl className="yp-kv" style={{ marginBottom: 10 }}>
+      <dt>상태</dt><dd><span className={`yp-tag ${published ? "yp-ok" : "yp-acc"}`}>{published ? "공개" : "초안"}</span> {md(sent.at)} · {sent.by}{changed ? <> <span className="yp-tag yp-warn">보낸 뒤 고침</span></> : null}</dd>
+      <dt>주소</dt><dd>{published ? <a href={sent.url} target="_blank" rel="noreferrer">{sent.url}</a> : <span className="yp-muted">{sent.url} (공개하면 열려요)</span>}</dd>
+    </dl> : null}
+    <div className="yp-row-btns" style={{ marginTop: 0 }}>
+      <button type="button" className={`yp-btn${!sent || changed ? " yp-pri" : ""}`} disabled={Boolean(busy) || blocked} onClick={() => void act("send")}>
+        {busy === "send" ? "처리 중…" : !sent ? "마이인에 초안 올리기" : changed ? "고친 내용 다시 보내기" : "다시 보내기"}</button>
+      {sent && !published ? <button type="button" className="yp-btn yp-pri" disabled={Boolean(busy) || changed} title={changed ? "고친 내용을 먼저 보내 주세요" : undefined} onClick={() => void act("publish")}>{busy === "publish" ? "처리 중…" : "공개하기"}</button> : null}
+      {published ? <button type="button" className="yp-btn" disabled={Boolean(busy)} onClick={() => void act("unpublish")}>{busy === "unpublish" ? "처리 중…" : "비공개로 돌리기"}</button> : null}
+    </div>
+    {blocked ? <p className="yp-hint">실행 코드가 있어 보낼 수 없어요. HTML을 고쳐 주세요.</p>
+      : issues ? <p className="yp-hint">형식 점검에서 {issues}곳 확인이 필요해요. 고친 뒤 보내는 게 좋아요.</p> : null}
+  </YpSection>;
 }

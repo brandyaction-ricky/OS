@@ -129,8 +129,8 @@ function filledFigure(attrText: string, inner: string, fill: ColumnFill) {
   return `<figure class="filled${hero ? " hero" : ""}" data-slot="${slot}" data-prompt="${prompt}"><img src="${escape(fill.src)}" alt="${escape(fill.alt || textOf(caption))}"><figcaption>${caption}</figcaption></figure>`;
 }
 
-/** The column as a page: slots filled, h2/h3 anchors with the side 목차, JSON-LD (Article · FAQPage) and the design CSS. */
-export function renderColumn(html: string, fills: Partial<Record<string, ColumnFill>> = {}) {
+/** The column with its places filled, h2/h3 anchors, the side 목차 and its JSON-LD (Article · FAQPage), before it becomes a page. */
+function columnParts(html: string, fills: Partial<Record<string, ColumnFill>>) {
   let doc = cleanColumnHtml(html).replace(/<style[\s\S]*?<\/style>/gi, "");
   doc = doc.replace(FIGURE, (whole, attrText: string, inner: string) => {
     const fill = fills[attrsOf(attrText)["data-slot"] ?? ""];
@@ -147,13 +147,31 @@ export function renderColumn(html: string, fills: Partial<Record<string, ColumnF
   const items = toc.filter(item => item.label);
   const nav = items.length >= 3 ? `<nav class="col-toc" aria-label="목차"><div class="col-toc-h">목차</div><ul>${items.map(item => `<li class="t-${item.tag}"><a href="#${escape(item.id)}">${escape(item.label)}</a></li>`).join("")}</ul></nav>` : "";
   const pairs = faqPairs(doc);
-  const hero = fills.hero?.src && /^https:\/\//.test(fills.hero.src) ? { image: fills.hero.src } : {};
+  // An image sent to MYIN is named "myin-image:<key>" until MYIN stores it and puts its public address in (also inside JSON-LD).
+  const hero = fills.hero?.src && /^(https:\/\/|myin-image:)/.test(fills.hero.src) ? { image: fills.hero.src } : {};
   const ld = [{ "@context": "https://schema.org", "@type": "Article", headline: meta.title, description: meta.description, inLanguage: "ko", keywords: meta.keywords.join(", "),
     author: { "@type": "Organization", name: "브랜디액션" }, publisher: { "@type": "Organization", name: "브랜디액션" }, ...hero },
   ...(pairs.length ? [{ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: pairs.map(pair => ({ "@type": "Question", name: pair.q, acceptedAnswer: { "@type": "Answer", text: pair.a } })) }] : [])];
+  return { doc, nav, ld, meta };
+}
+
+/** The column as a page: slots filled, h2/h3 anchors with the side 목차, JSON-LD (Article · FAQPage) and the design CSS. */
+export function renderColumn(html: string, fills: Partial<Record<string, ColumnFill>> = {}) {
+  const { nav, ld, doc: body } = columnParts(html, fills);
+  let doc = body;
   const head = `${COLUMN_STYLE}${ld.map(item => `<script type="application/ld+json">${JSON.stringify(item).replace(/</g, "\\u003c")}</script>`).join("")}`;
   doc = /<\/head>/i.test(doc) ? doc.replace(/<\/head>/i, `${head}</head>`) : doc.replace(/<body\b/i, `<head>${head}</head><body`);
   return doc.replace(/(<body\b[^>]*>)([\s\S]*?)(<\/body>)/i, (_, open: string, inner: string, close: string) => `${open}<div class="col-wrap">${nav}${inner}</div>${TOC_SPY}${close}`);
+}
+
+/**
+ * The column for the MYIN 아티클 page (owner request 2026-10-25): the body only — 목차 and the article, no page shell, style or
+ * script (MYIN keeps the design and renders the JSON-LD itself) — with its title, description and slug.
+ */
+export function columnForMyin(html: string, fills: Partial<Record<string, ColumnFill>>) {
+  const { doc, nav, ld, meta } = columnParts(html, fills);
+  const body = (doc.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? doc).trim();
+  return { meta, html: `<div class="col-wrap">${nav}${body}</div>`, jsonLd: ld };
 }
 
 /** The column page's 목차 highlight (the earlier 기획실 one): the section being read is marked in the side list. */
