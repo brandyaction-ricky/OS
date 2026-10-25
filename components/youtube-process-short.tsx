@@ -36,10 +36,10 @@ export const latestFinals = (finals: YpFinalView[]) => {
 /** One line for a render: waiting · making · done · stopped with its reason. */
 export function RenderTag({ render }: { render: YpRenderView | null | undefined }) {
   if (!render) return null;
-  if (render.status === "done") return <span className="yp-tag yp-ok">완성 · {render.duration}초</span>;
-  if (render.status === "in_progress") return <span className="yp-tag yp-warn">만드는 중 (1~3분)</span>;
-  if (render.status === "backlog") return <span className="yp-tag yp-acc">차례를 기다려요</span>;
-  return <span className="yp-tag yp-bad" title={render.error ?? ""}>{REASON[render.error ?? ""] ?? "만들다 멈췄어요. 다시 만들어 보고, 또 멈추면 관리자에게 알려 주세요."}</span>;
+  if (render.status === "done") return <span data-render-id={render.id} className="yp-tag yp-ok">완성 · {render.duration}초</span>;
+  if (render.status === "in_progress") return <span data-render-id={render.id} className="yp-tag yp-warn">만드는 중 (1~3분)</span>;
+  if (render.status === "backlog") return <span data-render-id={render.id} className="yp-tag yp-acc">차례를 기다려요</span>;
+  return <span data-render-id={render.id} className="yp-tag yp-bad" title={render.error ?? ""}>{REASON[render.error ?? ""] ?? "만들다 멈췄어요. 다시 만들어 보고, 또 멈추면 관리자에게 알려 주세요."}</span>;
 }
 
 /** The latest MP4 with its download (숏폼 제작 · 내보내기). */
