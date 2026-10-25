@@ -29,7 +29,7 @@ import { findPage, findStage, NAV_STAGES } from "@/lib/navigation";
 import { canAccessFinance } from "@/lib/finance/access";
 import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
-import { useYoutubeCanConfirm, useYoutubeV1Access } from "./use-youtube-confirm";
+import { useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
 import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
 import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "@/lib/youtube-process/navigation";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
@@ -73,6 +73,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const hrShell = useHrShell(hrEnabled);
   const menuAccess = useMenuAccess(profile, accessToken, demo);
   const canConfirm = useYoutubeCanConfirm(youtubeV1Enabled, accessToken, demo, profile?.role === "admin");
+  const confirmWaiting = useYoutubeConfirmWaiting(Boolean(youtubeV1Enabled && canConfirm), pathname);
   // 유튜브 공정 v1 swaps the content pages and adds 대표 메뉴 on top; the old screens stay reachable by address.
   const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...NAV_STAGES.map(item => item.id === "content" ? { ...item, pages: YOUTUBE_V1_PAGES } : item)] : NAV_STAGES;
   const visibleStages = navStages.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
@@ -288,7 +289,8 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
               {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span><span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
+                  : <span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !groupOpen(item.id)}>
                 {item.pages.map((entry, index) => {
