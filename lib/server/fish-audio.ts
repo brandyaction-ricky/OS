@@ -179,9 +179,12 @@ export async function synthesizeFishSegment(text: string, options: {
   return { bytes, mimeType: "audio/mpeg" as const };
 }
 
+/** Logan's v15.2 delivery (2026-10-23 「1 · 조금 차분 + 톤 EQ」): 6% slower, narrower expression. */
+export const MYIN_VOICE_TUNING = { temperature: 0.5, top_p: 0.6, prosody: { speed: 0.94, volume: 0 } } as const;
+
 /**
- * 마이인 v13: exactly the request in Logan's stage_voice.py (text, wav, reference_id; model header; nothing else), so the render
- * PC's post-processing gives his result. The model is pinned by the caller: Fish serves an unknown name as 2.1 without an error.
+ * 마이인 v13: exactly the request in Logan's stage_voice.py v15.2 (text, wav, reference_id, his tuning; model header), so the render
+ * PC's post-processing (his voice EQ) gives his result. The model is pinned by the caller: Fish serves an unknown name as 2.1 without an error.
  */
 export async function synthesizeFishWav(text: string, options: { apiKey: string; referenceId: string; model: string; fetcher?: Fetcher }) {
   if (!text.trim() || text.length > FISH_SEGMENT_MAX_CHARS) throw new ApiError(400, "VOICE_SEGMENT_INVALID", "음성 단락의 길이를 확인해 주세요.");
@@ -189,7 +192,7 @@ export async function synthesizeFishWav(text: string, options: { apiKey: string;
   const response = await (options.fetcher ?? fetch)(FISH_TTS_ENDPOINT, {
     method: "POST", cache: "no-store", signal: AbortSignal.timeout(120_000),
     headers: { authorization: `Bearer ${options.apiKey.trim()}`, "content-type": "application/json", model: options.model },
-    body: JSON.stringify({ text, format: "wav", reference_id: options.referenceId.trim() }),
+    body: JSON.stringify({ text, format: "wav", reference_id: options.referenceId.trim(), ...MYIN_VOICE_TUNING }),
   });
   if (!response.ok) throw new ApiError(502, "FISH_TTS_FAILED", `Fish Audio 음성 생성에 실패했습니다 (${response.status}).`);
   if (Number(response.headers.get("content-length") ?? 0) > MAX_AUDIO_BYTES) throw new ApiError(502, "FISH_AUDIO_TOO_LARGE", "음성 응답 크기가 허용 범위를 넘었습니다.");
