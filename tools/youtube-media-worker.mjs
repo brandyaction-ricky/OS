@@ -413,8 +413,8 @@ export async function processMyinFinal() {
 export async function processShortform(){
   if(runId||diskFreeGb()<2)return false;
   checkShortformRuntime();
-  // layoutVersion 3 renders 1:1 square ads as well as 9:16 (owner request 2026-10-25); a version 2 worker only gets 9:16 jobs.
-  const job=await call({action:"shorts_claim",layoutVersion:3});
+  // layoutVersion 4 renders 1:1 and 4:5 feed ads as well as 9:16 (owner requests 2026-10-25); an older worker only gets the sizes it draws.
+  const job=await call({action:"shorts_claim",layoutVersion:4});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();

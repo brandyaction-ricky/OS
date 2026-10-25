@@ -26,10 +26,13 @@ function secret(){
   if(value.length<32)throw new ApiError(503,"SHORTFORM_WORKER_UNAVAILABLE","렌더 PC 연결 설정이 필요합니다.");
   return value;
 }
-/** 9:16 for Shorts · Reels; 1:1 square for feed ads (owner request 2026-10-25). A plan without `aspect` is 9:16, as every plan before it. */
-export type ShortformAspect="9:16"|"1:1";
+/** 9:16 for Shorts · Reels; 1:1 square and 4:5 portrait for feed ads (owner requests 2026-10-25). A plan without `aspect` is 9:16, as every plan before it. */
+export type ShortformAspect="9:16"|"1:1"|"4:5";
+type AdAspect=Exclude<ShortformAspect,"9:16">;
+/** The first worker layoutVersion that draws each ad size; an older worker would draw it as 9:16 or fail, so it never gets the job. */
+const AD_LAYOUT:Record<AdAspect,number>={"1:1":3,"4:5":4};
 type Plan={
-  layoutVersion:2;aspect?:"1:1";
+  layoutVersion:2;aspect?:AdAspect;
   mode:"reuse"|"direct";duration:number;brief:unknown;memo:string;
   cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string}[];
   source?:{id:string;key:string};
@@ -71,8 +74,8 @@ async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9
   const parsed=shortformCutsSchema.safeParse({cuts:item.metadata.cuts});
   if(!parsed.success||parsed.data.cuts.length>20)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","1~20개 장면을 준비해 주세요.");
   if(brief.mode==="direct")validateDirectCuts(parsed.data,brief.duration);
-  if(aspect==="1:1"&&brief.purpose!=="ad")throw new ApiError(422,"SHORTFORM_ASPECT_AD_ONLY","정사각형은 광고 숏폼에서 만들어요.");
-  const plan:Plan={layoutVersion:2,...(aspect==="1:1"?{aspect:"1:1" as const}:{}),mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
+  if(aspect!=="9:16"&&brief.purpose!=="ad")throw new ApiError(422,"SHORTFORM_ASPECT_AD_ONLY","정사각형 · 4:5는 광고 숏폼에서 만들어요.");
+  const plan:Plan={layoutVersion:2,...(aspect!=="9:16"?{aspect}:{}),mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
   let sourceDuration=0;
   if(brief.mode==="reuse"){
     const source=z.object({id:z.string().uuid(),key:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(item.metadata.shortformSource);
@@ -167,14 +170,14 @@ async function sign(service:Service,bucket:string,path:string){
   if(error||!data)throw new ApiError(503,"SHORTFORM_SIGN_FAILED","제작 파일을 열지 못했습니다.");
   return data.signedUrl;
 }
-export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3=2){
+export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2){
   const {data:rows,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
     .in("status",["backlog","in_progress"]).is("archived_at",null).order("created_at").limit(30);
   if(error)throw new ApiError(503,"SHORTFORM_QUEUE_FAILED","제작 대기열을 읽지 못했습니다.");
   for(const row of (rows??[]) as OsRecord[]){
     let run:Run;try{run=verifyShortformRun(row);}catch{continue;}
-    // A worker from before 1:1 (layoutVersion 2) would draw a square ad as 9:16; it gets only 9:16 jobs.
-    if(run.plan.aspect&&layoutVersion<3)continue;
+    // A worker older than an ad size (1:1 from layoutVersion 3, 4:5 from 4) gets only the sizes it draws.
+    if(run.plan.aspect&&layoutVersion<AD_LAYOUT[run.plan.aspect])continue;
     if(run.lease&&Date.parse(run.lease.expiresAt)>Date.now())continue;
     if(run.attempts>=3){await save(service,row,"blocked","failed",run);continue;}
     try{await currentInput(service,row,run);}catch{await save(service,row,"blocked","failed",{...run,error:"SHORTFORM_INPUT_CHANGED"});continue;}
@@ -211,7 +214,7 @@ export async function shortformVoice(input:{renderId:string;lease:string;index:n
   await currentInput(service,row,run);
   const cut=run.plan.cuts[input.index];
   if(!cut?.voice.trim()||!run.plan.voice||!run.voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","승인된 내레이션이 없습니다.");
-  // Keyed by the voice and the words, so the 9:16 and the 1:1 render of the same scenes pay for the narration once.
+  // Keyed by the voice and the words, so the 9:16 and the ad-size renders of the same scenes pay for the narration once.
   const path=`${row.owner_id}/${run.itemId}/voice-${renderDigest([run.plan.voice,cut.voice]).slice(0,32)}.mp3`;
   const folder=path.slice(0,path.lastIndexOf("/")),name=path.slice(path.lastIndexOf("/")+1);
   const {data,error}=await service.storage.from(VOICE_BUCKET).list(folder,{search:name,limit:30});
@@ -245,7 +248,7 @@ export async function completeShortformRender(input:{renderId:string;lease:strin
   const bytes=Buffer.from(await blob.arrayBuffer());
   if(bytes.subarray(4,8).toString()!=="ftyp"||createHash("sha256").update(bytes).digest("hex")!==input.sha256)
     throw new ApiError(409,"SHORTFORM_OUTPUT_INVALID","완성 영상 검증에 실패했습니다.");
-  // The card keeps the 9:16 video (Shorts · Reels and the earlier screens); a 1:1 ad is read from its render.
+  // The card keeps the 9:16 video (Shorts · Reels and the earlier screens); an ad size is read from its render.
   if(!run.plan.aspect)await attachVideo(service,item,row.id,run);
   const completed={...run,bytes:input.bytes,sha256:input.sha256};
   await save(service,row,"done","render_ready",{...completed,completedSignature:completedSignature(String(row.owner_id),completed)});

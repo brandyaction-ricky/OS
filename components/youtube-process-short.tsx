@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
@@ -20,8 +20,16 @@ const REASON: Record<string, string> = {
   SHORTFORM_RUNTIME_MISSING: "렌더 PC에 영상 도구가 준비되지 않았어요. 관리자에게 알려 주세요.",
 };
 const working = (render: YpRenderView | null | undefined) => Boolean(render && ["backlog", "in_progress"].includes(render.status));
-/** The latest 9:16 final (Shorts · Reels, the YouTube upload) and the latest 1:1 square ad, which sit side by side (2026-10-25). */
-export const latestFinals = (finals: YpFinalView[]) => ({ vertical: finals.filter(final => !final.aspect).at(-1) ?? null, square: finals.filter(final => final.aspect === "1:1").at(-1) ?? null });
+/** Feed-ad sizes made beside the 9:16 one (owner requests 2026-10-25): the view field, the button words, the player shape. */
+const AD_SIZES = [
+  { aspect: "1:1", key: "square", label: "정사각형 1:1", again: "정사각형", cls: "yp-vid1" },
+  { aspect: "4:5", key: "portrait", label: "4:5 세로", again: "4:5", cls: "yp-vid45" },
+] as const;
+/** The latest 9:16 final (Shorts · Reels, the YouTube upload) and the latest of each feed-ad size, which sit beside it. */
+export const latestFinals = (finals: YpFinalView[]) => {
+  const last = (aspect?: "1:1" | "4:5") => finals.filter(final => final.aspect === aspect).at(-1) ?? null;
+  return { vertical: last(), square: last("1:1"), portrait: last("4:5") };
+};
 /** One line for a render: waiting · making · done · stopped with its reason. */
 export function RenderTag({ render }: { render: YpRenderView | null | undefined }) {
   if (!render) return null;
@@ -47,9 +55,10 @@ export function ShortVideo({ page, final }: { page: YpPage; final: YpFinalView |
     try { const url = final.source === "short" && final.runId ? await client.shortVideoUrl(id, final.runId, true) : src; if (url) window.location.assign(url); }
     catch (reason) { page.fail(reason); }
   };
+  const size = AD_SIZES.find(item => item.aspect === final.aspect), cls = size?.cls ?? "yp-vid9";
   return <div className="yp-short-out">
-    {src ? <video className={final.aspect === "1:1" ? "yp-vid1" : "yp-vid9"} src={src} controls preload="metadata" /> : <div className={final.aspect === "1:1" ? "yp-vid1" : "yp-vid9"} />}
-    <div className="yp-row-btns"><span className="yp-muted" style={{ fontSize: 12 }}>v{final.v} · {final.aspect === "1:1" ? "정사각형 1:1 · " : ""}{final.source === "short" ? "렌더 PC" : final.name}{final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}</span>
+    {src ? <video className={cls} src={src} controls preload="metadata" /> : <div className={cls} />}
+    <div className="yp-row-btns"><span className="yp-muted" style={{ fontSize: 12 }}>v{final.v} · {size ? `${size.label} · ` : ""}{final.source === "short" ? "렌더 PC" : final.name}{final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}</span>
       <button type="button" className="yp-btn yp-sm" onClick={() => void download()}><Download size={14} /> MP4 내려받기</button></div>
   </div>;
 }
@@ -74,15 +83,18 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const load = useCallback(async () => { if (!client) return; try { apply(await client.short(id)); } catch (reason) { fail(reason); } }, [client, id, apply, fail]);
   useEffect(() => { void load(); }, [load]);
   const job = useStaffJob(page, "short", load);
-  const render = view?.render, square = view?.square;
+  const render = view?.render;
+  // Every size's render is watched, so a square or 4:5 ad also shows its progress without a page refresh.
+  const statuses = [view?.render, view?.square, view?.portrait].map(item => item?.status ?? "").join();
   useEffect(() => {
-    if (!client || !working(render)) return;
+    if (!client || !/backlog|in_progress/.test(statuses)) return;
     const timer = window.setInterval(() => void client.short(id).then(next => {
-      setView(current => current ? { ...current, render: next.render } : next);
-      if (next.render?.status === "done") void reloadBundle();
+      if ([next.render, next.square, next.portrait].map(item => item?.status ?? "").join() === statuses) return;
+      setView(current => current ? { ...current, render: next.render, square: next.square, portrait: next.portrait } : next);
+      void reloadBundle();
     }, () => undefined), 15_000);
     return () => window.clearInterval(timer);
-  }, [client, id, render, reloadBundle]);
+  }, [client, id, statuses, reloadBundle]);
 
   const save = async (patch?: YpShortPatch) => {
     if (!client || !view || !brief || saving.current) return null;
@@ -113,9 +125,9 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
       editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId } : scene), true);
     } catch (reason) { fail(reason); } finally { setBusy(""); }
   };
-  const make = async (aspect: "9:16" | "1:1" = "9:16") => {
+  const make = async (aspect: "9:16" | "1:1" | "4:5" = "9:16") => {
     if (!client) return;
-    setBusy(aspect === "1:1" ? "square" : "render");
+    setBusy(aspect);
     try {
       const saved = dirty ? await save() : view;
       if (!saved) return;
@@ -129,6 +141,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const hasVoice = scenes.some(scene => scene.voice.trim());
   const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
   const finals = page.bundle?.finals ?? [];
+  const made = latestFinals(finals);
   const field = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence", label: string, placeholder: string, need: boolean, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>
     {label} {need ? <span className="yp-need">필수</span> : <span className="yp-opt">선택</span>}
     {rows ? <textarea className="yp-in" rows={rows} value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => editBrief({ [key]: event.target.value })} />
@@ -174,21 +187,22 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
       <p className="yp-hint">이미지는 세로 화면에 그대로 들어가고 남는 곳은 흐린 배경으로 채워져요. 직접 만들었거나 쓸 수 있게 허락받은 이미지만 올려요.</p>
     </YpSection>
 
-    <YpSection n={n0 + 3} title="MP4 만들기" gq={ad ? "세로 720 × 1280 · 광고는 정사각형 1080 × 1080도 · 렌더 PC가 만들어요" : "720 × 1280 세로 · 렌더 PC가 만들어요"} need>
+    <YpSection n={n0 + 3} title="MP4 만들기" gq={ad ? "세로 720 × 1280 · 광고는 정사각형 1080 × 1080 · 4:5 1080 × 1350도 · 렌더 PC가 만들어요" : "720 × 1280 세로 · 렌더 PC가 만들어요"} need>
       {missing.length && editable ? <ul className="yp-hist" style={{ marginBottom: 8 }}>{missing.map(item => <li key={item}><span>○ {item}</span></li>)}</ul> : null}
       {hasVoice && editable ? <label className="yp-lbl" style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" checked={voiceOk} onChange={event => setVoiceOk(event.target.checked)} /> 내레이션 음성을 만들어요 (Fish 음성 비용이 들어요)</label> : null}
       <div className="yp-row-btns" style={{ flexWrap: "wrap", marginBottom: 10 }}>
-        {editable ? <button type="button" className="yp-btn yp-pri" disabled={missing.length > 0 || (hasVoice && !voiceOk) || busy === "render" || working(render) || page.demo}
-          onClick={() => void make()}>{busy === "render" ? "보내는 중…" : render?.status === "done" ? "고친 내용으로 다시 만들기" : ad ? "세로 9:16 만들기" : "MP4 만들기"}</button> : null}
+        {editable ? <button type="button" className="yp-btn yp-pri" disabled={missing.length > 0 || (hasVoice && !voiceOk) || busy === "9:16" || working(render) || page.demo}
+          onClick={() => void make()}>{busy === "9:16" ? "보내는 중…" : render?.status === "done" ? "고친 내용으로 다시 만들기" : ad ? "세로 9:16 만들기" : "MP4 만들기"}</button> : null}
         <RenderTag render={render} />
-        {ad && editable ? <button type="button" className="yp-btn" disabled={missing.length > 0 || (hasVoice && !voiceOk) || busy === "square" || working(square) || page.demo}
-          onClick={() => void make("1:1")}>{busy === "square" ? "보내는 중…" : square?.status === "done" ? "정사각형 다시 만들기" : "정사각형 1:1 만들기"}</button> : null}
-        {ad ? <RenderTag render={square} /> : null}
+        {ad ? AD_SIZES.map(size => <Fragment key={size.aspect}>
+          {editable ? <button type="button" className="yp-btn" disabled={missing.length > 0 || (hasVoice && !voiceOk) || busy === size.aspect || working(view[size.key]) || page.demo}
+            onClick={() => void make(size.aspect)}>{busy === size.aspect ? "보내는 중…" : view[size.key]?.status === "done" ? `${size.again} 다시 만들기` : `${size.label} 만들기`}</button> : null}
+          <RenderTag render={view[size.key]} /></Fragment>) : null}
         {page.demo ? <span className="yp-muted" style={{ fontSize: 12 }}>데모에서는 MP4를 만들지 않아요.</span> : null}</div>
       <div className="yp-row-btns" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-        <ShortVideo page={page} final={latestFinals(finals).vertical} />
-        {ad ? <ShortVideo page={page} final={latestFinals(finals).square} /> : null}</div>
-      {ad ? <p className="yp-hint">세로는 쇼츠 · 릴스 · 스토리 광고에, 정사각형은 피드 광고에 써요. 같은 장면 · 내레이션으로 만들어요(내레이션 비용은 한 번).</p> : null}
+        <ShortVideo page={page} final={made.vertical} />
+        {ad ? <><ShortVideo page={page} final={made.square} /><ShortVideo page={page} final={made.portrait} /></> : null}</div>
+      {ad ? <p className="yp-hint">세로는 쇼츠 · 릴스 · 스토리 광고에, 정사각형 · 4:5는 피드 광고에 써요(4:5가 피드에서 화면을 더 크게 차지해요). 같은 장면 · 내레이션으로 만들어요(내레이션 비용은 한 번).</p> : null}
     </YpSection>
     <SendDialog page={page} task="short" open={send} onClose={() => setSend(false)} job={job} />
   </div>;
@@ -226,7 +240,7 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
   const project = page.bundle?.project;
   const client = page.client, id = project?.id;
   useEffect(() => { if (client && id) client.short(id).then(setView, () => undefined); }, [client, id]);
-  const { vertical: last, square } = latestFinals(page.bundle?.finals ?? []);
+  const { vertical: last, square, portrait } = latestFinals(page.bundle?.finals ?? []);
   const finish = async () => {
     if (!page.client || !project) return;
     setMoving(true);
@@ -239,11 +253,12 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
     {page.bundle && project ? !["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
-      <YpSection n={1} title="완성 MP4" gq={square ? "대표 OK가 난 마지막 버전 · 세로와 정사각형" : "대표 OK가 난 마지막 버전"}>
+      <YpSection n={1} title="완성 MP4" gq={square || portrait ? "대표 OK가 난 마지막 버전 · 세로와 피드 광고용" : "대표 OK가 난 마지막 버전"}>
         <div className="yp-row-btns" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
           <ShortVideo page={page} final={last} />
-          {square ? <ShortVideo page={page} final={square} /> : null}</div>
-        {square ? <p className="yp-hint">정사각형은 피드 광고용이에요. 내려받아 광고 관리자에 올려요.</p> : null}
+          <ShortVideo page={page} final={square} />
+          <ShortVideo page={page} final={portrait} /></div>
+        {square || portrait ? <p className="yp-hint">정사각형 · 4:5는 피드 광고용이에요. 내려받아 광고 관리자에 올려요.</p> : null}
       </YpSection>
       <ShortYoutube page={page} last={last} />
       {view ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
@@ -336,7 +351,8 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
 export function ShortConfirmDetail({ client, bundle, open }: { client: YpClient; bundle: YpBundle; open: number | null }) {
   const [src, setSrc] = useState<string | null>(null);
   const [view, setView] = useState<YpShortView | null>(null);
-  const { vertical: final, square } = latestFinals(bundle.finals);
+  const { vertical: final, square, portrait } = latestFinals(bundle.finals);
+  const ads = [square && `정사각형 v${square.v}`, portrait && `4:5 v${portrait.v}`].filter(Boolean).join(" · ");
   const id = bundle.project.id;
   useEffect(() => {
     let active = true;
@@ -347,7 +363,7 @@ export function ShortConfirmDetail({ client, bundle, open }: { client: YpClient;
   return <div className="yp-g2" style={{ marginBottom: 12, alignItems: "start" }}>
     {src ? <video className="yp-vid9" src={src} controls preload="metadata" /> : <div className="yp-vid9" />}
     <dl className="yp-kv" style={{ gridTemplateColumns: "96px minmax(0,1fr)" }}>
-      <dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "short" ? "렌더 PC" : final.name}${final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}` : "—"}{square ? ` · 정사각형 v${square.v}도 있어요(최종 검수 화면에서 버전으로 보기)` : ""}</dd>
+      <dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "short" ? "렌더 PC" : final.name}${final.durationSeconds ? ` · ${final.durationSeconds}초` : ""}` : "—"}{ads ? ` · ${ads}도 있어요(최종 검수 화면에서 버전으로 보기)` : ""}</dd>
       <dt>용도</dt><dd>{view ? `${view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · ${view.brief.duration}초` : "—"}</dd>
       <dt>할 행동</dt><dd>{view?.brief.goal || "—"}</dd>
       <dt>연결 페이지</dt><dd>{view?.brief.landingUrl || "—"}</dd>
