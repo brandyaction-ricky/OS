@@ -16,7 +16,8 @@ import { assertV1ScriptInputs, isYoutubeV1, saveV1Script, v1ScriptCardInputs, v1
 type Client = Pick<RequestActor, "supabase" | "id"> & { name?: string };
 type Pipeline = Awaited<ReturnType<typeof readPipeline>>;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const CANON_TITLES = "원고 공정 정본 · 원고 구조 정본 · 원고 말투 정본 · 원고 검수 정본 · 현재기준";
+const SCRIPT_CANON = ["원고 공정 정본", "원고 구조 정본", "원고 말투 정본", "원고 검수 정본"];
+const CANON_TITLES = [...SCRIPT_CANON, "현재기준"].join(" · ");
 const AI_MATERIALS = "[작성 AI 자료]";
 
 export const scriptBundleSchema = z.object({
@@ -49,12 +50,25 @@ export function scriptInputKey(state: Pipeline) {
   return digest(["staff-script-v1", state.signatures[0], packaging ? [packaging.id, packaging.version] : null, state.writing.packageTitle, state.writing.packageCopy]);
 }
 
+const canonIds = () => (process.env.YOUTUBE_SCRIPT_CANON_IDS ?? "").split(",").map((value) => value.trim()).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+
 async function canonRefs(supabase: Client["supabase"]) {
-  const ids = (process.env.YOUTUBE_SCRIPT_CANON_IDS ?? "").split(",").map((value) => value.trim()).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  const ids = canonIds();
   if (!ids.length) return `제목으로 찾습니다: ${CANON_TITLES}. 같은 이름의 [보관] 문서는 읽지 않습니다.`;
   const { data } = await supabase.from("os_documents").select("id,title").in("id", ids);
   const titles = new Map((data ?? []).map((doc) => [doc.id as string, doc.title as string]));
   return `${ids.map((id) => `- ${titles.get(id) ?? "정본"} (doc_id: ${id})`).join("\n")}\n이 ID로 엽니다(제목 검색에는 같은 이름의 옛 문서가 함께 나옵니다).`;
+}
+
+/** The four 원고 정본 (현재기준 is not one of them) that the 관문 1 정본 겹침 count compares a script against. */
+async function scriptCanonText(supabase: Client["supabase"]) {
+  const ids = canonIds();
+  const query = supabase.from("os_documents").select("title,content_md");
+  const { data, error } = await (ids.length ? query.in("id", ids) : query.in("title", SCRIPT_CANON).eq("status", "canonical"));
+  const docs = (data ?? []).filter((doc) => SCRIPT_CANON.includes(doc.title as string));
+  if (error || new Set(docs.map((doc) => doc.title)).size < SCRIPT_CANON.length)
+    throw new ApiError(409, "SCRIPT_CANON_UNAVAILABLE", "원고 정본 네 편을 열지 못해 관문 1(정본 겹침)을 셀 수 없습니다. 같은 내용으로 다시 제출해 주세요.");
+  return docs.map((doc) => String(doc.content_md ?? "")).join("\n");
 }
 
 /** The job card: where the inputs are and what to submit. The canon itself is read by the AI, not pasted here. */
@@ -113,9 +127,10 @@ export async function saveScriptBundle(client: Client, sourceId: string, bundle:
   const state = await readPipeline(client, sourceId);
   if (expectedVersion !== undefined) assertExpectedVersion(state.source, expectedVersion);
   assertScriptInputs(state);
+  const canon = await scriptCanonText(client.supabase);
   // 유튜브 공정 v1: the 원고 goes to the 구성안 as a new version; the 구성안 has no separate staff confirm (4-5).
-  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원" }) };
-  const check = checkManuscript(bundle.manuscript, { title: state.writing.packageTitle, targetMinutes: author.targetMinutes });
+  if (isYoutubeV1(state.source)) return { scriptId: "", ...await saveV1Script(client, state, bundle, { model: author.model, jobId: author.jobId, targetMinutes: author.targetMinutes, name: client.name ?? "직원" }, canon) };
+  const check = checkManuscript(bundle.manuscript, { title: state.writing.packageTitle, targetMinutes: author.targetMinutes, canon });
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const source = state.source;
   const writing = writingWorkflowOf(source.metadata.writingWorkflow);
@@ -160,7 +175,7 @@ export async function confirmScriptPreparation(client: Client, sourceId: string,
   const writing = writingWorkflowOf(source.metadata.writingWorkflow);
   if (!writing.materials || !writing.axis || !writing.design) throw new ApiError(409, "WRITING_CONTENT_REQUIRED", "자료 · 축 · 설계가 모두 있어야 확인할 수 있습니다.");
   const targetMinutes = Number(script.metadata.targetMinutes) || null;
-  const body = checkScriptBody(script.description.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean), targetMinutes);
+  const body = checkScriptBody(script.description.split(/\n\s*\n/).map((part) => part.trim()).filter(Boolean), targetMinutes, null, await scriptCanonText(client.supabase));
   if (body.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${body.issues.length}건: ${body.issues.join(" / ")}`);
   const at = new Date().toISOString();
   const note = "담당 직원 확인(한 번에) — 작성 AI 제출본";

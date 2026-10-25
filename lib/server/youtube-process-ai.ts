@@ -91,10 +91,10 @@ export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: numbe
   };
 }
 /** A submitted 원고 becomes the current 구성안 원고 (the previous one stays as a version). */
-export async function saveV1Script(client: { supabase: RequestActor["supabase"]; id: string }, state: Pipeline, bundle: { manuscript: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] }, author: { model: string; jobId?: string; targetMinutes: number; name: string }) {
+export async function saveV1Script(client: { supabase: RequestActor["supabase"]; id: string }, state: Pipeline, bundle: { manuscript: string; materials: string; axis: string; design: string; review: string; canonBundle: string; suggestions: string[] }, author: { model: string; jobId?: string; targetMinutes: number; name: string }, canon: string) {
   const stages = v1Stages(state);
   const title = stages.plan.data.confirmed?.A?.title ?? projectName(stages.project);
-  const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes });
+  const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes, canon });
   if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const now = new Date().toISOString();
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.
