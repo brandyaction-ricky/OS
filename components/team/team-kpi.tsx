@@ -38,71 +38,77 @@ export function TeamKpiView({ token }: { token: string }) {
     {error ? <div className="tm-callout" data-tone="danger" role="alert">{error}</div> : null}
     {!data ? <p className="tm-muted">불러오는 중…</p> : <div className="tm-kpi-grid">{data.businesses.map(business => business.mode === "month"
       ? <article className="panel panel-pad tm-kpi-card" key={business.key}>
-          <header className="tm-row"><h3 className="card-title">{business.label} · 월 KPI</h3></header>
-          <div className="tm-row tm-kpi-head"><button type="button" className="secondary-button compact" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
-            <strong>{month.replace("-", "년 ")}월</strong>
-            <button type="button" className="secondary-button compact" disabled={month >= kstMonth()} onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
-            <span className="tm-muted">매출 = 그 달 토스 결제 − 취소·환불</span></div>
-          <ScopeKpi revenueLabel="순매출 (토스 결제 기준)" revenue={business.revenue} kpis={business.kpis} logDocumentId={business.logDocumentId}
+          <header className="tm-row"><h3 className="card-title">{business.label}</h3>
+            <div className="tm-row tm-kpi-head"><button type="button" className="secondary-button compact" aria-label="이전 달" onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
+              <strong>{month.replace("-", "년 ")}월</strong>
+              <button type="button" className="secondary-button compact" aria-label="다음 달" disabled={month >= kstMonth()} onClick={() => setMonth(shiftMonth(month, 1))}>›</button></div></header>
+          <ScopeKpi revenue={business.revenue} kpis={business.kpis} logDocumentId={business.logDocumentId}
             scope={{ business: "myin", month }} busy={busy} send={send} />
         </article>
       : <RoundsCard key={business.key} business={business} canSeeFinance={data.canSeeFinance} busy={busy} send={send} />)}</div>}
   </section>;
 }
 
+const roundStatus = (round: Round, day: string) => daysBetween(round.to, day) < 14 ? "판매 중" : round.courseTo && round.courseTo >= day ? "교육 중" : "지난 회차";
+
+// Same layout as the month card, with a round picker in place of the month arrows.
+// Rounds that netted nothing (fully refunded tests) are hidden unless they already have KPIs.
 function RoundsCard({ business, canSeeFinance, busy, send }: { business: RoundBusiness; canSeeFinance: boolean; busy: boolean; send: Send }) {
-  const day = today();
+  const day = today(), rounds = business.rounds.filter(round => round.revenue.net > 0 || round.kpis.length);
+  const [picked, setPicked] = useState(""), [editing, setEditing] = useState(false);
+  const round = rounds.find(item => item.key === picked) ?? rounds.find(item => roundStatus(item, day) !== "지난 회차") ?? rounds[0];
   return <article className="panel panel-pad tm-kpi-card">
-    <header className="tm-row"><h3 className="card-title">{business.label} · 상품별 판매 회차</h3>
-      {canSeeFinance ? <Link className="tm-muted" href="/finance/settlements">월 정산 입금 보기 (관리자) →</Link> : null}</header>
-    <span className="tm-muted">토스 결제를 상품별로 자동으로 묶습니다. 판매가 2주 끊기면 다음 회차, 계속 팔리는 상품은 월별입니다.</span>
-    {business.rounds.length ? business.rounds.map(round => <RoundItem key={round.key} round={round} live={daysBetween(round.to, day) < 14 || !!(round.courseTo && round.courseTo >= day)} busy={busy} send={send} />)
-      : <p className="tm-muted">아직 토스 결제가 없습니다.</p>}
+    <header className="tm-row"><h3 className="card-title">{business.label}</h3>
+      {canSeeFinance ? <Link className="tm-muted" href="/finance/settlements">월 정산 →</Link> : null}</header>
+    {round ? <>
+      <div className="tm-row tm-kpi-head">
+        <select aria-label="판매 회차" value={round.key} onChange={e => { setPicked(e.target.value); setEditing(false); }}>
+          {rounds.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
+        <span className="tm-kpi-chip" data-live={roundStatus(round, day) !== "지난 회차" || undefined}>{roundStatus(round, day)}</span>
+        <button type="button" className="secondary-button compact" onClick={() => setEditing(!editing)}>회차 설정</button></div>
+      <small className="tm-muted">판매 {round.from}~{round.to}{round.courseFrom ? ` · 교육 ${round.courseFrom}~${round.courseTo ?? ""}` : ""}</small>
+      {editing ? <RoundSettings key={round.key} round={round} busy={busy} send={send} done={() => setEditing(false)} /> : null}
+      <ScopeKpi key={round.key} revenue={round.revenue} kpis={round.kpis} logDocumentId={round.logDocumentId}
+        scope={{ business: "edu", roundKey: round.key }} busy={busy} send={send} />
+    </> : <p className="tm-muted">아직 토스 결제가 없습니다.</p>}
   </article>;
 }
 
-function RoundItem({ round, live, busy, send }: { round: Round; live: boolean; busy: boolean; send: Send }) {
-  const [editing, setEditing] = useState(false), [name, setName] = useState(round.named ? round.label : ""), [courseFrom, setCourseFrom] = useState(round.courseFrom ?? ""), [courseTo, setCourseTo] = useState(round.courseTo ?? ""), [splitDay, setSplitDay] = useState("");
-  const status = daysBetween(round.to, today()) < 14 ? "판매 중" : round.courseTo && round.courseTo >= today() ? "교육 예정·진행" : "지난 회차";
-  return <details className="tm-kpi-cohort" open={live}>
-    <summary><strong>{round.label}</strong> <span className="tm-muted">{status} · 판매 {round.from}~{round.to} · {formatKpiValue(round.revenue.net, "원")}{round.courseFrom ? ` · 교육 ${round.courseFrom}~${round.courseTo ?? ""}` : ""}</span></summary>
-    <ScopeKpi revenueLabel="회차 매출 (토스 결제 기준)" revenue={round.revenue} kpis={round.kpis} logDocumentId={round.logDocumentId}
-      scope={{ business: "edu", roundKey: round.key }} busy={busy} send={send} />
-    {editing ? <div className="tm-kpi-cohort-form">
-      <label>회차 이름 (예: AI 문샷 챌린지 2기)<input value={name} onChange={e => setName(e.target.value)} maxLength={80} /></label><span />
-      <label>교육 시작 (선택)<input type="date" value={courseFrom} onChange={e => setCourseFrom(e.target.value)} /></label>
-      <label>교육 끝 (선택)<input type="date" value={courseTo} onChange={e => setCourseTo(e.target.value)} /></label>
-      <div className="tm-row"><button type="button" className="primary-button compact" disabled={busy} onClick={() => void send("POST", { action: "round", roundKey: round.key,
-        ...(name.trim() ? { name: name.trim() } : {}), courseFrom: courseFrom || null, courseTo: courseTo || null }).then(ok => { if (ok) setEditing(false); })}>저장</button>
-        <button type="button" className="secondary-button compact" onClick={() => setEditing(false)}>취소</button></div>
-      <label>두 회차가 붙어서 묶였다면, 나눌 날짜<input type="date" min={round.from} max={round.to} value={splitDay} onChange={e => setSplitDay(e.target.value)} /></label>
-      <div className="tm-row"><button type="button" className="secondary-button compact" disabled={busy || !splitDay || splitDay <= round.from || splitDay > round.to}
-        onClick={() => { if (window.confirm(`${round.product}의 판매를 ${splitDay}부터 다음 회차로 나눌까요?`)) void send("POST", { action: "split", product: round.product, day: splitDay }).then(ok => { if (ok) setSplitDay(""); }); }}>여기서 나누기</button></div>
-    </div> : <button type="button" className="secondary-button compact" onClick={() => setEditing(true)}>회차 이름·교육 날짜·나누기</button>}
-  </details>;
+function RoundSettings({ round, busy, send, done }: { round: Round; busy: boolean; send: Send; done: () => void }) {
+  const [name, setName] = useState(round.named ? round.label : ""), [courseFrom, setCourseFrom] = useState(round.courseFrom ?? ""), [courseTo, setCourseTo] = useState(round.courseTo ?? ""), [splitDay, setSplitDay] = useState("");
+  return <div className="tm-kpi-cohort-form">
+    <label className="tm-kpi-wide">회차 이름<input value={name} placeholder={round.label} onChange={e => setName(e.target.value)} maxLength={80} /></label>
+    <label>교육 시작<input type="date" value={courseFrom} onChange={e => setCourseFrom(e.target.value)} /></label>
+    <label>교육 끝<input type="date" value={courseTo} onChange={e => setCourseTo(e.target.value)} /></label>
+    <div className="tm-row"><button type="button" className="primary-button compact" disabled={busy} onClick={() => void send("POST", { action: "round", roundKey: round.key,
+      ...(name.trim() ? { name: name.trim() } : {}), courseFrom: courseFrom || null, courseTo: courseTo || null }).then(ok => { if (ok) done(); })}>저장</button></div>
+    <label className="tm-kpi-wide">두 회차가 붙었으면 나눌 날짜<input type="date" min={round.from} max={round.to} value={splitDay} onChange={e => setSplitDay(e.target.value)} /></label>
+    <div className="tm-row"><button type="button" className="secondary-button compact" disabled={busy || !splitDay || splitDay <= round.from || splitDay > round.to}
+      onClick={() => { if (window.confirm(`${round.product}의 판매를 ${splitDay}부터 다음 회차로 나눌까요?`)) void send("POST", { action: "split", product: round.product, day: splitDay }).then(ok => { if (ok) done(); }); }}>나누기</button></div>
+  </div>;
 }
 
 type Scope = { business: "myin"; month: string } | { business: "edu"; roundKey: string };
-function ScopeKpi({ revenueLabel, revenue: r, kpis, logDocumentId, scope, busy, send }: { revenueLabel: string; revenue: Revenue; kpis: Kpi[]; logDocumentId: string | null; scope: Scope; busy: boolean; send: Send }) {
+function ScopeKpi({ revenue: r, kpis, logDocumentId, scope, busy, send }: { revenue: Revenue; kpis: Kpi[]; logDocumentId: string | null; scope: Scope; busy: boolean; send: Send }) {
   const revenueKpi = kpis.find(kpi => kpi.metric === "revenue"), others = kpis.filter(kpi => kpi.metric !== "revenue");
   const [target, setTarget] = useState(""), [adding, setAdding] = useState(false), [title, setTitle] = useState(""), [unit, setUnit] = useState("건"), [newTarget, setNewTarget] = useState("");
   const progress = kpiProgress(r.net, revenueKpi?.target);
   return <>
     <div className="tm-kpi-revenue">
-      <div className="tm-row"><span className="tm-muted">{revenueLabel}</span>{logDocumentId ? <Link className="tm-muted" href={`/knowledge/doc/${logDocumentId}`}>KPI 로그 →</Link> : null}</div>
+      <div className="tm-row"><span className="tm-muted">순매출</span>{logDocumentId ? <Link className="tm-muted" href={`/knowledge/doc/${logDocumentId}`}>로그 →</Link> : null}</div>
       <strong>{formatKpiValue(r.net, "원")}</strong>
-      <span className="tm-muted">결제 {formatKpiValue(r.paid, "원")} · 취소·환불 {formatKpiValue(r.canceled, "원")} · {r.count}건{r.canceledCount ? ` (취소 포함 ${r.canceledCount}건)` : ""}</span>
+      <small className="tm-muted">결제 {formatKpiValue(r.paid, "원")} · 취소 {formatKpiValue(r.canceled, "원")} · {r.count}건</small>
       <Bar progress={progress} />
-      {revenueKpi ? <p>목표 {formatKpiValue(revenueKpi.target, "원")} · 달성 {progress === null ? "—" : `${progress}%`}</p> : <p className="tm-muted">매출 목표가 아직 없습니다.</p>}
-      <div className="tm-row"><input aria-label="매출 목표" inputMode="numeric" placeholder={revenueKpi?.target ? String(revenueKpi.target) : "목표 금액 (원)"} value={target} onChange={e => setTarget(e.target.value)} />
+      <p>{revenueKpi ? <>목표 {formatKpiValue(revenueKpi.target, "원")} · <b>달성 {progress === null ? "—" : `${progress}%`}</b></> : <span className="tm-muted">목표 없음</span>}</p>
+      <div className="tm-row"><input aria-label="매출 목표" inputMode="numeric" placeholder="목표 금액 (원)" value={target} onChange={e => setTarget(e.target.value)} />
         <button type="button" className="secondary-button compact" disabled={busy || num(target) === null || Number.isNaN(num(target))} onClick={() => void send(revenueKpi ? "PATCH" : "POST", revenueKpi
           ? { id: revenueKpi.id, expectedVersion: revenueKpi.version, target: num(target) }
           : { action: "kpi", ...scope, metric: "revenue", title: "매출", target: num(target) }).then(ok => { if (ok) setTarget(""); })}>{revenueKpi ? "목표 고치기" : "목표 정하기"}</button></div>
       {revenueKpi ? <LinkedTasks tasks={revenueKpi.tasks} /> : null}
-      {r.syncedAt ? <small className="tm-muted">토스 마지막 반영 {new Date(r.syncedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</small> : null}
+      {r.syncedAt ? <small className="tm-muted">토스 반영 {new Date(r.syncedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</small> : null}
     </div>
-    <h4>그 밖의 지표</h4>
-    {others.length ? others.map(kpi => <ManualKpi key={kpi.id} kpi={kpi} busy={busy} send={send} />) : <p className="tm-muted">수강생·완주율·판매 건수처럼 회의에서 볼 지표를 추가하세요.</p>}
+    {others.length ? <h4>그 밖의 지표</h4> : null}
+    {others.map(kpi => <ManualKpi key={kpi.id} kpi={kpi} busy={busy} send={send} />)}
     {adding ? <div className="tm-kpi-add"><input aria-label="지표 이름" placeholder="지표 이름" value={title} onChange={e => setTitle(e.target.value)} maxLength={80} />
       <input aria-label="단위" placeholder="단위" value={unit} onChange={e => setUnit(e.target.value)} maxLength={10} />
       <input aria-label="목표" inputMode="numeric" placeholder="목표" value={newTarget} onChange={e => setNewTarget(e.target.value)} />
@@ -130,7 +136,7 @@ function ManualKpi({ kpi, busy, send }: { kpi: Kpi; busy: boolean; send: Send })
 
 // Meeting tasks whose review named this KPI.
 function LinkedTasks({ tasks }: { tasks: KpiTask[] }) {
-  if (!tasks.length) return <small className="tm-muted">연결된 업무 없음 · 회의 검수에서 업무에 이 KPI를 고르면 여기 모입니다.</small>;
+  if (!tasks.length) return null;
   const done = tasks.filter(task => task.status === "done").length;
   return <details className="tm-kpi-tasks"><summary>연결된 업무 {tasks.length}건 · 완료 {done}</summary><ul>{tasks.map(task => <li key={task.id}>
     <Link href={`/organization/tasks?task=${encodeURIComponent(task.id)}`}>{task.title}</Link>
