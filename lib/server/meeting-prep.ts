@@ -2,8 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/http";
 import { resolveMeetingBusiness } from "@/lib/meeting-business";
 import { buildPerformanceSignal } from "@/lib/performance-signals";
-import { KPI_BUSINESSES, formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
-import { monthRevenue } from "@/lib/server/kpi";
+import { KPI_BUSINESSES, currentCohorts, formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
+import { cohortRevenue, listCohorts, monthRevenue } from "@/lib/server/kpi";
 
 // Shared by the web meeting workspace (app/api/v1/meeting-prep) and the
 // Telegram /회의준비 command, so both surfaces build the same prep brief.
@@ -82,15 +82,22 @@ export async function prepareMeetingBrief(
 
   const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
   const completed = (tasks.data ?? []).filter(item => item.status === "done" && (!latestDate || item.updated_at >= latestDate)).slice(0, 20);
-  // This month's KPIs from the KPI tab when the business has them: actual against target, with
-  // revenue from the Toss ledger. Otherwise the older KPI rows and their signal labels.
-  const month = kstMonth(), kpiBiz = KPI_BUSINESSES.find(item => item.brand === wantedBusiness);
-  const monthly = (kpis.data ?? []).filter(item => kpiBiz && item.metadata?.workspace === "kpi" && item.metadata?.periodMonth === month && item.metadata?.business === kpiBiz.key);
-  const revenue = monthly.some(item => item.metadata?.metric === "revenue") ? (await monthRevenue(month))[kpiBiz!.key].net : 0;
-  const latestKpis = monthly.length ? monthly.map(item => {
-    const current = item.metadata?.metric === "revenue" ? revenue : Number(item.metric_current ?? 0), target = item.metric_target === null ? null : Number(item.metric_target);
-    const progress = kpiProgress(current, target);
-    return { id: item.id, title: item.title, current, previous: 0, unit: item.metric_unit,
+  // KPI-tab rows when the business has them: 마이인 this month, 브랜디에듀 its current cohorts.
+  // Each shows actual against target (revenue from the Toss ledger). Otherwise older KPI rows.
+  const month = kstMonth(), today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const kpiBiz = KPI_BUSINESSES.find(item => item.brand === wantedBusiness);
+  const cohorts = kpiBiz?.mode === "cohort" ? currentCohorts(await listCohorts(), today) : [];
+  const tabRows = (kpis.data ?? []).filter(item => kpiBiz && item.metadata?.workspace === "kpi" && item.metadata?.business === kpiBiz.key
+    && (kpiBiz.mode === "month" ? item.metadata?.periodMonth === month : cohorts.some(cohort => cohort.id === item.metadata?.cohortId)));
+  const revenueOf = new Map<string, number>();
+  for (const item of tabRows.filter(row => row.metadata?.metric === "revenue")) {
+    const cohort = cohorts.find(entry => entry.id === item.metadata?.cohortId);
+    revenueOf.set(item.id, cohort ? (await cohortRevenue(cohort)).net : (await monthRevenue(month))[kpiBiz!.key].net);
+  }
+  const latestKpis = tabRows.length ? tabRows.map(item => {
+    const current = item.metadata?.metric === "revenue" ? revenueOf.get(item.id) ?? 0 : Number(item.metric_current ?? 0), target = item.metric_target === null ? null : Number(item.metric_target);
+    const progress = kpiProgress(current, target), cohort = cohorts.find(entry => entry.id === item.metadata?.cohortId);
+    return { id: item.id, title: cohort ? `${cohort.name} · ${item.title}` : item.title, current, previous: 0, unit: item.metric_unit,
       signal: `${formatKpiValue(current, item.metric_unit)} / 목표 ${formatKpiValue(target, item.metric_unit)}${progress === null ? "" : ` (${progress}%)`}` };
   }) : (kpis.data ?? []).filter(item => item.metadata?.workspace !== "kpi").slice(0, 12).map((item) => {
     const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);

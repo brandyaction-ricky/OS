@@ -20,3 +20,9 @@
 .tm-kpi-tasks summary { cursor: pointer; font-size: 13px; }
 .tm-kpi-tasks ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
 .tm-kpi-tasks li span { margin-left: 6px; }
+.tm-kpi-cohort { display: grid; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.tm-kpi-cohort summary { cursor: pointer; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.tm-kpi-cohort-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tm-kpi-cohort-form label { display: grid; gap: 4px; font-size: 13px; }
+.tm-kpi-cohort-form .tm-row { grid-column: 1 / -1; gap: 6px; }
+.tm-kpi-revenue > .tm-row:first-child { justify-content: space-between; }
