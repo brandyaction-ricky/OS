@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/http";
-import { diagramCatalogSchema, type DiagramCatalog } from "@/lib/diagram-catalog";
+import { diagramCatalogSchema, parseSavedDiagramCatalog, type DiagramCatalog } from "@/lib/diagram-catalog";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
@@ -19,8 +19,5 @@ export async function saveDiagramCatalog(input: unknown) {
 export async function readDiagramCatalog(): Promise<DiagramCatalog | null> {
   const { data, error } = await createServiceSupabase().storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(CATALOG_PATH);
   if (error || !data) return null;
-  try {
-    const parsed = diagramCatalogSchema.safeParse(JSON.parse(await data.text()));
-    return parsed.success && parsed.data.items.length ? parsed.data : null;
-  } catch { return null; }
+  try { return parseSavedDiagramCatalog(await data.text()); } catch { return null; }
 }
