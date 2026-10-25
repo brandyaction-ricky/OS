@@ -149,6 +149,25 @@ export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: str
 }
 
 
+// ── 제목 · 썸네일 공식 (패키징 정본 작업 순서, 2026-09-03): the 기획안's first titles and the 최종 썸네일 다시 뽑기 read the same lines (owner request 2026-10-25) ──
+export const PACKAGING_FORMULA = `- 「패키징_절차」 정본을 끝까지 열고 그 작업 순서대로 뽑습니다. 아래 문서 목록에 없으면 search_knowledge로 찾아 엽니다.
+- 제목 공식과 썸네일 문구 공식을 따로 뽑습니다. 제목 공식은 레퍼런스(references) 제목에서, 썸네일 문구 공식은 실제 썸네일 이미지(thumbnail)를 열어 박힌 글자에서 찾습니다.
+- 문구를 형태소 단위(조사 · 어미 · 품사)로 쪼개 슬롯 골격만 가져옵니다. 슬롯을 채우는 내용은 이 영상이 실제로 하는 말로 채웁니다.
+- 글자 수 · 질문형/선언형 · 제목과 같은 말인지는 고정값이 없습니다. 그 레퍼런스가 성과를 낸 방식을 따릅니다.
+- 이미지를 열 수 없으면 썸네일 문구 공식 끝에 "(썸네일 이미지 확인 못 함 — 제목으로 추정)"이라고 밝힙니다. 반복이 약하면 "공통 패턴 약함"이라 적고 지어내지 않습니다.
+- 레퍼런스가 3개 미만이면 같은 주제로 터진 영상(조회수 ÷ 구독자 높은 순)을 더 찾아봐도 됩니다. 그래도 없으면 정본 주의사항대로 채널 누적 데이터(정본의 Good · Worst 사례)로 판단하고 그렇게 밝힙니다.
+- 훅(숫자 · 경고 · 질문 · 반전 · 폭로 · 손해 · 방법 등)이 한 가지로 몰리지 않게 씁니다. A · B는 클릭 이유가 구분돼야 합니다(정본 AB 테스트 원칙).
+- 제목과 문구가 건 약속은 영상이 실제로 이행해야 합니다(약속-배달 정합). 정본의 금지 언어 · 프레임과 채널별 적용을 지키고, 30대 직장인이 바로 알아듣는 일상어로 씁니다.`;
+/** Reference videos with the thumbnail address the copy formula is read from. */
+const refsWithThumbs = (project: ReturnType<typeof v1Stages>["project"]) =>
+  project.yp.topic.refs.map(ref => ({ title: ref.title ?? "", url: ref.url, thumbnail: ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null }));
+/** The 패키징 정본 first: ten 기획 documents used to push it out of the eight a card lists. */
+async function packagingRefs(supabase: RequestActor["supabase"], also: ("appeal_candidates" | "topic_plan")[] = []) {
+  const lists = await Promise.all((["title_package", ...also] as const).map(action => procedureRefs(supabase, action).catch(() => [])));
+  const docs = [...new Map(lists.flat().map(doc => [doc.id, doc])).values()];
+  return [...docs.filter(doc => doc.title.includes("패키징")), ...docs.filter(doc => !doc.title.includes("패키징"))].slice(0, 8);
+}
+
 // ── 기획안 by the staff member's own AI (owner request 2026-10-21): stands in for the earlier screens' 소구점 · 기획 · 제목 AI ──
 export const planResultSchema = z.object({
   titles: z.array(z.string().trim().min(1).max(100)).min(3).max(6),
@@ -167,20 +186,22 @@ export const v1PlanInputKey = (state: Pipeline) => { const { project } = v1Stage
 
 export async function v1PlanCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number) {
   const { project, plan } = v1Stages(state);
-  const lists = await Promise.all((["appeal_candidates", "topic_plan", "title_package"] as const).map(action => procedureRefs(supabase, action).catch(() => [])));
-  const docs = [...new Map(lists.flat().map(doc => [doc.id, doc])).values()].slice(0, 8);
-  const inputs = { topic: projectName(project), audience: project.yp.topic.target, references: project.yp.topic.refs.map(ref => ref.url), note: project.yp.topic.note,
+  const docs = await packagingRefs(supabase, ["appeal_candidates", "topic_plan"]);
+  const inputs = { topic: projectName(project), audience: project.yp.topic.target, references: refsWithThumbs(project), note: project.yp.topic.note,
     ...(plan.data.titles.some(title => title.text.trim()) ? { pdDraft: { titles: plan.data.titles.map(title => title.text).filter(Boolean), opening: plan.data.opening, body: plan.data.body, closing: plan.data.closing } } : {}),
     ...(project.yp.gates.draft.state === "changes" ? { ceoRequest: { memo: project.yp.gates.draft.memo, fields: project.yp.gates.draft.fields } } : {}) };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 유튜브 공정 기획안
 아래 절차 문서(기획 · 소구점 · 제목·썸네일 정본)를 읽고 이 주제의 기획안 초안을 만듭니다. 대표가 컨펌하고, 담당 PD가 먼저 다듬습니다.
-1. 제목 후보 3~6개: 첫째가 A(가장 추천), 둘째가 B. 서로 다른 소구로 씁니다.
-2. 썸네일 시안 2~4개: screen(어떤 장면) + copy(큰 글자, 12자 안팎). 순서대로 A · B · C 제목과 짝이 됩니다.
+1. 제목 후보 3~6개: 첫째가 A(가장 추천), 둘째가 B. 아래 「제목 · 썸네일 공식」대로 뽑습니다.
+2. 썸네일 시안 2~4개: screen(어떤 장면) + copy(썸네일에 박을 큰 글자). 같은 공식대로 뽑고, 순서대로 A · B · C 제목과 짝이 됩니다.
 3. 영상 흐름: opening(첫 30초 — 제목 · 썸네일의 약속을 바로 보여줄 장면), body(본론 3~6줄, "1. 결핍: … – [볼거리]" 형식), closing(클로징 · 다음 행동 — 어디로 보내는지).
-4. note: 쓴 근거와 출처(doc_id, 레퍼런스 영상), 확인하지 못한 것.
+4. note: 첫 줄에 "제목 공식: … / 썸네일 문구 공식: …", 이어서 쓴 근거와 출처(doc_id, 레퍼런스 영상), 확인하지 못한 것.
 ${inputs.ceoRequest ? "5. ceoRequest는 대표의 수정 요청입니다. 그 칸을 메모대로 고쳐서 냅니다.\n" : ""}
+## 제목 · 썸네일 공식 (패키징 정본 작업 순서 — 최종 썸네일 다시 뽑기와 같은 기준)
+${PACKAGING_FORMULA}
+
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${docs.length ? docs.map(doc => `- ${doc.title} (doc_id: ${doc.id})`).join("\n") : "- 제목에 '기획' · '소구점' · '패키징'이 들어간 정본 문서를 search_knowledge로 찾아 엽니다."}
 하나도 열지 못하면 쓰지 말고 fail로 끝냅니다.
@@ -356,24 +377,20 @@ export const v1RetitleInputKey = (state: Pipeline, slot: YpSlot, reason: string)
 
 export async function v1RetitleCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number, slot: YpSlot, reason: string) {
   const stages = v1Stages(state);
-  const docs = await procedureRefs(supabase, "title_package").catch(() => []);
+  const docs = await packagingRefs(supabase);
   const now = Object.fromEntries(SLOTS.flatMap(key => { const pair = finalPair(stages.plan.data, stages.make.data, key); return pair ? [[key, { title: pair.title, copy: pair.copy, screen: stages.plan.data.confirmed?.[key]?.thumb?.screen ?? "" }]] : []; }));
   const inputs = { slot, reason: reason || null, topic: projectName(stages.project), audience: stages.project.yp.topic.target, topicNote: stages.project.yp.topic.note, now,
-    references: stages.project.yp.topic.refs.map(ref => ({ title: ref.title ?? "", url: ref.url, thumbnail: ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null })),
+    references: refsWithThumbs(stages.project),
     script: narrationFromMarkdown(stages.outline.data.script).slice(0, 30_000) };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 최종 썸네일 ${slot}의 제목 · 썸네일 문구 다시 뽑기
 담당 PD가 최종 썸네일 ${slot}의 제목과 썸네일 문구(큰 글자)를 바꾸려고 합니다. 아래 패키징 정본의 공식대로 ${slot} 자리에 쓸 후보 3~5쌍(제목 + 썸네일 문구)을 냅니다. PD가 하나를 고르고, 대표가 최종 검수에서 확인합니다.
-1. 제목 공식(formula)과 썸네일 문구 공식(copyFormula)을 따로 뽑습니다. 제목 공식은 레퍼런스(references) 제목에서, 썸네일 문구 공식은 실제 썸네일 이미지(thumbnail)를 열어 박힌 글자에서 찾습니다.
-   - 문구를 형태소 단위(조사 · 어미 · 품사)로 쪼개 슬롯 골격만 가져옵니다. 슬롯을 채우는 내용은 이 영상 원고(script)가 실제로 하는 말로 채웁니다.
-   - 이미지를 열 수 없으면 copyFormula 끝에 "(썸네일 이미지 확인 못 함 — 제목으로 추정)"이라고 밝힙니다. 반복이 약하면 "공통 패턴 약함"이라 적고 지어내지 않습니다.
-   - 레퍼런스가 3개 미만이면 같은 주제로 터진 영상(조회수 ÷ 구독자 높은 순)을 더 찾아봐도 됩니다. 그래도 없으면 정본 주의사항대로 채널 누적 데이터(정본의 Good · Worst 사례)로 판단하고, formula에 그렇게 밝힙니다.
-2. 후보마다 hook(숫자 · 경고 · 질문 · 반전 · 폭로 · 손해 · 방법 등)을 붙이고, 훅이 한 가지로 몰리지 않게 씁니다.
-3. 제목과 문구가 건 약속은 원고가 실제로 이행해야 합니다(약속-배달 정합). 원고에 없는 약속은 쓰지 않습니다.
-4. 정본의 금지 언어 · 프레임과 채널별 적용을 지킵니다. 30대 직장인이 바로 알아듣는 일상어로 씁니다.
-5. now의 다른 칸과 클릭 이유가 겹치지 않게 합니다(정본 AB 테스트 원칙).
-${reason ? "6. reason은 PD가 지금 것이 마음에 들지 않는 이유입니다. 그 점을 고친 후보를 냅니다.\n" : ""}- why에는 공식의 어느 슬롯을 어떻게 채웠는지와 6요소 점수 합계를 한 줄로 씁니다.
+제목 공식은 result.formula, 썸네일 문구 공식은 result.copyFormula에 씁니다. 지금 다른 칸(now)과 클릭 이유가 겹치지 않게 합니다.
+
+## 제목 · 썸네일 공식 (패키징 정본 작업 순서 — 기획안 처음 뽑을 때와 같은 기준)
+${PACKAGING_FORMULA}
+${reason ? "- reason은 PD가 지금 것이 마음에 들지 않는 이유입니다. 그 점을 고친 후보를 냅니다.\n" : ""}- why에는 공식의 어느 슬롯을 어떻게 채웠는지와 6요소 점수 합계를 한 줄로 씁니다.
 
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${docs.length ? docs.map(doc => `- ${doc.title} (doc_id: ${doc.id})`).join("\n") : "- search_knowledge로 「패키징_절차」 정본을 찾아 엽니다."}

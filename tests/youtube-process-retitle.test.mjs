@@ -20,7 +20,9 @@ const compiled = { exports: {} };
 let written = null;
 const modules = { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib/youtube-script-check": scriptCheck, "@/lib/youtube-narration-document": narration,
   "@/lib/youtube-process/project": project, "@/lib/youtube-process/stages": stages, "@/lib/seo-column": seoColumn, "@/lib/youtube-process/short": short,
-  "./content-generation": { procedureRefs: async () => [{ id: "1399076c", title: "패키징_절차" }] },
+  // Ten 기획 documents come back for 소구점 and 기획; the 패키징 정본 is the oldest of the 제목 · 썸네일 ones.
+  "./content-generation": { procedureRefs: async (_supabase, action) => action === "title_package" ? [{ id: "thumblog", title: "썸네일 결정 로그" }, { id: "1399076c", title: "패키징_절차" }]
+    : Array.from({ length: 10 }, (_, index) => ({ id: `${action}-${index}`, title: `기획 문서 ${index}` })) },
   "./youtube-process-stages": { assertColumnOpen: () => undefined, writeStage: async (_supabase, _actor, _team, _project, kind, current, data) => { written = { kind, current, data }; return { id: "make", version: current.version + 1 }; } } };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
   { module: compiled, exports: compiled.exports, require: (name) => modules[name] });
@@ -72,12 +74,24 @@ test("the job card points at the 패키징 정본, asks for two formulas, and ca
   const card = await ai.v1RetitleCard({}, state("make"), 30, "B", "너무 길어요");
   assert.match(card, /패키징_절차 \(doc_id: 1399076c\)/);
   assert.match(card, /최종 썸네일 B의 제목 · 썸네일 문구/);
-  assert.match(card, /제목 공식\(formula\)과 썸네일 문구 공식\(copyFormula\)을 따로/);
+  assert.match(card, /제목 공식은 result\.formula, 썸네일 문구 공식은 result\.copyFormula/);
+  assert.ok(card.includes(ai.PACKAGING_FORMULA));
   assert.match(card, /https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg/);
   assert.match(card, /싫은 게 회사인지 일인지부터 나눠 봐요/);
   assert.match(card, /"reason": "너무 길어요"/);
   assert.match(card, /reason은 PD가/);
   assert.doesNotMatch(await ai.v1RetitleCard({}, state("make"), 30, "A", ""), /reason은 PD가/);
+});
+
+test("the 기획안's first titles follow the same formula as 다시 뽑기, with the 패키징 정본 listed first and no fixed length", async () => {
+  const card = await ai.v1PlanCard({}, state("draft"), 45);
+  assert.ok(card.includes(ai.PACKAGING_FORMULA));
+  assert.match(ai.PACKAGING_FORMULA, /제목 공식과 썸네일 문구 공식을 따로/);
+  assert.match(ai.PACKAGING_FORMULA, /글자 수 · 질문형\/선언형 · 제목과 같은 말인지는 고정값이 없습니다/);
+  assert.doesNotMatch(card, /12자/);
+  assert.match(card, /먼저 끝까지 열 문서 \(doc_id로 엽니다\)\n- 패키징_절차 \(doc_id: 1399076c\)/);
+  assert.match(card, /https:\/\/i\.ytimg\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg/);
+  assert.match(card, /note: 첫 줄에 "제목 공식: … \/ 썸네일 문구 공식: …"/);
 });
 
 test("candidates are checked and wait beside the slot without changing the pair", async () => {
