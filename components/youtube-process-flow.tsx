@@ -18,7 +18,7 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
   const flow = flowOf(project.yp.topic.type);
   const shown = flow.find(step => step.index === view) ?? flow[0];
   return <div className="yp-flow">
-    <Link className="yp-fl-proj" href="/content/projects" title={`${name} · 프로젝트 목록으로`}><Folder size={15} className="yp-i" aria-hidden="true" /><span>{name}</span></Link>
+    <Link className="yp-fl-proj" href="/content/projects" title="내 영상으로"><Folder size={15} className="yp-i" aria-hidden="true" /><span>{name}</span></Link>
     <ol className="yp-fl-steps" aria-label="공정 흐름">
       {flow.map(({ index, name: step }, at) => {
         const state = index < current ? "yp-done" : index === current ? "yp-now" : "";
@@ -46,8 +46,8 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
         ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label}<ArrowRight size={16} aria-hidden="true" /></Link>
         : <>
           {action.reason ? <span className="yp-fl-hint" id="yp-fl-hint">{action.reason}</span> : null}
-          <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} aria-describedby={action.reason ? "yp-fl-hint" : undefined} onClick={action.onClick}>
-            {action.busy ? "보내는 중…" : action.label}<ArrowRight size={16} aria-hidden="true" />
+          <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} aria-describedby={action.reason ? "yp-fl-hint" : undefined} title={action.reason || undefined} onClick={action.onClick}>
+            {action.busy ? "처리 중…" : action.label}<ArrowRight size={16} aria-hidden="true" />
           </button>
         </>}
     </div>

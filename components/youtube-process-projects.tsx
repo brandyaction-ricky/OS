@@ -76,7 +76,7 @@ export function YoutubeProjectsScreen() {
       <input className="yp-in" autoFocus maxLength={200} placeholder="어떤 영상을 만들까요? 예) 하루 일이 두 개뿐인데 저녁마다 지치는 이유" aria-label="새 영상 주제" value={title} onChange={event => setTitle(event.target.value)} />
       <button type="submit" className="yp-btn yp-pri" disabled={busy || !title.trim()}>{busy ? "만드는 중…" : "시작하기"} <ArrowRight size={14} aria-hidden="true" /></button>
       <button type="button" className="yp-ib" aria-label="닫기" onClick={() => { setCreating(false); setTitle(""); }}><X size={14} /></button></form> : null}
-    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>대표님 컨펌을 기다리는 영상이 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
+    {waitingMine ? <div className="yp-note yp-warn" role="status"><div>컨펌을 기다리는 영상이 <b>{waitingMine}개</b> 있어요. <Link className="yp-lnk" href="/content/confirm">컨펌하러 가기 →</Link></div></div> : null}
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error} <button type="button" className="yp-lnk" onClick={() => setAttempt(value => value + 1)}>다시 불러오기</button></div></div> : null}
     {projects === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
       : !all.length && !legacy.length ? <div className="yp-mv-empty"><b>첫 영상을 만들어 보세요</b><span className="yp-muted">주제 한 줄만 쓰면 시작돼요. 나머지는 화면이 차례로 알려 줘요.</span>
@@ -90,14 +90,18 @@ export function YoutubeProjectsScreen() {
         </div>
         <div className="yp-mv-list">
           {shown.map(project => { const next = nextAction(project); const pd = pdName(project.assigneeId);
+            // One grid per row (owner request 2026-10-25): title and next step · progress · PD · button line up down the list.
+            const kind = project.yp.topic.type === "short" ? "숏폼" : project.yp.topic.type ? "롱폼" : null;
+            const done = Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total;
             return <div key={project.id} className="yp-mv">
-              <div className="yp-mv-m"><Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link>
-                <div className={`yp-mv-s yp-${next.tone}`}>{next.text}</div>
-                <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total * 100)}%` }} /></span>{pd ? <span>담당 {pd}</span> : null}</div></div>
+              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className="yp-tag">{kind}</span> : null}<Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
+                <div className={`yp-mv-s yp-${next.tone}`}>{next.text}</div></div>
+              <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} · {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(done * 100)}%` }} /></span></div>
+              <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
               <Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>
             </div>; })}
           {legacyShown.map(topic => <div key={topic.id} className="yp-mv">
-            <div className="yp-mv-m"><div className="yp-mv-t" title={topic.title}>{topic.title}</div><div className="yp-mv-s">이전 화면에서 하던 영상이에요 · 옮기면 여기서 이어서 해요</div></div>
+            <div className="yp-mv-m"><div className="yp-mv-t" title={topic.title}>{topic.title}</div><div className="yp-mv-s">이전 화면에서 하던 영상이에요. 옮기면 여기서 이어서 해요.</div></div>
             <button type="button" className="yp-btn yp-pri" onClick={() => { setMoving(topic); moveDialog.current?.showModal(); }}>옮겨서 이어 하기 <ArrowRight size={14} aria-hidden="true" /></button></div>)}
           {!shown.length && !legacyShown.length ? <p className="yp-pempty">{query.trim() ? "찾는 영상이 없어요" : filter === "done" ? "아직 끝난 영상이 없어요" : filter === "mine" ? "내가 담당한 영상이 없어요" : "진행 중인 영상이 없어요"}</p> : null}
         </div>
@@ -106,8 +110,8 @@ export function YoutubeProjectsScreen() {
     <dialog ref={moveDialog} className="yp-modal" aria-labelledby="yp-move-title" onClose={() => setMoving(null)}>
       <div className="yp-modal-h"><span id="yp-move-title">이 영상을 옮겨서 이어 할까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => moveDialog.current?.close()}><X size={14} /></button></div>
       <div className="yp-modal-b"><p style={{ marginTop: 0 }}><b>{moving?.title}</b></p>
-        <ul className="yp-nowsteps"><li>지금까지 만든 기획 · 제목과 썸네일 문구 · 원고 · 완성 영상 · 설명란이 그대로 들어가요.</li>
-          <li>이전 화면에서 승인된 단계는 끝난 것으로 이어지고, 남은 단계부터 하면 돼요.</li><li>원래 기록은 지우지 않아요.</li></ul></div>
+        <ul className="yp-nowsteps"><li>지금까지 만든 기획 · 제목과 썸네일 문구 · 원고 · 최종본 · 설명란이 그대로 들어가요.</li>
+          <li>이전 화면에서 컨펌된 단계는 끝난 것으로 이어지고, 남은 단계부터 하면 돼요.</li><li>원래 기록은 지우지 않아요.</li></ul></div>
       <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => moveDialog.current?.close()}>취소</button><button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => void adopt()}>{busy ? "옮기는 중…" : "옮기고 열기"}</button></div>
     </dialog>
   </>;

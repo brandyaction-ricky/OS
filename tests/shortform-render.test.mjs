@@ -185,7 +185,7 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       if(String(url).endsWith("/media")){
         const input=JSON.parse(options.body);let result;
         if(input.action==="heartbeat"){signals.push(input);result={ok:true};}
-        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,3);result=await h.api.claimShortformRender(h.service,input.layoutVersion);}
+        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,4);result=await h.api.claimShortformRender(h.service,input.layoutVersion);}
         else if(input.action==="shorts_complete")result=await h.api.completeShortformRender(input,h.service);
         else if(input.action==="shorts_fail")result=await h.api.failShortformRender(input,h.service);
         else throw new Error("Unexpected paid/network operation "+input.action);
@@ -211,9 +211,9 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
     }finally{globalThis.fetch=originalFetch;}
   });
 
-// 광고 정사각형 (owner request 2026-10-25): a 1:1 render of the same ad sits beside the 9:16 one, only a layoutVersion 3 worker takes it,
-// the card keeps its 9:16 video, and the narration is paid once for both.
-test("a square ad is its own job beside the vertical one; old workers skip it and the narration is paid once",async()=>{
+// 광고 정사각형 · 4:5 (owner requests 2026-10-25): 1:1 and 4:5 renders of the same ad sit beside the 9:16 one, only a worker that draws
+// the size takes it (1:1 from layoutVersion 3, 4:5 from 4), the card keeps its 9:16 video, and the narration is paid once for all.
+test("each ad size is its own job beside the vertical one; old workers skip what they cannot draw and the narration is paid once",async()=>{
   const h=await setup();
   const item=()=>h.item();
   await assert.rejects(h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"1:1"),code("SHORTFORM_ASPECT_AD_ONLY"));
@@ -221,16 +221,19 @@ test("a square ad is its own job beside the vertical one; old workers skip it an
   item().version+=1;
   const vertical=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true);
   const square=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"1:1");
-  assert.notEqual(square.runId,vertical.runId);
-  // A version 2 worker gets the vertical job and never the square one.
+  const portrait=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"4:5");
+  assert.equal(new Set([vertical.runId,square.runId,portrait.runId]).size,3);
+  // A version 2 worker gets the vertical job and never an ad size; version 3 gets the square and never the 4:5.
   const first=await h.api.claimShortformRender(h.service,2);
   assert.equal(first.renderId,vertical.runId);assert.equal(first.aspect,"9:16");
   assert.equal((await h.api.claimShortformRender(h.service,2)).idle,true);
   const second=await h.api.claimShortformRender(h.service,3);
   assert.equal(second.renderId,square.runId);assert.equal(second.aspect,"1:1");
-  // Both renders ask for the same narration; Fish is called once.
-  await h.api.shortformVoice({renderId:first.renderId,lease:first.lease,index:0},h.service);
-  await h.api.shortformVoice({renderId:second.renderId,lease:second.lease,index:0},h.service);
+  assert.equal((await h.api.claimShortformRender(h.service,3)).idle,true);
+  const third=await h.api.claimShortformRender(h.service,4);
+  assert.equal(third.renderId,portrait.runId);assert.equal(third.aspect,"4:5");
+  // All three renders ask for the same narration; Fish is called once.
+  for(const job of [first,second,third])await h.api.shortformVoice({renderId:job.renderId,lease:job.lease,index:0},h.service);
   assert.equal(h.voiceCalls,1);
   // Completing the square one leaves the card's 9:16 video alone.
   const bytes=Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from("ftypisom"),Buffer.alloc(32)]);

@@ -14,6 +14,8 @@ import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
 export const LAST_KEY = "brandy-yp-last-project";
 export const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 export const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : 0;
+/** 컨펌 대기 줄: how long it has waited. */
+export const waitStatus = (iso?: string) => `컨펌 대기 · ${daysSince(iso) ? `${daysSince(iso)}일째` : "오늘 요청"}`;
 export const hhmm = () => { const date = new Date(); return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 
 /** One step screen's project: loaded from ?project= (or the last one opened), with its step records and finals. */
@@ -63,6 +65,8 @@ export function useGate(page: YpPage, gate: YpGate) {
       const result = await page.client.gate(project.id, gate, action, project.version, reply);
       setReplyOpen(false);
       page.setBundle(current => current ? { ...current, project: result.project } : current);
+      // The request is usually sent from the step's last button; its waiting box (and the 대표's OK) sit at the top.
+      if (action === "request") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) { page.fail(reason); } finally { setBusy(false); }
   };
   return { busy, act, replyOpen, setReplyOpen };
@@ -74,21 +78,23 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
   const info = project.yp.gates[gate];
-  if (info.state === "wait") return { kind: "status", status: `대표 컨펌 대기 · ${daysSince(info.requestedAt)}일`, secondary: { label: "요청 취소", onClick: () => void control.act("cancel") } };
+  if (info.state === "wait") return { kind: "status", status: waitStatus(info.requestedAt), secondary: { label: "요청 취소", onClick: () => void control.act("cancel") } };
   return { kind: "button", label: `${GATE_NAME[gate]} ${["changes", "hold"].includes(info.state) ? "다시 요청" : "요청"}`, reason: missing, busy: control.busy, onClick: () => void control.act("request") };
 }
 /** '지금 단계로' when looking at another step, else the step's own action. */
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
+  // A finished video keeps every step readable but offers no step's button (a request on 주제 would only be refused).
+  if (current >= YP_FLOW.length) return own.kind === "status" ? own : { kind: "status", status: "끝난 영상이에요" };
+  return view !== current ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
 }
 
 /** The sentence under a confirm step's title: what to do now, or that there is nothing to do while the 대표 decides. */
 export function gateSub(project: YpProject | undefined, gate: YpGate, todo: string, done: string) {
   const state = project?.yp.gates[gate].state;
-  if (state === "wait") return "대표 컨펌을 기다리는 중이에요. 지금 할 일은 없어요. 결과가 나오면 알림이 가요.";
-  if (state === "changes") return "대표가 고르라고 한 칸만 고치고 다시 요청해요.";
+  if (state === "wait") return "대표 컨펌을 기다려요. 결과가 나오면 알려 드려요.";
+  if (state === "changes") return "대표가 표시한 칸만 고치고 다시 요청해요.";
   if (state === "hold") return "보류됐어요. 손본 뒤 다시 요청할 수 있어요.";
   if (state === "ok") return done;
   return todo;
@@ -109,12 +115,12 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
   const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string };
   const name = GATE_NAME[gate];
   if (info.state === "wait") return <div className="yp-cwait" role="status">
-    <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} · 대표 대기</b><span className="yp-hint">{md(info.requestedAt)} 올라감 · 대기 {daysSince(info.requestedAt)}일 · 6시간마다 다시 알림 (22~08시 제외)</span></div>
+    <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} 대기</b><span className="yp-hint">{md(info.requestedAt)} 요청{daysSince(info.requestedAt) ? ` · ${daysSince(info.requestedAt)}일째` : ""}</span></div>
     {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
     {page.canConfirm && page.client ? <ConfirmActions project={project} gate={gate} client={page.client} onDone={() => void page.reload()} />
-      : <p className="yp-hint">{gate === "draft" ? "바꾸고 싶은 건 대표가 [수정 요청]에 메모로 남겨요. OK가 나면 제목 · 썸네일 A · B · (C)가 확정돼요." : gate === "review" ? "대표 OK가 나야 업로드로 넘어가요. 수정 요청이면 최종 검수로 돌아와요." : "OK가 나면 다음 단계가 열려요."} 기다리는 동안 고치려면 위 [요청 취소]를 누르세요.</p>}
+      : <p className="yp-hint">고치려면 [요청 취소]를 눌러요.</p>}
   </div>;
-  if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />고칠 칸: {(info.fields ?? []).map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}. 고친 뒤 위 [{name} 다시 요청]을 누르세요. 고칠 게 없다고 판단하면 이유와 함께 그대로 다시 요청할 수 있어요.</div></div>;
+  if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />고칠 칸: {(info.fields ?? []).map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 다시 요청할 수 있어요.</div></div>;
   if (info.state === "ok") return <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>{name} OK{info.decidedAt ? ` · ${md(info.decidedAt)}` : ""} · 대표</b>{okExtra}</div></div>;
   return null;
@@ -125,7 +131,7 @@ export function ReplyForm({ control }: { control: ReturnType<typeof useGate> }) 
   const [text, setText] = useState("");
   if (!control.replyOpen) return null;
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); if (text.trim()) void control.act("request", text.trim()); }}>
-    <label>고친 칸이 없어요. 다시 요청하는 이유를 한 줄 써 주세요 (대표 화면에 ‘PD 답글’로 보여요)<input className="yp-in" maxLength={200} value={text} onChange={event => setText(event.target.value)} /></label>
+    <label>고친 칸 없이 다시 요청하는 이유 (대표에게 보여요)<input className="yp-in" maxLength={200} value={text} onChange={event => setText(event.target.value)} /></label>
     <div><button type="submit" className="yp-btn yp-pri" disabled={control.busy || !text.trim()}>이유와 함께 다시 요청</button> <button type="button" className="yp-btn" onClick={() => control.setReplyOpen(false)}>취소</button></div>
   </form>;
 }
@@ -153,9 +159,9 @@ export function YpFrame({ page, view, action, header, title, sub, savedAt, onSav
   /** What this step still needs, shown with the next button at the end of the step (owner request 2026-10-21: no guide text). */
   todo?: { label: string; done: boolean }[]; children?: ReactNode;
 }) {
-  if (!page.id) return <>{header}<p className="yp-hint" role="status">프로젝트를 여는 중이에요…</p></>;
+  if (!page.id) return <>{header}<p className="yp-hint" role="status">영상을 여는 중이에요…</p></>;
   if (!page.bundle) return <>{header}{page.error ? <div className="yp-note yp-warn" role="alert"><div>{page.error} <button type="button" className="yp-lnk" onClick={() => void page.reload()}>다시 불러오기</button></div></div>
-    : <p className="yp-hint" role="status">프로젝트를 불러오는 중이에요…</p>}</>;
+    : <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p>}</>;
   return <>
     {action ? <YoutubeFlow project={page.bundle.project} view={view} action={action} /> : null}
     {/* The step is the page heading here (시안 stageHead); the menu name stays in the breadcrumb. */}
@@ -177,7 +183,7 @@ export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { l
       {todo.map(item => <span key={item.label} className={item.done ? "yp-o" : "yp-x"}>{item.done ? "✓" : "○"} {item.label}</span>)}</> : action.kind === "button" && action.reason ? <span>{action.reason}</span> : null}</div>
     {action.kind === "status" ? (action.secondary ? <button type="button" className="yp-btn" onClick={action.secondary.onClick}>{action.secondary.label}</button> : null)
       : action.kind === "link" ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label} →</Link>
-      : <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} onClick={action.onClick}>{action.busy ? "보내는 중…" : action.label} →</button>}
+      : <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} onClick={action.onClick}>{action.busy ? "처리 중…" : action.label} →</button>}
   </div>;
 }
 
@@ -185,5 +191,5 @@ export function StepFooter({ action, todo = [] }: { action: YpAction; todo?: { l
 export function LockedStep({ page, name }: { page: YpPage; name: string }) {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage];
-  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>지금 단계는 {stepName(current, project.yp.topic.type)}이에요. <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
+  return <div className="yp-locked"><Info size={18} className="yp-i" aria-hidden="true" /><div><b>{name} 단계는 아직 열리지 않았어요</b><p>지금 단계: {stepName(current, project.yp.topic.type)} <Link className="yp-lnk" href={stepHref(current, project.id)}>지금 단계로 가기 →</Link></p></div></div>;
 }

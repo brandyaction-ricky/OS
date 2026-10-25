@@ -115,11 +115,11 @@ export function stageData<K extends YpStageKind>(kind: K, stored: unknown, proje
 export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.mode === "img" ? thumb.path : (thumb.copy?.trim() || thumb.screen?.trim())));
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
 export function draftMissing(plan: YpPlan) {
-  for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `제목 ${slotOf(index)}(${name} 줄)를 써주세요`;
-  for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `썸네일 ${slotOf(index)}(${name} 시안)를 넣어주세요`;
-  if (!plan.opening.trim()) return "오프닝을 써주세요";
-  if (!plan.body.trim()) return "본론을 써주세요";
-  if (!plan.closing.trim()) return "클로징 · 다음 행동을 써주세요";
+  for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;
+  for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 시안(${slotOf(index)})을 넣어 주세요`;
+  if (!plan.opening.trim()) return "오프닝을 써 주세요";
+  if (!plan.body.trim()) return "본론을 써 주세요";
+  if (!plan.closing.trim()) return "클로징 · 다음 행동을 써 주세요";
   return "";
 }
 /** What the 기획안 컨펌 OK fixes: title and thumbnail pairs A · B and C when both rows have something. */
@@ -145,7 +145,7 @@ export function scriptChars(markdown: string) {
 }
 export function runtimeError(runtime: number | null) {
   if (runtime === null) return "";
-  return Number.isInteger(runtime) && runtime >= 1 && runtime <= 120 ? "" : "러닝타임은 1 ~ 120분 사이 숫자로 써주세요";
+  return Number.isInteger(runtime) && runtime >= 1 && runtime <= 120 ? "" : "러닝타임은 1 ~ 120분 사이 숫자로 써 주세요";
 }
 /** 예상 길이 and whether it is within ±20% of the runtime. */
 export function lengthEstimate(markdown: string, runtime: number | null) {
@@ -158,10 +158,10 @@ export function lengthEstimate(markdown: string, runtime: number | null) {
     : { ok: false, text: `정한 러닝타임(${runtime}분)보다 약 ${Math.max(1, Math.round(Math.abs(minutes - runtime)))}분 ${diff < 0 ? "짧아요" : "길어요"}` } };
 }
 export function outlineMissing(outline: YpOutline) {
-  if (outline.spec.runtimeMin === null) return "러닝타임을 정해주세요";
+  if (outline.spec.runtimeMin === null) return "러닝타임을 정해 주세요";
   const error = runtimeError(outline.spec.runtimeMin);
   if (error) return error;
-  if (!scriptChars(outline.script)) return "원고를 써주세요";
+  if (!scriptChars(outline.script)) return "원고를 써 주세요";
   return "";
 }
 /** The 기획안 영상 흐름 as the first 원고 (시안 scriptFromDraft). */
@@ -180,13 +180,13 @@ export const MAKE_STEPS: Record<YpKind, [YpMakeStatus, string][]> = {
   short: [["prep", "준비"], ["done", "완료"]],
 };
 export function thumbsMissing(make: YpMake) {
-  for (const slot of ["A", "B"] as const) if (!make.thumbs[slot]) return `최종 썸네일 ${slot}를 올려주세요`;
+  for (const slot of ["A", "B"] as const) if (!make.thumbs[slot]) return `${slot} 최종 썸네일을 올려 주세요`;
   return "";
 }
 
 // ── 업로드 (S7) ──
 export function utmUrl(utm: YpUpload["utm"], videoId?: string) {
-  return `${UTM_BASE}?utm_source=youtube&utm_medium=organic&utm_campaign=${utm.camp}&utm_content=${videoId ?? "[업로드 후 영상 ID]"}&utm_term={query}`;
+  return `${UTM_BASE}?utm_source=youtube&utm_medium=organic&utm_campaign=${utm.camp}&utm_content=${videoId ?? "[올린 뒤 채워짐]"}&utm_term={query}`;
 }
 export function pinnedDraft(utm: YpUpload["utm"]) {
   return `⬇️ [진단 CTA 한 줄]\n${utm.short || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
@@ -201,6 +201,10 @@ function section(text: string, key: string) {
   return lines;
 }
 /** The 7 automatic checks under the description (시안 descChecks). Advisory only: they never block the upload. */
+/** The 직접 쓰기 starting layout of the description: section labels and dividers only. */
+export const DESC_TEMPLATE = "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n";
+/** A description counts as written once it has something beyond that layout (usability QA 2026-10-25: the bare layout passed). */
+export const descWritten = (text: string) => text.split("\n").some(line => { const t = line.trim(); return Boolean(t) && !/^(#|-+|⬇️|00:00|\[[^\]]+\])$/.test(t); });
 export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) {
   const keys = ["⬇️", "[타임라인]", "[설명문 본문]", "[인용 및 출처]", "[히든 태그]"].map(key => text.indexOf(key));
   const order = /^\s*#/.test(text) && keys.every(at => at >= 0) && keys.every((at, i) => !i || at > keys[i - 1]) && text.lastIndexOf("-----") < keys[4];
@@ -214,7 +218,7 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
   return [
     { ok: order, text: order ? "구역 순서가 맞고 히든 태그가 맨 마지막이에요" : "구역 순서가 다르거나 히든 태그가 맨 뒤가 아니에요" },
     { ok: timelineOk, text: timelineOk ? "타임라인: 00:00 시작 · 3줄 이상 · 줄마다 20자 안팎" : "타임라인: 00:00 시작 · 3줄 이상 · 줄마다 20자 안팎인지 봐 주세요" },
-    { ok: Boolean(upload.srt), text: upload.srt ? "타임라인 시간이 SRT 기준이에요" : "SRT가 없어 타임라인 시간이 자리표시예요" },
+    { ok: Boolean(upload.srt), text: upload.srt ? "타임라인 시간이 자막 기준이에요" : "자막이 없어 타임라인 시간이 자리표시예요" },
     { ok: body.length === 5, text: body.length === 5 ? "본문이 5줄이에요" : `본문이 ${body.length}줄이에요 (5줄)` },
     { ok: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)), text: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)) ? "진단 CTA가 짧고 '무료'가 없어요" : "진단 CTA가 길거나 '무료'가 붙었어요 (진단은 유료)" },
     { ok: !fake.length, text: fake.length ? `확인 안 된 링크가 있어요: ${fake[0]}` : links.length ? "링크가 UTM 주소예요" : "링크는 자리표시예요 (지어낸 링크 없음)" },

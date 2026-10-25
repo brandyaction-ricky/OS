@@ -326,9 +326,6 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
             <strong>{profile?.displayName}</strong><span>{profile?.email}</span><span className="role-badge">{roleLabel(profile?.role ?? "member")}</span>
             <Link href="/settings/account" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 계정 · 채널 연결</Link>
             {hrEnabled && canOpenMenu(profile, "/hr/my-leave", menuAccess.allowed) ? <Link href="/hr/my-leave" onClick={()=>setProfileOpen(false)}><UserRound size={15} /> 내 휴가</Link> : null}
-            <div className="display-controls" role="group" aria-label="화면 설정">
-              <button type="button" className="display-control" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 전환`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}<span>{theme === "dark" ? "라이트" : "다크"} 모드</span></button>
-            </div>
             <button onClick={() => { setMenuGuide(true); setProfileOpen(false); setMobileOpen(false); }}><CircleHelp size={15} /> 메뉴 안내 다시 보기</button>
             {!demo ? <><button onClick={() => { setPasswordOpen(true); setProfileOpen(false); setMobileOpen(false); }}><KeyRound size={15} /> 비밀번호 변경</button><button onClick={signOut}><LogOut size={15} /> 로그아웃</button></> : null}
           </div> : null}
@@ -342,6 +339,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
           <div className="topbar-actions">
             <button className="command-trigger" data-ui="search" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd data-ui="kbd"><Command size={11} />K</kbd></button>
             <button type="button" className={`display-control guidance-control${guidanceOn ? " active" : ""}`} data-ui={guidanceOn ? "guide-toggle-on" : "guide-toggle-off"} role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
+            <button type="button" className="display-control theme-control" data-ui="theme-toggle" aria-label={`${theme === "dark" ? "라이트" : "다크"} 모드로 바꾸기`} title={`${theme === "dark" ? "라이트" : "다크"} 모드로 바꾸기`} onClick={changeTheme}>{theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}</button>
             <div className="quick-record-menu" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setQuickOpen(false);}} onKeyDown={event=>{if(event.key==="Escape"){setQuickOpen(false);event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus();}}}>
               <button className="quick-record-link quick-add" data-ui="quick-add" aria-label="빠른 기록" onClick={()=>{setQuickOpen(false);setRequestOpen(true);}}><NotebookPen size={16} /><span>빠른 기록</span></button>
               <button className="quick-record-more" aria-label="기록 종류 선택" aria-expanded={quickOpen} aria-controls="quick-record-options" onClick={()=>setQuickOpen(!quickOpen)}><ChevronDown size={14}/></button>

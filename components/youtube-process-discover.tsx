@@ -11,6 +11,7 @@ import {
   type DiscoverChannel, type DiscoverVideo, type NicheCluster, type NicheDecision, type NicheVideo,
 } from "@/lib/youtube-process/discover";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { CostTag } from "./youtube-process-cost";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
@@ -54,9 +55,9 @@ const DEMO_BOARD: Board = { boardId: "00000000-0000-5000-a000-000000000000", poo
   { id: "demo-n3", title: "좋아하는 일 vs 잘하는 일", formula: "[A]와 [B] 사이에서 고민될 때", desire: "선택의 기준", rule: "강점과 흥미의 차이로 풀어낸다", videos: DEMO_VIDEOS.slice(5), channels: 1, stage: "solo" },
 ] };
 const TAB_HINT: Record<Tab, string> = {
-  channels: "분류를 누르면 그 분야 채널이 나와요. 평소 조회수와 터진 영상 수를 보고 매일 볼 채널을 목록에 넣어요.",
-  breakouts: `자기 채널 평소 조회수의 ${BREAKOUT.ratio}배 넘게 나온 영상이에요 (${compactCount(BREAKOUT.minViews)}회 이상 · 4분 이상). 틈새로 묶을 영상은 [틈새 재료로 담기]를 눌러요.`,
-  niche: "같은 제목 공식이 서로 다른 채널 3곳에서 터지면 확인된 주제, 2곳이면 지켜보는 것이에요. 정하면 [기획으로 넘기기]로 새 영상이 돼요.",
+  channels: "매일 볼 채널을 골라 넣어요.",
+  breakouts: `평소의 ${BREAKOUT.ratio}배 넘게 나온 영상이에요.`,
+  niche: "3곳 이상에서 통한 제목 공식이에요.",
 };
 
 export function YoutubeDiscoverScreen() {
@@ -153,7 +154,7 @@ export function YoutubeDiscoverScreen() {
       </div>
       <div className="yp-disc-bar">
         {found && !busy ? <span className="yp-hint" style={{ margin: 0 }}>{found.cached ? `${hoursAgo ? `${hoursAgo}시간` : "조금"} 전에 찾아 둔 결과예요.` : "방금 유튜브에서 찾았어요."}
-          {!demo ? <> <button type="button" className="yp-lnk" onClick={() => void search(true)}><RefreshCw size={12} aria-hidden="true" /> 다시 찾기</button></> : null}</span> : null}
+          {!demo ? <> <button type="button" className="yp-lnk" onClick={() => void search(true)}><RefreshCw size={12} aria-hidden="true" /> 다시 찾기</button> <CostTag cost="youtube" /></> : null}</span> : null}
         <span style={{ flex: 1 }} />
         <select className="yp-in yp-w-auto" aria-label="기간" value={days} onChange={event => setDays(event.target.value)}><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option><option value="all">전체 기간</option></select>
       </div>
@@ -161,14 +162,14 @@ export function YoutubeDiscoverScreen() {
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
 
     {tab === "channels" ? <>
-      <div className="yp-fld-h"><b>{label} 채널 {busy ? "" : `${candidates.length}곳`}</b><span className="yp-gq">터진 영상이 많은 순 · 평소 {compactCount(BREAKOUT.minMedian)}회 미만 채널은 배수가 의미 없어 뺐어요</span></div>
+      <div className="yp-fld-h"><b>{label} 채널 {busy ? "" : `${candidates.length}곳`}</b><span className="yp-gq">터진 영상이 많은 순</span></div>
       {busy ? <p className="yp-pempty" role="status">유튜브에서 {label} 채널을 찾는 중이에요… {"category" in pick && pick.category === "all" ? "(전체는 20초쯤 걸려요)" : ""}</p>
         : candidates.length ? <div className="yp-dch-list">{candidates.map(channel => <article key={channel.id} className="yp-dch">
           <div className="yp-dch-h">
             <span style={{ flex: 1, minWidth: 0 }}><a href={channel.url} target="_blank" rel="noreferrer"><b>{channel.title}</b></a><br />
               <span className="yp-muted">{channel.subscribers ? `구독자 ${compactCount(channel.subscribers)} · ` : ""}평소 {compactCount(channel.median ?? 0)}회</span></span>
             {channel.breakouts ? <span className="yp-tag yp-ok">터진 영상 {channel.breakouts}개 · 최고 {ratioLabel(channel.best ?? 0)}</span> : <span className="yp-tag">터진 영상 없음</span>}
-            <button type="button" className="yp-btn yp-sm" disabled={demo || trackedChannelIds.has(channel.id) || saving === channel.id} onClick={() => void track(channel)}>{trackedChannelIds.has(channel.id) ? "목록에 있음" : saving === channel.id ? "넣는 중…" : <><Plus size={13} aria-hidden="true" /> 목록에 넣기</>}</button>
+            <button type="button" className="yp-btn yp-sm" disabled={demo || trackedChannelIds.has(channel.id) || saving === channel.id} onClick={() => void track(channel)}>{trackedChannelIds.has(channel.id) ? "매일 보는 중" : saving === channel.id ? "넣는 중…" : <><Plus size={13} aria-hidden="true" /> 매일 보기에 넣기</>}</button>
           </div>
           {channel.top.length ? <div className="yp-dch-v">{channel.top.map(video => <a key={video.id} className="yp-ref-thumb" href={video.url} target="_blank" rel="noreferrer" title={video.title}
             style={{ backgroundImage: `url(${video.thumbnail || `https://i.ytimg.com/vi/${video.id}/mqdefault.jpg`})` }} aria-label={`${video.title} 유튜브에서 보기`}><span>{ratioLabel(video.ratio ?? 0)}</span></a>)}</div> : null}
@@ -198,7 +199,7 @@ export function YoutubeDiscoverScreen() {
               {video.viewSubscriberRatio !== null ? <span className="yp-tag">구독자의 {ratioLabel(video.viewSubscriberRatio)}</span> : null}</span>
             <div className="yp-row-btns">
               {source !== "kept" ? <button type="button" className="yp-btn yp-sm" disabled={demo || keptIds.has(video.id) || saving === video.id} onClick={() => void keep(video)}>{keptIds.has(video.id) ? "담김" : saving === video.id ? "담는 중…" : "틈새 재료로 담기"}</button> : null}
-              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref(video)}>이 영상으로 새 영상</Link></div>
+              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref(video)}>새 영상으로 만들기</Link></div>
           </div></article>)}</div>
         : <p className="yp-pempty">{source === "kept" ? "담아 둔 영상이 없어요. 찾은 영상에서 [틈새 재료로 담기]를 눌러요." : source === "tracked" ? "매일 보는 채널에서 평소보다 크게 나온 영상이 생기면 여기에 모여요. ① 채널 모으기에서 채널을 넣어요."
           : onlyBreakouts && found?.videos.length ? `찾은 영상 ${found.videos.length}개 중 평소의 ${BREAKOUT.ratio}배를 넘은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요.` : "찾은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요."}</p>}
@@ -208,8 +209,8 @@ export function YoutubeDiscoverScreen() {
   </>;
 }
 
-const STAGE_TAG = { confirmed: ["확인된 주제", " yp-ok"], watch: ["아직 2곳", " yp-warn"], solo: ["1곳뿐", ""] } as const;
-const DECISION: Record<NicheDecision, string> = { plan: "기획으로 넘김", watch: "더 지켜보기", drop: "안 하기" };
+const STAGE_TAG = { confirmed: ["확인된 주제", " yp-ok"], watch: ["지켜보는 것", " yp-warn"], solo: ["혼자 터뜨린 것", ""] } as const;
+const DECISION: Record<NicheDecision, string> = { plan: "새 영상으로 만듦", watch: "더 지켜보기", drop: "안 하기" };
 const nicheNote = (niche: NicheCluster) => `틈새: ${niche.title}\n제목 공식: ${niche.formula}\n시청자가 원하는 것: ${niche.desire}\n바꿔 쓰는 법: ${niche.rule}\n근거: 서로 다른 채널 ${niche.channels}곳 · 영상 ${niche.videos.length}편`;
 
 /** ③ 틈새: the staff member's AI groups 터진 영상 by title formula; the team decides each group. */
@@ -242,7 +243,7 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
   if (!board) return error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : <p className="yp-pempty" role="status">틈새 판을 불러오는 중이에요…</p>;
   const open = board.clusters.filter(niche => !niche.decision);
   const decided = [...board.clusters.filter(niche => niche.decision), ...board.settled];
-  const sections = [["confirmed", "정해야 할 것", "서로 다른 채널 3곳 이상에서 같은 공식이 터졌어요"], ["watch", "지켜보는 것", "다른 채널 한 곳만 더 나오면 위로 올라와요"], ["solo", "혼자 터뜨린 것", "한 곳에서만 터졌어요 · 근거가 한 곳뿐이라는 걸 알고 정해요"]] as const;
+  const sections = [["confirmed", "정해야 할 것", "서로 다른 채널 3곳 이상에서 같은 공식이 터졌어요"], ["watch", "지켜보는 것", "다른 채널 한 곳만 더 나오면 위로 올라와요"], ["solo", "혼자 터뜨린 것", "한 곳에서만 터졌어요. 근거가 약해요"]] as const;
   const card = (niche: NicheCluster) => <details key={niche.id} className="yp-niche">
     <summary><span className="yp-niche-t">{niche.title}</span>
       <span className="yp-row-btns" style={{ marginTop: 0 }}><span className={`yp-tag${STAGE_TAG[niche.stage][1]}`}>{STAGE_TAG[niche.stage][0]}</span>{niche.decision ? <span className="yp-tag yp-acc">{DECISION[niche.decision.value]}</span> : null}
@@ -255,8 +256,8 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
       <ul className="yp-hist" style={{ margin: "8px 0" }}>{niche.videos.map(video => <li key={video.id}><span style={{ flex: 1, minWidth: 0 }}><a href={video.url} target="_blank" rel="noreferrer">{video.title}</a> <span className="yp-muted">— {video.channelTitle} · 조회 {compactCount(video.viewCount)}{video.ratio ? ` · 평소의 ${ratioLabel(video.ratio)}` : ""}</span></span></li>)}</ul>
       {niche.decision ? <div className="yp-row-btns"><span className="yp-muted">{niche.decision.by} · {ageLabel(niche.decision.at)} {DECISION[niche.decision.value]}</span>
         {board.clusters.some(row => row.id === niche.id) ? <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, null)}>되돌리기</button> : null}
-        {niche.decision.value === "plan" && niche.videos[0] ? <Link className="yp-btn yp-sm" href={newVideoHref(niche.videos[0], { title: niche.title, note: nicheNote(niche) })}>새 영상 하나 더</Link> : null}</div>
-        : <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === niche.id} onClick={() => void decide(niche, "plan")}>기획으로 넘기기</button>
+        {niche.decision.value === "plan" && niche.videos[0] ? <Link className="yp-btn yp-sm" href={newVideoHref(niche.videos[0], { title: niche.title, note: nicheNote(niche) })}>하나 더 만들기</Link> : null}</div>
+        : <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === niche.id} onClick={() => void decide(niche, "plan")}>새 영상으로 만들기</button>
           <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, "watch")}>더 지켜보기</button>
           <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, "drop")}>안 하기</button></div>}
     </div></details>;
@@ -300,16 +301,16 @@ function ChannelManager({ channels, onChanged, demo, token, team }: { channels: 
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
   const remove = async (channel: OsRecord) => {
-    if (!token || !window.confirm(`${channel.title}을(를) 매일 보는 채널에서 뺄까요? 지금까지 모인 영상은 그대로 남아요.`)) return;
+    if (!token || !window.confirm(`「${channel.title}」 채널을 매일 보기에서 뺄까요? 지금까지 모인 영상은 그대로 남아요.`)) return;
     setBusy(true); setError("");
     try { await archiveRecord(token, channel.id); await onChanged(); } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };
-  return <section className="yp-card" style={{ marginTop: 16 }}><div className="yp-card-h"><b>매일 보는 채널 {channels.length}곳</b><span className="yp-gq">한 시간마다 새 영상을 재서 평소보다 크게 나온 영상을 ② 터진 영상에 모아요</span></div>
+  return <section className="yp-card" style={{ marginTop: 16 }}><div className="yp-card-h"><b>매일 보는 채널 {channels.length}곳</b><span className="yp-gq">터진 영상이 생기면 ② 터진 영상에 모여요</span></div>
     <div className="yp-card-b">
       {channels.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{channels.map(channel => <li key={channel.id} style={{ alignItems: "center" }}><span style={{ flex: 1, minWidth: 0 }}><b>{channel.title}</b> <span className="yp-muted">{String(channel.metadata?.category ?? "분류 없음")}{channel.metadata?.subscribers ? ` · 구독자 ${compactCount(Number(channel.metadata.subscribers))}` : ""}</span></span>
         {channel.source_url ? <a className="yp-ib" href={channel.source_url} target="_blank" rel="noreferrer" aria-label={`${channel.title} 열기`}><ExternalLink size={14} /></a> : null}
         <button type="button" className="yp-ib" disabled={demo || busy} aria-label={`${channel.title} 빼기`} onClick={() => void remove(channel)}><X size={14} /></button></li>)}</ul>
-        : <p className="yp-hint" style={{ marginTop: 0 }}>아직 매일 보는 채널이 없어요. 위에서 [목록에 넣기]를 누르거나 주소로 넣어요.</p>}
+        : <p className="yp-hint" style={{ marginTop: 0 }}>아직 매일 보는 채널이 없어요. 위에서 [매일 보기에 넣기]를 누르거나 주소로 넣어요.</p>}
       <div className="yp-savebar"><input className="yp-in" style={{ flex: 1, minWidth: 200 }} value={input} onChange={event => { setInput(event.target.value); setFound(null); }} placeholder="채널 주소 또는 @핸들로 넣기" aria-label="채널 주소" />
         <button type="button" className="yp-btn" disabled={demo || busy || input.trim().length < 2} onClick={() => void verify()}>채널 확인</button></div>
       {found ? <div className="yp-savebar" style={{ marginTop: 8 }}><span style={{ flex: 1, minWidth: 0 }}><b>{found.title}</b> <span className="yp-muted">{found.handle} · 구독자 {compactCount(found.subscribers)}</span></span>

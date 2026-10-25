@@ -18,9 +18,9 @@ test("a multi-line topic splits into trimmed, non-empty lines", () => {
 });
 
 test("topic confirm request names the first missing field (수용 3)", () => {
-  assert.equal(topicMissing("", { type: "live", target: "타겟" }), "주제를 써주세요");
-  assert.equal(topicMissing("주제", { type: null, target: "타겟" }), "유형을 골라주세요");
-  assert.equal(topicMissing("주제", { type: "anim", target: "  " }), "정밀 타겟을 써주세요");
+  assert.equal(topicMissing("", { type: "live", target: "타겟" }), "주제를 써 주세요");
+  assert.equal(topicMissing("주제", { type: null, target: "타겟" }), "유형을 골라 주세요");
+  assert.equal(topicMissing("주제", { type: "anim", target: "  " }), "정밀 타겟을 써 주세요");
   assert.equal(topicMissing("주제", { type: "anim", target: "타겟" }), "");
   assert.match(topicMissing(Array.from({ length: YP_MAX_LINES + 1 }, (_, i) => `주제 ${i}`).join("\n"), { type: "live", target: "타겟" }), /20줄까지/);
 });
@@ -76,6 +76,7 @@ test("the generic records API may not create or change v1 projects", () => {
 test("a project opens on its current step", () => {
   assert.equal(stepHref(1, "p 1"), "/content/plan?project=p%201&view=draft");
   assert.equal(projectHref(project("p", "x", "review")), "/content/final-check?project=p&tab=video");
-  assert.equal(projectHref(project("p", "x", "done")), "/content/plan?project=p&view=topic");
+  // A finished video opens where its results are (usability QA 2026-10-25), not on 주제 with a request button.
+  assert.equal(projectHref(project("p", "x", "done")), "/content/shorts?project=p");
   assert.equal(stepHref(6, "p"), "/content/shorts?project=p");
 });

@@ -44,7 +44,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
   return stages;
 }
 
-export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" }
+export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
 /** Every final in time order: the OS-made 마이인 finals (from their runs), a 숏폼's MP4s from the render PC, and the files uploaded by hand. */
 export async function readFinals(supabase: Supabase, projectId: string, make: YpMake, kind?: YpKind | null): Promise<YpFinal[]> {
   if (kind === "short") {
@@ -52,9 +52,13 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
     const { data, error } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
       .eq("metadata->>itemId", shortCardId(projectId)).eq("status", "done").is("archived_at", null).limit(50);
     if (error) throw readFailed();
-    // A 1:1 square ad (2026-10-25) is a final of its own; screens pick the latest 9:16 one for Shorts and show the square beside it.
-    const made = (data ?? []).map(row => ({ at: row.updated_at as string, source: "short" as const, name: row.metadata?.plan?.aspect === "1:1" ? "숏폼 MP4 · 정사각형" : "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
-      durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string, ...(row.metadata?.plan?.aspect === "1:1" ? { aspect: "1:1" as const } : {}) }));
+    // A 1:1 square or 4:5 portrait ad (2026-10-25) is a final of its own; screens pick the latest 9:16 one for Shorts and show the ad sizes beside it.
+    const adName = { "1:1": "숏폼 MP4 · 정사각형", "4:5": "숏폼 MP4 · 4:5 세로" } as const;
+    const made = (data ?? []).map(row => {
+      const aspect = row.metadata?.plan?.aspect as keyof typeof adName | undefined;
+      return { at: row.updated_at as string, source: "short" as const, name: aspect && adName[aspect] ? adName[aspect] : "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
+        durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string, ...(aspect && adName[aspect] ? { aspect } : {}) };
+    });
     const uploads = make.finals.map(item => ({ at: item.at, source: "upload" as const, name: item.name, bytes: item.bytes, durationSeconds: null, path: item.path }));
     return [...made, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
   }
@@ -279,7 +283,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
   } else if (input.to === "review") {
     need(project.yp.stage === "make", "제작 단계에서만 최종 검수로 넘어갈 수 있어요.");
     const short = project.yp.topic.type === "short";
-    need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려주세요" : "최종본을 올려주세요");
+    need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려 주세요" : "최종본을 올려 주세요");
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
@@ -297,7 +301,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (gate === "draft") return draftMissing(stages.plan.data);
-  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려주세요";
+  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }
 /** The clips picked for 쇼츠 (채택), as the 쇼츠 확정 sees them. */

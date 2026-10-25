@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { utmUrl } from "@/lib/youtube-process/stages";
+import { descWritten, utmUrl } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "./youtube-oauth";
@@ -26,7 +26,7 @@ async function uploadReady(actor: RequestActor, id: string) {
   if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검수 컨펌 OK 뒤에 올릴 수 있어요.");
   const stages = await readStages(actor.supabase, project);
   const finals = await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type);
-  // A 숏폼's 1:1 square ad never goes up as a Short; the latest 9:16 final does.
+  // A 숏폼's 1:1 or 4:5 feed ad never goes up as a Short; the latest 9:16 final does.
   return { project, stages, final: finals.filter(final => !final.aspect).at(-1) ?? null };
 }
 
@@ -35,7 +35,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   const upload = stages.upload.data;
   if (upload.run?.status === "done") throw new ApiError(409, "UPLOAD_DONE", "이미 유튜브에 올린 영상이에요.");
   if (!final) throw new ApiError(409, "FINAL_REQUIRED", "올릴 최종본이 없어요.");
-  if (!upload.desc.trim()) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
+  if (!descWritten(upload.desc)) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
   const connection = await youtubeConnectionStatus(ownerId);

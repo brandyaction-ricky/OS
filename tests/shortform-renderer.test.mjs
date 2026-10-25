@@ -73,3 +73,27 @@ test("a 1:1 square ad renders 1080×1080 with the caption plate and the image wh
     await assert.rejects(renderShortform({mode:"direct",dir,aspect:"4:3",scenes:[{start:0,end:1,text:"x",imageFile:wide,hasVoice:false}]}),{code:"SHORTFORM_PLAN_INVALID"});
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+// 광고 4:5 (owner request 2026-10-25): the feed-ad portrait size, 1080×1350, with the same band and caption plate as the square.
+test("a 4:5 ad renders 1080×1350 with the wide image in its band and the caption below", {skip:!ready,timeout:120_000},async()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),"shortform-portrait-test-"));
+  try{
+    const wide=path.join(dir,"wide.png"),tall=path.join(dir,"tall.png");
+    execFileSync("ffmpeg",["-v","error","-y","-f","lavfi","-i","color=c=navy:s=1280x720","-frames:v","1",wide]);
+    execFileSync("ffmpeg",["-v","error","-y","-f","lavfi","-i","color=c=darkgreen:s=720x1280","-frames:v","1",tall]);
+    const portrait=await renderShortform({mode:"direct",dir,aspect:"4:5",scenes:[
+      {start:0,end:1,text:"4:5 피드 광고로 만들어요",imageFile:wide,hasVoice:false},
+      {start:1,end:2,text:"세로 이미지도 잘리지 않아요",imageFile:tall,hasVoice:false},
+    ]});
+    const probe=probeShortform(portrait.file);
+    assert.equal(probe.video.width,1080);
+    assert.equal(probe.video.height,1350);
+    const frame=execFileSync("ffmpeg",["-v","error","-i",portrait.file,"-frames:v","1","-f","rawvideo","-pix_fmt","rgb24","pipe:1"],{maxBuffer:8_000_000});
+    const pixel=(x,y)=>[...frame.subarray((y*1080+x)*3,(y*1080+x)*3+3)];
+    assert.ok(pixel(540,524)[2]>80,"The wide image sits in its band, visible");
+    assert.ok(Math.max(...pixel(540,100))>5,"Space above the band is the blurred background, not black");
+    assert.ok(pixel(540,930).every(value=>value<60),"The caption plate sits below the band");
+    execFileSync("ffmpeg",["-v","error","-y","-i",portrait.file,"-frames:v","1","/private/tmp/shortform-portrait-frame.png"]);
+    execFileSync("ffmpeg",["-v","error","-y","-ss","1.5","-i",portrait.file,"-frames:v","1","/private/tmp/shortform-portrait-frame-tall.png"]);
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});
