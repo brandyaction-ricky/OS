@@ -1,8 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useCallback, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, Upload, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
@@ -38,6 +38,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   // 최종 썸네일 [공식대로 다시 뽑기]: one slot at a time goes to the PD's own AI.
   const redoJob = useStaffJob(page, "retitle", onFinal);
   const [redoAsk, setRedoAsk] = useState<{ slot: YpSlot; reason: string } | null>(null);
+  // The slot whose 고치기 · 후보 panel is open under the three cards (a card is too narrow to read candidates in).
+  const [fixing, setFixing] = useState<YpSlot | null>(null);
   const bundle = page.bundle;
   const project = bundle?.project;
   const make = bundle?.stages.make;
@@ -140,9 +142,11 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </YpSection>
       <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
-        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`} job={redoJob}
-          onUpload={file => void uploadThumb(slot, file)} onPair={(title, copy, reasonText) => save({ pair: { slot, title, copy, reason: reasonText } }, "pair")}
-          onRedo={reasonText => setRedoAsk({ slot, reason: reasonText })} />)}</div>
+        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot}
+          onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")} />)}</div>
+        {fixing && canThumb ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
+          onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
+          onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
         <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검수에서 대표가 확인해요.</p>
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={projectName(project)} />
       </YpSection></>}
@@ -150,55 +154,68 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   </YpFrame>;
 }
 
-function FinalThumb({ page, slot, make, can, busy, job, onUpload, onPair, onRedo }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
-  onUpload: (file: File) => void; onPair: (title: string, copy: string, reason: string) => Promise<boolean>; onRedo: (reason: string) => void }) {
+function FinalThumb({ page, slot, make, can, busy, job, open, onUpload, onFix, onReset }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
+  open: boolean; onUpload: (file: File) => void; onFix: () => void; onReset: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const plan = page.bundle!.stages.plan.data;
   const confirmed = plan.confirmed?.[slot];
   const pair = finalPair(plan, make, slot);
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [copy, setCopy] = useState("");
-  const [reason, setReason] = useState("");
   if (!confirmed || !pair) return <div className="yp-abc yp-empty"><div className="yp-abc-h"><b>{slot}</b><span className="yp-opt">선택</span></div><div className="yp-th-drop"><span>컨펌본에 없어요</span></div></div>;
   const final = make.thumbs[slot];
   const redo = make.redo?.[slot];
-  const edit = make.edits?.[slot];
-  const open = () => { setTitle(pair.title); setCopy(pair.copy); setReason(current => current || pair.reason); setEditing(true); };
-  // A picked title or copy fills its own field only, so one of each makes the pair.
-  const pick = (field: "title" | "copy", text: string, why: string) => {
-    if (!editing) open();
-    (field === "title" ? setTitle : setCopy)(text);
-    setReason(current => current || pair.reason || why);
-  };
-  const same = title.trim() === pair.title && copy.trim() === pair.copy;
-  return <div className="yp-abc"><div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "C" ? <span className="yp-opt">선택</span> : <span className="yp-need">필수</span>}
-    {pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본</span>}{final ? <span className="yp-tag yp-acc">최종 이미지 ✓</span> : null}</div>
+  return <div className={`yp-abc${open ? " yp-on" : ""}`} style={open ? { borderColor: "var(--accent)", boxShadow: "0 0 0 3px var(--accent-soft)" } : undefined}>
+    <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "C" ? <span className="yp-opt">선택</span> : <span className="yp-need">필수</span>}
+      {pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본</span>}{final ? <span className="yp-tag yp-acc">최종 이미지 ✓</span> : null}</div>
     <ThumbView page={page} thumb={pair.thumb} path={final?.path} alt={`${slot} 썸네일`} />
-    {editing ? <div className="yp-card" style={{ padding: 8 }}>
-      <label className="yp-lbl" style={{ marginTop: 0 }}>제목</label><input className="yp-in" value={title} maxLength={100} onChange={event => setTitle(event.target.value)} aria-label={`${slot} 바꿀 제목`} />
-      <label className="yp-lbl">썸네일 문구 (큰 글자)</label><input className="yp-in" value={copy} maxLength={40} onChange={event => setCopy(event.target.value)} aria-label={`${slot} 바꿀 썸네일 문구`} />
-      <input className="yp-in yp-rev" style={{ marginTop: 6 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
-      <div className="yp-row-btns" style={{ marginTop: 6 }}>
-        <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || same || !title.trim() || !reason.trim()} onClick={() => void onPair(title.trim(), copy.trim(), reason.trim()).then(ok => { if (ok) setEditing(false); })}>저장</button>
-        <button type="button" className="yp-btn yp-sm" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기</button>
-        <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(false)}>취소</button></div>
-      <p className="yp-hint" style={{ margin: "6px 0 0" }}>다시 뽑기는 내 AI가 기획실처럼 시장 레퍼런스에서 제목 공식과 썸네일 문구 공식을 따로 뽑아, 제목 8개와 문구 8개를 따로 보내요. 하나씩 골라 짝을 만들어요. 이유를 적으면 그 점을 고쳐요.</p>
-    </div> : <>
-      <input className="yp-in" value={pair.title} readOnly aria-label={`${slot} 제목`} />
-      {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}</>}
-    {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={() => onRedo(reason.trim())} /> : null}
-    {redo ? <details className="yp-card" style={{ padding: "6px 8px" }} open={!edit || redo.at > edit.at}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 공식대로 뽑은 후보 · 제목 {redo.titles.length}개 · 문구 {redo.copies.length}개 · {redo.by}의 Claude</summary>
-      {redo.market ? <div className="yp-muted" style={{ fontSize: 12, margin: "6px 0" }}>레퍼런스: 「{redo.market.query}」 시장 영상 {redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
-      {([["title", "제목", redo.formula, redo.titleBasis, redo.titles], ["copy", "썸네일 문구", redo.copyFormula, redo.copyBasis, redo.copies]] as const).map(([field, name, formula, basis, list]) => <div key={field} style={{ marginTop: 6 }}>
-        <div style={{ fontSize: 12 }}><b>{name} 공식</b> {formula}{basis ? <span className="yp-muted"> · 근거: {basis}</span> : null}</div>
-        <ol style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>{list.map((item, index) => <li key={index} style={{ marginBottom: 4 }}>
-          <b>{field === "copy" ? `「${item.text}」` : item.text}</b> <span className="yp-tag">{item.hook}</span><div className="yp-muted" style={{ fontSize: 12 }}>{item.why}</div>
-          {can ? <button type="button" className="yp-lnk" onClick={() => pick(field, item.text, `다시 뽑은 ${name} ${index + 1}번 · ${item.hook}`)}>{field === "title" ? "이 제목 쓰기" : "이 문구 쓰기"}</button> : null}</li>)}</ol></div>)}</details> : null}
+    <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.45 }}>{pair.title}</div>
+    {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}
+    {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={onFix} /> : null}
+    {redo && can && !open ? <button type="button" className="yp-btn yp-sm" onClick={onFix}><Sparkles size={14} /> 공식대로 뽑은 후보 {redo.titles.length + redo.copies.length}개 보기</button> : null}
     {can ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : final ? "다시 올리기" : "이미지 올리기"}</button>
-      {!editing ? <button type="button" className="yp-lnk" onClick={() => open()}>고치기</button> : null}
-      {!editing && pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={() => void onPair("", "", "")}>컨펌본으로 되돌리기</button> : null}
+      {!open ? <button type="button" className="yp-lnk" onClick={onFix}>고치기</button> : null}
+      {pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={onReset}>컨펌본으로 되돌리기</button> : null}
       {final ? <a className="yp-ib" aria-label="내려받기" href="#" onClick={async event => { event.preventDefault(); const url = await page.client?.assetUrl(page.bundle!.project.id, final.path); if (url) window.open(url, "_blank", "noopener"); }}><Download size={14} /></a> : null}</div> : null}
     <input ref={input} type="file" hidden accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
+  </div>;
+}
+
+/** 고치기 under the cards, full width: the fields, then the AI's title and copy candidates side by side (owner request 2026-10-25: readable). */
+function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: { page: YpPage; slot: YpSlot; make: YpMake; job: ReturnType<typeof useStaffJob>; saving: boolean;
+  onClose: () => void; onSave: (title: string, copy: string, reason: string) => void; onRedo: (reason: string) => void }) {
+  const pair = finalPair(page.bundle!.stages.plan.data, make, slot)!;
+  const redo = make.redo?.[slot];
+  const [title, setTitle] = useState(pair.title);
+  const [copy, setCopy] = useState(pair.copy);
+  const [reason, setReason] = useState(pair.reason);
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => { panel.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, []);
+  const same = title.trim() === pair.title && copy.trim() === pair.copy;
+  const pick = (field: "title" | "copy", text: string, why: string) => { (field === "title" ? setTitle : setCopy)(text); setReason(current => current || why); };
+  return <div ref={panel} className="yp-card" style={{ marginTop: 12, padding: 16 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span><b style={{ fontSize: 16 }}>{slot} 칸 고치기</b><span style={{ flex: 1 }} />
+      <button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
+    <div className="yp-g2">
+      <label className="yp-lbl" style={{ margin: 0 }}>제목<input className="yp-in" style={{ fontSize: 15 }} value={title} maxLength={100} onChange={event => setTitle(event.target.value)} aria-label={`${slot} 바꿀 제목`} /></label>
+      <label className="yp-lbl" style={{ margin: 0 }}>썸네일 문구 (큰 글자)<input className="yp-in" style={{ fontSize: 15 }} value={copy} maxLength={40} onChange={event => setCopy(event.target.value)} aria-label={`${slot} 바꿀 썸네일 문구`} /></label>
+    </div>
+    <input className="yp-in yp-rev" style={{ marginTop: 8 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
+    <div className="yp-row-btns" style={{ marginTop: 8 }}>
+      <button type="button" className="yp-btn yp-pri" disabled={saving || same || !title.trim() || !reason.trim()} onClick={() => onSave(title.trim(), copy.trim(), reason.trim())}>{saving ? "저장 중…" : "저장"}</button>
+      <button type="button" className="yp-btn" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기</button>
+      <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
+    {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
+    {redo ? <>
+      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 레퍼런스: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
+      <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
+        {([["title", "제목", redo.formula, redo.titleBasis, redo.titles], ["copy", "썸네일 문구", redo.copyFormula, redo.copyBasis, redo.copies]] as const).map(([field, name, formula, basis, list]) => <div key={field}>
+          <b style={{ fontSize: 15 }}>{name} 후보 {list.length}개</b>
+          <div className="yp-note yp-gray" style={{ margin: "6px 0 8px", fontSize: 13, lineHeight: 1.5 }}><div><b>{name} 공식</b> {formula}
+            {basis ? <details style={{ marginTop: 4 }}><summary style={{ cursor: "pointer" }}>근거 보기</summary>{basis}</details> : null}</div></div>
+          <div style={{ display: "grid", gap: 8 }}>{list.map((item, index) => { const on = (field === "title" ? title : copy) === item.text;
+            return <button key={index} type="button" className={`yp-way${on ? " yp-rec" : ""}`} style={{ width: "100%" }} aria-pressed={on}
+              onClick={() => pick(field, item.text, `다시 뽑은 ${name} ${index + 1}번 · ${item.hook}`)}>
+              <b style={{ fontSize: 15, lineHeight: 1.4 }}>{on ? <Check size={14} aria-hidden="true" /> : null} {field === "copy" ? `「${item.text}」` : item.text}</b>
+              <span><span className="yp-tag">{item.hook}</span> {item.why}</span></button>; })}</div></div>)}
+      </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 내 AI가 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 보내요. 이유를 적으면 그 점을 고쳐요.</p>}
   </div>;
 }
