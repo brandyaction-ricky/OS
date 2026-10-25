@@ -1,4 +1,5 @@
 "use client";
+import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
@@ -124,7 +125,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     try {
       const image = await client.shortImage(id, file);
       setView(current => current ? { ...current, images: { ...current.images, [image.assetId]: { name: file.name, url: image.url } } } : current);
-      editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId } : scene), true);
+      editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId,diagram:undefined } : scene), true);
     } catch (reason) { fail(reason); } finally { setBusy(""); }
   };
   const make = async (aspect: "9:16" | "1:1" | "4:5" = "9:16") => {
@@ -189,7 +190,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
         <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 초안으로 바꾸기</button>
         <details><summary>초안 보기</summary><ol style={{ fontSize: 13 }}>{view.aiScenes.map((scene, index) => <li key={index}>{scene.seconds}초 · {scene.text}{scene.voice ? ` — “${scene.voice}”` : ""}</li>)}</ol></details></div></div> : null}
       {scenes.map((scene, index) => <SceneRow key={index} index={index} scene={scene} last={index === scenes.length - 1} remain={Math.max(0, brief.duration - before)} count={scenes.length}
-        image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
+        diagramsEnabled={page.demo || process.env.NEXT_PUBLIC_SHORTFORM_DIAGRAMS_ENABLED === "true"} image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
         onChange={patch => editScenes(scenes.map((row, at) => at === index ? { ...row, ...patch } : row))} onUpload={file => void upload(index, file)}
         onMove={to => editScenes(move(scenes, index, to), true)} onRemove={() => editScenes(scenes.filter((_, at) => at !== index), true)} />)}
       {editable && scenes.length && scenes.length < 20 ? <button type="button" className="yp-btn yp-sm" onClick={() => editScenes([...scenes, blank(0)], true)}><Plus size={14} /> 장면 추가</button> : null}
@@ -203,7 +204,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
           onClick={() => void make()}>{busy === "9:16" ? "처리 중…" : render?.status === "done" ? "고친 내용으로 다시 만들기" : ad ? "세로 9:16 만들기" : "영상 만들기"}</button> : null}
         <RenderTag render={render} />
         {ad ? AD_SIZES.map(size => <Fragment key={size.aspect}>
-          {editable ? <button type="button" className="yp-btn" disabled={missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
+          {editable ? <button type="button" className="yp-btn" disabled={scenes.some(scene => scene.diagram) || missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
             onClick={() => void make(size.aspect)}>{busy === size.aspect ? "처리 중…" : view[size.key]?.status === "done" ? `${size.again} 다시 만들기` : `${size.label} 만들기`}</button> : null}
           <RenderTag render={view[size.key]} /></Fragment>) : null}
         {hasVoice && editable ? <CostTag cost="company" /> : null}
@@ -218,15 +219,15 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   </div>;
 }
 
-function SceneRow({ index, scene, last, remain, count, image, editable, busy, onChange, onUpload, onMove, onRemove }: {
-  index: number; scene: YpShortScene; last: boolean; remain: number; count: number; image?: { name: string; url: string }; editable: boolean; busy: boolean;
+function SceneRow({ index, scene, last, remain, count, image, editable, busy, diagramsEnabled, onChange, onUpload, onMove, onRemove }: {
+  index: number; scene: YpShortScene; last: boolean; remain: number; count: number; image?: { name: string; url: string }; editable: boolean; busy: boolean; diagramsEnabled: boolean;
   onChange: (patch: Partial<YpShortScene>) => void; onUpload: (file: File) => void; onMove: (to: number) => void; onRemove: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return <div className="yp-scn">
     <button type="button" className="yp-scn-img" disabled={!editable || busy} onClick={() => input.current?.click()} aria-label={`장면 ${index + 1} 이미지 ${image ? "바꾸기" : "올리기"}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
-      {image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 올리기"}</span></>}</button>
+      {scene.diagram ? <span>세로 도식</span> : image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 올리기"}</span></>}</button>
     <div className="yp-scn-f">
       <div className="yp-scn-h"><span className="yp-n">{index + 1}</span>
         {last ? <span className="yp-tag">나머지 {Math.round(remain * 10) / 10}초</span>
@@ -236,7 +237,8 @@ function SceneRow({ index, scene, last, remain, count, image, editable, busy, on
         {editable ? <span className="yp-row-btns"><button type="button" className="yp-ib yp-xs" aria-label="위로" disabled={!index} onClick={() => onMove(index - 1)}><ArrowUp size={12} /></button>
           <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
           {count > 1 ? <button type="button" className="yp-ib yp-xs" aria-label="장면 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
-      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder="화면 자막 (네 줄 안)" onChange={event => onChange({ text: event.target.value })} />
+      {diagramsEnabled || scene.diagram ? <ShortformDiagramFields value={scene.diagram} duration={last?remain:scene.seconds} disabled={!editable} onChange={diagram=>onChange({diagram,...(diagram?{assetId:undefined}:{})})}/> : null}
+      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
       <input className="yp-in" aria-label={`장면 ${index + 1} 내레이션`} value={scene.voice} readOnly={!editable} maxLength={1800} placeholder="내레이션 (선택 · 1초에 6자 안팎)" onChange={event => onChange({ voice: event.target.value })} />
     </div>
     <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />

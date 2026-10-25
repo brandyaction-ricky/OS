@@ -14,7 +14,7 @@ export const maxDuration = 180;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const inputSchema = z.discriminatedUnion("action", [
-  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)])}).strict(),
+  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),diagramTypes:z.array(z.enum(["lib_timeline","lib_two_cards","lib_iceberg"])).max(3).optional()}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
   z.object({action:z.literal("shorts_complete"),...lease,bytes:z.number().int().positive().max(50_000_000),
     sha256:z.string().regex(/^[a-f0-9]{64}$/),duration:z.number().positive().max(61)}).strict(),
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     if (expected.length < 32 || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WORKER_SECRET", "미디어 워커 인증에 실패했습니다.");
     const input = inputSchema.parse(await parseJson(request, 20_000));
     const result = input.action === "heartbeat" ? await saveRenderPcSignal(input)
-      : input.action === "shorts_claim" ? await claimShortformRender(undefined, input.layoutVersion)
+      : input.action === "shorts_claim" ? await claimShortformRender(undefined, input.layoutVersion,input.diagramTypes)
       : input.action === "shorts_voice" ? await shortformVoice(input)
       : input.action === "shorts_complete" ? await completeShortformRender(input)
       : input.action === "shorts_fail" ? await failShortformRender(input)

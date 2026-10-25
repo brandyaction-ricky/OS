@@ -89,8 +89,12 @@ test("숏폼 scenes run on without gaps, the last one takes what is left, and wh
   const cuts = cutsFromScenes([scene(4, "a"), scene(10), scene(99, "c")], 30);
   assert.deepEqual(cuts.map(cut => [cut.start, cut.end, cut.missingAsset]), [["00:00.000", "00:04.000", false], ["00:04.000", "00:14.000", true], ["00:14.000", "00:30.000", false]]);
   assert.deepEqual(scenesFromCuts(cuts).map(item => item.seconds), [4, 10, 16]);
+  const diagram = {type:"lib_two_cards",scene:{left:{text:"전",t:0},right:{text:"후",t:1}}};
+  const diagramCuts = cutsFromScenes([{...scene(0),diagram}],15);
+  assert.equal(diagramCuts[0].missingAsset,false);
+  assert.deepEqual(scenesFromCuts(diagramCuts)[0].diagram,diagram);
   const brief = { purpose: "ad", duration: 30, product: "결과지", audience: "직장인", goal: "진단", landingUrl: "", evidence: "", appeal: "" };
-  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써 주세요", "광고에 쓸 실제 근거를 써 주세요", "구매 이유를 하나 골라 주세요", "장면마다 이미지를 넣어 주세요"]);
+  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써 주세요", "광고에 쓸 실제 근거를 써 주세요", "구매 이유를 하나 골라 주세요", "장면마다 이미지나 도식을 넣어 주세요"]);
   assert.deepEqual(shortMissing({ ...brief, duration: 15 }, [scene(10, "a"), scene(6, "b"), scene(0, "c")]).at(-1), "앞 장면들이 15초를 넘어요");
   // A longform clip: one cut per subtitle line in source time, joined end to start; lines starting within 0.3s share one caption.
   const cues = [{ start: 9, end: 12, text: "앞" }, { start: 12, end: 14, text: "하나" }, { start: 12.2, end: 16, text: "둘" }, { start: 17, end: 30, text: "셋" }];
