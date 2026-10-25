@@ -81,8 +81,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const reviewFields = project ? editableFields(project, "review") : [];
   const canFinal = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.final"));
   const canThumb = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
-  // 일정 is marked 필수 on the screen, so it is on the checklist and holds the next button too (usability QA 2026-10-25).
-  const reason = data && !data.editDue ? "편집 완료일을 정해 주세요" : !finals.length ? (short ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : data && !short ? thumbsMissing(data) : "";
+  // 일정 is optional (owner decision 2026-10-25): making goes on without a date; the date only feeds 스케줄.
+  const reason = !finals.length ? (short ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : data && !short ? thumbsMissing(data) : "";
   const action = bundle ? stepAction(page, 3, project?.yp.stage === "make" ? { kind: "button", label: "다음: 최종 검수", reason, busy: moving, onClick: () => void move() } : { kind: "status", status: "제작 끝남" }) : null;
   const confirmed = bundle?.stages.plan.data.confirmed;
   const steps = MAKE_STEPS[kind];
@@ -90,12 +90,12 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   let n = 0;
 
   return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검수 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? "무엇을 만들지 정하고, 장면마다 이미지를 넣어 영상을 만들어요." : anim ? "원고로 영상을 자동으로 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
-    todo={data && project?.yp.stage === "make" ? short ? [{ label: "일정", done: Boolean(data.editDue) }, { label: "최종본", done: finals.length > 0 }] : [{ label: "일정", done: Boolean(data.editDue) }, { label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
+    todo={data && project?.yp.stage === "make" ? short ? [{ label: "최종본", done: finals.length > 0 }] : [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
     {bundle && data && project ? ["topic", "draft", "outline"].includes(project.yp.stage) ? <LockedStep page={page} name="제작" /> : <>
       {project.yp.stage === "review" ? <GateBanner page={page} gate="review" /> : null}
       <Subject page={page} />
-      <YpSection n={++n} title="일정" need={data.editDue ? null : true}>
-        {!data.editDue || changing ? <div className="yp-duefirst"><div style={{ flexBasis: "100%", fontWeight: 700 }}>{data.editDue ? "편집 완료일 바꾸기" : "제작을 시작하기 전에 편집 완료일을 정해요"}</div>
+      <YpSection n={++n} title="일정" need={data.editDue ? null : false}>
+        {!data.editDue || changing ? <div className="yp-duefirst"><div style={{ flexBasis: "100%", fontWeight: 700 }}>{data.editDue ? "편집 완료일 바꾸기" : "편집 완료일을 정하면 스케줄에 보여요"}</div>
           <div><label className="yp-lbl" style={{ marginTop: 0 }}>편집 완료일</label><input className="yp-in" type="date" value={due || data.editDue} onChange={event => setDue(event.target.value)} aria-label="편집 완료일" disabled={!editable} /></div>
           {data.editDue ? <div style={{ flex: 1, minWidth: 200 }}><label className="yp-lbl" style={{ marginTop: 0 }}>바꾸는 이유 (선택)</label><input className="yp-in" value={why} onChange={event => setWhy(event.target.value)} maxLength={200} /></div> : null}
           <button type="button" className="yp-btn yp-pri" disabled={!editable || !(due || data.editDue) || Boolean(busy)} onClick={() => void save({ editDue: due || data.editDue, editDueWhy: why }, "due").then(ok => { if (ok) { setChanging(false); setWhy(""); setDue(""); } })}>정하기</button>
