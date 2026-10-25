@@ -90,7 +90,7 @@ test("숏폼 scenes run on without gaps, the last one takes what is left, and wh
   assert.deepEqual(cuts.map(cut => [cut.start, cut.end, cut.missingAsset]), [["00:00.000", "00:04.000", false], ["00:04.000", "00:14.000", true], ["00:14.000", "00:30.000", false]]);
   assert.deepEqual(scenesFromCuts(cuts).map(item => item.seconds), [4, 10, 16]);
   const brief = { purpose: "ad", duration: 30, product: "결과지", audience: "직장인", goal: "진단", landingUrl: "", evidence: "", appeal: "" };
-  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써주세요", "광고에 쓸 실제 근거를 써주세요", "구매 이유를 하나 골라주세요", "장면마다 이미지를 넣어주세요"]);
+  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써 주세요", "광고에 쓸 실제 근거를 써 주세요", "구매 이유를 하나 골라 주세요", "장면마다 이미지를 넣어 주세요"]);
   assert.deepEqual(shortMissing({ ...brief, duration: 15 }, [scene(10, "a"), scene(6, "b"), scene(0, "c")]).at(-1), "앞 장면들이 15초를 넘어요");
   // A longform clip: one cut per subtitle line in source time, joined end to start; lines starting within 0.3s share one caption.
   const cues = [{ start: 9, end: 12, text: "앞" }, { start: 12, end: 14, text: "하나" }, { start: 12.2, end: 16, text: "둘" }, { start: 17, end: 30, text: "셋" }];
@@ -109,4 +109,13 @@ test("v1 rolls out per person: off, everyone, or only the listed ids (the ids ne
   const some = { YOUTUBE_V1_ENABLED: "true", YOUTUBE_V1_USERS: " a , b " };
   assert.equal(youtubeV1Mode(some), "some");
   assert.deepEqual([youtubeV1AllowedFor("a", some), youtubeV1AllowedFor("c", some), youtubeV1AllowedFor("c", { YOUTUBE_V1_ENABLED: "true" }), youtubeV1AllowedFor("a", { YOUTUBE_V1_USERS: "a" })], [true, false, true, false]);
+});
+
+// Usability QA 2026-10-25: [직접 쓰기] put the section layout in the box and the bare layout counted as a written description.
+test("the bare description layout is not a description; any real line is", async () => {
+  const { DESC_TEMPLATE, descWritten } = await import("../lib/youtube-process/stages.ts");
+  assert.equal(descWritten(""), false);
+  assert.equal(descWritten(DESC_TEMPLATE), false);
+  assert.equal(descWritten(DESC_TEMPLATE.replace("[설명문 본문]\n", "[설명문 본문]\n퇴근 후 2시간을 나누는 법\n")), true);
+  assert.equal(descWritten("#강점 #성격"), true);
 });

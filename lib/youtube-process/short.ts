@@ -41,20 +41,20 @@ export const scenesFromCuts = (cuts: YpShortCut[]): YpShortScene[] => cuts.map(c
 /** What still keeps the 숏폼 from being made, one line each (the render PC checks the same again). */
 export function shortMissing(brief: YpShortBrief, scenes: YpShortScene[]) {
   const missing: string[] = [];
-  if (!brief.audience.trim()) missing.push("누구에게 보여 줄지 써주세요");
-  if (!brief.goal.trim()) missing.push("보고 나서 할 행동을 써주세요");
+  if (!brief.audience.trim()) missing.push("누구에게 보여 줄지 써 주세요");
+  if (!brief.goal.trim()) missing.push("보고 나서 할 행동을 써 주세요");
   if (brief.purpose === "ad") {
-    if (!brief.product.trim()) missing.push("광고할 상품 · 서비스를 써주세요");
-    if (!brief.landingUrl.trim()) missing.push("연결할 페이지 주소를 써주세요");
-    if (!brief.evidence.trim()) missing.push("광고에 쓸 실제 근거를 써주세요");
-    if (!brief.appeal.trim()) missing.push("구매 이유를 하나 골라주세요");
+    if (!brief.product.trim()) missing.push("광고할 상품 · 서비스를 써 주세요");
+    if (!brief.landingUrl.trim()) missing.push("연결할 페이지 주소를 써 주세요");
+    if (!brief.evidence.trim()) missing.push("광고에 쓸 실제 근거를 써 주세요");
+    if (!brief.appeal.trim()) missing.push("구매 이유를 하나 골라 주세요");
   }
   if (!scenes.length) missing.push("장면을 만들어 주세요");
   const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
-  if (scenes.slice(0, -1).some(scene => scene.seconds <= 0)) missing.push("장면 길이는 0초보다 길게 써주세요");
+  if (scenes.slice(0, -1).some(scene => scene.seconds <= 0)) missing.push("장면 길이는 0초보다 길게 써 주세요");
   if (scenes.length && before >= brief.duration) missing.push(`앞 장면들이 ${brief.duration}초를 넘어요`);
-  if (scenes.some(scene => !scene.text.trim())) missing.push("장면마다 자막을 써주세요");
-  if (scenes.some(scene => !scene.assetId)) missing.push("장면마다 이미지를 넣어주세요");
+  if (scenes.some(scene => !scene.text.trim())) missing.push("장면마다 자막을 써 주세요");
+  if (scenes.some(scene => !scene.assetId)) missing.push("장면마다 이미지를 넣어 주세요");
   return missing;
 }
 

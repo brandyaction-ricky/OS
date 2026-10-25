@@ -76,6 +76,7 @@ test("the generic records API may not create or change v1 projects", () => {
 test("a project opens on its current step", () => {
   assert.equal(stepHref(1, "p 1"), "/content/plan?project=p%201&view=draft");
   assert.equal(projectHref(project("p", "x", "review")), "/content/final-check?project=p&tab=video");
-  assert.equal(projectHref(project("p", "x", "done")), "/content/plan?project=p&view=topic");
+  // A finished video opens where its results are (usability QA 2026-10-25), not on 주제 with a request button.
+  assert.equal(projectHref(project("p", "x", "done")), "/content/shorts?project=p");
   assert.equal(stepHref(6, "p"), "/content/shorts?project=p");
 });

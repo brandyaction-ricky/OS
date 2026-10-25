@@ -283,7 +283,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
   } else if (input.to === "review") {
     need(project.yp.stage === "make", "제작 단계에서만 최종 검수로 넘어갈 수 있어요.");
     const short = project.yp.topic.type === "short";
-    need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려주세요" : "최종본을 올려주세요");
+    need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려 주세요" : "최종본을 올려 주세요");
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
@@ -301,7 +301,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
   if (gate === "draft") return draftMissing(stages.plan.data);
-  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려주세요";
+  if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }
 /** The clips picked for 쇼츠 (채택), as the 쇼츠 확정 sees them. */

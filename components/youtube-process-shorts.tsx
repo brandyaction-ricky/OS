@@ -46,14 +46,16 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   const last = finals.at(-1) ?? null;
   const cues = useMemo(() => parseTimedTranscript(srt), [srt]);
 
+  const client = page.client, projectId = project?.id;
+  // Keyed on values, not on `page` (a new object every render, which refetched the list forever).
+  const { demo, accessToken, fail } = page;
   const loadClips = useCallback(async () => {
-    if (!project || page.demo || !page.accessToken) return;
-    try { setClips((await listRecords(page.accessToken, "content_short", `parentId=${project.id}&limit=200`)).records.filter(row => !row.archived_at).sort((a, b) => num(a, "start") - num(b, "start"))); }
-    catch (reason) { page.fail(reason); }
-  }, [project, page]);
+    if (!projectId || demo || !accessToken) return;
+    try { setClips((await listRecords(accessToken, "content_short", `parentId=${projectId}&limit=200`)).records.filter(row => !row.archived_at).sort((a, b) => num(a, "start") - num(b, "start"))); }
+    catch (reason) { fail(reason); }
+  }, [projectId, demo, accessToken, fail]);
   useEffect(() => { void loadClips(); }, [loadClips]);
   // Each adopted clip can become a vertical short on the render PC (Codex's shortform render, PR #205): 720×1280 with the subtitles.
-  const client = page.client, projectId = project?.id;
   const loadRenders = useCallback(async () => {
     if (!client || !projectId || page.demo) return;
     try { setRenders(await client.clipRenders(projectId)); } catch { /* the list still works without it */ }

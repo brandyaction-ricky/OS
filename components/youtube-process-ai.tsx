@@ -31,15 +31,18 @@ export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
   const [available, setAvailable] = useState(true);
   const projectId = page.bundle?.project.id;
   const seenDone = useRef<string | null>(null);
+  // Callers pass an inline onDone; held in a ref so a new function each render doesn't remake `load` and refetch forever.
+  const done = useRef(onDone);
+  useEffect(() => { done.current = onDone; }, [onDone]);
   const load = useCallback(async () => {
     if (!projectId || page.demo || !page.accessToken) return;
     try {
       const next = await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${projectId}&task=${task}`, { token: page.accessToken });
       setStatus(next); setAvailable(true);
-      if (next.job?.status === "done" && seenDone.current !== next.job.id) { if (seenDone.current !== null) onDone(); seenDone.current = next.job.id; }
+      if (next.job?.status === "done" && seenDone.current !== next.job.id) { if (seenDone.current !== null) done.current(); seenDone.current = next.job.id; }
       else if (seenDone.current === null) seenDone.current = next.job?.status === "done" ? next.job.id : "";
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
-  }, [projectId, page.demo, page.accessToken, task, onDone]);
+  }, [projectId, page.demo, page.accessToken, task]);
   useEffect(() => { void load(); }, [load]);
   const open = Boolean(status?.job && ["backlog", "active"].includes(status.job.status));
   useEffect(() => {
@@ -129,7 +132,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
         <div className="yp-seg2 yp-aitabs" role="tablist">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         <div style={{ marginTop: 10 }}>
           {tab === "queue" ? <div className="yp-kvbox"><b>내 AI</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 연결되지 않았어요"}</span><br />
-            <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 가져가 쓰고, 끝나면 칸에 넣어요.</span></div> : null}
+            <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 다음에 확인할 때 가져가 쓰고, 끝나면 칸에 넣어요. 지금 바로 해야 하면 [바로 시키기]를 눌러요.</span></div> : null}
           {tab === "now" ? <><ol className="yp-nowsteps"><li>[보내고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요. 그동안 대화는 열어 둬요</li></ol>
             <div className="yp-linkbox"><code>{MY_AI_PROMPT}</code></div>{copied ? <p className="yp-hint">복사했어요. Claude에 붙여 넣어 주세요.</p> : null}</> : null}
           {tab === "paste" ? <form onSubmit={event => { event.preventDefault(); void submitPaste(); }}>

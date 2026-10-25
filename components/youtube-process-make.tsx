@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Upload } from "lucide-react";
@@ -23,6 +24,7 @@ export const sizeLabel = (bytes: number) => bytes >= 1e9 ? `${(bytes / 1e9).toFi
 /** S5 제작: 일정 · 진행 상태 · (실사) 작업 자료 · 최종본 (OS 자동 제작 or 파일) · 최종 썸네일, then [다음: 최종 검수] (4-6). */
 export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
+  const router = useRouter();
   const [due, setDue] = useState("");
   const [why, setWhy] = useState("");
   const [changing, setChanging] = useState(false);
@@ -65,7 +67,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const move = async () => {
     if (!page.client || !project) return;
     setMoving(true);
-    try { await page.client.move(project.id, "review", project.version); window.location.assign(`/content/final-check?project=${encodeURIComponent(project.id)}&tab=video`); }
+    try { await page.client.move(project.id, "review", project.version); router.push(`/content/final-check?project=${encodeURIComponent(project.id)}&tab=video`); }
     catch (reason) { page.fail(reason); } finally { setMoving(false); }
   };
 
@@ -127,7 +129,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. 소리를 확인하고 최종 썸네일 A · B를 올려요.</p>} /> : null}
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>최종본 v{finals.length + 1} 올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
           : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={anim ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
-            <b>{anim ? "직접 만든 영상으로 바꾸려면 파일을 올려요" : finals.length ? `최종본 v${finals.length} 저장됨` : "영상 파일을 올려 주세요"}</b>
+            <b>{finals.length ? `최종본 v${finals.length} 저장됨` : anim ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
             <span style={{ fontSize: 12 }}>mp4 · mov · m4v · webm</span>
             <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div></div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />

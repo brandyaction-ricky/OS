@@ -171,7 +171,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
         {ad ? pageFields : null}
       </div>
       {ad ? null : <details className="yp-more-fields" open={Boolean(brief.landingUrl || brief.evidence)}><summary>연결 페이지 · 근거 더 쓰기 (선택)</summary><div className="yp-g2">{pageFields}</div></details>}
-      {ad ? <div className="yp-field"><div className="yp-fld-h"><b>구매 이유</b> <span className="yp-need">필수</span><span className="yp-gq">하나만 골라요</span></div>
+      {ad ? <div className="yp-field"><div className="yp-fld-h"><b>구매 이유</b> <span className="yp-need">필수</span><span className="yp-gq">하나만 써요</span></div>
         {view.appeals.length ? <div className="yp-ways">{view.appeals.map(appeal => { const text = appealText(appeal);
           return <button key={appeal.title} type="button" className={`yp-way${brief.appeal === text ? " yp-rec" : ""}`} disabled={!editable} onClick={() => editBrief({ appeal: text }, true)}>
             <b>{appeal.title}</b><span>{appeal.reason}</span><span>{appeal.basis === "evidence" ? "입력한 근거 있음" : "검증할 가설"} · {appeal.evidence || "추가 확인 필요"}</span></button>; })}</div> : null}

@@ -65,6 +65,8 @@ export function useGate(page: YpPage, gate: YpGate) {
       const result = await page.client.gate(project.id, gate, action, project.version, reply);
       setReplyOpen(false);
       page.setBundle(current => current ? { ...current, project: result.project } : current);
+      // The request is usually sent from the step's last button; its waiting box (and the 대표's OK) sit at the top.
+      if (action === "request") window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) { page.fail(reason); } finally { setBusy(false); }
   };
   return { busy, act, replyOpen, setReplyOpen };
@@ -83,7 +85,9 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
   const project = page.bundle!.project;
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
-  return view !== current && current < YP_FLOW.length ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
+  // A finished video keeps every step readable but offers no step's button (a request on 주제 would only be refused).
+  if (current >= YP_FLOW.length) return own.kind === "status" ? own : { kind: "status", status: "끝난 영상이에요" };
+  return view !== current ? { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) } : own;
 }
 
 /** The sentence under a confirm step's title: what to do now, or that there is nothing to do while the 대표 decides. */

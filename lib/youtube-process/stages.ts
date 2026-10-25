@@ -201,6 +201,10 @@ function section(text: string, key: string) {
   return lines;
 }
 /** The 7 automatic checks under the description (시안 descChecks). Advisory only: they never block the upload. */
+/** The 직접 쓰기 starting layout of the description: section labels and dividers only. */
+export const DESC_TEMPLATE = "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n";
+/** A description counts as written once it has something beyond that layout (usability QA 2026-10-25: the bare layout passed). */
+export const descWritten = (text: string) => text.split("\n").some(line => { const t = line.trim(); return Boolean(t) && !/^(#|-+|⬇️|00:00|\[[^\]]+\])$/.test(t); });
 export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) {
   const keys = ["⬇️", "[타임라인]", "[설명문 본문]", "[인용 및 출처]", "[히든 태그]"].map(key => text.indexOf(key));
   const order = /^\s*#/.test(text) && keys.every(at => at >= 0) && keys.every((at, i) => !i || at > keys[i - 1]) && text.lastIndexOf("-----") < keys[4];

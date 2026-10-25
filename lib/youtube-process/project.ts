@@ -127,5 +127,6 @@ export function stepHref(index: number, id: string) {
   return [`/content/make?project=${encodeURIComponent(id)}`, `/content/final-check?project=${encodeURIComponent(id)}&tab=video`, `/content/upload?project=${encodeURIComponent(id)}`, `/content/shorts?project=${encodeURIComponent(id)}`][index - 3];
 }
 /** Where a project row opens: its current step (a finished project opens its topic). */
-export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage], project.id);
+// A finished video opens on its last step (쇼츠 · 칼럼 or 내보내기), where its results are, not on 주제.
+export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? flowOf(project.yp.topic.type).at(-1)!.index : YP_STAGE_INDEX[project.yp.stage], project.id);
 export const stageLabel = (project: Pick<YpProject, "yp">) => project.yp.stage === "done" ? "완료" : stepName(YP_STAGE_INDEX[project.yp.stage], project.yp.topic.type);

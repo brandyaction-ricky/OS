@@ -20,6 +20,7 @@ type Tab = (typeof TABS)[number][0];
 const when = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 const days = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : 0;
 const RESULT: Record<string, string> = { ok: "OK", changes: "수정 요청", hold: "보류", wait: "대기" };
+const RESULT_TONE: Record<string, string> = { ok: "yp-ok", changes: "yp-warn", hold: "yp-bad" };
 
 /** OK · 수정 요청 · 보류 for a waiting gate (S10 아래 막대, S10-1, S10-2). Shared by the confirm menu and the project screen. */
 export function ConfirmActions({ project, gate, client, onDone }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject) => void }) {
@@ -103,9 +104,9 @@ export function YoutubeConfirmScreen() {
         {items === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
           : items?.length ? items.map(({ project, gate }) => { const info = project.yp.gates[gate]; return <button key={`${project.id}-${gate}`} type="button" className={`yp-ci${selected?.project.id === project.id ? " yp-on" : ""}`} onClick={() => go({ item: project.id })}>
             <div className="yp-ci-top"><span className="yp-tag yp-acc">{GATE_NAME[gate].replace(" 컨펌", "")}</span><span className="yp-sp" />
-              {tab === "wait" ? <span className={days(info.requestedAt) >= 1 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"}</span>
+              {tab === "wait" ? <span className={days(info.requestedAt) >= 2 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"}</span>
                 : tab === "hold" ? <span className="yp-tag yp-bad">보류</span>
-                : tab === "shorts" ? <span>{when(project.yp.shortsLog?.at(-1)?.at)} · {project.yp.shortsLog?.at(-1)?.kind === "comment" ? "코멘트" : "확정"}</span> : <span className="yp-tag yp-ok">{RESULT[info.state]}</span>}</div>
+                : tab === "shorts" ? <span>{when(project.yp.shortsLog?.at(-1)?.at)} · {project.yp.shortsLog?.at(-1)?.kind === "comment" ? "코멘트" : "확정"}</span> : <span className={`yp-tag ${RESULT_TONE[info.state] ?? ""}`}>{RESULT[info.state]}</span>}</div>
             <div className="yp-ci-t">{projectName(project)}</div>
             <div className="yp-ci-m"><span>{pd(project.assigneeId)}</span>{info.requestedAt ? <span>{when(info.requestedAt)} {gate === "shorts" ? "확정" : "요청"}</span> : null}{"revertedFrom" in info && info.revertedFrom ? <span className="yp-tag yp-warn">되돌린 건</span> : null}{info.reason ? <span>사유: {info.reason}</span> : null}</div>
           </button>; })

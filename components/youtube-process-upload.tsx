@@ -6,7 +6,7 @@ import { Check, Copy, ExternalLink, FileText, RefreshCw, Sparkles, Upload, Youtu
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { stepHref } from "@/lib/youtube-process/project";
-import { descChecks, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
+import { DESC_TEMPLATE, descChecks, descWritten, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { CostTag } from "./youtube-process-cost";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
@@ -108,7 +108,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
     catch (reason) { page.fail(reason); }
   };
 
-  const reason = !form ? "" : !form.desc.trim() ? "설명란을 채워 주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요" : "";
+  const reason = !form ? "" : !last ? "최종본이 없어요" : !descWritten(form.desc) ? "설명란을 채워 주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요" : "";
   const action = page.bundle ? stepAction(page, 5, done ? { kind: "button", label: "쇼츠 · 칼럼으로", onClick: () => void onward(), reason: project?.yp.stage === "done" ? "끝난 영상이에요" : "" }
     : { kind: "button", label: "유튜브에 올리기", reason, busy: progress !== null, onClick: () => void go() }) : null;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
@@ -117,7 +117,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const aiDraftWaiting = Boolean(form?.descBy && form.desc !== form.descBy.draft);
 
   return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 이어서 쇼츠 · 칼럼을 만들어요." : "설명란을 채우고 유튜브에 올려요."} savedAt={savedAt}
-    todo={form && !done ? [{ label: "설명란", done: Boolean(form.desc.trim()) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
+    todo={form && !done ? [{ label: "최종본", done: Boolean(last) }, { label: "설명란", done: descWritten(form.desc) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
     onSave={editable ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project && make ? !["upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>
       {done ? <div className="yp-note yp-ok" role="status"><Check size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요.</b> {form.run?.thumbnail === "ok" ? "썸네일 A도 넣었어요." : "썸네일은 스튜디오에서 넣어 주세요."}<br />
@@ -143,7 +143,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
         <YpSection n={3} title="설명란 · 고정 댓글" need>
           {!form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : editable ? <div className="yp-ways">
             <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요</span></button>
-            <button type="button" className="yp-way" onClick={() => edit({ desc: "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n" })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
+            <button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
             <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
               {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><RefreshCw size={14} /> 내 AI로 다시 만들기</button> : null}
               {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.descBy.name}</span> : null}</div>

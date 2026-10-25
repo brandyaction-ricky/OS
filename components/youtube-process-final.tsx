@@ -44,10 +44,12 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const ver = verSel ?? latest;
   const final = finals.find(item => item.v === ver) ?? null;
 
+  // Keyed on the client and the video id only: `page` is a new object every render, so depending on it refetched and re-rendered forever.
+  const { client, fail } = page, projectId = project?.id;
   const loadFeedback = useCallback(async () => {
-    if (!page.client || !project) return;
-    try { setItems(await page.client.feedback(project.id)); } catch (reason) { page.fail(reason); }
-  }, [page, project]);
+    if (!client || !projectId) return;
+    try { setItems(await client.feedback(projectId)); } catch (reason) { fail(reason); }
+  }, [client, fail, projectId]);
   useEffect(() => { void loadFeedback(); }, [loadFeedback]);
   useEffect(() => {
     let active = true;

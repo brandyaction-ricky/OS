@@ -1,4 +1,5 @@
 "use client";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
 import { lengthEstimate, outlineMissing, runtimeError, scriptChars, SPEC_OPTIONS, type YpOutline } from "@/lib/youtube-process/stages";
@@ -23,6 +24,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const [notesOpen, setNotesOpen] = useState(false);
   const [manual, setManual] = useState(false);
   const editRev = useRef(0);
+  const router = useRouter();
   const saving = useRef(false);
   const timer = useRef<number | null>(null);
   const outline = page.bundle?.stages.outline;
@@ -32,23 +34,34 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const reloadAll = useCallback(() => { setDirty(false); setEditorKey(key => key + 1); void page.reload(); }, [page]);
   const job = useStaffJob(page, "script", reloadAll);
 
+  // The 2.5 s autosave and the blur save can overlap: each save reads the latest version (a stale one was a false "먼저 고쳤어요"),
+  // and a save asked for while one is running runs right after it with the newest text.
+  const latest = useRef(outline), latestForm = useRef(form), again = useRef(false);
+  useEffect(() => { latest.current = outline; }, [outline]);
+  useEffect(() => { latestForm.current = form; }, [form]);
   const save = async (patch: Record<string, unknown>, next?: YpOutline) => {
-    if (!page.client || !project || !outline || saving.current) return;
+    if (!page.client || !project || !latest.current) return;
+    if (saving.current) { again.current = true; return; }
     saving.current = true;
     const rev = editRev.current;
     try {
-      const result = await page.client.saveStage(project.id, "outline", outline.version, patch);
+      const result = await page.client.saveStage(project.id, "outline", latest.current.version, patch);
+      latest.current = result.stage;
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, outline: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev) { setDirty(false); if (next) setForm(result.stage.data); }
-    } catch (reason) { page.fail(reason); } finally { saving.current = false; }
+    } catch (reason) { page.fail(reason); } finally {
+      saving.current = false;
+      const current = latestForm.current;
+      if (again.current) { again.current = false; if (current && editRev.current !== rev) void save({ spec: current.spec, script: current.script }); }
+    }
   };
   const saveNow = (extra: Record<string, unknown> = {}) => { if (timer.current) window.clearTimeout(timer.current); if (form) void save({ spec: form.spec, script: form.script, ...extra }, form); };
   const edit = (patch: Partial<YpOutline>) => {
     editRev.current += 1;
     setForm(current => current ? { ...current, ...patch } : current); setDirty(true);
     if (timer.current) window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setForm(current => { if (current) void save({ spec: current.spec, script: current.script }); return current; }), 2500);
+    timer.current = window.setTimeout(() => { const current = latestForm.current; if (current) void save({ spec: current.spec, script: current.script }); }, 2500);
   };
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
 
@@ -59,7 +72,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
       if (dirty && form) await save({ spec: form.spec, script: form.script });
       const next = await page.client.move(project.id, "make", page.bundle!.project.version);
       page.setBundle(current => current ? { ...current, project: next } : current);
-      window.location.assign(`/content/make?project=${encodeURIComponent(project.id)}`);
+      router.push(`/content/make?project=${encodeURIComponent(project.id)}`);
     } catch (reason) { page.fail(reason); } finally { setMoving(false); }
   };
 

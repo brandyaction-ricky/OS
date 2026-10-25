@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { utmUrl } from "@/lib/youtube-process/stages";
+import { descWritten, utmUrl } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "./youtube-oauth";
@@ -35,7 +35,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   const upload = stages.upload.data;
   if (upload.run?.status === "done") throw new ApiError(409, "UPLOAD_DONE", "이미 유튜브에 올린 영상이에요.");
   if (!final) throw new ApiError(409, "FINAL_REQUIRED", "올릴 최종본이 없어요.");
-  if (!upload.desc.trim()) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
+  if (!descWritten(upload.desc)) throw new ApiError(409, "DESCRIPTION_REQUIRED", "설명란을 채워 주세요.");
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
   const connection = await youtubeConnectionStatus(ownerId);
