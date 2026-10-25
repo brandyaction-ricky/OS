@@ -9,18 +9,19 @@ import "./team-kpi.css";
 type KpiTask = { id: string; title: string; status: string; dueDate: string | null; assignee: string | null };
 type Kpi = { id: string; title: string; unit: string; target: number | null; current: number | null; metric: "revenue" | "manual"; version: number; updatedAt: string; tasks: KpiTask[] };
 type Revenue = { net: number; paid: number; canceled: number; count: number; canceledCount: number; syncedAt: string | null };
-type Cohort = { id: string; name: string; product: string; salesFrom: string; salesTo: string; courseFrom: string; courseTo: string; version: number; revenue: Revenue; logDocumentId: string | null; kpis: Kpi[] };
+type Round = { key: string; product: string; from: string; to: string; label: string; named: boolean; settingsId: string | null; courseFrom: string | null; courseTo: string | null; revenue: Revenue; logDocumentId: string | null; kpis: Kpi[] };
 type MonthBusiness = { key: "myin"; label: string; mode: "month"; revenue: Revenue; logDocumentId: string | null; kpis: Kpi[] };
-type CohortBusiness = { key: "edu"; label: string; mode: "cohort"; cohorts: Cohort[] };
-type KpiData = { canSeeFinance: boolean; businesses: (MonthBusiness | CohortBusiness)[] };
+type RoundBusiness = { key: "edu"; label: string; mode: "rounds"; rounds: Round[] };
+type KpiData = { canSeeFinance: boolean; businesses: (MonthBusiness | RoundBusiness)[] };
 type Send = (method: "POST" | "PATCH", body: Record<string, unknown>) => Promise<boolean>;
 const shiftMonth = (month: string, step: number) => { const [y, m] = month.split("-").map(Number), d = new Date(Date.UTC(y, m - 1 + step, 1)); return d.toISOString().slice(0, 7); };
 const num = (value: string) => value.trim() === "" ? null : Number(value.replace(/[,\s원]/g, ""));
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+const daysBetween = (from: string, to: string) => (Date.parse(to) - Date.parse(from)) / 86_400_000;
 
-// 마이인 by month and 브랜디에듀 by cohort (기수). Revenue is the Toss net sales (totals only):
-// orders paid in the month, or the cohort product's payments in its recruiting window, less
-// cancellations. Targets and other metrics are entered here; every change lands in the KPI log.
+// 마이인 by month; 브랜디에듀 by sales round, found automatically from Toss payments per product
+// (lib/kpi-runs). Revenue is the Toss net sales (totals only). Targets, other metrics, round
+// names, course dates and split days are entered here; every change lands in the KPI log.
 export function TeamKpiView({ token }: { token: string }) {
   const [month, setMonth] = useState(kstMonth()), [data, setData] = useState<KpiData | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
@@ -45,34 +46,43 @@ export function TeamKpiView({ token }: { token: string }) {
           <ScopeKpi revenueLabel="순매출 (토스 결제 기준)" revenue={business.revenue} kpis={business.kpis} logDocumentId={business.logDocumentId}
             scope={{ business: "myin", month }} busy={busy} send={send} />
         </article>
-      : <CohortCard key={business.key} business={business} canSeeFinance={data.canSeeFinance} busy={busy} send={send} />)}</div>}
+      : <RoundsCard key={business.key} business={business} canSeeFinance={data.canSeeFinance} busy={busy} send={send} />)}</div>}
   </section>;
 }
 
-function CohortCard({ business, canSeeFinance, busy, send }: { business: CohortBusiness; canSeeFinance: boolean; busy: boolean; send: Send }) {
-  const day = today(), [open, setOpen] = useState(!business.cohorts.length), [form, setForm] = useState({ name: "", product: "", salesFrom: "", salesTo: "", courseFrom: "", courseTo: "" });
-  const field = (key: keyof typeof form, label: string, type = "text") => <label>{label}<input type={type} value={form[key]} onChange={e => setForm({ ...form, [key]: e.target.value })} /></label>;
+function RoundsCard({ business, canSeeFinance, busy, send }: { business: RoundBusiness; canSeeFinance: boolean; busy: boolean; send: Send }) {
+  const day = today();
   return <article className="panel panel-pad tm-kpi-card">
-    <header className="tm-row"><h3 className="card-title">{business.label} · 기수 KPI</h3>
+    <header className="tm-row"><h3 className="card-title">{business.label} · 상품별 판매 회차</h3>
       {canSeeFinance ? <Link className="tm-muted" href="/finance/settlements">월 정산 입금 보기 (관리자) →</Link> : null}</header>
-    <span className="tm-muted">기수 매출 = 그 기수 상품의 모집 기간 토스 결제 − 취소·환불</span>
-    {business.cohorts.map(cohort => <details className="tm-kpi-cohort" key={cohort.id} open={cohort.courseTo >= day}>
-      <summary><strong>{cohort.name}</strong> <span className="tm-muted">{cohort.courseTo < day ? "종료" : cohort.salesTo < day ? "교육 중·예정" : "모집 중"} · 모집 {cohort.salesFrom}~{cohort.salesTo} · 교육 {cohort.courseFrom}~{cohort.courseTo}{cohort.product ? ` · 상품 "${cohort.product}"` : ""}</span></summary>
-      <ScopeKpi revenueLabel="기수 매출 (토스 결제 기준)" revenue={cohort.revenue} kpis={cohort.kpis} logDocumentId={cohort.logDocumentId}
-        scope={{ business: "edu", cohortId: cohort.id }} busy={busy} send={send} />
-      <button type="button" className="secondary-button compact" disabled={busy} onClick={() => { if (window.confirm(`${cohort.name} 기수를 지울까요? KPI 로그에는 남습니다.`)) void send("PATCH", { id: cohort.id, expectedVersion: cohort.version, archive: true }); }}>기수 삭제</button>
-    </details>)}
-    {open ? <div className="tm-kpi-cohort-form">
-      {field("name", "기수 이름 (예: AI 문샷 챌린지 2기)")}{field("product", "토스 상품명 (주문명에 들어가는 말)")}
-      {field("salesFrom", "모집 시작", "date")}{field("salesTo", "모집 마감", "date")}{field("courseFrom", "교육 시작", "date")}{field("courseTo", "교육 끝", "date")}
-      <div className="tm-row"><button type="button" className="primary-button compact" disabled={busy || !form.name.trim() || !form.salesFrom || !form.salesTo || !form.courseFrom || !form.courseTo}
-        onClick={() => void send("POST", { action: "cohort", ...form }).then(ok => { if (ok) { setOpen(false); setForm({ name: "", product: "", salesFrom: "", salesTo: "", courseFrom: "", courseTo: "" }); } })}>기수 추가</button>
-        {business.cohorts.length ? <button type="button" className="secondary-button compact" onClick={() => setOpen(false)}>취소</button> : null}</div>
-    </div> : <button type="button" className="secondary-button compact" onClick={() => setOpen(true)}>+ 기수 추가</button>}
+    <span className="tm-muted">토스 결제를 상품별로 자동으로 묶습니다. 판매가 2주 끊기면 다음 회차, 계속 팔리는 상품은 월별입니다.</span>
+    {business.rounds.length ? business.rounds.map(round => <RoundItem key={round.key} round={round} live={daysBetween(round.to, day) < 14 || !!(round.courseTo && round.courseTo >= day)} busy={busy} send={send} />)
+      : <p className="tm-muted">아직 토스 결제가 없습니다.</p>}
   </article>;
 }
 
-type Scope = { business: "myin"; month: string } | { business: "edu"; cohortId: string };
+function RoundItem({ round, live, busy, send }: { round: Round; live: boolean; busy: boolean; send: Send }) {
+  const [editing, setEditing] = useState(false), [name, setName] = useState(round.named ? round.label : ""), [courseFrom, setCourseFrom] = useState(round.courseFrom ?? ""), [courseTo, setCourseTo] = useState(round.courseTo ?? ""), [splitDay, setSplitDay] = useState("");
+  const status = daysBetween(round.to, today()) < 14 ? "판매 중" : round.courseTo && round.courseTo >= today() ? "교육 예정·진행" : "지난 회차";
+  return <details className="tm-kpi-cohort" open={live}>
+    <summary><strong>{round.label}</strong> <span className="tm-muted">{status} · 판매 {round.from}~{round.to} · {formatKpiValue(round.revenue.net, "원")}{round.courseFrom ? ` · 교육 ${round.courseFrom}~${round.courseTo ?? ""}` : ""}</span></summary>
+    <ScopeKpi revenueLabel="회차 매출 (토스 결제 기준)" revenue={round.revenue} kpis={round.kpis} logDocumentId={round.logDocumentId}
+      scope={{ business: "edu", roundKey: round.key }} busy={busy} send={send} />
+    {editing ? <div className="tm-kpi-cohort-form">
+      <label>회차 이름 (예: AI 문샷 챌린지 2기)<input value={name} onChange={e => setName(e.target.value)} maxLength={80} /></label><span />
+      <label>교육 시작 (선택)<input type="date" value={courseFrom} onChange={e => setCourseFrom(e.target.value)} /></label>
+      <label>교육 끝 (선택)<input type="date" value={courseTo} onChange={e => setCourseTo(e.target.value)} /></label>
+      <div className="tm-row"><button type="button" className="primary-button compact" disabled={busy} onClick={() => void send("POST", { action: "round", roundKey: round.key,
+        ...(name.trim() ? { name: name.trim() } : {}), courseFrom: courseFrom || null, courseTo: courseTo || null }).then(ok => { if (ok) setEditing(false); })}>저장</button>
+        <button type="button" className="secondary-button compact" onClick={() => setEditing(false)}>취소</button></div>
+      <label>두 회차가 붙어서 묶였다면, 나눌 날짜<input type="date" min={round.from} max={round.to} value={splitDay} onChange={e => setSplitDay(e.target.value)} /></label>
+      <div className="tm-row"><button type="button" className="secondary-button compact" disabled={busy || !splitDay || splitDay <= round.from || splitDay > round.to}
+        onClick={() => { if (window.confirm(`${round.product}의 판매를 ${splitDay}부터 다음 회차로 나눌까요?`)) void send("POST", { action: "split", product: round.product, day: splitDay }).then(ok => { if (ok) setSplitDay(""); }); }}>여기서 나누기</button></div>
+    </div> : <button type="button" className="secondary-button compact" onClick={() => setEditing(true)}>회차 이름·교육 날짜·나누기</button>}
+  </details>;
+}
+
+type Scope = { business: "myin"; month: string } | { business: "edu"; roundKey: string };
 function ScopeKpi({ revenueLabel, revenue: r, kpis, logDocumentId, scope, busy, send }: { revenueLabel: string; revenue: Revenue; kpis: Kpi[]; logDocumentId: string | null; scope: Scope; busy: boolean; send: Send }) {
   const revenueKpi = kpis.find(kpi => kpi.metric === "revenue"), others = kpis.filter(kpi => kpi.metric !== "revenue");
   const [target, setTarget] = useState(""), [adding, setAdding] = useState(false), [title, setTitle] = useState(""), [unit, setUnit] = useState("건"), [newTarget, setNewTarget] = useState("");

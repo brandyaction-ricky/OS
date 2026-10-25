@@ -1,7 +1,8 @@
 import "server-only";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { KPI_BUSINESSES, formatKpiValue, kpiBusiness, kpiLogLine, kpiLogTitle, monthRange, type KpiBusinessKey, type KpiCohort } from "@/lib/kpi";
+import { KPI_BUSINESSES, formatKpiValue, kpiBusiness, kpiLogLine, kpiLogTitle, monthRange, type KpiBusinessKey } from "@/lib/kpi";
+import { activeRuns, salesRuns, type SalesRun } from "@/lib/kpi-runs";
 import { authenticateRequest } from "./auth";
 
 // Staff (not partners) read and manage KPIs, amounts included (owner decision 2026-10-25).
@@ -32,25 +33,40 @@ export async function monthRevenue(month: string) {
   })) as Record<KpiBusinessKey, KpiRevenue>;
 }
 
-// A cohort's sales: its product's payments in the recruiting window, less cancellations.
-export async function cohortRevenue(cohort: Pick<KpiCohort, "product" | "salesFrom" | "salesTo">): Promise<KpiRevenue> {
+// 브랜디에듀 sales rounds, found from the Toss ledger (lib/kpi-runs). A person's settings for a
+// round (name, course dates; os_records goal, metadata kind "cohort") anchor to the round that
+// contains their anchor day; split days per product live in a kind "product_split" row.
+export type RoundSettings = { id: string; name: string; courseFrom: string | null; courseTo: string | null; version: number };
+export type SalesRound = SalesRun & { label: string; settings: RoundSettings | null; courseTo: string | null; syncedAt: string | null };
+export async function eduRounds(): Promise<SalesRound[]> {
   const db = createServiceSupabase();
-  let query = db.from("os_fin_payments").select("amount,canceled_amount,status").eq("biz", "edu").gte("paid_date", cohort.salesFrom).lte("paid_date", cohort.salesTo).is("archived_at", null).limit(10000);
-  if (cohort.product.trim()) query = query.ilike("order_name", `%${cohort.product.trim().replace(/[%_]/g, "")}%`);
-  const [{ data, error }, { data: store }] = await Promise.all([query, db.from("os_fin_stores").select("last_tx_synced_at").eq("biz", "edu").maybeSingle()]);
-  if (error) throw new ApiError(503, "KPI_REVENUE_UNAVAILABLE", "기수 매출을 불러오지 못했습니다.");
-  const rows = (data ?? []).filter(row => row.status !== "WAITING_FOR_DEPOSIT");
-  const paid = rows.reduce((sum, row) => sum + Number(row.amount), 0), canceled = rows.reduce((sum, row) => sum + Number(row.canceled_amount ?? 0), 0);
-  return { net: paid - canceled, paid, canceled, count: rows.length, canceledCount: rows.filter(row => Number(row.canceled_amount) > 0).length, syncedAt: store?.last_tx_synced_at ?? null };
+  const [{ data: payments, error }, { data: rows, error: rowError }, { data: store }] = await Promise.all([
+    db.from("os_fin_payments").select("order_name,paid_date,amount,canceled_amount,status").eq("biz", "edu").is("archived_at", null).limit(20000),
+    db.from("os_records").select("id,title,version,metadata").eq("record_type", "goal").eq("metadata->>workspace", "kpi").in("metadata->>kind", ["cohort", "product_split"]).is("archived_at", null),
+    db.from("os_fin_stores").select("last_tx_synced_at").eq("biz", "edu").maybeSingle(),
+  ]);
+  if (error || rowError) throw new ApiError(503, "KPI_ROUNDS_UNAVAILABLE", "판매 회차를 불러오지 못했습니다.");
+  const splits: Record<string, string[]> = {};
+  for (const row of (rows ?? []).filter(item => item.metadata.kind === "product_split")) splits[String(row.metadata.product)] = (row.metadata.splits ?? []) as string[];
+  const settings = (rows ?? []).filter(item => item.metadata.kind === "cohort");
+  const runs = salesRuns((payments ?? []).filter(row => row.status !== "WAITING_FOR_DEPOSIT").map(row => ({
+    product: String(row.order_name ?? ""), day: String(row.paid_date), amount: Number(row.amount), canceled: Number(row.canceled_amount ?? 0) })), splits);
+  return runs.map(run => {
+    const found = settings.find(item => String(item.metadata.product) === run.product && run.from <= String(item.metadata.anchor ?? item.metadata.salesFrom) && String(item.metadata.anchor ?? item.metadata.salesFrom) <= run.to);
+    const own = found ? { id: found.id, name: found.title, version: found.version,
+      courseFrom: (found.metadata.courseFrom as string) || null, courseTo: (found.metadata.courseTo as string) || null } : null;
+    return { ...run, settings: own, courseTo: own?.courseTo ?? null, syncedAt: store?.last_tx_synced_at ?? null,
+      label: own?.name ?? `${run.product} · ${run.from.slice(5).replace("-", "/")}~${run.to.slice(5).replace("-", "/")} 판매분` };
+  });
 }
-// 브랜디에듀 cohorts are os_records goal rows (metadata.workspace "kpi", kind "cohort"), newest first.
-export async function listCohorts(): Promise<KpiCohort[]> {
-  const { data, error } = await createServiceSupabase().from("os_records").select("id,title,version,metadata").eq("record_type", "goal")
-    .eq("metadata->>workspace", "kpi").eq("metadata->>kind", "cohort").is("archived_at", null).limit(50);
-  if (error) throw new ApiError(503, "KPI_COHORTS_UNAVAILABLE", "기수를 불러오지 못했습니다.");
-  return (data ?? []).map(row => ({ id: row.id, name: row.title, version: row.version, product: String(row.metadata.product ?? ""),
-    salesFrom: String(row.metadata.salesFrom), salesTo: String(row.metadata.salesTo), courseFrom: String(row.metadata.courseFrom), courseTo: String(row.metadata.courseTo) }))
-    .sort((a, b) => b.salesFrom.localeCompare(a.salesFrom));
+// The settings row of a round, created the first time a person names it or sets a target.
+export async function ensureRoundSettings(round: SalesRound, actorId: string) {
+  if (round.settings) return round.settings;
+  const { data, error } = await createServiceSupabase().from("os_records").insert({ record_type: "goal", title: round.label, description: "", status: "active", priority: "normal",
+    brand: kpiBusiness("edu")!.brand, owner_id: actorId, created_by: actorId, updated_by: actorId,
+    metadata: { workspace: "kpi", kind: "cohort", business: "edu", product: round.product, anchor: round.from } }).select("id,title,version").single();
+  if (error || !data) throw new ApiError(503, "KPI_ROUND_SAVE_FAILED", "판매 회차를 저장하지 못했습니다.");
+  return { id: data.id as string, name: data.title as string, version: data.version as number, courseFrom: null, courseTo: null };
 }
 
 // Append to the scope's log (a month of a business, or a cohort), a team document every member
@@ -84,11 +100,10 @@ export async function logDailyRevenue(at = new Date()) {
   if (!admin) throw new ApiError(503, "KPI_LOG_OWNER_MISSING", "KPI 로그를 만들 관리자를 찾지 못했습니다.");
   const ownerId = admin.id as string, day = at.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }), month = day.slice(0, 7), revenue = await monthRevenue(month);
   await appendKpiLog("myin", { key: month, label: month }, ownerId, "자동", `매출 누적 ${formatKpiValue(revenue.myin.net, "원")} (토스 결제 ${revenue.myin.count}건)`, at);
-  // 브랜디에듀: each cohort that is still recruiting or running.
-  for (const cohort of (await listCohorts()).filter(item => item.courseTo >= day)) {
-    const sales = await cohortRevenue(cohort);
-    await appendKpiLog("edu", { key: `cohort:${cohort.id}`, label: cohort.name }, ownerId, "자동", `기수 매출 누적 ${formatKpiValue(sales.net, "원")} (결제 ${sales.count}건)`, at);
-  }
+  // 브랜디에듀: each named round still selling or running.
+  const rounds = await eduRounds();
+  for (const round of activeRuns(rounds, day).filter(item => item.settings && rounds.length))
+    await appendKpiLog("edu", { key: `cohort:${round.settings!.id}`, label: round.label }, ownerId, "자동", `회차 매출 누적 ${formatKpiValue(round.net, "원")} (결제 ${round.count}건)`, at);
 }
 
 // Tasks confirmed from meeting items that name a KPI: the item keeps kpiId, and the review

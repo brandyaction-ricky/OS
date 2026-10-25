@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { currentCohorts, formatKpiValue, kpiLogLine, kpiLogTitle, kpiProgress, monthRange, validDay, validMonth } from "../lib/kpi.ts";
+import { formatKpiValue, kpiLogLine, kpiLogTitle, kpiProgress, monthRange, validDay, validMonth } from "../lib/kpi.ts";
 
 test("month range covers the whole month, leap years included", () => {
   assert.deepEqual(monthRange("2026-10"), { from: "2026-10-01", to: "2026-10-31" });
@@ -24,11 +24,7 @@ test("each business keeps a monthly log in its own wiki folder, one dated line p
   assert.equal(kpiLogLine(new Date("2026-10-24T21:30:00Z"), "자동", "매출 누적 486,900원"), "- 2026-10-25 06:30 · 자동 · 매출 누적 486,900원");
 });
 
-test("a meeting looks at cohorts still recruiting or running, else the latest one", () => {
-  const a = { id: "a", salesFrom: "2026-09-01", courseTo: "2026-10-10" }, b = { id: "b", salesFrom: "2026-10-15", courseTo: "2026-11-30" };
-  assert.deepEqual(currentCohorts([a, b], "2026-10-25").map(c => c.id), ["b"]);
-  assert.deepEqual(currentCohorts([a, b], "2026-12-05").map(c => c.id), ["b"]);
-  assert.deepEqual(currentCohorts([], "2026-12-05"), []);
+test("days are checked as calendar days", () => {
   assert.equal(validDay("2026-11-30"), true);
   assert.equal(validDay("2026-1-5"), false);
 });
