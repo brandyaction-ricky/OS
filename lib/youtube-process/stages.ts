@@ -51,7 +51,9 @@ export interface YpUpload {
   utm: { cat: string; dest: string; camp: string; next: string; short: string };
   srt: { path: string; name: string } | null;
   desc: string; pinned: string; hiddenTags: string[];
-  descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string } | null;
+  descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string; title?: string } | null;
+  /** A 숏폼's YouTube title (2026-10-25); a longform goes up with its confirmed A title instead. */
+  title?: string;
   /** The AI's pinned comment when a person had already edited the description (shown beside it, not applied). */
   pinnedDraft?: string;
   /** The same AI pass's copy for other channels and the upload checklist (the earlier 유튜브 관리 kit). */

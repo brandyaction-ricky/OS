@@ -1,6 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, Download, ImagePlus, Plus, Sparkles, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
+import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
+import type { ChannelConnection } from "@/lib/channel-types";
 import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import type { YpBundle, YpClient, YpFinalView, YpRenderView, YpShortPatch, YpShortView } from "./youtube-process-data";
@@ -225,14 +227,15 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
   };
   const action = page.bundle ? stepAction(page, 5, project?.yp.stage === "done" ? { kind: "status", status: "끝난 영상" }
     : { kind: "button", label: "다 올렸어요 · 끝내기", reason: last ? "" : "MP4가 없어요", busy: moving, onClick: () => void finish() }) : null;
-  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="완성한 MP4를 내려받아 릴스 · 광고 · 쇼츠에 올려요. 다 올렸으면 끝내요.">
+  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="유튜브 쇼츠는 여기서 바로 올리고, 릴스 · 광고는 MP4를 내려받아 올려요. 다 올렸으면 끝내요.">
     {page.bundle && project ? !["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
       <GateBanner page={page} gate="review" />
       <Subject page={page} />
       <YpSection n={1} title="완성 MP4" gq="대표 OK가 난 마지막 버전">
         <ShortVideo page={page} final={last} />
       </YpSection>
-      {view ? <YpSection n={2} title="올릴 때 같이 쓸 것">
+      <ShortYoutube page={page} last={last} />
+      {view ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
         <dl className="yp-kv">
           <dt>용도</dt><dd>{view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · {view.brief.duration}초</dd>
           <dt>할 행동</dt><dd>{view.brief.goal || "—"}</dd>
@@ -243,6 +246,79 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
       </YpSection> : null}
     </> : null}
   </YpFrame>;
+}
+
+/** 내보내기 › 유튜브 쇼츠 (owner request 2026-10-25): my AI writes the title and description, the PD edits them, and the MP4 goes up as a Short. */
+function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }) {
+  const project = page.bundle!.project;
+  const upload = page.bundle!.stages.upload;
+  const run = upload.data.run;
+  const [form, setForm] = useState({ title: upload.data.title ?? "", desc: upload.data.desc, privacy: upload.data.privacy });
+  const [dirty, setDirty] = useState(false);
+  const [send, setSend] = useState(false);
+  const [channels, setChannels] = useState<ChannelConnection[]>([]);
+  const [owner, setOwner] = useState("");
+  const [step, setStep] = useState("");
+  const job = useStaffJob(page, "short-copy", () => void page.reload());
+  useEffect(() => { if (!dirty) setForm({ title: upload.data.title ?? "", desc: upload.data.desc, privacy: upload.data.privacy }); }, [upload.data, dirty]);
+  useEffect(() => {
+    if (page.demo || !page.accessToken) return;
+    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
+      .then(result => { const rows = result.connections.filter(row => row.platform === "youtube" && row.status === "connected"); setChannels(rows); setOwner(current => current || rows[0]?.ownerId || ""); }, () => setChannels([]));
+  }, [page.demo, page.accessToken]);
+  const save = async (patch: Record<string, unknown> = form) => {
+    if (!page.client) return false;
+    try {
+      const result = await page.client.saveStage(project.id, "upload", upload.version, patch);
+      page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, upload: result.stage } } : current);
+      setDirty(false); return true;
+    } catch (reason) { page.fail(reason); return false; }
+  };
+  const edit = (patch: Partial<typeof form>) => { setForm(current => ({ ...current, ...patch })); setDirty(true); };
+  const go = async () => {
+    if (!page.client || !last) return;
+    page.setError("");
+    try {
+      if (dirty && !(await save())) return;
+      setStep("영상을 준비하는 중");
+      const url = await page.client.finalUrl(project.id, last);
+      const response = url ? await fetch(url) : null;
+      if (!response?.ok) throw new Error("OS에 저장된 MP4를 불러오지 못했어요.");
+      const file = new File([await response.blob()], "short.mp4", { type: "video/mp4" });
+      const session = await page.client.uploadSession(project.id, { fileName: file.name, fileSize: file.size, mimeType: file.type, ...(owner ? { connectionOwnerId: owner } : {}) });
+      const video = await uploadYoutubeFile(session.uploadUrl, file, percent => setStep(`유튜브로 보내는 중 ${percent}%`));
+      setStep("결과를 기록하는 중");
+      await page.client.uploadComplete(project.id, { videoId: video.id, ...(owner ? { connectionOwnerId: owner } : {}) });
+      await page.reload();
+    } catch (reason) { page.fail(reason); } finally { setStep(""); }
+  };
+  const draft = upload.data.descBy;
+  const draftWaiting = Boolean(draft && (form.desc !== draft.draft || (draft.title && form.title !== draft.title)));
+  const missing = !last ? "MP4가 없어요" : !form.title.trim() ? "제목을 써 주세요" : !form.desc.trim() ? "설명을 써 주세요" : page.demo ? "데모에서는 올리지 않아요" : !channels.length ? "유튜브 채널을 연결해 주세요" : "";
+  return <YpSection n={2} title="유튜브 쇼츠로 올리기" gq={run?.status === "done" ? "올렸어요" : "제목 · 설명을 다듬고 올려요"} extra={run?.status === "done" ? null
+    : <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 제목 · 설명 쓰기</button>}>
+    {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
+    {run?.status === "done" ? <div className="yp-note yp-ok" role="status"><Youtube size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요</b> · {form.title}
+      {run.videoUrl ? <> · <a className="yp-lnk" href={run.videoUrl} target="_blank" rel="noreferrer">쇼츠 보기 <ExternalLink size={12} /></a></> : null}</div></div> : <>
+      {draftWaiting && draft ? <div className="yp-note"><div>{draft.name}의 AI 초안이 있어요. 지금 칸은 사람이 쓴 그대로 두었어요.
+        <button type="button" className="yp-lnk" onClick={() => edit({ desc: draft.draft, ...(draft.title ? { title: draft.title } : {}) })}>이 초안으로 바꾸기</button></div></div> : null}
+      <label className="yp-lbl" style={{ display: "block" }}>제목 <span className="yp-gq">쇼츠 제목 · 100자 이내</span>
+        <input className="yp-in" value={form.title} maxLength={100} onChange={event => edit({ title: event.target.value })} onBlur={() => { if (dirty) void save(); }} /></label>
+      <label className="yp-lbl" style={{ display: "block" }}>설명 <span className="yp-gq">핵심 · 할 행동 · 연결 페이지 · 해시태그(마지막 줄 #…는 태그로도 들어가요)</span>
+        <textarea className="yp-in" rows={5} value={form.desc} maxLength={5000} onChange={event => edit({ desc: event.target.value })} onBlur={() => { if (dirty) void save(); }} /></label>
+      <div className="yp-savebar">
+        <label className="yp-lbl" style={{ margin: 0 }}>공개 범위 <select className="yp-in" value={form.privacy} onChange={event => { const privacy = event.target.value as typeof form.privacy; edit({ privacy }); void save({ ...form, privacy }); }}>
+          <option value="private">비공개</option><option value="unlisted">일부 공개</option></select></label>
+        {channels.length > 1 ? <select className="yp-in" value={owner} onChange={event => setOwner(event.target.value)} aria-label="유튜브 채널">{channels.map(row => <option key={row.ownerId} value={row.ownerId}>{row.accountName}</option>)}</select>
+          : channels[0] ? <span className="yp-muted">채널: {channels[0].accountName}</span> : null}
+        <span className="yp-sp" />
+        {missing ? <span className="yp-hint">{missing}</span> : null}
+        <button type="button" className="yp-btn yp-pri" disabled={Boolean(missing) || Boolean(step)} onClick={() => void go()}><Youtube size={14} /> {step || "유튜브 쇼츠로 올리기"}</button>
+      </div>
+      <p className="yp-hint">세로 MP4가 60초 이내면 유튜브가 쇼츠로 올려요. 공개로 바꾸는 건 유튜브 스튜디오에서 해요.</p>
+    </>}
+    <SendDialog page={page} task="short-copy" open={send} onClose={() => setSend(false)} job={job} />
+  </YpSection>;
 }
 
 /** What the 대표 decides on for a 숏폼's 최종 검수: the vertical MP4, what it was made for, and the open feedback. */
