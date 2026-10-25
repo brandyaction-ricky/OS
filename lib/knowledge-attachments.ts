@@ -50,7 +50,8 @@ export function knowledgeAttachmentTarget(reference: KnowledgeAttachmentReferenc
 
 export function parseKnowledgeAttachmentTarget(target: string): KnowledgeAttachmentReference | null {
   if (!target.startsWith("knowledge-attachment:?")) return null;
-  const params = new URLSearchParams(target.slice("knowledge-attachment:?".length));
+  // The editor saves markdown with "&" escaped as "\&"; drop markdown backslash escapes first.
+  const params = new URLSearchParams(target.slice("knowledge-attachment:?".length).replace(/\\([!-/:-@[-`{-~])/g, "$1"));
   const path = params.get("path") ?? "";
   const name = params.get("name") ?? "";
   const type = params.get("type") ?? "";
