@@ -4,8 +4,8 @@ import { ApiError } from "@/lib/http";
 import { decodeHtmlEntities } from "@/lib/html-entities";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import {
-  categoryQuery, channelNormal, DISCOVER_LETTERS, isBreakout, isLongform, KOREAN, NOT_A_TOPIC,
-  type DiscoverChannel, type DiscoverLetter, type DiscoverVideo,
+  categoryQuery, channelNormal, DISCOVER_LETTERS, isBreakout, isLongform, KOREAN, NOT_A_TOPIC, rankPackagingRefs,
+  type DiscoverChannel, type DiscoverLetter, type DiscoverVideo, type PackagingRef,
 } from "@/lib/youtube-process/discover";
 import type { RequestActor } from "./auth";
 import { keepFoundBreakouts } from "./youtube-niche";
@@ -24,7 +24,7 @@ export const discoverSchema = z.object({
   refresh: z.boolean().default(false),
 }).refine(input => Boolean(input.category) !== Boolean(input.q), "분류나 검색어 하나를 골라 주세요.");
 
-type Snippet = { title?: string; channelId?: string; channelTitle?: string; publishedAt?: string; thumbnails?: { medium?: { url?: string }; high?: { url?: string } } };
+type Snippet = { title?: string; channelId?: string; channelTitle?: string; publishedAt?: string; liveBroadcastContent?: string; thumbnails?: { medium?: { url?: string }; high?: { url?: string } } };
 type Video = { id?: string; snippet?: Snippet; statistics?: { viewCount?: string }; contentDetails?: { duration?: string }; liveStreamingDetails?: unknown };
 type Channel = { id?: string; snippet?: { title?: string; customUrl?: string }; statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean }; contentDetails?: { relatedPlaylists?: { uploads?: string } } };
 const seconds = (value = "") => { const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/); return match ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : 0; };
@@ -44,6 +44,22 @@ const asVideo = (video: Video, channel: { subscribers: number | null; median: nu
     thumbnail: video.snippet?.thumbnails?.high?.url ?? video.snippet?.thumbnails?.medium?.url ?? "", url: `https://www.youtube.com/watch?v=${id}`,
     median, ratio: median ? Math.round(viewCount / median * 10) / 10 : null, viewSubscriberRatio: subscribers ? Math.round(viewCount / subscribers * 100) / 100 : null, ...(query ? { query } : {}) };
 };
+
+/** 패키징 레퍼런스 for the 기획안 · 최종 썸네일 jobs: the 기획실's one search (about 102 units), ranked by rankPackagingRefs. */
+export async function packagingReferences(query: string): Promise<PackagingRef[]> {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
+  const found = await youtube<{ items?: { id?: { videoId?: string } }[] }>("search", { part: "snippet", q: query, type: "video", maxResults: "50", order: "relevance", relevanceLanguage: "ko", regionCode: "KR", safeSearch: "none" }, key);
+  const ids = (found.items ?? []).map(item => item.id?.videoId).filter((id): id is string => Boolean(id));
+  if (!ids.length) return [];
+  const videos = (await youtube<{ items?: Video[] }>("videos", { part: VIDEO_PARTS, id: ids.join(",") }, key)).items ?? [];
+  const channelIds = [...new Set(videos.map(video => video.snippet?.channelId).filter((id): id is string => Boolean(id)))];
+  const channels = channelIds.length ? (await youtube<{ items?: Channel[] }>("channels", { part: "statistics", id: channelIds.join(",") }, key)).items ?? [] : [];
+  const subscribers = new Map(channels.map(row => [row.id, row.statistics?.hiddenSubscriberCount ? null : Number(row.statistics?.subscriberCount ?? 0) || null]));
+  return rankPackagingRefs(videos.map(video => ({ id: video.id ?? "", title: decodeHtmlEntities(video.snippet?.title ?? ""), channel: decodeHtmlEntities(video.snippet?.channelTitle ?? ""),
+    views: Number(video.statistics?.viewCount ?? 0), subscribers: subscribers.get(video.snippet?.channelId) ?? null, seconds: seconds(video.contentDetails?.duration),
+    live: (video.snippet?.liveBroadcastContent ?? "none") !== "none" })));
+}
 
 /** A channel's subscribers, normal views and breakouts from its last 50 uploads (2 quota units). */
 async function channelStats(row: Channel, key: string): Promise<DiscoverChannel> {

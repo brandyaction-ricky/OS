@@ -18,6 +18,10 @@ import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
 import { assertV1ColumnInputs, assertV1PlanInputs, assertV1RetitleInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Retitle, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1RetitleCard, v1RetitleInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
 import { SLOTS } from "@/lib/youtube-process/stages";
+import { packagingPick } from "@/lib/youtube-process/discover";
+import { projectName } from "@/lib/youtube-process/project";
+import { packagingReferences } from "./youtube-discover";
+import type { PackagingMarket } from "./youtube-process-ai";
 import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCopy, saveShortJob, shortCopyCard, shortCopyInputKey, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
 import { procedureRefs } from "./content-generation";
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
@@ -42,6 +46,8 @@ const jobMetaSchema = z.object({
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
+  // 기획안 · 다시 뽑기: the market search behind the formulas, frozen when the job was asked for (like a 틈새 job's pool).
+  market: z.custom<PackagingMarket>(value => Boolean(value && typeof value === "object")).optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
@@ -54,8 +60,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("storyboard"), sourceId: z.string().uuid() }).strict(),
   // ⑦ 유튜브 관리 발행키트, from the script approved at gate 2 (and the v13 final's subtitles for the chapters).
   z.object({ task: z.literal("kit"), sourceId: z.string().uuid() }).strict(),
-  // 유튜브 공정 v1 기획안, before the 기획안 컨펌.
-  z.object({ task: z.literal("plan"), sourceId: z.string().uuid() }).strict(),
+  // 유튜브 공정 v1 기획안, before the 기획안 컨펌; query = the 기획실 레퍼런스 검색어 (default: the project's name).
+  z.object({ task: z.literal("plan"), sourceId: z.string().uuid(), query: z.string().trim().max(60).optional() }).strict(),
   // 유튜브 공정 v1 쇼츠: clips proposed from the final's subtitles.
   z.object({ task: z.literal("shorts"), sourceId: z.string().uuid(), count: z.number().int().min(1).max(12).default(5) }).strict(),
   // 유튜브 공정 v1 숏폼: 구매 이유 (광고) and the scenes, from the topic and what to make.
@@ -67,7 +73,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   // 유튜브 공정 v1 숏폼 내보내기: the YouTube title and description from the final scenes.
   z.object({ task: z.literal("short-copy"), sourceId: z.string().uuid() }).strict(),
   // 유튜브 공정 v1 최종 썸네일: one slot's title and thumbnail copy again, from the 패키징 정본 formula; reason = why the PD wants another.
-  z.object({ task: z.literal("retitle"), sourceId: z.string().uuid(), slot: z.enum(SLOTS), reason: z.string().trim().max(300).default("") }).strict(),
+  z.object({ task: z.literal("retitle"), sourceId: z.string().uuid(), slot: z.enum(SLOTS), reason: z.string().trim().max(300).default(""), query: z.string().trim().max(60).optional() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -119,6 +125,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   let myinRunId: string | undefined;
   let note = "";
   let pool: NicheVideo[] | undefined;
+  let marketFor: { query: string; short: boolean } | undefined;
   if (input.task === "niche") {
     if (input.sourceId !== NICHE_BOARD_ID) throw new ApiError(404, "NICHE_BOARD_NOT_FOUND", "틈새 판을 찾지 못했어요.");
     pool = await nichePool(service());
@@ -136,6 +143,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1PlanInputs(state);
     source = state.source; title = jobTitle(state); inputKey = v1PlanInputKey(state);
+    const { project } = v1Stages(state); marketFor = { query: input.query || projectName(project), short: project.yp.topic.type === "short" };
   } else if (input.task === "shorts") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -153,6 +161,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1RetitleInputs(state, input.slot);
     source = state.source; title = jobTitle(state); inputKey = v1RetitleInputKey(state, input.slot, input.reason);
+    const { project } = v1Stages(state); marketFor = { query: input.query || projectName(project), short: project.yp.topic.type === "short" };
   } else if (input.task === "short") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -186,11 +195,15 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const role = input.task === "script" ? input.role : undefined;
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
     const m = meta(job);
-    if (m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot) return publicStaffJob(job);
+    if (m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
-  const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
+  // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
+  const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query)
+    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short) }))
+    .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
+  const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
@@ -376,12 +389,12 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1RetitleCard(service(), state, minutes, m.slot ?? "A", m.attachments ?? "") };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1RetitleCard(service(), state, minutes, m.slot ?? "A", m.attachments ?? "", m.market) };
   }
   if (m.task === "plan") {
     const state = await currentPlanInput(job);
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1PlanCard(service(), state, minutes) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1PlanCard(service(), state, minutes, m.market) };
   }
   if (m.task === "kit") {
     const state = await currentKitInput(job);
@@ -457,7 +470,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   }
   if (m.task === "retitle") {
     const state = await currentRetitleInput(job);
-    const saved = await keepIssues(job, m, () => saveV1Retitle(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.slot ?? "A"));
+    const saved = await keepIssues(job, m, () => saveV1Retitle(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.slot ?? "A", m.market));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 제작 › 최종 썸네일에서 후보 하나를 고르고 이유와 함께 저장합니다." };
   }

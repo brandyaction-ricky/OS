@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, Upload } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { stepHref } from "@/lib/youtube-process/project";
+import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -140,7 +140,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           onUpload={file => void uploadThumb(slot, file)} onPair={(title, copy, reasonText) => save({ pair: { slot, title, copy, reason: reasonText } }, "pair")}
           onRedo={reasonText => setRedoAsk({ slot, reason: reasonText })} />)}</div>
         <p className="yp-hint">기획안 컨펌본(제목 · 썸네일 A · B · C)이 그대로 이어져요. 마음에 안 들면 [고치기]에서 직접 고치거나, [공식대로 다시 뽑기]로 패키징 정본 공식대로 후보를 받아 골라요. 바꾼 칸은 최종 검수에서 대표가 확인해요. 썸네일 이미지는 jpg · png 파일로 올려요(유튜브가 받는 형식).</p>
-        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} />
+        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={projectName(project)} />
       </YpSection></>}
     </> : null}
   </YpFrame>;
@@ -179,7 +179,9 @@ function FinalThumb({ page, slot, make, can, busy, job, onUpload, onPair, onRedo
       {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}</>}
     {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={() => onRedo(reason.trim())} /> : null}
     {redo ? <details className="yp-card" style={{ padding: "6px 8px" }} open={!edit || redo.at > edit.at}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 공식대로 뽑은 후보 {redo.items.length}쌍 · {redo.by}의 Claude</summary>
-      <div style={{ fontSize: 12, margin: "6px 0" }}><div><b>제목 공식</b> {redo.formula}</div><div><b>썸네일 문구 공식</b> {redo.copyFormula}</div></div>
+      <div style={{ fontSize: 12, margin: "6px 0" }}>{redo.market ? <div className="yp-muted">레퍼런스: 「{redo.market.query}」 시장 영상 {redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
+        <div><b>제목 공식</b> {redo.formula}{redo.titleBasis ? <span className="yp-muted"> · 근거: {redo.titleBasis}</span> : null}</div>
+        <div><b>썸네일 문구 공식</b> {redo.copyFormula}{redo.copyBasis ? <span className="yp-muted"> · 근거: {redo.copyBasis}</span> : null}</div></div>
       <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{redo.items.map((item, index) => <li key={index} style={{ marginBottom: 6 }}>
         <div><b>{item.title}</b></div><div>「{item.copy}」 <span className="yp-tag">{item.hook}</span></div><div className="yp-muted" style={{ fontSize: 12 }}>{item.why}</div>
         {can ? <button type="button" className="yp-lnk" onClick={() => open(item, `다시 뽑은 후보 ${index + 1}번 · ${item.hook}`)}>이걸로 고치기</button> : null}</li>)}</ol></details> : null}

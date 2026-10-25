@@ -12,13 +12,13 @@ type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" 
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
-  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", skill: "패키징 절차 정본 · 제목 · 썸네일 공식 (OS 문서)", reads: "레퍼런스 영상 제목 · 썸네일 · 구성안 원고 · 지금 A · B · C · 바꾸려는 이유", result: "제목 공식 · 썸네일 문구 공식(따로) + 후보 3~5쌍 → 최종 썸네일 칸 (PD가 골라 이유와 저장 · 대표가 최종 검수에서 확인)" },
+  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", skill: "기획실 제목 · 썸네일 카피 뽑기 방식 + 패키징 절차 정본 (OS 문서)", reads: "검색어로 OS가 찾은 시장 영상(조회수 5만+ · 구독자 대비 조회수 순) 제목 20개 · 썸네일 8장 · 구성안 원고 · 지금 A · B · C · 바꾸려는 이유", result: "제목 공식 · 썸네일 문구 공식(따로, 근거 포함) + 후보 6~8쌍 → 최종 썸네일 칸 (PD가 골라 이유와 저장 · 대표가 최종 검수에서 확인)" },
   niche: { name: "틈새 묶기", skill: "OS가 보낸 묶기 규칙", reads: "터진 영상(채널 평소의 2배 이상) 제목 · 채널 · 배수", result: "같은 제목 공식끼리 묶은 틈새 → 틈새 판 (OS가 채널 수를 세어 확인된 주제 · 지켜보는 것 · 혼자 터뜨린 것으로 나눔)" },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", skill: "숏폼 콘텐츠 스킬 정본 (OS 문서)", reads: "완성한 장면(자막 · 내레이션) · 용도 · 할 행동 · 연결 페이지", result: "쇼츠 제목 한 줄 + 설명(핵심 · 할 행동 · 해시태그) → 내보내기 칸 (사람이 다듬고 올림)" },
   short: { name: "숏폼 장면 쓰기", skill: "숏폼 · 쇼츠 정본 · (광고) 소구점 정본 (OS 문서)", reads: "주제 · 무엇을 만들지(용도 · 길이 · 상품 · 행동 · 근거)", result: "(광고) 구매 이유 후보 + 장면 3~8개(자막 · 내레이션 · 필요한 이미지) → 장면 칸 (사람이 이미지를 넣고 다듬음)" },
   column: { name: "SEO 칼럼 쓰기", skill: "SEO 칼럼 만드는 절차 정본 (OS 문서)", reads: "구성안 원고 · 컨펌된 제목 · 정밀 타겟 · 올린 영상 주소", result: "정한 편수만큼 검색 · AI 최적화 HTML 칼럼(편마다 다른 검색 질문) → SEO 칼럼 칸 (사람이 이미지를 넣고 내보냄)" },
   shorts: { name: "쇼츠 대본 쓰기", skill: "숏폼 콘텐츠 스킬 정본 · 모드 A (OS 문서)", reads: "최종본 자막(SRT) · 컨펌된 제목", result: "정한 편수만큼 쇼츠 대본(카피 · 첫 3초 · 롱폼 구간 재구성 · 설명) → 쇼츠 목록 (PD가 고르고 대표 쇼츠 컨펌)" },
-  plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 (OS 문서)", reads: "주제 · 정밀 타겟 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
+  plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 + 기획실 제목 · 썸네일 카피 뽑기 방식 (OS 문서)", reads: "주제 · 정밀 타겟 · 검색어로 OS가 찾은 시장 영상 제목 20개 · 썸네일 8장 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
   script: { name: "구성안 원고 쓰기", skill: "원고 공정 정본 · 구조 · 말투 · 검수 정본 (OS 문서)", reads: "컨펌된 기획안(제목 A · B · C, 영상 흐름) · 정밀 타겟 · 레퍼런스 · OS 인사이트", result: "원고 초안 + 자료 · 축 · 설계 · 검수 기록 → 구성안 원고 새 버전 (사람이 다듬음)" },
   kit: { name: "설명란 · 고정 댓글 만들기", skill: "유튜브 발행 키트 절차 (OS 문서)", reads: "UTM 설정(1번) · 자막 SRT · 구성안 원고 · 컨펌된 제목 A", result: "설명란 6구역 + 고정 댓글 + 히든 태그 → 설명란 초안 (사람이 다듬음)" },
 };
@@ -66,8 +66,10 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
 }
 
 /** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
-export function SendDialog({ page, task, open, onClose, job, defaults, extra }: {
+export function SendDialog({ page, task, open, onClose, job, defaults, extra, queryDefault }: {
   page: JobPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
+  /** 기획안 · 다시 뽑기: the 기획실 레퍼런스 검색어 the OS searches before the job (the PD can change it). */
+  queryDefault?: string;
   /** Fields the task needs beyond the project (다시 뽑기: slot · reason). */
   extra?: Record<string, unknown>;
 }) {
@@ -78,12 +80,14 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra }: 
   const [count, setCount] = useState(task === "shorts" ? 3 : 1);
   const maxCount = task === "shorts" ? 8 : 5;
   const [role, setRole] = useState("유입형");
+  const [query, setQuery] = useState(queryDefault ?? "");
+  const searches = task === "plan" || task === "retitle";
   const [attachments, setAttachments] = useState("");
   const [paste, setPaste] = useState({ manuscript: "", materials: "", axis: "", design: "", review: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); } else dialog.current?.close(); }, [open, defaults?.minutes]);
+  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault]);
   const info = TASK[task];
   const projectId = page.bundle?.project.id;
   const me = page.profile?.displayName ?? "나";
@@ -96,7 +100,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra }: 
     try {
       await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token: page.accessToken,
         body: JSON.stringify(task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
-          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId, ...extra }) });
+          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId, ...extra, ...(searches && query.trim() ? { query: query.trim() } : {}) }) });
       if (copy) { await navigator.clipboard.writeText(MY_AI_PROMPT).catch(() => undefined); setCopied(true); }
       await job.load();
       if (!copy) onClose();
@@ -120,6 +124,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra }: 
         : <p className="yp-hint" style={{ margin: "0 0 8px" }}>열기만 해서는 작업이 생기지 않아요. 아래에서 고르고 눌러야 대기열에 들어가요.</p>}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>읽을 스킬</dt><dd>{info.skill}</dd><dt>읽는 것</dt><dd>{info.reads}</dd><dt>결과</dt><dd>{info.result}</dd><dt>쓰는 구독</dt><dd>{me}의 Claude 구독 · 회사 서버 AI 없음</dd></dl>
+      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">기획실처럼 OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
+        <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "롱폼 1편당 3~5편 (숏폼 정본)" : "편마다 다른 검색 질문을 겨냥해요"}</span>
         <input className="yp-in" type="number" min={1} max={maxCount} value={count} onChange={event => setCount(Math.min(maxCount, Math.max(1, Number(event.target.value) || 1)))} style={{ width: 90 }} /> 편</label> : null}
       {task === "script" ? <div className="yp-g2" style={{ marginBottom: 10 }}>
