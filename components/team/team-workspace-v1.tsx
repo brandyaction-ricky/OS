@@ -9,6 +9,7 @@ import { CreateTeamMeeting, TeamMeetingDetail, TeamMeetingReview } from "@/compo
 import { CreateTeamTask, EditableTaskDrawer, TeamTaskInbox, moveTeamTask } from "@/components/team/task-actions";
 import { TeamDecisionList } from "@/components/team/decision-actions";
 import { TeamPrepView } from "@/components/team/prep-actions";
+import { TeamKpiView } from "@/components/team/team-kpi";
 import { LegacyMerge } from "@/components/team/legacy-merge";
 import { teamDecisions } from "@/lib/team/decisions";
 import { teamBusiness } from "@/lib/team/business";
@@ -201,9 +202,10 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
     </div></header>
     {!guideClosed ? <section className="guide-strip" aria-label="이 화면에서 할 일"><div className="guide-heading guide-strip-head"><CircleAlert size={16}/><strong className="guide-strip-title">이 화면에서 할 일</strong><span className="guide-strip-next">화면 개편 미리보기</span><button className="icon-button guide-strip-close" type="button" aria-label="안내 닫기" onClick={()=>setGuideClosed(true)}><X size={14}/></button></div><ol className="guide-strip-items">{GUIDE[section].map((step,index)=><li className="guide-item" key={step}><span className="guide-no">{index+1}</span><span>{step}</span></li>)}</ol></section> : null}
     {section === "meetings" ? sectionTabs("회의·결정 보기", [
-      { label: "회의 기록", href: "/organization/meetings", active: !["decisions", "prep"].includes(activeTab), count: data.meetings.filter(meeting => meeting.status === "review").length },
+      { label: "회의 기록", href: "/organization/meetings", active: !["decisions", "prep", "kpi"].includes(activeTab), count: data.meetings.filter(meeting => meeting.status === "review").length },
       { label: "결정 로그", href: "/organization/meetings?tab=decisions", active: activeTab === "decisions", count: decisionRows.filter(row => row.status === "effective").length },
       { label: "다음 회의 준비", href: "/organization/meetings?tab=prep", active: activeTab === "prep" },
+      { label: "KPI", href: "/organization/meetings?tab=kpi", active: activeTab === "kpi" },
     ]) : null}
     {section === "tasks" ? sectionTabs("업무 화면 탭", [
       { label: "내 업무", href: "/organization/tasks?view=my", active: view === "my" },
@@ -215,7 +217,7 @@ export function TeamWorkspaceV1({ section }: { section: Section }) {
       {(section === "schedule" || section === "people") && absenceLoading ? <p className="tm-muted" role="status">부재 일정을 불러오는 중입니다.</p> : null}
       {section === "meetings" ? <>
         {activeTab !== "prep" && activeTab !== "decisions" ? <label className="tm-search"><Search size={15} /><input aria-label="회의 검색" placeholder="회의 검색" value={search} onChange={event => setSearch(event.target.value)} /></label> : null}
-        {selectedMeeting && activeTab !== "decisions" && accessToken ? params.get("step") === "review" && !selectedMeeting.legacy ? <TeamMeetingReview key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} tasks={data.tasks} onChanged={load} /> : <TeamMeetingDetail key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} meetings={data.meetings} tasks={data.tasks} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} projects={data.projects} onChanged={load} /> : activeTab === "decisions" && accessToken ? <TeamDecisionList rows={decisionRows} selectedId={params.get("record")} members={data.members} tasks={data.tasks} projects={data.projects} meetings={data.meetings} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : activeTab === "prep" && accessToken ? <TeamPrepView meetings={data.meetings} token={accessToken} onChanged={load} /> : <MeetingList meetings={meetingRows} filter={params.get("f") ?? "all"} records={[...data.tasks,...data.decisions]} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} onChanged={load} />}
+        {selectedMeeting && !["decisions", "kpi"].includes(activeTab) && accessToken ? params.get("step") === "review" && !selectedMeeting.legacy ? <TeamMeetingReview key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} tasks={data.tasks} onChanged={load} /> : <TeamMeetingDetail key={`${selectedMeeting.id}:${selectedMeeting.version}`} meeting={selectedMeeting} meetings={data.meetings} tasks={data.tasks} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} members={data.members} projects={data.projects} onChanged={load} /> : activeTab === "decisions" && accessToken ? <TeamDecisionList rows={decisionRows} selectedId={params.get("record")} members={data.members} tasks={data.tasks} projects={data.projects} meetings={data.meetings} userId={profile?.id} admin={profile?.role === "admin"} token={accessToken} onChanged={load} /> : activeTab === "prep" && accessToken ? <TeamPrepView meetings={data.meetings} token={accessToken} onChanged={load} /> : activeTab === "kpi" && accessToken ? <TeamKpiView token={accessToken} /> : <MeetingList meetings={meetingRows} filter={params.get("f") ?? "all"} records={[...data.tasks,...data.decisions]} token={accessToken} userId={profile?.id} admin={profile?.role === "admin"} onChanged={load} />}
       </> : null}
       {section === "tasks" ? <>
         <label className="tm-search"><Search size={15} /><input aria-label="업무 검색" placeholder="업무 검색" value={search} onChange={event => setSearch(event.target.value)} /></label>
