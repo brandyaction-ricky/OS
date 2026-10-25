@@ -26,7 +26,8 @@ async function uploadReady(actor: RequestActor, id: string) {
   if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검수 컨펌 OK 뒤에 올릴 수 있어요.");
   const stages = await readStages(actor.supabase, project);
   const finals = await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type);
-  return { project, stages, final: finals.at(-1) ?? null };
+  // A 숏폼's 1:1 square ad never goes up as a Short; the latest 9:16 final does.
+  return { project, stages, final: finals.filter(final => !final.aspect).at(-1) ?? null };
 }
 
 export async function startYoutubeUpload(actor: RequestActor, id: string, input: z.infer<typeof uploadSessionSchema>) {

@@ -26,8 +26,10 @@ function secret(){
   if(value.length<32)throw new ApiError(503,"SHORTFORM_WORKER_UNAVAILABLE","렌더 PC 연결 설정이 필요합니다.");
   return value;
 }
+/** 9:16 for Shorts · Reels; 1:1 square for feed ads (owner request 2026-10-25). A plan without `aspect` is 9:16, as every plan before it. */
+export type ShortformAspect="9:16"|"1:1";
 type Plan={
-  layoutVersion:2;
+  layoutVersion:2;aspect?:"1:1";
   mode:"reuse"|"direct";duration:number;brief:unknown;memo:string;
   cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string}[];
   source?:{id:string;key:string};
@@ -60,7 +62,7 @@ async function ownRecord(service:Service,owner:string,id:string,type:string){
   if(error||!data)throw new ApiError(404,"SHORTFORM_INPUT_MISSING","내 제작 원본·소재를 찾지 못했습니다.");
   return data as OsRecord;
 }
-async function buildPlan(service:Service,item:OsRecord):Promise<Plan>{
+async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9:16"):Promise<Plan>{
   if(item.record_type!=="content_publish"||item.metadata.space!=="personal"||item.metadata.channel!=="shorts"||!["draft","blocked"].includes(item.status))
     throw new ApiError(409,"SHORTFORM_DRAFT_REQUIRED","제작 중인 내 숏폼 카드에서 요청해 주세요.");
   const brief=parseShortformBrief(item.metadata.shortformBrief);
@@ -69,7 +71,8 @@ async function buildPlan(service:Service,item:OsRecord):Promise<Plan>{
   const parsed=shortformCutsSchema.safeParse({cuts:item.metadata.cuts});
   if(!parsed.success||parsed.data.cuts.length>20)throw new ApiError(422,"SHORTFORM_CUTS_INVALID","1~20개 장면을 준비해 주세요.");
   if(brief.mode==="direct")validateDirectCuts(parsed.data,brief.duration);
-  const plan:Plan={layoutVersion:2,mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
+  if(aspect==="1:1"&&brief.purpose!=="ad")throw new ApiError(422,"SHORTFORM_ASPECT_AD_ONLY","정사각형은 광고 숏폼에서 만들어요.");
+  const plan:Plan={layoutVersion:2,...(aspect==="1:1"?{aspect:"1:1" as const}:{}),mode:brief.mode,duration:0,brief,memo:item.description??"",cuts:[]};
   let sourceDuration=0;
   if(brief.mode==="reuse"){
     const source=z.object({id:z.string().uuid(),key:z.string().regex(/^[a-f0-9]{64}$/)}).safeParse(item.metadata.shortformSource);
@@ -120,11 +123,11 @@ export async function enqueueShortformRender(actor:RequestActor,itemId:string,ve
   return enqueueShortformRenderFor(owner,item,version,voiceApproved);
 }
 /** The queueing itself, for a card the caller was already allowed to (유튜브 공정 v1: a project member making its 숏폼, owned by the project owner). */
-export async function enqueueShortformRenderFor(owner:string,item:OsRecord,version:number,voiceApproved:boolean){
+export async function enqueueShortformRenderFor(owner:string,item:OsRecord,version:number,voiceApproved:boolean,aspect:ShortformAspect="9:16"){
   const itemId=item.id,service=createServiceSupabase();
   if(item.owner_id!==owner)throw new ApiError(403,"SHORTFORM_OWNER_MISMATCH","제작 카드의 주인을 확인해 주세요.");
   if(item.version!==version)throw new ApiError(409,"SHORTFORM_INPUT_CHANGED","최신 내용을 저장하고 다시 요청해 주세요.");
-  const plan=await buildPlan(service,item),inputKey=renderDigest(plan);
+  const plan=await buildPlan(service,item,aspect),inputKey=renderDigest(plan);
   if(plan.voice&&!voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","내레이션 생성 비용을 확인해 주세요.");
   const {data:existing,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",owner)
     .eq("metadata->>kind",SHORTFORM_RENDER_KIND).eq("metadata->>itemId",itemId).eq("metadata->>inputKey",inputKey)
@@ -132,7 +135,7 @@ export async function enqueueShortformRenderFor(owner:string,item:OsRecord,versi
   if(error)throw new ApiError(503,"SHORTFORM_QUEUE_FAILED","제작 대기열을 확인하지 못했습니다.");
   if(existing?.[0]){
     const run=verifyShortformRun(existing[0] as OsRecord);
-    if(existing[0].status==="done"&&item.metadata.mp4Path!==run.outputPath)
+    if(existing[0].status==="done"&&!run.plan.aspect&&item.metadata.mp4Path!==run.outputPath)
       await attachVideo(service,item,existing[0].id,run);
     return {runId:existing[0].id,reused:true};
   }
@@ -155,7 +158,7 @@ async function currentInput(service:Service,row:OsRecord,run:Run){
   const {data:profile}=await service.from("os_profiles").select("is_active").eq("id",owner).maybeSingle();
   if(profile?.is_active!==true)throw new ApiError(403,"SHORTFORM_OWNER_INACTIVE","제작자 계정을 확인해 주세요.");
   const item=await ownRecord(service,owner,run.itemId,"content_publish");
-  if(renderDigest(await buildPlan(service,item))!==run.inputKey)
+  if(renderDigest(await buildPlan(service,item,run.plan.aspect??"9:16"))!==run.inputKey)
     throw new ApiError(409,"SHORTFORM_INPUT_CHANGED","제작 조건·원본·소재가 변경되어 이전 작업을 중단했습니다.");
   return item;
 }
@@ -164,12 +167,14 @@ async function sign(service:Service,bucket:string,path:string){
   if(error||!data)throw new ApiError(503,"SHORTFORM_SIGN_FAILED","제작 파일을 열지 못했습니다.");
   return data.signedUrl;
 }
-export async function claimShortformRender(service:Service=createServiceSupabase()){
+export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3=2){
   const {data:rows,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
     .in("status",["backlog","in_progress"]).is("archived_at",null).order("created_at").limit(30);
   if(error)throw new ApiError(503,"SHORTFORM_QUEUE_FAILED","제작 대기열을 읽지 못했습니다.");
   for(const row of (rows??[]) as OsRecord[]){
     let run:Run;try{run=verifyShortformRun(row);}catch{continue;}
+    // A worker from before 1:1 (layoutVersion 2) would draw a square ad as 9:16; it gets only 9:16 jobs.
+    if(run.plan.aspect&&layoutVersion<3)continue;
     if(run.lease&&Date.parse(run.lease.expiresAt)>Date.now())continue;
     if(run.attempts>=3){await save(service,row,"blocked","failed",run);continue;}
     try{await currentInput(service,row,run);}catch{await save(service,row,"blocked","failed",{...run,error:"SHORTFORM_INPUT_CHANGED"});continue;}
@@ -184,7 +189,7 @@ export async function claimShortformRender(service:Service=createServiceSupabase
       const source=run.plan.source?await readShortformLongform({supabase:service},run.plan.source.id,run.plan.source.key,()=>service):null;
       for(const cut of run.plan.cuts)scenes.push({start:cut.start,end:cut.end,text:cut.text,hasVoice:Boolean(cut.voice.trim()),
         ...(cut.assetPath?{imageUrl:await sign(service,BUCKET,cut.assetPath)}:{})});
-      return {renderId:row.id,lease:lease.token,mode:run.plan.mode,duration:run.plan.duration,scenes,
+      return {renderId:row.id,lease:lease.token,mode:run.plan.mode,aspect:run.plan.aspect??"9:16",duration:run.plan.duration,scenes,
         sourceUrl:source?.videoUrl,uploadUrl:upload.signedUrl};
     }catch{
       await save(service,claimed,"blocked","failed",{...verifyShortformRun(claimed),error:"SHORTFORM_FILES_UNAVAILABLE",lease:undefined});
@@ -206,7 +211,8 @@ export async function shortformVoice(input:{renderId:string;lease:string;index:n
   await currentInput(service,row,run);
   const cut=run.plan.cuts[input.index];
   if(!cut?.voice.trim()||!run.plan.voice||!run.voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","승인된 내레이션이 없습니다.");
-  const path=`${row.owner_id}/${run.itemId}/${row.id}/short-${input.index}.mp3`;
+  // Keyed by the voice and the words, so the 9:16 and the 1:1 render of the same scenes pay for the narration once.
+  const path=`${row.owner_id}/${run.itemId}/voice-${renderDigest([run.plan.voice,cut.voice]).slice(0,32)}.mp3`;
   const folder=path.slice(0,path.lastIndexOf("/")),name=path.slice(path.lastIndexOf("/")+1);
   const {data,error}=await service.storage.from(VOICE_BUCKET).list(folder,{search:name,limit:30});
   if(error)throw new ApiError(503,"SHORTFORM_VOICE_READ","기존 음성을 확인하지 못했습니다.");
@@ -217,7 +223,8 @@ export async function shortformVoice(input:{renderId:string;lease:string;index:n
     const audio=await synthesizeFishSegment(cut.voice,{apiKey:process.env.FISH_API_KEY??"",referenceId:process.env.FISH_VOICE_REFERENCE_ID??"",
       model:run.plan.voice.model,settings:run.plan.voice.settings,signal:AbortSignal.timeout(100_000)});
     const stored=await service.storage.from(VOICE_BUCKET).upload(path,new Uint8Array(audio.bytes),{contentType:"audio/mpeg",upsert:false});
-    if(stored.error)throw new ApiError(503,"SHORTFORM_VOICE_SAVE","음성을 보관하지 못했습니다.");
+    // The other render of the same scenes may have stored the same narration a moment earlier.
+    if(stored.error&&!/exist|duplicate/i.test(stored.error.message))throw new ApiError(503,"SHORTFORM_VOICE_SAVE","음성을 보관하지 못했습니다.");
     await save(service,locked,"in_progress","rendering",{...run,voiceLock:undefined});
   }
   return {url:await sign(service,VOICE_BUCKET,path)};
@@ -238,7 +245,8 @@ export async function completeShortformRender(input:{renderId:string;lease:strin
   const bytes=Buffer.from(await blob.arrayBuffer());
   if(bytes.subarray(4,8).toString()!=="ftyp"||createHash("sha256").update(bytes).digest("hex")!==input.sha256)
     throw new ApiError(409,"SHORTFORM_OUTPUT_INVALID","완성 영상 검증에 실패했습니다.");
-  await attachVideo(service,item,row.id,run);
+  // The card keeps the 9:16 video (Shorts · Reels and the earlier screens); a 1:1 ad is read from its render.
+  if(!run.plan.aspect)await attachVideo(service,item,row.id,run);
   const completed={...run,bytes:input.bytes,sha256:input.sha256};
   await save(service,row,"done","render_ready",{...completed,completedSignature:completedSignature(String(row.owner_id),completed)});
   return {renderId:row.id,stage:"render_ready"};

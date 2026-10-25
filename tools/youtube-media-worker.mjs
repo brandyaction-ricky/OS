@@ -413,7 +413,8 @@ export async function processMyinFinal() {
 export async function processShortform(){
   if(runId||diskFreeGb()<2)return false;
   checkShortformRuntime();
-  const job=await call({action:"shorts_claim",layoutVersion:2});
+  // layoutVersion 3 renders 1:1 square ads as well as 9:16 (owner request 2026-10-25); a version 2 worker only gets 9:16 jobs.
+  const job=await call({action:"shorts_claim",layoutVersion:3});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();
@@ -430,7 +431,7 @@ export async function processShortform(){
       }
       scenes.push(input);
     }
-    const result=await renderShortform({mode:job.mode,scenes,sourceFile,dir});
+    const result=await renderShortform({mode:job.mode,scenes,sourceFile,dir,aspect:job.aspect??"9:16"});
     await upload(job.uploadUrl,result.file,"video/mp4");
     const bytes=readFileSync(result.file);
     await call({action:"shorts_complete",...lease,bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),duration:result.duration});

@@ -47,3 +47,29 @@ test("real direct and reuse MP4s have vertical frames, audio, captions and exact
     ]}),error=>error.code==="SHORTFORM_VOICE_TOO_LONG");
   }finally{rmSync(dir,{recursive:true,force:true});}
 });
+
+// 광고 정사각형 (owner request 2026-10-25): the same scenes as a 1080×1080 feed ad, wide and tall images both kept whole with the caption below.
+test("a 1:1 square ad renders 1080×1080 with the caption plate and the image whole", {skip:!ready,timeout:120_000},async()=>{
+  const dir=mkdtempSync(path.join(os.tmpdir(),"shortform-square-test-"));
+  try{
+    const wide=path.join(dir,"wide.png"),tall=path.join(dir,"tall.png");
+    execFileSync("ffmpeg",["-v","error","-y","-f","lavfi","-i","color=c=navy:s=1280x720","-frames:v","1",wide]);
+    execFileSync("ffmpeg",["-v","error","-y","-f","lavfi","-i","color=c=darkgreen:s=720x1280","-frames:v","1",tall]);
+    const square=await renderShortform({mode:"direct",dir,aspect:"1:1",scenes:[
+      {start:0,end:1,text:"정사각형 피드 광고로 만들어요",imageFile:wide,hasVoice:false},
+      {start:1,end:2,text:"세로 이미지도 잘리지 않아요",imageFile:tall,hasVoice:false},
+    ]});
+    const probe=probeShortform(square.file);
+    assert.equal(probe.video.width,1080);
+    assert.equal(probe.video.height,1080);
+    assert.ok(Math.abs(square.duration-2)<0.2);
+    const frame=execFileSync("ffmpeg",["-v","error","-i",square.file,"-frames:v","1","-f","rawvideo","-pix_fmt","rgb24","pipe:1"],{maxBuffer:8_000_000});
+    const pixel=(x,y)=>[...frame.subarray((y*1080+x)*3,(y*1080+x)*3+3)];
+    assert.ok(pixel(540,380)[2]>80,"The wide image sits in its band, visible");
+    assert.ok(Math.max(...pixel(540,30))>5,"Space above the band is the blurred background, not black");
+    assert.ok(pixel(540,780).every(value=>value<60),"The caption plate sits below the band");
+    execFileSync("ffmpeg",["-v","error","-y","-i",square.file,"-frames:v","1","/private/tmp/shortform-square-frame.png"]);
+    execFileSync("ffmpeg",["-v","error","-y","-ss","1.5","-i",square.file,"-frames:v","1","/private/tmp/shortform-square-frame-tall.png"]);
+    await assert.rejects(renderShortform({mode:"direct",dir,aspect:"4:3",scenes:[{start:0,end:1,text:"x",imageFile:wide,hasVoice:false}]}),{code:"SHORTFORM_PLAN_INVALID"});
+  }finally{rmSync(dir,{recursive:true,force:true});}
+});

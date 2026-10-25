@@ -5,33 +5,35 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 
-def draw_caption(text, output, font_path, compact=False):
-    image = Image.new("RGBA", (720, 1280), (0, 0, 0, 0))
+def draw_caption(text, output, font_path, compact=False, width=720, height=1280, font=38, line=52, maxWidth=600, margin=36, compactTop=840, bottom=1100):
+    """The plate for one frame size: 720×1280 (9:16) by default; the renderer passes the 1:1 numbers for square ads."""
+    image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype(font_path, 38)
+    face = ImageFont.truetype(font_path, font)
     lines = []
-    line = ""
+    current = ""
     for char in text:
-        if char == "\n" or draw.textlength(line + char, font=font) > 600:
-            lines.append(line)
-            line = "" if char == "\n" else char
+        if char == "\n" or draw.textlength(current + char, font=face) > maxWidth:
+            lines.append(current)
+            current = "" if char == "\n" else char
         else:
-            line += char
-    if line:
-        lines.append(line)
+            current += char
+    if current:
+        lines.append(current)
     if len(lines) > 4:
         raise ValueError("SHORTFORM_CAPTION_TOO_LONG")
     # Wide originals sit above this plate; portrait originals keep the bottom safe area.
-    top = 840 if compact else 1100 - max(1, len(lines)) * 52
-    bottom = top + max(1, len(lines)) * 52 + 22
-    draw.rounded_rectangle((36, top - 18, 684, bottom), radius=16, fill=(0, 0, 0, 210))
+    top = compactTop if compact else bottom - max(1, len(lines)) * line
+    end = top + max(1, len(lines)) * line + 22
+    draw.rounded_rectangle((margin, top - 18, width - margin, end), radius=16, fill=(0, 0, 0, 210))
     for index, value in enumerate(lines):
-        draw.text((360, top + index * 52), value, font=font, fill="white", anchor="mt")
+        draw.text((width // 2, top + index * line), value, font=face, fill="white", anchor="mt")
     image.save(output)
 
 
 if __name__ == "__main__":
     with open(sys.argv[1], encoding="utf-8") as stream:
         payload = json.load(stream)
+    sizes = {key: payload[key] for key in ("width", "height", "font", "line", "maxWidth", "margin", "compactTop", "bottom") if key in payload}
     draw_caption(payload["text"], sys.argv[2], os.environ.get(
-        "SHORTFORM_FONT_FILE", "/System/Library/Fonts/AppleSDGothicNeo.ttc"), payload.get("compact", False))
+        "SHORTFORM_FONT_FILE", "/System/Library/Fonts/AppleSDGothicNeo.ttc"), payload.get("compact", False), **sizes)
