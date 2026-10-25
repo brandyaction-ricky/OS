@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const commandSchema = z.object({
-  action: z.enum(["meeting.create", "meeting.save", "meeting.start", "meeting.finish", "meeting.review", "meeting.correct", "meeting.import_legacy", "meeting.merge_legacy", "decision.supersede", "decision.drop", "task.merge"]),
+  action: z.enum(["meeting.create", "meeting.save", "meeting.start", "meeting.finish", "meeting.review", "meeting.correct", "meeting.import_legacy", "meeting.merge_legacy", "decision.supersede", "decision.drop", "task.merge", "meeting.archive"]),
   id: z.string().uuid().optional(), expectedVersion: z.number().int().positive().optional(),
 }).passthrough();
 
@@ -19,8 +19,13 @@ export async function POST(request: Request) {
     if (actor.type !== "user") throw new ApiError(403, "USER_REQUIRED", "구성원 계정으로 진행해 주세요.");
     const parsed = commandSchema.safeParse(await parseJson(request, 2_000_000));
     if (!parsed.success) throw new ApiError(400, "INVALID_TEAM_COMMAND", "회의·결정 입력을 확인해 주세요.");
-    const { data, error } = await actor.supabase.rpc("os_team_command", { p: parsed.data });
+    const archive = parsed.data.action === "meeting.archive";
+    if (archive && (!parsed.data.id || !parsed.data.expectedVersion)) throw new ApiError(400, "INVALID_TEAM_COMMAND", "회의·결정 입력을 확인해 주세요.");
+    const { data, error } = archive
+      ? await actor.supabase.rpc("os_team_archive_meeting", { p_id: parsed.data.id, p_expected_version: parsed.data.expectedVersion, p_reason: String(parsed.data.reason ?? "회의 삭제") })
+      : await actor.supabase.rpc("os_team_command", { p: parsed.data });
     if (error) {
+      if (error.message?.includes("OS_MEETING_HAS_LINKED_WORK")) throw new ApiError(409, "MEETING_HAS_LINKED_WORK", "이 회의에서 나온 결정·업무가 남아 있어 지울 수 없습니다. 먼저 정리해 주세요.");
       if (["PGRST202", "42883"].includes(error.code ?? "")) throw new ApiError(503, "TEAM_SCHEMA_REQUIRED", "팀 기능용 DB 변경이 아직 적용되지 않았습니다. 기존 기록은 그대로 보존됩니다.");
       if (["40001", "PT409"].includes(error.code ?? "")) throw new ApiError(409, "VERSION_CONFLICT", "다른 사람이 먼저 수정했습니다. 새로 불러온 뒤 다시 확인해 주세요.");
       if (error.code === "42501") throw new ApiError(403, "TEAM_FORBIDDEN", "이 작업을 수행할 권한이 없습니다.");

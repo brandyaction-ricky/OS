@@ -817,6 +817,15 @@
       "productionApprovedAt": "2026-10-25",
       "appliedEnvironments": ["production"],
       "notes": "Owner request 2026-10-25 (마이인 sales also come in through Toss); owner approved Production the same day. DEV and Production os_fin_toss_sync matched before the change. Rollback-only DEV test (tests/toss-sync-by-business.sql with this migration) 5 checks, 0 failures; not applied to DEV. Production: live function re-checked unchanged; a rollback-only run confirmed one 10-argument function and the existing edu store and 120 payments untouched; then applied, recorded in schema history and read back (authenticated still has no execute)."
+    },
+    {
+      "file": "20261025120000_team_meeting_archive.sql",
+      "sha256": "2da89adfb000553001eff356c97ead4d774eb56158f44bae92ec1af46ea0e805",
+      "purpose": "os_team_archive_meeting: the meeting owner or an admin moves a meeting and its meeting page to the trash (archived_at / archived_from_status kept, event logged); refused while live decisions or tasks hang off it",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-25",
+      "appliedEnvironments": ["production"],
+      "notes": "Owner request 2026-10-25 (test meeting 'ㅋㅋ' and an empty weekly meeting could not be removed: the knowledge meeting guard blocks plain archive); owner approved Production the same day. Rollback-only test (tests/team-meeting-archive.sql with this migration) 9 checks, 0 failures on DEV and on Production; not applied to DEV. Production: function absent before; applied, recorded in schema history and read back (security definer, authenticated execute, anon none)."
     }
   ],
   "legacyMigrations": [
