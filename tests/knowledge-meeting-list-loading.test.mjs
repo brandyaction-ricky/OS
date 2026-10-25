@@ -27,7 +27,7 @@ function setup() {
     "./provider": { useKnowledge: () => ({ state: model.emptyKnowledgeState(), token, demo }) },
     "./ui": { Header: "header", Card: "card", Empty: "empty", Modal: "modal", NewDocumentButton: "new-document" },
     "./meeting-capture": {}, "@/components/knowledge-workspace": {}, "@/components/knowledge-rich-editor": {},
-    "@/lib/knowledge/model": model, "@/lib/knowledge/meetings": {},
+    "@/lib/knowledge/model": model, "@/lib/knowledge/meetings": {}, "@/lib/meeting-markdown": {},
     "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })) },
   };
   const exports = {};

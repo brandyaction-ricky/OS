@@ -278,7 +278,7 @@ test("meeting import preserves content, autosaves, and saves before internal nav
  await page.reload();await expect(memo).toContainText("기존 메모");await expect(memo).toContainText("가져온 합성 원문");
  await memo.fill("이동 직전 추가 내용");await page.getByRole("link",{name:"회의 목록",exact:true}).click();
  await expect(page).toHaveURL(/\/knowledge\/meetings$/);await page.goto(url);await expect(memo).toContainText("이동 직전 추가 내용");
- await memo.fill("x".repeat(20000));
+ test.setTimeout(120_000);await memo.fill("x".repeat(60000));
  await page.locator('input[type="file"]').setInputFiles({name:"qa-limit.txt",mimeType:"text/plain",buffer:Buffer.from("보존할 원문")});
  await page.getByRole("button",{name:"기존 메모 뒤에 추가"}).click();
  await expect(page.getByRole("textbox",{name:"가져온 원문 미리보기"})).toHaveValue("보존할 원문");
