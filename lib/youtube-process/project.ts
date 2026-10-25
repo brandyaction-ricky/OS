@@ -2,12 +2,16 @@
 import { editableFields } from "./confirm.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
 export type YpKind = "live" | "anim" | "short";
-export type YpGate = "topic" | "draft" | "review";
+export type YpGate = "topic" | "draft" | "review" | "shorts";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
 export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string }
 export interface YpRef { url: string; videoId?: string; title?: string }
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[] }
-export interface YpMeta { v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string }
+export interface YpMeta {
+  v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
+  /** 쇼츠 컨펌 OK (2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new confirm. */
+  shortsConfirmed?: { at: string; clips: Record<string, string> };
+}
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검수", "업로드", "쇼츠 · 칼럼"] as const;
@@ -41,7 +45,7 @@ export function topicMissing(title: string, topic: Pick<YpTopic, "type" | "targe
 }
 
 export function emptyGates(): Record<YpGate, YpGateInfo> {
-  return { topic: { state: "none", round: 0 }, draft: { state: "none", round: 0 }, review: { state: "none", round: 0 } };
+  return { topic: { state: "none", round: 0 }, draft: { state: "none", round: 0 }, review: { state: "none", round: 0 }, shorts: { state: "none", round: 0 } };
 }
 
 export function newProjectMeta(topic: YpTopic, now: string, multiFrom?: string) {
@@ -53,7 +57,8 @@ type ProjectRow = { id: string; version: number; title: string; assignee_id?: st
 export function projectFromRecord(row: ProjectRow): YpProject | null {
   const yp = row.metadata?.yp as YpMeta | undefined;
   if (row.metadata?.workflow !== "youtube_v1" || yp?.v !== 1) return null;
-  return { id: row.id, version: row.version, title: row.title, assigneeId: row.assignee_id ?? null, ownerId: row.owner_id, updatedAt: row.updated_at, yp };
+  // Projects made before a gate existed (쇼츠 컨펌, 2026-10-25) read it as not yet requested.
+  return { id: row.id, version: row.version, title: row.title, assigneeId: row.assignee_id ?? null, ownerId: row.owner_id, updatedAt: row.updated_at, yp: { ...yp, gates: { ...emptyGates(), ...yp.gates } } };
 }
 
 /** Project name = first topic line (4-2); stays as the record title. */

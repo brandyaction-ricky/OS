@@ -6,7 +6,7 @@ import { decideYoutubeGate } from "@/lib/server/youtube-process-stages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-const gateSchema = z.enum(["topic", "draft", "review"]);
+const gateSchema = z.enum(["topic", "draft", "review", "shorts"]);
 
 /** OK · 수정 요청 · 보류 · 결정 되돌리기 by the company approver (403 NOT_APPROVER for anyone else). */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; gate: string }> }) {

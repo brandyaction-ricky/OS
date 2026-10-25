@@ -7,7 +7,8 @@ import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "./youtube-oauth";
 import { youtubeUploadPublication, youtubeUploadRecordId } from "./youtube-upload-result";
-import { conflict, getYoutubeProject, readFailed } from "./youtube-process";
+import { conflict, getYoutubeProject } from "./youtube-process";
+import { confirmedClip } from "./youtube-process-short";
 import { MEDIA_BUCKET, readFinals, readStages, writeStage } from "./youtube-process-stages";
 
 // S7 [업로드] (지시서 10-2): the browser sends the last final straight to YouTube's resumable session; the OS checks the
@@ -124,10 +125,8 @@ async function clipReady(actor: RequestActor, id: string, clipId: string) {
   const stages = await readStages(actor.supabase, project);
   const longform = stages.upload.data.run;
   if (!["upload", "shorts", "done"].includes(project.yp.stage) || longform?.status !== "done" || !longform.videoUrl) throw new ApiError(409, "LONGFORM_UPLOAD_FIRST", "롱폼을 유튜브에 올린 뒤에 쇼츠를 올릴 수 있어요.");
-  const { data: clip, error } = await actor.supabase.from("os_records").select("*").eq("id", clipId).eq("parent_id", project.id).eq("record_type", "content_short").is("archived_at", null).maybeSingle();
-  if (error) throw readFailed();
-  if (!clip) throw new ApiError(404, "CLIP_NOT_FOUND", "쇼츠 구간을 찾지 못했어요.");
-  return { project, stages, clip: clip as { id: string; version: number; title: string; metadata: Record<string, unknown> }, longformUrl: longform.videoUrl };
+  // Only a script the 대표 confirmed (쇼츠 컨펌) goes up, as it was confirmed.
+  return { project, stages, clip: await confirmedClip(actor, project, clipId), longformUrl: longform.videoUrl };
 }
 export async function startClipUpload(actor: RequestActor, id: string, input: z.infer<typeof clipUploadSessionSchema>) {
   const { stages, clip, longformUrl } = await clipReady(actor, id, input.clipId);

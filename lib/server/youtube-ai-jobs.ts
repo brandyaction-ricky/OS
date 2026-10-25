@@ -29,7 +29,7 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 45 } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90 } as const;
 const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
   kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", niche: "틈새 묶기(같은 제목 공식)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
@@ -62,7 +62,7 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   // 주제 찾기 › 틈새: 터진 영상 grouped by title formula; the source is the shared board.
   z.object({ task: z.literal("niche"), sourceId: z.string().uuid() }).strict(),
   // 유튜브 공정 v1 SEO 칼럼: the final 원고 rewritten as the 정본's HTML column.
-  z.object({ task: z.literal("column"), sourceId: z.string().uuid() }).strict(),
+  z.object({ task: z.literal("column"), sourceId: z.string().uuid(), count: z.number().int().min(1).max(5).default(1) }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -162,7 +162,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     assertScriptInputs(state);
     source = state.source; title = jobTitle(state); inputKey = scriptInputKey(state);
   }
-  const targetMinutes = input.task === "script" ? input.targetMinutes : input.task === "shorts" ? input.count : undefined;
+  // targetMinutes also carries how many 쇼츠 대본 or 칼럼 the PD asked for.
+  const targetMinutes = input.task === "script" ? input.targetMinutes : input.task === "shorts" || input.task === "column" ? input.count : undefined;
   const attachments = input.task === "script" ? input.attachments || undefined : undefined;
   const role = input.task === "script" ? input.role : undefined;
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
@@ -320,7 +321,7 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
   if (m.task === "column") {
     const state = await currentColumnInput(job);
     const lease = await take();
-    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ColumnCard(service(), state, minutes) };
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1ColumnCard(service(), state, minutes, m.targetMinutes ?? 1) };
   }
   if (m.task === "short") {
     const { project, brief } = await currentShortInput(job);
@@ -382,13 +383,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   }
   if (m.task === "shorts") {
     const state = await currentShortsInput(job);
-    const saved = await keepIssues(job, m, () => saveV1Shorts(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id }));
+    const saved = await keepIssues(job, m, () => saveV1Shorts(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id }, m.targetMinutes));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠에서 구간을 고릅니다." };
+    return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠 · 칼럼에서 대본을 고르고 대표 쇼츠 컨펌을 요청합니다." };
   }
   if (m.task === "column") {
     const state = await currentColumnInput(job);
-    const saved = await keepIssues(job, m, () => saveV1Column(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }));
+    const saved = await keepIssues(job, m, () => saveV1Column(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.targetMinutes ?? 1));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠 · 칼럼에서 이미지를 넣고 칼럼 HTML을 내보냅니다." };
   }

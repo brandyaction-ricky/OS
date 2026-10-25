@@ -188,14 +188,15 @@ export async function listConfirmations(actor: RequestActor, tab: z.infer<typeof
   return confirmTab(await allProjects(), tab, actor.ownerId).map(row => ({ project: row.project, gate: row.gate }));
 }
 
-export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
+export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>, okExtra?: Partial<YpMeta>) {
   await assertApprover(actor);
   const service = createServiceSupabase();
   const { data: row, error } = await service.from("os_records").select(COLUMNS).eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error) throw readFailed();
   const project = asProject(row);
   if (project.version !== input.expectedVersion) throw conflict();
-  const yp = apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now: new Date().toISOString(), fields: input.fields, memo: input.memo, reason: input.reason });
+  const yp = { ...apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now: new Date().toISOString(), fields: input.fields, memo: input.memo, reason: input.reason }),
+    ...(input.action === "ok" ? okExtra : {}) };
   const { data: current } = await service.from("os_records").select("metadata").eq("id", id).maybeSingle();
   const { data: saved, error: saveError } = await service.from("os_records").update({ metadata: { ...(current?.metadata ?? {}), workflow: "youtube_v1", yp }, updated_by: actor.ownerId })
     .eq("id", id).eq("version", input.expectedVersion).is("archived_at", null).select(COLUMNS).maybeSingle();

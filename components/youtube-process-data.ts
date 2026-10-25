@@ -1,6 +1,7 @@
 "use client";
 
-import { apiRequest, ApiRequestError, listMembers, uploadContentMedia } from "@/lib/api-client";
+import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
+import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
@@ -58,6 +59,8 @@ export interface YpClient {
   renderShort(id: string, expectedVersion: number, voiceApproved: boolean): Promise<void>;
   renderClip(id: string, clipId: string): Promise<void>;
   clipRenders(id: string): Promise<Record<string, YpRenderView>>;
+  /** The project's 쇼츠 대본 (content_short), for the 쇼츠 컨펌 screen. */
+  clips(id: string): Promise<OsRecord[]>;
   shortVideoUrl(id: string, renderId: string, download?: boolean): Promise<string>;
   demo: boolean;
 }
@@ -120,6 +123,7 @@ function apiClient(token: string): YpClient {
     renderShort: async (id, expectedVersion, voiceApproved) => { await apiRequest(`${base}/${id}/short`, { token, method: "POST", body: json({ action: "render", expectedVersion, voiceApproved }) }); },
     renderClip: async (id, clipId) => { await apiRequest(`${base}/${id}/short`, { token, method: "POST", body: json({ action: "clip", clipId }) }); },
     clipRenders: async id => (await apiRequest<{ clips: Record<string, YpRenderView> }>(`${base}/${id}/short?clips=1`, { token })).clips,
+    clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
@@ -266,10 +270,13 @@ function demoClient(): YpClient {
         data = make as YpStageData[typeof kind];
       }
       if (kind === "column") {
-        const column = { ...(current.data as YpStageData["column"]) }; const p = patch as { html?: string; fill?: { slot: string; path?: string; url?: string; name?: string } };
-        if (typeof p.html === "string") column.html = p.html;
-        if (p.fill) { const { slot, ...fill } = p.fill; const fills = { ...column.fills }; if (fill.path || fill.url) fills[slot] = fill; else delete fills[slot]; column.fills = fills; }
-        data = column as YpStageData[typeof kind];
+        const { items } = current.data as YpStageData["column"]; const p = patch as { item?: string; html?: string; remove?: true; fill?: { slot: string; path?: string; url?: string; name?: string } };
+        const change = (item: YpStageData["column"]["items"][number]) => {
+          if (p.fill) { const { slot, ...fill } = p.fill; const fills = { ...item.fills }; if (fill.path || fill.url) fills[slot] = fill; else delete fills[slot]; return { ...item, fills }; }
+          return typeof p.html === "string" ? { ...item, html: p.html } : item;
+        };
+        data = { items: !p.item ? [...items, { id: crypto.randomUUID().slice(0, 8), html: p.html ?? "", fills: {}, ai: null }]
+          : p.remove ? items.filter(item => item.id !== p.item) : items.map(item => item.id === p.item ? change(item) : item) } as YpStageData[typeof kind];
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });
@@ -353,6 +360,7 @@ function demoClient(): YpClient {
     renderShort: async () => { throw demoError(409, "DEMO", "데모에서는 MP4를 만들지 않아요. 실제 화면에서 렌더 PC가 만들어요."); },
     renderClip: async () => { throw demoError(409, "DEMO", "데모에서는 세로 영상을 만들지 않아요."); },
     clipRenders: async () => ({}),
+    clips: async () => [],
     shortVideoUrl: async () => "",
   };
 }

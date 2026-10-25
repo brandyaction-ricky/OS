@@ -13,11 +13,11 @@ const TODO: Record<Exclude<YpProject["yp"]["stage"], "done">, [string, string]> 
   make: ["영상을 만들고 최종 썸네일을 올려요", "영상 만들기"],
   review: ["완성본을 보고 최종 검수 컨펌을 요청해요", "검수하기"],
   upload: ["설명란을 채우고 유튜브에 올려요", "올리기"],
-  shorts: ["쇼츠 구간을 고르고 SEO 칼럼을 만들어요", "쇼츠 · 칼럼"],
+  shorts: ["쇼츠 대본을 골라 컨펌받고, SEO 칼럼을 만들어요", "쇼츠 · 칼럼"],
 };
 // A 숏폼's 제작 holds what to make, the scenes and the MP4; it is handed out by download, not uploaded to YouTube here.
 const SHORT_TODO: Partial<typeof TODO> = { make: ["무엇을 만들지 정하고 장면 · MP4를 만들어요", "숏폼 만들기"], upload: ["완성한 MP4를 내려받아 올려요", "내보내기"] };
-const GATE_OF: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { topic: "topic", draft: "draft", review: "review" };
+const GATE_OF: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
 
 export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   const { stage, gates } = project.yp;

@@ -7,7 +7,9 @@ import { DEFAULT_SHORTFORM_BRIEF, parseShortformBrief, validateDirectCuts, type 
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, type YpProject } from "@/lib/youtube-process/project";
-import { appealText, clipCuts, cutsFromScenes, scenesFromCuts, type YpShortAppeal, type YpShortBrief, type YpShortCut, type YpShortScene } from "@/lib/youtube-process/short";
+import {
+  appealText, clipConfirmed, clipParts, clipScriptProblems, cutsFromScenes, partsCuts, scenesFromCuts, type YpShortAppeal, type YpShortBrief, type YpShortCut, type YpShortScene,
+} from "@/lib/youtube-process/short";
 import type { RequestActor } from "./auth";
 import { validatePersonalAsset } from "./content-automation-validators";
 import { readShortformLongform } from "./shortform-longform";
@@ -168,20 +170,30 @@ export async function renderYoutubeShort(actor: RequestActor, id: string, input:
   return enqueueShortformRenderFor(project.ownerId, row, input.expectedVersion, input.voiceApproved);
 }
 
-// ── 롱폼 → 쇼츠: one clip, cut from the final with its subtitles as the captions ──
+/** A clip of this project whose script the 대표 confirmed and nobody changed since (쇼츠 컨펌, owner request 2026-10-25). */
+export async function confirmedClip(actor: RequestActor, project: YpProject, clipId: string) {
+  const { data: clip, error } = await actor.supabase.from("os_records").select("id,version,title,description,metadata").eq("id", clipId).eq("parent_id", project.id)
+    .eq("record_type", "content_short").is("archived_at", null).maybeSingle();
+  if (error) throw readFailed();
+  if (!clip) throw new ApiError(404, "CLIP_NOT_FOUND", "쇼츠 구간을 찾지 못했어요.");
+  const row = clip as { id: string; version: number; title: string; metadata: Record<string, unknown> };
+  if (!clipConfirmed(project.yp.shortsConfirmed, project.yp.gates.shorts.state === "ok", row))
+    throw new ApiError(409, "SHORTS_CONFIRM_REQUIRED", "쇼츠 컨펌 OK를 받은 대본만 만들고 올릴 수 있어요. 바뀐 쇼츠는 다시 컨펌을 요청해 주세요.");
+  return row;
+}
+
+// ── 롱폼 → 쇼츠: one confirmed clip, its parts cut from the final in order, with the subtitles as the captions ──
 export async function renderYoutubeClip(actor: RequestActor, id: string, clipId: string) {
   const project = await getYoutubeProject(actor, id);
   if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 쇼츠를 만들 수 있어요.");
-  const { data: clip, error } = await actor.supabase.from("os_records").select("id,title,description,metadata").eq("id", clipId).eq("parent_id", project.id)
-    .eq("record_type", "content_short").is("archived_at", null).maybeSingle();
-  if (error) throw readFailed();
-  const start = Number(clip?.metadata?.start), end = Number(clip?.metadata?.end);
-  if (!clip || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end - start < 1 || end - start > 60)
-    throw new ApiError(422, "SHORTFORM_RANGE_INVALID", "구간은 1 ~ 60초로 골라 주세요.");
+  const clip = await confirmedClip(actor, project, clipId);
+  const parts = clipParts(clip.metadata);
+  const problems = clipScriptProblems(clip);
+  if (problems.length) throw new ApiError(422, "SHORTFORM_RANGE_INVALID", `쇼츠 대본을 확인해 주세요: ${problems.join(", ")}`);
   const service = createServiceSupabase();
   const longform = await readShortformLongform(actor, project.id, undefined, () => service);
-  if (end > longform.durationSeconds + 0.1) throw new ApiError(422, "SHORTFORM_RANGE_INVALID", "구간이 영상 길이를 넘어요.");
-  const cuts = clipCuts(parseTimedTranscript(longform.transcript), start, end, String(clip.metadata?.hook ?? clip.title).slice(0, 240));
+  if (parts.some(part => part.end > longform.durationSeconds + 0.1)) throw new ApiError(422, "SHORTFORM_RANGE_INVALID", "구간이 영상 길이를 넘어요.");
+  const cuts = partsCuts(parseTimedTranscript(longform.transcript), parts, String(clip.metadata?.hook ?? clip.title).slice(0, 240));
   const source = { id: project.id, key: longform.reference.key };
   const brief = { ...DEFAULT_SHORTFORM_BRIEF, mode: "reuse", audience: "원본 영상의 시청자", goal: "원본 롱폼 보기" };
   let row = await cardOf(service, project, clipCardId(clip.id), { originalClipId: clip.id, originalSourceId: project.id, shortformSource: source, shortformBrief: brief, cuts });

@@ -1,14 +1,16 @@
 // 유튜브 공정 v1 confirm rules (지시서 8장): who may move a gate, to where, and what the PD may edit meanwhile.
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
-export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌" };
-const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review" };
-const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload" };
+export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 컨펌" };
+// 쇼츠 컨펌 (owner request 2026-10-25) stays in 쇼츠 · 칼럼: its OK lets the confirmed scripts be made and uploaded.
+const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
+const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "레퍼런스", "topic.note": "전달 사항" },
   draft: { "draft.tt": "제목 · 썸네일", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 레퍼런스" },
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
+  shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
 export type YpPdAction = "request" | "cancel";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
@@ -50,6 +52,8 @@ export function editableFields(project: Pick<YpProject, "yp">, gate: YpGate): st
 }
 /** True when the PD changed the content after the last decision (an unchanged re-request needs a reason, S11-5). */
 export const editedSinceDecision = (project: Pick<YpProject, "yp">, gate: YpGate) => {
+  // 쇼츠 scripts live in their own records; a change there does not touch the project, so a re-request needs no reason.
+  if (gate === "shorts") return true;
   const decided = project.yp.gates[gate].decidedAt;
   return !decided || project.yp.contentUpdatedAt > decided;
 };
@@ -65,7 +69,8 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
   const waitingNeeded = () => { if (info.state !== "wait") throw new GateError("INVALID_TRANSITION", "대표 컨펌을 기다리는 요청이 없어요."); };
   switch (action) {
     case "request": {
-      if (yp.stage !== GATE_STAGE[gate] || !["none", "changes", "hold"].includes(info.state)) throw new GateError("INVALID_TRANSITION", info.state === "wait" ? "이미 대표 컨펌을 기다리고 있어요." : "지금은 이 컨펌을 요청할 수 없어요.");
+      // 쇼츠 can be confirmed again after an OK: new or changed scripts need their own OK.
+      if (yp.stage !== GATE_STAGE[gate] || !["none", "changes", "hold", ...(gate === "shorts" ? ["ok"] : [])].includes(info.state)) throw new GateError("INVALID_TRANSITION", info.state === "wait" ? "이미 대표 컨펌을 기다리고 있어요." : "지금은 이 컨펌을 요청할 수 없어요.");
       const reply = input.reply?.trim();
       if (info.state === "changes" && !editedSinceDecision(project, gate) && !reply) throw new GateError("REPLY_REQUIRED", "고친 칸이 없어요. 다시 요청하는 이유를 한 줄 써 주세요.", 400);
       return put({ state: "wait", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, remindAt: firstRemindAt(input.now),

@@ -10,6 +10,8 @@ import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
 import { ShortConfirmDetail } from "./youtube-process-short";
+import { clipConfirmed, clipParts, clipSeconds, formatParts } from "@/lib/youtube-process/short";
+import type { OsRecord } from "@/lib/record-types";
 
 const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -116,7 +118,7 @@ export function YoutubeConfirmScreen() {
             {project.yp.topic.refs.length ? <><dt>레퍼런스</dt><dd>{project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>)}</dd></> : null}
             <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd></dl>
           {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
-          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : 4, project.id)}>{gate === "review" ? "최종 검수 화면에서 보기 →" : "프로젝트 화면에서 보기 →"}</Link></p>
+          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : gate === "shorts" ? 6 : 4, project.id)}>{gate === "review" ? "최종 검수 화면에서 보기 →" : gate === "shorts" ? "쇼츠 화면에서 구간 재생해 보기 →" : "프로젝트 화면에서 보기 →"}</Link></p>
         </div>
         {tab === "wait" && client ? <ConfirmActions project={project} gate={gate} client={client} onDone={() => { go({ item: null }); void load(); }} />
           : tab === "hold" ? <div className="yp-abar"><span className="yp-abar-msg">보류한 건이에요. 담당 PD가 손보고 다시 요청하면 대기로 와요.</span></div>
@@ -141,6 +143,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
   if (error) return <div className="yp-note yp-warn"><div>{error}</div></div>;
   if (!bundle) return <p className="yp-hint">불러오는 중이에요…</p>;
   const media = { client, bundle };
+  if (gate === "shorts") return <ShortsScriptsDetail project={project} client={client} />;
   if (project.yp.topic.type === "short") return <ShortConfirmDetail client={client} bundle={bundle} open={open} />;
   const plan = bundle.stages.plan.data;
   const make = bundle.stages.make.data;
@@ -159,3 +162,27 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
         <dt>해결 안 된 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd></dl>}
   </div>;
 }
+
+/** 쇼츠 컨펌 (owner request 2026-10-25): every picked script — copy, first 3 seconds, the longform parts in play order, description. */
+function ShortsScriptsDetail({ project, client }: { project: YpProject; client: YpClient }) {
+  const [clips, setClips] = useState<OsRecord[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    client.clips(project.id).then(rows => { if (active) setClips(rows.filter(row => row.metadata?.selected !== false)); }, () => { if (active) setClips([]); });
+    return () => { active = false; };
+  }, [client, project.id]);
+  if (!clips) return <p className="yp-hint">불러오는 중이에요…</p>;
+  const ok = project.yp.gates.shorts.state === "ok" || Boolean(project.yp.shortsConfirmed);
+  return <div style={{ marginBottom: 12 }}>
+    <div className="yp-fld-h"><b>쇼츠 대본 {clips.length}편</b><span className="yp-gq">OK가 난 대본만 세로 영상으로 만들고 올려요 · 바꾸고 싶으면 [수정 요청]에 메모</span></div>
+    <ol className="yp-fl2">{clips.map(clip => { const parts = clipParts(clip.metadata); return <li key={clip.id}>
+      <b>{clip.title}</b>{clip.metadata?.kind ? <span className="yp-tag" style={{ marginLeft: 6 }}>{String(clip.metadata.kind)}</span> : null}
+      {ok && project.yp.shortsConfirmed?.clips[clip.id] ? clipConfirmed(project.yp.shortsConfirmed, true, clip) ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>지난번 OK 그대로</span> : <span className="yp-tag yp-warn" style={{ marginLeft: 6 }}>OK 뒤 바뀜</span> : <span className="yp-tag" style={{ marginLeft: 6 }}>새 대본</span>}
+      <div className="yp-muted" style={{ fontSize: 13 }}>구간 {formatParts(parts)} · {Math.round(clipSeconds(parts))}초</div>
+      {clip.metadata?.hook ? <div style={{ fontSize: 13 }}>첫 3초: “{String(clip.metadata.hook)}”</div> : null}
+      {clip.metadata?.desc ? <div className="yp-muted" style={{ fontSize: 13, whiteSpace: "pre-line" }}>설명: {String(clip.metadata.desc)}</div> : null}
+      {clip.metadata?.reason ? <div className="yp-muted" style={{ fontSize: 12 }}>왜: {String(clip.metadata.reason)}</div> : null}
+    </li>; })}</ol>
+  </div>;
+}
+

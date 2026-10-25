@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
+  emptyGates, parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -152,7 +152,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   }
 
   if (!projectParam) return <>{header}<p className="yp-hint" role="status">프로젝트를 여는 중이에요…</p></>;
-  const shell = project ?? { id: "new", version: 0, title: form.title, assigneeId: form.assigneeId, ownerId: "", updatedAt: "", yp: { v: 1 as const, stage: "topic" as const, topic: { type: form.kind, target: form.target, note: form.note, refs: form.refs }, gates: { topic: { state: "none" as const, round: 0 }, draft: { state: "none" as const, round: 0 }, review: { state: "none" as const, round: 0 } }, contentUpdatedAt: "" } };
+  const shell = project ?? { id: "new", version: 0, title: form.title, assigneeId: form.assigneeId, ownerId: "", updatedAt: "", yp: { v: 1 as const, stage: "topic" as const, topic: { type: form.kind, target: form.target, note: form.note, refs: form.refs }, gates: emptyGates(), contentUpdatedAt: "" } };
   const topicGate = shell.yp.gates.topic;
   const rev = (field: string) => topicGate.state === "changes" && (topicGate.fields ?? []).includes(field);
   const lines = topicLines(form.title);

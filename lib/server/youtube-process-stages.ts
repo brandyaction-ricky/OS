@@ -8,9 +8,10 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
-  type YpColumn, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
+  type YpColumn, type YpColumnItem, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
+import { clipConfirmed, clipScriptProblems, clipSignature } from "@/lib/youtube-process/short";
 import type { RequestActor } from "./auth";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -88,8 +89,9 @@ export const stagePatchSchemas = {
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200) }).strict(),
     srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
-  // One of: the HTML edited by hand, the AI draft taken over, or one place filled (or emptied with neither path nor url).
-  column: z.object({ html: text(150_000), useAiDraft: z.literal(true),
+  // On one column (item): its HTML edited by hand, one place filled (or emptied with neither path nor url), or the column taken out.
+  // HTML without an item adds a column pasted by hand.
+  column: z.object({ item: text(40), html: text(150_000), remove: z.literal(true),
     fill: z.object({ slot: z.enum(["hero", "1", "2", "3", "video"]), path: text(300).optional(), url: z.string().url().max(1000).optional(), name: text(240).optional() }).strict() }).partial().strict(),
 } as const;
 export const stageSaveSchema = z.object({ expectedVersion: z.number().int().min(0), patch: z.record(z.unknown()) }).strict();
@@ -151,29 +153,32 @@ function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, no
   return make;
 }
 function nextColumn(current: YpColumn, patch: Patch<"column">, projectId: string): YpColumn {
-  const column: YpColumn = { ...current };
-  if (patch.useAiDraft) {
-    if (!current.aiDraft) throw new ApiError(409, "COLUMN_DRAFT_MISSING", "바꿀 AI 초안이 없어요.");
-    column.html = current.aiDraft; column.aiDraft = undefined;
-    if (column.ai) column.ai = { ...column.ai, html: current.aiDraft };
+  if (!patch.item) {
+    if (patch.html === undefined) throw new ApiError(400, "COLUMN_ITEM_REQUIRED", "어느 칼럼인지 골라 주세요.");
+    return { items: [...current.items, { id: randomUUID().slice(0, 8), html: safeColumnHtml(patch.html), fills: {}, ai: null }] };
   }
-  if (patch.html !== undefined) {
-    // A person may save a column the 정본 check still flags (shown as warnings), never one that runs code or loads frames.
-    const html = cleanColumnHtml(patch.html);
-    const { unsafe } = checkColumnHtml(html);
-    if (unsafe.length) throw new ApiError(422, "COLUMN_HTML_UNSAFE", `넣을 수 없는 내용이 있어요: ${unsafe.join(" / ")}`);
-    column.html = html;
-  }
+  const item = current.items.find(row => row.id === patch.item);
+  if (!item) throw new ApiError(404, "COLUMN_NOT_FOUND", "그 칼럼을 찾지 못했어요. 새로 불러와 주세요.");
+  if (patch.remove) return { items: current.items.filter(row => row.id !== item.id) };
+  const column: YpColumnItem = { ...item };
+  if (patch.html !== undefined) column.html = safeColumnHtml(patch.html);
   if (patch.fill) {
     const { slot, path, url, name } = patch.fill;
     if (path && !assetPath(projectId, "column").test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "이미지를 다시 올려 주세요.");
     if (url && !/^https:\/\//.test(url)) throw new ApiError(400, "COLUMN_URL_INVALID", "https로 시작하는 주소를 넣어 주세요.");
     if (slot === "video" && (path || (url && !parseYoutubeRef(url)))) throw new ApiError(400, "COLUMN_VIDEO_URL", "영상 자리에는 유튜브 주소를 넣어요.");
-    const fills = { ...current.fills };
+    const fills = { ...item.fills };
     if (path || url) fills[slot] = { ...(path ? { path, name } : { url }) }; else delete fills[slot];
     column.fills = fills;
   }
-  return column;
+  return { items: current.items.map(row => row.id === item.id ? column : row) };
+}
+/** A person may save a column the 정본 check still flags (shown as warnings), never one that runs code or loads frames. */
+function safeColumnHtml(value: string) {
+  const html = cleanColumnHtml(value);
+  const { unsafe } = checkColumnHtml(html);
+  if (unsafe.length) throw new ApiError(422, "COLUMN_HTML_UNSAFE", `넣을 수 없는 내용이 있어요: ${unsafe.join(" / ")}`);
+  return html;
 }
 function nextUpload(current: YpUpload, patch: Patch<"upload">, projectId: string): YpUpload {
   if (patch.srt && !assetPath(projectId, "srt").test(patch.srt.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "SRT 파일을 다시 올려 주세요.");
@@ -204,7 +209,7 @@ export async function writeStage<K extends YpStageKind>(supabase: Supabase, acto
   return row as { id: string; version: number };
 }
 
-const GATE_OF_STAGE: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { draft: "draft", review: "review" };
+const GATE_OF_STAGE: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { draft: "draft", review: "review", shorts: "shorts" };
 /** A PD edit while a 수정 요청 is open counts as 'changed' for the re-request rule (S11-5); the list also sorts by it. */
 async function touchProject(actor: RequestActor, project: YpProject) {
   const gate = GATE_OF_STAGE[project.yp.stage];
@@ -291,7 +296,20 @@ async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate
   const stages = await readStages(actor.supabase, project);
   if (gate === "draft") return draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려주세요";
+  if (gate === "shorts") {
+    const clips = await adoptedClips(actor.supabase, project.id);
+    if (!clips.length) return "쇼츠로 만들 구간을 하나 이상 채택해 주세요";
+    const unfinished = clips.map(clip => ({ clip, problems: clipScriptProblems(clip) })).filter(row => row.problems.length);
+    if (unfinished.length) return `쇼츠 대본을 채워 주세요 — ${unfinished.slice(0, 3).map(row => `${row.clip.title || "제목 없음"}: ${row.problems.join(", ")}`).join(" / ")}`;
+    if (clips.every(clip => clipConfirmed(project.yp.shortsConfirmed, project.yp.gates.shorts.state === "ok", clip))) return "새로 컨펌받을 쇼츠가 없어요";
+  }
   return "";
+}
+/** The clips picked for 쇼츠 (채택), as the 쇼츠 컨펌 sees them. */
+async function adoptedClips(supabase: Supabase, projectId: string) {
+  const { data, error } = await supabase.from("os_records").select("id,title,metadata").eq("parent_id", projectId).eq("record_type", "content_short").is("archived_at", null).limit(200);
+  if (error) throw readFailed();
+  return ((data ?? []) as { id: string; title: string; metadata: Record<string, unknown> }[]).filter(row => row.metadata?.selected !== false);
 }
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
   return actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
@@ -299,7 +317,11 @@ export async function requestYoutubeGate(actor: RequestActor, id: string, gate: 
 
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
-  const project = await confirmYoutubeGate(actor, id, gate, input);
+  // 쇼츠 컨펌 OK keeps each picked script as confirmed; what is made and uploaded must still match it.
+  const okExtra = gate === "shorts" && input.action === "ok"
+    ? { shortsConfirmed: { at: new Date().toISOString(), clips: Object.fromEntries((await adoptedClips(createServiceSupabase(), id)).map(clip => [clip.id, clipSignature(clip)])) } }
+    : undefined;
+  const project = await confirmYoutubeGate(actor, id, gate, input, okExtra);
   if (gate === "draft" && input.action === "ok") {
     const service = createServiceSupabase();
     const stages = await readStages(service, project);
