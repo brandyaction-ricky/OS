@@ -416,7 +416,8 @@ export async function processShortform(){
   checkShortformRuntime();
   // layoutVersion 4 renders 1:1 and 4:5 feed ads as well as 9:16 (owner requests 2026-10-25); an older worker only gets the sizes it draws.
   const diagramTypes=shortformDiagramCapabilities();
-  const job=await call({action:"shorts_claim",layoutVersion:4,...(diagramTypes.length?{diagramTypes}:{})});
+  const onlyRenderId=process.env.SHORTFORM_RENDER_ID;
+  const job=await call({action:"shorts_claim",layoutVersion:4,...(onlyRenderId?{renderId:onlyRenderId}:{}),...(diagramTypes.length?{diagramTypes}:{})});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();

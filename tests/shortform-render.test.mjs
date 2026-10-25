@@ -246,10 +246,11 @@ test("each ad size is its own job beside the vertical one; old workers skip what
 const timelineDiagram={type:"lib_timeline",scene:{t0:0,items:[{text:"이전",t:.2},{text:"변화",t:1},{text:"지금",t:2}]}};
 test("diagram plans are signed, sent only to capable workers, and need no image or paid voice",async()=>{
  const h=await setup(true),cut=h.item().metadata.cuts[0];delete cut.assetId;cut.diagram=timelineDiagram;cut.missingAsset=false;cut.voice="";
- await h.enqueue(false);
+ const queued=await h.enqueue(false);
+ assert.equal((await h.api.claimShortformRender(h.service,4,["lib_timeline"],"00000000-0000-4000-8000-000000000099")).idle,true);
  assert.equal((await h.api.claimShortformRender(h.service,4)).idle,true);
  assert.equal((await h.api.claimShortformRender(h.service,4,["lib_iceberg"])).idle,true);
- const job=await h.api.claimShortformRender(h.service,4,["lib_timeline"]);
+ const job=await h.api.claimShortformRender(h.service,4,["lib_timeline"],queued.runId);
  assert.equal(job.scenes[0].diagram.type,"lib_timeline");assert.equal(job.scenes[0].imageUrl,undefined);assert.equal(h.voiceCalls,0);
  assert.equal(h.signed.length,0);
 });

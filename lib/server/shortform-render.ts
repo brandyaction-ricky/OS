@@ -179,9 +179,10 @@ async function sign(service:Service,bucket:string,path:string){
   if(error||!data)throw new ApiError(503,"SHORTFORM_SIGN_FAILED","제작 파일을 열지 못했습니다.");
   return data.signedUrl;
 }
-export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2,diagramTypes:readonly string[]=[]){
-  const {data:rows,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
+export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2,diagramTypes:readonly string[]=[],onlyRenderId?:string){
+  const query=service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
     .in("status",["backlog","in_progress"]).is("archived_at",null).order("created_at").limit(30);
+  const {data:rows,error}=await (onlyRenderId?query.eq("id",onlyRenderId):query);
   if(error)throw new ApiError(503,"SHORTFORM_QUEUE_FAILED","제작 대기열을 읽지 못했습니다.");
   for(const row of (rows??[]) as OsRecord[]){
     let run:Run;try{run=verifyShortformRun(row);}catch{continue;}
