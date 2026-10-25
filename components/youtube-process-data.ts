@@ -276,6 +276,8 @@ function demoClient(): YpClient {
         const final = p.addFinal as { path: string; name: string; bytes: number } | undefined;
         if (final) { make.finals = [...make.finals, { v: make.finals.length + 1, at: now, by: "리키", ...final }]; demoFinals.set(id, [...(demoFinals.get(id) ?? []), { v: (demoFinals.get(id) ?? []).length + 1, at: now, source: "upload", name: final.name, bytes: final.bytes, durationSeconds: null, path: final.path }]); }
         if (typeof p.aTitle === "string") make.aTitle = p.aTitle; if (typeof p.aReason === "string") make.aReason = p.aReason;
+        const pair = p.pair as { slot: "A" | "B" | "C"; title: string; copy: string; reason: string } | undefined;
+        if (pair) { const { slot, ...edit } = pair; const edits = { ...make.edits }; if (edit.title || edit.copy) edits[slot] = { ...edit, at: now, by: "리키" }; else delete edits[slot]; make.edits = edits; if (slot === "A") { make.aTitle = ""; make.aReason = ""; } }
         if (make.status !== "done" && (final || thumb) && (demoFinals.get(id) ?? []).length && !thumbsMissing(make)) make.status = "done";
         data = make as YpStageData[typeof kind];
       }

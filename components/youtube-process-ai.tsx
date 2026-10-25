@@ -9,16 +9,17 @@ import type { YpPage } from "./youtube-process-frame";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy";
+type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
+  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", result: "시장 영상에서 제목 공식 · 문구 공식을 뽑아 제목 8개 · 문구 8개를 따로 줘요. 하나씩 골라 짝을 만들어요." },
   niche: { name: "틈새 묶기", result: "터진 영상을 같은 제목 공식끼리 묶어 틈새 판에 넣어 줘요." },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", result: "쇼츠 제목과 설명을 써 줘요." },
   short: { name: "숏폼 장면 쓰기", result: "장면 3~8개를 자막 · 내레이션 · 필요한 이미지까지 채워 줘요. 광고면 구매 이유 후보도 줘요." },
   column: { name: "SEO 칼럼 쓰기", result: "정한 편수만큼 SEO 칼럼을 써 줘요." },
   shorts: { name: "쇼츠 대본 쓰기", result: "정한 편수만큼 쇼츠 대본을 써 줘요. PD가 고르고 확정해요." },
-  plan: { name: "기획안 쓰기", result: "제목 후보 · 썸네일 시안 · 영상 흐름 초안을 채워 줘요." },
+  plan: { name: "기획안 쓰기", result: "시장 영상에서 뽑은 공식대로 제목 후보 · 썸네일 시안을, 영상 흐름 초안과 함께 채워 줘요." },
   script: { name: "구성안 원고 쓰기", result: "원고 초안을 써서 새 버전으로 넣어 줘요." },
   kit: { name: "설명란 · 고정 댓글 만들기", result: "설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요." },
 };
@@ -69,8 +70,12 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
 }
 
 /** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
-export function SendDialog({ page, task, open, onClose, job, defaults }: {
+export function SendDialog({ page, task, open, onClose, job, defaults, extra, queryDefault }: {
   page: JobPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
+  /** 기획안 · 다시 뽑기: the 기획실 레퍼런스 검색어 the OS searches before the job (the PD can change it). */
+  queryDefault?: string;
+  /** Fields the task needs beyond the project (다시 뽑기: slot · reason). */
+  extra?: Record<string, unknown>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<"queue" | "now" | "paste">("queue");
@@ -79,12 +84,14 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
   const [count, setCount] = useState(task === "shorts" ? 3 : 1);
   const maxCount = task === "shorts" ? 8 : 5;
   const [role, setRole] = useState("유입형");
+  const [query, setQuery] = useState(queryDefault ?? "");
+  const searches = task === "plan" || task === "retitle";
   const [attachments, setAttachments] = useState("");
   const [paste, setPaste] = useState({ manuscript: "", materials: "", axis: "", design: "", review: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); } else dialog.current?.close(); }, [open, defaults?.minutes]);
+  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault]);
   const info = TASK[task];
   const projectId = page.bundle?.project.id;
   const running = job.status?.job?.status === "active";
@@ -96,7 +103,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
     try {
       await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token: page.accessToken,
         body: JSON.stringify(task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
-          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId }) });
+          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId, ...extra, ...(searches && query.trim() ? { query: query.trim() } : {}) }) });
       if (copy) { await navigator.clipboard.writeText(MY_AI_PROMPT).catch(() => undefined); setCopied(true); }
       await job.load();
       if (!copy) onClose();
@@ -120,6 +127,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
         <dt>비용</dt><dd><CostTag cost="ai" /> 회사 비용은 없어요</dd></dl>
+      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
+        <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>
         <input className="yp-in" type="number" min={1} max={maxCount} value={count} onChange={event => setCount(Math.min(maxCount, Math.max(1, Number(event.target.value) || 1)))} style={{ width: 90 }} /> 편</label> : null}
       {task === "script" ? <div className="yp-g2" style={{ marginBottom: 10 }}>

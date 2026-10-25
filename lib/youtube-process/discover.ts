@@ -76,3 +76,20 @@ export function ageLabel(iso: string | null, now = Date.now()) {
   const days = Math.max(0, Math.floor((now - Date.parse(iso)) / 86_400_000));
   return days < 1 ? "오늘" : days < 30 ? `${days}일 전` : days < 365 ? `${Math.floor(days / 30)}개월 전` : `${Math.floor(days / 365)}년 전`;
 }
+
+/**
+ * 패키징 레퍼런스 (the 기획실 썸네일 레퍼런스 검색, 패키징 정본 작업 순서 1): views 50,000 or more, nothing live, ranked by
+ * views ÷ subscribers (hidden subscribers last), then views; 40 kept. Under a minute counts as shorts, as in the 기획실.
+ */
+export const PACKAGING_MIN_VIEWS = 50_000;
+export interface PackagingRef { id: string; title: string; channel: string; views: number; subscribers: number | null; ratio: number | null; short: boolean; thumbnail: string; url: string }
+export function rankPackagingRefs(videos: { id: string; title: string; channel: string; views: number; subscribers: number | null; seconds: number; live: boolean }[]): PackagingRef[] {
+  return videos.filter(video => video.id && !video.live && video.views >= PACKAGING_MIN_VIEWS)
+    .map(video => ({ id: video.id, title: video.title, channel: video.channel, views: video.views, subscribers: video.subscribers,
+      ratio: video.subscribers ? Math.round(video.views / video.subscribers * 10) / 10 : null, short: video.seconds < 60,
+      thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, url: `https://www.youtube.com/watch?v=${video.id}` }))
+    .sort((a, b) => Number(a.ratio === null) - Number(b.ratio === null) || (b.ratio ?? 0) - (a.ratio ?? 0) || b.views - a.views)
+    .slice(0, 40);
+}
+/** The video's own format first (기획실 롱폼만 · 쇼츠만); every format only when that one has fewer than three. */
+export const packagingPick = (refs: PackagingRef[], short: boolean) => { const same = refs.filter(ref => ref.short === short); return same.length >= 3 ? same : refs; };

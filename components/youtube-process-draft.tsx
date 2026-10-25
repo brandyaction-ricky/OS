@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { parseYoutubeRef } from "@/lib/youtube-process/project";
+import { parseYoutubeRef, projectName } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
@@ -139,7 +139,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
         {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; } setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
       </div></section></aside></div>
-      <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} />
+      <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? projectName(project) : undefined} />
     </div> : null}
   </YpFrame>;
 }

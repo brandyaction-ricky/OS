@@ -3,7 +3,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { descWritten, utmUrl } from "@/lib/youtube-process/stages";
+import { descWritten, finalPair, utmUrl } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "./youtube-oauth";
@@ -41,7 +41,7 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   const connection = await youtubeConnectionStatus(ownerId);
   // A 숏폼 (2026-10-25) goes up as a Short with the title written in 내보내기; a longform with its confirmed A title.
   const short = project.yp.topic.type === "short";
-  const title = (short ? upload.title?.trim() || projectName(project) : stages.make.data.aTitle || stages.plan.data.confirmed?.A?.title || project.title).trim().slice(0, 100);
+  const title = (short ? upload.title?.trim() || projectName(project) : finalPair(stages.plan.data, stages.make.data, "A")?.title || project.title).trim().slice(0, 100);
   // ③ 마이인 finals: their photo and music credits close the description (owner decision 2026-10-19).
   let credits = "";
   if (final.source === "myin" && final.runId) {

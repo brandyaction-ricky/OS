@@ -44,9 +44,17 @@ export interface YpMake {
   /** Finals uploaded by hand (실사). The OS-made 마이인 finals come from their run records. */
   finals: YpFinalUpload[];
   thumbs: Partial<Record<YpSlot, { path: string; at: string; name: string }>>;
-  /** 'A 제목 바꿔 보기' (S5): a title different from the confirmed A, with the reason. */
+  /** 'A 제목 바꿔 보기' (S5) before 2026-10-25: a title different from the confirmed A, with the reason. Read through finalPair. */
   aTitle: string; aReason: string;
+  /** 최종 썸네일 [고치기] (owner request 2026-10-25): a slot's title or thumbnail copy changed on purpose, with why. */
+  edits?: Partial<Record<YpSlot, YpPairEdit>>;
+  /** [공식대로 다시 뽑기]: the staff AI's last candidates for one slot, from the 패키징 정본 formula. */
+  redo?: Partial<Record<YpSlot, YpRedo>>;
 }
+export interface YpPairEdit { title: string; copy: string; reason: string; at: string; by: string }
+export interface YpRedo { at: string; by: string; model: string; jobId: string; formula: string; titleBasis?: string; copyFormula: string; copyBasis?: string; market?: { query: string; count: number };
+  titles: YpRedoPick[]; copies: YpRedoPick[] }
+export interface YpRedoPick { text: string; hook: string; why: string }
 export interface YpUpload {
   utm: { cat: string; dest: string; camp: string; next: string; short: string };
   srt: { path: string; name: string } | null;
@@ -179,6 +187,16 @@ export const MAKE_STEPS: Record<YpKind, [YpMakeStatus, string][]> = {
   anim: [["prep", "준비"], ["edit", "편집"], ["done", "완료"]],
   short: [["prep", "준비"], ["done", "완료"]],
 };
+/** The title and thumbnail copy a slot goes out with: the confirmed pair, or what 제작 changed on purpose (empty keeps the confirmed one). */
+export function finalPair(plan: Pick<YpPlan, "confirmed">, make: Pick<YpMake, "aTitle" | "aReason" | "edits">, slot: YpSlot) {
+  const base = plan.confirmed?.[slot];
+  if (!base) return null;
+  const edit = make.edits?.[slot] ?? (slot === "A" && make.aTitle ? { title: make.aTitle, copy: "", reason: make.aReason } : null);
+  const title = edit?.title || base.title;
+  const copy = edit?.copy || base.thumb?.copy || "";
+  const changed = title !== base.title || copy !== (base.thumb?.copy ?? "");
+  return { title, copy, thumb: base.thumb ? { ...base.thumb, copy } : copy ? { id: slot, mode: "text" as const, copy } : null, changed, reason: changed ? edit?.reason ?? "" : "" };
+}
 export function thumbsMissing(make: YpMake) {
   for (const slot of ["A", "B"] as const) if (!make.thumbs[slot]) return `${slot} 최종 썸네일을 올려 주세요`;
   return "";
