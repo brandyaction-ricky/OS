@@ -33,7 +33,8 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
   z.object({ action: z.literal("myin_clips_claim") }).strict(),
-  z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(20) }).strict(),
+  // One clip per metaphor scene plus the opening; a storyboard has at most 200 scenes, and stage diagrams make most of them metaphors.
+  z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201) }).strict(),
   z.object({ action: z.literal("myin_final_claim") }).strict(),
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
