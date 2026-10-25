@@ -1047,3 +1047,62 @@
 .linear-shell .ui-v2.yp .yp-niche summary{display:flex;flex-direction:column;gap:4px;cursor:pointer;font-size:12px}
 .linear-shell .ui-v2.yp .yp-niche-t{font-size:14px;font-weight:700;color:var(--text)}
 .linear-shell .ui-v2.yp .yp-niche-b{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-soft)}
+/* ── 다듬기 (owner request 2026-10-25 「UI를 좀 더 세련되게, 레이아웃도 딱딱 보기좋게」) ──
+   One rhythm on every screen: 12px cards with a hairline shadow, 16px between blocks and 20px inside them, 8px controls,
+   pill tags, a soft focus ring, and 내 영상 rows on one grid so title · progress · PD · button line up down the list. */
+.linear-shell .ui-v2.yp [data-ui="page-title"]{font-size:24px;letter-spacing:-.02em}
+.linear-shell .ui-v2.yp :is(.yp-fsec,.yp-card,.yp-subj,.yp-mv,.yp-foot,.yp-more,.yp-ref,.yp-dch,.yp-niche,.yp-locked,.yp-mv-new){border-radius:12px}
+.linear-shell .ui-v2.yp :is(.yp-fsec,.yp-card,.yp-subj,.yp-mv,.yp-foot,.yp-ref){border-color:var(--line-soft);box-shadow:0 1px 2px color-mix(in srgb,var(--media-shadow) 6%,transparent),0 0 0 1px color-mix(in srgb,var(--line) 35%,transparent)}
+.linear-shell .ui-v2.yp .yp-card-h{border-radius:12px 12px 0 0;padding:11px 16px}
+.linear-shell .ui-v2.yp .yp-card-b{padding:14px 16px}
+.linear-shell .ui-v2.yp .yp-fsec{margin-bottom:16px}
+.linear-shell .ui-v2.yp .yp-fsec-h{padding:18px 20px 0;gap:10px}
+.linear-shell .ui-v2.yp .yp-fsec-h .yp-n{border-radius:50%;background:var(--accent-soft);color:var(--accent-2)}
+.linear-shell .ui-v2.yp .yp-fsec-b{padding:12px 20px 20px}
+.linear-shell .ui-v2.yp .yp-subj{padding:16px 20px;margin-bottom:16px}
+.linear-shell .ui-v2.yp .yp-btn{height:34px;padding:0 14px;border-radius:8px;font-weight:600;transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,color .15s ease}
+.linear-shell .ui-v2.yp .yp-btn.yp-sm{height:28px;padding:0 10px;border-radius:7px}
+.linear-shell .ui-v2.yp .yp-btn.yp-lg{height:40px;padding:0 18px;border-radius:9px}
+.linear-shell .ui-v2.yp .yp-btn.yp-pri{box-shadow:0 1px 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+.linear-shell .ui-v2.yp .yp-btn:not(.yp-pri):not(.yp-ghost):not(:disabled):hover{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.linear-shell .ui-v2.yp .yp-in{border-radius:8px;transition:border-color .15s ease,box-shadow .15s ease}
+.linear-shell .ui-v2.yp .yp-in:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.linear-shell .ui-v2.yp :is(.yp-tag,.yp-need,.yp-opt,.yp-revtag,.yp-ai2,.yp-rec:not(.yp-way),.yp-chip){border-radius:999px}
+.linear-shell .ui-v2.yp .yp-note{border-radius:10px;padding:12px 14px;margin-bottom:16px}
+.linear-shell .ui-v2.yp .yp-seg2{border-radius:8px;padding:2px;gap:2px;background:var(--panel-2);border-color:var(--line-soft)}
+.linear-shell .ui-v2.yp .yp-seg2 button{border-radius:6px}
+.linear-shell .ui-v2.yp .yp-seg2 button.yp-on{background:var(--card);box-shadow:0 1px 2px color-mix(in srgb,var(--media-shadow) 10%,transparent)}
+.linear-shell .ui-v2.yp .yp-flow{background:color-mix(in srgb,var(--card) 90%,transparent);backdrop-filter:blur(12px);border-bottom-color:var(--line-soft);box-shadow:none}
+.linear-shell .ui-v2.yp .yp-fl-proj{border-radius:8px}
+.linear-shell .ui-v2.yp .yp-fs{border-radius:999px;padding:0 10px}
+.linear-shell .ui-v2.yp .yp-foot{padding:14px 16px;margin-top:20px}
+.linear-shell .ui-v2.yp .yp-mv-list{gap:10px}
+.linear-shell .ui-v2.yp .yp-mv{display:grid;grid-template-columns:minmax(0,1fr) 150px 96px 128px;gap:20px;padding:14px 16px 14px 18px;transition:border-color .15s ease,box-shadow .15s ease}
+.linear-shell .ui-v2.yp .yp-mv:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line-soft));box-shadow:0 4px 14px color-mix(in srgb,var(--media-shadow) 8%,transparent)}
+.linear-shell .ui-v2.yp .yp-mv-m{grid-column:1}
+.linear-shell .ui-v2.yp .yp-mv-th{display:flex;align-items:center;gap:8px;min-width:0}
+.linear-shell .ui-v2.yp .yp-mv-th .yp-tag{flex:none}
+.linear-shell .ui-v2.yp .yp-mv-s{margin-top:4px}
+.linear-shell .ui-v2.yp .yp-mv-bar{flex-direction:column;align-items:stretch;gap:6px;margin:0;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.linear-shell .ui-v2.yp .yp-mv-track{flex:none;max-width:none;height:6px;border-radius:999px}
+.linear-shell .ui-v2.yp .yp-mv-track i{height:6px;border-radius:999px}
+.linear-shell .ui-v2.yp .yp-mv-pd{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linear-shell .ui-v2.yp .yp-mv-av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent-2);font-size:11px;font-weight:700}
+.linear-shell .ui-v2.yp .yp-mv>.yp-btn{grid-column:4;justify-self:end;width:100%}
+@media (max-width:820px){
+  .linear-shell .ui-v2.yp .yp-mv{grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:14px}
+  .linear-shell .ui-v2.yp .yp-mv-m{grid-column:1/-1}
+  .linear-shell .ui-v2.yp .yp-mv-bar{grid-column:1/-1}
+  .linear-shell .ui-v2.yp .yp-mv>.yp-btn{grid-column:2;width:auto}
+}
+/* The progress line fits every step at 1280px: a shorter project chip, no arrows between steps, and the "why it is locked" hint
+   moves into the button's tooltip and the step footer when the line is short of room. */
+.linear-shell .ui-v2.yp .yp-fl-proj{max-width:210px}
+.linear-shell .ui-v2.yp .yp-fl-steps{gap:2px}
+.linear-shell .ui-v2.yp .yp-fl-steps .yp-fl-sep{display:none}
+.linear-shell .ui-v2.yp .yp-fl-hint{max-width:180px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1440px){.linear-shell .ui-v2.yp .yp-fl-hint{display:none}}
+/* The recommended way card shares yp-rec with the small badge; it wraps its sentence instead of running past the edge. */
+.linear-shell .ui-v2.yp .yp-way{white-space:normal;border-radius:12px;padding:16px;font-size:13px;font-weight:400;transition:border-color .15s ease,box-shadow .15s ease}
+.linear-shell .ui-v2.yp .yp-way.yp-rec{box-shadow:0 0 0 3px var(--accent-soft)}
+.linear-shell .ui-v2.yp .yp-way b{display:inline-flex;align-items:center;gap:6px}

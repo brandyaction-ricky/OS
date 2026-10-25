@@ -15,14 +15,15 @@ const contrast = (foreground, background) => {
   return (values[0] + 0.05) / (values[1] + 0.05);
 };
 
-test("profile theme and topbar guidance retain persistent preferences", async () => {
+test("topbar theme and guidance retain persistent preferences", async () => {
   const [shell, layout] = await Promise.all([
     read("components/app-shell.tsx"),
     read("app/layout.tsx"),
   ]);
 
-  assert.match(shell, /aria-label="내 계정"[\s\S]*aria-label="화면 설정"/);
-  assert.match(shell, /라이트.*모드로 전환/);
+  // The light/dark button sits in the top bar beside the guide switch, where it can be seen (owner request 2026-10-25).
+  assert.match(shell, /사용 가이드<\/span>[\s\S]{0,200}data-ui="theme-toggle"/);
+  assert.match(shell, /라이트.*모드로 바꾸기/);
   assert.match(shell, /role="switch"/);
   assert.match(shell, /사용 가이드/);
   assert.match(shell, /brandy-os-theme/);

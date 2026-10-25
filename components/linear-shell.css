@@ -135,6 +135,7 @@
 }
 .linear-shell .display-control svg { color: var(--text-2); }
 .linear-shell .display-control.guidance-control.active { border-color: var(--line); background: var(--panel-2); }
+.linear-shell .display-control.theme-control { width: 30px; padding: 0; justify-content: center; }
 .linear-shell .icon-button { width: 30px; height: 30px; border-radius: 5px; }
 .linear-shell .icon-button:hover { background: var(--panel-2); border-color: var(--line); }
 .linear-shell .profile-trigger { border-radius: 5px; }

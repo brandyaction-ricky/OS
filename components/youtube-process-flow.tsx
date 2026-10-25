@@ -46,7 +46,7 @@ export function YoutubeFlow({ project, view, action }: { project: YpProject; vie
         ? <Link className="yp-btn yp-pri yp-lg" href={action.href}>{action.label}<ArrowRight size={16} aria-hidden="true" /></Link>
         : <>
           {action.reason ? <span className="yp-fl-hint" id="yp-fl-hint">{action.reason}</span> : null}
-          <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} aria-describedby={action.reason ? "yp-fl-hint" : undefined} onClick={action.onClick}>
+          <button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(action.reason) || action.busy} aria-describedby={action.reason ? "yp-fl-hint" : undefined} title={action.reason || undefined} onClick={action.onClick}>
             {action.busy ? "보내는 중…" : action.label}<ArrowRight size={16} aria-hidden="true" />
           </button>
         </>}
