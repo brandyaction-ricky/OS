@@ -18,6 +18,9 @@ import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMIN
 export const MYIN_RUN_KIND = "youtube_myin_v13";
 export const MYIN_VOICE_MODEL = "drama-3"; // pinned like Logan: Fish serves an unknown model name as 2.1 without an error
 const WORDS_LEASE_MS = 30 * 60_000;
+// One clip per metaphor scene takes about two minutes on the render PC; a stage-diagram video has 20+ (2026-10-25: 21 clips, 38 minutes).
+// ponytail: fixed two hours covers ~50 clips; scale with the clip count if storyboards grow past that.
+const CLIPS_LEASE_MS = 120 * 60_000;
 type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
@@ -492,7 +495,7 @@ const uploadUrl = async (service: Service, bucket: string, path: string) => {
 
 /** Render PC: which clips to cut (the opening with its reel, then each metaphor scene) and where to put them. */
 export async function claimMyinClips(service: Service = createServiceSupabase()) {
-  const claimed = await claim(service, "clips_pending", WORDS_LEASE_MS);
+  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS);
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
