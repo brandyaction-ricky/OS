@@ -808,6 +808,14 @@
       "productionApprovedAt": "2026-10-22",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner request 2026-10-22; owner approved Production the same day. Production: live functions and policy matched the repository; a rollback-only run measured, as each of the 10 active members, documents visible before and after the migration (0 changed) and other members' drafts visible after (0); then applied, recorded in schema history and read back. DEV: live os_workspace_document_row_read, os_workspace_document_read and os_documents_select matched the latest repository definitions; rollback-only test (tests/document-sharing.sql with this migration) 13 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back."
+    },
+    {
+      "file": "20261025090000_toss_sync_by_business.sql",
+      "sha256": "124512ead2611278c7aba2f7de832c8ba06f67505852e4ff5f481dd5bf780a72",
+      "purpose": "Toss ledger sync per business store: p_biz ('edu' default) picks or creates the 마이인 or 브랜디에듀 store and rows carry the run's store biz instead of the literal 'edu'; used by the daily sync cron",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Owner request 2026-10-25 (마이인 sales also come in through Toss). DEV and Production os_fin_toss_sync matched before the change. Rollback-only DEV test (tests/toss-sync-by-business.sql with this migration) 5 checks, 0 failures. Not applied yet."
     }
   ],
   "legacyMigrations": [
