@@ -22,7 +22,7 @@ export interface YpPlan {
   titles: { id: string; text: string }[]; thumbs: YpThumb[];
   opening: string; body: string; closing: string; note: string; extraRefs: YpRef[];
   /** The staff AI's last draft: who made it, and (when the PD had already written) the draft waiting beside the fields. */
-  ai?: { by: string; model: string; at: string; jobId: string };
+  ai?: { by: string; model: string; at: string; jobId: string; patterns?: YpPatterns };
   aiDraft?: Pick<YpPlan, "titles" | "thumbs" | "opening" | "body" | "closing" | "note">;
   /** Copied when the 기획안 컨펌 is OK: the A · B · (C) pairs that later screens compare against. */
   confirmed?: { at: string } & Partial<Record<YpSlot, YpPick>>;
@@ -52,9 +52,16 @@ export interface YpMake {
   redo?: Partial<Record<YpSlot, YpRedo>>;
 }
 export interface YpPairEdit { title: string; copy: string; reason: string; at: string; by: string }
-export interface YpRedo { at: string; by: string; model: string; jobId: string; formula: string; titleBasis?: string; copyFormula: string; copyBasis?: string; market?: { query: string; count: number };
-  titles: YpRedoPick[]; copies: YpRedoPick[] }
-export interface YpRedoPick { text: string; hook: string; why: string }
+/** The formulas behind AI titles and copies (패키징 정본 작업 순서 2): the repeated words with [slots], how many references share them, and which. */
+export interface YpPattern { skeleton: string; count: string; examples?: string[]; thumbs?: number[] }
+export interface YpPatterns { titlePatterns: YpPattern[]; copyPatterns: { main: YpPattern[]; sub: YpPattern[] }; market?: { query: string; count: number } }
+export interface YpRedo extends Partial<YpPatterns> {
+  at: string; by: string; model: string; jobId: string; market?: { query: string; count: number };
+  /** One-sentence formulas from the first 다시 뽑기 runs (before the patterns, 2026-10-25). */
+  formula?: string; titleBasis?: string; copyFormula?: string; copyBasis?: string;
+  titles: YpRedoPick[]; copies: YpRedoPick[];
+}
+export interface YpRedoPick { text: string; sub?: string; hook: string; pattern?: number; why: string }
 export interface YpUpload {
   utm: { cat: string; dest: string; camp: string; next: string; short: string };
   srt: { path: string; name: string } | null;

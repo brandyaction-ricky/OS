@@ -6,6 +6,7 @@ import { MyAiConnect } from "./my-ai-connect";
 import { CostTag } from "./youtube-process-cost";
 import { MY_AI_PROMPT, type StaffJobStatus } from "./youtube-production-steps";
 import type { YpPage } from "./youtube-process-frame";
+import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
@@ -161,4 +162,23 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
           : <button type="button" className="yp-btn yp-pri" disabled={busy || Object.values(paste).some(value => !value.trim())} onClick={() => void submitPaste()}>결과 넣기</button>}
     </div>
   </dialog>;
+}
+
+/** One formula: each pattern's skeleton (the repeated words with [slots]), how many references share it and which (패키징 정본 작업 순서 2). A one-sentence formula from before shows as it is. */
+export function FormulaNote({ name, patterns, fallback, basis }: { name: string; patterns?: YpPattern[]; fallback?: string; basis?: string }) {
+  if (!patterns?.length && !fallback) return null;
+  return <div className="yp-note yp-gray" style={{ margin: "6px 0 8px", fontSize: 13, lineHeight: 1.5 }}><div style={{ width: "100%" }}><b>{name}</b>
+    {patterns?.length ? <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>{patterns.map((pattern, index) => <li key={index} style={{ marginBottom: 4 }}>
+      <b>{pattern.skeleton}</b> <span className="yp-muted">· {pattern.count}</span>
+      {pattern.examples?.length ? <div className="yp-muted" style={{ fontSize: 12 }}>예: {pattern.examples.slice(0, 3).map(example => `「${example}」`).join(" ")}</div> : null}
+      {pattern.thumbs?.length ? <div className="yp-muted" style={{ fontSize: 12 }}>썸네일 {pattern.thumbs.join(" · ")}번</div> : null}</li>)}</ol>
+      : <> {fallback}{basis ? <details style={{ marginTop: 4 }}><summary style={{ cursor: "pointer" }}>근거 보기</summary>{basis}</details> : null}</>}</div></div>;
+}
+
+/** All the formulas behind an AI 기획안: title patterns, then main · sub copy patterns. */
+export function PatternsBox({ patterns }: { patterns: YpPatterns }) {
+  return <>{patterns.market ? <div className="yp-muted" style={{ fontSize: 12 }}>레퍼런스: 「{patterns.market.query}」 시장 영상 {patterns.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
+    <FormulaNote name="제목 공식" patterns={patterns.titlePatterns} />
+    <FormulaNote name="썸네일 메인 카피 공식" patterns={patterns.copyPatterns.main} />
+    <FormulaNote name="썸네일 서브 카피 공식" patterns={patterns.copyPatterns.sub} /></>;
 }

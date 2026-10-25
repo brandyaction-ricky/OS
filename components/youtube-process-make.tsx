@@ -9,7 +9,7 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
-import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { ShortMake } from "./youtube-process-short";
@@ -196,7 +196,7 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
       <button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
     <div className="yp-g2">
       <label className="yp-lbl" style={{ margin: 0 }}>제목<input className="yp-in" style={{ fontSize: 15 }} value={title} maxLength={100} onChange={event => setTitle(event.target.value)} aria-label={`${slot} 바꿀 제목`} /></label>
-      <label className="yp-lbl" style={{ margin: 0 }}>썸네일 문구 (큰 글자)<input className="yp-in" style={{ fontSize: 15 }} value={copy} maxLength={40} onChange={event => setCopy(event.target.value)} aria-label={`${slot} 바꿀 썸네일 문구`} /></label>
+      <label className="yp-lbl" style={{ margin: 0 }}>썸네일 문구 (서브 / 메인)<input className="yp-in" style={{ fontSize: 15 }} value={copy} maxLength={80} onChange={event => setCopy(event.target.value)} aria-label={`${slot} 바꿀 썸네일 문구`} /></label>
     </div>
     <input className="yp-in yp-rev" style={{ marginTop: 8 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
     <div className="yp-row-btns" style={{ marginTop: 8 }}>
@@ -207,15 +207,17 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
     {redo ? <>
       <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 레퍼런스: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
       <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
-        {([["title", "제목", redo.formula, redo.titleBasis, redo.titles], ["copy", "썸네일 문구", redo.copyFormula, redo.copyBasis, redo.copies]] as const).map(([field, name, formula, basis, list]) => <div key={field}>
+        {([["title", "제목", redo.titles], ["copy", "썸네일 문구", redo.copies]] as const).map(([field, name, list]) => <div key={field}>
           <b style={{ fontSize: 15 }}>{name} 후보 {list.length}개</b>
-          <div className="yp-note yp-gray" style={{ margin: "6px 0 8px", fontSize: 13, lineHeight: 1.5 }}><div><b>{name} 공식</b> {formula}
-            {basis ? <details style={{ marginTop: 4 }}><summary style={{ cursor: "pointer" }}>근거 보기</summary>{basis}</details> : null}</div></div>
-          <div style={{ display: "grid", gap: 8 }}>{list.map((item, index) => { const on = (field === "title" ? title : copy) === item.text;
+          {field === "title" ? <FormulaNote name="제목 공식" patterns={redo.titlePatterns} fallback={redo.formula} basis={redo.titleBasis} />
+            : <><FormulaNote name="메인 카피 공식" patterns={redo.copyPatterns?.main} fallback={redo.copyFormula} basis={redo.copyBasis} />
+              <FormulaNote name="서브 카피 공식" patterns={redo.copyPatterns?.sub} /></>}
+          <div style={{ display: "grid", gap: 8 }}>{list.map((item, index) => { const value = item.sub ? `${item.sub} / ${item.text}` : item.text; const on = (field === "title" ? title : copy) === value;
             return <button key={index} type="button" className={`yp-way${on ? " yp-rec" : ""}`} style={{ width: "100%" }} aria-pressed={on}
-              onClick={() => pick(field, item.text, `다시 뽑은 ${name} ${index + 1}번 · ${item.hook}`)}>
+              onClick={() => pick(field, value, `다시 뽑은 ${name} ${index + 1}번 · ${item.hook}`)}>
+              {item.sub ? <span style={{ fontSize: 12 }}>{item.sub}</span> : null}
               <b style={{ fontSize: 15, lineHeight: 1.4 }}>{on ? <Check size={14} aria-hidden="true" /> : null} {field === "copy" ? `「${item.text}」` : item.text}</b>
-              <span><span className="yp-tag">{item.hook}</span> {item.why}</span></button>; })}</div></div>)}
+              <span>{item.pattern ? <span className="yp-tag">공식 {item.pattern}</span> : null} <span className="yp-tag">{item.hook}</span> {item.why}</span></button>; })}</div></div>)}
       </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 내 AI가 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 보내요. 이유를 적으면 그 점을 고쳐요.</p>}
   </div>;
 }

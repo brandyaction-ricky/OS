@@ -6,7 +6,7 @@ import { parseYoutubeRef, projectName } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
-import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { JobLine, PatternsBox, SendDialog, useStaffJob } from "./youtube-process-ai";
 
 const id = () => crypto.randomUUID().slice(0, 12);
 const SlotTag = ({ index }: { index: number }) => {
@@ -93,6 +93,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           <b>오프닝</b><p>{form.aiDraft.opening}</p><b>본론</b><p style={{ whiteSpace: "pre-wrap" }}>{form.aiDraft.body}</p><b>클로징</b><p>{form.aiDraft.closing}</p></div></details></div></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="제목 · 썸네일" gq="어떻게 클릭하게 만드나요?" need rev={rev("draft.tt")}>
+          {form.ai?.patterns ? <details className="yp-card" style={{ padding: "8px 12px", marginBottom: 10 }}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> AI가 뽑은 제목 · 썸네일 공식 보기 (시장 레퍼런스에서 반복된 말)</summary>
+            <div style={{ marginTop: 6 }}><PatternsBox patterns={form.ai.patterns} /></div></details> : null}
           <div className="yp-field"><div className="yp-fld-h"><b>제목 후보</b></div>
             {form.titles.map((title, index) => <div key={title.id} className={`yp-tr3${index < 3 ? " yp-on" : ""}`}>
               {can("titles") ? <span className="yp-row-btns">

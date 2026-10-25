@@ -476,7 +476,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   }
   if (m.task === "plan") {
     const state = await currentPlanInput(job);
-    const saved = await keepIssues(job, m, () => saveV1Plan(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }));
+    const saved = await keepIssues(job, m, () => saveV1Plan(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.market));
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 기획안에서 다듬고 기획안 컨펌을 요청합니다." };
   }
