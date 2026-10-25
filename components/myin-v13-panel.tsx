@@ -15,7 +15,7 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
-  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null }
+  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -87,7 +87,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal }:
   const phase = run ? run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage] ?? run.stage : null;
   const board = run?.storyboard;
 
-  const step1: StepState = run?.words ? "done" : "current";
+  const step1: StepState = run?.words && !run.scriptChanged ? "done" : "current";
   const step2: StepState = !run?.words ? "waiting" : run.review?.decision === "confirmed" ? "done" : "current";
   const step3: StepState = run?.review?.decision !== "confirmed" ? "waiting" : LATER.includes(run.stage) ? "done" : "current";
   const step4: StepState = !run || !LATER.includes(run.stage) ? "waiting" : ["final_pending", "final_ready"].includes(run.stage) ? "done" : "current";
@@ -102,8 +102,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal }:
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
       <p>승인된 원고를 대표 목소리(drama-3)로 만들고, 렌더 PC가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다.</p>
-      {!run || (run.status === "blocked" && !run.words) ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("start", () => post("/myin", "POST", { sourceId }))}>{busy === "start" ? "시작하는 중…" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
+      {run?.scriptChanged ? <p className="yt-note yt-warn">구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 시안 확인도 다시 거쳐요.</p> : null}
+      {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("start", () => post("/myin", "POST", { sourceId }))}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? "바뀐 원고로 v13 음성 다시 만들기" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
         <small>새 원고라 Fish 음성 비용이 듭니다. 같은 원고로 다시 누르면 만든 음성을 그대로 이어 씁니다.</small>
       </div> : null}
       {run ? <div className="yt-run">
