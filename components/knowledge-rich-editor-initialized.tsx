@@ -31,7 +31,7 @@ import {
 } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
 import type { ForwardedRef } from "react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
@@ -158,6 +158,19 @@ export default function KnowledgeRichEditorInitialized({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const pickerRef = useRef<HTMLDivElement | null>(null);
   const hasInlineOptions=Boolean(inlineOptions);
+  // Lexical blanks link URLs whose scheme it does not know, so a file link (knowledge-attachment:)
+  // would open about:blank. Find the link's attachment in the markdown by its text and download it.
+  // ponytail: two file links with the same text resolve to the first one.
+  const openAttachmentLink = (event: ReactMouseEvent) => {
+    const link = event.target instanceof Element ? event.target.closest("a") : null;
+    if (!link || !wrapperRef.current?.contains(link)) return;
+    const text = link.textContent ?? "", source = localRef.current?.getMarkdown() ?? markdown;
+    const match = [...source.matchAll(/(?<!!)\[([^\]]*)\]\((knowledge-attachment:\?[^)\s]+)\)/g)].find(found => found[1] === text);
+    const attachment = parseKnowledgeAttachmentTarget(match?.[2] ?? text);
+    if (!attachment) return;
+    event.preventDefault(); event.stopPropagation();
+    getKnowledgeAttachmentUrl(accessToken, attachment.path, attachment.name).then(result => window.location.assign(result.url)).catch(() => onError(`첨부 파일을 열지 못했습니다 · ${attachment.name}`));
+  };
   const [picker, setPicker] = useState<{ query: string; index: number; top: number; left: number } | null>(null);
   useEffect(() => {
     if (!picker) return;
@@ -240,7 +253,7 @@ export default function KnowledgeRichEditorInitialized({
     }),
   ], [accessToken, hasInlineOptions]); // Options themselves update through context without resetting the editor.
 
-  return <KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
+  return <KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onClickCapture={openAttachmentLink} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
     {!disabled ? <button type="button" className="knowledge-block-add" aria-label="블록 추가" onMouseDown={event => event.preventDefault()} onClick={openPicker}>＋ 블록 추가</button> : null}
     <MDXEditor
     ref={instance => { localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance; }}

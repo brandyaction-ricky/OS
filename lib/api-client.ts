@@ -746,8 +746,9 @@ export async function uploadKnowledgeAttachment(path: string, signedToken: strin
   if (error) throw new Error(error.message || "첨부 자료를 업로드하지 못했습니다.");
 }
 
-export async function getKnowledgeAttachmentUrl(token: string | null, path: string) {
-  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}`, { token });
+// downloadName: the signed URL then serves the file as an attachment under that name.
+export async function getKnowledgeAttachmentUrl(token: string | null, path: string, downloadName?: string) {
+  return apiRequest<{ url: string; expiresIn: number }>(`/api/v1/knowledge-attachments?path=${encodeURIComponent(path)}${downloadName ? `&download=${encodeURIComponent(downloadName)}` : ""}`, { token });
 }
 
 export async function deleteKnowledgeAttachment(token: string | null, path: string) {
