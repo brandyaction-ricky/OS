@@ -6,7 +6,7 @@ import { MYIN_METAPHOR_TYPES } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
-import { synthesizeFishWav } from "./fish-audio";
+import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
@@ -160,7 +160,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
   const markdownHash = sha(input.markdown);
-  const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint]);
+  const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING)]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
     voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0,

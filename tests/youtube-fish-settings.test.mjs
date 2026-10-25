@@ -43,3 +43,13 @@ test('Fish word timings are clamped into their chunk instead of failing the para
     if (index) assert.ok(word.startSeconds >= words[index - 1].endSeconds);
   }
 });
+
+test('MYIN v13 voice sends Logan v15.2 delivery: wav, 6% slower, calmer sampling', async () => {
+  let sent;
+  const wav = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WAVE'), Buffer.alloc(32)]);
+  const fetcher = async (_url, init) => { sent = { headers: init.headers, body: JSON.parse(init.body) };
+    return { ok: true, headers: new Map(), arrayBuffer: async () => wav }; };
+  await compiled.exports.synthesizeFishWav('안녕하세요.', { apiKey: 'k', referenceId: ' r ', model: 'drama-3', fetcher });
+  assert.equal(sent.headers.model, 'drama-3');
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.body)), { text: '안녕하세요.', format: 'wav', reference_id: 'r', temperature: 0.5, top_p: 0.6, prosody: { speed: 0.94, volume: 0 } });
+});
