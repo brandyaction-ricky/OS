@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {transcribeMeeting} from "@/lib/api-client";
+import "./meeting-recorder.css";
 
 // A meeting is recorded in back-to-back segments so it can run as long as it needs: the
 // transcription endpoint takes one request under 4MB (about 16 minutes at 32kbps). Each segment
