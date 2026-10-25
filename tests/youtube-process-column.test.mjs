@@ -10,6 +10,7 @@ import * as narration from "../lib/youtube-narration-document.ts";
 import * as project from "../lib/youtube-process/project.ts";
 import * as stages from "../lib/youtube-process/stages.ts";
 import * as seoColumn from "../lib/seo-column.ts";
+import * as short from "../lib/youtube-process/short.ts";
 
 // SEO 칼럼 by the staff AI (owner request 2026-10-25): opens after the 최종 검수 OK, stores only checked HTML, and never overwrites a column a person edited.
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
@@ -21,7 +22,7 @@ const assertColumnOpen = (row) => {
   if (!["upload", "shorts", "done"].includes(row.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검수 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
 };
 const modules = { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib/youtube-script-check": scriptCheck, "@/lib/youtube-narration-document": narration,
-  "@/lib/youtube-process/project": project, "@/lib/youtube-process/stages": stages, "@/lib/seo-column": seoColumn,
+  "@/lib/youtube-process/project": project, "@/lib/youtube-process/stages": stages, "@/lib/seo-column": seoColumn, "@/lib/youtube-process/short": short,
   "./content-generation": { procedureRefs: async () => [{ id: "93da68b1", title: "SEO 칼럼 만드는 절차 (정본)" }] },
   "./youtube-process-stages": { assertColumnOpen, writeStage: async (_supabase, _actor, _team, _project, kind, current, data) => { written = { kind, current, data }; return { id: "col", version: current.version + 1 }; } } };
 runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText,
@@ -30,8 +31,8 @@ const ai = compiled.exports;
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const prompt = `Editorial flat vector illustration of a notebook on a wide desk with soft daylight and a young Korean professional thinking. Centered composition, wide shot, generous negative space at top. Minimalist palette of deep navy (#0D1531) and vivid blue (#2735C8) on a light off-white background (#F7F8FF). Calm, professional mood, soft even lighting. 16:9 aspect ratio. No text, no words, no logos.`;
-const column = (title = "사업계획서의 순서") => `<!DOCTYPE html><html lang="ko"><head><title>${title}</title><meta name="description" content="${"처음 사업계획서를 쓸 때는 양식보다 순서가 먼저입니다. ".repeat(3)}">
-<meta name="keywords" content="사업계획서, 순서, 창업, 문제 정의, 고객"><meta name="slug" content="business-plan-order"></head><body><article class="ba-article"><h1>${title}</h1>
+const column = (title = "사업계획서의 순서", slug = "business-plan-order") => `<!DOCTYPE html><html lang="ko"><head><title>${title}</title><meta name="description" content="${"처음 사업계획서를 쓸 때는 양식보다 순서가 먼저입니다. ".repeat(3)}">
+<meta name="keywords" content="사업계획서, 순서, 창업, 문제 정의, 고객"><meta name="slug" content="${slug}"></head><body><article class="ba-article"><h1>${title}</h1>
 <figure class="ph hero" data-slot="hero" data-prompt="${prompt}"><figcaption>[대표 이미지] 노트</figcaption></figure>
 <div class="tldr"><b>3줄 요약</b><ul><li>a</li><li>b</li><li>c</li></ul></div><p class="lead">도입</p>
 <h2>하나</h2><p>.</p><h2>둘</h2><p>.</p><h2>셋</h2><p>.</p><h2>넷</h2><p>.</p>
@@ -60,50 +61,55 @@ test("the column opens after the 최종 검수 OK, for longform only, and needs 
   assert.notEqual(ai.v1ColumnInputKey(state("shorts")), ai.v1ColumnInputKey(after));
 });
 
-test("the job card points at the 정본 by doc_id, carries the class contract and the 원고 as data", async () => {
-  const card = await ai.v1ColumnCard({}, state("shorts"), 45);
+test("the job card points at the 정본 by doc_id, carries the class contract, the count and the 원고 as data", async () => {
+  const card = await ai.v1ColumnCard({}, state("shorts"), 90, 3);
   assert.match(card, /SEO 칼럼 만드는 절차 \(정본\) \(doc_id: 93da68b1\)/);
+  assert.match(card, /SEO 칼럼 3편/);
+  assert.match(card, /서로 다른 검색 질문/);
   assert.match(card, /class="ba-article"/);
   assert.match(card, /처음 사업계획서를 쓸 때 막히는 이유는 순서입니다/);
   assert.match(card, /"videoUrl": "https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
 });
 
-test("an AI column fills an empty column; a column a person edited keeps its HTML and gets the draft beside it", async () => {
-  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { html: "<p>짧음</p>" }, author), (error) => error.status === 422 && /칼럼 검사/.test(error.message));
-  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { html: column().replace("</article>", "<script>x()</script></article>") }, author), (error) => error.status === 422);
+test("columns come as many as asked, each checked; untouched AI columns are replaced, edited or pasted ones stay", async () => {
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: "<p>짧음</p>" }] }, author), (error) => error.status === 422 && /칼럼 1:/.test(error.message));
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: column().replace("</article>", "<script>x()</script></article>") }] }, author), (error) => error.status === 422);
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: column() }] }, author, 2), (error) => /2편이에요/.test(error.message));
+  await assert.rejects(ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: column() }, { html: column("다른 제목") }] }, author, 2), (error) => /slug/.test(error.message));
 
-  const first = await ai.saveV1Column(supabase, "owner", state("shorts"), { html: "```html\n" + column() + "\n```" }, author);
-  assert.deepEqual(plain(first).replaced, true);
+  const first = await ai.saveV1Column(supabase, "owner", state("shorts"), { columns: [{ html: "```html\n" + column() + "\n```" }, { html: column("다른 질문", "plan-first-line") }] }, author, 2);
+  assert.deepEqual(plain(first), { columns: 2, kept: 0 });
   assert.equal(written.kind, "column");
-  assert.ok(written.data.html.startsWith("<!DOCTYPE html>"));
-  assert.equal(written.data.ai.by, "리키");
-  assert.equal(written.data.ai.html, written.data.html);
+  assert.equal(written.data.items.length, 2);
+  assert.ok(written.data.items[0].html.startsWith("<!DOCTYPE html>"));
+  assert.equal(written.data.items[0].ai.by, "리키");
+  assert.equal(written.data.items[0].ai.html, written.data.items[0].html);
 
-  // Untouched AI column: the next draft replaces it.
-  const untouched = { html: written.data.html, fills: { hero: { url: "https://cdn.example.com/a.png" } }, ai: written.data.ai };
-  await ai.saveV1Column(supabase, "owner", state("shorts", untouched), { html: column("새 제목") }, author);
-  assert.match(written.data.html, /새 제목/);
-  assert.equal(written.data.aiDraft, undefined);
-  assert.deepEqual(plain(written.data.fills), { hero: { url: "https://cdn.example.com/a.png" } });
-
-  // Edited by a person: kept, the draft waits beside it.
-  const edited = { ...untouched, html: untouched.html.replace("<p class=\"lead\">도입</p>", "<p class=\"lead\">사람이 고친 도입</p>") };
-  await ai.saveV1Column(supabase, "owner", state("shorts", edited), { html: column("세 번째") }, author);
-  assert.match(written.data.html, /사람이 고친 도입/);
-  assert.match(written.data.aiDraft, /세 번째/);
+  // One edited by a person and one pasted stay; the untouched AI column gives way to the new one.
+  const [a, b] = written.data.items;
+  const edited = { ...a, html: a.html.replace("<p class=\"lead\">도입</p>", "<p class=\"lead\">사람이 고친 도입</p>") };
+  const pasted = { id: "pasted", html: column("붙여 넣은 칼럼", "pasted"), fills: {}, ai: null };
+  const again = await ai.saveV1Column(supabase, "owner", state("shorts", { items: [edited, b, pasted] }), { columns: [{ html: column("새 칼럼", "new-angle") }] }, author, 1);
+  assert.deepEqual(plain(again), { columns: 1, kept: 2 });
+  assert.deepEqual(plain(written.data.items.map(item => seoColumn.columnMeta(item.html).title)), ["사업계획서의 순서", "붙여 넣은 칼럼", "새 칼럼"]);
+  assert.match(written.data.items[0].html, /사람이 고친 도입/);
 });
 
-// 쇼츠 구간 by the staff AI: no longer than the render PC makes (60 s), and the Short's description is kept on the clip.
-test("proposed clips stop at 60 seconds and carry the Short's description", async () => {
+// 쇼츠 대본 by the staff AI (숏폼 정본 모드 A): up to four parts in play order, at most 60 seconds, exactly the count asked for.
+test("shorts scripts keep their parts, stop at 60 seconds and come as many as asked", async () => {
   let rows = null;
   const insert = { from: () => ({ insert: async (value) => { rows = value; return { error: null }; } }) };
-  const clip = { title: "쇼츠", hook: "첫 문장", start: 10, end: 75, reason: "이유", description: "설명\n#창업 #사업계획서" };
+  const clip = { title: "열심히의 함정", hook: "차이는 딱 하나예요", segments: [{ start: 330, end: 336 }, { start: 130, end: 190 }], kind: "BUT 모먼트", reason: "이유", description: "설명\n#창업 #사업계획서" };
   await assert.rejects(ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [clip] }, author), (error) => error.status === 422 && /60초/.test(error.message));
-  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [{ ...clip, end: 58 }] }, author);
+  const ok = { ...clip, segments: [{ start: 330, end: 336 }, { start: 130, end: 170 }] };
+  await assert.rejects(ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [ok] }, author, 3), (error) => /3편이에요/.test(error.message));
+  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [ok] }, author, 1);
+  assert.deepEqual(plain(rows[0].metadata.segments), [{ start: 330, end: 336 }, { start: 130, end: 170 }]);
+  assert.equal(rows[0].metadata.start, 330);
+  assert.equal(rows[0].metadata.kind, "BUT 모먼트");
   assert.equal(rows[0].metadata.desc, "설명\n#창업 #사업계획서");
-  // An older answer without a description still passes.
-  const older = { ...clip, end: 40 };
-  delete older.description;
-  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [older] }, author);
+  // An answer made before 2026-10-25 (one start · end, no description) still passes as one part.
+  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [{ title: "쇼츠", hook: "첫 문장", start: 10, end: 40, reason: "" }] }, author);
+  assert.deepEqual(plain(rows[0].metadata.segments), [{ start: 10, end: 40 }]);
   assert.equal(rows[0].metadata.desc, "");
 });

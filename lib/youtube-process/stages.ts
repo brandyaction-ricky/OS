@@ -59,15 +59,17 @@ export interface YpUpload {
   privacy: "private" | "unlisted";
   run: { at: string; by: string; status: "done" | "failed"; videoId?: string; videoUrl?: string; finalV?: number; thumbnail?: "ok" | "fail" | "skip"; error?: string } | null;
 }
-/** SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
-export interface YpColumn {
+/** One SEO 칼럼 (owner request 2026-10-25): the staff AI's HTML from the 구성안 원고 (lib/seo-column.ts), and what fills its image places. */
+export interface YpColumnItem {
+  id: string;
   html: string;
   /** Per data-slot: an image the PD uploaded (path) or an address (url); the video place takes a YouTube link. */
   fills: Record<string, { path?: string; url?: string; name?: string }>;
+  /** The AI's HTML as it arrived; a column whose HTML still equals it is replaced by the next AI pass, an edited one is kept. */
   ai: { by: string; model: string; at: string; jobId: string; html: string } | null;
-  /** A newer AI draft kept beside HTML a person already edited (9-5). */
-  aiDraft?: string;
 }
+/** The columns of one longform: as many as the PD asked for, each aimed at its own search question. */
+export interface YpColumn { items: YpColumnItem[] }
 export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
@@ -97,7 +99,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     outline: { spec: { ...SPEC_DEFAULT[projectKind ?? "anim"] }, script: "", versions: [] },
     make: { editDue: "", status: "prep", statusAt: {}, log: [], finals: [], thumbs: {}, aTitle: "", aReason: "" },
     upload: { utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
-    column: { html: "", fills: {}, ai: null },
+    column: { items: [] },
   };
   return blank[kind] as YpStageData[K];
 }

@@ -61,7 +61,7 @@ function legacyShape(state: Awaited<ReturnType<typeof readPipeline>>, actor: Req
   const at = (gate: "draft" | "review") => gate === "draft" ? !["topic", "draft"].includes(stage) : stage === "upload";
   const meta = newProjectMeta({ type: "anim", target: text(source.metadata.audience), note: text(source.metadata.coreMessage).slice(0, 2000), refs: [] }, now);
   const yp: YpMeta & { adoptedFrom?: { at: string; by: string } } = { ...meta.yp, stage, adoptedFrom: { at: now, by: actor.id },
-    gates: { topic: passed(now, actor.id), draft: at("draft") ? passed(now, actor.id) : { state: "none", round: 0 }, review: at("review") ? passed(now, actor.id) : { state: "none", round: 0 } } };
+    gates: { topic: passed(now, actor.id), draft: at("draft") ? passed(now, actor.id) : { state: "none", round: 0 }, review: at("review") ? passed(now, actor.id) : { state: "none", round: 0 }, shorts: { state: "none", round: 0 } } };
   if (at("draft")) plan.confirmed = confirmPlan(plan, now);
   return { yp, plan, outline, upload };
 }

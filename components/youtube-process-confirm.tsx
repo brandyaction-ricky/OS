@@ -10,8 +10,12 @@ import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
 import { ShortConfirmDetail } from "./youtube-process-short";
+import { ShortsLog } from "./youtube-process-shorts";
+import { clipConfirmed, clipParts, clipSeconds, formatParts } from "@/lib/youtube-process/short";
+import type { OsRecord } from "@/lib/record-types";
 
-const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"]] as const;
+// 쇼츠 확정 (owner decision 2026-10-25): the PD confirms; the 대표 reads the record here and comments.
+const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"], ["shorts", "쇼츠 확정"]] as const;
 type Tab = (typeof TABS)[number][0];
 const when = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 const days = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : 0;
@@ -63,7 +67,7 @@ export function YoutubeConfirmScreen() {
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const [items, setItems] = useState<{ project: YpProject; gate: YpGate }[] | null>(null);
-  const [counts, setCounts] = useState<Record<Tab, number>>({ wait: 0, done: 0, hold: 0 });
+  const [counts, setCounts] = useState<Record<Tab, number>>({ wait: 0, done: 0, hold: 0, shorts: 0 });
   const [members, setMembers] = useState<YpMember[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -71,9 +75,9 @@ export function YoutubeConfirmScreen() {
     if (!client) return;
     setError("");
     try {
-      const [wait, done, hold, people] = await Promise.all([client.confirmList("wait"), client.confirmList("done"), client.confirmList("hold"), client.members().catch(() => [])]);
-      setCounts({ wait: wait.length, done: done.length, hold: hold.length });
-      setItems({ wait, done, hold }[tab]); setMembers(people);
+      const [wait, done, hold, shorts, people] = await Promise.all([client.confirmList("wait"), client.confirmList("done"), client.confirmList("hold"), client.confirmList("shorts"), client.members().catch(() => [])]);
+      setCounts({ wait: wait.length, done: done.length, hold: hold.length, shorts: shorts.length });
+      setItems({ wait, done, hold, shorts }[tab]); setMembers(people);
     } catch (reason) { setError(errorMessage(reason)); }
   }, [client, tab]);
   useEffect(() => { void load(); }, [load]);
@@ -100,14 +104,15 @@ export function YoutubeConfirmScreen() {
           : items?.length ? items.map(({ project, gate }) => { const info = project.yp.gates[gate]; return <button key={`${project.id}-${gate}`} type="button" className={`yp-ci${selected?.project.id === project.id ? " yp-on" : ""}`} onClick={() => go({ item: project.id })}>
             <div className="yp-ci-top"><span className="yp-tag yp-acc">{GATE_NAME[gate].replace(" 컨펌", "")}</span><span className="yp-sp" />
               {tab === "wait" ? <span className={days(info.requestedAt) >= 1 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"} · 6시간마다 알림</span>
-                : tab === "hold" ? <span className="yp-tag yp-bad">보류</span> : <span className="yp-tag yp-ok">{RESULT[info.state]}</span>}</div>
+                : tab === "hold" ? <span className="yp-tag yp-bad">보류</span>
+                : tab === "shorts" ? <span>{when(project.yp.shortsLog?.at(-1)?.at)} · {project.yp.shortsLog?.at(-1)?.kind === "comment" ? "코멘트" : "확정"}</span> : <span className="yp-tag yp-ok">{RESULT[info.state]}</span>}</div>
             <div className="yp-ci-t">{projectName(project)}</div>
-            <div className="yp-ci-m"><span>{pd(project.assigneeId)}</span>{info.requestedAt ? <span>{when(info.requestedAt)} 올라옴</span> : null}{"revertedFrom" in info && info.revertedFrom ? <span className="yp-tag yp-warn">되돌린 건</span> : null}{info.reason ? <span>사유: {info.reason}</span> : null}</div>
+            <div className="yp-ci-m"><span>{pd(project.assigneeId)}</span>{info.requestedAt ? <span>{when(info.requestedAt)} {gate === "shorts" ? "확정" : "올라옴"}</span> : null}{"revertedFrom" in info && info.revertedFrom ? <span className="yp-tag yp-warn">되돌린 건</span> : null}{info.reason ? <span>사유: {info.reason}</span> : null}</div>
           </button>; })
           : <div className="yp-locked"><Check size={18} className="yp-i" aria-hidden="true" /><div><b>비어 있어요</b><p>{tab === "wait" ? "새 건이 오면 알림이 가요." : "아직 없어요."}</p></div></div>}
       </div>
       <div className="yp-cf-view">{selected ? (() => { const { project, gate } = selected; const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string }; return <div className="yp-cv">
-        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} 올라옴` : ""}</span></div>
+        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} ${gate === "shorts" ? "확정" : "올라옴"}` : ""}</span></div>
         <div className="yp-cv-b">
           <h2>{projectName(project)}</h2>
           {gate !== "topic" && client ? <StepDetail project={project} gate={gate} client={client} /> : null}
@@ -116,9 +121,10 @@ export function YoutubeConfirmScreen() {
             {project.yp.topic.refs.length ? <><dt>레퍼런스</dt><dd>{project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>)}</dd></> : null}
             <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd></dl>
           {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
-          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : 4, project.id)}>{gate === "review" ? "최종 검수 화면에서 보기 →" : "프로젝트 화면에서 보기 →"}</Link></p>
+          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : gate === "shorts" ? 6 : 4, project.id)}>{gate === "review" ? "최종 검수 화면에서 보기 →" : gate === "shorts" ? "쇼츠 화면에서 구간 재생해 보기 →" : "프로젝트 화면에서 보기 →"}</Link></p>
         </div>
-        {tab === "wait" && client ? <ConfirmActions project={project} gate={gate} client={client} onDone={() => { go({ item: null }); void load(); }} />
+        {tab === "shorts" && client ? <div style={{ padding: "0 16px 12px" }}><ShortsLog project={project} client={client} compact onSaved={() => void load()} onError={reason => setError(errorMessage(reason))} /></div>
+          : tab === "wait" && client ? <ConfirmActions project={project} gate={gate} client={client} onDone={() => { go({ item: null }); void load(); }} />
           : tab === "hold" ? <div className="yp-abar"><span className="yp-abar-msg">보류한 건이에요. 담당 PD가 손보고 다시 요청하면 대기로 와요.</span></div>
             : <div className="yp-abar"><span className="yp-abar-msg">결과: <b>{RESULT[info.state]}</b> · {when(info.decidedAt)}</span>
               {info.state === "ok" ? <button type="button" className="yp-btn" disabled={busy} onClick={() => void revert(selected)}>결정 되돌리기</button> : null}</div>}
@@ -141,6 +147,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
   if (error) return <div className="yp-note yp-warn"><div>{error}</div></div>;
   if (!bundle) return <p className="yp-hint">불러오는 중이에요…</p>;
   const media = { client, bundle };
+  if (gate === "shorts") return <ShortsScriptsDetail project={project} client={client} />;
   if (project.yp.topic.type === "short") return <ShortConfirmDetail client={client} bundle={bundle} open={open} />;
   const plan = bundle.stages.plan.data;
   const make = bundle.stages.make.data;
@@ -159,3 +166,26 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
         <dt>해결 안 된 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd></dl>}
   </div>;
 }
+
+/** 쇼츠 확정 (owner decision 2026-10-25): every picked script — copy, first 3 seconds, the longform parts in play order, description. */
+function ShortsScriptsDetail({ project, client }: { project: YpProject; client: YpClient }) {
+  const [clips, setClips] = useState<OsRecord[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    client.clips(project.id).then(rows => { if (active) setClips(rows.filter(row => row.metadata?.selected !== false)); }, () => { if (active) setClips([]); });
+    return () => { active = false; };
+  }, [client, project.id]);
+  if (!clips) return <p className="yp-hint">불러오는 중이에요…</p>;
+  return <div style={{ marginBottom: 12 }}>
+    <div className="yp-fld-h"><b>쇼츠 대본 {clips.length}편</b><span className="yp-gq">PD가 확정한 대본만 세로 영상으로 만들고 올려요 · 고칠 점은 아래 코멘트로</span></div>
+    <ol className="yp-fl2">{clips.map(clip => { const parts = clipParts(clip.metadata); return <li key={clip.id}>
+      <b>{clip.title}</b>{clip.metadata?.kind ? <span className="yp-tag" style={{ marginLeft: 6 }}>{String(clip.metadata.kind)}</span> : null}
+      {clipConfirmed(project.yp.shortsConfirmed, clip) ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>확정</span> : project.yp.shortsConfirmed?.clips[clip.id] ? <span className="yp-tag yp-warn" style={{ marginLeft: 6 }}>확정 뒤 바뀜</span> : <span className="yp-tag" style={{ marginLeft: 6 }}>확정 전</span>}
+      <div className="yp-muted" style={{ fontSize: 13 }}>구간 {formatParts(parts)} · {Math.round(clipSeconds(parts))}초</div>
+      {clip.metadata?.hook ? <div style={{ fontSize: 13 }}>첫 3초: “{String(clip.metadata.hook)}”</div> : null}
+      {clip.metadata?.desc ? <div className="yp-muted" style={{ fontSize: 13, whiteSpace: "pre-line" }}>설명: {String(clip.metadata.desc)}</div> : null}
+      {clip.metadata?.reason ? <div className="yp-muted" style={{ fontSize: 12 }}>왜: {String(clip.metadata.reason)}</div> : null}
+    </li>; })}</ol>
+  </div>;
+}
+

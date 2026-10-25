@@ -14,8 +14,8 @@ type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { p
 const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
   niche: { name: "틈새 묶기", skill: "OS가 보낸 묶기 규칙", reads: "터진 영상(채널 평소의 2배 이상) 제목 · 채널 · 배수", result: "같은 제목 공식끼리 묶은 틈새 → 틈새 판 (OS가 채널 수를 세어 확인된 주제 · 지켜보는 것 · 혼자 터뜨린 것으로 나눔)" },
   short: { name: "숏폼 장면 쓰기", skill: "숏폼 · 쇼츠 정본 · (광고) 소구점 정본 (OS 문서)", reads: "주제 · 무엇을 만들지(용도 · 길이 · 상품 · 행동 · 근거)", result: "(광고) 구매 이유 후보 + 장면 3~8개(자막 · 내레이션 · 필요한 이미지) → 장면 칸 (사람이 이미지를 넣고 다듬음)" },
-  column: { name: "SEO 칼럼 쓰기", skill: "SEO 칼럼 만드는 절차 정본 (OS 문서)", reads: "구성안 원고 · 컨펌된 제목 · 정밀 타겟 · 올린 영상 주소", result: "검색 · AI 최적화 HTML 칼럼(3줄 요약 · 소제목 · 이미지 프롬프트 · FAQ) → SEO 칼럼 칸 (사람이 이미지를 넣고 내보냄)" },
-  shorts: { name: "쇼츠 구간 제안", skill: "숏폼 · 쇼츠 정본 (OS 문서)", reads: "최종본 자막(SRT) · 컨펌된 제목", result: "쇼츠 구간 5개 안팎(시작 · 끝 · 제목 · 첫 문장) → 쇼츠 구간 목록 (사람이 채택)" },
+  column: { name: "SEO 칼럼 쓰기", skill: "SEO 칼럼 만드는 절차 정본 (OS 문서)", reads: "구성안 원고 · 컨펌된 제목 · 정밀 타겟 · 올린 영상 주소", result: "정한 편수만큼 검색 · AI 최적화 HTML 칼럼(편마다 다른 검색 질문) → SEO 칼럼 칸 (사람이 이미지를 넣고 내보냄)" },
+  shorts: { name: "쇼츠 대본 쓰기", skill: "숏폼 콘텐츠 스킬 정본 · 모드 A (OS 문서)", reads: "최종본 자막(SRT) · 컨펌된 제목", result: "정한 편수만큼 쇼츠 대본(카피 · 첫 3초 · 롱폼 구간 재구성 · 설명) → 쇼츠 목록 (PD가 고르고 대표 쇼츠 컨펌)" },
   plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 (OS 문서)", reads: "주제 · 정밀 타겟 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
   script: { name: "구성안 원고 쓰기", skill: "원고 공정 정본 · 구조 · 말투 · 검수 정본 (OS 문서)", reads: "컨펌된 기획안(제목 A · B · C, 영상 흐름) · 정밀 타겟 · 레퍼런스 · OS 인사이트", result: "원고 초안 + 자료 · 축 · 설계 · 검수 기록 → 구성안 원고 새 버전 (사람이 다듬음)" },
   kit: { name: "설명란 · 고정 댓글 만들기", skill: "유튜브 발행 키트 절차 (OS 문서)", reads: "UTM 설정(1번) · 자막 SRT · 구성안 원고 · 컨펌된 제목 A", result: "설명란 6구역 + 고정 댓글 + 히든 태그 → 설명란 초안 (사람이 다듬음)" },
@@ -70,6 +70,9 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
   const dialog = useRef<HTMLDialogElement>(null);
   const [tab, setTab] = useState<"queue" | "now" | "paste">("queue");
   const [minutes, setMinutes] = useState(defaults?.minutes ?? 10);
+  // 쇼츠 대본 · 칼럼: how many the PD asks for (owner request 2026-10-25; the 숏폼 정본 says 3~5 shorts per longform).
+  const [count, setCount] = useState(task === "shorts" ? 3 : 1);
+  const maxCount = task === "shorts" ? 8 : 5;
   const [role, setRole] = useState("유입형");
   const [attachments, setAttachments] = useState("");
   const [paste, setPaste] = useState({ manuscript: "", materials: "", axis: "", design: "", review: "" });
@@ -88,7 +91,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
     setBusy(true); setError("");
     try {
       await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token: page.accessToken,
-        body: JSON.stringify(task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) } : task === "shorts" ? { task, sourceId: projectId, count: 5 } : { task, sourceId: projectId }) });
+        body: JSON.stringify(task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
+          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId }) });
       if (copy) { await navigator.clipboard.writeText(MY_AI_PROMPT).catch(() => undefined); setCopied(true); }
       await job.load();
       if (!copy) onClose();
@@ -112,6 +116,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults }: {
         : <p className="yp-hint" style={{ margin: "0 0 8px" }}>열기만 해서는 작업이 생기지 않아요. 아래에서 고르고 눌러야 대기열에 들어가요.</p>}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>읽을 스킬</dt><dd>{info.skill}</dd><dt>읽는 것</dt><dd>{info.reads}</dd><dt>결과</dt><dd>{info.result}</dd><dt>쓰는 구독</dt><dd>{me}의 Claude 구독 · 회사 서버 AI 없음</dd></dl>
+      {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "롱폼 1편당 3~5편 (숏폼 정본)" : "편마다 다른 검색 질문을 겨냥해요"}</span>
+        <input className="yp-in" type="number" min={1} max={maxCount} value={count} onChange={event => setCount(Math.min(maxCount, Math.max(1, Number(event.target.value) || 1)))} style={{ width: 90 }} /> 편</label> : null}
       {task === "script" ? <div className="yp-g2" style={{ marginBottom: 10 }}>
         <label className="yp-lbl" style={{ margin: 0 }}>목표 길이<span className="yp-gq">구성안 러닝타임</span><input className="yp-in" type="number" min={1} max={60} value={minutes} onChange={event => setMinutes(Number(event.target.value) || 10)} style={{ width: 90 }} /> 분</label>
         <label className="yp-lbl" style={{ margin: 0 }}>역할<span className="yp-gq">원고 공정 정본 §2</span><select className="yp-in" value={role} onChange={event => setRole(event.target.value)}>{["유입형", "전환형", "판매형"].map(item => <option key={item}>{item}</option>)}</select></label>

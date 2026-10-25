@@ -22,7 +22,7 @@ export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.
 export const gateActionSchema = z.object({ action: z.enum(["request", "cancel"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
 export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert"]), expectedVersion: z.number().int().positive(),
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
-export const confirmTabSchema = z.enum(["wait", "done", "hold"]);
+export const confirmTabSchema = z.enum(["wait", "done", "hold", "shorts"]);
 
 /** Whether v1 is on for this person: everyone, a listed id, or a listed "approver" who is the company approver. */
 export async function youtubeV1Allowed(actor: RequestActor) {

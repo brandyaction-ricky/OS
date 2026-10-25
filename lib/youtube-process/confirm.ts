@@ -1,14 +1,17 @@
 // 유튜브 공정 v1 confirm rules (지시서 8장): who may move a gate, to where, and what the PD may edit meanwhile.
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
-export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌" };
-const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review" };
-const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload" };
+export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 확정" };
+// 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
+// keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
+const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
+const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "레퍼런스", "topic.note": "전달 사항" },
   draft: { "draft.tt": "제목 · 썸네일", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 레퍼런스" },
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
+  shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
 export type YpPdAction = "request" | "cancel";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
@@ -109,8 +112,11 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
 }
 
 /** A gate needs attention from the approver while it waits; 처리한 것 lists what they decided; 보류함 lists holds (S10). */
-export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "wait" | "done" | "hold", me: string) {
-  const rows = projects.flatMap(project => (Object.keys(project.yp.gates) as YpGate[]).map(gate => ({ project, gate, info: project.yp.gates[gate] })));
+export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "wait" | "done" | "hold" | "shorts", me: string) {
+  // 쇼츠 확정: every project whose PD confirmed shorts scripts or where someone commented, newest first.
+  if (tab === "shorts") return projects.filter(project => project.yp.shortsLog?.length)
+    .map(project => ({ project, gate: "shorts" as YpGate, info: project.yp.gates.shorts, at: project.yp.shortsLog!.at(-1)!.at })).sort((a, b) => b.at.localeCompare(a.at));
+  const rows = projects.flatMap(project => (Object.keys(project.yp.gates) as YpGate[]).filter(gate => gate !== "shorts").map(gate => ({ project, gate, info: project.yp.gates[gate] })));
   if (tab === "wait") return rows.filter(row => row.info.state === "wait").sort((a, b) => (a.info.requestedAt ?? "").localeCompare(b.info.requestedAt ?? ""));
   if (tab === "hold") return rows.filter(row => row.info.state === "hold").sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));
   return rows.filter(row => row.info.decidedBy === me && ["ok", "changes"].includes(row.info.state)).sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));
