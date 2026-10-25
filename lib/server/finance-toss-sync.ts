@@ -74,3 +74,54 @@ export async function writeTossSync(request:Request){
     throw error;
   }
 }
+
+// Daily automatic collection for each business store, run by the cron route. It reuses the
+// same database steps as the manual 원장 수집 (begin → claim → collect one page → commit),
+// resumes an unfinished run, and stops before the deadline so the next run continues.
+type Biz="edu"|"myin";
+const kstDay=(offsetDays=0)=>new Date(Date.now()+offsetDays*86_400_000).toLocaleDateString("en-CA",{timeZone:"Asia/Seoul"});
+const addDays=(day:string,days:number)=>new Date(Date.parse(`${day}T00:00:00Z`)+days*86_400_000).toISOString().slice(0,10);
+export async function dailyTossSync(biz:Biz,deadline:number){
+  if(!enabled())return {biz,skipped:"sync_disabled"};
+  if(!tossConnection(biz).configured)return {biz,skipped:"not_configured"};
+  const identity=tossSyncIdentity(biz);
+  checkDatabaseTarget();
+  const db=createServiceSupabase();
+  const {data:store}=await db.from("os_fin_stores").select("id,created_by,settlement_cursor").eq("biz",biz).maybeSingle();
+  // The database accepts only an active admin or finance member as the actor: the person who
+  // set up this store when still allowed, otherwise the first such member.
+  const {data:people,error:peopleError}=await db.from("os_profiles").select("id,role,finance_access,is_active").eq("is_active",true).order("id");
+  if(peopleError)financeDbError(peopleError);
+  const allowed=(people??[]).filter(p=>p.role==="admin"||p.finance_access);
+  const actor=allowed.find(p=>p.id===store?.created_by)??allowed[0];
+  if(!actor)return {biz,skipped:"no_finance_actor"};
+  const rpc=async(action:string,args:Record<string,unknown>={})=>{
+    const {data,error}=await db.rpc("os_fin_toss_sync",{p_action:action,p_actor:actor.id,p_mode:identity.mode,p_binding:identity.binding,p_biz:biz,...args});
+    if(error)syncError(error);
+    return data as TossSyncRun;
+  };
+  const yesterday=kstDay(-1);
+  let run:TossSyncRun|null=null;
+  if(store){
+    const {data}=await db.from("os_fin_toss_sync_runs").select("*").eq("store_id",store.id).eq("state","running").maybeSingle();
+    run=data as TossSyncRun|null;
+  }
+  if(!run){
+    // Resume after the last fully collected day (both phases), re-reading the three days before
+    // it for late cancellations; a new store starts at the first of this month. At most 31 days.
+    const done=(store?.settlement_cursor as {to?:string}|null)?.to;
+    const from=done?addDays(done,-2):`${yesterday.slice(0,7)}-01`;
+    const to=[yesterday,addDays(from,30)].sort()[0];
+    if(from>to)return {biz,skipped:"up_to_date"};
+    run=await rpc("begin",{p_from:from,p_to:to});
+  }
+  const provider=tossProvider(biz,process.env,fetch,AbortSignal.timeout(Math.max(5_000,deadline-Date.now())));
+  let pages=0;
+  while(run.state==="running"&&Date.now()<deadline-15_000){
+    const lease=randomUUID();
+    run=await rpc("claim",{p_run:run.id,p_lease:lease});
+    try{run=await rpc("commit",{p_run:run.id,p_lease:lease,p_payload:await collectTossSyncPage(run,provider)});pages++;}
+    catch(error){try{await rpc("fail",{p_run:run.id,p_lease:lease});}catch{console.error("finance toss daily sync cleanup incomplete");}throw error;}
+  }
+  return {biz,run:publicSyncRun(run),pages};
+}
