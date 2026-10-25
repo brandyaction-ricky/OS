@@ -349,22 +349,33 @@ async function handleCallback(supabase: ReturnType<typeof createServiceSupabase>
   return { ignored: true };
 }
 
+// Summary lines without a "label:" are group titles ("진단도구 개발"); the rest become bullets,
+// with a blank line before each group so a long summary reads in blocks.
+function prepSummaryLines(summary: string) {
+  return summary.split("\n").map(line => line.replace(/^\s*(?:#+|[-*•]|\d+\.)\s*/, "").replace(/\*\*/g, "").trim()).filter(Boolean)
+    .flatMap((line, index) => !line.includes(":") && line.length <= 30 ? [...(index ? [""] : []), `[${line}]`] : [`• ${line}`]);
+}
+
 function renderMeetingPrepSection(label: string, brief: MeetingPrepResult) {
   const todos = brief.todos.slice(0, 8) as Array<{ title?: string; due_date?: string | null }>;
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+  const meeting = brief.latestMeeting;
+  const summary = meeting?.summary?.trim();
   return [
     `📋 회의 준비 · ${label}`,
+    ...(meeting?.title ? [`${meeting.title}${meeting.date ? ` · ${meeting.date.slice(0, 10)}` : ""}`] : []),
     "",
-    "▪ 지난 회의 요약",
-    brief.latestMeeting?.summary?.trim() || "지난 회의 요약이 없습니다.",
+    "📝 지난 회의 요약",
+    ...(summary ? prepSummaryLines(summary) : ["지난 회의 요약이 없습니다."]),
     "",
-    "▪ 지난 회의 미해결",
-    ...(brief.pending.length ? brief.pending.map((item) => `- ${item}`) : ["남은 안건이 없습니다."]),
+    "⏳ 지난 회의 미해결",
+    ...(brief.pending.length ? brief.pending.map((item) => `• ${item}`) : ["남은 안건이 없습니다."]),
     "",
-    "▪ 완료 전 업무",
-    ...(todos.length ? todos.map((item) => `- ${item.title ?? ""}${item.due_date ? ` · ${item.due_date}` : ""}`) : ["미완료 업무가 없습니다."]),
+    `✅ 완료 전 업무${todos.length ? ` (${brief.todos.length}건)` : ""}`,
+    ...(todos.length ? todos.map((item) => `• ${item.title ?? ""}${item.due_date ? ` · 기한 ${item.due_date.slice(5)}${item.due_date < today ? " 지남" : ""}` : ""}`) : ["미완료 업무가 없습니다."]),
     "",
-    "▪ 최근 KPI 신호",
-    ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `- ${item.title} · ${item.signal}`) : ["최근 KPI가 없습니다."]),
+    "📊 KPI",
+    ...(brief.kpis.length ? brief.kpis.slice(0, 8).map((item) => `• ${item.title}: ${item.signal}`) : ["최근 KPI가 없습니다."]),
   ].join("\n");
 }
 
