@@ -59,9 +59,11 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const actor = await authenticateRequest(request);
-    const path = knowledgeAttachmentPathSchema.parse(new URL(request.url).searchParams.get("path") ?? "");
+    const params = new URL(request.url).searchParams;
+    const path = knowledgeAttachmentPathSchema.parse(params.get("path") ?? "");
+    const download = params.get("download")?.trim().slice(0, 240);
     await readableDocument(actor, knowledgeAttachmentDocumentId(path));
-    const { data, error } = await createServiceSupabase().storage.from(KNOWLEDGE_ATTACHMENT_BUCKET).createSignedUrl(path, 900);
+    const { data, error } = await createServiceSupabase().storage.from(KNOWLEDGE_ATTACHMENT_BUCKET).createSignedUrl(path, 900, download ? { download } : undefined);
     if (error || !data) throw new ApiError(404, "KNOWLEDGE_ATTACHMENT_NOT_FOUND", "첨부 자료를 찾지 못했습니다.");
     return NextResponse.json({ url: data.signedUrl, expiresIn: 900 }, { headers });
   } catch (error) { return respondError(error); }

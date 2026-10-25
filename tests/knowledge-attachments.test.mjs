@@ -50,7 +50,7 @@ test("knowledge attachment API checks document access and keeps storage private"
   assert.match(route, /readableDocument\(actor, knowledgeAttachmentDocumentId\(path\)\)/);
   assert.match(route, /createSignedUploadUrl\(path\)/);
   assert.match(route, /registerPendingKnowledgeAttachment\(\{ path, documentId: input\.documentId, uploaderId: actor\.id \}\)/);
-  assert.match(route, /createSignedUrl\(path, 900\)/);
+  assert.match(route, /createSignedUrl\(path, 900[,)]/);
   assert.match(route, /forgetKnowledgeAttachment\(path\)/);
   assert.match(route, /claimPendingKnowledgeAttachment\(path\)/);
   assert.doesNotMatch(route, /getPublicUrl/);
