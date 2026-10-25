@@ -42,3 +42,30 @@ export function useYoutubeV1Access(mode: YoutubeV1Mode) {
 export function YoutubeV1Switch({ mode, v1, old }: { mode: YoutubeV1Mode; v1: ReactNode; old: ReactNode }) {
   return useYoutubeV1Access(mode) ? v1 : old;
 }
+
+/** Fired after a 컨펌 decision or a request/cancel, so the 대표 메뉴 number follows at once. */
+export const YP_CONFIRM_EVENT = "yp-confirm-changed";
+/**
+ * How many videos wait for 컨펌: the 대표 메뉴 number (usability QA 2026-10-25 — the group showed its page count, 1, which read as a
+ * waiting count that never went down). Asked again on every page and after each decision; null while unknown.
+ */
+export function useYoutubeConfirmWaiting(enabled: boolean, path: string) {
+  const { accessToken, demo } = useSession();
+  const [count, setCount] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setTick(value => value + 1);
+    window.addEventListener(YP_CONFIRM_EVENT, bump);
+    return () => window.removeEventListener(YP_CONFIRM_EVENT, bump);
+  }, []);
+  useEffect(() => {
+    if (!enabled || (!demo && !accessToken)) return;
+    let active = true;
+    // The demo keeps its projects in the process screens' module; loaded only here so the shell bundle stays small.
+    const items = demo ? import("./youtube-process-data").then(module => module.youtubeProcessClient(null, true)?.confirmList("wait") ?? [])
+      : apiRequest<{ items: unknown[] }>("/api/v1/content/youtube/confirm?tab=wait", { token: accessToken ?? "" }).then(result => result.items);
+    items.then(list => { if (active) setCount(list.length); }, () => undefined);
+    return () => { active = false; };
+  }, [enabled, accessToken, demo, path, tick]);
+  return enabled ? count : null;
+}

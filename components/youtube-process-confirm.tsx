@@ -7,6 +7,7 @@ import { GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_KIND_LABEL, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { SLOTS } from "@/lib/youtube-process/stages";
 import { useSession } from "./session-provider";
+import { YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
 import { ShortConfirmDetail } from "./youtube-process-short";
@@ -34,6 +35,7 @@ export function ConfirmActions({ project, gate, client, onDone }: { project: YpP
     setBusy(true); setError("");
     try {
       onDone(await client.confirm(project.id, gate, action, project.version, action === "changes" ? { fields, memo } : action === "hold" ? { reason } : {}));
+      window.dispatchEvent(new Event(YP_CONFIRM_EVENT));
       setMode(null); setFields([]); setMemo(""); setReason("");
     } catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
   };

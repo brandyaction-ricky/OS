@@ -6,7 +6,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle 
 import { editedSinceDecision, GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
-import { useYoutubeCanConfirm } from "./use-youtube-confirm";
+import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { errorMessage, isConflict, youtubeProcessClient, type YpBundle, type YpMember } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
@@ -67,6 +67,7 @@ export function useGate(page: YpPage, gate: YpGate) {
       page.setBundle(current => current ? { ...current, project: result.project } : current);
       // The request is usually sent from the step's last button; its waiting box (and the 대표's OK) sit at the top.
       if (action === "request") window.scrollTo({ top: 0, behavior: "smooth" });
+      window.dispatchEvent(new Event(YP_CONFIRM_EVENT));
     } catch (reason) { page.fail(reason); } finally { setBusy(false); }
   };
   return { busy, act, replyOpen, setReplyOpen };
