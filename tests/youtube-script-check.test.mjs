@@ -3,7 +3,7 @@ import test from "node:test";
 import { checkManuscript, checkScriptBody } from "../lib/youtube-script-check.ts";
 
 // 원고 검수 정본 관문 1: the OS re-counts the format of a submitted script and its result wins.
-const paragraph = (seed) => `${seed} 예를 들어 마케터 3년차 지은이 있다고 해보죠. 지은은 하고 싶은 일이 많아서 매일 저녁 새 강의를 결제하고, 주말에는 또 다른 모임에 나갑니다. 그런데 정작 무엇부터 해야 할지는 정하지 못한 채 한 달이 지나갑니다.`;
+const paragraph = (seed) => `${seed} 예를 들어 마케터 3년차 지은이 있습니다. 지은은 하고 싶은 일이 많아서 매일 저녁 새 강의를 결제하고, 주말에는 또 다른 모임에 나갑니다. 그런데 정작 무엇부터 해야 할지는 정하지 못한 채 한 달이 지나갑니다.`;
 const manuscript = (title, sections) => [`# ${title}`, "<!-- 축: 남의 1순위 | 중심 근거: 없음 | 역할: 유입형 | 길이: 1분/600자 | 가상 인물: 지은 -->", "",
   ...sections.flatMap(([name, count], s) => [`## ${name}`, "", ...Array.from({ length: count }, (_, i) => [paragraph(`${s}-${i}`), ""]).flat()])].join("\n");
 
@@ -34,4 +34,41 @@ test("body rules: paragraph length, banned words, stage cues and unsourced resea
   assert.deepEqual(checkScriptBody([`${paragraph("c")} 연구 결과입니다.`], null, new Set([1])).issues, []);
   assert.deepEqual(checkScriptBody([`${paragraph("d")} 회의에서 첫마디를 꺼내고 한마디 더 합니다.`], null).issues, []);
   assert.match(checkScriptBody([`${paragraph("e")} 마디마다 다시 봅니다.`], null).issues.join(), /작업어 "마디"/);
+});
+
+// 원고 정본 묶음 v1.6 (원고 검수 정본 v1.3, 2026-10-25): new 작업어, '축'·'결' as concept names, 틀 반복, 정본 겹침, 사슬 낭독.
+const body = (...extras) => checkScriptBody(extras.map((extra, i) => `${paragraph(`v${i}`)} ${extra}`), null).issues.join("\n");
+
+test("v1.6 작업어: canon work words and '축'·'결' used as concept names", () => {
+  for (const word of ["판정", "관문", "연타", "설득 재료", "재정의", "관통"]) assert.match(body(`오늘 ${word} 얘기를 합니다.`), new RegExp(`작업어 "${word}"`));
+  assert.match(body("이 영상의 축은 하나예요."), /작업어 "영상의 축은"/);
+  assert.match(body("이걸 저희는 결이라고 불러요."), /작업어 "결이라고 불러요"/);
+  assert.match(body("사람마다 서른 개의 결이 있어요."), /작업어 "개의 결이"/);
+  assert.equal(body("결국 결과가 달라졌고 축하도 받았어요. 한 가지 결론만 남았고 두 가지 결정이 남았어요."), "");
+});
+
+test("v1.6 틀 반복: '~라고 해보죠' four times, '맞아요. 근데' three times", () => {
+  const suppose = "옆자리 동료가 있다고 해보죠.";
+  assert.match(body(suppose, suppose, suppose, suppose), /틀 반복 "~라고 해보죠" 4회/);
+  assert.equal(body(suppose, suppose, suppose), "");
+  const concede = "그거 결국 성격 문제 아니냐고요? 맞아요. 근데 조건이 하나 있어요.";
+  assert.match(body(concede, concede, concede), /틀 반복 "맞아요. 근데…"로 받는 반론 3회/);
+  assert.equal(body(concede, concede), "");
+  assert.equal(body("맞아요, 저도 그랬어요.", "맞아요, 저도 그랬어요.", "맞아요, 저도 그랬어요."), "");
+});
+
+test("v1.6 정본 겹침: ten characters (spaces removed) shared with the canon, except the allowed phrase", () => {
+  const canon = "| ⑫ | \"그래도 저는 이 연구가 좋습니다\" | 저희 진단 받으신 분 중에 이런 분이 있었어요.";
+  const issues = (extra) => checkScriptBody([`${paragraph("c")} ${extra}`], null, null, canon).issues.join("\n");
+  assert.match(issues("그래도 저는 이 연구가 좋습니다. 이유가 있어요."), /정본 겹침 "그래도 저는 이 연구가 좋습니다"/);
+  assert.match(issues("그래도저는 이연구가 좋아요."), /정본 겹침 "그래도저는 이연구가 좋"/);
+  assert.equal(issues("이 연구가 좋습니다."), "");
+  assert.equal(issues("저희 진단 받으신 분 중에 이런 분이 계셨어요."), "");
+  assert.equal(checkScriptBody([`${paragraph("d")} 그래도 저는 이 연구가 좋습니다.`], null).issues.join(), "");
+});
+
+test("v1.6 사슬 낭독: four or more links of the IP chain in one paragraph", () => {
+  assert.match(body("결핍이 욕구가 되고 행동이 강점이 되고 그게 정체성과 업으로 이어져요."), /사슬 낭독 — .* 6개/);
+  assert.match(body("결핍이 욕구가 되고 행동이 강점이 됩니다."), /사슬 낭독 — .* 4개/);
+  assert.equal(body("사업과 작업, 업무 얘기에서 결핍과 욕구, 강점을 봅니다."), "");
 });
