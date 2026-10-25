@@ -45,8 +45,8 @@ export function YoutubeScheduleScreen() {
   const days = Array.from({ length: mode === "week" ? 7 : 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; });
   const shown = (items ?? []).filter(item => (pd === "all" || item.project.assigneeId === pd) && (stage === "all" || String(YP_STAGE_INDEX[item.project.yp.stage]) === stage) && item.project.yp.stage !== "done");
   const events: Ev[] = shown.flatMap(item => [
-    ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 (예상)" }] : []),
-    ...(item.editDue && ["topic", "draft", "outline", "make"].includes(item.project.yp.stage) ? [{ item, kind: "ed" as const, date: item.editDue, label: "편집 완료" }] : []),
+    ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
+    ...(item.editDue && ["topic", "draft", "outline", "make"].includes(item.project.yp.stage) ? [{ item, kind: "ed" as const, date: item.editDue, label: "편집 완료일" }] : []),
     ...(showConfirm && item.waiting?.requestedAt ? [{ item, kind: "cf" as const, date: item.waiting.requestedAt.slice(0, 10), label: `${GATE_NAME[item.waiting.gate]} 대기` }] : []),
   ]);
   const byDay = new Map<string, Ev[]>();
@@ -83,16 +83,16 @@ export function YoutubeScheduleScreen() {
   const title = mode === "week" ? `${md2(iso(days[0]))} ~ ${md2(iso(days[6]))}` : `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월`;
 
   return <>
-    {noUpload.length ? <div className="yp-note" role="status"><CalendarDays size={16} className="yp-i" aria-hidden="true" /><div>업로드 일정(예상)을 아직 안 정한 프로젝트가 {noUpload.length}개 있어요: <b>{projectName(noUpload[0].project)}</b>{noUpload.length > 1 ? ` 외 ${noUpload.length - 1}개` : ""}
-      <button type="button" className="yp-btn yp-sm yp-pri" style={{ marginLeft: 6 }} onClick={() => open(noUpload[0])}>업로드 일정 (예상) 정하기</button></div></div> : null}
+    {noUpload.length ? <div className="yp-note" role="status"><CalendarDays size={16} className="yp-i" aria-hidden="true" /><div>업로드 예상일이 없는 영상 {noUpload.length}개: <b>{projectName(noUpload[0].project)}</b>{noUpload.length > 1 ? ` 외 ${noUpload.length - 1}개` : ""}
+      <button type="button" className="yp-btn yp-sm yp-pri" style={{ marginLeft: 6 }} onClick={() => open(noUpload[0])}>업로드 예상일 정하기</button></div></div> : null}
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
       <div className="yp-seg2"><button type="button" className={mode === "week" ? "yp-on" : ""} onClick={() => { setMode("week"); setOffset(0); }}>이번 주</button><button type="button" className={mode === "month" ? "yp-on" : ""} onClick={() => { setMode("month"); setOffset(0); }}>이번 달</button></div>
       <button type="button" className="yp-ib" aria-label="이전" onClick={() => setOffset(value => value - 1)}><ChevronLeft size={16} /></button><b style={{ fontSize: 14 }}>{title}</b><button type="button" className="yp-ib" aria-label="다음" onClick={() => setOffset(value => value + 1)}><ChevronRight size={16} /></button>
-      <select className="yp-in yp-w-auto" aria-label="담당자" value={pd} onChange={event => setPd(event.target.value)}><option value="all">담당자 전체</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
+      <select className="yp-in yp-w-auto" aria-label="담당 PD" value={pd} onChange={event => setPd(event.target.value)}><option value="all">담당 PD 전체</option>{members.map(member => <option key={member.id} value={member.id}>{member.name}</option>)}</select>
       <select className="yp-in yp-w-auto" aria-label="단계" value={stage} onChange={event => setStage(event.target.value)}><option value="all">단계 전체</option>{YP_FLOW.map((step, index) => <option key={step} value={index}>{step}</option>)}</select>
       <label className="yp-cbx"><input type="checkbox" checked={showConfirm} onChange={event => setShowConfirm(event.target.checked)} /> 컨펌 대기</label>
-      <span style={{ flex: 1 }} /><div className="yp-legend"><span><i className="yp-sw2 yp-upx" />업로드 (예상)</span><span><i className="yp-sw2" style={{ background: "var(--panel-3)" }} />편집 완료</span><span><i className="yp-sw2" style={{ background: "var(--warning-soft)" }} />컨펌 대기</span></div>
+      <span style={{ flex: 1 }} /><div className="yp-legend"><span><i className="yp-sw2 yp-upx" />업로드 예상일</span><span><i className="yp-sw2" style={{ background: "var(--panel-3)" }} />편집 완료일</span><span><i className="yp-sw2" style={{ background: "var(--warning-soft)" }} />컨펌 대기</span></div>
     </div>
     {dupDays.length ? <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div>같은 날 업로드가 2건 이상이에요: {dupDays.map(md2).join(", ")}</div></div> : null}
     {items === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p> : <>
@@ -110,21 +110,20 @@ export function YoutubeScheduleScreen() {
         {!events.length ? <p className="yp-hint">이 기간에 일정이 없어요.</p> : null}</div>
       <h2 style={{ margin: "18px 0 8px", fontSize: 16 }}>현황</h2>
       <div className="yp-scards">{shown.map(item => { const [cls, text] = state(item); return <Link key={item.project.id} className="yp-scard" href={projectHref(item.project)}>
-        <b className="yp-sc-t">{projectName(item.project)}</b><span className="yp-sc-p">담당 {pdName(item.project.assigneeId)}</span>
+        <b className="yp-sc-t">{projectName(item.project)}</b><span className="yp-sc-p">담당 PD {pdName(item.project.assigneeId)}</span>
         <span className="yp-sc-s"><i className={`yp-sdot ${cls}`} />{stageLabel(item.project)}{text !== "여유" ? <span className={`yp-tag ${cls}`}>{text}</span> : null}</span>
-        <span className="yp-muted" style={{ fontSize: 11 }}>{item.editDue ? `편집 완료 ${md2(item.editDue)}` : "편집 완료 —"} · {item.uploadPlan ? `업로드 ${md2(item.uploadPlan)}` : "업로드 —"}</span></Link>; })}
-        {!shown.length ? <p className="yp-hint">진행 중인 프로젝트가 없어요.</p> : null}</div>
-      <p className="yp-hint">업로드 일정은 확정 날짜가 아니라 예상이에요. 다른 사람이 날짜를 바꾸면 담당 PD에게 알림이 가고 기록이 남아요. 업로드 일정은 편집 완료 일정보다 앞으로 옮길 수 없어요. 휴대폰에서는 날짜순 목록으로 보여요.</p>
+        <span className="yp-muted" style={{ fontSize: 11 }}>{item.editDue ? `편집 완료일 ${md2(item.editDue)}` : "편집 완료일 —"} · {item.uploadPlan ? `업로드 예상일 ${md2(item.uploadPlan)}` : "업로드 예상일 —"}</span></Link>; })}
+        {!shown.length ? <p className="yp-hint">진행 중인 영상이 없어요.</p> : null}</div>
     </>}
     <dialog ref={dialog} className="yp-modal" aria-labelledby="yp-dates-title" onClose={() => setEditing(null)}>
       <div className="yp-modal-h"><span id="yp-dates-title">일정 바꾸기 · {editing ? projectName(editing.project) : ""}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => dialog.current?.close()}><X size={14} /></button></div>
       <div className="yp-modal-b"><div className="yp-g2">
-        <label className="yp-lbl" style={{ margin: 0 }}>편집 완료 일정<input className="yp-in" type="date" value={form.editDue} onChange={event => setForm(value => ({ ...value, editDue: event.target.value }))} /></label>
-        <label className="yp-lbl" style={{ margin: 0 }}>업로드 일정 (예상)<input className="yp-in" type="date" min={form.editDue || undefined} value={form.uploadPlan} onChange={event => setForm(value => ({ ...value, uploadPlan: event.target.value }))} /></label>
+        <label className="yp-lbl" style={{ margin: 0 }}>편집 완료일<input className="yp-in" type="date" value={form.editDue} onChange={event => setForm(value => ({ ...value, editDue: event.target.value }))} /></label>
+        <label className="yp-lbl" style={{ margin: 0 }}>업로드 예상일<input className="yp-in" type="date" min={form.editDue || undefined} value={form.uploadPlan} onChange={event => setForm(value => ({ ...value, uploadPlan: event.target.value }))} /></label>
         <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>바꾸는 이유 (선택)<input className="yp-in" maxLength={200} value={form.why} onChange={event => setForm(value => ({ ...value, why: event.target.value }))} /></label></div>
-        {form.editDue && form.uploadPlan && form.uploadPlan < form.editDue ? <div className="yp-errline">업로드 일정은 편집 완료 일정보다 앞으로 옮길 수 없어요.</div> : null}
+        {form.editDue && form.uploadPlan && form.uploadPlan < form.editDue ? <div className="yp-errline">업로드 예상일은 편집 완료일보다 앞설 수 없어요.</div> : null}
         {editing?.log.length ? <><div className="yp-lbl">바꾼 기록 <span className="yp-gq">최근 5개</span></div><ul className="yp-hist">{editing.log.map(item => <li key={item.at + item.field}><time>{new Date(item.at).toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" })}</time>
-          <span>{item.field === "uploadPlan" ? "업로드" : "편집 완료"} {item.from ? md2(item.from) : "없음"} → {item.to ? md2(item.to) : "없음"} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</div>
+          <span>{item.field === "uploadPlan" ? "업로드 예상일" : "편집 완료일"} {item.from ? md2(item.from) : "없음"} → {item.to ? md2(item.to) : "없음"} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</div>
       <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => dialog.current?.close()}>취소</button>
         <button type="button" className="yp-btn yp-pri" disabled={busy || !editing || Boolean(form.editDue && form.uploadPlan && form.uploadPlan < form.editDue)}
           onClick={() => editing && void move(editing, { editDue: form.editDue, uploadPlan: form.uploadPlan, why: form.why }).then(ok => { if (ok) dialog.current?.close(); })}>저장</button></div>

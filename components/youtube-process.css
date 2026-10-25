@@ -1077,7 +1077,7 @@
 .linear-shell .ui-v2.yp .yp-fs{border-radius:999px;padding:0 10px}
 .linear-shell .ui-v2.yp .yp-foot{padding:14px 16px;margin-top:20px}
 .linear-shell .ui-v2.yp .yp-mv-list{gap:10px}
-.linear-shell .ui-v2.yp .yp-mv{display:grid;grid-template-columns:minmax(0,1fr) 150px 96px 128px;gap:20px;padding:14px 16px 14px 18px;transition:border-color .15s ease,box-shadow .15s ease}
+.linear-shell .ui-v2.yp .yp-mv{display:grid;grid-template-columns:minmax(0,1fr) 150px 96px 156px;gap:20px;padding:14px 16px 14px 18px;transition:border-color .15s ease,box-shadow .15s ease}
 .linear-shell .ui-v2.yp .yp-mv:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line-soft));box-shadow:0 4px 14px color-mix(in srgb,var(--media-shadow) 8%,transparent)}
 .linear-shell .ui-v2.yp .yp-mv-m{grid-column:1}
 .linear-shell .ui-v2.yp .yp-mv-th{display:flex;align-items:center;gap:8px;min-width:0}
@@ -1106,3 +1106,13 @@
 .linear-shell .ui-v2.yp .yp-way{white-space:normal;border-radius:12px;padding:16px;font-size:13px;font-weight:400;transition:border-color .15s ease,box-shadow .15s ease}
 .linear-shell .ui-v2.yp .yp-way.yp-rec{box-shadow:0 0 0 3px var(--accent-soft)}
 .linear-shell .ui-v2.yp .yp-way b{display:inline-flex;align-items:center;gap:6px}
+/* Room under every page title, and two-up fields start on the same line. */
+.linear-shell .ui-v2.yp header:has([data-ui="page-title"]){margin-bottom:18px}
+.linear-shell .ui-v2.yp .yp-g2>.yp-lbl{margin:0}
+.linear-shell .ui-v2.yp .yp-g2:has(>.yp-lbl){row-gap:16px;column-gap:16px;margin-top:16px}
+/* Who pays (owner request 2026-10-25): a small tag beside buttons that cost something; company money is the warm one. */
+.linear-shell .ui-v2.yp .yp-cost{display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;vertical-align:middle;cursor:help}
+.linear-shell .ui-v2.yp .yp-cost-company{background:var(--warning-soft);color:var(--warning)}
+.linear-shell .ui-v2.yp .yp-cost-ai{background:var(--purple-soft);color:var(--purple)}
+.linear-shell .ui-v2.yp .yp-cost-youtube{background:var(--panel-3);color:var(--text-2)}
+.linear-shell .ui-v2.yp .yp-costdlg{max-width:440px}
