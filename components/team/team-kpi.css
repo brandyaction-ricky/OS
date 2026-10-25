@@ -1,0 +1,19 @@
+/* KPI tab of 회의·결정 */
+.tm-kpi { display: grid; gap: 12px; }
+.tm-kpi-head { align-items: center; gap: 8px; flex-wrap: wrap; }
+.tm-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.tm-kpi-card { display: grid; gap: 10px; align-content: start; }
+.tm-kpi-card header { justify-content: space-between; align-items: center; }
+.tm-kpi-card h4 { margin: 6px 0 0; font-size: 13px; }
+.tm-kpi-revenue { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line-soft); border-radius: 10px; }
+.tm-kpi-revenue > strong { font-size: 24px; }
+.tm-kpi-revenue p { margin: 0; }
+.tm-kpi-row { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.tm-kpi-row .tm-row, .tm-kpi-revenue .tm-row { gap: 6px; align-items: center; }
+.tm-kpi-row .tm-row:first-child { justify-content: space-between; }
+.tm-kpi-row input, .tm-kpi-revenue input, .tm-kpi-add input { flex: 1; min-width: 0; }
+.tm-kpi-add { display: grid; grid-template-columns: 2fr 1fr 1fr auto auto; gap: 6px; }
+.tm-kpi-bar { height: 6px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+.tm-kpi-bar i { display: block; height: 100%; background: var(--warning); }
+.tm-kpi-bar i[data-over] { background: var(--mint); }
+@media (max-width: 640px) { .tm-kpi-add { grid-template-columns: 1fr 1fr; } }

@@ -3,6 +3,7 @@ import { ApiError, apiErrorResponse } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { financeActor } from "@/lib/server/finance";
 import { dailyTossSync } from "@/lib/server/finance-toss-sync";
+import { logDailyRevenue } from "@/lib/server/kpi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,10 @@ async function run() {
     try { results.push(await dailyTossSync(biz, share)); }
     catch (error) { results.push({ biz, error: error instanceof ApiError ? error.code : "TOSS_DAILY_SYNC_FAILED" }); }
   }
-  return NextResponse.json({ results }, { headers: { "Cache-Control": "no-store" } });
+  // Month-to-date sales into each business's KPI log, whatever the sync managed today.
+  let kpiLog = "logged";
+  try { await logDailyRevenue(); } catch (error) { kpiLog = error instanceof ApiError ? error.code : "KPI_LOG_FAILED"; }
+  return NextResponse.json({ results, kpiLog }, { headers: { "Cache-Control": "no-store" } });
 }
 // Vercel Cron.
 export async function GET(request: Request) {
