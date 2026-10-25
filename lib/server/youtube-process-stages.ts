@@ -44,7 +44,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
   return stages;
 }
 
-export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string }
+export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" }
 /** Every final in time order: the OS-made 마이인 finals (from their runs), a 숏폼's MP4s from the render PC, and the files uploaded by hand. */
 export async function readFinals(supabase: Supabase, projectId: string, make: YpMake, kind?: YpKind | null): Promise<YpFinal[]> {
   if (kind === "short") {
@@ -52,8 +52,9 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
     const { data, error } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
       .eq("metadata->>itemId", shortCardId(projectId)).eq("status", "done").is("archived_at", null).limit(50);
     if (error) throw readFailed();
-    const made = (data ?? []).map(row => ({ at: row.updated_at as string, source: "short" as const, name: "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
-      durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string }));
+    // A 1:1 square ad (2026-10-25) is a final of its own; screens pick the latest 9:16 one for Shorts and show the square beside it.
+    const made = (data ?? []).map(row => ({ at: row.updated_at as string, source: "short" as const, name: row.metadata?.plan?.aspect === "1:1" ? "숏폼 MP4 · 정사각형" : "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
+      durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string, ...(row.metadata?.plan?.aspect === "1:1" ? { aspect: "1:1" as const } : {}) }));
     const uploads = make.finals.map(item => ({ at: item.at, source: "upload" as const, name: item.name, bytes: item.bytes, durationSeconds: null, path: item.path }));
     return [...made, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
   }

@@ -90,10 +90,11 @@ async function shortView(service: Service, row: OsRecord) {
     const { data } = await service.storage.from(BUCKET).createSignedUrl(String(asset.metadata?.storagePath ?? ""), 3600);
     if (data) images[asset.id] = { name: asset.title, url: data.signedUrl };
   }
-  const latest = (await renders(service, [row.id]))[0];
+  const all = await renders(service, [row.id]);
+  const latest = all.find(item => !item.run.plan.aspect), square = all.find(item => item.run.plan.aspect === "1:1");
   return { id: row.id, version: row.version, brief: briefOf(brief), scenes: scenesFromCuts(cuts), aiScenes: aiCuts ? scenesFromCuts(aiCuts) : null,
     appeals: (Array.isArray(row.metadata.shortformAppeals) ? row.metadata.shortformAppeals : []) as YpShortAppeal[],
-    ai: (row.metadata.ypAi ?? null) as { by: string; model: string; at: string } | null, images, render: latest ? renderView(latest) : null };
+    ai: (row.metadata.ypAi ?? null) as { by: string; model: string; at: string } | null, images, render: latest ? renderView(latest) : null, square: square ? renderView(square) : null };
 }
 export type YpShortView = Awaited<ReturnType<typeof shortView>>;
 
@@ -161,13 +162,14 @@ export async function createShortImage(actor: RequestActor, id: string, input: z
   return { assetId: data.id as string, path, token: upload.token, mimeType: input.mimeType };
 }
 
-export const shortRenderSchema = z.object({ expectedVersion: z.number().int().positive(), voiceApproved: z.boolean().default(false) }).strict();
+// aspect 1:1 = a square feed ad beside the 9:16 one (owner request 2026-10-25); the render checks it is an ad.
+export const shortRenderSchema = z.object({ expectedVersion: z.number().int().positive(), voiceApproved: z.boolean().default(false), aspect: z.enum(["9:16", "1:1"]).default("9:16") }).strict();
 export async function renderYoutubeShort(actor: RequestActor, id: string, input: z.infer<typeof shortRenderSchema>) {
   const project = await shortProject(actor, id);
   assertShortEditable(project);
   const service = createServiceSupabase();
   const row = await cardOf(service, project, shortCardId(project.id), projectSeed(project));
-  return enqueueShortformRenderFor(project.ownerId, row, input.expectedVersion, input.voiceApproved);
+  return enqueueShortformRenderFor(project.ownerId, row, input.expectedVersion, input.voiceApproved, input.aspect);
 }
 
 /** A clip of this project whose script the PD confirmed and nobody changed since (쇼츠 확정, owner decision 2026-10-25). */

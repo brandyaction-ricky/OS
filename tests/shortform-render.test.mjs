@@ -185,7 +185,7 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       if(String(url).endsWith("/media")){
         const input=JSON.parse(options.body);let result;
         if(input.action==="heartbeat"){signals.push(input);result={ok:true};}
-        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,2);result=await h.api.claimShortformRender(h.service);}
+        else if(input.action==="shorts_claim"){assert.equal(input.layoutVersion,3);result=await h.api.claimShortformRender(h.service,input.layoutVersion);}
         else if(input.action==="shorts_complete")result=await h.api.completeShortformRender(input,h.service);
         else if(input.action==="shorts_fail")result=await h.api.failShortformRender(input,h.service);
         else throw new Error("Unexpected paid/network operation "+input.action);
@@ -210,3 +210,32 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
       assert.ok(h.objects.get("os-content-media:"+run.metadata.outputPath).size>1000);
     }finally{globalThis.fetch=originalFetch;}
   });
+
+// 광고 정사각형 (owner request 2026-10-25): a 1:1 render of the same ad sits beside the 9:16 one, only a layoutVersion 3 worker takes it,
+// the card keeps its 9:16 video, and the narration is paid once for both.
+test("a square ad is its own job beside the vertical one; old workers skip it and the narration is paid once",async()=>{
+  const h=await setup();
+  const item=()=>h.item();
+  await assert.rejects(h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"1:1"),code("SHORTFORM_ASPECT_AD_ONLY"));
+  item().metadata.shortformBrief={...item().metadata.shortformBrief,purpose:"ad",product:"진단",landingUrl:"https://example.com",evidence:"후기",appeal:"이유"};
+  item().version+=1;
+  const vertical=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true);
+  const square=await h.api.enqueueShortformRenderFor(owner,item(),item().version,true,"1:1");
+  assert.notEqual(square.runId,vertical.runId);
+  // A version 2 worker gets the vertical job and never the square one.
+  const first=await h.api.claimShortformRender(h.service,2);
+  assert.equal(first.renderId,vertical.runId);assert.equal(first.aspect,"9:16");
+  assert.equal((await h.api.claimShortformRender(h.service,2)).idle,true);
+  const second=await h.api.claimShortformRender(h.service,3);
+  assert.equal(second.renderId,square.runId);assert.equal(second.aspect,"1:1");
+  // Both renders ask for the same narration; Fish is called once.
+  await h.api.shortformVoice({renderId:first.renderId,lease:first.lease,index:0},h.service);
+  await h.api.shortformVoice({renderId:second.renderId,lease:second.lease,index:0},h.service);
+  assert.equal(h.voiceCalls,1);
+  // Completing the square one leaves the card's 9:16 video alone.
+  const bytes=Buffer.concat([Buffer.from([0,0,0,24]),Buffer.from("ftypisom"),Buffer.alloc(32)]);
+  const path=h.rows.find(row=>row.id===second.renderId).metadata.outputPath;
+  h.objects.set("os-content-media:"+path,new Blob([bytes]));
+  await h.api.completeShortformRender({renderId:second.renderId,lease:second.lease,bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),duration:15},h.service);
+  assert.equal(item().metadata.mp4Path,undefined);
+});

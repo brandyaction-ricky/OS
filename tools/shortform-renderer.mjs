@@ -4,6 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const captionTool=fileURLToPath(new URL("./shortform-caption.py",import.meta.url));
+// 9:16 for Shorts · Reels, 1:1 for feed ads (owner request 2026-10-25). A wide original keeps its own band; the caption plate sits below it.
+export const SHORTFORM_LAYOUTS={
+  "9:16":{w:720,h:1280,bgW:180,bgH:320,wideH:600,wideY:220,maxrate:"2500k",caption:{font:38,line:52,maxWidth:600,margin:36,compactTop:840,bottom:1100}},
+  "1:1":{w:1080,h:1080,bgW:270,bgH:270,wideH:608,wideY:80,maxrate:"3000k",caption:{font:52,line:70,maxWidth:940,margin:50,compactTop:752,bottom:1040}},
+};
 const fail=(code)=>Object.assign(new Error(code),{code});
 export function checkShortformRuntime(){
   try{
@@ -29,8 +34,9 @@ export function probeShortform(file,ffprobe=process.env.SHORTFORM_FFPROBE||"ffpr
     audio:value.streams.find(stream=>stream.codec_type==="audio")};
 }
 /** Local files only. URL fetching and credentials stay in the worker. */
-export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process.env.SHORTFORM_FFMPEG||"ffmpeg",python=process.env.MINDMAP_PYTHON||"python3"}){
-  if(!["direct","reuse"].includes(mode)||!Array.isArray(scenes)||!scenes.length||scenes.length>20)throw fail("SHORTFORM_PLAN_INVALID");
+export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",ffmpeg=process.env.SHORTFORM_FFMPEG||"ffmpeg",python=process.env.MINDMAP_PYTHON||"python3"}){
+  const L=SHORTFORM_LAYOUTS[aspect];
+  if(!L||!["direct","reuse"].includes(mode)||!Array.isArray(scenes)||!scenes.length||scenes.length>20)throw fail("SHORTFORM_PLAN_INVALID");
   const segments=[];let total=0;
   const source=mode==="reuse"?probeShortform(sourceFile):null;
   if(source&&!source.audio)throw fail("SHORTFORM_SOURCE_AUDIO_MISSING");
@@ -46,7 +52,7 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     if(!visual?.width||!visual?.height)throw fail("SHORTFORM_IMAGE_INVALID");
     const wide=visual.width/visual.height>1;
     const caption=path.join(dir,`caption-${index}.png`),data=path.join(dir,`caption-${index}.json`),output=path.join(dir,`scene-${index}.mov`);
-    writeFileSync(data,JSON.stringify({text:scene.text,compact:wide}));
+    writeFileSync(data,JSON.stringify({text:scene.text,compact:wide,width:L.w,height:L.h,...L.caption}));
     await run(python,[captionTool,data,caption]);
     const inputs=mode==="reuse"?["-ss",String(scene.start),"-t",String(duration),"-i",sourceFile]:
       ["-loop","1","-framerate","30","-i",scene.imageFile];
@@ -57,13 +63,13 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     }
     // Never crop the readable foreground. A low-resolution, blurred duplicate fills unused space.
     const composition="[0:v]split=2[back][front];"+
-      "[back]scale=180:320:force_original_aspect_ratio=increase,crop=180:320,boxblur=12:2,eq=brightness=-0.18:saturation=0.55,scale=720:1280,setsar=1[bg];"+
-      `[front]scale=720:${wide?600:1280}:force_original_aspect_ratio=decrease,setsar=1[fg];`+
-      `[bg][fg]overlay=(W-w)/2:${wide?"220+(600-h)/2":"(H-h)/2"}[base];`+
+      `[back]scale=${L.bgW}:${L.bgH}:force_original_aspect_ratio=increase,crop=${L.bgW}:${L.bgH},boxblur=12:2,eq=brightness=-0.18:saturation=0.55,scale=${L.w}:${L.h},setsar=1[bg];`+
+      `[front]scale=${L.w}:${wide?L.wideH:L.h}:force_original_aspect_ratio=decrease,setsar=1[fg];`+
+      `[bg][fg]overlay=(W-w)/2:${wide?`${L.wideY}+(${L.wideH}-h)/2`:"(H-h)/2"}[base];`+
       "[base][1:v]overlay=0:0,format=yuv420p[v]";
     await run(ffmpeg,["-v","error","-y",...inputs,"-filter_complex",composition,
       "-map","[v]","-map",mode==="reuse"?"0:a:0":"2:a:0","-af","apad","-t",String(duration),"-r","30",
-      "-c:v","libx264","-preset","veryfast","-crf","23","-maxrate","2500k","-bufsize","5000k","-threads","2",
+      "-c:v","libx264","-preset","veryfast","-crf","23","-maxrate",L.maxrate,"-bufsize","5000k","-threads","2",
       "-c:a","pcm_s16le","-ar","48000","-ac","2","-movflags","+faststart",output]);
     segments.push({file:output,duration});
   }
@@ -77,7 +83,7 @@ export async function renderShortform({mode,scenes,sourceFile,dir,ffmpeg=process
     "-c:v","libx264","-preset","veryfast","-crf","23","-threads","2",
     "-c:a","aac","-ar","48000","-ac","2","-b:a","128k","-movflags","+faststart",output]);
   const result=probeShortform(output);
-  if(result.video?.width!==720||result.video?.height!==1280||!result.audio||Math.abs(result.duration-total)>0.2
+  if(result.video?.width!==L.w||result.video?.height!==L.h||!result.audio||Math.abs(result.duration-total)>0.2
     ||readFileSync(output).length>50_000_000)throw fail("SHORTFORM_OUTPUT_INVALID");
   return {file:output,duration:result.duration};
 }
