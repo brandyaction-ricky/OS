@@ -12,6 +12,8 @@ export const myinSourceId = (projectId: string, itemId: string) => `os-col-${pro
 
 const MESSAGES: Record<number, string> = {
   401: "마이인 연결 키가 맞지 않아요. 관리자에게 알려 주세요.",
+  // MYIN's CSRF check answers a request with no key at all before the integration path sees it.
+  403: "마이인 연결 키가 없어요. 관리자에게 알려 주세요.",
   404: "먼저 마이인에 초안을 올려 주세요.",
   409: "마이인에 같은 주소(slug)의 다른 글이 있어요. 칼럼 주소를 바꿔 주세요.",
   413: "이미지가 너무 커요. 합계 3MB 안으로 줄여 주세요.",
@@ -30,5 +32,5 @@ export async function callMyin(path: string, method: "PUT" | "POST", body: unkno
   const told = json?.message ?? json?.error?.message;
   const message = response.status === 422 && told ? `마이인이 받지 않았어요: ${told}` : MESSAGES[response.status] ?? "마이인에 보내지 못했어요. 잠시 뒤 다시 해 주세요.";
   // A key or server problem on MYIN's side is not the person's request: it comes back as a bad gateway with the reason.
-  throw new ApiError(response.status === 401 || response.status >= 500 ? 502 : response.status, `MYIN_${response.status}`, message);
+  throw new ApiError(response.status === 401 || response.status === 403 || response.status >= 500 ? 502 : response.status, `MYIN_${response.status}`, message);
 }
