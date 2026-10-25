@@ -186,14 +186,16 @@ test("회의준비 answers with the prep brief (including last meeting summary) 
   const ctx = await setup("webhook", normalHandler, {
     prepareMeetingBrief: async (_db, { brand }) => {
       assert.equal(brand, "마이인");
-      return { latestMeeting: { id: "m1", title: "9/1 회의", date: "2026-09-01", pending: [], summary: "광고 예산 20만원 유지 결정" }, pending: ["네이버 유입 원인 미확정"], todos: [{ title: "진단 문항 확정", due_date: "2026-09-30" }], kpis: [{ id: "k1", title: "매출", current: 100, previous: 90, unit: "만원", signal: "양호" }] };
+      return { latestMeeting: { id: "m1", title: "9/1 회의", date: "2026-09-01", pending: [], summary: "광고 운영\n- 예산: 20만원 유지 결정\nCRM\n알림 연결: 결제 발생 시 텔레그램" }, pending: ["네이버 유입 원인 미확정"], todos: [{ title: "진단 문항 확정", due_date: "2026-09-30" }], kpis: [{ id: "k1", title: "매출", current: 100, previous: 90, unit: "만원", signal: "양호" }] };
     },
   });
   const body = await (await ctx.api.POST(incoming({ text: "/회의준비 마이인" }))).json();
   assert.equal(body.meetingPrep, true);
-  assert.match(ctx.sent[0].text, /광고 예산 20만원 유지 결정/);
-  assert.match(ctx.sent[0].text, /네이버 유입 원인 미확정/);
-  assert.match(ctx.sent[0].text, /진단 문항 확정 · 2026-09-30/);
+  assert.match(ctx.sent[0].text, /9\/1 회의 · 2026-09-01\n/);
+  assert.match(ctx.sent[0].text, /\[광고 운영\]\n• 예산: 20만원 유지 결정\n\n\[CRM\]\n• 알림 연결: 결제 발생 시 텔레그램/);
+  assert.match(ctx.sent[0].text, /• 네이버 유입 원인 미확정/);
+  assert.match(ctx.sent[0].text, /• 진단 문항 확정 · 기한 09-30 지남/);
+  assert.match(ctx.sent[0].text, /• 매출: 양호/);
   assert.equal(ctx.searchCalls.length, 0);
 });
 

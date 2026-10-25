@@ -11,12 +11,12 @@ export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
-export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" }
+export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
 /** A render PC job for a 숏폼 or a clip: backlog (기다림) · in_progress (만드는 중) · done · blocked (멈춤, with the reason code). */
 export interface YpRenderView { id: string; status: string; error: string | null; at: string; duration: number }
 export interface YpShortView {
   id: string; version: number; brief: YpShortBrief; scenes: YpShortScene[]; aiScenes: YpShortScene[] | null; appeals: YpShortAppeal[];
-  ai: { by: string; model: string; at: string } | null; images: Record<string, { name: string; url: string }>; render: YpRenderView | null; square?: YpRenderView | null;
+  ai: { by: string; model: string; at: string } | null; images: Record<string, { name: string; url: string }>; render: YpRenderView | null; square?: YpRenderView | null; portrait?: YpRenderView | null;
 }
 export type YpShortPatch = { brief?: Partial<YpShortBrief>; scenes?: YpShortScene[]; useAiScenes?: true };
 export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[] }
@@ -58,7 +58,7 @@ export interface YpClient {
   short(id: string): Promise<YpShortView>;
   saveShort(id: string, expectedVersion: number, patch: YpShortPatch): Promise<YpShortView>;
   shortImage(id: string, file: File): Promise<{ assetId: string; url: string }>;
-  renderShort(id: string, expectedVersion: number, voiceApproved: boolean, aspect?: "9:16" | "1:1"): Promise<void>;
+  renderShort(id: string, expectedVersion: number, voiceApproved: boolean, aspect?: "9:16" | "1:1" | "4:5"): Promise<void>;
   renderClip(id: string, clipId: string): Promise<void>;
   clipRenders(id: string): Promise<Record<string, YpRenderView>>;
   /** The project's 쇼츠 대본 (content_short), for the 쇼츠 컨펌 screen. */

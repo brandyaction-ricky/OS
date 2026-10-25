@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const captionTool=fileURLToPath(new URL("./shortform-caption.py",import.meta.url));
-// 9:16 for Shorts · Reels, 1:1 for feed ads (owner request 2026-10-25). A wide original keeps its own band; the caption plate sits below it.
+// 9:16 for Shorts · Reels, 1:1 and 4:5 for feed ads (owner requests 2026-10-25). A wide original keeps its own band; the caption plate sits below it.
 export const SHORTFORM_LAYOUTS={
   "9:16":{w:720,h:1280,bgW:180,bgH:320,wideH:600,wideY:220,maxrate:"2500k",caption:{font:38,line:52,maxWidth:600,margin:36,compactTop:840,bottom:1100}},
   "1:1":{w:1080,h:1080,bgW:270,bgH:270,wideH:608,wideY:80,maxrate:"3000k",caption:{font:52,line:70,maxWidth:940,margin:50,compactTop:752,bottom:1040}},
+  "4:5":{w:1080,h:1350,bgW:216,bgH:270,wideH:608,wideY:220,maxrate:"3500k",caption:{font:52,line:70,maxWidth:940,margin:50,compactTop:900,bottom:1270}},
 };
 const fail=(code)=>Object.assign(new Error(code),{code});
 export function checkShortformRuntime(){

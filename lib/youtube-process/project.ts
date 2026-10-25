@@ -40,10 +40,10 @@ export function topicLines(title: string) {
 /** The one-line reason the topic confirm request is not ready, or "" (시안 topicMissing). */
 export function topicMissing(title: string, topic: Pick<YpTopic, "type" | "target">) {
   const lines = topicLines(title);
-  if (!lines.length) return "주제를 써주세요";
+  if (!lines.length) return "주제를 써 주세요";
   if (lines.length > YP_MAX_LINES) return `주제는 한 번에 ${YP_MAX_LINES}줄까지 보낼 수 있어요`;
-  if (!topic.type) return "유형을 골라주세요";
-  if (!topic.target.trim()) return "정밀 타겟을 써주세요";
+  if (!topic.type) return "유형을 골라 주세요";
+  if (!topic.target.trim()) return "정밀 타겟을 써 주세요";
   return "";
 }
 
@@ -65,7 +65,7 @@ export function projectFromRecord(row: ProjectRow): YpProject | null {
 }
 
 /** Project name = first topic line (4-2); stays as the record title. */
-export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 프로젝트";
+export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 영상";
 
 /** Some topic field can change: while writing, on hold, or the fields ticked in 수정 요청 (8-1, editableFields). */
 export function topicEditable(project: Pick<YpProject, "yp">) {
@@ -127,5 +127,6 @@ export function stepHref(index: number, id: string) {
   return [`/content/make?project=${encodeURIComponent(id)}`, `/content/final-check?project=${encodeURIComponent(id)}&tab=video`, `/content/upload?project=${encodeURIComponent(id)}`, `/content/shorts?project=${encodeURIComponent(id)}`][index - 3];
 }
 /** Where a project row opens: its current step (a finished project opens its topic). */
-export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? 0 : YP_STAGE_INDEX[project.yp.stage], project.id);
+// A finished video opens on its last step (쇼츠 · 칼럼 or 내보내기), where its results are, not on 주제.
+export const projectHref = (project: Pick<YpProject, "id" | "yp">) => stepHref(project.yp.stage === "done" ? flowOf(project.yp.topic.type).at(-1)!.index : YP_STAGE_INDEX[project.yp.stage], project.id);
 export const stageLabel = (project: Pick<YpProject, "yp">) => project.yp.stage === "done" ? "완료" : stepName(YP_STAGE_INDEX[project.yp.stage], project.yp.topic.type);

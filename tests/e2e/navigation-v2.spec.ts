@@ -29,9 +29,7 @@ test("groups, collapse and display preferences persist, and old names remain sea
   await page.getByRole("button", { name: "사이드바 접기" }).click(); await page.reload();
   await expect(page.locator(".unified-sidebar")).toHaveCSS("width", "64px");
   await page.getByRole("button", { name: "사이드바 펼치기" }).click();
-  await page.getByRole("button", { name: "내 계정 메뉴" }).click();
-  await page.getByRole("button", { name: /모드로 전환/ }).click();
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /모드로 바꾸기/ }).click();
   await page.getByRole("switch", { name: /사용 가이드/ }).click();
   await expect(page.locator("html")).toHaveAttribute("data-guidance", "off");
   await expect(page.getByRole("switch", { name: /사용 가이드/ })).toBeFocused();

@@ -6,7 +6,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 def draw_caption(text, output, font_path, compact=False, width=720, height=1280, font=38, line=52, maxWidth=600, margin=36, compactTop=840, bottom=1100):
-    """The plate for one frame size: 720×1280 (9:16) by default; the renderer passes the 1:1 numbers for square ads."""
+    """The plate for one frame size: 720×1280 (9:16) by default; the renderer passes the 1:1 and 4:5 numbers for feed ads."""
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     face = ImageFont.truetype(font_path, font)

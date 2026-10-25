@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, Copy, Sparkles, X } from "lucide-react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { MyAiConnect } from "./my-ai-connect";
+import { CostTag } from "./youtube-process-cost";
 import { MY_AI_PROMPT, type StaffJobStatus } from "./youtube-production-steps";
 import type { YpPage } from "./youtube-process-frame";
 
@@ -11,16 +12,16 @@ import type { YpPage } from "./youtube-process-frame";
 type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
-const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
-  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", skill: "기획실 제목 · 썸네일 카피 뽑기 방식 + 패키징 절차 정본 (OS 문서)", reads: "검색어로 OS가 찾은 시장 영상(조회수 5만+ · 구독자 대비 조회수 순) 제목 20개 · 썸네일 8장 · 구성안 원고 · 지금 A · B · C · 바꾸려는 이유", result: "제목 공식 · 썸네일 문구 공식(근거 포함) + 제목 8개 · 문구 8개 따로 → 최종 썸네일 칸 (PD가 하나씩 골라 이유와 저장 · 대표가 최종 검수에서 확인)" },
-  niche: { name: "틈새 묶기", skill: "OS가 보낸 묶기 규칙", reads: "터진 영상(채널 평소의 2배 이상) 제목 · 채널 · 배수", result: "같은 제목 공식끼리 묶은 틈새 → 틈새 판 (OS가 채널 수를 세어 확인된 주제 · 지켜보는 것 · 혼자 터뜨린 것으로 나눔)" },
-  "short-copy": { name: "숏폼 제목 · 설명 쓰기", skill: "숏폼 콘텐츠 스킬 정본 (OS 문서)", reads: "완성한 장면(자막 · 내레이션) · 용도 · 할 행동 · 연결 페이지", result: "쇼츠 제목 한 줄 + 설명(핵심 · 할 행동 · 해시태그) → 내보내기 칸 (사람이 다듬고 올림)" },
-  short: { name: "숏폼 장면 쓰기", skill: "숏폼 · 쇼츠 정본 · (광고) 소구점 정본 (OS 문서)", reads: "주제 · 무엇을 만들지(용도 · 길이 · 상품 · 행동 · 근거)", result: "(광고) 구매 이유 후보 + 장면 3~8개(자막 · 내레이션 · 필요한 이미지) → 장면 칸 (사람이 이미지를 넣고 다듬음)" },
-  column: { name: "SEO 칼럼 쓰기", skill: "SEO 칼럼 만드는 절차 정본 (OS 문서)", reads: "구성안 원고 · 컨펌된 제목 · 정밀 타겟 · 올린 영상 주소", result: "정한 편수만큼 검색 · AI 최적화 HTML 칼럼(편마다 다른 검색 질문) → SEO 칼럼 칸 (사람이 이미지를 넣고 내보냄)" },
-  shorts: { name: "쇼츠 대본 쓰기", skill: "숏폼 콘텐츠 스킬 정본 · 모드 A (OS 문서)", reads: "최종본 자막(SRT) · 컨펌된 제목", result: "정한 편수만큼 쇼츠 대본(카피 · 첫 3초 · 롱폼 구간 재구성 · 설명) → 쇼츠 목록 (PD가 고르고 대표 쇼츠 컨펌)" },
-  plan: { name: "기획안 쓰기", skill: "기획 · 소구점 · 제목·썸네일 정본 + 기획실 제목 · 썸네일 카피 뽑기 방식 (OS 문서)", reads: "주제 · 정밀 타겟 · 검색어로 OS가 찾은 시장 영상 제목 20개 · 썸네일 8장 · 레퍼런스 · 전달 사항 · OS 인사이트", result: "제목 후보 3~6개 + 썸네일 시안 2~4개 + 영상 흐름 → 기획안 초안 (PD가 다듬고 대표 컨펌)" },
-  script: { name: "구성안 원고 쓰기", skill: "원고 공정 정본 · 구조 · 말투 · 검수 정본 (OS 문서)", reads: "컨펌된 기획안(제목 A · B · C, 영상 흐름) · 정밀 타겟 · 레퍼런스 · OS 인사이트", result: "원고 초안 + 자료 · 축 · 설계 · 검수 기록 → 구성안 원고 새 버전 (사람이 다듬음)" },
-  kit: { name: "설명란 · 고정 댓글 만들기", skill: "유튜브 발행 키트 절차 (OS 문서)", reads: "UTM 설정(1번) · 자막 SRT · 구성안 원고 · 컨펌된 제목 A", result: "설명란 6구역 + 고정 댓글 + 히든 태그 → 설명란 초안 (사람이 다듬음)" },
+const TASK: Record<Task, { name: string; result: string }> = {
+  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", result: "시장 영상에서 제목 공식 · 문구 공식을 뽑아 제목 8개 · 문구 8개를 따로 줘요. 하나씩 골라 짝을 만들어요." },
+  niche: { name: "틈새 묶기", result: "터진 영상을 같은 제목 공식끼리 묶어 틈새 판에 넣어 줘요." },
+  "short-copy": { name: "숏폼 제목 · 설명 쓰기", result: "쇼츠 제목과 설명을 써 줘요." },
+  short: { name: "숏폼 장면 쓰기", result: "장면 3~8개를 자막 · 내레이션 · 필요한 이미지까지 채워 줘요. 광고면 구매 이유 후보도 줘요." },
+  column: { name: "SEO 칼럼 쓰기", result: "정한 편수만큼 SEO 칼럼을 써 줘요." },
+  shorts: { name: "쇼츠 대본 쓰기", result: "정한 편수만큼 쇼츠 대본을 써 줘요. PD가 고르고 확정해요." },
+  plan: { name: "기획안 쓰기", result: "시장 영상에서 뽑은 공식대로 제목 후보 · 썸네일 시안을, 영상 흐름 초안과 함께 채워 줘요." },
+  script: { name: "구성안 원고 쓰기", result: "원고 초안을 써서 새 버전으로 넣어 줘요." },
+  kit: { name: "설명란 · 고정 댓글 만들기", result: "설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요." },
 };
 const since = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000)) : null;
 const agoLabel = (minutes: number) => minutes < 1 ? "방금" : minutes < 90 ? `${minutes}분 전` : `${Math.round(minutes / 60)}시간 전`;
@@ -31,15 +32,18 @@ export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
   const [available, setAvailable] = useState(true);
   const projectId = page.bundle?.project.id;
   const seenDone = useRef<string | null>(null);
+  // Callers pass an inline onDone; held in a ref so a new function each render doesn't remake `load` and refetch forever.
+  const done = useRef(onDone);
+  useEffect(() => { done.current = onDone; }, [onDone]);
   const load = useCallback(async () => {
     if (!projectId || page.demo || !page.accessToken) return;
     try {
       const next = await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${projectId}&task=${task}`, { token: page.accessToken });
       setStatus(next); setAvailable(true);
-      if (next.job?.status === "done" && seenDone.current !== next.job.id) { if (seenDone.current !== null) onDone(); seenDone.current = next.job.id; }
+      if (next.job?.status === "done" && seenDone.current !== next.job.id) { if (seenDone.current !== null) done.current(); seenDone.current = next.job.id; }
       else if (seenDone.current === null) seenDone.current = next.job?.status === "done" ? next.job.id : "";
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
-  }, [projectId, page.demo, page.accessToken, task, onDone]);
+  }, [projectId, page.demo, page.accessToken, task]);
   useEffect(() => { void load(); }, [load]);
   const open = Boolean(status?.job && ["backlog", "active"].includes(status.job.status));
   useEffect(() => {
@@ -56,13 +60,13 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
   if (!current || current.status === "done" || current.status === "cancelled") return null;
   const seen = since(job.status?.myAi.lastUsedAt ?? null);
   if (current.status === "backlog") return <>
-    <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 Claude가 아직 OS를 확인한 적이 없어요" : `내 Claude가 ${agoLabel(seen)}에 마지막으로 확인했어요 · 다음 확인 때 가져가요`}</span></div>
-    {seen === null || seen > 30 ? <div className="yp-errline">내 Claude에 아래 문장을 보내면 바로 가져가요. 처음이면 [내 AI로 보내기] 창의 연결 방법을 봐요.</div> : null}
+    <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
+    {seen === null || seen > 30 ? <div className="yp-errline">[내 AI로 보내기] › 바로 시키기에서 문장을 복사해 붙여 넣어요.</div> : null}
   </>;
   if (current.status === "active") return current.issues.length
-    ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">확인 필요</span><span>OS 검사에서 걸린 곳: {current.issues.join(" / ")} — 내 Claude가 고쳐서 다시 제출하면 넘어가요</span></div>
-    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn">처리 중</span><span>내 Claude가 처리 중이에요 · 다른 방법으로 동시에 처리하지 않아요</span></div>;
-  return <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">못 함</span><span>{current.failReason ?? "이유가 남지 않았어요."}</span><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onRetry}>다시 대기열</button></div>;
+    ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">확인 필요</span><span>형식이 안 맞아요: {current.issues.join(" / ")} (내 AI가 고쳐서 다시 보내요)</span></div>
+    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn">처리 중</span><span>내 AI가 쓰는 중이에요</span></div>;
+  return <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">못 함</span><span>{current.failReason ?? "이유가 남지 않았어요."}</span><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onRetry}>다시 보내기</button></div>;
 }
 
 /** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
@@ -90,7 +94,6 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault]);
   const info = TASK[task];
   const projectId = page.bundle?.project.id;
-  const me = page.profile?.displayName ?? "나";
   const running = job.status?.job?.status === "active";
   const waiting = job.status?.job?.status === "backlog";
   const connected = (job.status?.myAi.keys ?? 0) > 0;
@@ -116,46 +119,46 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
       onClose(); await page.reload?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "넣지 못했어요."); } finally { setBusy(false); }
   };
-  const tabs: ["queue" | "now" | "paste", string][] = [["queue", "대기열에 두기 (권장)"], ["now", "지금 실행"], ...(task === "script" ? [["paste", "복사해서 처리"] as ["paste", string]] : [])];
+  const tabs: ["queue" | "now" | "paste", string][] = [["queue", "내 AI가 가져가게 두기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as ["paste", string]] : [])];
   return <dialog ref={dialog} className="yp-modal" aria-labelledby={`yp-ai-${task}`} onClose={onClose} style={{ maxWidth: 640 }}>
     <div className="yp-modal-h"><span id={`yp-ai-${task}`}>내 AI로 보내기 · {info.name}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
     <div className="yp-modal-b">
-      {waiting ? <div className="yp-note"><div>이미 대기 중인 작업이 있어요. 내 Claude가 다음에 확인할 때 가져가요.</div></div>
-        : <p className="yp-hint" style={{ margin: "0 0 8px" }}>열기만 해서는 작업이 생기지 않아요. 아래에서 고르고 눌러야 대기열에 들어가요.</p>}
+      {waiting ? <div className="yp-note"><div>이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
-        <dt>읽을 스킬</dt><dd>{info.skill}</dd><dt>읽는 것</dt><dd>{info.reads}</dd><dt>결과</dt><dd>{info.result}</dd><dt>쓰는 구독</dt><dd>{me}의 Claude 구독 · 회사 서버 AI 없음</dd></dl>
-      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">기획실처럼 OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
+        <dt>결과</dt><dd>{info.result}</dd>
+        <dt>비용</dt><dd><CostTag cost="ai" /> 회사 비용은 없어요</dd></dl>
+      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
-      {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "롱폼 1편당 3~5편 (숏폼 정본)" : "편마다 다른 검색 질문을 겨냥해요"}</span>
+      {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>
         <input className="yp-in" type="number" min={1} max={maxCount} value={count} onChange={event => setCount(Math.min(maxCount, Math.max(1, Number(event.target.value) || 1)))} style={{ width: 90 }} /> 편</label> : null}
       {task === "script" ? <div className="yp-g2" style={{ marginBottom: 10 }}>
         <label className="yp-lbl" style={{ margin: 0 }}>목표 길이<span className="yp-gq">구성안 러닝타임</span><input className="yp-in" type="number" min={1} max={60} value={minutes} onChange={event => setMinutes(Number(event.target.value) || 10)} style={{ width: 90 }} /> 분</label>
-        <label className="yp-lbl" style={{ margin: 0 }}>역할<span className="yp-gq">원고 공정 정본 §2</span><select className="yp-in" value={role} onChange={event => setRole(event.target.value)}>{["유입형", "전환형", "판매형"].map(item => <option key={item}>{item}</option>)}</select></label>
-        <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>카드에 붙일 자료 <span className="yp-gq">선택 · 같은 고민을 다룬 영상 댓글 원문 6개 이상, 직접 고른 재료</span>
+        <label className="yp-lbl" style={{ margin: 0 }}>영상 목적<select className="yp-in" value={role} onChange={event => setRole(event.target.value)}>{["유입형", "전환형", "판매형"].map(item => <option key={item}>{item}</option>)}</select></label>
+        <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>참고 자료 (선택) <span className="yp-gq">댓글 원문 등</span>
           <textarea className="yp-in" rows={3} value={attachments} onChange={event => setAttachments(event.target.value)} /></label>
       </div> : null}
-      {running ? <div className="yp-note"><div>내 Claude가 처리 중이에요. 다른 방법으로 동시에 처리하지 않도록 막아 두었어요.</div></div> : <>
+      {running ? <div className="yp-note"><div>내 AI가 쓰는 중이에요. 끝나면 이 칸에 들어가요.</div></div> : <>
         <div className="yp-seg2 yp-aitabs" role="tablist">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         <div style={{ marginTop: 10 }}>
-          {tab === "queue" ? <div className="yp-kvbox"><b>{me}의 Claude</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 OS를 확인한 적이 없어요"}</span><br />
-            <span className="yp-muted" style={{ fontSize: 12 }}>내 Claude가 OS 연결로 대기 작업을 가져가 처리해요. 예약 실행을 맡겨 두면 알아서 가져가요. 결과가 오면 이 칸에 들어가요.</span></div> : null}
-          {tab === "now" ? <><ol className="yp-nowsteps"><li>[맨 앞에 넣고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요 · 그동안 대화는 열어 둬요</li></ol>
+          {tab === "queue" ? <div className="yp-kvbox"><b>내 AI</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 연결되지 않았어요"}</span><br />
+            <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 다음에 확인할 때 가져가 쓰고, 끝나면 칸에 넣어요. 지금 바로 해야 하면 [바로 시키기]를 눌러요.</span></div> : null}
+          {tab === "now" ? <><ol className="yp-nowsteps"><li>[보내고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요. 그동안 대화는 열어 둬요</li></ol>
             <div className="yp-linkbox"><code>{MY_AI_PROMPT}</code></div>{copied ? <p className="yp-hint">복사했어요. Claude에 붙여 넣어 주세요.</p> : null}</> : null}
           {tab === "paste" ? <form onSubmit={event => { event.preventDefault(); void submitPaste(); }}>
-            <p className="yp-hint" style={{ marginTop: 0 }}>다른 AI 창이나 claude.ai 대화에서 쓴 원고를 붙여 넣어요. 내 AI 제출과 같은 형식 검사를 거쳐 같은 자리에 들어가요.</p>
-            {([["manuscript", "원고 (§8 형식: # 제목, 머리 블록, ## 섹션, 문단)", 8], ["materials", "자료 표", 3], ["axis", "축", 2], ["design", "설계표", 3], ["review", "검수 기록", 3]] as const).map(([key, label, rows]) =>
+            <p className="yp-hint" style={{ marginTop: 0 }}>다른 AI 창에서 쓴 원고를 붙여 넣어요.</p>
+            {([["manuscript", "원고", 8], ["materials", "자료 표", 3], ["axis", "축", 2], ["design", "설계표", 3], ["review", "검수 기록", 3]] as const).map(([key, label, rows]) =>
               <label key={key} className="yp-lbl" style={{ display: "block" }}>{label}<textarea className="yp-in" rows={rows} value={paste[key]} onChange={event => setPaste(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           </form> : null}
         </div>
-        {!connected ? <details className="yp-card" style={{ marginTop: 10 }}><summary style={{ padding: "8px 10px", cursor: "pointer" }}>내 Claude가 아직 OS에 연결되지 않았어요 · 연결 방법 (처음 한 번)</summary><div style={{ padding: "0 10px 10px" }}><MyAiConnect /></div></details> : null}
+        {!connected ? <details className="yp-card" style={{ marginTop: 10 }}><summary style={{ padding: "8px 10px", cursor: "pointer" }}>내 AI 연결하기 (처음 한 번)</summary><div style={{ padding: "0 10px 10px" }}><MyAiConnect /></div></details> : null}
       </>}
       {error ? <div className="yp-errline" role="alert">{error}</div> : null}
     </div>
     <div className="yp-modal-f">
       <button type="button" className="yp-btn" onClick={onClose}>{running ? "닫기" : "취소"}</button>
-      {running ? null : tab === "queue" ? <button type="button" className="yp-btn yp-pri" disabled={busy || waiting} onClick={() => void send(false)}><Sparkles size={14} /> 대기열에 두기</button>
-        : tab === "now" ? <button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => waiting ? void navigator.clipboard.writeText(MY_AI_PROMPT).then(() => setCopied(true)) : void send(true)}><Copy size={14} /> {waiting ? "문장 복사" : "맨 앞에 넣고 문장 복사"}</button>
-          : <button type="button" className="yp-btn yp-pri" disabled={busy || Object.values(paste).some(value => !value.trim())} onClick={() => void submitPaste()}>결과 저장</button>}
+      {running ? null : tab === "queue" ? <button type="button" className="yp-btn yp-pri" disabled={busy || waiting} onClick={() => void send(false)}><Sparkles size={14} /> 보내기</button>
+        : tab === "now" ? <button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => waiting ? void navigator.clipboard.writeText(MY_AI_PROMPT).then(() => setCopied(true)) : void send(true)}><Copy size={14} /> {waiting ? "문장 복사" : "보내고 문장 복사"}</button>
+          : <button type="button" className="yp-btn yp-pri" disabled={busy || Object.values(paste).some(value => !value.trim())} onClick={() => void submitPaste()}>결과 넣기</button>}
     </div>
   </dialog>;
 }

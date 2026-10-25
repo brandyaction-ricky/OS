@@ -47,15 +47,15 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
   };
 
   return <>
-    <YpSection n={1} title="SEO 칼럼" gq={items.length ? `${items.length}편 · 편마다 다른 검색 질문` : "구성안 원고로 검색용 웹 칼럼을 써요"} extra={<>
+    <YpSection n={1} title="SEO 칼럼" gq={items.length ? `${items.length}편 · 편마다 다른 검색 질문` : "원고로 검색용 칼럼을 써요"} extra={<>
       <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> {items.length ? "내 AI로 다시 쓰기" : "내 AI로 칼럼 쓰기"}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => setPasting(pasting === null ? "" : null)}><Plus size={14} /> HTML 붙여 넣기</button></>}>
       {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [내 AI로 칼럼 쓰기]에서 몇 편 쓸지 정하면, 내 Claude가 구성안 원고를 읽고 SEO 칼럼 정본대로 HTML을 써요.</p>
+      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [내 AI로 칼럼 쓰기]를 눌러 시작해요.</p>
         : <div className="yp-ftabs" role="tablist" aria-label="칼럼" style={{ padding: "0 0 10px" }}>{items.map((item, index) =>
           <button key={item.id} type="button" role="tab" aria-selected={current?.id === item.id} className={current?.id === item.id ? "yp-on" : ""} onClick={() => setPick(item.id)}>
             칼럼 {index + 1}{columnMeta(item.html).title ? ` · ${columnMeta(item.html).title.slice(0, 16)}` : ""}</button>)}</div>}
-      {items.length ? <p className="yp-hint" style={{ marginTop: 0 }}>다시 쓰면 고치지 않은 AI 칼럼은 새 칼럼으로 바뀌고, 사람이 고치거나 붙여 넣은 칼럼은 남아요.</p> : null}
+      {items.length ? <p className="yp-hint" style={{ marginTop: 0 }}>다시 쓰면 고친 칼럼은 남고 나머지는 새로 바뀌어요.</p> : null}
       {pasting !== null ? <div style={{ marginTop: 8 }}>
         <textarea className="yp-in" rows={12} value={pasting} onChange={event => setPasting(event.target.value)} aria-label="새 칼럼 HTML" placeholder="다른 AI 창에서 쓴 칼럼 HTML을 붙여 넣어요" style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }} />
         <div className="yp-savebar"><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={() => setPasting(null)}>취소</button>
@@ -117,20 +117,20 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const flagged = [...check.unsafe, ...check.issues];
 
   return <>
-    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `${ai.by}의 AI · ${ai.model} · ${md(ai.at)}${html !== ai.html ? " · 사람이 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
+    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `AI 초안 · ${ai.by} · ${md(ai.at)}${html !== ai.html ? " · 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
       <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(editing === null ? html : null)}><Code2 size={14} /> HTML 고치기</button>
-      <button type="button" className="yp-ib" aria-label={`칼럼 ${index + 1} 빼기`} disabled={busy === "remove"} onClick={() => { if (window.confirm(`칼럼 ${index + 1}을 뺄까요?`)) void patch({ remove: true }, "remove"); }}><Trash2 size={14} /></button></>}>
+      <button type="button" className="yp-ib" aria-label={`칼럼 ${index + 1} 빼기`} disabled={busy === "remove"} onClick={() => { if (window.confirm("이 칼럼을 뺄까요?")) void patch({ remove: true }, "remove"); }}><Trash2 size={14} /></button></>}>
       <dl className="yp-kv">
         <dt>제목</dt><dd>{check.meta.title || "—"}</dd>
         <dt>주소</dt><dd><code>{check.meta.slug || "—"}</code></dd>
         <dt>설명</dt><dd>{check.meta.description || "—"} <span className="yp-muted">({check.meta.description.length}자)</span></dd>
         <dt>키워드</dt><dd>{check.meta.keywords.join(" · ") || "—"}</dd>
       </dl>
-      {flagged.length ? <div className="yp-errline" role="status">정본 구성과 다른 곳 {flagged.length}건: {flagged.join(" / ")}</div>
-        : <p className="yp-hint"><Check size={12} aria-hidden="true" /> 정본 구성 검사를 통과했어요</p>}
+      {flagged.length ? <div className="yp-errline" role="status">형식 점검: {flagged.length}곳 확인 필요 — {flagged.join(" / ")}</div>
+        : <p className="yp-hint"><Check size={12} aria-hidden="true" /> 형식 점검 통과</p>}
       {editing !== null ? <div style={{ marginTop: 10 }}>
         <textarea className="yp-in" rows={18} value={editing} onChange={event => setEditing(event.target.value)} aria-label="칼럼 HTML" style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }} />
-        <div className="yp-savebar"><span className="yp-hint">스크립트 · 스타일 · iframe은 저장되지 않아요. 디자인은 OS가 입혀요.</span><span className="yp-sp" />
+        <div className="yp-savebar"><span className="yp-hint">디자인은 자동으로 입혀요.</span><span className="yp-sp" />
           <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(null)}>취소</button>
           <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === "html" || editing === html} onClick={async () => { if (await patch({ html: editing }, "html")) setEditing(null); }}>저장</button></div>
       </div> : null}
@@ -160,11 +160,11 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
       })}</ul> : <p className="yp-hint">이 칼럼에는 이미지 자리가 없어요.</p>}
     </YpSection>
 
-    <YpSection n={4} title="미리보기 · 내보내기" gq="디자인 · 왼쪽 목차 · 검색용 구조 정보(JSON-LD)는 OS가 입혀요" extra={<>
+    <YpSection n={4} title="미리보기 · 내보내기" extra={<>
       <button type="button" className="yp-btn yp-sm" onClick={() => void copy()}><Clipboard size={14} /> {copied ? "복사했어요" : "HTML 복사"}</button>
       <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => void download()}><Download size={14} /> HTML 내려받기</button></>}>
       <iframe title={`칼럼 ${index + 1} 미리보기`} sandbox="allow-scripts allow-popups" srcDoc={preview} style={{ width: "100%", height: 880, border: "1px solid var(--line)", borderRadius: 12, background: "#fff" }} />
-      <p className="yp-hint">내보낸 파일에는 올린 이미지가 함께 들어가요. 자사 웹에 올릴 때 그곳의 이미지 주소를 쓰려면 [주소 넣기]로 바꿔요.</p>
+      <p className="yp-hint">이미지는 파일 안에 함께 들어가요.</p>
     </YpSection>
   </>;
 }

@@ -7,11 +7,11 @@ import { newProjectMeta } from "../lib/youtube-process/project.ts";
 // 유튜브 공정 v1 step rules (지시서 4-4 ~ 4-8, 수용 기준 9).
 test("기획안 needs titles A · B, thumbnails A · B and the 영상 흐름; the OK fixes the A · B · (C) pairs", () => {
   const plan = emptyStage("plan", "anim");
-  assert.equal(draftMissing(plan), "제목 A(첫째 줄)를 써주세요");
+  assert.equal(draftMissing(plan), "첫째 줄 제목(A)을 써 주세요");
   plan.titles[0].text = "A 제목"; plan.titles[1].text = "B 제목";
-  assert.equal(draftMissing(plan), "썸네일 A(첫 번째 시안)를 넣어주세요");
+  assert.equal(draftMissing(plan), "첫 번째 썸네일 시안(A)을 넣어 주세요");
   plan.thumbs[0] = { id: "a", mode: "text", copy: "큰 글자" }; plan.thumbs[1] = { id: "b", mode: "img", path: "youtube/x/plan_thumb/y.png" };
-  assert.equal(draftMissing(plan), "오프닝을 써주세요");
+  assert.equal(draftMissing(plan), "오프닝을 써 주세요");
   Object.assign(plan, { opening: "o", body: "b", closing: "c" });
   assert.equal(draftMissing(plan), "");
   const confirmed = confirmPlan(plan, "2026-10-21T00:00:00Z");
@@ -24,11 +24,11 @@ test("예상 길이: 3,150자 · 9분은 맞고 2,000자는 약 3분 짧다 (±2
   assert.equal(lengthEstimate(`### 오프닝\n\n${"가".repeat(3150)}\n`, 9).verdict.ok, true);
   assert.deepEqual(lengthEstimate("가".repeat(2000), 9).verdict, { ok: false, text: "정한 러닝타임(9분)보다 약 3분 짧아요" });
   const outline = emptyStage("outline", "live");
-  assert.equal(outlineMissing(outline), "러닝타임을 정해주세요");
+  assert.equal(outlineMissing(outline), "러닝타임을 정해 주세요");
   outline.spec.runtimeMin = 121;
-  assert.equal(outlineMissing(outline), "러닝타임은 1 ~ 120분 사이 숫자로 써주세요");
+  assert.equal(outlineMissing(outline), "러닝타임은 1 ~ 120분 사이 숫자로 써 주세요");
   outline.spec.runtimeMin = 9; outline.script = "## 제목만\n";
-  assert.equal(outlineMissing(outline), "원고를 써주세요");
+  assert.equal(outlineMissing(outline), "원고를 써 주세요");
   const versioned = withScriptVersion(withScriptVersion(outline, "하나", "리키", "t1", "manual"), "둘", "리키", "t2", "ai", "claude");
   assert.deepEqual(versioned.versions.map(item => [item.v, item.why]), [[1, "manual"], [2, "ai"]]);
   assert.equal(versioned.script, "둘");
@@ -36,7 +36,7 @@ test("예상 길이: 3,150자 · 9분은 맞고 2,000자는 약 3분 짧다 (±2
 
 test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and the hidden tags feed YouTube tags", () => {
   const make = emptyStage("make", "anim");
-  assert.equal(thumbsMissing(make), "최종 썸네일 A를 올려주세요");
+  assert.equal(thumbsMissing(make), "A 최종 썸네일을 올려 주세요");
   make.thumbs.A = { path: "p", at: "t", name: "a.png" }; make.thumbs.B = { path: "p", at: "t", name: "b.png" };
   assert.equal(thumbsMissing(make), "");
   const desc = "#강점 #성격\n-----\n⬇️ 내 강점 진단 받기\nhttps://www.brandyaction.com/classes/294620?utm_source=youtube\n-----\n[타임라인]\n00:00 시작\n01:10 둘째\n03:00 셋째\n-----\n[설명문 본문]\n1\n2\n3\n4\n5\n-----\n[인용 및 출처]\n- 수치 / 통계 / 기관 (2026, 2026-01)\n-----\n[히든 태그]\n강점, 성격";
@@ -66,7 +66,7 @@ test("내 영상 says what each video needs next in one sentence and one button"
   const project = (stage, gates = {}) => ({ id: "p", yp: { ...meta.yp, stage, gates: { ...meta.yp.gates, ...gates } } });
   assert.deepEqual([nextAction(project("outline")).tone, nextAction(project("outline")).button], ["todo", "원고 쓰기"]);
   assert.equal(nextAction(project("draft", { draft: { state: "wait", round: 1 } })).tone, "wait");
-  assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /제목 · 썸네일을 고쳐요/);
+  assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /고칠 칸: 제목 · 썸네일/);
   assert.equal(nextAction(project("done")).tone, "done");
 });
 
@@ -90,7 +90,7 @@ test("숏폼 scenes run on without gaps, the last one takes what is left, and wh
   assert.deepEqual(cuts.map(cut => [cut.start, cut.end, cut.missingAsset]), [["00:00.000", "00:04.000", false], ["00:04.000", "00:14.000", true], ["00:14.000", "00:30.000", false]]);
   assert.deepEqual(scenesFromCuts(cuts).map(item => item.seconds), [4, 10, 16]);
   const brief = { purpose: "ad", duration: 30, product: "결과지", audience: "직장인", goal: "진단", landingUrl: "", evidence: "", appeal: "" };
-  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써주세요", "광고에 쓸 실제 근거를 써주세요", "구매 이유를 하나 골라주세요", "장면마다 이미지를 넣어주세요"]);
+  assert.deepEqual(shortMissing(brief, scenesFromCuts(cuts)), ["연결할 페이지 주소를 써 주세요", "광고에 쓸 실제 근거를 써 주세요", "구매 이유를 하나 골라 주세요", "장면마다 이미지를 넣어 주세요"]);
   assert.deepEqual(shortMissing({ ...brief, duration: 15 }, [scene(10, "a"), scene(6, "b"), scene(0, "c")]).at(-1), "앞 장면들이 15초를 넘어요");
   // A longform clip: one cut per subtitle line in source time, joined end to start; lines starting within 0.3s share one caption.
   const cues = [{ start: 9, end: 12, text: "앞" }, { start: 12, end: 14, text: "하나" }, { start: 12.2, end: 16, text: "둘" }, { start: 17, end: 30, text: "셋" }];
@@ -109,4 +109,13 @@ test("v1 rolls out per person: off, everyone, or only the listed ids (the ids ne
   const some = { YOUTUBE_V1_ENABLED: "true", YOUTUBE_V1_USERS: " a , b " };
   assert.equal(youtubeV1Mode(some), "some");
   assert.deepEqual([youtubeV1AllowedFor("a", some), youtubeV1AllowedFor("c", some), youtubeV1AllowedFor("c", { YOUTUBE_V1_ENABLED: "true" }), youtubeV1AllowedFor("a", { YOUTUBE_V1_USERS: "a" })], [true, false, true, false]);
+});
+
+// Usability QA 2026-10-25: [직접 쓰기] put the section layout in the box and the bare layout counted as a written description.
+test("the bare description layout is not a description; any real line is", async () => {
+  const { DESC_TEMPLATE, descWritten } = await import("../lib/youtube-process/stages.ts");
+  assert.equal(descWritten(""), false);
+  assert.equal(descWritten(DESC_TEMPLATE), false);
+  assert.equal(descWritten(DESC_TEMPLATE.replace("[설명문 본문]\n", "[설명문 본문]\n퇴근 후 2시간을 나누는 법\n")), true);
+  assert.equal(descWritten("#강점 #성격"), true);
 });

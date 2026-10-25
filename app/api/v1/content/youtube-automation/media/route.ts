@@ -14,7 +14,7 @@ export const maxDuration = 180;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const inputSchema = z.discriminatedUnion("action", [
-  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3)])}).strict(),
+  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)])}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
   z.object({action:z.literal("shorts_complete"),...lease,bytes:z.number().int().positive().max(50_000_000),
     sha256:z.string().regex(/^[a-f0-9]{64}$/),duration:z.number().positive().max(61)}).strict(),
