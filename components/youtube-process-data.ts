@@ -156,6 +156,7 @@ const demoProjects = () => demoStore ??= [
   shortsDemo(demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13)),
   waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
   demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
+  demoProject("demo-p10", "[예시] 일이 안 맞을 때 먼저 볼 4칸 (릴스)", "short", "upload", 1),
 ];
 /** One example 쇼츠 확정 record with a 대표 comment, so 대표 메뉴 › 컨펌 › 쇼츠 확정 has something to show in the demo. */
 function shortsDemo(project: YpProject): YpProject {

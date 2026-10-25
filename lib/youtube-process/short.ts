@@ -2,6 +2,7 @@
 // takes Codex's cut list — start · end as MM:SS.mmm, 00:00 to the chosen length without gaps.
 import { GateError } from "./confirm.ts";
 import type { YpMeta } from "./project.ts";
+import type { YpUpload } from "./stages.ts";
 export type YpShortPurpose = "organic" | "ad";
 export type YpShortDuration = 15 | 30 | 60;
 export interface YpShortBrief { purpose: YpShortPurpose; duration: YpShortDuration; product: string; audience: string; goal: string; landingUrl: string; evidence: string; appeal: string }
@@ -146,3 +147,19 @@ const clock = (seconds: number) => {
   const tenths = Math.round(seconds * 10) / 10, whole = Math.floor(tenths);
   return `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}${tenths % 1 ? `.${Math.round((tenths % 1) * 10)}` : ""}`;
 };
+
+/**
+ * 숏폼 내보내기 (2026-10-25): the AI's title and description fill an empty (or untouched AI) field; what a person wrote stays and the
+ * draft waits beside it (9-5). Throws GateError for a wrong shape (the job gets it back as issues).
+ */
+export function applyShortCopy(current: YpUpload, value: unknown, author: { userId: string; name: string; model: string; jobId: string }, at: string): YpUpload {
+  const result = (value ?? {}) as { title?: unknown; description?: unknown };
+  const title = typeof result.title === "string" ? result.title.trim() : "";
+  const description = typeof result.description === "string" ? result.description.trim() : "";
+  if (!title || title.length > 100 || !description || description.length > 4000 || Object.keys(result).some(key => !["title", "description"].includes(key)))
+    throw new GateError("SHORT_COPY_INVALID", "result는 { \"title\": 100자 이내, \"description\": 4000자 이내 } 두 칸이에요.", 422);
+  const keepDesc = Boolean(current.desc.trim()) && current.desc !== current.descBy?.draft;
+  const keepTitle = Boolean(current.title?.trim()) && current.title !== current.descBy?.title;
+  return { ...current, descBy: { ...author, at, draft: description, title }, ...(keepDesc ? {} : { desc: description }), ...(keepTitle ? {} : { title }) };
+}
+

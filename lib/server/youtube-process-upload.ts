@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
+import { projectName } from "@/lib/youtube-process/project";
 import { utmUrl } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
@@ -24,7 +25,7 @@ async function uploadReady(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
   if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검수 컨펌 OK 뒤에 올릴 수 있어요.");
   const stages = await readStages(actor.supabase, project);
-  const finals = await readFinals(actor.supabase, project.id, stages.make.data);
+  const finals = await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type);
   return { project, stages, final: finals.at(-1) ?? null };
 }
 
@@ -37,7 +38,9 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
   const connection = await youtubeConnectionStatus(ownerId);
-  const title = (stages.make.data.aTitle || stages.plan.data.confirmed?.A?.title || project.title).trim().slice(0, 100);
+  // A 숏폼 (2026-10-25) goes up as a Short with the title written in 내보내기; a longform with its confirmed A title.
+  const short = project.yp.topic.type === "short";
+  const title = (short ? upload.title?.trim() || projectName(project) : stages.make.data.aTitle || stages.plan.data.confirmed?.A?.title || project.title).trim().slice(0, 100);
   // ③ 마이인 finals: their photo and music credits close the description (owner decision 2026-10-19).
   let credits = "";
   if (final.source === "myin" && final.runId) {
@@ -45,7 +48,8 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
     credits = myinCreditsBlock((((data?.metadata as { prepared?: { credits?: string[] } } | undefined)?.prepared?.credits) ?? []).slice(0, 40)).slice(0, 2500);
   }
   const description = upload.desc.replaceAll("[업로드 후 영상 ID]", utmCode(project.id)).replaceAll(utmUrl(upload.utm), utmUrl(upload.utm, utmCode(project.id))).slice(0, 5000 - credits.length) + credits;
-  const uploadUrl = await openUploadSession(ownerId, input, { title, description, tags: upload.hiddenTags.slice(0, 60), categoryId: "22" }, upload.privacy);
+  const tags = short ? (upload.desc.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30) : upload.hiddenTags.slice(0, 60);
+  const uploadUrl = await openUploadSession(ownerId, input, { title, description, tags, categoryId: "22" }, upload.privacy);
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 세션 생성");
   return { uploadUrl, channelId: connection.channelId, finalV: final.v };
 }
@@ -94,7 +98,8 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
     }).catch(() => null) : null;
     thumbnail = set?.ok ? "ok" : "fail";
   }
-  const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
+  const short = project.yp.topic.type === "short";
+  const videoUrl = short ? `https://www.youtube.com/shorts/${video.id}` : `https://www.youtube.com/watch?v=${video.id}`;
   const run = { at: new Date().toISOString(), by: actor.name, status: "done" as const, videoId: video.id, videoUrl, finalV: final?.v, thumbnail };
   await writeStage(actor.supabase, actor.id, actor.team, project, "upload", stages.upload, { ...stages.upload.data, run }).catch(error => {
     throw error instanceof ApiError && error.code === conflict().code ? new ApiError(409, "UPLOAD_RECORD_CONFLICT", "영상은 올라갔지만 기록이 바뀌었어요. 같은 버튼을 다시 누르면 기록만 저장해요.") : error;
@@ -105,7 +110,7 @@ export async function completeYoutubeUpload(actor: RequestActor, id: string, inp
     id: youtubeUploadRecordId(connection.channelId, video.id), record_type: "content_publish", title: video.snippet?.title || project.title, description: "YouTube OAuth 업로드 완료",
     status: publication.status, priority: "normal", stage: publication.stage, team: actor.team, owner_id: actor.id, parent_id: project.id, source_url: videoUrl,
     tags: ["유튜브", "업로드완료"], created_by: actor.id, updated_by: actor.id,
-    metadata: { platform: "youtube", youtubeVideoId: video.id, privacyStatus: video.status?.privacyStatus, publicationState: publication.publicationState, channelId: connection.channelId,
+    metadata: { platform: "youtube", ...(short ? { format: "shorts" } : {}), youtubeVideoId: video.id, privacyStatus: video.status?.privacyStatus, publicationState: publication.publicationState, channelId: connection.channelId,
       connectionOwnerId: ownerId, finalApproved: true, approvedBy: actor.id, uploadedAt: run.at, projectId: project.id, utmContent: utmCode(project.id) },
   });
   if (error && error.code !== "23505") console.warn(`youtube publish record skipped (${error.code ?? "error"})`);
