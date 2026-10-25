@@ -1089,7 +1089,8 @@
 .linear-shell .ui-v2.yp .yp-mv-pd{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .linear-shell .ui-v2.yp .yp-mv-av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent-2);font-size:11px;font-weight:700}
 .linear-shell .ui-v2.yp .yp-mv>.yp-btn{grid-column:4;justify-self:end;width:100%}
-@media (max-width:820px){
+/* Below 1100px the four columns leave the title a few letters (seen in production 2026-10-25); rows stack as on a phone. */
+@media (max-width:1100px){
   .linear-shell .ui-v2.yp .yp-mv{grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:14px}
   .linear-shell .ui-v2.yp .yp-mv-m{grid-column:1/-1}
   .linear-shell .ui-v2.yp .yp-mv-bar{grid-column:1/-1}
