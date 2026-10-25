@@ -6,13 +6,7 @@ export const KPI_BUSINESSES = [
   { key: "myin", label: "마이인", brand: "마이인", folder: "마이인", mode: "month" },
   { key: "edu", label: "브랜디에듀", brand: "브랜디액션 에듀", folder: "브랜디에듀", mode: "cohort" },
 ] as const;
-export type KpiCohort = { id: string; name: string; product: string; salesFrom: string; salesTo: string; courseFrom: string; courseTo: string; version: number };
 export const validDay = (value: unknown): value is string => typeof value === "string" && /^20\d{2}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value));
-// The cohorts a meeting looks at: still recruiting or not yet finished, else the latest one.
-export function currentCohorts<T extends Pick<KpiCohort, "courseTo" | "salesFrom">>(cohorts: T[], today: string) {
-  const live = cohorts.filter(cohort => cohort.courseTo >= today);
-  return live.length ? live : [...cohorts].sort((a, b) => b.salesFrom.localeCompare(a.salesFrom)).slice(0, 1);
-}
 export type KpiBusinessKey = typeof KPI_BUSINESSES[number]["key"];
 export const kpiBusiness = (key: string) => KPI_BUSINESSES.find(business => business.key === key) ?? null;
 

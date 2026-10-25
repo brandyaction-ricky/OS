@@ -8,7 +8,7 @@ import ts from "typescript";
 // loader can't resolve directly (same constraint as the webhook route tests),
 // so we transpile + eval with a small mocked require, mirroring
 // tests/telegram-request-flow.test.mjs's setup() pattern.
-async function loadPrepareMeetingBrief(revenue, cohorts = [], cohortNet = 0) {
+async function loadPrepareMeetingBrief(revenue, rounds = []) {
   const source = await readFile(new URL("../lib/server/meeting-prep.ts", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const modules = {
@@ -16,9 +16,10 @@ async function loadPrepareMeetingBrief(revenue, cohorts = [], cohortNet = 0) {
     "@/lib/meeting-business": await import("../lib/meeting-business.ts"),
     "@/lib/performance-signals": await import("../lib/performance-signals.ts"),
     "@/lib/kpi": await import("../lib/kpi.ts"),
+    "@/lib/kpi-runs": await import("../lib/kpi-runs.ts"),
     // No KPI-tab rows in these fixtures, so revenue is never read.
     "@/lib/server/kpi": { monthRevenue: async () => { if (!revenue) throw new Error("monthRevenue should not be called"); return revenue; },
-      listCohorts: async () => cohorts, cohortRevenue: async () => ({ net: cohortNet }) },
+      eduRounds: async () => rounds },
   };
   const exports = {};
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, console });
@@ -123,16 +124,15 @@ test("prepareMeetingBrief shows this month's KPI tab values with Toss revenue ag
   ]);
 });
 
-test("prepareMeetingBrief shows 브랜디에듀 KPIs of the cohorts still running, with cohort sales", async () => {
-  const cohorts = [{ id: "c-old", name: "1기", product: "", salesFrom: "2026-01-01", salesTo: "2026-01-10", courseFrom: "2026-02-01", courseTo: "2026-02-28" },
-    { id: "c-now", name: "AI 문샷 챌린지 2기", product: "AI 문샷", salesFrom: "2026-10-01", salesTo: "2099-10-20", courseFrom: "2099-11-01", courseTo: "2099-11-30" }];
-  const prepareMeetingBrief = await loadPrepareMeetingBrief(null, cohorts, 120000000);
+test("prepareMeetingBrief shows 브랜디에듀 KPIs of the sales rounds still selling or running, with round sales", async () => {
+  const round = (id, label, from, to, courseTo, net) => ({ key: `p::${from}`, product: "AI 문샷 챌린지", from, to, net, label, courseTo, settings: { id, name: label, courseFrom: null, courseTo, version: 1 } });
+  const prepareMeetingBrief = await loadPrepareMeetingBrief(null, [round("s-now", "AI 문샷 챌린지 2기", "2026-09-28", "2026-10-04", "2099-11-30", 120000000), round("s-old", "1기", "2026-01-01", "2026-01-10", "2026-02-28", 1)]);
   const kpi = (id, cohortId, title, metric, target, current, unit) => ({ id, title, brand: "브랜디액션 에듀", metric_target: target, metric_current: current, metric_unit: unit,
     metadata: { workspace: "kpi", business: "edu", cohortId, metric } });
-  const supabase = fakeSupabase({ kpis: [kpi("k1", "c-now", "기수 매출", "revenue", 200000000, null, "원"), kpi("k2", "c-now", "수강생", "manual", 150, 90, "명"), kpi("k3", "c-old", "수강생", "manual", 100, 100, "명")] });
+  const supabase = fakeSupabase({ kpis: [kpi("k1", "s-now", "회차 매출", "revenue", 200000000, null, "원"), kpi("k2", "s-now", "수강생", "manual", 150, 90, "명"), kpi("k3", "s-old", "수강생", "manual", 100, 100, "명")] });
   const brief = await prepareMeetingBrief(supabase, { brand: "브랜디액션 에듀" });
   assert.deepEqual(brief.kpis.map(item => [item.title, item.signal]), [
-    ["AI 문샷 챌린지 2기 · 기수 매출", "120,000,000원 / 목표 200,000,000원 (60%)"],
+    ["AI 문샷 챌린지 2기 · 회차 매출", "120,000,000원 / 목표 200,000,000원 (60%)"],
     ["AI 문샷 챌린지 2기 · 수강생", "90명 / 목표 150명 (60%)"],
   ]);
 });
