@@ -17,7 +17,7 @@ import { ContentPerformanceDashboard } from "./content-performance-dashboard";
 
 // 지시서 4장. Each screen is filled in by its own step (T3 ~ T11); until then it says what will appear here.
 const SCREENS: Record<YoutubeV1Screen | "shorts", { sub: string; coming: string; step: string }> = {
-  shorts: { sub: "올린 롱폼에서 쇼츠로 자를 구간을 골라요.", coming: "", step: "" },
+  shorts: { sub: "올린 롱폼에서 쇼츠 구간을 고르고 SEO 칼럼을 만들어요.", coming: "", step: "" },
   projects: { sub: "영상 한 편이 프로젝트 하나예요. 주제부터 업로드까지 이 안에서 이어져요.", coming: "새 프로젝트 · 최근 프로젝트 6개 · 이름 검색", step: "T3" },
   plan: { sub: "주제 → 기획안 → 구성안 순서로 채워요. 주제와 기획안은 대표 컨펌을 받아요.", coming: "주제 · 기획안(제목 A · B · C, 썸네일 시안) · 구성안(영상 스펙 · 원고)", step: "T3 · T5 · T6" },
   make: { sub: "편집 완료 일정을 정하고 최종본과 최종 썸네일을 올려요.", coming: "편집 완료 일정 · 진행 상태 · 최종본 올리기(버전) · 최종 썸네일 A · B · C", step: "T7" },
@@ -27,7 +27,7 @@ const SCREENS: Record<YoutubeV1Screen | "shorts", { sub: string; coming: string;
   confirm: { sub: "기다리는 컨펌을 오래된 순서로 봐요.", coming: "", step: "" },
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검수", upload: "업로드", shorts: "쇼츠", schedule: "스케줄", confirm: "컨펌" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검수", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**

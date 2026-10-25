@@ -27,6 +27,7 @@ const PROCEDURE_TERMS = {
   title_package: ["패키징", "제목", "썸네일"],
   shorts_proposal: ["숏폼", "쇼츠"],
   youtube_kit: ["유튜브", "발행키트"],
+  seo_column: ["SEO칼럼", "SEO 칼럼"],
 } as const;
 
 function extractJson(value: string) {
