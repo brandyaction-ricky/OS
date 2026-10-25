@@ -389,3 +389,14 @@
   .linear-shell .ui-v2 .tm-root .tm-field-grid { grid-template-columns: minmax(0, 1fr); }
   .linear-shell .ui-v2 .tm-root .tm-task-row .tm-due { display: none; }
 }
+/* Meeting recording progress (both meeting screens) */
+.meeting-recorder-progress{display:grid;gap:8px;padding:12px;border:1px solid var(--line-soft,#d0d7de);border-radius:10px;background:var(--panel-2,transparent);font-size:13px}
+.meeting-recorder-bar{height:6px;border-radius:999px;background:var(--line-soft,#e5e7eb);overflow:hidden}
+.meeting-recorder-bar i{display:block;height:100%;background:var(--mint,#16a34a);transition:width .4s}
+.meeting-recorder-progress ol{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.meeting-recorder-progress li{display:flex;align-items:center;gap:8px}
+.meeting-recorder-progress li span:first-child{flex:1}
+.meeting-recorder-progress li[data-state=done] span:last-of-type{color:var(--mint,#16a34a)}
+.meeting-recorder-progress li[data-state=working] span:last-of-type,.meeting-recorder-progress li[data-state=recording] span:last-of-type{color:var(--warning,#d97706)}
+.meeting-recorder-progress li[data-state=failed] span:last-of-type{color:var(--danger,#dc2626)}
+.meeting-recorder-progress small{color:var(--text-2,#6b7280)}
