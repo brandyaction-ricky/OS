@@ -92,3 +92,18 @@ test("an AI column fills an empty column; a column a person edited keeps its HTM
   assert.match(written.data.html, /사람이 고친 도입/);
   assert.match(written.data.aiDraft, /세 번째/);
 });
+
+// 쇼츠 구간 by the staff AI: no longer than the render PC makes (60 s), and the Short's description is kept on the clip.
+test("proposed clips stop at 60 seconds and carry the Short's description", async () => {
+  let rows = null;
+  const insert = { from: () => ({ insert: async (value) => { rows = value; return { error: null }; } }) };
+  const clip = { title: "쇼츠", hook: "첫 문장", start: 10, end: 75, reason: "이유", description: "설명\n#창업 #사업계획서" };
+  await assert.rejects(ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [clip] }, author), (error) => error.status === 422 && /60초/.test(error.message));
+  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [{ ...clip, end: 58 }] }, author);
+  assert.equal(rows[0].metadata.desc, "설명\n#창업 #사업계획서");
+  // An older answer without a description still passes.
+  const older = { ...clip, end: 40 };
+  delete older.description;
+  await ai.saveV1Shorts(insert, "owner", state("shorts"), { clips: [older] }, author);
+  assert.equal(rows[0].metadata.desc, "");
+});

@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { Check, Download, Film, Plus, Sparkles, Trash2 } from "lucide-react";
-import { apiRequest, archiveRecord, createRecord, listRecords, updateRecord } from "@/lib/api-client";
+import { Check, Download, ExternalLink, Film, PenLine, Plus, Sparkles, Trash2, Youtube } from "lucide-react";
+import { apiRequest, archiveRecord, createRecord, listRecords, updateRecord, uploadYoutubeFile } from "@/lib/api-client";
+import type { ChannelConnection } from "@/lib/channel-types";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -72,6 +73,37 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     catch (reason) { page.fail(reason); }
   };
   const job = useStaffJob(page, "shorts", loadClips);
+  // A finished clip goes up as a YouTube Short (2026-10-25): title and description from the clip, on the first connected channel.
+  const [text, setText] = useState<{ id: string; title: string; desc: string } | null>(null);
+  const [channelOwner, setChannelOwner] = useState("");
+  const [sending, setSending] = useState<{ id: string; step: string } | null>(null);
+  useEffect(() => {
+    if (page.demo || !page.accessToken) return;
+    apiRequest<{ connections: ChannelConnection[] }>("/api/v1/channels", { token: page.accessToken })
+      .then(result => setChannelOwner(result.connections.find(row => row.platform === "youtube" && row.status === "connected")?.ownerId ?? ""), () => undefined);
+  }, [page.demo, page.accessToken]);
+  const saveText = async () => {
+    const clip = clips.find(row => row.id === text?.id);
+    if (!clip || !text || !page.accessToken) return;
+    try { await updateRecord(page.accessToken, { id: clip.id, expectedVersion: clip.version, title: text.title.trim() || clip.title, metadata: { ...clip.metadata, desc: text.desc } }); setText(null); await loadClips(); }
+    catch (reason) { page.fail(reason); }
+  };
+  const publish = async (clip: OsRecord, renderId: string) => {
+    if (!client || !projectId || !page.accessToken) return;
+    const owner = channelOwner ? { connectionOwnerId: channelOwner } : {};
+    const send = (body: Record<string, unknown>) => apiRequest<{ uploadUrl?: string }>(`/api/v1/content/youtube/projects/${projectId}/upload`, { token: page.accessToken, method: "POST", body: JSON.stringify({ ...body, clipId: clip.id, ...owner }) });
+    setSending({ id: clip.id, step: "영상을 준비하는 중" }); page.setError("");
+    try {
+      const response = await fetch(await client.shortVideoUrl(projectId, renderId));
+      if (!response.ok) throw new Error("세로 영상을 불러오지 못했어요.");
+      const file = new File([await response.blob()], "short.mp4", { type: "video/mp4" });
+      const session = await send({ action: "clip-session", fileName: file.name, fileSize: file.size, mimeType: file.type });
+      const video = await uploadYoutubeFile(session.uploadUrl!, file, percent => setSending({ id: clip.id, step: `유튜브로 보내는 중 ${percent}%` }));
+      setSending({ id: clip.id, step: "결과를 기록하는 중" });
+      await send({ action: "clip-complete", videoId: video.id });
+      await loadClips();
+    } catch (reason) { page.fail(reason); } finally { setSending(null); }
+  };
   useEffect(() => {
     let active = true;
     if (!page.client || !project || !last) return;
@@ -151,14 +183,22 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
             {/* The title keeps a readable width; the buttons wrap under it on a narrow screen. */}
             <span style={{ flex: "1 1 220px", minWidth: 0 }}><b>{clip.title}</b> <span className="yp-muted">~{fmt(num(clip, "end"))} · {Math.round(num(clip, "end") - num(clip, "start"))}초</span>
               {clip.metadata?.hook ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>첫 문장: {String(clip.metadata.hook)}</span></> : null}
-              {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 제안</span> : null}</span>
+              {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 제안</span> : null}
+              {clip.metadata?.desc ? <><br /><span className="yp-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>설명: {String(clip.metadata.desc)}</span></> : null}</span>
             {clip.metadata?.selected !== false ? <ClipRender render={renders[clip.id]} busy={making === clip.id} demo={page.demo} onMake={() => void makeVertical(clip)}
               onWatch={renderId => void open(clip.id, renderId)} onDownload={renderId => void open(clip.id, renderId, true)} /> : null}
+            {clip.metadata?.selected !== false ? <ClipPublish clip={clip} render={renders[clip.id]} longformUp={uploaded} sending={sending?.id === clip.id ? sending.step : sending ? "다른 쇼츠를 올리는 중" : ""}
+              demo={page.demo} onText={() => setText({ id: clip.id, title: clip.title, desc: String(clip.metadata?.desc ?? "") })} onPublish={renderId => void publish(clip, renderId)} /> : null}
+            {text?.id === clip.id ? <div style={{ flex: "1 1 100%", display: "grid", gap: 6, marginTop: 6 }}>
+              <input className="yp-in" value={text.title} maxLength={100} aria-label="쇼츠 제목" onChange={event => setText({ ...text, title: event.target.value })} />
+              <textarea className="yp-in" rows={4} value={text.desc} maxLength={1000} aria-label="쇼츠 설명" placeholder={"이 구간이 답하는 질문 · 핵심 한두 줄\n#해시태그 3~5개 (전체 영상 링크는 OS가 붙여요)"} onChange={event => setText({ ...text, desc: event.target.value })} />
+              <div className="yp-savebar"><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={() => setText(null)}>취소</button><button type="button" className="yp-btn yp-sm yp-pri" onClick={() => void saveText()}>저장</button></div>
+            </div> : null}
             <button type="button" className={`yp-btn yp-sm${clip.metadata?.selected !== false ? " yp-pri" : ""}`} onClick={() => void toggle(clip)}>{clip.metadata?.selected !== false ? <><Check size={14} /> 채택</> : "채택하기"}</button>
             <button type="button" className="yp-ib" aria-label="빼기" onClick={() => void remove(clip)}><Trash2 size={14} /></button></li>)}</ul>
             : <p className="yp-pempty">아직 구간이 없어요. 영상을 보며 시작 · 끝을 정하거나 내 AI에 제안을 맡겨요.</p>}
           {watch ? <div className="yp-short-out" style={{ marginTop: 10 }}><video className="yp-vid9" src={watch.url} controls autoPlay preload="metadata" /><button type="button" className="yp-btn yp-sm" onClick={() => setWatch(null)}>닫기</button></div> : null}
-          <p className="yp-hint">채택한 구간은 [세로 영상 만들기]를 누르면 렌더 PC가 자막을 넣은 720 × 1280 쇼츠로 만들어요. 편집자에게 맡길 때는 [편집용 목록]을 내려받아요.</p>
+          <p className="yp-hint">채택한 구간은 [세로 영상 만들기]를 누르면 렌더 PC가 자막을 넣은 720 × 1280 쇼츠로 만들어요. 다 만들어지면 제목 · 설명을 확인하고 [유튜브에 올리기]로 올려요(업로드 단계의 공개 범위, 설명 끝에 전체 영상 링크). 편집자에게 맡길 때는 [편집용 목록]을 내려받아요.</p>
         </YpSection>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">자막 <span className="yp-gq">누르면 그 시각으로 가요</span></div><div className="yp-card-b" style={{ maxHeight: 560, overflow: "auto" }}>
@@ -170,6 +210,18 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
       </>}
     </> : null}
   </YpFrame>;
+}
+
+/** After the vertical video: the Short's title · description, then [유튜브에 올리기] once the longform is up (or the link once it is). */
+function ClipPublish({ clip, render, longformUp, sending, demo, onText, onPublish }: { clip: OsRecord; render?: YpRenderView; longformUp: boolean; sending: string; demo: boolean; onText: () => void; onPublish: (renderId: string) => void }) {
+  const youtube = clip.metadata?.youtube as { videoUrl?: string } | undefined;
+  if (youtube?.videoUrl) return <a className="yp-btn yp-sm" href={youtube.videoUrl} target="_blank" rel="noreferrer"><Youtube size={14} /> 올린 쇼츠 <ExternalLink size={12} /></a>;
+  if (render?.status !== "done") return null;
+  const missing = !clip.metadata?.desc ? "설명을 채워 주세요" : !longformUp ? "롱폼을 먼저 유튜브에 올려요" : demo ? "데모에서는 올리지 않아요" : "";
+  return <span className="yp-row-btns">
+    <button type="button" className="yp-btn yp-sm" onClick={onText}><PenLine size={14} /> 제목 · 설명</button>
+    <button type="button" className="yp-btn yp-sm" disabled={Boolean(missing || sending)} title={missing || undefined} onClick={() => onPublish(render.id)}><Youtube size={14} /> {sending || "유튜브에 올리기"}</button>
+  </span>;
 }
 
 /** One clip's vertical short: make it, watch it while it is made, then 보기 · 내려받기 (or the reason it stopped). */
