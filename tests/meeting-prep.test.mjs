@@ -136,3 +136,15 @@ test("prepareMeetingBrief shows 브랜디에듀 KPIs of the sales rounds still s
     ["AI 문샷 챌린지 2기 · 수강생", "90명 / 목표 150명 (60%)"],
   ]);
 });
+
+test("prepareMeetingBrief picks the newest meeting with content, reading the business from the title when it is blank", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief();
+  const supabase = fakeSupabase({ meetings: [
+    { id: "empty", title: "261012 주간회의", brand: "", status: "planned", starts_at: "2026-10-12", metadata: {} },
+    { id: "edu", title: "10월 8일 회의 (마케팅 교육)", brand: "브랜디에듀", status: "done", starts_at: "2026-10-08", metadata: { summary: "에듀 요약" } },
+    { id: "oct", title: "10월 6일 회의 (마이인)", brand: "", status: "active", starts_at: "2026-10-06", metadata: { summary: "10월 요약" } },
+    { id: "sep", title: "마이인 회의 · 9월 23일", brand: "마이인", status: "done", starts_at: "2026-09-23", metadata: { summary: "9월 요약" } },
+  ] });
+  assert.equal((await prepareMeetingBrief(supabase, { brand: "마이인" })).latestMeeting.id, "oct");
+  assert.equal((await prepareMeetingBrief(supabase, { brand: "브랜디에듀" })).latestMeeting.id, "edu");
+});

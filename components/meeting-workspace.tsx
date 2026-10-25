@@ -584,8 +584,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                   <strong>주간 KPI 안건</strong>
                   {entry.result.kpis.slice(0, 8).map((item) => (
                     <p key={item.id}>
-                      • {item.title} {item.current}
-                      {item.unit} · {item.signal}
+                      • {item.title} · {item.signal}
                     </p>
                   ))}
                   {!entry.result.kpis.length ? <p>주간 KPI를 먼저 입력해 주세요.</p> : null}
