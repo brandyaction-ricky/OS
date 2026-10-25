@@ -1,8 +1,9 @@
 // 유튜브 공정 v1 confirm rules (지시서 8장): who may move a gate, to where, and what the PD may edit meanwhile.
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
-export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 컨펌" };
-// 쇼츠 컨펌 (owner request 2026-10-25) stays in 쇼츠 · 칼럼: its OK lets the confirmed scripts be made and uploaded.
+export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 확정" };
+// 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
+// keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
 const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
 const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
@@ -52,8 +53,6 @@ export function editableFields(project: Pick<YpProject, "yp">, gate: YpGate): st
 }
 /** True when the PD changed the content after the last decision (an unchanged re-request needs a reason, S11-5). */
 export const editedSinceDecision = (project: Pick<YpProject, "yp">, gate: YpGate) => {
-  // 쇼츠 scripts live in their own records; a change there does not touch the project, so a re-request needs no reason.
-  if (gate === "shorts") return true;
   const decided = project.yp.gates[gate].decidedAt;
   return !decided || project.yp.contentUpdatedAt > decided;
 };
@@ -69,8 +68,7 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
   const waitingNeeded = () => { if (info.state !== "wait") throw new GateError("INVALID_TRANSITION", "대표 컨펌을 기다리는 요청이 없어요."); };
   switch (action) {
     case "request": {
-      // 쇼츠 can be confirmed again after an OK: new or changed scripts need their own OK.
-      if (yp.stage !== GATE_STAGE[gate] || !["none", "changes", "hold", ...(gate === "shorts" ? ["ok"] : [])].includes(info.state)) throw new GateError("INVALID_TRANSITION", info.state === "wait" ? "이미 대표 컨펌을 기다리고 있어요." : "지금은 이 컨펌을 요청할 수 없어요.");
+      if (yp.stage !== GATE_STAGE[gate] || !["none", "changes", "hold"].includes(info.state)) throw new GateError("INVALID_TRANSITION", info.state === "wait" ? "이미 대표 컨펌을 기다리고 있어요." : "지금은 이 컨펌을 요청할 수 없어요.");
       const reply = input.reply?.trim();
       if (info.state === "changes" && !editedSinceDecision(project, gate) && !reply) throw new GateError("REPLY_REQUIRED", "고친 칸이 없어요. 다시 요청하는 이유를 한 줄 써 주세요.", 400);
       return put({ state: "wait", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, remindAt: firstRemindAt(input.now),
@@ -114,8 +112,11 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
 }
 
 /** A gate needs attention from the approver while it waits; 처리한 것 lists what they decided; 보류함 lists holds (S10). */
-export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "wait" | "done" | "hold", me: string) {
-  const rows = projects.flatMap(project => (Object.keys(project.yp.gates) as YpGate[]).map(gate => ({ project, gate, info: project.yp.gates[gate] })));
+export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "wait" | "done" | "hold" | "shorts", me: string) {
+  // 쇼츠 확정: every project whose PD confirmed shorts scripts or where someone commented, newest first.
+  if (tab === "shorts") return projects.filter(project => project.yp.shortsLog?.length)
+    .map(project => ({ project, gate: "shorts" as YpGate, info: project.yp.gates.shorts, at: project.yp.shortsLog!.at(-1)!.at })).sort((a, b) => b.at.localeCompare(a.at));
+  const rows = projects.flatMap(project => (Object.keys(project.yp.gates) as YpGate[]).filter(gate => gate !== "shorts").map(gate => ({ project, gate, info: project.yp.gates[gate] })));
   if (tab === "wait") return rows.filter(row => row.info.state === "wait").sort((a, b) => (a.info.requestedAt ?? "").localeCompare(b.info.requestedAt ?? ""));
   if (tab === "hold") return rows.filter(row => row.info.state === "hold").sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));
   return rows.filter(row => row.info.decidedBy === me && ["ok", "changes"].includes(row.info.state)).sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));

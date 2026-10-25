@@ -808,14 +808,6 @@
       "productionApprovedAt": "2026-10-22",
       "appliedEnvironments": ["development", "production"],
       "notes": "Owner request 2026-10-22; owner approved Production the same day. Production: live functions and policy matched the repository; a rollback-only run measured, as each of the 10 active members, documents visible before and after the migration (0 changed) and other members' drafts visible after (0); then applied, recorded in schema history and read back. DEV: live os_workspace_document_row_read, os_workspace_document_read and os_documents_select matched the latest repository definitions; rollback-only test (tests/document-sharing.sql with this migration) 13 checks, 0 failures; then applied to brandyaction-os-dev, recorded in schema history and read back."
-    },
-    {
-      "file": "20261025090000_youtube_shorts_confirm.sql",
-      "sha256": "29b3d098dbf8ebe5e81f2ec5566db2c01648d1bbaa9622a1280b6d710f7a7891",
-      "purpose": "쇼츠 컨펌: the YouTube confirmation history (os_youtube_confirmations.gate) also accepts 'shorts'; the check only widens",
-      "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Owner request 2026-10-25 (숏폼 스크립트 컨펌). Until it is applied the 쇼츠 컨펌 decisions still work and only their history rows are skipped (recordConfirmation logs it). Production needs owner approval."
     }
   ],
   "legacyMigrations": [

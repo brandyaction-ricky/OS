@@ -125,7 +125,7 @@ async function clipReady(actor: RequestActor, id: string, clipId: string) {
   const stages = await readStages(actor.supabase, project);
   const longform = stages.upload.data.run;
   if (!["upload", "shorts", "done"].includes(project.yp.stage) || longform?.status !== "done" || !longform.videoUrl) throw new ApiError(409, "LONGFORM_UPLOAD_FIRST", "롱폼을 유튜브에 올린 뒤에 쇼츠를 올릴 수 있어요.");
-  // Only a script the 대표 confirmed (쇼츠 컨펌) goes up, as it was confirmed.
+  // Only a confirmed script (쇼츠 확정) goes up, as it was confirmed.
   return { project, stages, clip: await confirmedClip(actor, project, clipId), longformUrl: longform.videoUrl };
 }
 export async function startClipUpload(actor: RequestActor, id: string, input: z.infer<typeof clipUploadSessionSchema>) {

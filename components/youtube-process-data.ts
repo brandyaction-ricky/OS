@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
-import { cutsFromScenes, scenesFromCuts, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
+import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
@@ -47,7 +47,9 @@ export interface YpClient {
   uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
   uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
   confirm(id: string, gate: YpGate, action: YpApproverAction, expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
-  confirmList(tab: "wait" | "done" | "hold"): Promise<{ project: YpProject; gate: YpGate }[]>;
+  confirmList(tab: "wait" | "done" | "hold" | "shorts"): Promise<{ project: YpProject; gate: YpGate }[]>;
+  /** 쇼츠 확정 by the PD, or a comment on its record (owner decision 2026-10-25). */
+  shorts(id: string, expectedVersion: number, input: { action: "confirm"; note?: string } | { action: "comment"; text: string }): Promise<YpProject>;
   members(): Promise<YpMember[]>;
   legacy(): Promise<YpLegacyTopic[]>;
   schedule(): Promise<YpScheduleItem[]>;
@@ -100,6 +102,7 @@ function apiClient(token: string): YpClient {
     uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
     confirmList: async tab => (await apiRequest<{ items: { project: YpProject; gate: YpGate }[] }>(`/api/v1/content/youtube/confirm?tab=${tab}`, { token })).items,
+    shorts: async (id, expectedVersion, input) => (await apiRequest<{ project: YpProject }>(`${base}/${id}/shorts`, { token, method: "POST", body: json({ ...input, expectedVersion }) })).project,
     legacy: async () => (await apiRequest<{ topics: YpLegacyTopic[] }>("/api/v1/content/youtube/legacy", { token })).topics,
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
@@ -150,10 +153,16 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p4", "[예시] 퇴근 후 2시간 루틴 만들기", "anim", "make", 3, "demo-pd"),
   demoProject("demo-p5", "[예시] 강의 상세페이지 첫 화면 고치기", "live", "review", 5),
   demoProject("demo-p6", "[예시] 처음 쓰는 사업계획서의 순서", "anim", "upload", 8, "demo-logan"),
-  demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13),
+  shortsDemo(demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13)),
   waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
   demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
 ];
+/** One example 쇼츠 확정 record with a 대표 comment, so 대표 메뉴 › 컨펌 › 쇼츠 확정 has something to show in the demo. */
+function shortsDemo(project: YpProject): YpProject {
+  const yp = shortsAction(project.yp, { action: "confirm", note: "[예시] 3편 확정", clips: [1, 2, 3].map(n => ({ id: `demo-clip-${n}`, title: `[예시] 쇼츠 ${n}`,
+    metadata: { hook: "첫 문장", desc: "설명 #예시", segments: [{ start: n * 60, end: n * 60 + 40 }] } })) }, { id: "demo-logan", name: "로건" }, daysAgo(2));
+  return { ...project, yp: shortsAction(yp, { action: "comment", text: "[예시] 2번 제목을 더 짧게 바꿔 주세요" }, { id: DEMO_ME, name: "리키" }, daysAgo(1)) };
+}
 /** One example waiting for the 대표 컨펌, so the confirm menu has something to show in the demo. */
 function waitingDemo(project: YpProject): YpProject {
   return { ...project, yp: applyGateAction(project, "topic", "request", { actor: "demo-logan", now: daysAgo(1) }) };
@@ -322,6 +331,13 @@ function demoClient(): YpClient {
       return next;
     },
     confirmList: async tab => confirmTab(structuredClone(demoProjects()), tab, DEMO_ME).map(row => ({ project: row.project, gate: row.gate })),
+    shorts: async (id, expectedVersion, input) => {
+      const project = find(id);
+      checkVersion(project.version, expectedVersion);
+      // The demo keeps no shorts scripts, so a 확정 answers like an empty pick; a comment is kept.
+      try { return bump(project, shortsAction(project.yp, input.action === "confirm" ? { ...input, clips: [] } : input, { id: DEMO_ME, name: "리키" }, new Date().toISOString())); }
+      catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
+    },
     members: async () => DEMO_MEMBERS,
     legacy: async () => [],
     schedule: async () => demoProjects().map(project => {

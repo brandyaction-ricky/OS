@@ -7,9 +7,10 @@ import type { ChannelConnection } from "@/lib/channel-types";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import type { YpRenderView } from "./youtube-process-data";
+import type { YpClient, YpRenderView } from "./youtube-process-data";
 import { clipConfirmed, clipParts, clipScriptProblems, clipSeconds, formatParts, parseParts } from "@/lib/youtube-process/short";
-import { GateBanner, gateAction, LockedStep, ReplyForm, stepAction, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
+import type { YpProject } from "@/lib/youtube-process/project";
+import { LockedStep, md, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { RenderTag } from "./youtube-process-short";
 import { YoutubeColumnPanel } from "./youtube-process-column";
 
@@ -75,7 +76,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   };
   const job = useStaffJob(page, "shorts", loadClips);
   // A finished clip goes up as a YouTube Short (2026-10-25): title and description from the clip, on the first connected channel.
-  // 쇼츠 대본 (2026-10-25): title · first 3 seconds · the longform parts in play order · description, confirmed by the 대표 (쇼츠 컨펌).
+  // 쇼츠 대본 (2026-10-25): title · first 3 seconds · the longform parts in play order · description, confirmed by the PD (쇼츠 확정).
   const [text, setText] = useState<{ id: string; title: string; hook: string; parts: string; desc: string } | null>(null);
   const [channelOwner, setChannelOwner] = useState("");
   const [sending, setSending] = useState<{ id: string; step: string } | null>(null);
@@ -156,19 +157,24 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   const reached = project && ["upload", "shorts", "done"].includes(project.yp.stage);
   const uploaded = page.bundle?.stages.upload.data.run?.status === "done";
   const adopted = clips.filter(clip => clip.metadata?.selected !== false);
-  // 쇼츠 컨펌: picked scripts not yet confirmed (or changed since) go to the 대표 before anything is made; while it waits nothing changes.
-  const control = useGate(page, "shorts");
-  const shortsGate = project?.yp.gates.shorts;
-  const waiting = shortsGate?.state === "wait";
-  const confirmedOf = (clip: OsRecord) => clipConfirmed(project?.yp.shortsConfirmed, shortsGate?.state === "ok", clip);
+  // 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the picked scripts; only confirmed, unchanged ones are made and uploaded.
+  const [note, setNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const confirmedOf = (clip: OsRecord) => clipConfirmed(project?.yp.shortsConfirmed, clip);
   const needConfirm = adopted.some(clip => !confirmedOf(clip));
   const unfinished = adopted.find(clip => clipScriptProblems(clip).length);
   const shortsMissing = !adopted.length ? "쇼츠로 만들 대본을 채택해 주세요" : unfinished ? `대본을 채워 주세요 — ${unfinished.title || "제목 없음"}: ${clipScriptProblems(unfinished).join(", ")}` : "";
+  const confirmShorts = async () => {
+    if (!page.client || !project) return;
+    setConfirming(true); page.setError("");
+    try { const next = await page.client.shorts(project.id, project.version, { action: "confirm", ...(note.trim() ? { note: note.trim() } : {}) }); page.setBundle(current => current ? { ...current, project: next } : current); setNote(""); }
+    catch (reason) { page.fail(reason); } finally { setConfirming(false); }
+  };
   const action = !page.bundle ? null : project?.yp.stage === "done" ? stepAction(page, 6, { kind: "status", status: "끝난 프로젝트" })
-    : waiting || needConfirm ? gateAction(page, "shorts", 6, control, shortsMissing)
-    : stepAction(page, 6, { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브 업로드가 끝나면 마칠 수 있어요", busy: moving, onClick: () => void finish() });
+    : stepAction(page, 6, needConfirm ? { kind: "button", label: `쇼츠 확정 (${adopted.length}편)`, reason: shortsMissing, busy: confirming, onClick: () => void confirmShorts() }
+      : { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브 업로드가 끝나면 마칠 수 있어요", busy: moving, onClick: () => void finish() });
 
-  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "column" ? "구성안 원고로 검색용 SEO 칼럼을 만들어요. 내 AI가 쓰고, 이미지를 넣어 내보내요." : "내 AI가 쇼츠 대본을 쓰고, 고른 대본은 대표 쇼츠 컨펌을 받은 뒤 세로 영상으로 만들어 올려요."}>
+  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "column" ? "구성안 원고로 검색용 SEO 칼럼을 만들어요. 내 AI가 쓰고, 이미지를 넣어 내보내요." : "내 AI가 쇼츠 대본을 쓰고, PD가 고른 대본을 확정하면 세로 영상으로 만들어 올려요. 대표님은 확정 기록을 보고 코멘트를 남겨요."}>
     {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠 · 칼럼" /> : <>
       <Subject page={page} />
       <div className="yp-ftabs yp-two" role="tablist" aria-label="쇼츠 · 칼럼" style={{ padding: "0 0 10px" }}>
@@ -177,8 +183,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
       </div>
       {tab === "column" ? <YoutubeColumnPanel page={page} /> : <>
       {page.demo ? <div className="yp-note yp-gray"><div>데모에서는 쇼츠 구간을 저장하지 않아요.</div></div> : null}
-      {shortsGate && shortsGate.state !== "none" ? <GateBanner page={page} gate="shorts" okExtra={needConfirm && !waiting ? <> · 컨펌 뒤 새로 고르거나 바뀐 대본이 있어요. 다시 컨펌을 요청해요.</> : null} /> : null}
-      <ReplyForm control={control} />
+      {project.yp.shortsLog?.length && page.client ? <ShortsLog project={project} client={page.client} onSaved={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="원본 영상" gq={last ? `최종본 v${last.v} · ${last.source === "myin" ? "OS 자동 제작" : last.name}` : "최종본이 없어요"}>
           <div className="yp-player">{src ? <video ref={video} src={src} controls preload="metadata" style={{ width: "100%", display: "block", aspectRatio: "16/9", background: "var(--media-bg)" }} onTimeUpdate={event => setTime(event.currentTarget.currentTime)} />
@@ -188,10 +193,10 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
             <button type="button" className="yp-btn yp-sm" onClick={() => setRange(value => ({ ...value, end: Math.max(time, value.start + 1) }))}>지금 {fmt(time)}을 끝으로</button>
             <input className="yp-in" style={{ flex: 1, minWidth: 160 }} placeholder="쇼츠 제목 (선택)" value={range.title} maxLength={80} onChange={event => setRange(value => ({ ...value, title: event.target.value }))} aria-label="쇼츠 제목" />
             <span className="yp-tag">{fmt(range.start)} ~ {fmt(range.end)} · {Math.round(range.end - range.start)}초</span>
-            <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || page.demo || waiting || range.end <= range.start} onClick={() => void add()}><Plus size={14} /> 구간 추가</button></div>
+            <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || page.demo || range.end <= range.start} onClick={() => void add()}><Plus size={14} /> 구간 추가</button></div>
           {range.end - range.start > 60 ? <div className="yp-errline">쇼츠는 60초 안쪽이 좋아요.</div> : null}
         </YpSection>
-        <YpSection n={2} title="쇼츠 대본" gq={`${adopted.length}편 채택 · 컨펌 OK ${adopted.filter(confirmedOf).length}편`} extra={<>
+        <YpSection n={2} title="쇼츠 대본" gq={`${adopted.length}편 채택 · 확정 ${adopted.filter(confirmedOf).length}편`} extra={<>
           <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open || !srt} onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 대본 쓰기</button>
           <button type="button" className="yp-btn yp-sm" disabled={!adopted.length} onClick={exportList}><Download size={14} /> 편집용 목록</button></>}>
           {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
@@ -201,8 +206,8 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
             {/* The title keeps a readable width; the buttons wrap under it on a narrow screen. */}
             <span style={{ flex: "1 1 220px", minWidth: 0 }}><b>{clip.title}</b> <span className="yp-muted">{formatParts(clipParts(clip.metadata))} · {Math.round(clipSeconds(clipParts(clip.metadata)))}초</span>
               {clip.metadata?.kind ? <span className="yp-tag" style={{ marginLeft: 6 }}>{String(clip.metadata.kind)}</span> : null}
-              {clip.metadata?.selected !== false ? confirmedOf(clip) ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>컨펌 OK</span>
-                : project?.yp.shortsConfirmed?.clips[clip.id] ? <span className="yp-tag yp-warn" style={{ marginLeft: 6 }}>컨펌 뒤 바뀜</span> : <span className="yp-tag" style={{ marginLeft: 6 }}>컨펌 전</span> : null}
+              {clip.metadata?.selected !== false ? confirmedOf(clip) ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>확정</span>
+                : project?.yp.shortsConfirmed?.clips[clip.id] ? <span className="yp-tag yp-warn" style={{ marginLeft: 6 }}>확정 뒤 바뀜</span> : <span className="yp-tag" style={{ marginLeft: 6 }}>확정 전</span> : null}
               {clip.metadata?.hook ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>첫 3초: {String(clip.metadata.hook)}</span></> : null}
               {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 제안</span> : null}
               {clip.metadata?.desc ? <><br /><span className="yp-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>설명: {String(clip.metadata.desc)}</span></> : null}</span>
@@ -210,7 +215,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
               onWatch={renderId => void open(clip.id, renderId)} onDownload={renderId => void open(clip.id, renderId, true)} /> : null}
             {clip.metadata?.selected !== false ? <ClipPublish clip={clip} render={renders[clip.id]} longformUp={uploaded} confirmed={confirmedOf(clip)} sending={sending?.id === clip.id ? sending.step : sending ? "다른 쇼츠를 올리는 중" : ""}
               demo={page.demo} onPublish={renderId => void publish(clip, renderId)} /> : null}
-            <button type="button" className="yp-btn yp-sm" disabled={waiting} title={waiting ? "쇼츠 컨펌을 기다리는 동안은 고칠 수 없어요" : undefined}
+            <button type="button" className="yp-btn yp-sm"
               onClick={() => setText({ id: clip.id, title: clip.title, hook: String(clip.metadata?.hook ?? ""), parts: formatParts(clipParts(clip.metadata)), desc: String(clip.metadata?.desc ?? "") })}><PenLine size={14} /> 대본 고치기</button>
             {text?.id === clip.id ? <div style={{ flex: "1 1 100%", display: "grid", gap: 6, marginTop: 6 }}>
               <label className="yp-lbl" style={{ margin: 0 }}>제목 <span className="yp-gq">썸네일 한 줄 카피 · 유튜브 쇼츠 제목</span><input className="yp-in" value={text.title} maxLength={100} aria-label="쇼츠 제목" onChange={event => setText({ ...text, title: event.target.value })} /></label>
@@ -219,11 +224,13 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
               <textarea className="yp-in" rows={4} value={text.desc} maxLength={1000} aria-label="쇼츠 설명" placeholder={"이 구간이 답하는 질문 · 핵심 한두 줄\n#해시태그 3~5개 (전체 영상 링크는 OS가 붙여요)"} onChange={event => setText({ ...text, desc: event.target.value })} />
               <div className="yp-savebar"><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={() => setText(null)}>취소</button><button type="button" className="yp-btn yp-sm yp-pri" onClick={() => void saveText()}>저장</button></div>
             </div> : null}
-            <button type="button" className={`yp-btn yp-sm${clip.metadata?.selected !== false ? " yp-pri" : ""}`} disabled={waiting} onClick={() => void toggle(clip)}>{clip.metadata?.selected !== false ? <><Check size={14} /> 채택</> : "채택하기"}</button>
-            <button type="button" className="yp-ib" aria-label="빼기" disabled={waiting} onClick={() => void remove(clip)}><Trash2 size={14} /></button></li>)}</ul>
+            <button type="button" className={`yp-btn yp-sm${clip.metadata?.selected !== false ? " yp-pri" : ""}`} onClick={() => void toggle(clip)}>{clip.metadata?.selected !== false ? <><Check size={14} /> 채택</> : "채택하기"}</button>
+            <button type="button" className="yp-ib" aria-label="빼기" onClick={() => void remove(clip)}><Trash2 size={14} /></button></li>)}</ul>
             : <p className="yp-pempty">아직 구간이 없어요. 영상을 보며 시작 · 끝을 정하거나 내 AI에 제안을 맡겨요.</p>}
           {watch ? <div className="yp-short-out" style={{ marginTop: 10 }}><video className="yp-vid9" src={watch.url} controls autoPlay preload="metadata" /><button type="button" className="yp-btn yp-sm" onClick={() => setWatch(null)}>닫기</button></div> : null}
-          <p className="yp-hint">대본을 채택하고 [쇼츠 컨펌 요청]을 누르면 대표 메뉴 › 컨펌으로 가요. OK가 난 대본은 [세로 영상 만들기]로 렌더 PC가 구간을 이어 붙인 720 × 1280 쇼츠를 만들고, [유튜브에 올리기]로 올려요(업로드 단계의 공개 범위, 설명 끝에 전체 영상 링크). OK 뒤에 대본을 고치면 다시 컨펌을 받아요. 편집자에게 맡길 때는 [편집용 목록]을 내려받아요.</p>
+          {needConfirm && adopted.length ? <label className="yp-lbl" style={{ display: "block", marginTop: 8 }}>확정 메모 <span className="yp-gq">선택 · 다시 확정할 때 바꾼 점 (대표님 확정 기록에 보여요)</span>
+            <input className="yp-in" value={note} maxLength={500} onChange={event => setNote(event.target.value)} aria-label="확정 메모" /></label> : null}
+          <p className="yp-hint">대본을 채택하고 [쇼츠 확정]을 누르면 확정돼요. 확정한 대본은 [세로 영상 만들기]로 렌더 PC가 구간을 이어 붙인 720 × 1280 쇼츠를 만들고, [유튜브에 올리기]로 올려요(업로드 단계의 공개 범위, 설명 끝에 전체 영상 링크). 확정 뒤에 대본을 고치면 다시 확정해요. 확정 기록은 대표 메뉴 › 컨펌 › 쇼츠 확정에 남아요. 편집자에게 맡길 때는 [편집용 목록]을 내려받아요.</p>
         </YpSection>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">자막 <span className="yp-gq">누르면 그 시각으로 가요</span></div><div className="yp-card-b" style={{ maxHeight: 560, overflow: "auto" }}>
@@ -237,12 +244,37 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   </YpFrame>;
 }
 
+/** 쇼츠 확정 · 코멘트 기록 (newest first) with a comment box: the 대표 comments from 대표 메뉴 › 컨펌, the PD answers here. */
+export function ShortsLog({ project, client, onSaved, onError, compact = false }: { project: YpProject; client: YpClient; onSaved: (next: YpProject) => void; onError: (reason: unknown) => void; compact?: boolean }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const log = [...(project.yp.shortsLog ?? [])].reverse();
+  const send = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try { onSaved(await client.shorts(project.id, project.version, { action: "comment", text: text.trim() })); setText(""); }
+    catch (reason) { onError(reason); } finally { setBusy(false); }
+  };
+  return <section className="yp-card" style={{ marginBottom: 12 }}>
+    <div className="yp-card-h">확정 · 코멘트 기록 <span className="yp-gq">{compact ? "고칠 점은 코멘트로 남겨요 · 담당 PD에게 알림이 가요" : "대표님 코멘트가 여기에 와요"}</span></div>
+    <div className="yp-card-b">
+      <ul className="yp-hist" style={{ maxHeight: 260, overflow: "auto" }}>{log.map(entry => <li key={`${entry.at}-${entry.by}`} style={{ alignItems: "flex-start" }}>
+        <time>{md(entry.at)}</time>
+        <span style={{ flex: 1, minWidth: 0 }}><b>{entry.byName}</b> {entry.kind === "confirm" ? <span className="yp-tag yp-ok">확정 {entry.count ?? ""}편</span> : <span className="yp-tag yp-acc">코멘트</span>}
+          {entry.text ? <><br /><span style={{ whiteSpace: "pre-line" }}>{entry.text}</span></> : null}</span></li>)}</ul>
+      <div className="yp-savebar" style={{ marginTop: 8 }}>
+        <input className="yp-in" style={{ flex: 1 }} value={text} maxLength={1000} placeholder={compact ? "고칠 점을 남겨요" : "답글 · 메모"} aria-label="코멘트" onChange={event => setText(event.target.value)} />
+        <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || !text.trim()} onClick={() => void send()}>코멘트 남기기</button></div>
+    </div>
+  </section>;
+}
+
 /** After the vertical video: [유튜브에 올리기] once the longform is up and the script is confirmed (or the Short's link once it is up). */
 function ClipPublish({ clip, render, longformUp, confirmed, sending, demo, onPublish }: { clip: OsRecord; render?: YpRenderView; longformUp: boolean; confirmed: boolean; sending: string; demo: boolean; onPublish: (renderId: string) => void }) {
   const youtube = clip.metadata?.youtube as { videoUrl?: string } | undefined;
   if (youtube?.videoUrl) return <a className="yp-btn yp-sm" href={youtube.videoUrl} target="_blank" rel="noreferrer"><Youtube size={14} /> 올린 쇼츠 <ExternalLink size={12} /></a>;
   if (render?.status !== "done") return null;
-  const missing = !confirmed ? "쇼츠 컨펌 OK 뒤에 올려요" : !clip.metadata?.desc ? "설명을 채워 주세요" : !longformUp ? "롱폼을 먼저 유튜브에 올려요" : demo ? "데모에서는 올리지 않아요" : "";
+  const missing = !confirmed ? "쇼츠 확정 뒤에 올려요" : !clip.metadata?.desc ? "설명을 채워 주세요" : !longformUp ? "롱폼을 먼저 유튜브에 올려요" : demo ? "데모에서는 올리지 않아요" : "";
   return <span className="yp-row-btns">
     <button type="button" className="yp-btn yp-sm" disabled={Boolean(missing || sending)} title={missing || undefined} onClick={() => onPublish(render.id)}><Youtube size={14} /> {sending || "유튜브에 올리기"}</button>
   </span>;
@@ -254,5 +286,5 @@ function ClipRender({ render, busy, demo, confirmed, onMake, onWatch, onDownload
   if (render?.status === "done") return <span className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => onWatch(render.id)}><Film size={14} /> 세로 영상 보기</button>
     <button type="button" className="yp-ib" aria-label="세로 영상 내려받기" onClick={() => onDownload(render.id)}><Download size={14} /></button></span>;
   return <span className="yp-row-btns">{render ? <RenderTag render={render} /> : null}
-    <button type="button" className="yp-btn yp-sm" disabled={busy || demo || !confirmed} title={demo ? "데모에서는 만들지 않아요" : !confirmed ? "쇼츠 컨펌 OK 뒤에 만들어요" : undefined} onClick={onMake}><Film size={14} /> {busy ? "보내는 중…" : render ? "다시 만들기" : "세로 영상 만들기"}</button></span>;
+    <button type="button" className="yp-btn yp-sm" disabled={busy || demo || !confirmed} title={demo ? "데모에서는 만들지 않아요" : !confirmed ? "쇼츠 확정 뒤에 만들어요" : undefined} onClick={onMake}><Film size={14} /> {busy ? "보내는 중…" : render ? "다시 만들기" : "세로 영상 만들기"}</button></span>;
 }

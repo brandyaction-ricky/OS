@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const actor = await youtubeActor(request);
     const { id, gate } = await params;
     const input = gateActionSchema.parse(await parseJson(request, 2_000));
-    return NextResponse.json(await requestYoutubeGate(actor, z.string().uuid().parse(id), z.enum(["topic", "draft", "review", "shorts"]).parse(gate), input), { headers: { "cache-control": "private, no-store" } });
+    return NextResponse.json(await requestYoutubeGate(actor, z.string().uuid().parse(id), z.enum(["topic", "draft", "review"]).parse(gate), input), { headers: { "cache-control": "private, no-store" } });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_GATE_ACTION", "요청 내용을 확인해 주세요."));
     return apiErrorResponse(error);

@@ -11,7 +11,8 @@ import {
   type YpColumn, type YpColumnItem, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
-import { clipConfirmed, clipScriptProblems, clipSignature } from "@/lib/youtube-process/short";
+import { shortsAction } from "@/lib/youtube-process/short";
+import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -209,7 +210,7 @@ export async function writeStage<K extends YpStageKind>(supabase: Supabase, acto
   return row as { id: string; version: number };
 }
 
-const GATE_OF_STAGE: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { draft: "draft", review: "review", shorts: "shorts" };
+const GATE_OF_STAGE: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { draft: "draft", review: "review" };
 /** A PD edit while a 수정 요청 is open counts as 'changed' for the re-request rule (S11-5); the list also sorts by it. */
 async function touchProject(actor: RequestActor, project: YpProject) {
   const gate = GATE_OF_STAGE[project.yp.stage];
@@ -296,16 +297,9 @@ async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate
   const stages = await readStages(actor.supabase, project);
   if (gate === "draft") return draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려주세요";
-  if (gate === "shorts") {
-    const clips = await adoptedClips(actor.supabase, project.id);
-    if (!clips.length) return "쇼츠로 만들 구간을 하나 이상 채택해 주세요";
-    const unfinished = clips.map(clip => ({ clip, problems: clipScriptProblems(clip) })).filter(row => row.problems.length);
-    if (unfinished.length) return `쇼츠 대본을 채워 주세요 — ${unfinished.slice(0, 3).map(row => `${row.clip.title || "제목 없음"}: ${row.problems.join(", ")}`).join(" / ")}`;
-    if (clips.every(clip => clipConfirmed(project.yp.shortsConfirmed, project.yp.gates.shorts.state === "ok", clip))) return "새로 컨펌받을 쇼츠가 없어요";
-  }
   return "";
 }
-/** The clips picked for 쇼츠 (채택), as the 쇼츠 컨펌 sees them. */
+/** The clips picked for 쇼츠 (채택), as the 쇼츠 확정 sees them. */
 async function adoptedClips(supabase: Supabase, projectId: string) {
   const { data, error } = await supabase.from("os_records").select("id,title,metadata").eq("parent_id", projectId).eq("record_type", "content_short").is("archived_at", null).limit(200);
   if (error) throw readFailed();
@@ -317,11 +311,7 @@ export async function requestYoutubeGate(actor: RequestActor, id: string, gate: 
 
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
-  // 쇼츠 컨펌 OK keeps each picked script as confirmed; what is made and uploaded must still match it.
-  const okExtra = gate === "shorts" && input.action === "ok"
-    ? { shortsConfirmed: { at: new Date().toISOString(), clips: Object.fromEntries((await adoptedClips(createServiceSupabase(), id)).map(clip => [clip.id, clipSignature(clip)])) } }
-    : undefined;
-  const project = await confirmYoutubeGate(actor, id, gate, input, okExtra);
+  const project = await confirmYoutubeGate(actor, id, gate, input);
   if (gate === "draft" && input.action === "ok") {
     const service = createServiceSupabase();
     const stages = await readStages(service, project);
@@ -329,6 +319,35 @@ export async function decideYoutubeGate(actor: RequestActor, id: string, gate: Y
     await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
   }
   return project;
+}
+
+// ── 쇼츠 확정 · 코멘트 (owner decision 2026-10-25): the PD confirms the picked scripts; the 대표 reads the record and comments ──
+export const shortsActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("confirm"), expectedVersion: z.number().int().positive(), note: text(500).optional() }).strict(),
+  z.object({ action: z.literal("comment"), expectedVersion: z.number().int().positive(), text: z.string().trim().min(1).max(1000) }).strict(),
+]);
+/** 확정 keeps each picked script's signature (only those are made and uploaded); a comment is added to the same record and told to the PD. */
+export async function actOnShorts(actor: RequestActor, id: string, input: z.infer<typeof shortsActionSchema>) {
+  const project = await getYoutubeProject(actor, id);
+  if (project.version !== input.expectedVersion) throw conflict();
+  if (project.yp.topic.type === "short" || !["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 쇼츠를 확정할 수 있어요.");
+  const now = new Date().toISOString();
+  let yp: YpProject["yp"];
+  try {
+    yp = shortsAction(project.yp, input.action === "confirm" ? { action: "confirm", note: input.note, clips: await adoptedClips(actor.supabase, project.id) } : input, { id: actor.ownerId, name: actor.name }, now);
+  } catch (error) { throw error instanceof GateError ? new ApiError(error.status, error.code, error.message) : error; }
+  // The 대표 comments on projects that are not theirs; the read above already checked access, so the service client writes.
+  const { data: current } = await createServiceSupabase().from("os_records").select("metadata").eq("id", project.id).maybeSingle();
+  const { data: saved, error } = await createServiceSupabase().from("os_records").update({ metadata: { ...(current?.metadata ?? {}), workflow: "youtube_v1", yp }, updated_by: actor.ownerId })
+    .eq("id", project.id).eq("version", input.expectedVersion).is("archived_at", null).select("id,version,title,assignee_id,owner_id,updated_at,metadata").maybeSingle();
+  if (error) throw new ApiError(400, "YOUTUBE_PROJECT_UPDATE_FAILED", "프로젝트를 저장하지 못했습니다.");
+  const next = saved ? projectFromRecord(saved as Parameters<typeof projectFromRecord>[0]) : null;
+  if (!next) throw conflict();
+  if (input.action === "comment") {
+    const pds = [next.assigneeId, next.yp.shortsConfirmed?.by].filter((value): value is string => Boolean(value) && value !== actor.ownerId);
+    await notify(pds, "yt_feedback", next.id, `shorts-comment:${next.id}:${now}`);
+  }
+  return next;
 }
 
 // ── Files (S3 시안 · S5 최종본 · 최종 썸네일 · S7 SRT) ──

@@ -22,7 +22,7 @@ export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.
 export const gateActionSchema = z.object({ action: z.enum(["request", "cancel"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
 export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert"]), expectedVersion: z.number().int().positive(),
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
-export const confirmTabSchema = z.enum(["wait", "done", "hold"]);
+export const confirmTabSchema = z.enum(["wait", "done", "hold", "shorts"]);
 
 /** Whether v1 is on for this person: everyone, a listed id, or a listed "approver" who is the company approver. */
 export async function youtubeV1Allowed(actor: RequestActor) {
@@ -188,15 +188,14 @@ export async function listConfirmations(actor: RequestActor, tab: z.infer<typeof
   return confirmTab(await allProjects(), tab, actor.ownerId).map(row => ({ project: row.project, gate: row.gate }));
 }
 
-export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>, okExtra?: Partial<YpMeta>) {
+export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   await assertApprover(actor);
   const service = createServiceSupabase();
   const { data: row, error } = await service.from("os_records").select(COLUMNS).eq("id", id).eq("record_type", "content_topic").is("archived_at", null).maybeSingle();
   if (error) throw readFailed();
   const project = asProject(row);
   if (project.version !== input.expectedVersion) throw conflict();
-  const yp = { ...apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now: new Date().toISOString(), fields: input.fields, memo: input.memo, reason: input.reason }),
-    ...(input.action === "ok" ? okExtra : {}) };
+  const yp = apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now: new Date().toISOString(), fields: input.fields, memo: input.memo, reason: input.reason });
   const { data: current } = await service.from("os_records").select("metadata").eq("id", id).maybeSingle();
   const { data: saved, error: saveError } = await service.from("os_records").update({ metadata: { ...(current?.metadata ?? {}), workflow: "youtube_v1", yp }, updated_by: actor.ownerId })
     .eq("id", id).eq("version", input.expectedVersion).is("archived_at", null).select(COLUMNS).maybeSingle();

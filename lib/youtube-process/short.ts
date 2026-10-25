@@ -1,5 +1,7 @@
 // 유튜브 공정 v1 숏폼 (owner decision 2026-10-21): the screens edit scenes by length; the render PC (shortform_render_v1)
 // takes Codex's cut list — start · end as MM:SS.mmm, 00:00 to the chosen length without gaps.
+import { GateError } from "./confirm.ts";
+import type { YpMeta } from "./project.ts";
 export type YpShortPurpose = "organic" | "ad";
 export type YpShortDuration = 15 | 30 | 60;
 export interface YpShortBrief { purpose: YpShortPurpose; duration: YpShortDuration; product: string; audience: string; goal: string; landingUrl: string; evidence: string; appeal: string }
@@ -79,7 +81,7 @@ export function clipCuts(cues: { start: number; end: number; text: string }[], s
 }
 
 // ── 롱폼 → 쇼츠 대본 (owner request 2026-10-25, 숏폼 정본 모드 A "단순 클립 말고 재구성"): up to four parts of the final in the
-// order they play — the first carries the 3-second hook — and the 쇼츠 컨펌 OK before anything is made or uploaded.
+// order they play — the first carries the 3-second hook — confirmed by the PD (쇼츠 확정) before anything is made or uploaded.
 export interface YpClipPart { start: number; end: number }
 export const CLIP_MAX_PARTS = 4;
 export const CLIP_MAX_SECONDS = 60;
@@ -91,7 +93,7 @@ export function clipParts(metadata: Record<string, unknown> | null | undefined):
   return parts.length ? parts : [{ start: Number(metadata?.start ?? 0), end: Number(metadata?.end ?? 0) }];
 }
 export const clipSeconds = (parts: YpClipPart[]) => parts.reduce((total, part) => total + Math.max(0, part.end - part.start), 0);
-/** What keeps a clip's script out of the 쇼츠 컨펌, one word each (empty when it can be confirmed). */
+/** What keeps a clip's script from the 쇼츠 확정, one word each (empty when it can be confirmed). */
 export function clipScriptProblems(clip: ClipLike) {
   const parts = clipParts(clip.metadata);
   const total = clipSeconds(parts);
@@ -103,12 +105,31 @@ export function clipScriptProblems(clip: ClipLike) {
     total > CLIP_MAX_SECONDS ? `${Math.round(total)}초 (${CLIP_MAX_SECONDS}초 이내)` : "",
   ].filter(Boolean);
 }
-/** The script as the 대표 confirms it; any change after the OK reads as a different signature. */
+/** The script as the PD confirmed it; any change after the 확정 reads as a different signature. */
 export const clipSignature = (clip: ClipLike) =>
   JSON.stringify([clip.title.trim(), String(clip.metadata?.hook ?? "").trim(), String(clip.metadata?.desc ?? "").trim(), clipParts(clip.metadata)]);
-/** Confirmed and unchanged since: the clip may become a vertical video and go up. */
-export const clipConfirmed = (confirmed: { clips: Record<string, string> } | undefined, gateOk: boolean, clip: ClipLike & { id: string }) =>
-  gateOk && confirmed?.clips[clip.id] === clipSignature(clip);
+/** Confirmed (쇼츠 확정) and unchanged since: the clip may become a vertical video and go up. */
+export const clipConfirmed = (confirmed: { clips: Record<string, string> } | undefined, clip: ClipLike & { id: string }) =>
+  confirmed?.clips[clip.id] === clipSignature(clip);
+export const SHORTS_LOG_MAX = 50;
+/** The project after a 쇼츠 확정 (the picked clips, each confirmed as it is now) or a comment; throws GateError when it cannot be confirmed. */
+export function shortsAction(yp: YpMeta, input: { action: "confirm"; note?: string; clips: (ClipLike & { id: string })[] } | { action: "comment"; text: string }, who: { id: string; name: string }, now: string): YpMeta {
+  let next = yp;
+  let count: number | undefined;
+  if (input.action === "confirm") {
+    const { clips } = input;
+    if (!clips.length) throw new GateError("SHORTS_EMPTY", "쇼츠로 만들 대본을 하나 이상 채택해 주세요.");
+    const unfinished = clips.map(clip => ({ clip, problems: clipScriptProblems(clip) })).filter(row => row.problems.length);
+    if (unfinished.length) throw new GateError("SHORTS_SCRIPT_INCOMPLETE", `쇼츠 대본을 채워 주세요 — ${unfinished.slice(0, 3).map(row => `${row.clip.title || "제목 없음"}: ${row.problems.join(", ")}`).join(" / ")}`, 422);
+    if (clips.every(clip => clipConfirmed(yp.shortsConfirmed, clip))) throw new GateError("SHORTS_NOTHING_NEW", "새로 확정할 쇼츠가 없어요.");
+    // The gate keeps who confirmed and when (the 대표 메뉴 list reads it); it is never requested or waited on.
+    next = { ...yp, shortsConfirmed: { at: now, by: who.id, clips: Object.fromEntries(clips.map(clip => [clip.id, clipSignature(clip)])) },
+      gates: { ...yp.gates, shorts: { state: "ok", round: yp.gates.shorts.round + 1, requestedAt: now, requestedBy: who.id, decidedAt: now, decidedBy: who.id } } };
+    count = clips.length;
+  }
+  const entry = { at: now, by: who.id, byName: who.name, kind: input.action, text: (input.action === "confirm" ? input.note ?? "" : input.text).trim(), ...(count ? { count } : {}) };
+  return { ...next, shortsLog: [...(next.shortsLog ?? []), entry].slice(-SHORTS_LOG_MAX) };
+}
 /** All parts → cuts in source time (the render plays them in this order), within the renderer's 20 cuts. */
 export const partsCuts = (cues: { start: number; end: number; text: string }[], parts: YpClipPart[], fallback: string) =>
   parts.flatMap(part => clipCuts(cues, part.start, part.end, fallback, Math.max(1, Math.floor(20 / parts.length))));

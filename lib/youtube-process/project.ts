@@ -9,9 +9,12 @@ export interface YpRef { url: string; videoId?: string; title?: string }
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[] }
 export interface YpMeta {
   v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
-  /** 쇼츠 컨펌 OK (2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new confirm. */
-  shortsConfirmed?: { at: string; clips: Record<string, string> };
+  /** 쇼츠 확정 by the PD (owner decision 2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new 확정. */
+  shortsConfirmed?: { at: string; by: string; clips: Record<string, string> };
+  /** 쇼츠 확정 · 코멘트 기록, newest last: the 대표 reads it in 대표 메뉴 › 컨펌 and comments when something should change. */
+  shortsLog?: YpShortsLogEntry[];
 }
+export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검수", "업로드", "쇼츠 · 칼럼"] as const;

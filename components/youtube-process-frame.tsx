@@ -112,7 +112,7 @@ export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate
     <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} · 대표 대기</b><span className="yp-hint">{md(info.requestedAt)} 올라감 · 대기 {daysSince(info.requestedAt)}일 · 6시간마다 다시 알림 (22~08시 제외)</span></div>
     {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
     {page.canConfirm && page.client ? <ConfirmActions project={project} gate={gate} client={page.client} onDone={() => void page.reload()} />
-      : <p className="yp-hint">{gate === "draft" ? "바꾸고 싶은 건 대표가 [수정 요청]에 메모로 남겨요. OK가 나면 제목 · 썸네일 A · B · (C)가 확정돼요." : gate === "review" ? "대표 OK가 나야 업로드로 넘어가요. 수정 요청이면 최종 검수로 돌아와요." : gate === "shorts" ? "대표 OK가 난 대본만 세로 영상으로 만들고 유튜브에 올려요." : "OK가 나면 다음 단계가 열려요."} 기다리는 동안 고치려면 위 [요청 취소]를 누르세요.</p>}
+      : <p className="yp-hint">{gate === "draft" ? "바꾸고 싶은 건 대표가 [수정 요청]에 메모로 남겨요. OK가 나면 제목 · 썸네일 A · B · (C)가 확정돼요." : gate === "review" ? "대표 OK가 나야 업로드로 넘어가요. 수정 요청이면 최종 검수로 돌아와요." : "OK가 나면 다음 단계가 열려요."} 기다리는 동안 고치려면 위 [요청 취소]를 누르세요.</p>}
   </div>;
   if (info.state === "changes") return <div className="yp-note yp-warn" role="status"><AlertTriangle size={16} className="yp-i" aria-hidden="true" /><div><b>대표 수정 요청 · {md(info.decidedAt)}</b><br />메모: “{info.memo}”<br />고칠 칸: {(info.fields ?? []).map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}. 고친 뒤 위 [{name} 다시 요청]을 누르세요. 고칠 게 없다고 판단하면 이유와 함께 그대로 다시 요청할 수 있어요.</div></div>;
   if (info.state === "hold") return <div className="yp-note yp-bad" role="status"><PauseCircle size={16} className="yp-i" aria-hidden="true" /><div><b>보류됨 · {md(info.decidedAt)} · 대표</b><br />사유: “{info.reason}”<br />손본 뒤 다시 요청할 수 있어요.</div></div>;

@@ -170,15 +170,15 @@ export async function renderYoutubeShort(actor: RequestActor, id: string, input:
   return enqueueShortformRenderFor(project.ownerId, row, input.expectedVersion, input.voiceApproved);
 }
 
-/** A clip of this project whose script the 대표 confirmed and nobody changed since (쇼츠 컨펌, owner request 2026-10-25). */
+/** A clip of this project whose script the PD confirmed and nobody changed since (쇼츠 확정, owner decision 2026-10-25). */
 export async function confirmedClip(actor: RequestActor, project: YpProject, clipId: string) {
   const { data: clip, error } = await actor.supabase.from("os_records").select("id,version,title,description,metadata").eq("id", clipId).eq("parent_id", project.id)
     .eq("record_type", "content_short").is("archived_at", null).maybeSingle();
   if (error) throw readFailed();
   if (!clip) throw new ApiError(404, "CLIP_NOT_FOUND", "쇼츠 구간을 찾지 못했어요.");
   const row = clip as { id: string; version: number; title: string; metadata: Record<string, unknown> };
-  if (!clipConfirmed(project.yp.shortsConfirmed, project.yp.gates.shorts.state === "ok", row))
-    throw new ApiError(409, "SHORTS_CONFIRM_REQUIRED", "쇼츠 컨펌 OK를 받은 대본만 만들고 올릴 수 있어요. 바뀐 쇼츠는 다시 컨펌을 요청해 주세요.");
+  if (!clipConfirmed(project.yp.shortsConfirmed, row))
+    throw new ApiError(409, "SHORTS_CONFIRM_REQUIRED", "확정한 쇼츠 대본만 만들고 올릴 수 있어요. 바뀐 대본은 [쇼츠 확정]을 다시 눌러 주세요.");
   return row;
 }
 
