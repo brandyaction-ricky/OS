@@ -8,13 +8,16 @@ import ts from "typescript";
 // loader can't resolve directly (same constraint as the webhook route tests),
 // so we transpile + eval with a small mocked require, mirroring
 // tests/telegram-request-flow.test.mjs's setup() pattern.
-async function loadPrepareMeetingBrief() {
+async function loadPrepareMeetingBrief(revenue) {
   const source = await readFile(new URL("../lib/server/meeting-prep.ts", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const modules = {
     "@/lib/http": { ApiError: class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } } },
     "@/lib/meeting-business": await import("../lib/meeting-business.ts"),
     "@/lib/performance-signals": await import("../lib/performance-signals.ts"),
+    "@/lib/kpi": await import("../lib/kpi.ts"),
+    // No KPI-tab rows in these fixtures, so revenue is never read.
+    "@/lib/server/kpi": { monthRevenue: async () => { if (!revenue) throw new Error("monthRevenue should not be called"); return revenue; } },
   };
   const exports = {};
   runInNewContext(code, { exports, require: (id) => { if (!(id in modules)) throw Error(id); return modules[id]; }, console });
@@ -103,4 +106,18 @@ test("prepareMeetingBrief stays empty when neither os_records nor the knowledge 
   const supabase = fakeSupabase({ meetings: [], documents: [] });
   const result = await prepareMeetingBrief(supabase, { brand: "마이인" });
   assert.equal(result.latestMeeting, null);
+});
+
+test("prepareMeetingBrief shows this month's KPI tab values with Toss revenue against target", async () => {
+  const prepareMeetingBrief = await loadPrepareMeetingBrief({ myin: { net: 486900 }, edu: { net: 0 } });
+  const month = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" }).slice(0, 7);
+  const kpi = (id, title, metric, target, current, unit) => ({ id, title, brand: "마이인", metric_target: target, metric_current: current, metric_unit: unit,
+    metadata: { workspace: "kpi", business: "myin", periodMonth: month, metric } });
+  const supabase = fakeSupabase({ kpis: [kpi("k1", "순매출", "revenue", 15000000, null, "원"), kpi("k2", "정밀 진단 판매", "manual", 225, 12, "건"),
+    { id: "old", title: "예전 KPI", brand: "마이인", metric_target: 1, metric_current: 1, metric_unit: "%", metadata: {} }] });
+  const brief = await prepareMeetingBrief(supabase, { brand: "마이인" });
+  assert.deepEqual(brief.kpis.map(item => [item.title, item.signal]), [
+    ["순매출", "486,900원 / 목표 15,000,000원 (3.2%)"],
+    ["정밀 진단 판매", "12건 / 목표 225건 (5.3%)"],
+  ]);
 });

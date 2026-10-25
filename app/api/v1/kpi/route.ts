@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { KPI_BUSINESSES, formatKpiValue, kpiBusiness, kstMonth, validMonth, type KpiBusinessKey } from "@/lib/kpi";
-import { appendKpiLog, kpiActor, monthRevenue } from "@/lib/server/kpi";
+import { appendKpiLog, kpiActor, kpiLinkedTasks, monthRevenue } from "@/lib/server/kpi";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       db.from("os_documents").select("id,source_ref").eq("source", "kpi_log").in("source_ref", KPI_BUSINESSES.map(b => `kpi:${b.key}:${month}`)).neq("status", "archived"),
     ]);
     if (error) throw new ApiError(503, "KPI_UNAVAILABLE", "KPI를 불러오지 못했습니다.");
-    const rows = (data ?? []) as KpiRow[];
+    const rows = (data ?? []) as KpiRow[], tasks = await kpiLinkedTasks(rows.map(row => row.id));
     return NextResponse.json({ month, businesses: KPI_BUSINESSES.map(business => ({
       key: business.key, label: business.label, revenue: revenue[business.key],
       logDocumentId: (logs ?? []).find(log => log.source_ref === `kpi:${business.key}:${month}`)?.id ?? null,
@@ -33,6 +33,7 @@ export async function GET(request: Request) {
         id: row.id, title: row.title, unit: row.metric_unit, target: row.metric_target, version: row.version, updatedAt: row.updated_at,
         metric: row.metadata.metric === "revenue" ? "revenue" : "manual",
         current: row.metadata.metric === "revenue" ? revenue[business.key].net : row.metric_current,
+        tasks: tasks.get(row.id) ?? [],
       })),
     })) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return apiErrorResponse(error); }
