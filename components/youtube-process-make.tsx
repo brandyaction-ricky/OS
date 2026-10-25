@@ -160,7 +160,13 @@ function FinalThumb({ page, slot, make, can, busy, job, onUpload, onPair, onRedo
   const final = make.thumbs[slot];
   const redo = make.redo?.[slot];
   const edit = make.edits?.[slot];
-  const open = (next?: { title: string; copy: string }, why = "") => { setTitle(next?.title ?? pair.title); setCopy(next?.copy ?? pair.copy); setReason(current => current || pair.reason || why); setEditing(true); };
+  const open = () => { setTitle(pair.title); setCopy(pair.copy); setReason(current => current || pair.reason); setEditing(true); };
+  // A picked title or copy fills its own field only, so one of each makes the pair.
+  const pick = (field: "title" | "copy", text: string, why: string) => {
+    if (!editing) open();
+    (field === "title" ? setTitle : setCopy)(text);
+    setReason(current => current || pair.reason || why);
+  };
   const same = title.trim() === pair.title && copy.trim() === pair.copy;
   return <div className="yp-abc"><div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "C" ? <span className="yp-opt">선택</span> : <span className="yp-need">필수</span>}
     {pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본</span>}{final ? <span className="yp-tag yp-acc">최종 이미지 ✓</span> : null}</div>
@@ -173,18 +179,18 @@ function FinalThumb({ page, slot, make, can, busy, job, onUpload, onPair, onRedo
         <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || same || !title.trim() || !reason.trim()} onClick={() => void onPair(title.trim(), copy.trim(), reason.trim()).then(ok => { if (ok) setEditing(false); })}>저장</button>
         <button type="button" className="yp-btn yp-sm" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기</button>
         <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(false)}>취소</button></div>
-      <p className="yp-hint" style={{ margin: "6px 0 0" }}>다시 뽑기는 내 AI가 패키징 정본대로 레퍼런스에서 제목 공식과 썸네일 문구 공식을 따로 뽑아, 이 칸에 쓸 후보를 보내요. 이유를 적으면 그 점을 고쳐요.</p>
+      <p className="yp-hint" style={{ margin: "6px 0 0" }}>다시 뽑기는 내 AI가 기획실처럼 시장 레퍼런스에서 제목 공식과 썸네일 문구 공식을 따로 뽑아, 제목 8개와 문구 8개를 따로 보내요. 하나씩 골라 짝을 만들어요. 이유를 적으면 그 점을 고쳐요.</p>
     </div> : <>
       <input className="yp-in" value={pair.title} readOnly aria-label={`${slot} 제목`} />
       {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}</>}
     {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={() => onRedo(reason.trim())} /> : null}
-    {redo ? <details className="yp-card" style={{ padding: "6px 8px" }} open={!edit || redo.at > edit.at}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 공식대로 뽑은 후보 {redo.items.length}쌍 · {redo.by}의 Claude</summary>
-      <div style={{ fontSize: 12, margin: "6px 0" }}>{redo.market ? <div className="yp-muted">레퍼런스: 「{redo.market.query}」 시장 영상 {redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
-        <div><b>제목 공식</b> {redo.formula}{redo.titleBasis ? <span className="yp-muted"> · 근거: {redo.titleBasis}</span> : null}</div>
-        <div><b>썸네일 문구 공식</b> {redo.copyFormula}{redo.copyBasis ? <span className="yp-muted"> · 근거: {redo.copyBasis}</span> : null}</div></div>
-      <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{redo.items.map((item, index) => <li key={index} style={{ marginBottom: 6 }}>
-        <div><b>{item.title}</b></div><div>「{item.copy}」 <span className="yp-tag">{item.hook}</span></div><div className="yp-muted" style={{ fontSize: 12 }}>{item.why}</div>
-        {can ? <button type="button" className="yp-lnk" onClick={() => open(item, `다시 뽑은 후보 ${index + 1}번 · ${item.hook}`)}>이걸로 고치기</button> : null}</li>)}</ol></details> : null}
+    {redo ? <details className="yp-card" style={{ padding: "6px 8px" }} open={!edit || redo.at > edit.at}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 공식대로 뽑은 후보 · 제목 {redo.titles.length}개 · 문구 {redo.copies.length}개 · {redo.by}의 Claude</summary>
+      {redo.market ? <div className="yp-muted" style={{ fontSize: 12, margin: "6px 0" }}>레퍼런스: 「{redo.market.query}」 시장 영상 {redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
+      {([["title", "제목", redo.formula, redo.titleBasis, redo.titles], ["copy", "썸네일 문구", redo.copyFormula, redo.copyBasis, redo.copies]] as const).map(([field, name, formula, basis, list]) => <div key={field} style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 12 }}><b>{name} 공식</b> {formula}{basis ? <span className="yp-muted"> · 근거: {basis}</span> : null}</div>
+        <ol style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>{list.map((item, index) => <li key={index} style={{ marginBottom: 4 }}>
+          <b>{field === "copy" ? `「${item.text}」` : item.text}</b> <span className="yp-tag">{item.hook}</span><div className="yp-muted" style={{ fontSize: 12 }}>{item.why}</div>
+          {can ? <button type="button" className="yp-lnk" onClick={() => pick(field, item.text, `다시 뽑은 ${name} ${index + 1}번 · ${item.hook}`)}>{field === "title" ? "이 제목 쓰기" : "이 문구 쓰기"}</button> : null}</li>)}</ol></div>)}</details> : null}
     {can ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : final ? "다시 올리기" : "최종 이미지 올리기"}</button>
       {!editing ? <button type="button" className="yp-lnk" onClick={() => open()}>고치기</button> : null}
       {!editing && pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={() => void onPair("", "", "")}>컨펌본으로 되돌리기</button> : null}

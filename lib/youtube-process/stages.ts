@@ -52,7 +52,9 @@ export interface YpMake {
   redo?: Partial<Record<YpSlot, YpRedo>>;
 }
 export interface YpPairEdit { title: string; copy: string; reason: string; at: string; by: string }
-export interface YpRedo { at: string; by: string; model: string; jobId: string; formula: string; titleBasis?: string; copyFormula: string; copyBasis?: string; market?: { query: string; count: number }; items: { title: string; copy: string; hook: string; why: string }[] }
+export interface YpRedo { at: string; by: string; model: string; jobId: string; formula: string; titleBasis?: string; copyFormula: string; copyBasis?: string; market?: { query: string; count: number };
+  titles: YpRedoPick[]; copies: YpRedoPick[] }
+export interface YpRedoPick { text: string; hook: string; why: string }
 export interface YpUpload {
   utm: { cat: string; dest: string; camp: string; next: string; short: string };
   srt: { path: string; name: string } | null;

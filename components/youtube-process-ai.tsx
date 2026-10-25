@@ -12,7 +12,7 @@ type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" 
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; skill: string; reads: string; result: string }> = {
-  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", skill: "기획실 제목 · 썸네일 카피 뽑기 방식 + 패키징 절차 정본 (OS 문서)", reads: "검색어로 OS가 찾은 시장 영상(조회수 5만+ · 구독자 대비 조회수 순) 제목 20개 · 썸네일 8장 · 구성안 원고 · 지금 A · B · C · 바꾸려는 이유", result: "제목 공식 · 썸네일 문구 공식(따로, 근거 포함) + 후보 6~8쌍 → 최종 썸네일 칸 (PD가 골라 이유와 저장 · 대표가 최종 검수에서 확인)" },
+  retitle: { name: "제목 · 썸네일 문구 다시 뽑기", skill: "기획실 제목 · 썸네일 카피 뽑기 방식 + 패키징 절차 정본 (OS 문서)", reads: "검색어로 OS가 찾은 시장 영상(조회수 5만+ · 구독자 대비 조회수 순) 제목 20개 · 썸네일 8장 · 구성안 원고 · 지금 A · B · C · 바꾸려는 이유", result: "제목 공식 · 썸네일 문구 공식(근거 포함) + 제목 8개 · 문구 8개 따로 → 최종 썸네일 칸 (PD가 하나씩 골라 이유와 저장 · 대표가 최종 검수에서 확인)" },
   niche: { name: "틈새 묶기", skill: "OS가 보낸 묶기 규칙", reads: "터진 영상(채널 평소의 2배 이상) 제목 · 채널 · 배수", result: "같은 제목 공식끼리 묶은 틈새 → 틈새 판 (OS가 채널 수를 세어 확인된 주제 · 지켜보는 것 · 혼자 터뜨린 것으로 나눔)" },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", skill: "숏폼 콘텐츠 스킬 정본 (OS 문서)", reads: "완성한 장면(자막 · 내레이션) · 용도 · 할 행동 · 연결 페이지", result: "쇼츠 제목 한 줄 + 설명(핵심 · 할 행동 · 해시태그) → 내보내기 칸 (사람이 다듬고 올림)" },
   short: { name: "숏폼 장면 쓰기", skill: "숏폼 · 쇼츠 정본 · (광고) 소구점 정본 (OS 문서)", reads: "주제 · 무엇을 만들지(용도 · 길이 · 상품 · 행동 · 근거)", result: "(광고) 구매 이유 후보 + 장면 3~8개(자막 · 내레이션 · 필요한 이미지) → 장면 칸 (사람이 이미지를 넣고 다듬음)" },

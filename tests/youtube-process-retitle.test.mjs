@@ -44,7 +44,7 @@ const state = (stage, make = {}) => ({
 });
 const supabase = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { display_name: "리키" } }) }) }) }) };
 const author = { model: "claude-opus-5-5", jobId: "job", name: "키 이름" };
-const item = (hook, title = "싫은 건 회사가 아니었다") => ({ title, copy: "일이 싫었다", hook, why: "[대상]이 몰랐던 [결과] 슬롯 · 6요소 21점" });
+const item = (hook, text = "싫은 건 회사가 아니었다") => ({ text, hook, why: "[대상]이 몰랐던 [결과] 슬롯 · 6요소 21점" });
 
 test("the go-out pair: confirmed by default, an edit wins, empty fields keep the confirmed one, the old A title still reads", () => {
   const make = stages.emptyStage("make", "anim");
@@ -97,7 +97,7 @@ test("the 다시 뽑기 card carries the search (thumbnails on the top 8 only), 
   const card = await ai.v1RetitleCard({}, state("make"), 30, "B", "너무 길어요", market);
   assert.match(card, /패키징_절차 \(doc_id: 1399076c\)/);
   assert.match(card, /최종 썸네일 B의 제목 · 썸네일 문구/);
-  assert.match(card, /후보 6~8쌍/);
+  assert.match(card, /제목 후보 8개와 썸네일 문구 후보 8개를 따로/);
   assert.match(card, /result\.titleBasis/);
   assert.ok(card.includes(ai.PACKAGING_FORMULA));
   assert.match(card, /"query": "퇴사 고민"/);
@@ -125,18 +125,23 @@ test("the 기획안's first titles follow the same formula and search as 다시 
 });
 
 test("candidates are checked and wait beside the slot without changing the pair", async () => {
-  const result = (items) => ({ formula: "[대상]이 몰랐던 [결과]", titleBasis: "18개 중 12개", copyFormula: "[짧은 핵심어] + 경고", copyBasis: "8장 중 5장", items });
+  const four = [item("질문"), item("반전"), item("정체 폭로"), item("방법 제시")];
+  const result = (titles, copies = four) => ({ formula: "[대상]이 몰랐던 [결과]", titleBasis: "18개 중 12개", titles, copyFormula: "[짧은 핵심어] + 경고", copyBasis: "8장 중 5장", copies });
   await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), result([item("질문"), item("반전"), item("폭로")]), author, "A"), (error) => error.status === 422);
-  await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), { ...result([item("질문"), item("반전"), item("폭로"), item("방법")]), titleBasis: undefined }, author, "A"), (error) => error.status === 422);
-  await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), result([item("질문"), item("질문"), item("반전"), item("반전")]), author, "A"), (error) => error.code === "RETITLE_HOOKS_SAME");
+  await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), { ...result(four), titleBasis: undefined }, author, "A"), (error) => error.status === 422);
+  await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), result(four, [item("질문"), item("질문"), item("반전"), item("반전")]), author, "A"),
+    (error) => error.code === "RETITLE_HOOKS_SAME" && /썸네일 문구/.test(error.message));
+  // A copy longer than a thumbnail holds (40 letters) goes back.
+  await assert.rejects(ai.saveV1Retitle(supabase, "owner", state("make"), result(four, [...four.slice(1), item("질문", "가".repeat(41))]), author, "A"), (error) => error.status === 422);
   const saved = await ai.saveV1Retitle(supabase, "owner", state("make", { edits: { B: { title: "남은 칸", copy: "", reason: "r", at: now, by: "리키" } } }),
-    result([item("질문"), item("반전"), item("정체 폭로"), item("방법 제시")]), author, "A", market);
-  assert.deepEqual(plain(saved), { slot: "A", items: 4 });
+    result([...four, item("손해·후회"), item("숫자·리스트"), item("금기·경고"), item("대비·반전")]), author, "A", market);
+  assert.deepEqual(plain(saved), { slot: "A", titles: 8, copies: 4 });
   assert.equal(written.kind, "make");
   assert.equal(written.data.redo.A.by, "리키");
   assert.equal(written.data.redo.A.copyBasis, "8장 중 5장");
   assert.deepEqual(plain(written.data.redo.A.market), { query: "퇴사 고민", count: 24 });
-  assert.equal(written.data.redo.A.items.length, 4);
+  assert.equal(written.data.redo.A.titles.length, 8);
+  assert.equal(written.data.redo.A.copies[0].text, "싫은 건 회사가 아니었다");
   assert.equal(written.data.edits.B.title, "남은 칸");
   assert.equal(written.data.edits.A, undefined);
 });

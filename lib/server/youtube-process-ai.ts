@@ -380,7 +380,9 @@ export async function saveV1Column(supabase: RequestActor["supabase"], ownerId: 
 // ── 최종 썸네일 [공식대로 다시 뽑기] (owner request 2026-10-25): the earlier 기획실 제목 뽑기 · 썸네일 카피 뽑기, on the 패키징 정본 ──
 export const retitleResultSchema = z.object({
   formula: z.string().trim().min(1).max(400), titleBasis: z.string().trim().min(1).max(400), copyFormula: z.string().trim().min(1).max(400), copyBasis: z.string().trim().min(1).max(400),
-  items: z.array(z.object({ title: z.string().trim().min(1).max(100), copy: z.string().trim().min(1).max(40), hook: z.string().trim().min(1).max(40), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
+  // Titles and copies come apart, eight each, as in the 기획실 (owner request 2026-10-25); the PD pairs one of each.
+  titles: z.array(z.object({ text: z.string().trim().min(1).max(100), hook: z.string().trim().min(1).max(40), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
+  copies: z.array(z.object({ text: z.string().trim().min(1).max(40), hook: z.string().trim().min(1).max(40), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
 }).strict();
 export function assertV1RetitleInputs(state: Pipeline, slot: YpSlot) {
   const { project, plan } = v1Stages(state);
@@ -401,7 +403,7 @@ export async function v1RetitleCard(supabase: RequestActor["supabase"], state: P
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 최종 썸네일 ${slot}의 제목 · 썸네일 문구 다시 뽑기
-담당 PD가 최종 썸네일 ${slot}의 제목과 썸네일 문구(큰 글자)를 바꾸려고 합니다. 아래 공식대로 ${slot} 자리에 쓸 후보 6~8쌍(제목 + 썸네일 문구)을 냅니다. PD가 하나를 고르고, 대표가 최종 검수에서 확인합니다.
+담당 PD가 최종 썸네일 ${slot}의 제목과 썸네일 문구(큰 글자)를 바꾸려고 합니다. 아래 공식대로 ${slot} 자리에 쓸 제목 후보 8개와 썸네일 문구 후보 8개를 따로 냅니다(기획실처럼). PD가 제목 하나와 문구 하나를 골라 짝을 만들고, 대표가 최종 검수에서 확인합니다.
 제목 공식은 result.formula · 근거는 result.titleBasis, 썸네일 문구 공식은 result.copyFormula · 근거는 result.copyBasis에 씁니다. 지금 다른 칸(now)과 클릭 이유가 겹치지 않게 합니다.
 
 ## 제목 · 썸네일 공식 (기획안 처음 뽑을 때와 같은 기준)
@@ -417,7 +419,7 @@ ${JSON.stringify(inputs, null, 2)}
 
 ## 제출
 process_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result를 보냅니다.
-result = { "formula": "제목 공식 한 문장", "titleBasis": "몇 개 제목 중 몇 개에서 무엇이 겹쳤는지", "copyFormula": "썸네일 문구 공식 한 문장", "copyBasis": "몇 장 중 몇 장에서 무엇이 겹쳤는지", "items": [{ "title": "제목", "copy": "썸네일 문구", "hook": "훅 유형", "why": "왜 이 쌍인지 한 줄" }] } (6~8쌍)
+result = { "formula": "제목 공식 한 문장", "titleBasis": "몇 개 제목 중 몇 개에서 무엇이 겹쳤는지", "copyFormula": "썸네일 문구 공식 한 문장", "copyBasis": "몇 장 중 몇 장에서 무엇이 겹쳤는지", "titles": [{ "text": "제목", "hook": "훅 유형", "why": "왜 이 제목인지 한 줄" }], "copies": [{ "text": "썸네일 문구", "hook": "훅 유형", "why": "왜 이 문구인지 한 줄" }] } (제목 8개 · 문구 8개)
 - 형식이 틀리면 OS가 고칠 점을 돌려줍니다. 고쳐서 다시 complete 합니다.
 - ${leaseMinutes}분 안에 끝내지 못하면 list부터 다시 확인해 claim 합니다. 처리할 수 없으면 action=fail, reason="멈춘 단계 · 이유"로 끝냅니다.`;
 }
@@ -426,11 +428,13 @@ result = { "formula": "제목 공식 한 문장", "titleBasis": "몇 개 제목 
 export async function saveV1Retitle(supabase: RequestActor["supabase"], ownerId: string, state: Pipeline, value: unknown, author: { model: string; jobId: string; name: string }, slot: YpSlot, market?: PackagingMarket) {
   const parsed = retitleResultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "RETITLE_RESULT_INVALID", `제목 · 문구 후보 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map(issue => `${issue.path.join(".") || "result"} ${issue.message}`).join(" / ")}`);
-  const hooks = new Set(parsed.data.items.map(item => item.hook)).size;
-  if (hooks < 3) throw new ApiError(422, "RETITLE_HOOKS_SAME", `후보 훅이 ${hooks}가지뿐이에요. 세 가지 이상 섞어서 다시 내 주세요.`);
+  for (const [name, list] of [["제목", parsed.data.titles], ["썸네일 문구", parsed.data.copies]] as const) {
+    const hooks = new Set(list.map(item => item.hook)).size;
+    if (hooks < 3) throw new ApiError(422, "RETITLE_HOOKS_SAME", `${name} 후보 훅이 ${hooks}가지뿐이에요. 세 가지 이상 섞어서 다시 내 주세요.`);
+  }
   const stages = v1Stages(state);
   const redo = { ...stages.make.data.redo, [slot]: { by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId, ...parsed.data,
     ...(market ? { market: { query: market.query, count: market.refs.length } } : {}) } };
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "make", stages.make, { ...stages.make.data, redo });
-  return { slot, items: parsed.data.items.length };
+  return { slot, titles: parsed.data.titles.length, copies: parsed.data.copies.length };
 }
