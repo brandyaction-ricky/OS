@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { diagramCatalogCardSection, diagramCatalogSchema, diagramCatalogTypes } from "../lib/diagram-catalog.ts";
+import { diagramCatalogCardSection, diagramCatalogSchema, diagramCatalogTypes, parseSavedDiagramCatalog } from "../lib/diagram-catalog.ts";
 import { checkMyinStoryboard } from "../lib/myin-storyboard.ts";
 
 // One item per kind, shaped like tools/myin-diagram-catalog.py prints them on the render PC.
@@ -43,4 +43,12 @@ test("a lib_ type the render PC did not report blocks; another new type is only 
   const other = checkMyinStoryboard(story({ type: "spiral", at: "처음엔 누구나" }), words, diagramCatalogTypes(catalog));
   assert.deepEqual(other.issues, []);
   assert.equal(other.notes.length, 1);
+});
+
+test("the saved catalog file (report plus its time) reads back; an empty or broken one is ignored", () => {
+  const saved = parseSavedDiagramCatalog(JSON.stringify({ ...catalog, at: "2026-10-25T04:00:00.000Z" }));
+  assert.deepEqual(diagramCatalogTypes(saved), diagramCatalogTypes(catalog));
+  assert.equal(saved.at, "2026-10-25T04:00:00.000Z");
+  assert.equal(parseSavedDiagramCatalog(JSON.stringify({ engine: "python", package: "", items: [], at: "x" })), null);
+  assert.equal(parseSavedDiagramCatalog(JSON.stringify({ engine: "python", package: "", items: [{ type: "iceberg" }] })), null);
 });

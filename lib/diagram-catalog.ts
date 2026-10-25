@@ -19,6 +19,12 @@ export const diagramCatalogSchema = z.object({
 }).strict();
 export type DiagramCatalog = z.infer<typeof diagramCatalogSchema> & { at?: string };
 
+/** The saved file also carries the report time (`at`), which the strict report schema refuses — strip it before checking. */
+export function parseSavedDiagramCatalog(text: string): DiagramCatalog | null {
+  const { at, ...saved } = JSON.parse(text) as { at?: unknown };
+  const parsed = diagramCatalogSchema.safeParse(saved);
+  return parsed.success && parsed.data.items.length ? { ...parsed.data, ...(typeof at === "string" ? { at } : {}) } : null;
+}
 export const diagramCatalogTypes = (catalog: DiagramCatalog | null) => catalog?.items.map((item) => item.type) ?? [];
 
 const KIND: Record<DiagramCatalog["items"][number]["kind"], string> = {
