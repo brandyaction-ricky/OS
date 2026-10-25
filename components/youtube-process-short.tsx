@@ -1,4 +1,5 @@
 "use client";
+import { shortformDiagramSchema } from "@/lib/shortform-production";
 import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
@@ -101,6 +102,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
 
   const save = async (patch?: YpShortPatch) => {
     if (!client || !view || !brief || saving.current) return null;
+    if ((patch?.scenes ?? scenes).some(scene => scene.diagram && !shortformDiagramSchema.safeParse(scene.diagram).success)) return null;
     saving.current = true;
     const rev = editRev.current;
     try {
@@ -148,6 +150,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
 
   const ad = brief.purpose === "ad";
   const missing = shortMissing(brief, scenes);
+  if (scenes.some(scene => scene.diagram && !shortformDiagramSchema.safeParse(scene.diagram).success)) missing.push("도식 글자 칸을 모두 채워 주세요");
   const hasVoice = scenes.some(scene => scene.voice.trim());
   const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
   const finals = page.bundle?.finals ?? [];

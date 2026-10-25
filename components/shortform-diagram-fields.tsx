@@ -23,5 +23,5 @@ export function ShortformDiagramFields({value,onChange,duration,disabled=false}:
   </div>));
   return <fieldset disabled={disabled} style={{border:0,padding:0,margin:0}}><label>화면 소재<select className="yp-in" aria-label="화면 소재" value={value?.type??"image"} onChange={e=>select(e.target.value)}>
     <option value="image">이미지</option><option value="lib_timeline">세로 타임라인</option><option value="lib_two_cards">위아래 비교</option><option value="lib_iceberg">빙산</option>
-  </select></label>{fields}{value?<p className="yp-gq">등장 시각은 이 장면의 시작부터 셉니다. 내레이션에 맞춰 확인해 주세요. 도식은 세로 9:16으로 제작합니다.</p>:null}</fieldset>;
+  </select></label>{fields}{value?<p className="yp-gq">글자 칸을 모두 채우면 저장됩니다. 등장 시각은 이 장면의 시작부터 셉니다. 내레이션에 맞춰 확인해 주세요. 도식은 세로 9:16으로 제작합니다.</p>:null}</fieldset>;
 }
