@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
+import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { MYIN_METAPHOR_TYPES } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -139,6 +139,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
   const open = decision === "confirmed" ? ["storyboard_review"] : ["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"];
   if (!open.includes(record.stage ?? "") || !run.storyboard) throw new ApiError(409, "MYIN_NOT_IN_REVIEW", "확인을 기다리는 기획표가 없습니다.");
   if (decision === "revise" && !note.trim()) throw new ApiError(400, "MYIN_REVIEW_NOTE_REQUIRED", "무엇을 고칠지 한 줄 적어 주세요.");
+  if (decision === "confirmed") await assertCurrent(service, run);
   const next: MyinRun = { ...run, review: { decision, by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
   if (decision === "revise") { delete next.prepared; delete next.clips; delete next.clipsReview; return presentMyinRun(await save(service, record, "backlog", "words_ready", next)); }
   // Owner decision 2026-10-19: confirming the storyboard is the approval of the photos it uses; preparation starts at once.
@@ -150,7 +151,8 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
 export async function latestMyinRun(actor: RequestActor, sourceId: string) {
   const { data } = await actor.supabase.from("os_records").select("*").eq("parent_id", sourceId).eq("record_type", "ai_job")
     .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).order("created_at", { ascending: false }).limit(1);
-  return data?.[0] ? presentMyinRun(data[0] as OsRecord) : null;
+  const record = data?.[0] as OsRecord | undefined;
+  return record ? { ...presentMyinRun(record), scriptChanged: await scriptChanged(actor.supabase, parse(record)) } : null;
 }
 
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
@@ -184,12 +186,17 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
 }
 
 /** Drop a run whose script changed after it started; the owner starts a new one. */
-async function assertCurrent(service: Service, run: MyinRun) {
-  const input = await currentInput(service, run.sourceId);
-  if (input.inputKey !== run.inputKey || sha(input.markdown) !== run.scriptMarkdownHash ||
-    input.spoken.length !== run.paragraphs.length || input.spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
+async function assertCurrent(supabase: Service | RequestActor["supabase"], run: MyinRun) {
+  const input = await currentInput(supabase, run.sourceId);
+  if (!myinRunMatchesScript(run, { inputKey: input.inputKey, markdownHash: sha(input.markdown), spokenHashes: input.spoken.map(sha) }))
     throw new ApiError(409, "MYIN_RUN_STALE", "원고가 바뀌었습니다. v13 음성을 다시 시작해 주세요.");
   return input;
+}
+
+/** The ③ panel offers a new run once the 원고 was edited under this one; outside 제작 (no input to compare) it does not. */
+async function scriptChanged(supabase: RequestActor["supabase"], run: MyinRun) {
+  try { await assertCurrent(supabase, run); return false; }
+  catch (error) { return error instanceof ApiError && error.code === "MYIN_RUN_STALE"; }
 }
 
 async function claim(service: Service, stage: string, leaseMs: number) {
@@ -382,6 +389,7 @@ export async function startMyinPrep(actor: RequestActor, runId: string) {
   const restart = record.status === "blocked" && ["cta_pending", "prep_pending", "clips_pending"].includes(record.stage ?? "");
   if ((record.stage !== "prep_ready" && !restart) || !run.storyboard || run.review?.decision !== "confirmed")
     throw new ApiError(409, "MYIN_PREP_NOT_OPEN", "기획표 확인이 끝난 뒤에 다시 할 수 있습니다.");
+  await assertCurrent(createServiceSupabase(), run);
   return presentMyinRun(await beginPrep(createServiceSupabase(), record, run, actor.id));
 }
 
@@ -521,6 +529,7 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
 export async function confirmMyinClips(actor: RequestActor, runId: string, note: string) {
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
+  await assertCurrent(service, run);
   if (record.stage === "final_pending" && record.status === "blocked") {
     const next: MyinRun = { ...run, attempts: 0 }; delete next.lastError; delete next.lease;
     return presentMyinRun(await save(service, record, "backlog", "final_pending", next));

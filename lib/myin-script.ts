@@ -32,3 +32,10 @@ export function myinScriptMarkdown(manuscript: string | null, narration: string)
   const source = manuscript?.trim() ? manuscript : narration.split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, " ").trim()).filter(Boolean).join("\n\n");
   return source.replace(/\r/g, "").split("\n").filter((line) => !line.trim().startsWith("<!--")).join("\n").trim() + "\n";
 }
+
+/** A v13 run belongs to the current 원고 only while its input key, script and spoken paragraphs (hashes) are all unchanged. */
+export function myinRunMatchesScript(run: { inputKey: string; scriptMarkdownHash: string; paragraphs: { textHash: string }[] },
+  now: { inputKey: string; markdownHash: string; spokenHashes: string[] }) {
+  return run.inputKey === now.inputKey && run.scriptMarkdownHash === now.markdownHash && run.paragraphs.length === now.spokenHashes.length
+    && run.paragraphs.every((p, i) => p.textHash === now.spokenHashes[i]);
+}
