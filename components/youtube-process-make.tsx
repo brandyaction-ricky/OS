@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Upload } from "lucide-react";
+import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, Upload } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { stepHref } from "@/lib/youtube-process/project";
-import { MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
+import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
+import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { ShortMake } from "./youtube-process-short";
@@ -30,6 +31,9 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const finalInput = useRef<HTMLInputElement>(null);
   const reload = page.reload;
   const onFinal = useCallback(() => void reload(), [reload]);
+  // 최종 썸네일 [공식대로 다시 뽑기]: one slot at a time goes to the PD's own AI.
+  const redoJob = useStaffJob(page, "retitle", onFinal);
+  const [redoAsk, setRedoAsk] = useState<{ slot: YpSlot; reason: string } | null>(null);
   const bundle = page.bundle;
   const project = bundle?.project;
   const make = bundle?.stages.make;
@@ -132,33 +136,56 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <p className="yp-hint">유튜브에는 업로드 단계에서 마지막 최종본 하나만 올라가요.</p>
       </YpSection>
       <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
-        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`}
-          onUpload={file => void uploadThumb(slot, file)} onTitle={(title, reasonText) => void save({ aTitle: title, aReason: reasonText }, "title")} />)}</div>
-        <p className="yp-hint">기획안 컨펌본(제목 · 썸네일 A · B · C)이 그대로 이어져요. 썸네일 이미지는 jpg · png 파일로 올려요(유튜브가 받는 형식).</p>
+        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`} job={redoJob}
+          onUpload={file => void uploadThumb(slot, file)} onPair={(title, copy, reasonText) => save({ pair: { slot, title, copy, reason: reasonText } }, "pair")}
+          onRedo={reasonText => setRedoAsk({ slot, reason: reasonText })} />)}</div>
+        <p className="yp-hint">기획안 컨펌본(제목 · 썸네일 A · B · C)이 그대로 이어져요. 마음에 안 들면 [고치기]에서 직접 고치거나, [공식대로 다시 뽑기]로 패키징 정본 공식대로 후보를 받아 골라요. 바꾼 칸은 최종 검수에서 대표가 확인해요. 썸네일 이미지는 jpg · png 파일로 올려요(유튜브가 받는 형식).</p>
+        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} />
       </YpSection></>}
     </> : null}
   </YpFrame>;
 }
 
-function FinalThumb({ page, slot, make, can, busy, onUpload, onTitle }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; busy: boolean; onUpload: (file: File) => void; onTitle: (title: string, reason: string) => void }) {
+function FinalThumb({ page, slot, make, can, busy, job, onUpload, onPair, onRedo }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
+  onUpload: (file: File) => void; onPair: (title: string, copy: string, reason: string) => Promise<boolean>; onRedo: (reason: string) => void }) {
   const input = useRef<HTMLInputElement>(null);
-  const confirmed = page.bundle!.stages.plan.data.confirmed?.[slot];
+  const plan = page.bundle!.stages.plan.data;
+  const confirmed = plan.confirmed?.[slot];
+  const pair = finalPair(plan, make, slot);
   const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(make.aTitle);
-  const [reason, setReason] = useState(make.aReason);
-  if (!confirmed) return <div className="yp-abc yp-empty"><div className="yp-abc-h"><b>{slot}</b><span className="yp-opt">선택</span></div><div className="yp-th-drop"><span>기획안 컨펌본에 {slot}가 없어요</span></div></div>;
+  const [title, setTitle] = useState("");
+  const [copy, setCopy] = useState("");
+  const [reason, setReason] = useState("");
+  if (!confirmed || !pair) return <div className="yp-abc yp-empty"><div className="yp-abc-h"><b>{slot}</b><span className="yp-opt">선택</span></div><div className="yp-th-drop"><span>기획안 컨펌본에 {slot}가 없어요</span></div></div>;
   const final = make.thumbs[slot];
-  const changed = slot === "A" && Boolean(make.aTitle);
+  const redo = make.redo?.[slot];
+  const edit = make.edits?.[slot];
+  const open = (next?: { title: string; copy: string }, why = "") => { setTitle(next?.title ?? pair.title); setCopy(next?.copy ?? pair.copy); setReason(current => current || pair.reason || why); setEditing(true); };
+  const same = title.trim() === pair.title && copy.trim() === pair.copy;
   return <div className="yp-abc"><div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "C" ? <span className="yp-opt">선택</span> : <span className="yp-need">필수</span>}
-    <span className="yp-tag yp-ok">컨펌본</span>{changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}{final ? <span className="yp-tag yp-acc">최종 이미지 ✓</span> : null}</div>
-    <ThumbView page={page} thumb={confirmed.thumb} path={final?.path} alt={`${slot} 썸네일`} />
-    <input className="yp-in" value={changed ? make.aTitle : confirmed.title} readOnly aria-label={`${slot} 제목`} />
-    {slot === "A" && editing ? <div className="yp-card" style={{ padding: 8 }}>
-      <input className="yp-in" value={title} maxLength={100} onChange={event => setTitle(event.target.value)} placeholder="바꿀 제목" aria-label="바꿀 제목" />
-      <input className="yp-in yp-rev" style={{ marginTop: 6 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾼 이유 한 줄 (필수)" aria-label="바꾼 이유" />
-      <div className="yp-row-btns" style={{ marginTop: 6 }}><button type="button" className="yp-btn yp-sm yp-pri" disabled={!title.trim() || !reason.trim()} onClick={() => { onTitle(title.trim(), reason.trim()); setEditing(false); }}>저장</button><button type="button" className="yp-btn yp-sm" onClick={() => setEditing(false)}>취소</button></div></div> : null}
+    {pair.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : <span className="yp-tag yp-ok">컨펌본</span>}{final ? <span className="yp-tag yp-acc">최종 이미지 ✓</span> : null}</div>
+    <ThumbView page={page} thumb={pair.thumb} path={final?.path} alt={`${slot} 썸네일`} />
+    {editing ? <div className="yp-card" style={{ padding: 8 }}>
+      <label className="yp-lbl" style={{ marginTop: 0 }}>제목</label><input className="yp-in" value={title} maxLength={100} onChange={event => setTitle(event.target.value)} aria-label={`${slot} 바꿀 제목`} />
+      <label className="yp-lbl">썸네일 문구 (큰 글자)</label><input className="yp-in" value={copy} maxLength={40} onChange={event => setCopy(event.target.value)} aria-label={`${slot} 바꿀 썸네일 문구`} />
+      <input className="yp-in yp-rev" style={{ marginTop: 6 }} value={reason} maxLength={200} onChange={event => setReason(event.target.value)} placeholder="바꾸는 이유 한 줄 (저장할 때 필수)" aria-label="바꾸는 이유" />
+      <div className="yp-row-btns" style={{ marginTop: 6 }}>
+        <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy || same || !title.trim() || !reason.trim()} onClick={() => void onPair(title.trim(), copy.trim(), reason.trim()).then(ok => { if (ok) setEditing(false); })}>저장</button>
+        <button type="button" className="yp-btn yp-sm" onClick={() => onRedo(reason.trim())}><Sparkles size={14} /> 공식대로 다시 뽑기</button>
+        <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(false)}>취소</button></div>
+      <p className="yp-hint" style={{ margin: "6px 0 0" }}>다시 뽑기는 내 AI가 패키징 정본대로 레퍼런스에서 제목 공식과 썸네일 문구 공식을 따로 뽑아, 이 칸에 쓸 후보를 보내요. 이유를 적으면 그 점을 고쳐요.</p>
+    </div> : <>
+      <input className="yp-in" value={pair.title} readOnly aria-label={`${slot} 제목`} />
+      {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}</>}
+    {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={() => onRedo(reason.trim())} /> : null}
+    {redo ? <details className="yp-card" style={{ padding: "6px 8px" }} open={!edit || redo.at > edit.at}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 공식대로 뽑은 후보 {redo.items.length}쌍 · {redo.by}의 Claude</summary>
+      <div style={{ fontSize: 12, margin: "6px 0" }}><div><b>제목 공식</b> {redo.formula}</div><div><b>썸네일 문구 공식</b> {redo.copyFormula}</div></div>
+      <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{redo.items.map((item, index) => <li key={index} style={{ marginBottom: 6 }}>
+        <div><b>{item.title}</b></div><div>「{item.copy}」 <span className="yp-tag">{item.hook}</span></div><div className="yp-muted" style={{ fontSize: 12 }}>{item.why}</div>
+        {can ? <button type="button" className="yp-lnk" onClick={() => open(item, `다시 뽑은 후보 ${index + 1}번 · ${item.hook}`)}>이걸로 고치기</button> : null}</li>)}</ol></details> : null}
     {can ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : final ? "다시 올리기" : "최종 이미지 올리기"}</button>
-      {slot === "A" && !editing ? <button type="button" className="yp-lnk" onClick={() => changed ? onTitle("", "") : setEditing(true)}>{changed ? "컨펌본으로 되돌리기" : "A 제목 바꿔 보기"}</button> : null}
+      {!editing ? <button type="button" className="yp-lnk" onClick={() => open()}>고치기</button> : null}
+      {!editing && pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={() => void onPair("", "", "")}>컨펌본으로 되돌리기</button> : null}
       {final ? <a className="yp-ib" aria-label="내려받기" href="#" onClick={async event => { event.preventDefault(); const url = await page.client?.assetUrl(page.bundle!.project.id, final.path); if (url) window.open(url, "_blank", "noopener"); }}><Download size={14} /></a> : null}</div> : null}
     <input ref={input} type="file" hidden accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
   </div>;

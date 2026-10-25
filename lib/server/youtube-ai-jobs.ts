@@ -16,7 +16,8 @@ import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey }
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
-import { assertV1ColumnInputs, assertV1PlanInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
+import { assertV1ColumnInputs, assertV1PlanInputs, assertV1RetitleInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Retitle, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1RetitleCard, v1RetitleInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
+import { SLOTS } from "@/lib/youtube-process/stages";
 import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCopy, saveShortJob, shortCopyCard, shortCopyInputKey, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
 import { procedureRefs } from "./content-generation";
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
@@ -29,16 +30,16 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20 } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30 } as const;
 const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
-  kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)" } as const;
+  kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)", retitle: "최종 썸네일 제목 · 문구 다시 뽑기" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
-  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
+  templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
 }).passthrough();
@@ -65,6 +66,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("column"), sourceId: z.string().uuid(), count: z.number().int().min(1).max(5).default(1) }).strict(),
   // 유튜브 공정 v1 숏폼 내보내기: the YouTube title and description from the final scenes.
   z.object({ task: z.literal("short-copy"), sourceId: z.string().uuid() }).strict(),
+  // 유튜브 공정 v1 최종 썸네일: one slot's title and thumbnail copy again, from the 패키징 정본 formula; reason = why the PD wants another.
+  z.object({ task: z.literal("retitle"), sourceId: z.string().uuid(), slot: z.enum(SLOTS), reason: z.string().trim().max(300).default("") }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("claim"), jobId: z.string().uuid() }).strict(),
@@ -85,7 +88,7 @@ export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
   return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
     model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
-    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null };
+    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null };
 }
 
 async function saveJob(job: OsRecord, changes: { status?: string; stage?: string; metadata: JobMeta }) {
@@ -145,6 +148,11 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1ColumnInputs(state);
     source = state.source; title = jobTitle(state); inputKey = v1ColumnInputKey(state);
+  } else if (input.task === "retitle") {
+    const state = await readPipeline(actor, input.sourceId);
+    if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
+    assertV1RetitleInputs(state, input.slot);
+    source = state.source; title = jobTitle(state); inputKey = v1RetitleInputKey(state, input.slot, input.reason);
   } else if (input.task === "short") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -173,17 +181,18 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   }
   // targetMinutes also carries how many 쇼츠 대본 or 칼럼 the PD asked for.
   const targetMinutes = input.task === "script" ? input.targetMinutes : input.task === "shorts" || input.task === "column" ? input.count : undefined;
-  const attachments = input.task === "script" ? input.attachments || undefined : undefined;
+  const attachments = input.task === "script" ? input.attachments || undefined : input.task === "retitle" ? input.reason || undefined : undefined;
+  const slot = input.task === "retitle" ? input.slot : undefined;
   const role = input.task === "script" ? input.role : undefined;
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
     const m = meta(job);
-    if (m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments) return publicStaffJob(job);
+    if (m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot) return publicStaffJob(job);
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now,
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
-      : { targetMinutes, role, ...(attachments ? { attachments } : {}) }), ...(pool ? { pool } : {}) };
+      : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
@@ -223,7 +232,7 @@ async function ownJob(agent: RequestActor, jobId: string) {
 }
 
 async function closeStale(job: OsRecord, m: JobMeta): Promise<never> {
-  const where = m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : "③ 영상 제작";
+  const where = m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : m.task === "retitle" ? "제작 › 최종 썸네일" : "③ 영상 제작";
   await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: `기획·제목·원고·영상 기준이 바뀌어 이 요청은 닫았어요. ${where} 화면에서 다시 보내 주세요.` } });
   throw new ApiError(409, "STAFF_AI_JOB_STALE", "입력이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
 }
@@ -269,6 +278,14 @@ async function currentColumnInput(job: OsRecord) {
   const state = await readPipeline({ supabase: service() }, m.sourceId);
   try { assertV1ColumnInputs(state); } catch { await closeStale(job, m); }
   if (v1ColumnInputKey(state) !== m.inputKey) await closeStale(job, m);
+  return state;
+}
+
+/** A v1 다시 뽑기 job: closed when the project left 제작 · 최종 검수. */
+async function currentRetitleInput(job: OsRecord) {
+  const m = meta(job);
+  const state = await readPipeline({ supabase: service() }, m.sourceId);
+  try { assertV1RetitleInputs(state, m.slot ?? "A"); } catch { await closeStale(job, m); }
   return state;
 }
 
@@ -356,6 +373,11 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     const docs = [...new Map(lists.flat().map(doc => [doc.id, doc])).values()].slice(0, 8);
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: shortJobCard(project, brief, docs, minutes) };
   }
+  if (m.task === "retitle") {
+    const state = await currentRetitleInput(job);
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await v1RetitleCard(service(), state, minutes, m.slot ?? "A", m.attachments ?? "") };
+  }
   if (m.task === "plan") {
     const state = await currentPlanInput(job);
     const lease = await take();
@@ -432,6 +454,12 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     const saved = await saveShortJob(service(), project, checked, { by: await displayName(service(), agent.ownerId, agent.name), model: input.model, at: new Date().toISOString() });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당자가 유튜브 공정 › 제작에서 장면마다 이미지를 넣고 MP4를 만듭니다." };
+  }
+  if (m.task === "retitle") {
+    const state = await currentRetitleInput(job);
+    const saved = await keepIssues(job, m, () => saveV1Retitle(service(), agent.ownerId, state, input.result, { model: input.model, jobId: job.id, name: agent.name }, m.slot ?? "A"));
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 제작 › 최종 썸네일에서 후보 하나를 고르고 이유와 함께 저장합니다." };
   }
   if (m.task === "plan") {
     const state = await currentPlanInput(job);

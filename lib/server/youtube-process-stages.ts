@@ -87,7 +87,9 @@ export const stagePatchSchemas = {
     script: text(120_000), saveVersion: z.literal(true), restore: z.number().int().positive() }).partial().strict(),
   make: z.object({ editDue: z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/), editDueWhy: text(200), status: z.enum(["prep", "shoot", "edit", "done"]),
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240) }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
-    aTitle: text(100), aReason: text(200) }).partial().strict(),
+    aTitle: text(100), aReason: text(200),
+    // 최종 썸네일 [고치기]: one slot's title and thumbnail copy (both empty = back to the confirmed pair).
+    pair: z.object({ slot: z.enum(SLOTS), title: text(100), copy: text(40), reason: text(200) }).strict() }).partial().strict(),
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200) }).strict(),
     srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]), title: text(100),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
@@ -114,7 +116,7 @@ function assertMakeEditable(project: YpProject, patch: Patch<"make">) {
   const fields = editableFields(project, "review");
   if (fields === "all") return;
   if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검수 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
-  const needs = [patch.addFinal ? "make.final" : "", patch.thumb ? "make.thumbs" : ""].filter(Boolean);
+  const needs = [patch.addFinal ? "make.final" : "", patch.thumb || patch.pair ? "make.thumbs" : ""].filter(Boolean);
   if (needs.some(key => !fields.includes(key))) throw new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.");
 }
 
@@ -150,6 +152,16 @@ function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, no
   }
   if (patch.aTitle !== undefined) make.aTitle = patch.aTitle.trim();
   if (patch.aReason !== undefined) make.aReason = patch.aReason;
+  if (patch.pair) {
+    const { slot, ...pair } = patch.pair;
+    const edits = { ...current.edits };
+    if (pair.title.trim() || pair.copy.trim()) {
+      if (!pair.reason.trim()) throw new ApiError(400, "PAIR_REASON_REQUIRED", "바꾼 이유를 한 줄 써 주세요.");
+      edits[slot] = { title: pair.title.trim(), copy: pair.copy.trim(), reason: pair.reason.trim(), at: now, by: actor.name };
+    } else delete edits[slot];
+    make.edits = edits;
+    if (slot === "A") { make.aTitle = ""; make.aReason = ""; }
+  }
   // 4-6: the final and the final thumbnails A · B finish 제작 by themselves.
   if (make.status !== "done" && (patch.addFinal || patch.thumb) && (current.finals.length || patch.addFinal) && !thumbsMissing(make)) { make.status = "done"; make.statusAt = { ...make.statusAt, done: now }; }
   return make;

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Download, MessageSquare, Pause, Play, ThumbsUp, Upload } from "lucide-react";
 import { stepHref } from "@/lib/youtube-process/project";
-import { SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
+import { finalPair, SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { YtCard } from "./youtube-process-media";
@@ -92,6 +92,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const action = page.bundle ? gateAction(page, "review", 4, control, finals.length ? "" : "최종본을 올려주세요") : null;
   const stamp = view === "video" ? (range ? `▷ ${fmt(range[0])}~${fmt(range[1])}` : `▷ ${fmt(time)}`) : `🖼 ${thumbTarget}`;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
+  const plan = { confirmed };
   const make = page.bundle?.stages.make.data;
   // A 숏폼 is a vertical video with no YouTube thumbnails.
   const short = project?.yp.topic.type === "short";
@@ -134,8 +135,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               <button type="button" className="yp-cb" onClick={exportList}><Download size={14} /> 편집용 목록 내려받기</button></div>
           </> : <div className="yp-tview2" style={{ padding: 12, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))" }}>
             {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={`yp-abc${thumbTarget === slot ? " yp-on" : ""}`} style={{ textAlign: "left" }} onClick={() => setThumbTarget(slot)}>
-              <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "A" && make.aTitle ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
-              <YtCard page={page} thumb={confirmed?.[slot]?.thumb} path={make.thumbs[slot]?.path} title={slot === "A" && make.aTitle ? make.aTitle : confirmed?.[slot]?.title ?? ""} /></button>)}</div>}
+              <div className="yp-abc-h"><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
+              <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></button>)}</div>}
         </div>
         <p className="yp-hint">{view === "video" ? "영상을 클릭하면 멈추고 그 시간에 쓸 수 있어요. 재생 바를 끌면 구간 피드백이 돼요." : "썸네일을 누르면 그 썸네일에 피드백을 남겨요."}</p>
       </div>

@@ -6,7 +6,7 @@ import { Check, Copy, ExternalLink, FileText, RefreshCw, Sparkles, Upload, Youtu
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { stepHref } from "@/lib/youtube-process/project";
-import { descChecks, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
+import { descChecks, finalPair, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
@@ -111,6 +111,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const action = page.bundle ? stepAction(page, 5, done ? { kind: "button", label: "쇼츠 · 칼럼으로", onClick: () => void onward(), reason: project?.yp.stage === "done" ? "끝난 프로젝트예요" : "" }
     : { kind: "button", label: "업로드", reason, busy: progress !== null, onClick: () => void go() }) : null;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
+  const plan = { confirmed };
   const make = page.bundle?.stages.make.data;
   const checks = form ? descChecks(form.desc, { ...form, srt: form.srt ?? (myinSrt ? { path: "myin", name: "final.srt" } : null) }) : [];
   const aiDraftWaiting = Boolean(form?.descBy && form.desc !== form.descBy.draft);
@@ -184,15 +185,15 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
         </YpSection>
         <section className="yp-upgo"><div className="yp-upgo-l"><b>올라갈 영상</b><span>{last ? `v${last.v} · ${last.source === "myin" ? "OS 자동 제작" : last.name} · 최종 검수에서 마지막 버전 (자동)` : "최종본이 없어요"}</span>
           {handouts.deck || handouts.summary ? <span style={{ fontSize: 12 }}>{handouts.deck ? <a className="yp-lnk" href={handouts.deck} target="_blank" rel="noreferrer">덱 PDF</a> : null}{handouts.deck && handouts.summary ? " · " : ""}{handouts.summary ? <a className="yp-lnk" href={handouts.summary} target="_blank" rel="noreferrer">한 장 정리 이미지</a> : null} — 설명란 · 고정 댓글 링크용 (공개 링크는 따로 만들어요)</span> : null}
-          <span className="yp-muted" style={{ fontSize: 12 }}>[업로드]를 누르면 위 내용 그대로 유튜브에 올라가요. 컨펌된 제목 A{make.aTitle ? "(바꾼 제목)" : ""}와 썸네일 A가 들어가요. 화면을 닫으면 멈춰요.</span></div>
+          <span className="yp-muted" style={{ fontSize: 12 }}>[업로드]를 누르면 위 내용 그대로 유튜브에 올라가요. 컨펌된 제목 A{finalPair(plan, make, "A")?.changed ? "(제작에서 바꾼 것)" : ""}와 썸네일 A가 들어가요. 화면을 닫으면 멈춰요.</span></div>
           <div className="yp-upgo-r">{done ? <><button type="button" className="yp-btn yp-lg" disabled><Check size={16} /> 업로드</button><small className="yp-upok">✓ 유튜브 업로드 완료</small></>
             : <><button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(reason) || progress !== null || !editable} onClick={() => void go()}><Upload size={16} /> {progress !== null ? `${step} ${progress ? `${progress}%` : ""}` : "업로드"}</button>
               {reason ? <small className="yp-muted">{reason}</small> : null}</>}</div></section>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
-        {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{slot === "A" && make.aTitle ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
-          <YtCard page={page} thumb={confirmed?.[slot]?.thumb} path={make.thumbs[slot]?.path} title={slot === "A" && make.aTitle ? make.aTitle : confirmed?.[slot]?.title ?? ""} /></div>)}
-        <p className="yp-hint">유튜브의 제목 · 썸네일 A/B 테스트는 API가 없어 스튜디오(컴퓨터)에서 해요. 위 시안을 그대로 넣어요. 제목 A는 최종 검수 전 <Link className="yp-lnk" href={stepHref(3, project.id)}>제작 › 최종 썸네일</Link>에서 바꿀 수 있어요.</p>
+        {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
+          <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></div>)}
+        <p className="yp-hint">유튜브의 제목 · 썸네일 A/B 테스트는 API가 없어 스튜디오(컴퓨터)에서 해요. 위 시안을 그대로 넣어요. 제목 · 썸네일 문구는 최종 검수 전 <Link className="yp-lnk" href={stepHref(3, project.id)}>제작 › 최종 썸네일</Link>에서 바꿀 수 있어요.</p>
       </div></section></aside></div>
       <SendDialog page={page} task="kit" open={send} onClose={() => setSend(false)} job={job} />
     </div> : null}
