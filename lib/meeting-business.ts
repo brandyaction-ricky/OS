@@ -39,6 +39,14 @@ export function resolveMeetingBusiness(token: string): MeetingBusiness | null {
   return BRAND_ALIASES[normalized] ?? null;
 }
 
+/** 사업이 비어 있는 회의는 제목에서 찾는다 (예: "10월 6일 회의 (마이인)"). 긴 별칭부터 본다. */
+export function meetingBusinessOf(brand: string, title = ""): MeetingBusiness | null {
+  if (brand.trim()) return resolveMeetingBusiness(brand);
+  const text = title.replace(/\s+/g, "").toLowerCase();
+  const alias = Object.keys(BRAND_ALIASES).sort((a, b) => b.length - a.length).find(key => text.includes(key));
+  return alias ? BRAND_ALIASES[alias] : null;
+}
+
 /** 사업을 지정하지 않고 /회의준비를 부르면 순회할 KPI 추적 대상 사업 두 곳.
  * 회사(전체)는 회의 문서함 목적지일 뿐 KPI를 추적하는 사업이 아니라 제외한다. */
 export const PRIMARY_MEETING_BUSINESSES: MeetingBusiness[] = [MYIN, BRANDYEDU];
