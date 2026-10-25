@@ -63,3 +63,26 @@ export async function logDailyRevenue(at = new Date()) {
   for (const business of KPI_BUSINESSES)
     await appendKpiLog(business.key, month, ownerId, "자동", `매출 누적 ${formatKpiValue(revenue[business.key].net, "원")} (토스 결제 ${revenue[business.key].count}건)`, at);
 }
+
+// Tasks confirmed from meeting items that name a KPI: the item keeps kpiId, and the review
+// creates the task with metadata.meetingItemId, so the link survives without a schema change.
+export type KpiTask = { id: string; title: string; status: string; dueDate: string | null; assignee: string | null };
+export async function kpiLinkedTasks(kpiIds: string[]) {
+  const linked = new Map<string, KpiTask[]>(kpiIds.map(id => [id, []]));
+  if (!kpiIds.length) return linked;
+  const db = createServiceSupabase();
+  const { data: meetings, error } = await db.from("os_records").select("metadata").eq("record_type", "meeting").eq("metadata->>workspace", "knowledge").is("archived_at", null).order("updated_at", { ascending: false }).limit(500);
+  if (error) throw new ApiError(503, "KPI_TASKS_UNAVAILABLE", "KPI에 연결된 업무를 불러오지 못했습니다.");
+  const itemKpi = new Map<string, string>();
+  for (const meeting of meetings ?? []) for (const item of (meeting.metadata?.items ?? []) as { id?: string; kind?: string; kpiId?: string }[])
+    if (item.kind === "task" && item.id && item.kpiId && linked.has(item.kpiId)) itemKpi.set(item.id, item.kpiId);
+  if (!itemKpi.size) return linked;
+  const { data: tasks, error: taskError } = await db.from("os_records").select("id,title,status,due_date,assignee_id,metadata").eq("record_type", "task")
+    .in("metadata->>meetingItemId", [...itemKpi.keys()]).is("archived_at", null);
+  if (taskError) throw new ApiError(503, "KPI_TASKS_UNAVAILABLE", "KPI에 연결된 업무를 불러오지 못했습니다.");
+  const ids = [...new Set((tasks ?? []).map(task => task.assignee_id).filter(Boolean))];
+  const { data: people } = ids.length ? await db.from("os_profiles").select("id,display_name").in("id", ids) : { data: [] };
+  for (const task of tasks ?? []) linked.get(itemKpi.get(String(task.metadata?.meetingItemId))!)?.push({ id: task.id, title: task.title, status: task.status, dueDate: task.due_date,
+    assignee: (people ?? []).find(person => person.id === task.assignee_id)?.display_name ?? null });
+  return linked;
+}

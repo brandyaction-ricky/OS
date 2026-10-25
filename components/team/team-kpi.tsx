@@ -6,7 +6,8 @@ import { apiRequest } from "@/lib/api-client";
 import { formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
 import "./team-kpi.css";
 
-type Kpi = { id: string; title: string; unit: string; target: number | null; current: number | null; metric: "revenue" | "manual"; version: number; updatedAt: string };
+type KpiTask = { id: string; title: string; status: string; dueDate: string | null; assignee: string | null };
+type Kpi = { id: string; title: string; unit: string; target: number | null; current: number | null; metric: "revenue" | "manual"; version: number; updatedAt: string; tasks: KpiTask[] };
 type Business = { key: "myin" | "edu"; label: string; logDocumentId: string | null; kpis: Kpi[];
   revenue: { net: number; paid: number; canceled: number; count: number; canceledCount: number; syncedAt: string | null } };
 const shiftMonth = (month: string, step: number) => { const [y, m] = month.split("-").map(Number), d = new Date(Date.UTC(y, m - 1 + step, 1)); return d.toISOString().slice(0, 7); };
@@ -53,6 +54,7 @@ function BusinessKpi({ business, month, busy, send }: { business: Business; mont
         <button type="button" className="secondary-button compact" disabled={busy || num(target) === null || Number.isNaN(num(target))} onClick={() => void send(revenueKpi ? "PATCH" : "POST", revenueKpi
           ? { id: revenueKpi.id, expectedVersion: revenueKpi.version, target: num(target) }
           : { business: business.key, month, metric: "revenue", title: "순매출", target: num(target) }).then(ok => { if (ok) setTarget(""); })}>{revenueKpi ? "목표 고치기" : "목표 정하기"}</button></div>
+      {revenueKpi ? <LinkedTasks tasks={revenueKpi.tasks} /> : null}
       {r.syncedAt ? <small className="tm-muted">토스 마지막 반영 {new Date(r.syncedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</small> : null}
     </div>
     <h4>그 밖의 지표</h4>
@@ -73,12 +75,22 @@ function ManualKpi({ kpi, busy, send }: { kpi: Kpi; busy: boolean; send: (method
   return <div className="tm-kpi-row">
     <div className="tm-row"><strong>{kpi.title}</strong><span>{formatKpiValue(kpi.current, kpi.unit)} / {formatKpiValue(kpi.target, kpi.unit)}{progress === null ? "" : ` · ${progress}%`}</span></div>
     <Bar progress={progress} />
+    <LinkedTasks tasks={kpi.tasks} />
     <div className="tm-row"><input aria-label={`${kpi.title} 실적`} inputMode="numeric" placeholder="실적" value={current} onChange={e => setCurrent(e.target.value)} />
       <input aria-label={`${kpi.title} 목표`} inputMode="numeric" placeholder="목표" value={target} onChange={e => setTarget(e.target.value)} />
       <button type="button" className="secondary-button compact" disabled={busy || !changed} onClick={() => void send("PATCH", { id: kpi.id, expectedVersion: kpi.version,
         ...(current.trim() !== "" ? { current: num(current) } : {}), ...(target.trim() !== "" ? { target: num(target) } : {}) }).then(ok => { if (ok) { setCurrent(""); setTarget(""); } })}>저장</button>
       <button type="button" className="secondary-button compact" disabled={busy} onClick={() => { if (window.confirm(`${kpi.title} 지표를 지울까요? KPI 로그에는 남습니다.`)) void send("PATCH", { id: kpi.id, expectedVersion: kpi.version, archive: true }); }}>삭제</button></div>
   </div>;
+}
+
+// Meeting tasks whose review named this KPI.
+function LinkedTasks({ tasks }: { tasks: KpiTask[] }) {
+  if (!tasks.length) return <small className="tm-muted">연결된 업무 없음 · 회의 검수에서 업무에 이 KPI를 고르면 여기 모입니다.</small>;
+  const done = tasks.filter(task => task.status === "done").length;
+  return <details className="tm-kpi-tasks"><summary>연결된 업무 {tasks.length}건 · 완료 {done}</summary><ul>{tasks.map(task => <li key={task.id}>
+    <Link href={`/organization/tasks?task=${encodeURIComponent(task.id)}`}>{task.title}</Link>
+    <span className="tm-muted">{task.status === "done" ? "완료" : task.status === "blocked" ? "막힘" : "진행"}{task.assignee ? ` · ${task.assignee}` : ""}{task.dueDate ? ` · ${task.dueDate}` : ""}</span></li>)}</ul></details>;
 }
 
 function Bar({ progress }: { progress: number | null }) {

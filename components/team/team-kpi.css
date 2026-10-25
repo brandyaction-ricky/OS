@@ -17,3 +17,6 @@
 .tm-kpi-bar i { display: block; height: 100%; background: var(--warning); }
 .tm-kpi-bar i[data-over] { background: var(--mint); }
 @media (max-width: 640px) { .tm-kpi-add { grid-template-columns: 1fr 1fr; } }
+.tm-kpi-tasks summary { cursor: pointer; font-size: 13px; }
+.tm-kpi-tasks ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.tm-kpi-tasks li span { margin-left: 6px; }

@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError } from "@/lib/http";
 import { resolveMeetingBusiness } from "@/lib/meeting-business";
 import { buildPerformanceSignal } from "@/lib/performance-signals";
+import { KPI_BUSINESSES, formatKpiValue, kpiProgress, kstMonth } from "@/lib/kpi";
+import { monthRevenue } from "@/lib/server/kpi";
 
 // Shared by the web meeting workspace (app/api/v1/meeting-prep) and the
 // Telegram /회의준비 command, so both surfaces build the same prep brief.
@@ -80,7 +82,17 @@ export async function prepareMeetingBrief(
 
   const openTodos = (tasks.data ?? []).filter((item) => !["done", "cancelled"].includes(item.status)).slice(0, 30);
   const completed = (tasks.data ?? []).filter(item => item.status === "done" && (!latestDate || item.updated_at >= latestDate)).slice(0, 20);
-  const latestKpis = (kpis.data ?? []).slice(0, 12).map((item) => {
+  // This month's KPIs from the KPI tab when the business has them: actual against target, with
+  // revenue from the Toss ledger. Otherwise the older KPI rows and their signal labels.
+  const month = kstMonth(), kpiBiz = KPI_BUSINESSES.find(item => item.brand === wantedBusiness);
+  const monthly = (kpis.data ?? []).filter(item => kpiBiz && item.metadata?.workspace === "kpi" && item.metadata?.periodMonth === month && item.metadata?.business === kpiBiz.key);
+  const revenue = monthly.some(item => item.metadata?.metric === "revenue") ? (await monthRevenue(month))[kpiBiz!.key].net : 0;
+  const latestKpis = monthly.length ? monthly.map(item => {
+    const current = item.metadata?.metric === "revenue" ? revenue : Number(item.metric_current ?? 0), target = item.metric_target === null ? null : Number(item.metric_target);
+    const progress = kpiProgress(current, target);
+    return { id: item.id, title: item.title, current, previous: 0, unit: item.metric_unit,
+      signal: `${formatKpiValue(current, item.metric_unit)} / 목표 ${formatKpiValue(target, item.metric_unit)}${progress === null ? "" : ` (${progress}%)`}` };
+  }) : (kpis.data ?? []).filter(item => item.metadata?.workspace !== "kpi").slice(0, 12).map((item) => {
     const current = Number(item.metric_current ?? 0); const previous = Number(item.metadata?.previousValue ?? 0);
     const signal = buildPerformanceSignal({ title: item.title, current, previous, target: Number(item.metric_target ?? 0) || null, unit: item.metric_unit });
     return { id: item.id, title: item.title, current, previous, unit: item.metric_unit, signal: signal.label };
