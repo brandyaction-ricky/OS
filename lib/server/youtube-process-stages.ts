@@ -5,11 +5,12 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import type { OsRecord } from "@/lib/record-types";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
+import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
-  type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
+  type YpColumn, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
+import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
 import type { RequestActor } from "./auth";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -35,7 +36,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
     const record = records.find(row => row.record_type === spec.recordType && row.metadata?.[spec.key] === spec.value);
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) };
   };
-  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), records };
+  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), records };
   // 4-5: the first 원고 starts from the 기획안 영상 흐름.
   if (!stages.outline.id && stages.plan.data.opening) stages.outline.data = { ...stages.outline.data, script: scriptFromPlan(stages.plan.data) };
   return stages;
@@ -67,8 +68,8 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { plan, outline, make, upload } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type) };
+  const { plan, outline, make, upload, column } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload, column }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type) };
 }
 
 // ── Saving a step ──
@@ -87,6 +88,9 @@ export const stagePatchSchemas = {
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200) }).strict(),
     srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
+  // One of: the HTML edited by hand, the AI draft taken over, or one place filled (or emptied with neither path nor url).
+  column: z.object({ html: text(150_000), useAiDraft: z.literal(true),
+    fill: z.object({ slot: z.enum(["hero", "1", "2", "3", "video"]), path: text(300).optional(), url: z.string().url().max(1000).optional(), name: text(240).optional() }).strict() }).partial().strict(),
 } as const;
 export const stageSaveSchema = z.object({ expectedVersion: z.number().int().min(0), patch: z.record(z.unknown()) }).strict();
 type Patch<K extends YpStageKind> = z.infer<(typeof stagePatchSchemas)[K]>;
@@ -145,6 +149,31 @@ function nextMake(current: YpMake, patch: Patch<"make">, actor: RequestActor, no
   // 4-6: the final and the final thumbnails A · B finish 제작 by themselves.
   if (make.status !== "done" && (patch.addFinal || patch.thumb) && (current.finals.length || patch.addFinal) && !thumbsMissing(make)) { make.status = "done"; make.statusAt = { ...make.statusAt, done: now }; }
   return make;
+}
+function nextColumn(current: YpColumn, patch: Patch<"column">, projectId: string): YpColumn {
+  const column: YpColumn = { ...current };
+  if (patch.useAiDraft) {
+    if (!current.aiDraft) throw new ApiError(409, "COLUMN_DRAFT_MISSING", "바꿀 AI 초안이 없어요.");
+    column.html = current.aiDraft; column.aiDraft = undefined;
+    if (column.ai) column.ai = { ...column.ai, html: current.aiDraft };
+  }
+  if (patch.html !== undefined) {
+    // A person may save a column the 정본 check still flags (shown as warnings), never one that runs code or loads frames.
+    const html = cleanColumnHtml(patch.html);
+    const { unsafe } = checkColumnHtml(html);
+    if (unsafe.length) throw new ApiError(422, "COLUMN_HTML_UNSAFE", `넣을 수 없는 내용이 있어요: ${unsafe.join(" / ")}`);
+    column.html = html;
+  }
+  if (patch.fill) {
+    const { slot, path, url, name } = patch.fill;
+    if (path && !assetPath(projectId, "column").test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "이미지를 다시 올려 주세요.");
+    if (url && !/^https:\/\//.test(url)) throw new ApiError(400, "COLUMN_URL_INVALID", "https로 시작하는 주소를 넣어 주세요.");
+    if (slot === "video" && (path || (url && !parseYoutubeRef(url)))) throw new ApiError(400, "COLUMN_VIDEO_URL", "영상 자리에는 유튜브 주소를 넣어요.");
+    const fills = { ...current.fills };
+    if (path || url) fills[slot] = { ...(path ? { path, name } : { url }) }; else delete fills[slot];
+    column.fills = fills;
+  }
+  return column;
 }
 function nextUpload(current: YpUpload, patch: Patch<"upload">, projectId: string): YpUpload {
   if (patch.srt && !assetPath(projectId, "srt").test(patch.srt.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "SRT 파일을 다시 올려 주세요.");
@@ -205,6 +234,10 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     const patch = stagePatchSchemas.make.parse(input.patch);
     assertMakeEditable(project, patch);
     data = nextMake(stages.make.data, patch, actor, now, project.id);
+  } else if (kind === "column") {
+    const patch = stagePatchSchemas.column.parse(input.patch);
+    assertColumnOpen(project);
+    data = nextColumn(stages.column.data, patch, project.id);
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
     if (stage !== "upload") throw locked("최종 검수 컨펌이 OK가 나야 업로드가 열려요.");
@@ -216,8 +249,14 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
   return { stage: { ...saved, data }, project: next };
 }
 
+/** The SEO 칼럼 is written from the final 원고: a longform after its 최종 검수 OK (업로드 · 쇼츠 · 칼럼 · 끝). */
+export function assertColumnOpen(project: YpProject) {
+  if (project.yp.topic.type === "short") throw locked("숏폼에는 SEO 칼럼이 없어요.");
+  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
+}
+
 // ── Moving on (S0 '지금 할 일') ──
-export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "done"]), expectedVersion: z.number().int().positive() }).strict();
+export const stageMoveSchema = z.object({ to: z.enum(["make", "review", "shorts", "done"]), expectedVersion: z.number().int().positive() }).strict();
 export async function moveYoutubeStage(actor: RequestActor, id: string, input: z.infer<typeof stageMoveSchema>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
@@ -238,9 +277,10 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
   } else if (project.yp.topic.type === "short") {
-    need(project.yp.stage === "upload", "최종 검수 컨펌 OK 뒤에 마칠 수 있어요.");
+    need(project.yp.stage === "upload" && input.to === "done", "최종 검수 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
-    need(project.yp.stage === "upload" && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 마칠 수 있어요.");
+    // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
+    need((input.to === "shorts" ? project.yp.stage === "upload" : ["upload", "shorts"].includes(project.yp.stage)) && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 넘어갈 수 있어요.");
   }
   return saveProject(actor, project, input.expectedVersion, { yp: { ...project.yp, stage: input.to, contentUpdatedAt: now } });
 }
@@ -276,8 +316,9 @@ const ASSET_KINDS = {
   thumb: { max: 10 * 1024 * 1024, types: { "image/jpeg": "jpg", "image/png": "png" } },
   final: { max: 5 * 1024 * 1024 * 1024, types: { "video/mp4": "mp4", "video/quicktime": "mov", "video/x-m4v": "m4v", "video/webm": "webm" } },
   srt: { max: 5 * 1024 * 1024, types: { "application/x-subrip": "srt" } },
+  column: { max: 10 * 1024 * 1024, types: { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" } },
 } as const;
-export const assetCreateSchema = z.object({ kind: z.enum(["plan_thumb", "thumb", "final", "srt"]), fileName: z.string().trim().min(1).max(240), fileSize: z.number().int().positive(), mimeType: z.string().max(100) }).strict();
+export const assetCreateSchema = z.object({ kind: z.enum(["plan_thumb", "thumb", "final", "srt", "column"]), fileName: z.string().trim().min(1).max(240), fileSize: z.number().int().positive(), mimeType: z.string().max(100) }).strict();
 export async function createYoutubeAssetUpload(actor: RequestActor, id: string, input: z.infer<typeof assetCreateSchema>) {
   const project = await getYoutubeProject(actor, id);
   const spec = ASSET_KINDS[input.kind];
@@ -294,7 +335,7 @@ export async function createYoutubeAssetUpload(actor: RequestActor, id: string, 
 /** A short-lived link to one of this project's files (the project must be readable by the caller). */
 export async function youtubeAssetUrl(actor: RequestActor, id: string, path: string) {
   const project = await getYoutubeProject(actor, id);
-  if (!new RegExp(`^youtube/${project.id}/(plan_thumb|thumb|final|srt)/[0-9a-f-]{36}\\.[a-z0-9]+$`).test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "파일 주소를 확인해 주세요.");
+  if (!new RegExp(`^youtube/${project.id}/(plan_thumb|thumb|final|srt|column)/[0-9a-f-]{36}\\.[a-z0-9]+$`).test(path)) throw new ApiError(400, "ASSET_PATH_INVALID", "파일 주소를 확인해 주세요.");
   const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).createSignedUrl(path, 3600);
   if (error || !data) throw new ApiError(404, "ASSET_NOT_FOUND", "파일을 찾지 못했습니다.");
   return data.signedUrl;

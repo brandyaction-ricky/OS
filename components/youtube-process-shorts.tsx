@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { Check, Download, Film, Plus, Sparkles, Trash2 } from "lucide-react";
 import { apiRequest, archiveRecord, createRecord, listRecords, updateRecord } from "@/lib/api-client";
 import { parseTimedTranscript } from "@/lib/content-input";
@@ -8,6 +9,7 @@ import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import type { YpRenderView } from "./youtube-process-data";
 import { LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { RenderTag } from "./youtube-process-short";
+import { YoutubeColumnPanel } from "./youtube-process-column";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 0);
@@ -15,6 +17,14 @@ const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 
 /** S8 쇼츠 (owner request 2026-10-21: the earlier 숏폼 편집 in this flow): the uploaded final, its subtitles, and the clips to cut. */
 export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
+  // 쇼츠 · 칼럼 (2026-10-25): the same last step holds the SEO 칼럼 written from the same 원고.
+  const [tab, setTab] = useState<"shorts" | "column">(useSearchParams().get("tab") === "column" ? "column" : "shorts");
+  const pick = (next: "shorts" | "column") => {
+    setTab(next);
+    const params = new URLSearchParams(window.location.search);
+    if (next === "column") params.set("tab", "column"); else params.delete("tab");
+    window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
+  };
   const [clips, setClips] = useState<OsRecord[]>([]);
   const [src, setSrc] = useState<string | null>(null);
   const [srt, setSrt] = useState("");
@@ -110,9 +120,14 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     : { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브 업로드가 끝나면 마칠 수 있어요", busy: moving, onClick: () => void finish() }) : null;
   const adopted = clips.filter(clip => clip.metadata?.selected !== false);
 
-  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠" sub="올린 롱폼에서 쇼츠로 자를 구간을 골라요. 내 AI가 자막을 읽고 구간을 제안해요.">
-    {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠" /> : <>
+  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "column" ? "구성안 원고로 검색용 SEO 칼럼을 만들어요. 내 AI가 쓰고, 이미지를 넣어 내보내요." : "올린 롱폼에서 쇼츠로 자를 구간을 골라요. 내 AI가 자막을 읽고 구간을 제안해요."}>
+    {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠 · 칼럼" /> : <>
       <Subject page={page} />
+      <div className="yp-ftabs yp-two" role="tablist" aria-label="쇼츠 · 칼럼" style={{ padding: "0 0 10px" }}>
+        <button type="button" role="tab" aria-selected={tab === "shorts"} className={tab === "shorts" ? "yp-on" : ""} onClick={() => pick("shorts")}>쇼츠 구간 <b>{adopted.length}</b></button>
+        <button type="button" role="tab" aria-selected={tab === "column"} className={tab === "column" ? "yp-on" : ""} onClick={() => pick("column")}>SEO 칼럼{page.bundle.stages.column.data.html ? <b>✓</b> : null}</button>
+      </div>
+      {tab === "column" ? <YoutubeColumnPanel page={page} /> : <>
       {page.demo ? <div className="yp-note yp-gray"><div>데모에서는 쇼츠 구간을 저장하지 않아요.</div></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="원본 영상" gq={last ? `최종본 v${last.v} · ${last.source === "myin" ? "OS 자동 제작" : last.name}` : "최종본이 없어요"}>
@@ -152,6 +167,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
           : <p className="yp-hint">{last ? "자막을 불러오는 중이거나 자막이 없어요." : "최종본이 없어요."}</p>}
       </div></section></aside></div>
       <SendDialog page={page} task="shorts" open={send} onClose={() => setSend(false)} job={job} />
+      </>}
     </> : null}
   </YpFrame>;
 }

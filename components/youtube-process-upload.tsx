@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Copy, ExternalLink, FileText, RefreshCw, Sparkles, Upload, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
@@ -98,21 +99,23 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       await page.reload(); setDirty(false);
     } catch (reason) { page.fail(reason); } finally { setProgress(null); setStep(""); }
   };
-  const finish = async () => {
+  // After the upload the project moves on to 쇼츠 · 칼럼 (it ends there, with or without shorts and a column).
+  const router = useRouter();
+  const onward = async () => {
     if (!page.client || !project) return;
-    try { const next = await page.client.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); }
+    try { const next = await page.client.move(project.id, "shorts", project.version); page.setBundle(current => current ? { ...current, project: next } : current); router.push(stepHref(6, project.id)); }
     catch (reason) { page.fail(reason); }
   };
 
   const reason = !form ? "" : !form.desc.trim() ? "설명란을 채워주세요" : !channels.length && !page.demo ? "유튜브 채널을 연결해 주세요" : "";
-  const action = page.bundle ? stepAction(page, 5, done ? { kind: "button", label: "여기서 끝내기", onClick: () => void finish(), reason: project?.yp.stage === "done" ? "끝난 프로젝트예요" : "" }
+  const action = page.bundle ? stepAction(page, 5, done ? { kind: "button", label: "쇼츠 · 칼럼으로", onClick: () => void onward(), reason: project?.yp.stage === "done" ? "끝난 프로젝트예요" : "" }
     : { kind: "button", label: "업로드", reason, busy: progress !== null, onClick: () => void go() }) : null;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
   const make = page.bundle?.stages.make.data;
   const checks = form ? descChecks(form.desc, { ...form, srt: form.srt ?? (myinSrt ? { path: "myin", name: "final.srt" } : null) }) : [];
   const aiDraftWaiting = Boolean(form?.descBy && form.desc !== form.descBy.draft);
 
-  return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 쇼츠로 이어 가거나 여기서 끝내요." : "설명란을 채우고 [업로드]를 누르면 끝나요."} savedAt={savedAt}
+  return <YpFrame page={page} view={5} action={action} header={header} title="업로드" sub={done ? "유튜브에 올렸어요. 쇼츠 · 칼럼으로 이어 가요. 만들지 않을 거면 거기서 끝내요." : "설명란을 채우고 [업로드]를 누르면 끝나요."} savedAt={savedAt}
     todo={form && !done ? [{ label: "설명란", done: Boolean(form.desc.trim()) }, { label: "유튜브 채널", done: page.demo || channels.length > 0 }] : undefined}
     onSave={editable ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project && make ? !["upload", "done", "shorts"].includes(project.yp.stage) ? <LockedStep page={page} name="업로드" /> : <div onBlur={() => { if (dirty) void save(); }}>

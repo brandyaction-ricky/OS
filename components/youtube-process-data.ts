@@ -26,7 +26,7 @@ export interface YpFeedbackView {
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
 export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
-export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt";
+export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column";
 export interface YpClient {
   list(): Promise<YpProject[]>;
   get(id: string): Promise<YpProject>;
@@ -36,7 +36,7 @@ export interface YpClient {
   topicGate(id: string, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   gate(id: string, gate: YpGate, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
-  move(id: string, to: "make" | "review" | "done", expectedVersion: number): Promise<YpProject>;
+  move(id: string, to: "make" | "review" | "shorts" | "done", expectedVersion: number): Promise<YpProject>;
   uploadAsset(id: string, kind: YpAssetKind, file: File, onProgress?: (percent: number) => void): Promise<{ path: string; name: string; bytes: number }>;
   assetUrl(id: string, path: string): Promise<string>;
   finalUrl(id: string, final: YpFinalView): Promise<string | null>;
@@ -166,7 +166,8 @@ function demoFilledStages(project: YpProject): YpStagesView {
   if (at >= 2) plan.confirmed = confirmPlan(plan, daysAgo(2));
   const outline = emptyStage("outline", kind);
   if (at >= 2) Object.assign(outline, withScriptVersion({ ...outline, spec: { ...outline.spec, runtimeMin: 9 } }, scriptFromPlan(plan), "리키", daysAgo(2), "manual"));
-  return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) } };
+  return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
+    column: { id: null, version: 0, data: emptyStage("column", kind) } };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
@@ -263,6 +264,12 @@ function demoClient(): YpClient {
         if (typeof p.aTitle === "string") make.aTitle = p.aTitle; if (typeof p.aReason === "string") make.aReason = p.aReason;
         if (make.status !== "done" && (final || thumb) && (demoFinals.get(id) ?? []).length && !thumbsMissing(make)) make.status = "done";
         data = make as YpStageData[typeof kind];
+      }
+      if (kind === "column") {
+        const column = { ...(current.data as YpStageData["column"]) }; const p = patch as { html?: string; fill?: { slot: string; path?: string; url?: string; name?: string } };
+        if (typeof p.html === "string") column.html = p.html;
+        if (p.fill) { const { slot, ...fill } = p.fill; const fills = { ...column.fills }; if (fill.path || fill.url) fills[slot] = fill; else delete fills[slot]; column.fills = fills; }
+        data = column as YpStageData[typeof kind];
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });
