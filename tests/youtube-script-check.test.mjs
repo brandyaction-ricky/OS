@@ -4,25 +4,29 @@ import { checkManuscript, checkScriptBody, sourcedParagraphs } from "../lib/yout
 
 // 원고 검수 정본 관문 1: the OS re-counts the format of a submitted script and its result wins.
 const paragraph = (seed) => `${seed} 예를 들어 마케터 3년차 지은이 있습니다. 지은은 하고 싶은 일이 많아서 매일 저녁 새 강의를 결제하고, 주말에는 또 다른 모임에 나갑니다. 그런데 정작 무엇부터 해야 할지는 정하지 못한 채 한 달이 지나갑니다.`;
-const manuscript = (title, sections) => [`# ${title}`, "<!-- 축: 남의 1순위 | 중심 근거: 없음 | 역할: 유입형 | 길이: 1분/600자 | 가상 인물: 지은 -->", "",
+const manuscript = (title, sections) => [`# ${title}`, "<!-- 축: 남의 1순위 | 중심 근거: 없음 | 역할: 유입형 | 길이: 1분/490자 | 가상 인물: 지은 -->", "",
   ...sections.flatMap(([name, count], s) => [`## ${name}`, "", ...Array.from({ length: count }, (_, i) => [paragraph(`${s}-${i}`), ""]).flat()])].join("\n");
 
 test("a manuscript in the canon format passes and yields narration-only paragraphs", () => {
-  const result = checkManuscript(manuscript("하고 싶은 게 많은 사람", [["도입", 2], ["우선순위", 3]]), { title: "하고 싶은 게 많은 사람", targetMinutes: 1 });
+  // 공백 포함 490자 = 1분 (정본 묶음 v2.0): four paragraphs of 122자 are one minute.
+  const result = checkManuscript(manuscript("하고 싶은 게 많은 사람", [["도입", 2], ["우선순위", 2]]), { title: "하고 싶은 게 많은 사람", targetMinutes: 1 });
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.sections, ["도입", "우선순위"]);
-  assert.equal(result.paragraphs.length, 5);
+  assert.equal(result.paragraphs.length, 4);
   assert.ok(!result.narration.includes("#") && !result.narration.includes("<!--"));
 });
 
 test("title, head line, sections and length problems are all listed at once", () => {
   const text = manuscript("다른 제목", [["아주 긴 섹션 제목입니다", 1]]).replace("<!-- 축:", "<!-- 메모:");
-  const issues = checkManuscript(text, { title: "채택 제목", targetMinutes: 10 }).issues.join("\n");
+  const checked = checkManuscript(text, { title: "채택 제목", targetMinutes: 10 });
+  const issues = checked.issues.join("\n");
   assert.match(issues, /채택 제목과 다릅니다/);
   assert.match(issues, /머리 블록/);
   assert.match(issues, /섹션\(##\)이 1개/);
   assert.match(issues, /8자 이내/);
-  assert.match(issues, /±15% 밖/);
+  // Length is a note now (owner decision 2026-10-26), not a reason to refuse.
+  assert.doesNotMatch(issues, /15%/);
+  assert.match(checked.notes.join(), /목표 10분\(4900자\)과 15% 넘게 다릅니다/);
 });
 
 test("body rules: paragraph length, banned words, stage cues and unsourced research", () => {
@@ -81,4 +85,35 @@ test("the 출처 line reads one number, ranges and groups before each arrow", ()
   const sourced = sourcedParagraphs(" 1~2 → 칙센트미하이 ");
   assert.equal(checkScriptBody([study, study, study], null, sourced).issues.filter(issue => /출처 줄/.test(issue)).length, 1);
   assert.match(checkScriptBody([study, study, study], null, sourced).issues.find(issue => /출처 줄/.test(issue)), /3번 문단.*예: <!-- 출처: 3 → .*9~15 → .*8, 9 →/);
+});
+
+// 원고 정본 묶음 v1.9 (원고 검수 정본 v1.6, 2026-10-26): how sentences and paragraphs close, against the script's length.
+const closing = (endings) => checkScriptBody(endings.map((ending, i) => `${paragraph(`w${i}`)} ${ending}`), null).issues.join("\n");
+
+test("v1.9 흐림 종결: '수 있-' sentence endings at 20 or more per 6,000 characters", () => {
+  // Each test paragraph is about 160 characters, so one hedge per paragraph is far above 20 per 6,000.
+  assert.match(closing(["다르게 볼 수 있어요.", "그럴 수도 있죠.", "물어볼 수 있겠죠?"]), /흐림 종결 .* 3개 — 6,000자당 [\d.]+회.*걸린 문단 1·2·3번/);
+  assert.doesNotMatch(closing(["이 수를 보면 알아요.", "점수 있어요.", "할 수 있어야 해요."]), /흐림/);
+  const long = Array.from({ length: 40 }, (_, i) => (i < 3 ? "다르게 볼 수 있어요." : "그날 바로 적었어요."));
+  assert.doesNotMatch(closing(long), /흐림/);
+});
+
+test("v1.9 요약 종결: a third or more of the paragraphs end on '~거예요·~겁니다·~거죠'", () => {
+  assert.match(closing(["그래서 다시 보는 거예요.", "그게 기준인 겁니다.", "다음 장면으로 가요."]), /요약 종결 .* 2개 — 전체 3개의 1\/3 이상.*걸린 문단 1·2번/);
+  assert.doesNotMatch(closing(["그래서 다시 보는 거예요.", "다음 장면으로 가요.", "그날 바로 적었어요.", "왜 그랬을까요?"]), /요약/);
+  assert.doesNotMatch(closing(["다들 그렇게 하는 거죠?", "다음 장면으로 가요."]), /요약/);
+});
+
+test("v1.9 해명 종결: '아니에요·아닙니다' endings outside quotes at 8 or more per 6,000 characters", () => {
+  assert.match(closing(["점수를 매기는 방식은 아니에요.", "효과를 검증한 건 아닙니다.", "다음 장면으로 가요."]), /해명 종결 .* 2개 — .*걸린 문단 1·2번/);
+  assert.doesNotMatch(closing(["친구가 \"그건 아니에요.\" 하고 웃어요.", "다음 장면으로 가요."]), /해명/);
+  assert.doesNotMatch(closing(["다음 장면으로 가요.", "그건 아니라고 봐요."]), /해명/);
+});
+
+test("length: 공백 포함 490자 = 1분; more than 15% off is a note to fix the 러닝타임, never a refusal", () => {
+  const text = (n) => Array.from({ length: n }, (_, i) => paragraph(`L${i}`));
+  assert.deepEqual(checkScriptBody(text(4), 1).notes, []);
+  const long = checkScriptBody(text(5), 1);
+  assert.deepEqual(long.issues, []);
+  assert.match(long.notes.join(), /총 \d+자\(약 1분\) — 목표 1분\(490자\)과 15% 넘게 다릅니다\. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다/);
 });

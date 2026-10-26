@@ -22,7 +22,7 @@ test("기획안 needs titles A · B, thumbnails A · B and the 영상 흐름; th
 
 test("예상 길이: 3,150자 · 9분은 맞고 2,000자는 약 3분 짧다 (±20%, 분당 350자)", () => {
   assert.equal(lengthEstimate(`### 오프닝\n\n${"가".repeat(3150)}\n`, 9).verdict.ok, true);
-  assert.deepEqual(lengthEstimate("가".repeat(2000), 9).verdict, { ok: false, text: "정한 러닝타임(9분)보다 약 3분 짧아요" });
+  assert.deepEqual(lengthEstimate("가".repeat(2000), 9).verdict, { ok: false, text: "정한 러닝타임(9분)보다 약 3분 짧아요 · 내용이 필요하면 러닝타임을 고쳐요" });
   const outline = emptyStage("outline", "live");
   assert.equal(outlineMissing(outline), "러닝타임을 정해 주세요");
   outline.spec.runtimeMin = 121;

@@ -8,6 +8,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
 import { MYIN_VOICE_TUNING, synthesizeFishWav } from "./fish-audio";
 import { readYoutubeAutomationInput } from "./youtube-automation-input";
+import { assertSpokenScript } from "./youtube-script-canon";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
 // 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
@@ -163,6 +164,8 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
 /** [v13 음성 만들기]: any member who can read the video starts its one run for the approved script (owner decision 2026-10-20: no extra roles). */
 export async function createMyinRun(actor: RequestActor, sourceId: string) {
   const input = await currentInput(actor.supabase, sourceId);
+  // A 원고 edited after 제작 started reaches the voice here. ponytail: length is left to the 구성안 → 제작 check (no runtime here).
+  await assertSpokenScript(actor.supabase, input.markdown, null);
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
