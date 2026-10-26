@@ -18,7 +18,7 @@ import { ContentPerformanceDashboard } from "./content-performance-dashboard";
 // The step screens show this header only while they load, so only 스케줄 · 컨펌 carry a line under the title.
 const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   schedule: "날짜를 끌어서 옮겨요.",
-  confirm: "기다리는 컨펌을 오래된 순서로 봐요.",
+  confirm: "PD가 컨펌한 것을 보고 노트를 남겨요.",
 };
 
 const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검수", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌" };

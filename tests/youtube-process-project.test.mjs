@@ -25,15 +25,12 @@ test("topic confirm request names the first missing field (수용 3)", () => {
   assert.match(topicMissing(Array.from({ length: YP_MAX_LINES + 1 }, (_, i) => `주제 ${i}`).join("\n"), { type: "live", target: "타겟" }), /20줄까지/);
 });
 
-test("topic fields lock while waiting for the confirm and after it", () => {
+test("topic fields stay open until the topic is confirmed; a 수정 요청 opens every field (staff feedback 2026-10-26)", () => {
   assert.equal(topicEditable(project("a", "x")), true);
   const changes = project("a", "x", "topic", 0, "changes");
-  assert.equal(topicEditable(changes), false, "수정 요청 with no ticked field leaves nothing to edit");
   changes.yp.gates.topic.fields = ["topic.title"];
-  assert.equal(topicEditable(changes), true);
-  assert.equal(topicFieldEditable(changes, "title"), true);
-  assert.equal(topicFieldEditable(changes, "target"), false);
-  assert.equal(topicEditable(project("a", "x", "topic", 0, "wait")), false);
+  for (const key of ["title", "kind", "target", "refs", "note"]) assert.equal(topicFieldEditable(changes, key), true, key);
+  assert.equal(topicEditable(project("a", "x", "topic", 0, "wait")), true);
   assert.equal(topicEditable(project("a", "x", "draft", 0, "ok")), false);
 });
 

@@ -376,18 +376,22 @@ async function adoptedClips(supabase: Supabase, projectId: string) {
   return ((data ?? []) as { id: string; title: string; metadata: Record<string, unknown> }[]).filter(row => row.metadata?.selected !== false);
 }
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
-  return actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
+  const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
+  // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
+  if (gate === "draft" && input.action === "confirm") await fixConfirmedPlan(actor, result.project);
+  return result;
+}
+async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
+  const service = createServiceSupabase();
+  const stages = await readStages(service, project);
+  const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, new Date().toISOString()) };
+  await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
 }
 
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
-  if (gate === "draft" && input.action === "ok") {
-    const service = createServiceSupabase();
-    const stages = await readStages(service, project);
-    const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, new Date().toISOString()) };
-    await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
-  }
+  if (gate === "draft" && input.action === "ok") await fixConfirmedPlan(actor, project);
   return project;
 }
 

@@ -1,7 +1,7 @@
 export const CONNECTIONS = [
   { id: "database", label: "데이터베이스", scope: "문서 조회", href: "/settings/monitoring" },
   { id: "auth", label: "로그인 인증", scope: "현재 계정 인증", href: "/settings/access" },
-  { id: "embeddings", label: "지식 검색", scope: "OpenAI 모델 조회 · 색인 작업 이력", href: "/settings/monitoring" },
+  { id: "embeddings", label: "지식 검색", scope: "OpenAI 모델 조회(답변 모델 포함) · 색인 작업 이력", href: "/settings/monitoring" },
   { id: "telegram", label: "Telegram", scope: "봇 정보 조회", href: "/settings/channels" },
   { id: "contentAi", label: "콘텐츠 AI", scope: "Claude 모델 조회", href: "/organization/agents" },
   { id: "youtube", label: "YouTube Data API", scope: "공개 언어 목록 조회", href: "/content/youtube" },

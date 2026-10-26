@@ -68,15 +68,16 @@ export async function synthesizeOperatingBaseline(
     ? `# 사업: ${businessLabel}\n\n# 기존 기준\n${existingBody}\n\n# 새로 들어온 문서\n\n${blocks}`
     : `# 사업: ${businessLabel}\n\n${blocks}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 60_000);
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: OPENAI_ANSWER_MODEL, instructions: system, input: user, max_output_tokens: 2000 }),
+      body: JSON.stringify({ model: OPENAI_ANSWER_MODEL, instructions: system, input: user, max_output_tokens: 8000 }),
       signal: controller.signal,
     });
     const result = await response.json() as Record<string, unknown>;
+    if (!response.ok || result.status === "incomplete") console.warn("[openai] operating baseline", response.status, result.status, (result.incomplete_details as { reason?: string } | undefined)?.reason ?? (result.error as { code?: string } | undefined)?.code ?? "");
     if (!response.ok) return null;
     const text = jsonText(result);
     return text ? stripMarkMarks(text) : null;

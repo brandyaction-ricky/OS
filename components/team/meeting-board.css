@@ -1,5 +1,5 @@
 /* Meeting board beside the meeting notes, and the meeting step bar */
-.tm-board { display: grid; gap: 10px; padding: 12px; align-content: start; }
+.linear-shell .ui-v2 .tm-root .tm-board { display: grid; gap: 10px; padding: 12px 14px; align-content: start; }
 .tm-board-tabs { display: flex; flex-wrap: wrap; }
 .tm-board-tabs small { opacity: .7; margin-left: 2px; }
 .tm-board-list { display: grid; gap: 8px; max-height: 520px; overflow: auto; }
@@ -22,3 +22,19 @@
 @media (prefers-reduced-motion: reduce) { .tm-ai-status::before { animation: none; } }
 /* A wider right column while the board is there; below 1100px it stacks like the rest */
 @media (min-width: 1101px) { .linear-shell .ui-v2 .tm-root .tm-detail-grid:has(.tm-board) { grid-template-columns: minmax(0, 1fr) 380px; } }
+/* The paid-button tag and the cost confirm dialog, as on the YouTube screens */
+.linear-shell .ui-v2 .tm-root .yp-cost { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; vertical-align: middle; cursor: help; }
+.linear-shell .ui-v2 .tm-root .yp-cost-company { background: var(--warning-soft); color: var(--warning); }
+.linear-shell .ui-v2 .tm-root dialog.yp-modal { border: 0; padding: 0; color: var(--text); background: var(--card); border-radius: 12px; width: min(440px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+.linear-shell .ui-v2 .tm-root dialog.yp-modal::backdrop { background: color-mix(in srgb, var(--media-shadow) 45%, transparent); }
+.linear-shell .ui-v2 .tm-root .yp-modal-h { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); font-weight: 700; font-size: 15px; }
+.linear-shell .ui-v2 .tm-root .yp-modal-h .yp-sp { flex: 1; }
+.linear-shell .ui-v2 .tm-root .yp-modal-b { padding: 16px; }
+.linear-shell .ui-v2 .tm-root .yp-modal-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .tm-root .yp-ib { width: 32px; height: 32px; border: 0; background: transparent; display: grid; place-items: center; border-radius: 8px; color: var(--text-2); }
+.linear-shell .ui-v2 .tm-root .yp-kv { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 13px; }
+.linear-shell .ui-v2 .tm-root .yp-kv dt { color: var(--muted); font-size: 12px; font-weight: 600; }
+.linear-shell .ui-v2 .tm-root .yp-kv dd { margin: 0; }
+.linear-shell .ui-v2 .tm-root .yp-muted { color: var(--muted); }
+.linear-shell .ui-v2 .tm-root .yp-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer; }
+.linear-shell .ui-v2 .tm-root .yp-btn.yp-pri { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }

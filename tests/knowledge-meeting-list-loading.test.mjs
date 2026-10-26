@@ -26,7 +26,7 @@ function setup() {
     "next/navigation": { useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace() {} }) },
     "./provider": { useKnowledge: () => ({ state: model.emptyKnowledgeState(), token, demo }) },
     "./ui": { Header: "header", Card: "card", Empty: "empty", Modal: "modal", NewDocumentButton: "new-document" },
-    "./meeting-capture": {}, "@/components/knowledge-workspace": {}, "@/components/knowledge-rich-editor": {},
+    "./meeting-capture": {}, "@/components/cost-notice": { CostTag: "cost-tag", summaryAsk: () => ({}), useCostConfirm: () => ({ confirm: async () => true, element: null }), useCostModels: () => ({}) }, "@/components/knowledge-workspace": {}, "@/components/knowledge-rich-editor": {},
     "@/lib/knowledge/model": model, "@/lib/knowledge/meetings": {}, "@/lib/meeting-markdown": {},
     "@/lib/api-client": { apiRequest: (path, options) => new Promise((resolve, reject) => requests.push({ path, options, resolve, reject })) },
   };

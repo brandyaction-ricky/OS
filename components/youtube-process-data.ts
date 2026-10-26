@@ -35,8 +35,8 @@ export interface YpClient {
   bundle(id: string): Promise<YpBundle>;
   create(input: YpTopicInput): Promise<YpProject>;
   update(id: string, expectedVersion: number, patch: YpTopicInput): Promise<YpProject>;
-  topicGate(id: string, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
-  gate(id: string, gate: YpGate, action: "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  topicGate(id: string, action: "confirm" | "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
+  gate(id: string, gate: YpGate, action: "confirm" | "request" | "cancel", expectedVersion: number, reply?: string): Promise<{ project: YpProject; created: YpProject[] }>;
   saveStage<K extends YpStageKind>(id: string, kind: K, expectedVersion: number, patch: Record<string, unknown>): Promise<{ stage: YpStageView<K>; project: YpProject }>;
   /** One SEO 칼럼 to the MYIN 아티클: send (draft or update), publish, or back to draft. */
   columnMyin(id: string, item: string, action: "send" | "publish" | "unpublish", expectedVersion: number): Promise<{ stage: YpStageView<"column">; project: YpProject }>;
@@ -49,8 +49,9 @@ export interface YpClient {
   actFeedback(id: string, itemId: string, expectedVersion: number, action: "resolve" | "reopen" | "decline" | "reply", text?: string): Promise<YpFeedbackView>;
   uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
   uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
-  confirm(id: string, gate: YpGate, action: YpApproverAction, expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
-  confirmList(tab: "wait" | "done" | "hold" | "shorts"): Promise<{ project: YpProject; gate: YpGate }[]>;
+  /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
+  confirm(id: string, gate: YpGate, action: YpApproverAction | "note", expectedVersion: number, extra?: YpConfirmExtra): Promise<YpProject>;
+  confirmList(tab: "self" | "wait" | "done" | "hold" | "shorts"): Promise<{ project: YpProject; gate: YpGate }[]>;
   /** 쇼츠 확정 by the PD, or a comment on its record (owner decision 2026-10-25). */
   shorts(id: string, expectedVersion: number, input: { action: "confirm"; note?: string } | { action: "comment"; text: string }): Promise<YpProject>;
   members(): Promise<YpMember[]>;
@@ -162,7 +163,7 @@ let demoStore: YpProject[] | null = null;
 let demoTrash: YpTrashed[] = [];
 const demoProjects = () => demoStore ??= [
   demoProject("demo-p1", "[예시] 하루 일이 두 개뿐인데 저녁마다 지치는 이유", "anim", "topic", 0),
-  demoProject("demo-p2", "[예시] 1인 창업 첫 달에 꼭 정해야 할 세 가지", "live", "draft", 1, "demo-logan"),
+  selfDemo(demoProject("demo-p2", "[예시] 1인 창업 첫 달에 꼭 정해야 할 세 가지", "live", "draft", 1, "demo-logan")),
   demoProject("demo-p3", "[예시] 부업 수익을 세금 걱정 없이 정리하는 법", "live", "outline", 2),
   demoProject("demo-p4", "[예시] 퇴근 후 2시간 루틴 만들기", "anim", "make", 3, "demo-pd"),
   demoProject("demo-p5", "[예시] 강의 상세페이지 첫 화면 고치기", "live", "review", 5),
@@ -177,6 +178,11 @@ function shortsDemo(project: YpProject): YpProject {
   const yp = shortsAction(project.yp, { action: "confirm", note: "[예시] 3편 확정", clips: [1, 2, 3].map(n => ({ id: `demo-clip-${n}`, title: `[예시] 쇼츠 ${n}`,
     metadata: { hook: "첫 문장", desc: "설명 #예시", segments: [{ start: n * 60, end: n * 60 + 40 }] } })) }, { id: "demo-logan", name: "로건" }, daysAgo(2));
   return { ...project, yp: shortsAction(yp, { action: "comment", text: "[예시] 2번 제목을 더 짧게 바꿔 주세요" }, { id: DEMO_ME, name: "리키" }, daysAgo(1)) };
+}
+/** One example topic the PD confirmed, so 대표 메뉴 › 컨펌 › PD 컨펌 has something to show in the demo. */
+function selfDemo(project: YpProject): YpProject {
+  const at = daysAgo(1);
+  return { ...project, yp: { ...project.yp, gates: { ...project.yp.gates, topic: { state: "ok", round: 1, requestedAt: at, requestedBy: "demo-logan", decidedAt: at, decidedBy: "demo-logan", self: true } } } };
 }
 /** One example waiting for the 대표 컨펌, so the confirm menu has something to show in the demo. */
 function waitingDemo(project: YpProject): YpProject {
@@ -236,15 +242,17 @@ function demoClient(): YpClient {
       const stages = stagesOf(project);
       const missing = name === "draft" ? draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
-      return { project: bump(project, gateApply(project, name, "request", { actor: DEMO_ME, now, reply })), created: [] };
+      const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply });
+      if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
+      return { project: bump(project, yp), created: [] };
     }
     const missing = topicMissing(project.title, project.yp.topic);
     if (missing) throw demoError(400, "TOPIC_INCOMPLETE", missing);
     const [first, ...rest] = topicLines(project.title).slice(0, YP_MAX_LINES);
-    const saved = put({ ...project, title: first, version: project.version + 1, updatedAt: now, yp: gateApply(project, "topic", "request", { actor: DEMO_ME, now, reply }) });
+    const saved = put({ ...project, title: first, version: project.version + 1, updatedAt: now, yp: gateApply(project, "topic", action, { actor: DEMO_ME, now, reply }) });
     const created = rest.map(line => {
       const extra = add(line, { kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId }, project.id);
-      return put({ ...extra, yp: gateApply(extra, "topic", "request", { actor: DEMO_ME, now }) });
+      return put({ ...extra, yp: gateApply(extra, "topic", action, { actor: DEMO_ME, now }) });
     });
     return { project: saved, created };
   };
@@ -361,6 +369,7 @@ function demoClient(): YpClient {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
       const now = new Date().toISOString();
+      if (action === "note") return bump(project, { ...project.yp, notes: [...(project.yp.notes ?? []), { gate: gateName, at: now, by: DEMO_ME, name: "리키", text: extra.memo ?? "" }] });
       const next = bump(project, gateApply(project, gateName, action, { actor: DEMO_ME, now, ...extra }));
       if (gateName === "draft" && action === "ok") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
       return next;

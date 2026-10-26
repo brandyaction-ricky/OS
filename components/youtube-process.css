@@ -569,6 +569,7 @@
 .linear-shell .ui-v2.yp .yp-cwait-h b{font-size:14px}
 .linear-shell .ui-v2.yp .yp-cwait-a{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
 .linear-shell .ui-v2.yp .yp-cwait-a .yp-sp{flex:1}
+.linear-shell .ui-v2.yp .yp-gnotes{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:4px;font-size:12px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-reply-note{margin-top:6px;padding:6px 10px;border-left:3px solid var(--accent);background:var(--card);font-size:12px;color:var(--text-2)}
 /* 레퍼런스 카드 (3차-13 · 19) */
 .linear-shell .ui-v2.yp .yp-rthumb{position:relative;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb,var(--media-text) 18%,var(--media-bg)),var(--media-bg));color:var(--media-muted);display:grid;place-items:center;overflow:hidden;cursor:zoom-in;border:0;padding:0;width:100%}
@@ -1117,12 +1118,6 @@
 .linear-shell .ui-v2.yp header:has([data-ui="page-title"]){margin-bottom:18px}
 .linear-shell .ui-v2.yp .yp-g2>.yp-lbl{margin:0}
 .linear-shell .ui-v2.yp .yp-g2:has(>.yp-lbl){row-gap:16px;column-gap:16px;margin-top:16px}
-/* Who pays (owner request 2026-10-25): a small tag beside buttons that cost something; company money is the warm one. */
-.linear-shell .ui-v2.yp .yp-cost{display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;vertical-align:middle;cursor:help}
-.linear-shell .ui-v2.yp .yp-cost-company{background:var(--warning-soft);color:var(--warning)}
-.linear-shell .ui-v2.yp .yp-cost-ai{background:var(--purple-soft);color:var(--purple)}
-.linear-shell .ui-v2.yp .yp-cost-youtube{background:var(--panel-3);color:var(--text-2)}
-.linear-shell .ui-v2.yp .yp-costdlg{max-width:440px}
 /* Usability QA 2026-10-25: progress tracks and the schedule swatch show in dark too, tabs scroll instead of clipping on a phone,
    and a phone-width page title starts at the left edge with the save button under it (not centred, not a full-width bar). */
 .linear-shell .ui-v2.yp .yp-mv-track{background:var(--surface-selected)}

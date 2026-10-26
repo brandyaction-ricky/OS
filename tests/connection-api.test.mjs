@@ -27,6 +27,7 @@ function setup(options = {}) {
     "@/lib/http": { ApiError, apiErrorResponse: error => Response.json({ error: { code: error.code } }, { status: error.status || 500 }), parseJson: request => request.json() },
     "@/lib/server/auth": { authenticateRequest: async request => { if (!request.headers.has("authorization")) throw new ApiError(401, "AUTH_REQUIRED"); if (request.headers.get("authorization").includes("bos_pat_")) throw new ApiError(403, "AGENT_READ_ONLY"); return { id: ownerA, role: options.role ?? "admin" }; } },
     "@/lib/supabase/server": { createServiceSupabase: () => db },
+    "@/lib/config": {CLAUDE_FAST_MODEL:"claude-haiku-5-5",CLAUDE_SMART_MODEL:"claude-sonnet-5-5",OPENAI_ANSWER_MODEL:"gpt-6-luna"},
     "@/lib/server/connection-checks": { connectionConfiguration: () => ({ database: options.configured !== false }), readConnectionChecks: async () => [{ id: "database", status: "error", failures24h: 1 }], probeConnection: async () => { events.push({ probe: true }); if (options.probeFailure) throw Error("upstream-secret-body"); } },
   };
   const compiled = { exports: {} }; runInNewContext(code, { module: compiled, exports: compiled.exports, Date, require: name => { assert.ok(name in modules, name); return modules[name]; } });
