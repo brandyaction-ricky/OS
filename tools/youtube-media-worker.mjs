@@ -43,10 +43,23 @@ async function call(body, route = "media") {
   return json;
 }
 
-async function fetchTo(url, file) {
-  const response = await fetch(url);
-  if (!response.ok) throw Object.assign(new Error(`download ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
-  writeFileSync(file, Buffer.from(await response.arrayBuffer()));
+// Unsplash answered this PC with 429 and the v13 preparation failed three times (2026-10-26): a 429 or 5xx waits (Retry-After
+// when given, up to a minute) and tries again. `type` makes a photo that comes back as a web page fail here, not in Logan's preview.
+export async function fetchTo(url, file, type = "") {
+  for (const wait of [5_000, 20_000, null]) {
+    const response = await fetch(url, { headers: { "user-agent": "BrandyActionOS-media-worker/1.0 (https://brandyaction-os.vercel.app)" } });
+    if (response.ok) {
+      if (!(response.headers.get("content-type") ?? "").startsWith(type))
+        throw Object.assign(new Error(`download is ${response.headers.get("content-type")}, not ${type}`), { code: "WORKER_DOWNLOAD_NOT_IMAGE" });
+      writeFileSync(file, Buffer.from(await response.arrayBuffer()));
+      return;
+    }
+    await response.body?.cancel();
+    if (wait === null || (response.status < 500 && response.status !== 429)) throw Object.assign(new Error(`download ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
+    const after = Number(response.headers.get("retry-after") ?? NaN);
+    console.error(`download ${new URL(url).hostname}: HTTP ${response.status}, retrying`);
+    await new Promise((resolve) => setTimeout(resolve, after >= 0 ? Math.min(after, 60) * 1000 : wait));
+  }
 }
 
 // P01 (10 min, ~40 MB) rendered fine twice and lost both attempts to a dropped PUT ("fetch failed"). A network blip or a 5xx
@@ -286,7 +299,7 @@ export async function processMyinPrep() {
     writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     for (const asset of job.assets) {
       mkdirSync(path.join(work, "assets", asset.kind), { recursive: true });
-      await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file));
+      await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file), "image/");
     }
     const bgmDir = path.join(work, "assets", "bgm");
     mkdirSync(bgmDir, { recursive: true });

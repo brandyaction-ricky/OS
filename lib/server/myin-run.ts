@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { MYIN_METAPHOR_TYPES } from "@/lib/myin-storyboard";
+import { MYIN_METAPHOR_TYPES, myinPhotoFetchUrl } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -362,21 +362,13 @@ export function myinReferencedFiles(storyboard: unknown) {
   walk(storyboard);
   return files;
 }
-const pageId = (url: string) => url.split("/photos/")[1]?.split(/[?#/]/)[0]?.split("-").pop() ?? "";
-/** Where the render PC fetches a photo: the photo site's own download address. Music comes from the 음악 창고 on the render PC. */
-function fetchUrl(asset: { url: string }) {
-  const url = new URL(asset.url);
-  if (url.hostname === "unsplash.com" && pageId(asset.url)) return `https://unsplash.com/photos/${pageId(asset.url)}/download?force=true`;
-  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
-  return null;
-}
 
 /** Approve the photos the storyboard uses (the confirmation covers them) and queue the CTA voice, then the render PC's preparation. */
 async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: string) {
   const story = await storyboardJson(service, run);
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
-  const unreachable = used.filter((file) => !fetchUrl(byFile.get(file)!));
+  const unreachable = used.filter((file) => !myinPhotoFetchUrl(byFile.get(file)!.url));
   if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(Unsplash·위키미디어만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   const at = new Date().toISOString();
   const assets = Object.fromEntries(used.map((file) => [file, { decision: "approved" as const, by, at }]));
@@ -440,7 +432,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase()) 
     const story = await storyboardJson(service, run);
     const assets = [];
     for (const asset of run.storyboard?.assets ?? []) {
-      const url = run.assets?.[asset.file]?.decision === "approved" ? fetchUrl(asset) : null;
+      const url = run.assets?.[asset.file]?.decision === "approved" ? myinPhotoFetchUrl(asset.url) : null;
       if (url) assets.push({ kind: asset.kind, file: asset.file, url });
     }
     const cta = [];
