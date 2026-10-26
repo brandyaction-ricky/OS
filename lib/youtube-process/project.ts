@@ -4,7 +4,10 @@ export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "uploa
 export type YpKind = "live" | "anim" | "short";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
-export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string }
+/** self: the PD confirmed it themselves (owner decision 2026-10-26: every confirm is the PD's; the 대표 is told and leaves notes). */
+export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string; self?: boolean }
+/** A note the 대표 leaves on a step the PD confirmed; the PD is told and reads it on that step. */
+export interface YpGateNote { gate: YpGate; at: string; by: string; name: string; text: string }
 export interface YpRef { url: string; videoId?: string; title?: string }
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[] }
 export interface YpMeta {
@@ -13,6 +16,8 @@ export interface YpMeta {
   shortsConfirmed?: { at: string; by: string; clips: Record<string, string> };
   /** 쇼츠 확정 · 코멘트 기록, newest last: the 대표 reads it in 대표 메뉴 › 컨펌 and comments when something should change. */
   shortsLog?: YpShortsLogEntry[];
+  /** 대표 노트, newest last. */
+  notes?: YpGateNote[];
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
