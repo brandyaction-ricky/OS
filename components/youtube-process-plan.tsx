@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Info, X } from "lucide-react";
 import {
-  emptyGates, parseYoutubeRef, projectName, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
+  emptyGates, parseYoutubeRef, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
@@ -64,6 +64,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
   const saving = useRef<Promise<YpProject | null> | null>(null);
+  const savingKey = useRef("");
   // The project on screen, so the URL change after a first save does not reload it over newer typing.
   const loadedId = useRef<string | null>(null);
   // Bumped on every edit; a save clears 'unsaved' only if nothing changed while it ran.
@@ -106,16 +107,22 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
 
   const save = useCallback(async (next: Form = form): Promise<YpProject | null> => {
     if (!client) return null;
-    // One save at a time: a click during a blur save waits for it and uses its result (and version).
-    if (saving.current) return saving.current;
-    const rev = editRev.current;
     const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, assigneeId: next.assigneeId };
+    const key = JSON.stringify(input);
+    // One save at a time: a click during a save of the same content uses its result; newer content (a second reference added
+    // meanwhile) waits and saves on top of it with its version — it used to go out with the old one and read as an error (로건 피드백 A-2).
+    let base = project;
+    while (saving.current) {
+      if (savingKey.current === key) return saving.current;
+      base = (await saving.current) ?? base;
+    }
+    const rev = editRev.current;
     const run = (async () => {
       try {
-        const saved = project ? await client.update(project.id, project.version, project && topicEditable(project) ? input : { assigneeId: next.assigneeId }) : await client.create(input);
+        const saved = base ? await client.update(base.id, base.version, topicEditable(base) ? input : { assigneeId: next.assigneeId }) : await client.create(input);
         setProject(saved); setSavedAt(hhmm(new Date()));
         if (editRev.current === rev) setDirty(false);
-        if (!project) {
+        if (!base) {
           loadedId.current = saved.id;
           try { localStorage.setItem(LAST_KEY, saved.id); } catch { /* convenience only */ }
           router.replace(stepHref(0, saved.id));
@@ -126,7 +133,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         return null;
       } finally { saving.current = null; }
     })();
-    saving.current = run;
+    saving.current = run; savingKey.current = key;
     return run;
   }, [client, form, project, router]);
 
@@ -222,6 +229,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
               event.preventDefault();
               const ref = parseYoutubeRef(refUrl);
               if (!ref) { setRefError("유튜브 영상 주소를 붙여 넣어 주세요. (youtube.com/watch · youtu.be · shorts)"); return; }
+              if (form.refs.some(row => sameRef(row, ref))) { setRefError("이미 있어요."); return; }
               setRefError(""); setRefUrl(""); editAndSave({ refs: [...form.refs, ref] });
             }}>
               <input className="yp-in" id="yp-topic-ref" placeholder="유튜브 영상 주소 붙여 넣기" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} />

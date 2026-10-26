@@ -93,3 +93,15 @@ export function rankPackagingRefs(videos: { id: string; title: string; channel: 
 }
 /** The video's own format first (기획실 롱폼만 · 쇼츠만); every format only when that one has fewer than three. */
 export const packagingPick = (refs: PackagingRef[], short: boolean) => { const same = refs.filter(ref => ref.short === short); return same.length >= 3 ? same : refs; };
+
+/**
+ * A 틈새 재료 record for one found video. Its upload date goes under videoPublishedAt: publishedAt is a protected
+ * publish-history key on records, and sending it made every save fail since 2026-10-03 (로건 피드백 A-1).
+ */
+export function keptVideoRecord(video: DiscoverVideo, query: string, team: string) {
+  return { recordType: "content_topic", title: video.title, description: `${video.channelTitle}에서 찾은 터진 영상`, status: "review", priority: "normal",
+    stage: "레퍼런스", team, sourceUrl: video.url, metricCurrent: video.viewCount, metricUnit: "조회", tags: ["레퍼런스", "틈새재료"],
+    metadata: { studioKind: "outlier", discoverySource: "keyword", baseline: null, youtubeId: video.id, channelId: video.channelId, channelTitle: video.channelTitle, thumbnail: video.thumbnail,
+      videoPublishedAt: video.publishedAt, views: video.viewCount, subscribers: video.subscribers, median: video.median, ratio: video.ratio, viewSubscriberRatio: video.viewSubscriberRatio,
+      durationSeconds: video.durationSeconds, query } };
+}

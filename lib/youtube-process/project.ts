@@ -109,6 +109,8 @@ export function similarProjects<T extends Pick<YpProject, "id" | "title">>(title
 }
 
 /** A YouTube watch, short or youtu.be link, normalized; null for anything else. */
+/** The same video twice in a reference list (by video id, else by address): 「이미 있어요」 (로건 피드백 A-2). */
+export const sameRef = (a: YpRef, b: YpRef) => a.videoId && b.videoId ? a.videoId === b.videoId : a.url === b.url;
 export function parseYoutubeRef(input: string): YpRef | null {
   let url: URL;
   try { url = new URL(input.trim()); } catch { return null; }

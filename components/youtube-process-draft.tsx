@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { parseYoutubeRef, projectName } from "@/lib/youtube-process/project";
+import { parseYoutubeRef, projectName, sameRef } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
@@ -28,6 +28,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const [uploading, setUploading] = useState("");
   const editRev = useRef(0);
   const saving = useRef(false);
+  // A save asked for while one is running goes out right after it, on the newest version (로건 피드백 A-2: it was dropped, then a stale save read as an error).
+  const queued = useRef<YpPlan | null>(null);
+  const savedVersion = useRef({ project: "", version: 0 });
   const [send, setSend] = useState(false);
   const [manual, setManual] = useState(false);
   const plan = page.bundle?.stages.plan;
@@ -42,16 +45,22 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const rev = (key: string) => project?.yp.gates.draft.state === "changes" && (project.yp.gates.draft.fields ?? []).includes(key);
 
   const save = async (next: YpPlan | null = form) => {
-    if (!page.client || !project || !plan || !next || saving.current) return;
+    if (!page.client || !project || !plan || !next) return;
+    if (saving.current) { queued.current = next; return; }
     saving.current = true;
     const rev0 = editRev.current;
     const patch = Object.fromEntries((Object.keys(PLAN_FIELD_KEY) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => can(key)).map(key => [key, next[key]]));
     try {
-      const result = await page.client.saveStage(project.id, "plan", plan.version, patch);
+      const result = await page.client.saveStage(project.id, "plan", savedVersion.current.project === project.id ? Math.max(plan.version, savedVersion.current.version) : plan.version, patch);
+      savedVersion.current = { project: project.id, version: result.stage.version };
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev0) setDirty(false);
-    } catch (reason) { page.fail(reason); } finally { saving.current = false; }
+    } catch (reason) { page.fail(reason); } finally {
+      saving.current = false;
+      const after = queued.current; queued.current = null;
+      if (after) void save(after);
+    }
   };
   const edit = (patch: Partial<YpPlan>, now = false) => {
     editRev.current += 1;
@@ -138,7 +147,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
           {own && can("extraRefs") ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => edit({ extraRefs: form.extraRefs.filter(row => row.url !== ref.url) }, true)}><X size={14} /></button> : null}</li>)}</ul>
         {!project.yp.topic.refs.length && !form.extraRefs.length ? <p className="yp-pempty">아직 없어요</p> : null}
-        {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; } setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
+        {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; }
+          if ([...project.yp.topic.refs, ...form.extraRefs].some(row => sameRef(row, ref))) { page.setError("이미 있는 레퍼런스예요."); return; }
+          setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
       </div></section></aside></div>
       <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? projectName(project) : undefined} />

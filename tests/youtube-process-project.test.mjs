@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  newProjectMeta, parseYoutubeRef, projectFromRecord, projectHref, protectedYoutubeChange, recentProjects, searchProjects,
+  newProjectMeta, parseYoutubeRef, projectFromRecord, sameRef, projectHref, protectedYoutubeChange, recentProjects, searchProjects,
   similarProjects, stepHref, topicEditable, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES,
 } from "../lib/youtube-process/project.ts";
 
@@ -84,4 +84,12 @@ test("a project opens on its current step", () => {
   // A finished video opens where its results are (usability QA 2026-10-25), not on 주제 with a request button.
   assert.equal(projectHref(project("p", "x", "done")), "/content/shorts?project=p");
   assert.equal(stepHref(6, "p"), "/content/shorts?project=p");
+});
+
+// 로건 피드백 A-2: the same video pasted twice (youtu.be · shorts · watch) is caught as 「이미 있어요」.
+test("the same video under different addresses counts as one reference", () => {
+  const watch = parseYoutubeRef("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  assert.equal(sameRef(watch, parseYoutubeRef("https://youtu.be/dQw4w9WgXcQ?t=3")), true);
+  assert.equal(sameRef(watch, parseYoutubeRef("https://m.youtube.com/shorts/dQw4w9WgXcQ")), true);
+  assert.equal(sameRef(watch, parseYoutubeRef("https://youtu.be/aaaaaaaaaaa")), false);
 });
