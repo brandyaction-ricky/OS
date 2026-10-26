@@ -1,0 +1,24 @@
+/* Meeting board beside the meeting notes, and the meeting step bar */
+.tm-board { display: grid; gap: 10px; padding: 12px; align-content: start; }
+.tm-board-tabs { display: flex; flex-wrap: wrap; }
+.tm-board-tabs small { opacity: .7; margin-left: 2px; }
+.tm-board-list { display: grid; gap: 8px; max-height: 520px; overflow: auto; }
+.tm-board-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.tm-board-row > span { display: grid; gap: 2px; min-width: 0; }
+.tm-board-row select { height: 30px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); font-size: 12px; }
+.tm-board-kpi { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
+.tm-board-kpi .tm-row { justify-content: space-between; gap: 6px; align-items: center; }
+.tm-board-kpi input, .tm-board form input { flex: 1; min-width: 0; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); }
+.tm-board-note { display: grid; gap: 2px; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.tm-board form { gap: 6px; }
+.tm-steps { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tm-steps span { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--line-soft); color: var(--muted); }
+.tm-steps span[data-state="done"] { color: var(--text); }
+.tm-steps span[data-state="now"] { background: var(--accent); color: #fff; }
+.tm-ai-status { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.tm-ai-status::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); border-top-color: transparent; animation: tm-spin 0.9s linear infinite; }
+.tm-ai-status[data-done]::before { animation: none; border-color: var(--mint); background: var(--mint); }
+@keyframes tm-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .tm-ai-status::before { animation: none; } }
+/* A wider right column while the board is there; below 1100px it stacks like the rest */
+@media (min-width: 1101px) { .linear-shell .ui-v2 .tm-root .tm-detail-grid:has(.tm-board) { grid-template-columns: minmax(0, 1fr) 380px; } }
