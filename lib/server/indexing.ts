@@ -52,16 +52,15 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
     if (!document)
         return "queued";
     if (document.status === "archived") {
-        const { error: archiveError } = await supabase.from("os_embedding_jobs").update({ status: "failed", finished_at: new Date().toISOString(), last_error: "[archived] 보관 문서" }).eq("document_id", documentId).eq("status", "pending");
+        // Never-run jobs are removed, not failed: a failed row counts as a connection failure.
+        const { error: archiveError } = await supabase.from("os_embedding_jobs").delete().eq("document_id", documentId).eq("status", "pending");
         if (archiveError)
             throw new ApiError(503, "INDEX_STORAGE_ERROR", "보관 문서 작업을 정리하지 못했습니다.");
         return "queued";
     }
     const chunks = chunkMarkdown(document.content_md);
     const contentHash = document.content_hash;
-    await supabase.from("os_embedding_jobs").update({
-        status: "failed", finished_at: new Date().toISOString(), last_error: "새 문서 버전으로 대체된 작업입니다.",
-    }).eq("document_id", documentId).eq("status", "pending").neq("content_hash", contentHash);
+    await supabase.from("os_embedding_jobs").delete().eq("document_id", documentId).eq("status", "pending").neq("content_hash", contentHash);
     const { data: claimed, error: claimError } = await supabase
         .from("os_embedding_jobs")
         .update({ status: "running", started_at: new Date().toISOString(), last_error: null })
@@ -139,13 +138,15 @@ export async function processEmbeddingQueue(options: {
     const summary = await getEmbeddingQueueSummary();
     return { attempted, completed, failed, remaining: summary.pending, stoppedByDeadline: attempted < (jobs?.length ?? 0) };
 }
-export async function retryFailedEmbeddingJobs(limit = 100) {
+// onlyTransient: the nightly cron re-queues timeouts and provider hiccups by itself.
+// ponytail: a document that times out every night is retried every night; cap by attempts if that ever happens.
+export async function retryFailedEmbeddingJobs(limit = 100, onlyTransient = false) {
     const safeLimit = Math.min(Math.max(limit, 1), 500);
     const supabase = createServiceSupabase();
     const { documents, jobs, truncated } = await readIndexSnapshot(supabase, supabase);
     if (truncated)
         throw new ApiError(503, "INDEX_RETRY_SCOPE_INCOMPLETE", "재시도 범위를 모두 확인하지 못했습니다. 운영 담당자에게 확인해 주세요.");
-    const eligible = [...currentIndexJobs(documents, jobs).values()].filter(job => job.status === "failed" && !["superseded", "archived"].includes(classifyIndexingFailure(job.last_error))).slice(0, safeLimit);
+    const eligible = [...currentIndexJobs(documents, jobs).values()].filter(job => job.status === "failed" && (onlyTransient ? ["timeout", "rate_limit", "provider"] : ["timeout", "rate_limit", "quota", "authentication", "configuration", "storage", "provider", "unknown"]).includes(classifyIndexingFailure(job.last_error))).slice(0, safeLimit);
     let retried = 0;
     for (const job of eligible) {
         const { data: current, error: readError } = await supabase.from("os_documents").select("content_hash,status").eq("id", job.document_id).single();
