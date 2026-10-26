@@ -141,6 +141,9 @@ test("knowledge answers replace opaque evidence markers with readable linked OS 
   assert.match(answer, /패키징_절차 › 썸네일 장면 시안/);
   assert.match(answer, /https:\/\/os\.example\.com\/knowledge\?document=procedure-id/);
   assert.match(answer, /썸네일 결정 로그 › 1차 확정/);
+  // Plain text for Telegram: no Markdown marks left in the body.
+  const plain = formatKnowledgeAnswer("## 타겟\n브랜디에듀의 타겟은 **자영업자**입니다.\n- `소실점`: 매출 [근거 1]", results, "https://os.example.com/");
+  assert.match(plain, /^타겟\n브랜디에듀의 타겟은 자영업자입니다\.\n• 소실점: 매출/);
 });
 
 test("headings fold hierarchically and fenced code retains blank lines and fake headings", () => {
