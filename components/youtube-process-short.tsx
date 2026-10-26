@@ -143,11 +143,11 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   },[dirty,brief,scenes]);
   if (!view || !brief) return <p className="yp-hint" role="status">숏폼을 불러오는 중이에요…</p>;
   const editBrief = (patch: Partial<YpShortBrief>, now = false) => {
-    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); draft.current={brief:next,scenes:draft.current?.scenes??scenes}; setDirty(true);
+    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); draft.current={brief:next,scenes:draft.current?.scenes??scenes}; setDirty(true); setSaveState("저장 대기…");
     if (now) void save({ brief: next, scenes });
   };
   const editScenes = (next: YpShortScene[], now = false) => {
-    editRev.current += 1; setScenes(next); draft.current={brief:draft.current?.brief??brief,scenes:next}; setDirty(true);
+    editRev.current += 1; setScenes(next); draft.current={brief:draft.current?.brief??brief,scenes:next}; setDirty(true); setSaveState("저장 대기…");
     if (now) void save({ brief, scenes: next });
   };
   const upload = async (index: number, file: File) => {
@@ -346,7 +346,7 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
       setDirty(false); return true;
     } catch (reason) { page.fail(reason); return false; }
   };
-  const edit = (patch: Partial<typeof form>) => { setForm(current => ({ ...current, ...patch })); setDirty(true); };
+  const edit = (patch: Partial<typeof form>) => { setForm(current => ({ ...current, ...patch })); setDirty(true); setSaveState("저장 대기…"); };
   const go = async () => {
     if (!page.client || !last) return;
     page.setError("");
