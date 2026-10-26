@@ -1,5 +1,5 @@
 /* Meeting board beside the meeting notes, and the meeting step bar */
-.tm-board { display: grid; gap: 10px; padding: 12px; align-content: start; }
+.linear-shell .ui-v2 .tm-root .tm-board { display: grid; gap: 10px; padding: 12px 14px; align-content: start; }
 .tm-board-tabs { display: flex; flex-wrap: wrap; }
 .tm-board-tabs small { opacity: .7; margin-left: 2px; }
 .tm-board-list { display: grid; gap: 8px; max-height: 520px; overflow: auto; }
