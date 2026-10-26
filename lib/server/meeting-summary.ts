@@ -98,11 +98,12 @@ export async function summarizeMeetingText(transcript: string, meetingDate?: str
         instructions: `브랜디액션 사내 회의 기록 편집자입니다. 회의일은 ${date}입니다. 원문에 명시된 내용만 추출하고 담당자나 기한을 절대 추측하지 마세요. 상대 기한은 회의일을 기준으로 YYYY-MM-DD로 변환하되 불명확하면 dueDate를 비우고 원문 표현을 dueLabel에 남기세요. summary는 한국어 글머리표 문자열로 작성하세요. JSON만 출력하세요.`,
         input: transcript,
         text: { format: { type: "json_schema", name: "meeting_summary", strict: true, schema: { type: "object", additionalProperties: false, properties: { summary: { type: "string" }, decisions: { type: "array", items: { type: "string" } }, pending: { type: "array", items: { type: "string" } }, todos: { type: "array", items: { type: "object", additionalProperties: false, properties: { title: { type: "string" }, assignee: { type: "string" }, dueDate: { type: "string" }, dueLabel: { type: "string" } }, required: ["title", "assignee", "dueDate", "dueLabel"] } } }, required: ["summary", "decisions", "pending", "todos"] } } },
-        max_output_tokens: 1800,
+        max_output_tokens: 8000,
       }),
       signal: controller.signal,
     });
     const result = await response.json() as Record<string, unknown>;
+    if (!response.ok || result.status === "incomplete") console.warn("[openai] meeting summary", response.status, result.status, (result.incomplete_details as { reason?: string } | undefined)?.reason ?? (result.error as { code?: string } | undefined)?.code ?? "");
     if (!response.ok) throw new Error("openai");
     const raw = jsonText(result);
     return { ...normalize(raw ? JSON.parse(raw) : null, fallback), mode: "ai" };
