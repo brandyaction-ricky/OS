@@ -106,7 +106,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
     ai: { jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,
       review: bundle.review, canonBundle: bundle.canonBundle, suggestions: bundle.suggestions, head: bundle.manuscript.split("\n").filter(line => line.trim().startsWith("<!--")).join("\n") } };
   await writeStage(client.supabase, client.id, state.source.team ?? "", stages.project, "outline", stages.outline, outline);
-  return { chars: check.chars, paragraphs: check.paragraphs.length, sections: check.sections };
+  return { chars: check.chars, paragraphs: check.paragraphs.length, sections: check.sections, notes: check.notes };
 }
 
 // ── ⑦ 설명란 · 고정 댓글 (S7 3번) ──
