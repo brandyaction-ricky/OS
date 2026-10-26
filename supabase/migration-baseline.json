@@ -826,6 +826,17 @@
       "productionApprovedAt": "2026-10-25",
       "appliedEnvironments": ["production"],
       "notes": "Owner request 2026-10-25 (test meeting 'ㅋㅋ' and an empty weekly meeting could not be removed: the knowledge meeting guard blocks plain archive); owner approved Production the same day. Rollback-only test (tests/team-meeting-archive.sql with this migration) 9 checks, 0 failures on DEV and on Production; not applied to DEV. Production: function absent before; applied, recorded in schema history and read back (security definer, authenticated execute, anon none)."
+    },
+    {
+      "file": "20261026090000_service_role_statement_timeout.sql",
+      "sha256": "b1461b98db91ad7a904e76b16e934249e742a5467783dd34abb6593a97bc179f",
+      "purpose": "service_role gets its own 60s statement_timeout (it inherited the authenticator's 8s), so indexing large documents and other server batch work are not cut off; authenticated/anon unchanged",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-26",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner request 2026-10-26 (fix every failing call); owner approved Production the same day. Evidence: live documents with ~170-1,240 headings failed indexing after 9-12s while others finished in 3s or less; service_role had no role setting. Applied to Production, recorded in schema history and read back (service_role statement_timeout=60s; authenticated 8s and authenticator unchanged). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
