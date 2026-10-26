@@ -16,7 +16,7 @@ export function defaultGenerationMode(records: OsRecord[]): GenerationMode {
   return generationSetting(records)?.metadata.defaultGenerationMode === "api" ? "api" : "queue";
 }
 export function generationJobLabel(job: Pick<OsRecord, "status" | "stage" | "metadata">) {
-  if (job.status === "blocked" && job.stage === "credentials") return "이전 방식 — API 연결 대기";
+  if (job.status === "blocked" && job.stage === "credentials") return "이전 방식 — 연결 대기";
   if (job.stage === "failed" || job.status === "failed") return "실패";
   return ({ backlog: "대기", active: "처리 중", done: "완료", review: "검수 중", draft: "초안", ready: "승인 대기", blocked: "막힘" } as Record<string, string>)[job.status] ?? job.status;
 }

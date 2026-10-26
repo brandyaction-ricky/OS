@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { apiRequest } from "@/lib/api-client";
 import type { YoutubeAutomationPlan } from "@/lib/youtube-automation-plan";
 import { MINDMAP_DECKS, YOUTUBE_VISUAL_TEMPLATE_VERSION, type MindmapDeck } from "@/lib/youtube-visual-template";
+import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyAiConnect } from "./my-ai-connect";
 import { useSession } from "./session-provider";
 import "./youtube-production-steps.css";
@@ -68,6 +69,8 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
   const [staff, setStaff] = useState<StaffJobStatus | null>(null);
   const [renderPc, setRenderPc] = useState<RenderPc | null>(null);
   const isAdmin = profile?.role === "admin";
+  // The voice is Fish (company money, FISH_TTS_MODEL); the script text is on the server, so the popup counts a fixed length.
+  const cost = useCostConfirm(), { voice } = useCostModels();
 
   const load = useCallback(async () => {
     try {
@@ -139,6 +142,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
   ];
 
   return <div className="yt-steps">
+    {cost.element}
     <nav className="yt-stepbar" aria-label="영상 제작 단계">
       {STEPS.map((title, index) => <a key={title} href={`#yt-step-${index + 1}`} className={`yt-stepbar-item yt-${states[index]}`} aria-current={states[index] === "current" ? "step" : undefined}>
         <b aria-hidden="true">{states[index] === "done" ? "✓" : index + 1}</b>{title}<span className="yt-sr">{` · ${STEP_PILL[states[index]].label}`}</span>
@@ -160,7 +164,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
         <div className="yt-actions"><Link className="secondary-button" href={`/content/scripts?topic=${encodeURIComponent(sourceId)}`}>② 원고·스크립트로 가기</Link></div>
       </>}
       {scriptReady && isAdmin && previewConfigured ? <div className="yt-actions">
-        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void previewVoice()}>{busy === "preview" ? "목소리 만드는 중…" : "첫 단락 목소리 미리듣기"}</button>
+        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (await cost.confirm({ model: voice, amount: voiceEstimate("가".repeat(1_800), voice).krw, upTo: true, detail: "첫 단락 1,800자 기준", ok: "확인하고 듣기" })) await previewVoice(); })()}>{busy === "preview" ? "목소리 만드는 중…" : "첫 단락 목소리 미리듣기"}</button><CostTag kind="paid" />
       </div> : null}
       {previewUrl ? <audio controls src={previewUrl} aria-label="첫 단락 목소리 미리듣기" /> : null}
     </Step>
@@ -201,10 +205,10 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
       <p>대표 목소리 음성을 만들고, 이어서 마인드맵 영상을 만들어 비공개로 저장합니다. 늘 켜 둔 렌더 PC가 차례대로 만듭니다.</p>
       {renderPc ? <RenderPcLine status={renderPc} /> : null}
       {notesDone && !madeForDesign ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy) || !isAdmin} onClick={() => void act("run", () => post("/runs", "POST", {}))}>
+        <button type="button" className="primary-button" disabled={Boolean(busy) || !isAdmin} onClick={() => void (async () => { if (await cost.confirm({ model: voice, amount: voiceEstimate("가".repeat(1_000), voice).krw, detail: "원고 1,000자 기준", ok: "확인하고 만들기" })) await act("run", () => post("/runs", "POST", {})); })()}>
           {busy === "run" ? "등록하는 중…" : "제작 시작"}
         </button>
-        <small>같은 원고면 기존 녹음을 다시 써서 음성 비용이 들지 않습니다.</small>
+        <CostTag kind="paid" /><small>같은 원고면 만든 녹음을 다시 써요.</small>
       </div> : null}
       {latest && phase ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={PHASE_PILL[phase.tone]}>{phase.label}</span>
@@ -213,7 +217,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
         {phase.tone === "problem" || latest.render?.lastErrorCode ? <small>{phase.detail}</small> : null}
         {latest.render?.status === "blocked" && isAdmin ? <div className="yt-actions">
           <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("retry", () => post("/runs", "PATCH", { runId: latest.id }))}>{busy === "retry" ? "다시 넣는 중…" : "영상 다시 만들기"}</button>
-          <small>녹음은 그대로 다시 써서 음성 비용이 들지 않습니다.</small></div> : null}
+          <small>녹음은 그대로 다시 써요.</small></div> : null}
         {latest.needsAttention.length ? <ul className="yt-list">{latest.needsAttention.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
         {!madeForDesign ? <p>이 기록은 지금 화면 설계보다 먼저 만든 것입니다. 새 설계로 만들려면 위 ‘제작 시작’을 눌러 주세요.</p> : null}
       </div> : null}
@@ -248,8 +252,7 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
   const connected = (status?.myAi.keys ?? 0) > 0;
   const open = job && ["backlog", "active"].includes(job.status);
   const send = <div className="yt-actions">
-    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button>
-    <small>내 AI 요금제로 처리해 회사 AI 비용이 들지 않습니다.</small>
+    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button><CostTag kind="ai" />
   </div>;
   return <>
     {!open ? send : null}
