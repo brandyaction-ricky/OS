@@ -15,6 +15,7 @@ import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdi
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { shortformDiagramCapabilities } from "./shortform-diagrams.mjs";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
@@ -414,7 +415,9 @@ export async function processShortform(){
   if(runId||diskFreeGb()<2)return false;
   checkShortformRuntime();
   // layoutVersion 4 renders 1:1 and 4:5 feed ads as well as 9:16 (owner requests 2026-10-25); an older worker only gets the sizes it draws.
-  const job=await call({action:"shorts_claim",layoutVersion:4});
+  const diagramTypes=shortformDiagramCapabilities();
+  const onlyRenderId=process.env.SHORTFORM_RENDER_ID;
+  const job=await call({action:"shorts_claim",layoutVersion:4,...(onlyRenderId?{renderId:onlyRenderId}:{}),...(diagramTypes.length?{diagramTypes}:{})});
   if(job.idle)return false;
   const dir=mkdtempSync(path.join(os.tmpdir(),"brandyaction-shorts-")),lease={renderId:job.renderId,lease:job.lease};
   current={renderId:job.renderId,step:"drawing"};void heartbeat();

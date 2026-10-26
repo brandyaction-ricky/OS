@@ -1,13 +1,14 @@
 // 유튜브 공정 v1 숏폼 (owner decision 2026-10-21): the screens edit scenes by length; the render PC (shortform_render_v1)
 // takes Codex's cut list — start · end as MM:SS.mmm, 00:00 to the chosen length without gaps.
+import type { ShortformDiagram } from "../shortform-production";
 import { GateError } from "./confirm.ts";
 import type { YpMeta } from "./project.ts";
 import type { YpUpload } from "./stages.ts";
 export type YpShortPurpose = "organic" | "ad";
 export type YpShortDuration = 15 | 30 | 60;
 export interface YpShortBrief { purpose: YpShortPurpose; duration: YpShortDuration; product: string; audience: string; goal: string; landingUrl: string; evidence: string; appeal: string }
-export interface YpShortScene { seconds: number; text: string; voice: string; note: string; asset: string; assetId?: string }
-export interface YpShortCut { start: string; end: string; text: string; note: string; voice?: string; asset?: string; missingAsset?: boolean; assetId?: string }
+export interface YpShortScene { seconds: number; text: string; voice: string; note: string; asset: string; assetId?: string; diagram?: ShortformDiagram }
+export interface YpShortCut { start: string; end: string; text: string; note: string; voice?: string; asset?: string; missingAsset?: boolean; assetId?: string; diagram?: ShortformDiagram }
 export interface YpShortAppeal { title: string; reason: string; evidence: string; basis: "evidence" | "hypothesis" }
 
 /** The picked reason as the brief keeps it (the same text whether picked on screen or by the AI). */
@@ -28,14 +29,14 @@ export function cutsFromScenes(scenes: YpShortScene[], duration: number): YpShor
   return scenes.map((scene, index) => {
     const end = index === scenes.length - 1 ? duration : Math.min(duration, at + Math.max(0, scene.seconds));
     const cut: YpShortCut = { start: shortformTime(at), end: shortformTime(end), text: scene.text, note: scene.note, voice: scene.voice, asset: scene.asset,
-      missingAsset: !scene.assetId, ...(scene.assetId ? { assetId: scene.assetId } : {}) };
+      missingAsset: !scene.assetId&&!scene.diagram, ...(scene.assetId ? { assetId: scene.assetId } : {}),...(scene.diagram?{diagram:scene.diagram}:{}) };
     at = end;
     return cut;
   });
 }
 export const scenesFromCuts = (cuts: YpShortCut[]): YpShortScene[] => cuts.map(cut => ({
   seconds: Math.round((shortSeconds(cut.end) - shortSeconds(cut.start)) * 10) / 10, text: cut.text, voice: cut.voice ?? "", note: cut.note ?? "", asset: cut.asset ?? "",
-  ...(cut.assetId ? { assetId: cut.assetId } : {}),
+  ...(cut.assetId ? { assetId: cut.assetId } : {}),...(cut.diagram?{diagram:cut.diagram}:{}),
 }));
 
 /** What still keeps the 숏폼 from being made, one line each (the render PC checks the same again). */
@@ -54,7 +55,7 @@ export function shortMissing(brief: YpShortBrief, scenes: YpShortScene[]) {
   if (scenes.slice(0, -1).some(scene => scene.seconds <= 0)) missing.push("장면 길이는 0초보다 길게 써 주세요");
   if (scenes.length && before >= brief.duration) missing.push(`앞 장면들이 ${brief.duration}초를 넘어요`);
   if (scenes.some(scene => !scene.text.trim())) missing.push("장면마다 자막을 써 주세요");
-  if (scenes.some(scene => !scene.assetId)) missing.push("장면마다 이미지를 넣어 주세요");
+  if (scenes.some(scene => !scene.assetId&&!scene.diagram)) missing.push("장면마다 이미지나 도식을 넣어 주세요");
   return missing;
 }
 

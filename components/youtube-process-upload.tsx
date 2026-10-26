@@ -8,7 +8,7 @@ import type { ChannelConnection } from "@/lib/channel-types";
 import { stepHref } from "@/lib/youtube-process/project";
 import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { CostTag } from "./youtube-process-cost";
+import { CostTag } from "./cost-notice";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
 import { YtCard } from "./youtube-process-media";
@@ -187,7 +187,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <span className="yp-muted" style={{ fontSize: 12 }}>제목 A{finalPair(plan, make, "A")?.changed ? "(제작에서 바꾼 것)" : ""} · 썸네일 A로 올라가요. 다 올라갈 때까지 화면을 닫지 마세요.</span></div>
           <div className="yp-upgo-r">{done ? <><button type="button" className="yp-btn yp-lg" disabled><Check size={16} /> 유튜브에 올리기</button><small className="yp-upok">✓ 올렸어요</small></>
             : <><button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(reason) || progress !== null || !editable} onClick={() => void go()}><Upload size={16} /> {progress !== null ? `${step} ${progress ? `${progress}%` : ""}` : "유튜브에 올리기"}</button>
-              {reason ? <small className="yp-muted">{reason}</small> : <CostTag cost="youtube" />}</>}</div></section>
+              {reason ? <small className="yp-muted">{reason}</small> : <CostTag kind="youtube" />}</>}</div></section>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
         {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>

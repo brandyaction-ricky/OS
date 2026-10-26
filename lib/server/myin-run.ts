@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { MYIN_METAPHOR_TYPES } from "@/lib/myin-storyboard";
+import { MYIN_METAPHOR_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -362,22 +362,14 @@ export function myinReferencedFiles(storyboard: unknown) {
   walk(storyboard);
   return files;
 }
-const pageId = (url: string) => url.split("/photos/")[1]?.split(/[?#/]/)[0]?.split("-").pop() ?? "";
-/** Where the render PC fetches a photo: the photo site's own download address. Music comes from the 음악 창고 on the render PC. */
-function fetchUrl(asset: { url: string }) {
-  const url = new URL(asset.url);
-  if (url.hostname === "unsplash.com" && pageId(asset.url)) return `https://unsplash.com/photos/${pageId(asset.url)}/download?force=true`;
-  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
-  return null;
-}
 
 /** Approve the photos the storyboard uses (the confirmation covers them) and queue the CTA voice, then the render PC's preparation. */
 async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: string) {
   const story = await storyboardJson(service, run);
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
-  const unreachable = used.filter((file) => !fetchUrl(byFile.get(file)!));
-  if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(Unsplash·위키미디어만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
+  const unreachable = used.filter((file) => !myinPhotoFetchUrl(byFile.get(file)!.url));
+  if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(위키미디어, Unsplash 사진 파일 주소만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   const at = new Date().toISOString();
   const assets = Object.fromEntries(used.map((file) => [file, { decision: "approved" as const, by, at }]));
   const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) =>
@@ -439,9 +431,11 @@ export async function claimMyinPrep(service: Service = createServiceSupabase()) 
   try {
     const story = await storyboardJson(service, run);
     const assets = [];
+    const folders = myinPhotoFolders(story);
     for (const asset of run.storyboard?.assets ?? []) {
-      const url = run.assets?.[asset.file]?.decision === "approved" ? fetchUrl(asset) : null;
-      if (url) assets.push({ kind: asset.kind, file: asset.file, url });
+      const url = run.assets?.[asset.file]?.decision === "approved" ? myinPhotoFetchUrl(asset.url) : null;
+      // The render PC saves each entry under assets/<kind>; a photo used in both places is sent twice.
+      if (url) for (const kind of folders.get(asset.file) ?? [asset.kind]) assets.push({ kind, file: asset.file, url });
     }
     const cta = [];
     for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });

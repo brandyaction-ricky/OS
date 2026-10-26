@@ -41,7 +41,7 @@ function harness({ fail = false } = {}) {
     return q;
   } };
   const queue = compile("lib/server/content-generation-queue.ts", {"node:crypto":crypto,"@/lib/http":{ApiError}});
-  const api = compile("lib/server/content-generation.ts", {zod:require("zod"),"@/lib/http":{ApiError},"@/lib/content-input":contentInput,"@/lib/content-safety":safety,"@/lib/content-appeals":appeals,"@/lib/structure-borrow":{structureBorrowGuidance:()=>""},"./content-generation-queue":queue,"./content-automation-settings":{readContentAutomationSettings:async()=>({settings:{generationMode:"queue",promptPrefix:"내부 요청 기준",retryLimit:2,publishLeadMinutes:30,autoCollect:false,enabledChannels:["youtube","instagram","threads"],shorts:{voicePreset:"voice",bgmPreset:"bgm",captionPreset:"caption"}}})}}, {
+  const api = compile("lib/server/content-generation.ts", {zod:require("zod"),"@/lib/http":{ApiError},"@/lib/cost":compile("lib/cost.ts",{}),"@/lib/config":{CLAUDE_FAST_MODEL:"claude-haiku-5-5",CLAUDE_SMART_MODEL:"claude-sonnet-5-5",OPENAI_ANSWER_MODEL:"gpt-6-luna"},"@/lib/content-input":contentInput,"@/lib/content-safety":safety,"@/lib/content-appeals":appeals,"@/lib/structure-borrow":{structureBorrowGuidance:()=>""},"./content-generation-queue":queue,"./content-automation-settings":{readContentAutomationSettings:async()=>({settings:{generationMode:"queue",promptPrefix:"내부 요청 기준",retryLimit:2,publishLeadMinutes:30,autoCollect:false,enabledChannels:["youtube","instagram","threads"],shorts:{voicePreset:"voice",bgmPreset:"bgm",captionPreset:"caption"}}})}}, {
     process:{env:{ANTHROPIC_API_KEY:"unit-test-only"}},
     fetch:async()=> { calls++; return {ok:!fail,status:fail?429:200,json:async()=>({content:[{type:"text",text:JSON.stringify({summary:"Example",titles:[],copies:[],designPrompts:[]})}],usage:{input_tokens:21,output_tokens:34}})}; },
   });
@@ -71,7 +71,7 @@ test("API failures persist a safe failure code instead of changing legacy creden
   await assert.rejects(h.api.executeGeneration(h.actor,h.api.generationSchema.parse({sourceId:h.sourceId,action:"title_package",mode:"api"})),error=>error.code==="CLAUDE_TEMPORARILY_UNAVAILABLE");
   const job=h.rows.find(row=>row.record_type==="ai_job");assert.equal(job.status,"blocked");assert.equal(job.stage,"failed");
   assert.equal(generationJobLabel(job),"실패");
-  assert.equal(generationJobLabel({status:"blocked",stage:"credentials",metadata:{}}),"이전 방식 — API 연결 대기");
+  assert.equal(generationJobLabel({status:"blocked",stage:"credentials",metadata:{}}),"이전 방식 — 연결 대기");
 });
 test("generation preference is queue by default and ignores unrelated or archived settings",()=>{
   assert.equal(defaultGenerationMode([]),"queue");

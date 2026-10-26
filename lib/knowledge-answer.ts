@@ -35,8 +35,13 @@ function referencedSources(answer: string, results: AnswerSource[], maxSources: 
 }
 
 export function formatKnowledgeAnswer(answer: string, results: AnswerSource[], publicUrl: string, maxSources = 3) {
+  // Telegram shows plain text: drop Markdown marks the model adds (**bold**, # headings, `code`).
   const body = answer
     .replace(EVIDENCE_MARKER, "")
+    .replace(/\*\*(.+?)\*\*|__(.+?)__/gu, "$1$2")
+    .replace(/^#{1,6}\s+/gmu, "")
+    .replace(/`([^`\n]+)`/gu, "$1")
+    .replace(/^(\s*)[*-]\s+/gmu, "$1• ")
     .replace(/[ \t]+([,.!?。])/gu, "$1")
     .replace(/\n{3,}/gu, "\n\n")
     .trim();

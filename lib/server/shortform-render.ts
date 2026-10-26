@@ -2,7 +2,7 @@ import { createHash,createHmac,randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
-import { parseShortformBrief,shortformCutsSchema,shortformSeconds,validateDirectCuts,shortformBriefProblem } from "@/lib/shortform-production";
+import { parseShortformBrief,shortformCutsSchema,shortformSeconds,validateDirectCuts,shortformBriefProblem,type ShortformDiagram } from "@/lib/shortform-production";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { safeSecretMatch,type RequestActor } from "./auth";
 import { getPersonalRecord,assertHumanOwner } from "./content-automation-v07";
@@ -34,7 +34,7 @@ const AD_LAYOUT:Record<AdAspect,number>={"1:1":3,"4:5":4};
 type Plan={
   layoutVersion:2;aspect?:AdAspect;
   mode:"reuse"|"direct";duration:number;brief:unknown;memo:string;
-  cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string}[];
+  cuts:{start:number;end:number;text:string;voice:string;assetId?:string;assetVersion?:number;assetPath?:string;diagram?:ShortformDiagram}[];
   source?:{id:string;key:string};
   voice?:{referenceFingerprint:string;model:string;settings:ReturnType<typeof fishVoiceSettings>};
 };
@@ -94,7 +94,15 @@ async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9
       throw new ApiError(422,"SHORTFORM_TEXT_LONG","장면 자막은 240자, 내레이션은 1,800자 이내로 줄여 주세요.");
     if(scene.voice.length>(end-start)*12+20)
       throw new ApiError(422,"SHORTFORM_VOICE_TOO_LONG","장면 시간에 비해 내레이션이 깁니다. 음성을 만들기 전에 대본을 줄여 주세요.");
-    if(brief.mode==="direct"){
+    if(cut.diagram){
+      if(process.env.YOUTUBE_SHORTFORM_DIAGRAMS_ENABLED!=="true")throw new ApiError(503,"SHORTFORM_DIAGRAM_DISABLED","세로 도식 제작 연결을 준비 중입니다.");
+      if(brief.mode!=="direct"||aspect!=="9:16"||cut.assetId)throw new ApiError(422,"SHORTFORM_DIAGRAM_INVALID","세로 직접 제작에서 이미지 대신 도식을 선택해 주세요.");
+      const times:number[]=[];
+      const visit=(value:unknown):void=>{if(value&&typeof value==="object")for(const [key,child] of Object.entries(value)){if(key==="t"||key==="t0"||key.startsWith("t_"))times.push(Number(child));else visit(child);}};
+      visit(cut.diagram.scene);
+      if(times.some(time=>!Number.isFinite(time)||time<0||time>=end-start))throw new ApiError(422,"SHORTFORM_DIAGRAM_TIMING","도식 시각을 해당 장면의 길이 안으로 맞춰 주세요.");
+      scene.diagram=cut.diagram;
+    }else if(brief.mode==="direct"){
       if(cut.missingAsset||!cut.assetId)throw new ApiError(422,"SHORTFORM_ASSET_REQUIRED","각 장면에 확보한 내 이미지를 선택해 주세요.");
       const asset=await ownRecord(service,String(item.owner_id),cut.assetId,"content_asset");
       if(asset.metadata.space!=="personal")throw new ApiError(403,"SHORTFORM_ASSET_FORBIDDEN","내 이미지에서 선택해 주세요.");
@@ -170,14 +178,16 @@ async function sign(service:Service,bucket:string,path:string){
   if(error||!data)throw new ApiError(503,"SHORTFORM_SIGN_FAILED","제작 파일을 열지 못했습니다.");
   return data.signedUrl;
 }
-export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2){
-  const {data:rows,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
+export async function claimShortformRender(service:Service=createServiceSupabase(),layoutVersion:2|3|4=2,diagramTypes:readonly string[]=[],onlyRenderId?:string){
+  const query=service.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>kind",SHORTFORM_RENDER_KIND)
     .in("status",["backlog","in_progress"]).is("archived_at",null).order("created_at").limit(30);
+  const {data:rows,error}=await (onlyRenderId?query.eq("id",onlyRenderId):query);
   if(error)throw new ApiError(503,"SHORTFORM_QUEUE_FAILED","제작 대기열을 읽지 못했습니다.");
   for(const row of (rows??[]) as OsRecord[]){
     let run:Run;try{run=verifyShortformRun(row);}catch{continue;}
     // A worker older than an ad size (1:1 from layoutVersion 3, 4:5 from 4) gets only the sizes it draws.
     if(run.plan.aspect&&layoutVersion<AD_LAYOUT[run.plan.aspect])continue;
+    if(run.plan.cuts.some(cut=>cut.diagram&&!diagramTypes.includes(cut.diagram.type)))continue;
     if(run.lease&&Date.parse(run.lease.expiresAt)>Date.now())continue;
     if(run.attempts>=3){await save(service,row,"blocked","failed",run);continue;}
     try{await currentInput(service,row,run);}catch{await save(service,row,"blocked","failed",{...run,error:"SHORTFORM_INPUT_CHANGED"});continue;}
@@ -191,7 +201,7 @@ export async function claimShortformRender(service:Service=createServiceSupabase
       const scenes=[];
       const source=run.plan.source?await readShortformLongform({supabase:service},run.plan.source.id,run.plan.source.key,()=>service):null;
       for(const cut of run.plan.cuts)scenes.push({start:cut.start,end:cut.end,text:cut.text,hasVoice:Boolean(cut.voice.trim()),
-        ...(cut.assetPath?{imageUrl:await sign(service,BUCKET,cut.assetPath)}:{})});
+        ...(cut.assetPath?{imageUrl:await sign(service,BUCKET,cut.assetPath)}:{}),...(cut.diagram?{diagram:cut.diagram}:{})});
       return {renderId:row.id,lease:lease.token,mode:run.plan.mode,aspect:run.plan.aspect??"9:16",duration:run.plan.duration,scenes,
         sourceUrl:source?.videoUrl,uploadUrl:upload.signedUrl};
     }catch{

@@ -7,7 +7,12 @@ export { canReadDocument, filterReadable, canEditDocument, canChangeCategory, ca
 /** Hydrate policy context on the server. Missing related rows fail closed. */
 export async function knowledgeAccessContext(actor: RequestActor, documents: AccessDocument[]) {
   const service = createServiceSupabase();
-  const { data: profile, error } = await service.from("os_profiles").select("*").eq("id", actor.ownerId).maybeSingle();
+  // Telegram questions are asked on behalf of a chat, not a person (agent actor, no ownerId): a
+  // staff-level reader with no personal grants, so restricted canon and others' notes stay hidden.
+  const anonymous = actor.type === "agent" && !actor.ownerId;
+  const { data: profile, error } = anonymous
+    ? { data: { is_active: true, member_kind: "staff", canonical_publisher: false, role: "member" }, error: null }
+    : await service.from("os_profiles").select("*").eq("id", actor.ownerId).maybeSingle();
   if (error || !profile?.is_active) throw new ApiError(403, "KNOWLEDGE_ACCESS_UNAVAILABLE", "문서 열람 권한을 확인하지 못했습니다.");
   const policyActor: KnowledgeActor = { ownerId:actor.ownerId,type:actor.type,role:actor.role,allowedStatuses:actor.allowedStatuses,memberKind: profile.member_kind ?? "staff", active: profile.is_active, canPublishCanonical: profile.canonical_publisher === true && profile.role === "admin" };
   const context: KnowledgeAccessContext = { categories: new Map(), meetings: new Map(), noteGrants: new Set() };
@@ -56,7 +61,7 @@ export async function knowledgeAccessContext(actor: RequestActor, documents: Acc
     !admin && doc.status === "canonical" && doc.reader_scope !== "all" && doc.steward_id !== actor.ownerId
     || actor.type === "user" && doc.status === "draft")).map(doc => doc.id).filter((id): id is string => Boolean(id)))];
   const readers = new Set<string>();
-  for (let offset = 0; offset < restricted.length; offset += 200) {
+  for (let offset = 0; !anonymous && offset < restricted.length; offset += 200) {
     const result = await service.from("os_document_readers").select("document_id").eq("user_id", actor.ownerId).in("document_id", restricted.slice(offset, offset + 200));
     if (result.error) throw new ApiError(503, "KNOWLEDGE_ACCESS_UNAVAILABLE", "문서 열람 권한을 확인하지 못했습니다.");
     for (const row of result.data ?? []) readers.add(row.document_id);

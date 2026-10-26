@@ -80,7 +80,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const missing = form ? draftMissing(form) : "";
   const started = Boolean(form && (form.titles.some(row => row.text.trim()) || form.opening.trim() || form.body.trim() || form.closing.trim()));
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
-  return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌을 요청해요.", "기획안 컨펌이 끝났어요. 구성안으로 넘어가요.")} savedAt={savedAt}
+  return <YpFrame page={page} view={1} action={action} header={header} title="기획안" sub={gateSub(project, "draft", "제목 A · B와 썸네일 A · B, 영상 흐름을 채우고 컨펌해요.", "기획안 컨펌이 끝났어요. 구성안으로 넘어가요.")} savedAt={savedAt}
     todo={form && project?.yp.stage === "draft" ? [{ label: "제목 A", done: Boolean(form.titles[0]?.text.trim()) }, { label: "제목 B", done: Boolean(form.titles[1]?.text.trim()) }, { label: "썸네일 A", done: thumbFilled(form.thumbs[0]) }, { label: "썸네일 B", done: thumbFilled(form.thumbs[1]) }, { label: "오프닝", done: Boolean(form.opening.trim()) }, { label: "본론", done: Boolean(form.body.trim()) }, { label: "클로징", done: Boolean(form.closing.trim()) }] : undefined}
     onSave={project?.yp.stage === "draft" ? () => void save() : undefined} saveDisabled={!dirty}>
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="기획안" /> : <div onBlur={() => { if (dirty) void save(); }}>

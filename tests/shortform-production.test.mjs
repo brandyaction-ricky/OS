@@ -16,7 +16,8 @@ async function load(file,modules){
     {module:compiled,exports:compiled.exports,URL,require:name=>{assert.ok(name in modules,name);return modules[name];}});
   return compiled.exports;
 }
-const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError}});
+const catalog=await load("lib/shortform-diagram-catalog.ts",{"./shortform-diagram-catalog.json":{default:JSON.parse(await readFile(new URL("../lib/shortform-diagram-catalog.json",import.meta.url),"utf8"))}});
+const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError},"./shortform-diagram-catalog":catalog});
 const api=await load("lib/server/shortform-production.ts",{
   "node:crypto":crypto,"@/lib/http":{ApiError},"@/lib/shortform-production":contract,
 });
@@ -24,7 +25,7 @@ const results=await load("lib/content-automation-results.ts",{
   zod,"./http":{ApiError},"./shortform-production":contract,"./threads-posts":{threadsPostsProblem:()=>null},
 });
 const fields=await load("components/shortform-production-fields.tsx",{
-  "react/jsx-runtime":jsx,"@/lib/shortform-production":contract,
+  "react/jsx-runtime":jsx,"@/lib/shortform-production":contract,"@/components/cost-notice":{CostTag:"cost-tag"},
 });
 const brief={...contract.DEFAULT_SHORTFORM_BRIEF,mode:"direct",purpose:"ad",product:"Sample",
   audience:"New customers",goal:"See details",landingUrl:"https://example.com/product",
@@ -123,4 +124,13 @@ test("direct ad fields and shot editor expose user-facing choices without claimi
     assert.ok(html.includes(label));
   const plan=renderToStaticMarkup(fields.ShortformCutEditor({value:JSON.stringify(cuts().cuts),onChange:()=>{}}));
   for(const label of ["장면 1","내레이션","사용할 소재","소재 확보 필요"])assert.ok(plan.includes(label));
+});
+
+test('all seventy portrait templates validate, scale to short cuts and reject unknown fields',()=>{
+ assert.equal(catalog.DIAGRAM_CATALOG.length,70);
+ for(const entry of catalog.DIAGRAM_CATALOG){
+  const d=catalog.defaultDiagram(entry.type,3);
+  assert.equal(contract.shortformDiagramSchema.safeParse(d).success,true,entry.type);
+  assert.equal(contract.shortformDiagramSchema.safeParse({...d,scene:{...d.scene,html:'<script>x</script>'}}).success,false,entry.type);
+ }
 });

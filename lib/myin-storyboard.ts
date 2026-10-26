@@ -182,6 +182,39 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
 }
 
+/** Where the render PC fetches a storyboard photo, or null when it cannot fetch it by itself. An Unsplash page link is refused:
+ * its unsplash.com/…/download address answered the render PC with 429 (2026-10-26, owner chose file links only). */
+export function myinPhotoFetchUrl(link: string) {
+  let url: URL;
+  try { url = new URL(link); } catch { return null; }
+  if (url.protocol !== "https:") return null;
+  if (url.hostname === "images.unsplash.com" || url.hostname === "upload.wikimedia.org") return link;
+  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
+  return null;
+}
+
+/**
+ * The asset folders each photo must sit in for Logan's engine, which reads a scene's `photo.file` from assets/people (side photo and
+ * situation card alike) and an opening act's `image` from assets/situations, whatever kind the storyboard gave the photo. A photo
+ * filed under its kind alone stopped the v13 preview with FileNotFoundError (2026-10-26).
+ */
+export function myinPhotoFolders(storyboard: unknown) {
+  const folders = new Map<string, ("people" | "situations")[]>();
+  const add = (file: unknown, folder: "people" | "situations") => {
+    if (typeof file === "string" && !folders.get(file)?.includes(folder)) folders.set(file, [...(folders.get(file) ?? []), folder]);
+  };
+  const walk = (o: unknown) => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+      if (k === "photo" && v && typeof v === "object") add((v as { file?: unknown }).file, "people");
+      else if (k === "image") add(v, "situations");
+      walk(v);
+    }
+  };
+  walk(storyboard);
+  return folders;
+}
+
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);

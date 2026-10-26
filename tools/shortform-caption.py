@@ -5,7 +5,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 
-def draw_caption(text, output, font_path, compact=False, width=720, height=1280, font=38, line=52, maxWidth=600, margin=36, compactTop=840, bottom=1100):
+def draw_caption(text, output, font_path, compact=False, width=720, height=1280, font=38, line=52, maxWidth=600, margin=36, compactTop=840, bottom=1100, maxLines=4):
     """The plate for one frame size: 720×1280 (9:16) by default; the renderer passes the 1:1 and 4:5 numbers for feed ads."""
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -20,7 +20,7 @@ def draw_caption(text, output, font_path, compact=False, width=720, height=1280,
             current += char
     if current:
         lines.append(current)
-    if len(lines) > 4:
+    if len(lines) > maxLines:
         raise ValueError("SHORTFORM_CAPTION_TOO_LONG")
     # Wide originals sit above this plate; portrait originals keep the bottom safe area.
     top = compactTop if compact else bottom - max(1, len(lines)) * line
@@ -34,6 +34,6 @@ def draw_caption(text, output, font_path, compact=False, width=720, height=1280,
 if __name__ == "__main__":
     with open(sys.argv[1], encoding="utf-8") as stream:
         payload = json.load(stream)
-    sizes = {key: payload[key] for key in ("width", "height", "font", "line", "maxWidth", "margin", "compactTop", "bottom") if key in payload}
+    sizes = {key: payload[key] for key in ("width", "height", "font", "line", "maxWidth", "margin", "compactTop", "bottom", "maxLines") if key in payload}
     draw_caption(payload["text"], sys.argv[2], os.environ.get(
         "SHORTFORM_FONT_FILE", "/System/Library/Fonts/AppleSDGothicNeo.ttc"), payload.get("compact", False), **sizes)

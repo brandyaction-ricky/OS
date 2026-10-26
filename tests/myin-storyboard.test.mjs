@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, myinCreditsBlock, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { checkMyinStoryboard, myinCreditsBlock, myinPhotoFetchUrl, myinPhotoFolders, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -66,4 +66,26 @@ test("a puzzle needs its word and keeps pieces and word to 4 letters", () => {
   assert.deepEqual(of({ word: "맞는 일" }), []);
   assert.match(of({ word: "맞는 일자리" })[0], /4자 이하로 줄여/);
   assert.match(of({ word: "조합", pieces: [{ text: "일하는 방식" }] })[0], /조각 「일하는 방식」/);
+});
+
+// 2026-10-26: Unsplash page downloads got 429 on the render PC; the owner chose file links only, so a page link is refused up front.
+test("myinPhotoFetchUrl takes the image hosts' file links as they are and refuses Unsplash photo pages", () => {
+  for (const link of ["https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&fm=jpg", "https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg"])
+    assert.equal(myinPhotoFetchUrl(link), link);
+  assert.equal(myinPhotoFetchUrl("https://commons.wikimedia.org/wiki/File:Example.jpg"), "https://commons.wikimedia.org/wiki/Special:FilePath/Example.jpg");
+  for (const link of ["https://unsplash.com/photos/green-hills-1Z2niiBPg5A", "http://images.unsplash.com/photo-1", "https://www.pexels.com/photo/1/", "not a url"])
+    assert.equal(myinPhotoFetchUrl(link), null);
+});
+
+// 2026-10-26: a situations photo used as a scene's side photo was saved under assets/situations, and Logan's engine looked in
+// assets/people (FileNotFoundError, v13 preview stopped three times).
+test("myinPhotoFolders puts a scene photo in people and an opening image in situations, whatever the asset kind", () => {
+  const story = { scenes: [
+    { type: "opening", acts: [{ image: "moving_boxes.jpg" }, { image: "journal_writing.jpg" }] },
+    { type: "statement", photo: { file: "night_desk_headache.jpg", t: "x" } },
+    { type: "situation", photo: { file: "office_thinking.jpg", kind: "situation", t: "y" } },
+    { type: "hero", photo: { file: "journal_writing.jpg", t: "z" } },
+  ], music_cues: { a: { file: "music_C2_curious.mp3" } } };
+  assert.deepEqual(Object.fromEntries(myinPhotoFolders(story)), {
+    "moving_boxes.jpg": ["situations"], "journal_writing.jpg": ["situations", "people"], "night_desk_headache.jpg": ["people"], "office_thinking.jpg": ["people"] });
 });

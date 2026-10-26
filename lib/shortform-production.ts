@@ -1,3 +1,4 @@
+import { DIAGRAM_TYPES,diagramProblem } from "./shortform-diagram-catalog";
 import { z } from "zod";
 import { ApiError } from "./http";
 
@@ -41,6 +42,12 @@ export const shortformAppealsSchema=z.object({
     title:line,reason:line,evidence:z.string().max(5000),basis:z.enum(["evidence","hypothesis"]),
   }).strict()).min(2).max(5),
 }).strict();
+// Every accepted key and nested field is constrained by the reviewed portrait catalog.
+export const shortformDiagramSchema=z.object({type:z.enum(DIAGRAM_TYPES),scene:z.record(z.unknown())}).strict().superRefine((value,ctx)=>{
+  const error=diagramProblem(value.type,value.scene);
+  if(error)ctx.addIssue({code:z.ZodIssueCode.custom,message:error});
+});
+export type ShortformDiagram=z.infer<typeof shortformDiagramSchema>;
 export const shortformCutsSchema=z.object({
   cuts:z.array(z.object({
     start:line,end:line,text:line,note:z.string().max(3000),
@@ -48,6 +55,7 @@ export const shortformCutsSchema=z.object({
     asset:z.string().max(3000).optional(),
     missingAsset:z.boolean().optional(),
     assetId:z.string().uuid().optional(),
+    diagram:shortformDiagramSchema.optional(),
   })).min(1).max(100),
 });
 export function shortformSeconds(value:string){

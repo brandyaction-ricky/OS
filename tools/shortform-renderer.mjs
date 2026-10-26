@@ -2,6 +2,7 @@ import { spawn,execFileSync } from "node:child_process";
 import { readFileSync,writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareShortformDiagrams } from "./shortform-diagrams.mjs";
 
 const captionTool=fileURLToPath(new URL("./shortform-caption.py",import.meta.url));
 // 9:16 for Shorts · Reels, 1:1 and 4:5 for feed ads (owner requests 2026-10-25). A wide original keeps its own band; the caption plate sits below it.
@@ -38,6 +39,7 @@ export function probeShortform(file,ffprobe=process.env.SHORTFORM_FFPROBE||"ffpr
 export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",ffmpeg=process.env.SHORTFORM_FFMPEG||"ffmpeg",python=process.env.MINDMAP_PYTHON||"python3"}){
   const L=SHORTFORM_LAYOUTS[aspect];
   if(!L||!["direct","reuse"].includes(mode)||!Array.isArray(scenes)||!scenes.length||scenes.length>20)throw fail("SHORTFORM_PLAN_INVALID");
+  scenes=await prepareShortformDiagrams({mode,scenes,dir,aspect,python,ffmpeg});
   const segments=[];let total=0;
   const source=mode==="reuse"?probeShortform(sourceFile):null;
   if(source&&!source.audio)throw fail("SHORTFORM_SOURCE_AUDIO_MISSING");
@@ -49,21 +51,25 @@ export async function renderShortform({mode,scenes,sourceFile,dir,aspect="9:16",
     if(mode==="direct"&&scene.audioFile&&probeShortform(scene.audioFile).duration>duration+0.1)
       throw fail("SHORTFORM_VOICE_TOO_LONG");
     if(mode==="direct"&&scene.hasVoice&&!scene.audioFile)throw fail("SHORTFORM_VOICE_MISSING");
-    const visual=source?.video??probeShortform(scene.imageFile).video;
+    if(scene.diagramFile&&(mode!=="direct"||aspect!=="9:16"||scene.imageFile))throw fail("SHORTFORM_DIAGRAM_INVALID");
+    const diagram=scene.diagramFile?probeShortform(scene.diagramFile):null;
+    if(diagram&&(diagram.video?.width!==720||diagram.video?.height!==1280||diagram.audio||!Number.isFinite(diagram.duration)||Math.abs(diagram.duration-duration)>0.1))
+      throw fail("SHORTFORM_DIAGRAM_INVALID");
+    const visual=source?.video??diagram?.video??probeShortform(scene.imageFile).video;
     if(!visual?.width||!visual?.height)throw fail("SHORTFORM_IMAGE_INVALID");
     const wide=visual.width/visual.height>1;
     const caption=path.join(dir,`caption-${index}.png`),data=path.join(dir,`caption-${index}.json`),output=path.join(dir,`scene-${index}.mov`);
-    writeFileSync(data,JSON.stringify({text:scene.text,compact:wide,width:L.w,height:L.h,...L.caption}));
+    writeFileSync(data,JSON.stringify({text:scene.text,compact:wide,width:L.w,height:L.h,...L.caption,...(diagram?{maxLines:2}:{})}));
     await run(python,[captionTool,data,caption]);
     const inputs=mode==="reuse"?["-ss",String(scene.start),"-t",String(duration),"-i",sourceFile]:
-      ["-loop","1","-framerate","30","-i",scene.imageFile];
+      scene.diagramFile?["-i",scene.diagramFile]:["-loop","1","-framerate","30","-i",scene.imageFile];
     inputs.push("-loop","1","-framerate","30","-i",caption);
     if(mode==="direct"){
       if(scene.audioFile)inputs.push("-i",scene.audioFile);
       else inputs.push("-f","lavfi","-i","anullsrc=channel_layout=stereo:sample_rate=48000");
     }
     // Never crop the readable foreground. A low-resolution, blurred duplicate fills unused space.
-    const composition="[0:v]split=2[back][front];"+
+    const composition=scene.diagramFile?"[0:v]setsar=1[base];[base][1:v]overlay=0:0,format=yuv420p[v]":"[0:v]split=2[back][front];"+
       `[back]scale=${L.bgW}:${L.bgH}:force_original_aspect_ratio=increase,crop=${L.bgW}:${L.bgH},boxblur=12:2,eq=brightness=-0.18:saturation=0.55,scale=${L.w}:${L.h},setsar=1[bg];`+
       `[front]scale=${L.w}:${wide?L.wideH:L.h}:force_original_aspect_ratio=decrease,setsar=1[fg];`+
       `[bg][fg]overlay=(W-w)/2:${wide?`${L.wideY}+(${L.wideH}-h)/2`:"(H-h)/2"}[base];`+

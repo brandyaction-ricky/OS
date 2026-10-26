@@ -10,7 +10,7 @@ import {
 import { useSession } from "./session-provider";
 import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
-import { StepFooter, waitStatus } from "./youtube-process-frame";
+import { GateNotes, StepFooter } from "./youtube-process-frame";
 import { ConfirmActions } from "./youtube-process-confirm";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { editedSinceDecision, GATE_FIELDS } from "@/lib/youtube-process/confirm";
@@ -27,7 +27,7 @@ const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - n
 
 function Field({ n, title, question, need, rev, children }: { n: number; title: string; question?: string; need: boolean; rev?: boolean; children: ReactNode }) {
   return <section className="yp-fsec">
-    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{question ? <span className="yp-gq">{question}</span> : null}{rev ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+    <div className="yp-fsec-h"><span className="yp-n">{n}</span><b>{title}</b><span className={need ? "yp-need" : "yp-opt"}>{need ? "필수" : "선택"}</span>{question ? <span className="yp-gq">{question}</span> : null}{rev ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
     <div className="yp-fsec-b">{children}</div>
   </section>;
 }
@@ -141,7 +141,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const open = (key: "title" | "kind" | "target" | "refs" | "note") => project ? topicFieldEditable(project, key) : projectParam === "new";
   const editAndSave = (patch: Partial<Form>) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); void save(next); };
 
-  async function gate(action: "request" | "cancel", reply?: string) {
+  async function gate(action: "confirm" | "request" | "cancel", reply?: string) {
     if (!client) return;
     setBusy(true); setError(""); setCreated([]);
     try {
@@ -165,28 +165,27 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const lines = topicLines(form.title);
   const action: YpAction = view !== current && current < YP_FLOW.length
     ? { kind: "link", label: `이어서 하기 · ${stepName(current, shell.yp.topic.type)}`, href: stepHref(current, shell.id) }
-    : topicGate.state === "wait"
-      ? { kind: "status", status: waitStatus(topicGate.requestedAt), secondary: { label: "요청 취소", onClick: () => void gate("cancel") } }
-      : { kind: "button", label: `${["changes", "hold"].includes(topicGate.state) ? "주제 컨펌 다시 요청" : "주제 컨펌 요청"}${lines.length > 1 ? ` (${lines.length}개)` : ""}`, reason: topicMissing(form.title, { type: form.kind, target: form.target }), busy, onClick: () => void gate("request") };
+    : { kind: "button", label: `주제 컨펌하고 다음으로${lines.length > 1 ? ` (${lines.length}개)` : ""}`, reason: topicMissing(form.title, { type: form.kind, target: form.target }), busy, onClick: () => void gate("confirm") };
   const others = projects.filter(row => row.id !== shell.id);
   const similar = editable ? similarProjects(form.title, others, shell.id) : [];
 
   return <>
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
-      <p>{topicGate.state === "wait" ? "대표 컨펌을 기다려요. 결과가 나오면 알려 드려요." : topicGate.state === "changes" ? "대표가 표시한 칸만 고치고 다시 요청해요." : topicGate.state === "ok" ? `주제 컨펌이 끝났어요. ${shell.yp.topic.type === "short" ? "제작으로" : "기획안으로"} 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌을 요청해요."}</p></div>
+      <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `주제 컨펌이 끝났어요. ${shell.yp.topic.type === "short" ? "제작으로" : "기획안으로"} 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
       <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
       {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
-      {created.length ? <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>영상 {created.length}개를 더 만들어 함께 컨펌 요청했어요: {created.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}>{projectName(row)}</Link></span>)}</div></div> : null}
+      {created.length ? <div className="yp-note" role="status"><Info size={16} className="yp-i" aria-hidden="true" /><div>영상 {created.length}개를 더 만들어 함께 컨펌했어요: {created.map((row, index) => <span key={row.id}>{index ? ", " : ""}<Link href={stepHref(0, row.id)}>{projectName(row)}</Link></span>)}</div></div> : null}
       {view === 0 ? <div onBlur={saveIfDirty}>
         {topicGate.state === "wait" ? <div className="yp-cwait" role="status"><div className="yp-cwait-h"><b>주제 컨펌 대기</b><span className="yp-hint">{md(topicGate.requestedAt)} 요청{daysSince(topicGate.requestedAt) ? ` · ${daysSince(topicGate.requestedAt)}일째` : ""}</span></div>
           {(topicGate as { pdReply?: string }).pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{(topicGate as { pdReply?: string }).pdReply}”</p> : null}
           {canConfirm && client && project ? <ConfirmActions project={project} gate="topic" client={client} onDone={next => { setProject(next); setForm(formOf(next)); }} />
-            : <p className="yp-hint">고치려면 [요청 취소]를 눌러요.</p>}</div> : null}
-        {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />고칠 칸: {(topicGate.fields ?? []).map(field => GATE_FIELDS.topic[field] ?? field).join(", ")}</div></div> : null}
-        {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 다시 요청할 수 있어요.</div></div> : null}
+            : <p className="yp-hint">아래 [주제 컨펌하고 다음으로]를 누르면 PD 컨펌으로 넘어가요.</p>}</div> : null}
+        {topicGate.state === "changes" ? <div className="yp-note yp-warn" role="status"><div><b>대표 수정 요청</b> · {md(topicGate.decidedAt)} — “{topicGate.memo}”<br />{topicGate.fields?.length ? `특히 볼 칸: ${topicGate.fields.map(field => GATE_FIELDS.topic[field] ?? field).join(", ")} · ` : ""}모든 칸을 고칠 수 있어요</div></div> : null}
+        {topicGate.state === "hold" ? <div className="yp-note yp-warn" role="status"><div><b>대표 보류</b> · {md(topicGate.decidedAt)} — 사유: {topicGate.reason}. 손본 뒤 컨펌할 수 있어요.</div></div> : null}
+        {project ? <GateNotes project={project} gate="topic" /> : null}
         {replyOpen ? <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); if (replyText.trim()) void gate("request", replyText.trim()); }}>
           <label>고친 칸 없이 다시 요청하는 이유 (대표에게 보여요)<input className="yp-in" id="yp-topic-reply" maxLength={200} value={replyText} onChange={event => setReplyText(event.target.value)} /></label>
           <div><button type="submit" className="yp-btn yp-pri" disabled={busy || !replyText.trim()}>이유와 함께 다시 요청</button> <button type="button" className="yp-btn" onClick={() => setReplyOpen(false)}>취소</button></div>
@@ -210,8 +209,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
             </label>)}
           </div>
         </Field>
-        <Field n={3} title="정밀 타겟" question="누가, 언제, 무엇이 막혀서 볼까요?" need rev={rev("topic.target")}>
-          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 퇴근 후 2시간 안에서 무엇부터 할지 막힌 30대 직장인" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} /></div>
+        <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
+          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} />
+            {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
+            <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>
         {/* 레퍼런스 · 전달 사항 are optional: folded until someone wants them (or they already hold something). */}
         <details className="yp-more-fields" open={Boolean(form.refs.length || form.note || rev("topic.refs") || rev("topic.note"))}><summary>레퍼런스 · 전달 사항 더 쓰기 (선택)</summary>

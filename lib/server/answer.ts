@@ -27,7 +27,7 @@ export async function answerFromKnowledge(
     `[근거 ${index + 1}] ${result.title} / ${result.heading}\n${result.text}\n출처: document=${result.documentId}, version=${result.citation.version ?? "current"}, chunk=${result.citation.chunkId ?? "document"}`,
   ).join("\n\n");
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  const timer = setTimeout(() => controller.abort(), 25_000);
   try {
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
@@ -36,11 +36,14 @@ export async function answerFromKnowledge(
         model: OPENAI_ANSWER_MODEL,
         instructions: "당신은 브랜디액션 사내 지식 도우미입니다. 제공된 회사 지식만 근거로 한국어로 짧고 명확하게 답하세요. 회사 지식은 우선순위순입니다. 사용법·절차 질문에는 첫 번째 절차 정본을 반드시 먼저 사용하고, 현재기준·결정 로그를 함께 대조해 실행 순서와 수치를 직접 답하세요. 분석 문서는 절차 정본을 대체할 수 없습니다. 관련 절차가 근거에 있으면 없다고 말하지 마세요. 후속 질문이면 직전 문답의 지시어를 해석하되, 사실은 반드시 이번 회사 지식으로 다시 검증하세요. 충돌 경고가 있으면 한 기준을 임의로 확정하지 마세요. 근거가 실제로 부족할 때만 모른다고 말하세요. 답 끝에는 실제 사용한 회사 지식의 번호만 [근거 1] 형식으로 표시하세요. 번호나 출처를 만들지 마세요.",
         input: `${prior ? `직전 질문:\n${prior.question}\n\n직전 답변:\n${prior.answer}\n\n` : ""}현재 질문:\n${question}\n\n${conflictNotice ? `검색 경고:\n${conflictNotice}\n\n` : ""}회사 지식:\n${evidence || "검색된 근거 없음"}`,
-        max_output_tokens: 700,
+        // Reasoning models spend output tokens thinking first; a small cap returns nothing usable.
+        max_output_tokens: 2500,
       }),
       signal: controller.signal,
     });
     const body = await response.json();
+    // Status and reason codes only (never bodies): the fallback below is otherwise silent.
+    if (!response.ok || body.status === "incomplete") console.warn("[openai] knowledge answer", response.status, body.status, body.incomplete_details?.reason ?? body.error?.code ?? "");
     if (!response.ok) throw new ApiError(502, "ANSWER_PROVIDER_ERROR", "답변 생성에 실패했습니다.");
     const answer = extractOutputText(body);
     return answer ? formatKnowledgeAnswer(answer, results, PUBLIC_URL) : formatEvidenceOnly(results);
