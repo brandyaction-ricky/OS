@@ -14,6 +14,7 @@ import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from
 import { shortsAction } from "@/lib/youtube-process/short";
 import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
+import { assertSpokenScript } from "./youtube-script-canon";
 import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -343,6 +344,8 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     need(project.yp.stage === "outline", "구성안 단계에서만 제작으로 넘어갈 수 있어요.");
     const missing = outlineMissing(stages.outline.data);
     need(!missing, missing);
+    // A 원고형 (자동 영상) 원고 is what the voice reads; whoever wrote it last, it passes 관문 1 before 제작 starts from it.
+    if (project.yp.topic.type === "anim") await assertSpokenScript(actor.supabase, stages.outline.data.script, stages.outline.data.spec.runtimeMin);
     // The 원고 the production starts from is kept as its own version (제작 시작 원고 vN).
     await writeStage(actor.supabase, actor.id, actor.team, project, "outline", stages.outline, withScriptVersion(stages.outline.data, stages.outline.data.script, actor.name, now, "make"));
   } else if (input.to === "review") {

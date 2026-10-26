@@ -187,7 +187,7 @@ export function lengthEstimate(markdown: string, runtime: number | null) {
   if (!chars || !runtime || runtimeError(runtime)) return { chars, label, verdict: null as null | { ok: boolean; text: string } };
   const diff = (minutes - runtime) / runtime;
   return { chars, label, verdict: Math.abs(diff) <= 0.2 ? { ok: true, text: `정한 러닝타임(${runtime}분)에 맞아요` }
-    : { ok: false, text: `정한 러닝타임(${runtime}분)보다 약 ${Math.max(1, Math.round(Math.abs(minutes - runtime)))}분 ${diff < 0 ? "짧아요" : "길어요"}` } };
+    : { ok: false, text: `정한 러닝타임(${runtime}분)보다 약 ${Math.max(1, Math.round(Math.abs(minutes - runtime)))}분 ${diff < 0 ? "짧아요" : "길어요"} · 내용이 필요하면 러닝타임을 고쳐요` } };
 }
 export function outlineMissing(outline: YpOutline) {
   if (outline.spec.runtimeMin === null) return "러닝타임을 정해 주세요";
