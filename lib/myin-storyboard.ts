@@ -151,6 +151,28 @@ export function myinPhotoFetchUrl(link: string) {
   return null;
 }
 
+/**
+ * The asset folders each photo must sit in for Logan's engine, which reads a scene's `photo.file` from assets/people (side photo and
+ * situation card alike) and an opening act's `image` from assets/situations, whatever kind the storyboard gave the photo. A photo
+ * filed under its kind alone stopped the v13 preview with FileNotFoundError (2026-10-26).
+ */
+export function myinPhotoFolders(storyboard: unknown) {
+  const folders = new Map<string, ("people" | "situations")[]>();
+  const add = (file: unknown, folder: "people" | "situations") => {
+    if (typeof file === "string" && !folders.get(file)?.includes(folder)) folders.set(file, [...(folders.get(file) ?? []), folder]);
+  };
+  const walk = (o: unknown) => {
+    if (Array.isArray(o)) o.forEach(walk);
+    else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+      if (k === "photo" && v && typeof v === "object") add((v as { file?: unknown }).file, "people");
+      else if (k === "image") add(v, "situations");
+      walk(v);
+    }
+  };
+  walk(storyboard);
+  return folders;
+}
+
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);
