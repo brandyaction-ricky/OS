@@ -1,6 +1,6 @@
 import {getIndexCoverage} from "./indexing-diagnostics";
 import { CONNECTIONS, connectionState, type ConnectionCheck, type ConnectionId } from "@/lib/connection-status";
-import { hasPublicSupabaseConfig, hasServerSupabaseConfig } from "@/lib/config";
+import { OPENAI_ANSWER_MODEL, hasPublicSupabaseConfig, hasServerSupabaseConfig } from "@/lib/config";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { adConnectionStatus, probeAdConnections } from "@/lib/server/ad-performance";
 import type { authenticateRequest } from "@/lib/server/auth";
@@ -64,7 +64,8 @@ export async function probeConnection(id: ConnectionId, actor: Awaited<ReturnTyp
   switch (id) {
     case "database": { const result = await createServiceSupabase().from("os_documents").select("id").limit(1).abortSignal(AbortSignal.timeout(15_000)); if (result.error) throw new Error("DATABASE_FAILED"); return; }
     case "auth": { if (!actor.id) throw new Error("AUTH_FAILED"); return; }
-    case "embeddings": return readOnlyProbe("https://api.openai.com/v1/models", { authorization: `Bearer ${process.env.OPENAI_API_KEY}` });
+    // The key, and that the answer model (Telegram Q&A, /요약, photo text, operating baseline) exists for it.
+    case "embeddings": { const auth = { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }; await readOnlyProbe("https://api.openai.com/v1/models", auth); return readOnlyProbe(`https://api.openai.com/v1/models/${encodeURIComponent(OPENAI_ANSWER_MODEL)}`, auth); }
     case "contentAi": return readOnlyProbe("https://api.anthropic.com/v1/models?limit=1", { "x-api-key": process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY || "", "anthropic-version": "2023-06-01" });
     case "telegram": return readOnlyProbe(`https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/getMe`);
     case "youtube": return readOnlyProbe(`https://www.googleapis.com/youtube/v3/i18nLanguages?part=id&key=${encodeURIComponent(process.env.YOUTUBE_API_KEY || "")}`);

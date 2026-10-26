@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { OPENAI_ANSWER_MODEL } from "@/lib/config";
 import { DEFAULT_COST_MODELS, type CostModels } from "@/lib/cost";
 import { MYIN_VOICE_MODEL } from "@/lib/server/myin-run";
 
@@ -18,7 +17,6 @@ export async function GET(request: Request) {
       myinVoice: MYIN_VOICE_MODEL,
       haiku: env.CLAUDE_HAIKU_MODEL || DEFAULT_COST_MODELS.haiku,
       sonnet: env.CLAUDE_SONNET_MODEL || DEFAULT_COST_MODELS.sonnet,
-      answer: OPENAI_ANSWER_MODEL,
       transcribe: env.OPENAI_TRANSCRIPTION_MODEL || DEFAULT_COST_MODELS.transcribe,
     };
     return NextResponse.json({ models });

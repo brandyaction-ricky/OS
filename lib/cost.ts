@@ -19,7 +19,6 @@ export function voiceEstimate(text: string, model = "s2.1-pro", now = Date.now()
 const TOKEN_USD: [prefix: string, name: string, input: number, output: number][] = [
   ["claude-sonnet-4-5", "Claude Sonnet 4.5", 3, 15],
   ["claude-haiku-4-5", "Claude Haiku 4.5", 1, 5],
-  ["gpt-5.6-luna", "OpenAI GPT-5.6 Luna", 0.2, 1.2],
 ];
 /** USD per audio minute (developers.openai.com pricing, checked 2026-10-26). */
 const MINUTE_USD: Record<string, number> = { "gpt-4o-mini-transcribe": 0.003 };
@@ -51,8 +50,8 @@ export type GenerationAction = keyof typeof GENERATION;
 export const GENERATION_INPUT = 85_000;
 
 /** The models each paid button uses on the server (env names as the server reads them; defaults as in the server code). */
-export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; answer: string; transcribe: string }
+export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string }
 export const DEFAULT_COST_MODELS: CostModels = {
   voice: "s2.1-pro", myinVoice: "drama-3", haiku: "claude-haiku-4-5-20251001", sonnet: "claude-sonnet-4-5-20250929",
-  answer: "gpt-5.6-luna", transcribe: "gpt-4o-mini-transcribe",
+  transcribe: "gpt-4o-mini-transcribe",
 };

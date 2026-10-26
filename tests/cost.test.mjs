@@ -20,7 +20,6 @@ test("token, minute and model estimates use the official prices", async () => {
   const { tokenEstimate, minuteEstimate, modelName, GENERATION, GENERATION_INPUT } = await import("../lib/cost.ts");
   assert.equal(tokenEstimate("claude-haiku-4-5-20251001", 1_000_000, 0), 1400, "Haiku input $1 per 1M tokens");
   assert.equal(tokenEstimate("claude-sonnet-4-5-20250929", 0, 1_000_000), 15 * 1400, "Sonnet output $15 per 1M tokens");
-  assert.equal(tokenEstimate("gpt-5.6-luna", 1_000_000, 1_000_000), Math.round(1.4 * 1400));
   assert.equal(tokenEstimate("some-new-model", 10, 10), null, "an unknown model shows no amount instead of a wrong one");
   assert.equal(minuteEstimate("gpt-4o-mini-transcribe", 60), Math.round(0.18 * 1400), "an hour of recording");
   assert.equal(modelName("claude-haiku-4-5-20251001"), "Claude Haiku 4.5");

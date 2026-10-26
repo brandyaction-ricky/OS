@@ -69,7 +69,7 @@ export function KnowledgeMeetingPage({id}:{id:string}){
 function MeetingEditor({meeting:m}:{meeting:Meeting}){
   const {state,actor,command,notify,demo,token}=useKnowledge(),router=useRouter();
   // The AI summary is a paid OpenAI call: it asks first with the model and the estimate (owner request 2026-10-26).
-  const cost=useCostConfirm(),{answer}=useCostModels();
+  const cost=useCostConfirm(),{sonnet}=useCostModels();
   function openLink(target:string){const doc=state.documents.find(d=>d.id===target||d.title===target);if(doc)router.push(doc.meeting_record_id?`/knowledge/meetings/${doc.meeting_record_id}`:`/knowledge/${doc.status==="canonical"?"canon":"doc"}/${doc.id}`);else notify("이 문서를 볼 권한이 없습니다.");}
   const [summary,setSummary]=useState(m.metadata.summary??"");
   const [title,setTitle]=useState(m.title),[content,setContent]=useState(m.description),[agenda,setAgenda]=useState(m.metadata.agenda);
@@ -115,7 +115,7 @@ function MeetingEditor({meeting:m}:{meeting:Meeting}){
   // The AI names an owner as spoken; only a single matching attendee becomes the owner, otherwise it stays 미정.
   const attendeeByName=(name?:string)=>{const n=(name??"").trim();if(!n)return undefined;const match=state.people.filter(p=>m.attendees.includes(p.id)&&(p.display_name===n||n.includes(p.display_name)||p.display_name.includes(n)));return match.length===1?match[0].id:undefined;};
   async function summarize(){
-    if(!content.trim())return;if(!await cost.confirm({...summaryAsk(answer,content),ok:"확인하고 요약"}))return;setBusy(true);
+    if(!content.trim())return;if(!await cost.confirm({...summaryAsk(sonnet,content),ok:"확인하고 요약"}))return;setBusy(true);
     try{
       if(demo)throw new Error("로컬 데모에서는 AI를 호출하지 않습니다. 결정·할 일을 직접 추가하여 검수할 수 있습니다.");
       // Use the existing scoped summary contract; failures never manufacture results.

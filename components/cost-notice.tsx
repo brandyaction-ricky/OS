@@ -49,8 +49,8 @@ export const recordAsk = (model: string): Ask => ({ model, amount: minuteEstimat
 export const fileAsk = (model: string, minutes: number | null): Ask => minutes
   ? { model, amount: minuteEstimate(model, minutes), detail: `${Math.max(1, Math.round(minutes))}분 음성` }
   : { model, amount: minuteEstimate(model, 1), detail: "음성 1분 기준" };
-/** An AI summary of `text` (the meeting notes); 1,800 is the most the summary writes. */
-export const summaryAsk = (model: string, text: string): Ask => ({ model, amount: tokenEstimate(model, [...text].length + 1_500, 1_800), upTo: true,
+/** The meeting AI 정리 of `text` (lib/server/meeting-summary.ts: Claude Sonnet, at most 8,000 tokens out). */
+export const summaryAsk = (model: string, text: string): Ask => ({ model, amount: tokenEstimate(model, [...text].length + 1_500, 8_000), upTo: true,
   detail: `메모 ${[...text].length.toLocaleString("ko-KR")}자 기준` });
 /** A company-AI generation (바로 받기). */
 export const generationAsk = (models: CostModels, action: GenerationAction): Ask => {

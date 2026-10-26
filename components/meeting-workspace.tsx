@@ -262,7 +262,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     }
   };
 
-  const makeSummary = async () => { if (await cost.confirm({ ...summaryAsk(costModels.answer, transcript), ok: "확인하고 추출" })) await extractFromText(transcript); };
+  const makeSummary = async () => { if (await cost.confirm({ ...summaryAsk(costModels.sonnet, transcript), ok: "확인하고 추출" })) await extractFromText(transcript); };
 
   // 녹음 종료 → 전사 → (20자 이상이면) 결정·미해결·업무 추출까지 이어서 끝낸다.
   // 실패해도 앞 단계 결과(녹음/전사)는 남아있어 수동 재시도 버튼으로 이어갈 수 있다.
