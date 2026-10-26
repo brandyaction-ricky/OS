@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkColumnHtml, cleanColumnHtml, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
+import { checkColumnHtml, cleanColumnHtml, columnForMyin, columnSlots, faqPairs, renderColumn } from "../lib/seo-column.ts";
+import { columnSignature } from "../lib/youtube-process/stages.ts";
 
 // SEO 칼럼 (owner request 2026-10-25): the earlier 기획실 class contract, checked by the OS and dressed only when shown.
 const prompt = (scene) => `Editorial flat vector illustration of ${scene}, a young Korean professional at a wide desk with soft daylight. Centered composition, wide shot, generous negative space at top. Minimalist palette of deep navy (#0D1531) and vivid blue (#2735C8) on a light off-white background (#F7F8FF). Calm, thoughtful, professional mood, soft even lighting. 16:9 aspect ratio. No text, no words, no logos in the image.`;
@@ -71,4 +72,25 @@ test("JSON-LD cannot close its own script tag", () => {
   const ld = page.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1];
   assert.ok(!ld.includes("</"));
   assert.equal(JSON.parse(ld).headline, "a </script> b");
+});
+
+// 마이인 칼럼 (owner request 2026-10-25): MYIN gets the body only — 목차 and article, no page shell, style or script — with the
+// JSON-LD apart, and uploaded images named "myin-image:<key>" for MYIN to store and point at.
+test("the MYIN column is the body only, with its JSON-LD apart and uploaded images named for MYIN", () => {
+  const sent = columnForMyin(column(), { hero: { src: "myin-image:img-hero" }, video: { src: "https://youtu.be/dQw4w9WgXcQ" } });
+  assert.match(sent.html, /^<div class="col-wrap"><nav class="col-toc"/);
+  assert.doesNotMatch(sent.html, /<(html|head|body|style|script|title|meta)\b/i);
+  assert.match(sent.html, /<article class="ba-article"><h1>그릇 큰 사람의 특징<\/h1>/);
+  assert.match(sent.html, /<img src="myin-image:img-hero"/);
+  assert.match(sent.html, /youtube\.com\/embed\/dQw4w9WgXcQ/);
+  assert.deepEqual(sent.jsonLd.map(item => item["@type"]), ["Article", "FAQPage"]);
+  assert.equal(sent.jsonLd[0].image, "myin-image:img-hero");
+  assert.deepEqual([sent.meta.slug, sent.meta.title], ["big-hearted-self-awareness", "그릇 큰 사람의 특징"]);
+});
+
+test("a column's fingerprint changes with its HTML or its places, not with the order places were filled", () => {
+  const item = { html: column(), fills: { hero: { path: "a.png" }, 1: { url: "https://x.test/1.png" } } };
+  assert.equal(columnSignature(item), columnSignature({ html: item.html, fills: { 1: { url: "https://x.test/1.png" }, hero: { path: "a.png" } } }));
+  assert.notEqual(columnSignature(item), columnSignature({ ...item, html: item.html.replace("본문 1", "본문 하나") }));
+  assert.notEqual(columnSignature(item), columnSignature({ ...item, fills: { hero: { path: "b.png" } } }));
 });
