@@ -39,10 +39,14 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.equal(thumbsMissing(make), "A 최종 썸네일을 올려 주세요");
   make.thumbs.A = { path: "p", at: "t", name: "a.png" }; make.thumbs.B = { path: "p", at: "t", name: "b.png" };
   assert.equal(thumbsMissing(make), "");
-  const desc = "#강점 #성격\n-----\n⬇️ 내 강점 진단 받기\nhttps://www.brandyaction.com/classes/294620?utm_source=youtube\n-----\n[타임라인]\n00:00 시작\n01:10 둘째\n03:00 셋째\n-----\n[설명문 본문]\n1\n2\n3\n4\n5\n-----\n[인용 및 출처]\n- 수치 / 통계 / 기관 (2026, 2026-01)\n-----\n[히든 태그]\n강점, 성격";
+  // 「유튜브 발행 키트 만드는 절차」 정본 v1.3 (2026-10-26): 소개로 시작, 타임라인 5~8줄, 요약 3줄 이내, 히든 태그 6~12개.
+  const desc = "같은 일인데 왜 나만 지칠까요? 그 이유를 세 칸으로 나눠 봐요.\n-----\n#강점 #성격\n-----\n⬇️ 내 강점 진단 받기\nhttps://www.brandyaction.com/classes/294620?utm_source=youtube\n-----\n[타임라인]\n00:00 시작\n01:10 둘째\n03:00 셋째\n05:00 넷째\n07:00 다섯째\n-----\n[설명문 본문]\n1\n2\n3\n-----\n[인용 및 출처]\n- 수치 / 통계 / 기관 (2026, 2026-01)\n-----\n[히든 태그]\n강점, 성격, 직장인, 이직, 퇴사, 일";
   const checks = descChecks(desc, { srt: { path: "s", name: "s.srt" }, utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" } });
-  assert.deepEqual(checks.map(check => check.ok), [true, true, true, true, true, true, true]);
-  assert.deepEqual(hiddenTagsOf(desc), ["강점", "성격"]);
+  assert.deepEqual(checks.map(check => check.ok), [true, true, true, true, true, true, true, true]);
+  assert.deepEqual(hiddenTagsOf(desc), ["강점", "성격", "직장인", "이직", "퇴사", "일"]);
+  // Starting with the hashtags (the layout before v1.3), a 5-line body or 2 tags no longer pass.
+  const old = descChecks(desc.replace("같은 일인데 왜 나만 지칠까요? 그 이유를 세 칸으로 나눠 봐요.\n-----\n", "").replace("3\n-----\n[인용", "3\n4\n5\n-----\n[인용").replace(", 직장인, 이직, 퇴사, 일", ""), { srt: null, utm: { short: "", next: "" } });
+  assert.deepEqual([old[0].ok, old[3].ok, old[7].ok], [false, false, false]);
   assert.equal(descChecks(desc.replace("내 강점 진단 받기", "무료 진단 받기"), { srt: null, utm: { short: "", next: "" } })[4].ok, false);
   // 로건 피드백 10/26-10 · 11: a YouTube address under the 진단 CTA fails, also when it was pasted into the 단축 링크 field.
   const youtube = "https://youtu.be/abcdefghijk";

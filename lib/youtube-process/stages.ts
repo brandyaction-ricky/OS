@@ -230,7 +230,7 @@ export const shortLinkProblem = (short: string) => isYoutubeLink(short) ? "단�
 /** The 진단 링크 the description and pinned comment carry: the 단축 링크, else the UTM address. */
 export const diagnosisLink = (utm: YpUpload["utm"]) => shortLink(utm) || utmUrl(utm);
 export function pinnedDraft(utm: YpUpload["utm"]) {
-  return `⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
+  return `[질문 한 줄]\n⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
 }
 /** Lines under a [구역] heading up to the next ----- (시안 secOf). */
 function section(text: string, key: string) {
@@ -243,14 +243,19 @@ function section(text: string, key: string) {
 }
 /** The 7 automatic checks under the description (시안 descChecks). Advisory only: they never block the upload. */
 /** The 직접 쓰기 starting layout of the description: section labels and dividers only. */
-export const DESC_TEMPLATE = "#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n";
+// 「유튜브 발행 키트 만드는 절차」 정본 §1 (v1.3, 2026-10-26): 소개 1~2줄 → 해시태그 → 진단 CTA → 타임라인 → 요약 → 출처 → 히든 태그.
+export const DESC_TEMPLATE = "\n-----\n#\n-----\n⬇️ \n-----\n[타임라인]\n00:00 \n-----\n[설명문 본문]\n\n-----\n[인용 및 출처]\n- \n-----\n[히든 태그]\n";
 /** A description counts as written once it has something beyond that layout (usability QA 2026-10-25: the bare layout passed). */
 export const descWritten = (text: string) => text.split("\n").some(line => { const t = line.trim(); return Boolean(t) && !/^(#|-+|⬇️|00:00|\[[^\]]+\])$/.test(t); });
 export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) {
-  const keys = ["⬇️", "[타임라인]", "[설명문 본문]", "[인용 및 출처]", "[히든 태그]"].map(key => text.indexOf(key));
-  const order = /^\s*#/.test(text) && keys.every(at => at >= 0) && keys.every((at, i) => !i || at > keys[i - 1]) && text.lastIndexOf("-----") < keys[4];
+  // 정본 §1: the description opens with a 1–2 line introduction (what shows before 더보기), then the hashtags and the sections.
+  const first = text.split("\n").map(line => line.trim()).find(Boolean) ?? "";
+  const intro = Boolean(first) && !/^(#|-{3,}|⬇️|\[)/.test(first);
+  const keys = [text.search(/^\s*#\S/m), ...["⬇️", "[타임라인]", "[설명문 본문]", "[인용 및 출처]", "[히든 태그]"].map(key => text.indexOf(key))];
+  const order = intro && keys.every(at => at >= 0) && keys.every((at, i) => !i || at > keys[i - 1]) && text.lastIndexOf("-----") < keys[5];
   const timeline = section(text, "[타임라인]") ?? [];
-  const timelineOk = timeline.length >= 3 && /^00:00\b/.test(timeline[0]) && timeline.every(line => line.replace(/^\S+\s*/, "").length <= 24);
+  const timelineOk = timeline.length >= 5 && timeline.length <= 8 && /^00:00\b/.test(timeline[0]) && timeline.every(line => line.replace(/^\S+\s*/, "").length <= 24);
+  const tags = hiddenTagsOf(text);
   const body = section(text, "[설명문 본문]") ?? [];
   const cta = text.split("\n").find(line => line.trim().startsWith("⬇️")) ?? "";
   const links = text.match(/https?:\/\/\S+/g) ?? [];
@@ -263,15 +268,16 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
   const diagnosisOk = Boolean(short && underCta.includes(short)) || (underCta.match(/https?:\/\/\S+/)?.[0] ?? "").startsWith(UTM_BASE);
   const sources = (section(text, "[인용 및 출처]") ?? []).filter(line => line.startsWith("-"));
   return [
-    { ok: order, text: order ? "구역 순서가 맞고 히든 태그가 맨 마지막이에요" : "구역 순서가 다르거나 히든 태그가 맨 뒤가 아니에요" },
-    { ok: timelineOk, text: timelineOk ? "타임라인: 00:00 시작 · 3줄 이상 · 줄마다 20자 안팎" : "타임라인: 00:00 시작 · 3줄 이상 · 줄마다 20자 안팎인지 봐 주세요" },
+    { ok: order, text: order ? "소개로 시작하고 구역 순서가 맞고 히든 태그가 맨 마지막이에요" : "소개 1~2줄로 시작하지 않거나, 구역 순서가 다르거나, 히든 태그가 맨 뒤가 아니에요" },
+    { ok: timelineOk, text: timelineOk ? "타임라인: 00:00 시작 · 5~8줄 · 줄마다 20자 안팎" : "타임라인: 00:00 시작 · 5~8줄 · 줄마다 20자 안팎인지 봐 주세요" },
     { ok: Boolean(upload.srt), text: upload.srt ? "타임라인 시간이 자막 기준이에요" : "자막이 없어 타임라인 시간이 자리표시예요" },
-    { ok: body.length === 5, text: body.length === 5 ? "본문이 5줄이에요" : `본문이 ${body.length}줄이에요 (5줄)` },
+    { ok: body.length >= 1 && body.length <= 3, text: body.length >= 1 && body.length <= 3 ? "요약이 3줄 이내예요" : `요약이 ${body.length}줄이에요 (1~3줄)` },
     { ok: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)), text: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)) ? "진단 CTA가 짧고 '무료'가 없어요" : "진단 CTA가 길거나 '무료'가 붙었어요 (진단은 유료)" },
     !links.length ? { ok: true, text: "링크는 자리표시예요 (지어낸 링크 없음)" }
       : !diagnosisOk ? { ok: false, text: "진단 CTA 아래 링크가 UTM 주소(또는 그 단축 링크)가 아니에요" }
       : { ok: !fake.length, text: fake.length ? `확인 안 된 링크가 있어요: ${fake[0]}` : "진단 링크가 UTM 주소예요" },
     { ok: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))), text: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))) ? "출처 형식 · 확인 안 된 것에 '불확실' 표시" : "출처에 기준 시점이 없거나 '불확실' 표시가 빠졌어요" },
+    { ok: tags.length >= 6 && tags.length <= 12, text: tags.length >= 6 && tags.length <= 12 ? `히든 태그 ${tags.length}개예요` : `히든 태그가 ${tags.length}개예요 (6~12개)` },
   ];
 }
 /** The hidden tags at the end of the description, for the YouTube tags field. */

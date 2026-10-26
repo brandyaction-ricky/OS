@@ -125,14 +125,14 @@ export function v1KitCardInputs(state: Pipeline) {
   return {
     title: v1Title(stages), thumbnailCopy: v1ThumbCopy(stages), audience: stages.project.yp.topic.target,
     script: narrationFromMarkdown(stages.outline.data.script), srtPath: stages.upload.data.srt?.path ?? null,
-    rules: `## 유튜브 공정 업로드 칸 규칙 (OS가 7줄로 점검합니다)
-- description 구역 순서: 해시태그 5개 → ----- → ⬇️ 진단 CTA 한 줄 + 링크 → ----- → [타임라인] → ----- → [설명문 본문] 5줄 → ----- → [인용 및 출처] → ----- → [히든 태그](맨 마지막, 쉼표로).
-- [타임라인]은 아래 자막 시각으로 00:00부터 3줄 이상, 줄마다 20자 안팎. 자막이 없으면 시각을 [시각]으로 둡니다. chapters는 빈 배열로 둡니다(타임라인이 설명란 안에 있음).
-- 진단 CTA는 40자 이하, '무료'를 붙이지 않습니다(진단은 유료).
-- 링크는 아래 두 개만 씁니다. 지어내지 않습니다. 진단 링크: ${diagnosisLink(utm)} · 이어서 볼 영상: ${utm.next || "(없음 — 고정 댓글에 [이어서 볼 영상 링크]로 둡니다)"}
-- 출처는 "- 수치·내용 / 종류 / 기관 (기준 시점, 발표일)". 확인하지 못한 것은 끝에 '불확실'.
-- pinnedComment: "⬇️ 진단 CTA" 한 줄 + 진단 링크 + "이어서 보면 좋을 영상 보러가기" + 이어서 볼 영상 링크.
-- tags는 [히든 태그]와 같은 값으로 둡니다. title은 아래 제목을 그대로 둡니다(OS가 컨펌된 제목을 씁니다).`,
+    // The layout, timeline, links, pinned comment and tags are the 발행 키트 정본's (v1.3, owner decision 2026-10-26: the kit follows
+    // the 정본); this block only hands over this video's values and says how the 업로드 칸 hold them.
+    rules: `## 유튜브 공정 업로드 칸 (위 「유튜브 발행 키트 만드는 절차」 정본 §1~§5대로, OS가 8줄로 점검합니다)
+- description: 정본 §1 순서 그대로 — 소개 1~2줄 → 해시태그 5개 → ⬇️ 진단 CTA 한 줄 + 진단 링크 → [타임라인] → [설명문 본문](핵심 요약 3줄 이내) → [인용 및 출처] → [히든 태그](맨 마지막). 구역 사이는 ----- 한 줄.
+- [타임라인]: 정본 §3대로 5~8줄, 아래 자막 시각을 그대로 씁니다(첫 줄 00:00). 자막이 없으면 시각을 [시각]으로 둡니다. 이 화면은 챕터를 설명란 [타임라인]으로만 받으니 chapters는 빈 배열로 둡니다.
+- 링크(정본 §1-1): 진단 링크 ${diagnosisLink(utm)} · 이어서 볼 영상 ${utm.next || "(없음 — [이어서 볼 영상 링크]로 둡니다)"}
+- pinnedComment(정본 §5): 첫 줄 질문형 한 줄, 그 아래 ⬇️ 진단 CTA 한 줄 + 진단 링크, "이어서 보면 좋을 영상 보러가기" + 이어서 볼 영상 링크.
+- tags: [히든 태그]와 같은 값(정본 §4, 6~12개). title은 아래 제목 그대로 둡니다(OS가 컨펌된 제목을 씁니다).`,
   };
 }
 /** The AI draft goes into the empty (or untouched AI) description; a description a person edited keeps its text and gets the draft beside it (9-5). */
