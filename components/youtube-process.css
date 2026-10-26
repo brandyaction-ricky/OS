@@ -55,6 +55,8 @@
 .linear-shell .ui-v2.yp .yp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:12px;font-weight:500;white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-btn:hover{background:var(--panel-2)}
 .linear-shell .ui-v2.yp .yp-btn.yp-pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.linear-shell .ui-v2.yp .yp-btn.yp-danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 45%,var(--line))}
+.linear-shell .ui-v2.yp .yp-btn.yp-danger:hover:not(:disabled){background:color-mix(in srgb,var(--danger) 10%,transparent)}
 .linear-shell .ui-v2.yp .yp-btn.yp-pri:hover{background:var(--accent-hover)}
 .linear-shell .ui-v2.yp .yp-btn.yp-lg{height:40px;padding:0 18px;font-size:14px;font-weight:700}
 .linear-shell .ui-v2.yp .yp-btn.yp-sm{height:28px;padding:0 10px}
@@ -1078,7 +1080,7 @@
 .linear-shell .ui-v2.yp .yp-fs{border-radius:999px;padding:0 10px}
 .linear-shell .ui-v2.yp .yp-foot{padding:14px 16px;margin-top:20px}
 .linear-shell .ui-v2.yp .yp-mv-list{gap:10px}
-.linear-shell .ui-v2.yp .yp-mv{display:grid;grid-template-columns:minmax(0,1fr) 150px 96px 156px;gap:20px;padding:14px 16px 14px 18px;transition:border-color .15s ease,box-shadow .15s ease}
+.linear-shell .ui-v2.yp .yp-mv{display:grid;grid-template-columns:minmax(0,1fr) 150px 96px 196px;gap:20px;padding:14px 16px 14px 18px;transition:border-color .15s ease,box-shadow .15s ease}
 .linear-shell .ui-v2.yp .yp-mv:hover{border-color:color-mix(in srgb,var(--accent) 50%,var(--line-soft));box-shadow:0 4px 14px color-mix(in srgb,var(--media-shadow) 8%,transparent)}
 .linear-shell .ui-v2.yp .yp-mv-m{grid-column:1}
 .linear-shell .ui-v2.yp .yp-mv-th{display:flex;align-items:center;gap:8px;min-width:0}
@@ -1090,12 +1092,16 @@
 .linear-shell .ui-v2.yp .yp-mv-pd{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-2);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .linear-shell .ui-v2.yp .yp-mv-av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;flex:none;background:var(--accent-soft);color:var(--accent-2);font-size:11px;font-weight:700}
 .linear-shell .ui-v2.yp .yp-mv>.yp-btn{grid-column:4;justify-self:end;width:100%}
+/* The row's button with 삭제 beside it (staff request 2026-10-26), or 복구 · 영구 삭제 in 휴지통. */
+.linear-shell .ui-v2.yp .yp-mv-act{grid-column:4;display:flex;align-items:center;gap:6px;justify-self:end;width:100%}
+.linear-shell .ui-v2.yp .yp-mv-act>.yp-btn{flex:1;justify-content:center}
 /* Below 1100px the four columns leave the title a few letters (seen in production 2026-10-25); rows stack as on a phone. */
 @media (max-width:1100px){
   .linear-shell .ui-v2.yp .yp-mv{grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:14px}
   .linear-shell .ui-v2.yp .yp-mv-m{grid-column:1/-1}
   .linear-shell .ui-v2.yp .yp-mv-bar{grid-column:1/-1}
   .linear-shell .ui-v2.yp .yp-mv>.yp-btn{grid-column:2;width:auto}
+  .linear-shell .ui-v2.yp .yp-mv-act{grid-column:2;width:auto}
 }
 /* The progress line fits every step at 1280px: a shorter project chip, no arrows between steps, and the "why it is locked" hint
    moves into the button's tooltip and the step footer when the line is short of room. */

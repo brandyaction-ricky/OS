@@ -69,6 +69,14 @@ export function projectFromRecord(row: ProjectRow): YpProject | null {
   return { id: row.id, version: row.version, title: row.title, assigneeId: row.assignee_id ?? null, ownerId: row.owner_id, updatedAt: row.updated_at, yp: { ...yp, gates: { ...emptyGates(), ...yp.gates } } };
 }
 
+/** 내 영상 휴지통 (staff request 2026-10-26): a trashed project keeps 30 days, then an admin may purge it — the company rule is that a person approves 영구 삭제. */
+export const TRASH_KEEP_DAYS = 30;
+export interface YpTrash { at: string; by: string; name: string; reason: string; stage: YpStage }
+export interface YpTrashed { project: YpProject; trash: YpTrash }
+export const trashDaysLeft = (at: string, now = Date.now()) => Math.max(0, TRASH_KEEP_DAYS - Math.floor((now - Date.parse(at)) / 86_400_000));
+/** Who may trash or restore a video: the person who made it, its PD, or an admin. */
+export const mayTrash = (project: Pick<YpProject, "ownerId" | "assigneeId">, who: string | undefined, admin: boolean) => admin || Boolean(who && (project.ownerId === who || project.assigneeId === who));
+
 /** Project name = first topic line (4-2); stays as the record title. */
 export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 영상";
 
