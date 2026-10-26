@@ -154,7 +154,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
         {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>
           <ul className="yt-list">{board.notes.map((n) => <li key={n}>{n}</li>)}</ul></details> : null}
-        {["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready"].includes(run.stage) ? <div className="yt-note">
+        {/* Every stage the server takes a 수정 요청 in, the preview clips included (로건 피드백 A-7: the button was gone at 시안 확인). */}
+        {["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"].includes(run.stage) ? <div className="yt-note">
           <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>확인 완료를 누르면 기획표에 쓰인 사진이 허락되고 3단계가 바로 시작됩니다. 음악은 음악 창고 곡이라 따로 받을 것이 없습니다.</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로" /></label>
@@ -193,15 +194,20 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={3} state={step4} title="시안 확인 (로건, 유쓰)" idBase="myin-step">
-      <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건, 유쓰가 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 2번 카드의 수정 요청으로 기획표를 고칩니다.</p>
+      <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건, 유쓰가 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 아래 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>
       {run && ["clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
         <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
       {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
         <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={{ width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
       {run?.stage === "clips_review" ? <div className="yt-note">
         <strong>로건, 유쓰 확인</strong>
-        <label>메모 (선택)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음" /></label>
-        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }))}>{busy === "clips" ? "저장 중…" : "시안 확인 완료 · 전체 영상 만들기"}</button></div>
+        <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 오프닝 좋음 · 7번 빙산 장면 글자가 넘쳐요" /></label>
+        {/* 로건 피드백 A-8: one button made the full render, so a slip rendered an unwanted storyboard — ask once, and offer 수정 요청 beside it. */}
+        <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => {
+          if (!window.confirm("이 시안대로 1080p 전체 영상을 만들어요. 렌더 PC에서 20분쯤 걸리고, 시작하면 기획표를 고칠 수 없어요. 만들까요?")) return;
+          void act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }));
+        }}>{busy === "clips" ? "저장 중…" : "시안 확인 완료 · 전체 영상 만들기"}</button>
+          <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button></div>
       </div> : null}
       {run?.clipsReview ? <small>{run.clipsReview.name} 확인 · {when(run.clipsReview.at)}{run.clipsReview.note ? ` · ${run.clipsReview.note}` : ""}</small> : null}
     </Step>
