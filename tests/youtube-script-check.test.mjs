@@ -72,3 +72,26 @@ test("v1.6 사슬 낭독: four or more links of the IP chain in one paragraph", 
   assert.match(body("결핍이 욕구가 되고 행동이 강점이 됩니다."), /사슬 낭독 — .* 4개/);
   assert.equal(body("사업과 작업, 업무 얘기에서 결핍과 욕구, 강점을 봅니다."), "");
 });
+
+// 원고 정본 묶음 v1.9 (원고 검수 정본 v1.6, 2026-10-26): how sentences and paragraphs close, against the script's length.
+const closing = (endings) => checkScriptBody(endings.map((ending, i) => `${paragraph(`w${i}`)} ${ending}`), null).issues.join("\n");
+
+test("v1.9 흐림 종결: '수 있-' sentence endings at 20 or more per 6,000 characters", () => {
+  // Each test paragraph is about 160 characters, so one hedge per paragraph is far above 20 per 6,000.
+  assert.match(closing(["다르게 볼 수 있어요.", "그럴 수도 있죠.", "물어볼 수 있겠죠?"]), /흐림 종결 .* 3개 — 6,000자당 [\d.]+회.*걸린 문단 1·2·3번/);
+  assert.doesNotMatch(closing(["이 수를 보면 알아요.", "점수 있어요.", "할 수 있어야 해요."]), /흐림/);
+  const long = Array.from({ length: 40 }, (_, i) => (i < 3 ? "다르게 볼 수 있어요." : "그날 바로 적었어요."));
+  assert.doesNotMatch(closing(long), /흐림/);
+});
+
+test("v1.9 요약 종결: a third or more of the paragraphs end on '~거예요·~겁니다·~거죠'", () => {
+  assert.match(closing(["그래서 다시 보는 거예요.", "그게 기준인 겁니다.", "다음 장면으로 가요."]), /요약 종결 .* 2개 — 전체 3개의 1\/3 이상.*걸린 문단 1·2번/);
+  assert.doesNotMatch(closing(["그래서 다시 보는 거예요.", "다음 장면으로 가요.", "그날 바로 적었어요.", "왜 그랬을까요?"]), /요약/);
+  assert.doesNotMatch(closing(["다들 그렇게 하는 거죠?", "다음 장면으로 가요."]), /요약/);
+});
+
+test("v1.9 해명 종결: '아니에요·아닙니다' endings outside quotes at 8 or more per 6,000 characters", () => {
+  assert.match(closing(["점수를 매기는 방식은 아니에요.", "효과를 검증한 건 아닙니다.", "다음 장면으로 가요."]), /해명 종결 .* 2개 — .*걸린 문단 1·2번/);
+  assert.doesNotMatch(closing(["친구가 \"그건 아니에요.\" 하고 웃어요.", "다음 장면으로 가요."]), /해명/);
+  assert.doesNotMatch(closing(["다음 장면으로 가요.", "그건 아니라고 봐요."]), /해명/);
+});
