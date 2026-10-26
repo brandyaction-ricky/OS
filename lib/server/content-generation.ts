@@ -116,6 +116,22 @@ export async function generationProcedureRevision(actor: RequestActor, action: k
 }
 
 /** The canonical procedure documents an action follows, by id and title: a staff-AI card points at them instead of pasting them. */
+/** The 숏폼 정본's title: cards name it outright, because it is a team document and procedureRefs reads canonical ones only. */
+export const SHORTFORM_CANON_TITLE = "숏폼 콘텐츠 스킬";
+/**
+ * Procedures a card names by title, read whether canonical or shared with the team (owner request 2026-10-25: 숏폼 cards must open
+ * the 숏폼 정본, which became a team document that day). Empty when none is found; the card still says what to search for.
+ */
+export async function namedProcedures(supabase: RequestActor["supabase"], titles: string[]) {
+  const { data, error } = await supabase.from("os_documents").select("id,title").in("title", titles).in("status", ["canonical", "team", "reviewed"])
+    .order("updated_at", { ascending: false }).limit(titles.length * 2);
+  if (error) return [];
+  return [...new Map(((data ?? []) as { id: string; title: string }[]).map(doc => [doc.title, doc])).values()];
+}
+/** Named procedures first, then the matched ones, without repeats. */
+export const withNamed = (named: { id: string; title: string }[], found: { id: string; title: string }[], limit: number) =>
+  [...new Map([...named, ...found].map(doc => [doc.id, doc])).values()].slice(0, limit);
+
 export async function procedureRefs(supabase: RequestActor["supabase"], action: keyof typeof PROCEDURE_TERMS) {
   const filter = PROCEDURE_TERMS[action].flatMap((term) => [`title.ilike.%${term}%`, `source_ref.ilike.%${term}%`]).join(",");
   const { data, error } = await supabase.from("os_documents").select("id,title").eq("status", "canonical").or(filter).order("updated_at", { ascending: false }).order("id").limit(10);
