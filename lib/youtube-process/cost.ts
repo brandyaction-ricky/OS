@@ -11,3 +11,10 @@ export function voiceEstimate(text: string, model = "s2.1-pro", now = Date.now()
   const usd = new TextEncoder().encode(text).length * fishUsdPerMillion(model, now) / 1_000_000;
   return { chars: [...text.replace(/\s/g, "")].length, usd, krw: Math.max(1, Math.round(usd * KRW_PER_USD)) };
 }
+/** Meeting AI 정리 on Claude Sonnet: $3 per 1M input tokens, $15 per 1M output (about 4k); a Korean letter is roughly one token. */
+export function meetingSummaryEstimate(text: string) {
+  const usd = text.length * 3 / 1_000_000 + 4000 * 15 / 1_000_000;
+  return { chars: text.length, krw: Math.max(1, Math.round(usd * KRW_PER_USD)) };
+}
+/** Meeting recording to text on OpenAI gpt-4o-mini-transcribe: $0.003 per minute. */
+export const transcriptionKrwPerHour = Math.round(0.003 * 60 * KRW_PER_USD);
