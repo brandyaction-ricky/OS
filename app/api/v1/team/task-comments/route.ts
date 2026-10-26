@@ -16,7 +16,8 @@ async function taskForUser(request: Request, id: string) {
   const actor = await authenticateRequest(request);
   if (actor.type !== "user") throw new ApiError(403, "USER_REQUIRED", "구성원 계정으로 진행해 주세요.");
   const { data, error } = await actor.supabase.from("os_records")
-    .select("id,record_type").eq("id", id).eq("record_type", "task").is("archived_at", null).maybeSingle();
+    // Meetings too: attendees' one-line notes during a meeting are comments on the meeting record.
+    .select("id,record_type").eq("id", id).in("record_type", ["task", "meeting"]).is("archived_at", null).maybeSingle();
   if (error || !data) throw new ApiError(404, "TEAM_TASK_NOT_FOUND", "업무를 찾지 못했습니다.");
   return { actor, task: data };
 }
