@@ -103,6 +103,9 @@ test("pattern evidence must be real: examples are (parts of) searched titles, th
   assert.match(ai.patternProblems(made, market, [])[0], /제목 패턴 1의 예시 「지어낸 제목은 빨리 퇴사하세요」가 검색 결과 제목에 없어요/);
   // A title the PD added counts as a reference.
   assert.deepEqual(plain(ai.patternProblems(made, market, ["지어낸 제목은 빨리 퇴사하세요"])), []);
+  // 로건 피드백 10/26-5: a comma, quote or space changed in a listed title still counts; an empty example does not.
+  assert.deepEqual(plain(ai.patternProblems(made, market, ["「지어낸 제목은, 빨리 퇴사하세요!」 · 채널"])), []);
+  assert.equal(ai.patternProblems({ ...patterns, titlePatterns: [{ ...patterns.titlePatterns[0], examples: ["…"] }] }, market, []).length, 1);
   const tooFar = { ...patterns, copyPatterns: { ...patterns.copyPatterns, sub: [{ skeleton: "x", count: "1장", thumbs: [8, 8] }] } };
   assert.deepEqual(plain(ai.patternProblems(tooFar, { ...market, refs: market.refs.slice(0, 5) }, [])
     .filter(problem => /썸네일/.test(problem))), ["서브 패턴 1의 썸네일 8번은 없어요 — 1~5번 중에서 적어요", "서브 패턴 1의 썸네일 8번은 없어요 — 1~5번 중에서 적어요"]);

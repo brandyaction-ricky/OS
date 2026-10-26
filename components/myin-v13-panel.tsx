@@ -16,16 +16,40 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
-  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean }
+  final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
   storyboard_review: "기획표 확인 대기 (로건, 유쓰)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
   prep_pending: "렌더 PC가 자료 준비·미리보기 점검 중", prep_ready: "미리보기 점검 끝", clips_pending: "렌더 PC가 시안 영상 만드는 중",
-  clips_review: "시안 확인 대기 (로건, 유쓰)", final_pending: "렌더 PC가 전체 영상 만드는 중 (10~15분)", final_ready: "완성" };
+  clips_review: "시안 확인 대기 (로건, 유쓰)", final_pending: "렌더 PC가 전체 영상 만드는 중", final_ready: "완성" };
+// 로건 피드백 10/26-8: how long each render-PC step usually takes on the Mac mini; past 1.5× the screen says to check.
+// Preview clips scale with the storyboard: one per metaphor scene plus the opening, about 1.5 minutes each (2026-10-26: 31 clips, 45 minutes).
+// ponytail: estimates, no per-scene progress — that needs the render PC to report it.
+const TYPICAL_MIN: Record<string, number> = { words_pending: 5, prep_pending: 5, final_pending: 20 };
+const typicalMinutes = (run: MyinRun) => run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5) : TYPICAL_MIN[run.stage];
+// What a stop means, so a staff member knows whether pressing again can help (2026-10-26: three presses hit the same stop).
+const STOP: Record<string, string> = {
+  WORKER_STAGE_FAILED: "렌더 PC 프로그램이 도중에 멈췄어요. 다시 해도 같은 이유로 멈출 수 있어요 — 다시 하기 전에 OS 담당자에게 알려 주세요.",
+  WORKER_DOWNLOAD_FAILED: "렌더 PC가 사진이나 음성 파일을 받지 못했어요. 사진 주소를 확인하거나 OS 담당자에게 알려 주세요.",
+  MYIN_RUN_STALE: "원고가 바뀌었어요. v13 음성을 다시 시작해 주세요.",
+};
 const LATER = ["clips_pending", "clips_review", "final_pending", "final_ready"];
 
 const KIND: Record<string, string> = { people: "인물 사진", situations: "상황 사진", bgm: "음악" };
+
+/** The stage pill, with how long the render PC has been at it, or what a stop means. */
+function RunState({ run }: { run: MyinRun }) {
+  const minutes = run.workingSince ? Math.max(0, Math.floor((Date.now() - Date.parse(run.workingSince)) / 60_000)) : null;
+  const typical = typicalMinutes(run);
+  const started = run.workingSince ? new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit" }).format(new Date(run.workingSince)) : "";
+  return <>
+    <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage] ?? run.stage}</span>
+    {run.status === "blocked" ? STOP[run.lastErrorCode ?? ""] ? <small>{STOP[run.lastErrorCode ?? ""]}</small> : null
+      : minutes !== null ? <small>시작 {started} · {minutes}분째{typical ? minutes > typical * 1.5 ? " · 평소보다 오래 걸려요(확인 필요)" : ` · 보통 ${typical}분쯤 걸려요${run.stage === "clips_pending" ? `(시안 ${(run.storyboard?.metaphors.length ?? 0) + 1}개)` : ""}` : ""}</small>
+      : typical && run.status === "backlog" ? <small>렌더 PC 차례를 기다리는 중</small> : null}
+  </>;
+}
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
 /**
@@ -174,7 +198,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       {run?.review?.decision === "confirmed" && assetsUsed.length ? <ul className="yt-list">{assetsUsed.map((a) =>
         <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul> : null}
       {run && ["cta_pending", "prep_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
-        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span>
+        <RunState run={run} />
         {run.ctaReady ? <small>구독 대사 {run.ctaReady}</small> : null}</div></div> : null}
       {run?.prepared ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.prepared.misses.length ? "failed" : "approved"}>문구 못 찾음 {run.prepared.misses.length}개</span><small>{when(run.prepared.at)}</small></div>
@@ -196,7 +220,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <Step index={3} state={step4} title="시안 확인 (로건, 유쓰)" idBase="myin-step">
       <p>렌더 PC가 오프닝·쇼릴과 비유 장면만 720p로 먼저 만듭니다. 로건, 유쓰가 연출을 보고 확인하면 전체 영상을 만듭니다. 고칠 곳이 있으면 아래 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>
       {run && ["clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head">
-        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div></div> : null}
+        <RunState run={run} /></div></div> : null}
       {outputs?.clips.length ? <div style={{ display: "grid", gap: 12 }}>{outputs.clips.map((clip) => <div key={clip.label} style={{ display: "grid", gap: 4 }}>
         <small>{clip.label}</small>{clip.url ? <video src={clip.url} controls preload="metadata" style={{ width: "100%", borderRadius: 8, background: "#000" }} /> : null}</div>)}</div> : null}
       {run?.stage === "clips_review" ? <div className="yt-note">
@@ -215,7 +239,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     <Step index={4} state={step5} title="완성 영상과 자료" idBase="myin-step">
       <p>1080p 전체 영상, 음향 마스터링, 한 장 정리 이미지와 덱 PDF, 유튜브 자막 파일을 렌더 PC가 만들어 올립니다.</p>
       {run?.stage === "final_pending" ? <div className="yt-run"><div className="yt-run-head">
-        <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : PHASE[run.stage]}</span></div>
+        <RunState run={run} /></div>
         {run.status === "blocked" ? <div className="yt-actions"><button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => void act("final", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note: "" }))}>{busy === "final" ? "시작하는 중…" : "전체 영상 다시 만들기"}</button></div> : null}</div> : null}
       {run?.final ? <div className="yt-run"><div className="yt-run-head">
         <span className="status-pill" data-status={Math.abs(run.final.lufs + 14) <= 1 && run.final.peak <= -1 ? "approved" : "review"}>완성 · {Math.floor(run.final.durationSeconds / 60)}분 {Math.round(run.final.durationSeconds % 60)}초</span>

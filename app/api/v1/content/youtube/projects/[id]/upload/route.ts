@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
 import {
-  clipUploadCompleteSchema, clipUploadSessionSchema, completeClipUpload, completeYoutubeUpload, startClipUpload, startYoutubeUpload, uploadCompleteSchema, uploadSessionSchema,
+  clipUploadCompleteSchema, clipUploadSessionSchema, completeClipUpload, completeYoutubeUpload, startClipUpload, startYoutubeUpload, uploadCompleteSchema, uploadOrigin, uploadSessionSchema,
 } from "@/lib/server/youtube-process-upload";
 
 export const runtime = "nodejs";
@@ -16,9 +16,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const actor = await youtubeActor(request);
     const id = z.string().uuid().parse((await params).id);
     const { action, ...rest } = actionSchema.parse(await parseJson(request, 8_000));
-    const result = action === "session" ? await startYoutubeUpload(actor, id, uploadSessionSchema.parse(rest))
+    const result = action === "session" ? await startYoutubeUpload(actor, id, uploadSessionSchema.parse(rest), uploadOrigin(request))
       : action === "complete" ? await completeYoutubeUpload(actor, id, uploadCompleteSchema.parse(rest))
-      : action === "clip-session" ? await startClipUpload(actor, id, clipUploadSessionSchema.parse(rest))
+      : action === "clip-session" ? await startClipUpload(actor, id, clipUploadSessionSchema.parse(rest), uploadOrigin(request))
       : await completeClipUpload(actor, id, clipUploadCompleteSchema.parse(rest));
     return NextResponse.json(result, { headers: { "cache-control": "private, no-store" } });
   } catch (error) {

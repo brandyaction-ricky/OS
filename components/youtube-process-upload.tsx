@@ -6,7 +6,8 @@ import { Check, Copy, ExternalLink, FileText, RefreshCw, Sparkles, Upload, Youtu
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { stepHref } from "@/lib/youtube-process/project";
-import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
+import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, shortLinkProblem, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
+import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { CostTag } from "./cost-notice";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
@@ -29,6 +30,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [owner, setOwner] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const [step, setStep] = useState("");
+  // 로건 피드백 10/26-9: an upload failure showed only at the top of the page, far from the button that was pressed.
+  const [goError, setGoError] = useState("");
   const [copied, setCopied] = useState("");
   const [myinSrt, setMyinSrt] = useState<string | null>(null);
   const [handouts, setHandouts] = useState<{ deck: string | null; summary: string | null }>({ deck: null, summary: null });
@@ -84,7 +87,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   };
   const go = async () => {
     if (!page.client || !project || !last) return;
-    page.setError("");
+    page.setError(""); setGoError("");
     try {
       if (dirty) await save();
       setStep("영상을 준비하는 중"); setProgress(0);
@@ -98,7 +101,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       setStep("결과를 기록하는 중");
       await page.client.uploadComplete(project.id, { videoId: video.id, ...(owner ? { connectionOwnerId: owner } : {}) });
       await page.reload(); setDirty(false);
-    } catch (reason) { page.fail(reason); } finally { setProgress(null); setStep(""); }
+    } catch (reason) { page.fail(reason); setGoError(errorMessage(reason)); } finally { setProgress(null); setStep(""); }
   };
   // After the upload the project moves on to 쇼츠 · 칼럼 (it ends there, with or without shorts and a column).
   const router = useRouter();
@@ -133,6 +136,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           </div>
           <label className="yp-lbl">UTM 주소</label><div className="yp-utm">{utmUrl(form.utm, done ? `yp-${project.id.slice(0, 8)}` : undefined)}</div>
           <label className="yp-lbl">단축 링크 <span className="yp-gq">만들어서 붙여 넣어요</span></label><input className="yp-in" value={form.utm.short} readOnly={!editable} placeholder="예) buly.kr/○○ 붙여 넣기" onChange={event => edit({ utm: { ...form.utm, short: event.target.value } })} aria-label="단축 링크" />
+          {shortLinkProblem(form.utm.short) ? <div className="yp-errline" role="alert">{shortLinkProblem(form.utm.short)}</div> : null}
         </YpSection>
         <YpSection n={2} title="자막(SRT)">
           {myinSrt ? <div className="yp-drop yp-ok" style={{ padding: 12 }}><Check size={20} aria-hidden="true" /><b>자동 제작 자막을 그대로 써요</b><span style={{ fontSize: 12 }}>유튜브 자막은 올린 뒤 스튜디오에서 넣어요.</span>
@@ -187,7 +191,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <span className="yp-muted" style={{ fontSize: 12 }}>제목 A{finalPair(plan, make, "A")?.changed ? "(제작에서 바꾼 것)" : ""} · 썸네일 A로 올라가요. 다 올라갈 때까지 화면을 닫지 마세요.</span></div>
           <div className="yp-upgo-r">{done ? <><button type="button" className="yp-btn yp-lg" disabled><Check size={16} /> 유튜브에 올리기</button><small className="yp-upok">✓ 올렸어요</small></>
             : <><button type="button" className="yp-btn yp-pri yp-lg" disabled={Boolean(reason) || progress !== null || !editable} onClick={() => void go()}><Upload size={16} /> {progress !== null ? `${step} ${progress ? `${progress}%` : ""}` : "유튜브에 올리기"}</button>
-              {reason ? <small className="yp-muted">{reason}</small> : <CostTag kind="youtube" />}</>}</div></section>
+              {goError ? <small className="yp-errline" role="alert">올리지 못했어요: {goError}</small> : reason ? <small className="yp-errline">{reason}</small> : <CostTag kind="youtube" />}</>}</div></section>
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
         {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>

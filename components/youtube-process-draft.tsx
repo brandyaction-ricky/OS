@@ -130,13 +130,13 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
             </div>
         </YpSection>
         <YpSection n={2} title="영상 흐름 (뼈대)" gq="어떤 순서로 보여 주나요?" need>
-          <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
-            <input className="yp-in" aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
+          <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+            <textarea className="yp-in" rows={3} aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
             <p className="yp-hint">제목 · 썸네일에서 한 약속을 바로 보여 줄 장면</p></div>
-          <div className={`yp-field${rev("draft.body") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>본론</b><span className="yp-gq">본론은 어떻게 이어지나요?</span>{rev("draft.body") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+          <div className={`yp-field${rev("draft.body") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>본론</b><span className="yp-gq">본론은 어떻게 이어지나요?</span>{rev("draft.body") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
             <textarea className="yp-in" rows={6} aria-label="본론" value={form.body} readOnly={!can("body")} placeholder={"예) 소제목 – 보여 줄 장면\n1. 남 탓을 하지 않는다 – 같은 실수, 두 사람 반응 비교\n2. 끝까지 듣는다 – 말 끊는 사람 vs 듣는 사람\n3. …"} onChange={event => edit({ body: event.target.value })} /></div>
-          <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
-            <input className="yp-in" aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
+          <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+            <textarea className="yp-in" rows={3} aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
         </YpSection>
         <details className="yp-more-fields" open={Boolean(form.note) || rev("draft.note")}><summary>전달 사항 더 쓰기 (선택)</summary>
           <textarea className="yp-in" rows={2} aria-label="전달 사항" value={form.note} readOnly={!can("note")} placeholder="예) 지난주 댓글에 비슷한 질문이 많았어요. 레퍼런스 1번은 제목 구조만 참고했어요" onChange={event => edit({ note: event.target.value })} />

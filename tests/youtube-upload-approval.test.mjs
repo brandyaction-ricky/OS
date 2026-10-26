@@ -38,10 +38,10 @@ function setup(options = {}) {
     "@/lib/server/channel-access": { auditChannelAction: async () => {} },
     "@/lib/server/youtube-oauth": { authorizeYoutubeConnection: async () => { if (controls.denyChannel) throw new ApiError(403, "CHANNEL_ACCESS_DENIED", "denied"); }, youtubeConnectionStatus: async () => ({ channelId: controls.connectedChannel, channelTitle: "Main" }), getYoutubeAccessToken: async () => "token" },
   };
-  const commonJsModule = { exports: {} }; let fetchCount = 0; let sent = null;
-  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { Response, URLSearchParams, fetch: async (_url, init) => { fetchCount++; sent = JSON.parse(init.body); return new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }); } })((key) => modules[key], commonJsModule, commonJsModule.exports);
+  const commonJsModule = { exports: {} }; let fetchCount = 0; let sent = null; let sentHeaders = null;
+  runInNewContext(`(function(require, module, exports) { ${code}\n})`, { Response, URLSearchParams, URL, fetch: async (_url, init) => { fetchCount++; sent = JSON.parse(init.body); sentHeaders = init.headers; return new Response(null, { status: 200, headers: { location: "https://upload.example/session" } }); } })((key) => modules[key], commonJsModule, commonJsModule.exports);
   const post = (privacyStatus = "private") => commonJsModule.exports.POST(new Request("https://os.example/api/v1/youtube/upload/session", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kitId, fileName: "final.mp4", fileSize: 1024, mimeType: "video/mp4", privacyStatus, finalApproval: true }) }));
-  return { controls, post, fetchCount: () => fetchCount, sent: () => sent };
+  return { controls, post, fetchCount: () => fetchCount, sent: () => sent, sentHeaders: () => sentHeaders };
 }
 
 test("pipeline video upload requires a persisted release approval", async () => {
@@ -73,6 +73,8 @@ test("current final review and matching release approval create the upload sessi
   assert.equal(response.status, 200);
   assert.equal(state.fetchCount(), 1);
   assert.equal((await response.json()).channelId, "channel-a");
+  // 로건 피드백 10/26-9: the session carries the page's origin, or YouTube refuses the browser's PUT (CORS).
+  assert.equal(state.sentHeaders().origin, "https://os.example");
 });
 
 test("a finished 마이인 v13 run puts its credits at the end of the description", async () => {

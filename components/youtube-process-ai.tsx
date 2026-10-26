@@ -46,6 +46,8 @@ export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [projectId, page.demo, page.accessToken, task]);
   useEffect(() => { void load(); }, [load]);
+  // 로건 피드백 10/26-12: a result that came in while the tab was in the background showed only after a refresh.
+  useEffect(() => { const onFocus = () => void load(); window.addEventListener("focus", onFocus); return () => window.removeEventListener("focus", onFocus); }, [load]);
   const open = Boolean(status?.job && ["backlog", "active"].includes(status.job.status));
   useEffect(() => {
     if (!open) return;

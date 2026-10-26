@@ -223,8 +223,14 @@ export function thumbsMissing(make: YpMake) {
 export function utmUrl(utm: YpUpload["utm"], videoId?: string) {
   return `${UTM_BASE}?utm_source=youtube&utm_medium=organic&utm_campaign=${utm.camp}&utm_content=${videoId ?? "[올린 뒤 채워짐]"}&utm_term={query}`;
 }
+const isYoutubeLink = (link: string) => /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(link.trim());
+/** The 단축 링크 when it is one: a YouTube address pasted there went out as the 진단 링크 (로건 피드백 10/26-10). */
+const shortLink = (utm: Pick<YpUpload["utm"], "short">) => utm.short.trim() && !isYoutubeLink(utm.short) ? utm.short.trim() : "";
+export const shortLinkProblem = (short: string) => isYoutubeLink(short) ? "단축 링크 칸에 유튜브 주소가 들어 있어요. 위 UTM 주소로 만든 단축 링크를 넣어요." : "";
+/** The 진단 링크 the description and pinned comment carry: the 단축 링크, else the UTM address. */
+export const diagnosisLink = (utm: YpUpload["utm"]) => shortLink(utm) || utmUrl(utm);
 export function pinnedDraft(utm: YpUpload["utm"]) {
-  return `⬇️ [진단 CTA 한 줄]\n${utm.short || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
+  return `⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
 }
 /** Lines under a [구역] heading up to the next ----- (시안 secOf). */
 function section(text: string, key: string) {
@@ -248,7 +254,13 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
   const body = section(text, "[설명문 본문]") ?? [];
   const cta = text.split("\n").find(line => line.trim().startsWith("⬇️")) ?? "";
   const links = text.match(/https?:\/\/\S+/g) ?? [];
-  const fake = links.filter(link => !link.startsWith(UTM_BASE) && !(upload.utm.short && link.startsWith(upload.utm.short)) && !(upload.utm.next && link.startsWith(upload.utm.next)));
+  const short = shortLink(upload.utm);
+  const fake = links.filter(link => !link.startsWith(UTM_BASE) && !(short && link.startsWith(short)) && !(upload.utm.next && link.startsWith(upload.utm.next)));
+  // 로건 피드백 10/26-11: the link under the ⬇️ 진단 CTA must be the UTM address or its short link — a youtu.be there passed before.
+  const lines = text.split("\n");
+  const ctaAt = lines.findIndex(line => line.trim().startsWith("⬇️"));
+  const underCta = ctaAt >= 0 ? lines.slice(ctaAt, ctaAt + 3).join("\n") : "";
+  const diagnosisOk = Boolean(short && underCta.includes(short)) || (underCta.match(/https?:\/\/\S+/)?.[0] ?? "").startsWith(UTM_BASE);
   const sources = (section(text, "[인용 및 출처]") ?? []).filter(line => line.startsWith("-"));
   return [
     { ok: order, text: order ? "구역 순서가 맞고 히든 태그가 맨 마지막이에요" : "구역 순서가 다르거나 히든 태그가 맨 뒤가 아니에요" },
@@ -256,7 +268,9 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
     { ok: Boolean(upload.srt), text: upload.srt ? "타임라인 시간이 자막 기준이에요" : "자막이 없어 타임라인 시간이 자리표시예요" },
     { ok: body.length === 5, text: body.length === 5 ? "본문이 5줄이에요" : `본문이 ${body.length}줄이에요 (5줄)` },
     { ok: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)), text: cta.length <= 40 && !(/무료/.test(cta) && /진단/.test(cta)) ? "진단 CTA가 짧고 '무료'가 없어요" : "진단 CTA가 길거나 '무료'가 붙었어요 (진단은 유료)" },
-    { ok: !fake.length, text: fake.length ? `확인 안 된 링크가 있어요: ${fake[0]}` : links.length ? "링크가 UTM 주소예요" : "링크는 자리표시예요 (지어낸 링크 없음)" },
+    !links.length ? { ok: true, text: "링크는 자리표시예요 (지어낸 링크 없음)" }
+      : !diagnosisOk ? { ok: false, text: "진단 CTA 아래 링크가 UTM 주소(또는 그 단축 링크)가 아니에요" }
+      : { ok: !fake.length, text: fake.length ? `확인 안 된 링크가 있어요: ${fake[0]}` : "진단 링크가 UTM 주소예요" },
     { ok: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))), text: sources.every(line => line.includes("/") && (/불확실|확인 필요/.test(line) || /\(.*\d/.test(line))) ? "출처 형식 · 확인 안 된 것에 '불확실' 표시" : "출처에 기준 시점이 없거나 '불확실' 표시가 빠졌어요" },
   ];
 }

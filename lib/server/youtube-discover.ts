@@ -45,6 +45,16 @@ const asVideo = (video: Video, channel: { subscribers: number | null; median: nu
     median, ratio: median ? Math.round(viewCount / median * 10) / 10 : null, viewSubscriberRatio: subscribers ? Math.round(viewCount / subscribers * 100) / 100 : null, ...(query ? { query } : {}) };
 };
 
+/** A reference pasted by address on 주제 (로건 피드백 10/26-3): its title · channel, written like a 주제 찾기 reference (1 unit). */
+export async function referenceTitle(videoId: string) {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "유튜브 검색 연결이 없어요.");
+  const { items } = await youtube<{ items?: Video[] }>("videos", { part: "snippet", id: videoId }, key);
+  const snippet = items?.[0]?.snippet;
+  if (!snippet?.title) throw new ApiError(404, "YOUTUBE_VIDEO_NOT_FOUND", "영상을 찾지 못했어요.");
+  return { title: `${decodeHtmlEntities(snippet.title)} · ${decodeHtmlEntities(snippet.channelTitle ?? "")}`.slice(0, 200) };
+}
+
 /** 패키징 레퍼런스 for the 기획안 · 최종 썸네일 jobs: the 기획실's one search (about 102 units), ranked by rankPackagingRefs. */
 export async function packagingReferences(query: string): Promise<PackagingRef[]> {
   const key = process.env.YOUTUBE_API_KEY;

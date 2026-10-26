@@ -144,7 +144,7 @@ export function YoutubeDiscoverScreen() {
     <p className="yp-hint" style={{ margin: "8px 0 12px" }}>{TAB_HINT[tab]}</p>
     {searchable ? <>
       <form className="yp-disc-search" onSubmit={event => { event.preventDefault(); if (query.trim().length >= 2) { setSource("found"); setPick({ q: query.trim() }); } }}>
-        <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
+        <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" type="search" value={query} onChange={event => setQuery(event.target.value)} onFocus={event => event.currentTarget.select()} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
         <button type="submit" className="yp-btn yp-pri" disabled={query.trim().length < 2}>찾기</button><CostTag kind="youtube" /></form>
       <div className="yp-chips" role="group" aria-label="분류">
         <button type="button" className={`yp-chip${"category" in pick && pick.category === "all" ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: "all" }); }}>전체</button>

@@ -25,7 +25,7 @@ type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
 const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().positive() }).strict();
-const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime() }).strict();
+const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
@@ -93,7 +93,9 @@ export function presentMyinRun(record: OsRecord) {
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
-    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at };
+    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at,
+    // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
+    workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
 }
 
 /**
@@ -209,7 +211,7 @@ async function claim(service: Service, stage: string, leaseMs: number) {
     let run: MyinRun; try { run = parse(candidate); } catch { continue; }
     if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) continue;
     if (run.attempts >= 3) { await save(service, candidate, "blocked", stage, run).catch(() => null); continue; }
-    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString() };
+    const lease = { token: randomUUID(), expiresAt: new Date(Date.now() + leaseMs).toISOString(), startedAt: new Date().toISOString() };
     const claimed = await save(service, candidate, "in_progress", stage, { ...run, lease, attempts: run.attempts + 1 }).catch(() => null);
     if (claimed) return { record: claimed, run: parse(claimed), lease };
   }

@@ -7,6 +7,7 @@ import {
   emptyGates, parseYoutubeRef, projectName, sameRef, recentProjects, similarProjects, stageLabel, stepHref, stepName, topicEditable, topicFieldEditable, topicLines, topicMissing,
   YP_FLOW, YP_KIND_LABEL, YP_KIND_SHORT, YP_STAGE_INDEX, type YpKind, type YpProject, type YpRef,
 } from "@/lib/youtube-process/project";
+import { apiRequest } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { errorMessage, isConflict, youtubeProcessClient, type YpMember, type YpTopicInput } from "./youtube-process-data";
 import { YoutubeFlow, type YpAction } from "./youtube-process-flow";
@@ -54,6 +55,8 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], assigneeId: null });
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  // 로건 피드백 10/26-1: a failed save left the old 「저장됨」 stamp, so it read as saved.
+  const [unsaved, setUnsaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -120,7 +123,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     const run = (async () => {
       try {
         const saved = base ? await client.update(base.id, base.version, topicEditable(base) ? input : { assigneeId: next.assigneeId }) : await client.create(input);
-        setProject(saved); setSavedAt(hhmm(new Date()));
+        setProject(saved); setSavedAt(hhmm(new Date())); setUnsaved(false);
         if (editRev.current === rev) setDirty(false);
         if (!base) {
           loadedId.current = saved.id;
@@ -129,6 +132,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         }
         return saved;
       } catch (reason) {
+        setUnsaved(true);
         if (isConflict(reason)) setConflict(true); else setError(errorMessage(reason));
         return null;
       } finally { saving.current = null; }
@@ -173,7 +177,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
       <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `주제 컨펌이 끝났어요. ${shell.yp.topic.type === "short" ? "제작으로" : "기획안으로"} 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
-      <div className="header-actions yp-stool">{savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
+      <div className="header-actions yp-stool">{unsaved ? <span className="yp-stamp yp-unsaved" role="alert">저장 안 됨 · 위 안내를 봐 주세요</span> : savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}
       {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
@@ -226,12 +230,16 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
                 <button type="button" className="yp-ib" aria-label="빼기" onClick={() => editAndSave({ refs: form.refs.filter((_, at) => at !== index) })}><X size={14} /></button>
               </> : null}
             </li>)}</ul> : !editable ? <span className="yp-hint">없음</span> : null}
-            {open("refs") ? <form className="yp-savebar" onSubmit={event => {
+            {open("refs") ? <form className="yp-savebar" onSubmit={async event => {
               event.preventDefault();
               const ref = parseYoutubeRef(refUrl);
               if (!ref) { setRefError("유튜브 영상 주소를 붙여 넣어 주세요. (youtube.com/watch · youtu.be · shorts)"); return; }
               if (form.refs.some(row => sameRef(row, ref))) { setRefError("이미 있어요."); return; }
-              setRefError(""); setRefUrl(""); editAndSave({ refs: [...form.refs, ref] });
+              setRefError(""); setRefUrl("");
+              // 로건 피드백 10/26-3: a pasted address gets its title · channel like a 주제 찾기 reference (1 unit of YouTube quota).
+              const title = demo || !accessToken ? undefined : await apiRequest<{ title: string }>(`/api/v1/content/youtube/discover?video=${ref.videoId}`, { token: accessToken })
+                .then(info => info.title, () => undefined);
+              editAndSave({ refs: [...form.refs, title ? { ...ref, title } : ref] });
             }}>
               <input className="yp-in" id="yp-topic-ref" placeholder="유튜브 영상 주소 붙여 넣기" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} />
               <button type="submit" className="yp-btn">추가</button>

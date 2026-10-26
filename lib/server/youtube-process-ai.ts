@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { finalPair, SLOTS, stageData, STAGE_RECORD, utmUrl, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -89,7 +89,7 @@ export function v1ScriptCardInputs(state: Pipeline, card: { targetMinutes: numbe
       plan: { opening: plan.data.opening, body: plan.data.body, closing: plan.data.closing, note: [project.yp.topic.note, plan.data.note].filter(Boolean).join("\n") },
       staffAttachments: card.attachments ?? null,
     },
-    planNote: "- plan은 대표가 컨펌한 기획안(제목 A · B · C, 오프닝 · 본론 · 클로징)이며 이것이 정본 §2의 '① 기획 승인본'입니다. 따로 열 문서는 없습니다. audience는 정밀 타겟입니다.",
+    planNote: "- plan은 컨펌된 기획안(제목 A · B · C, 오프닝 · 본론 · 클로징)이며 이것이 정본 §2의 '① 기획 승인본'입니다. 따로 열 문서는 없습니다. audience는 정밀 타겟입니다.",
   };
 }
 /** A submitted 원고 becomes the current 구성안 원고 (the previous one stays as a version). */
@@ -129,7 +129,7 @@ export function v1KitCardInputs(state: Pipeline) {
 - description 구역 순서: 해시태그 5개 → ----- → ⬇️ 진단 CTA 한 줄 + 링크 → ----- → [타임라인] → ----- → [설명문 본문] 5줄 → ----- → [인용 및 출처] → ----- → [히든 태그](맨 마지막, 쉼표로).
 - [타임라인]은 아래 자막 시각으로 00:00부터 3줄 이상, 줄마다 20자 안팎. 자막이 없으면 시각을 [시각]으로 둡니다. chapters는 빈 배열로 둡니다(타임라인이 설명란 안에 있음).
 - 진단 CTA는 40자 이하, '무료'를 붙이지 않습니다(진단은 유료).
-- 링크는 아래 두 개만 씁니다. 지어내지 않습니다. 진단 링크: ${utm.short || utmUrl(utm)} · 이어서 볼 영상: ${utm.next || "(없음 — 고정 댓글에 [이어서 볼 영상 링크]로 둡니다)"}
+- 링크는 아래 두 개만 씁니다. 지어내지 않습니다. 진단 링크: ${diagnosisLink(utm)} · 이어서 볼 영상: ${utm.next || "(없음 — 고정 댓글에 [이어서 볼 영상 링크]로 둡니다)"}
 - 출처는 "- 수치·내용 / 종류 / 기관 (기준 시점, 발표일)". 확인하지 못한 것은 끝에 '불확실'.
 - pinnedComment: "⬇️ 진단 CTA" 한 줄 + 진단 링크 + "이어서 보면 좋을 영상 보러가기" + 이어서 볼 영상 링크.
 - tags는 [히든 태그]와 같은 값으로 둡니다. title은 아래 제목을 그대로 둡니다(OS가 컨펌된 제목을 씁니다).`,
@@ -180,7 +180,8 @@ export const patternsSchema = {
   copyPatterns: z.object({ main: z.array(copyPatternSchema).min(1).max(3), sub: z.array(copyPatternSchema).max(3).default([]) }).strict(),
 };
 const PATTERNS_SHAPE = `"titlePatterns": [{ "skeleton": "[조건 호명: 이런 ~면] + 빨리 퇴사하세요", "count": "20편 중 3편", "examples": ["레퍼런스 제목 그대로"] }], "copyPatterns": { "main": [{ "skeleton": "퇴사 + [명사]", "count": "8장 중 4장", "thumbs": [3, 4] }], "sub": [{ "skeleton": "[~일까요?]", "count": "8장 중 2장", "thumbs": [3, 7] }] }`;
-const sameText = (text: string) => text.replace(/\s+/g, " ").trim();
+// Letters and numbers only: 로건 피드백 10/26-5 — a title from the card came back with a comma or quote changed and was refused.
+const sameText = (text: string) => text.replace(/[^\p{L}\p{N}]+/gu, "");
 /** Examples must be real: each one is (part of) a title the search returned or the PD added, and each thumbnail number one the card showed. */
 export function patternProblems(patterns: { titlePatterns: z.infer<typeof titlePatternSchema>[]; copyPatterns: { main: z.infer<typeof copyPatternSchema>[]; sub: z.infer<typeof copyPatternSchema>[] } }, market: PackagingMarket | undefined, refTitles: string[]) {
   if (!market?.refs.length) return [];
@@ -188,7 +189,8 @@ export function patternProblems(patterns: { titlePatterns: z.infer<typeof titleP
   const shown = Math.min(8, market.refs.length);
   const problems: string[] = [];
   patterns.titlePatterns.forEach((pattern, index) => pattern.examples.forEach(example => {
-    if (!titles.some(title => title.includes(sameText(example)))) problems.push(`제목 패턴 ${index + 1}의 예시 「${example.slice(0, 40)}」가 검색 결과 제목에 없어요 — 레퍼런스 제목을 글자 그대로 적어요`);
+    const want = sameText(example);
+    if (!want || !titles.some(title => title.includes(want))) problems.push(`제목 패턴 ${index + 1}의 예시 「${example.slice(0, 40)}」가 검색 결과 제목에 없어요 — 레퍼런스 제목을 글자 그대로 적어요`);
   }));
   for (const [name, list] of [["메인", patterns.copyPatterns.main], ["서브", patterns.copyPatterns.sub]] as const)
     list.forEach((pattern, index) => pattern.thumbs.forEach(number => { if (number > shown) problems.push(`${name} 패턴 ${index + 1}의 썸네일 ${number}번은 없어요 — 1~${shown}번 중에서 적어요`); }));
@@ -234,11 +236,11 @@ export async function v1PlanCard(supabase: RequestActor["supabase"], state: Pipe
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 유튜브 공정 기획안
-아래 절차 문서(기획 · 소구점 · 제목·썸네일 정본)를 읽고 이 주제의 기획안 초안을 만듭니다. 대표가 컨펌하고, 담당 PD가 먼저 다듬습니다.
+아래 절차 문서(기획 · 소구점 · 제목·썸네일 정본)를 읽고 이 주제의 기획안 초안을 만듭니다. 담당 PD가 다듬고 컨펌합니다(대표는 알림을 받습니다).
 1. 제목 후보 3~6개: 첫째가 A(가장 추천), 둘째가 B. 아래 「제목 · 썸네일 공식」대로 뽑습니다.
 2. 썸네일 시안 2~4개: screen(어떤 장면) + copy(썸네일에 박을 큰 글자). 같은 공식대로 뽑고, 순서대로 A · B · C 제목과 짝이 됩니다.
 3. 영상 흐름: opening(첫 30초 — 제목 · 썸네일의 약속을 바로 보여줄 장면), body(본론 3~6줄, "1. 결핍: … – [볼거리]" 형식), closing(클로징 · 다음 행동 — 어디로 보내는지).
-4. titlePatterns · copyPatterns: 아래 공식에서 뽑은 패턴(골격 · 몇 편 중 몇 편 · 예시)을 그대로 냅니다. 대표가 컨펌할 때 이 공식을 함께 봅니다.
+4. titlePatterns · copyPatterns: 아래 공식에서 뽑은 패턴(골격 · 몇 편 중 몇 편 · 예시)을 그대로 냅니다. 담당 PD가 컨펌할 때 이 공식을 함께 봅니다.
 5. note: 쓴 근거와 출처(doc_id, 레퍼런스 영상), 확인하지 못한 것.
 ${inputs.ceoRequest ? "6. ceoRequest는 대표의 수정 요청입니다. 그 칸을 메모대로 고쳐서 냅니다.\n" : ""}
 ## 제목 · 썸네일 공식 (최종 썸네일 다시 뽑기와 같은 기준)
