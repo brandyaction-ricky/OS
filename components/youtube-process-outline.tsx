@@ -1,8 +1,10 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
+import { myinCleanScript } from "@/lib/myin-script";
 import { lengthEstimate, outlineMissing, runtimeError, scriptChars, SPEC_OPTIONS, type YpOutline } from "@/lib/youtube-process/stages";
+import { checkScriptBody } from "@/lib/youtube-script-check";
 import { KnowledgeRichEditor } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
@@ -76,7 +78,11 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
     } catch (reason) { page.fail(reason); } finally { setMoving(false); }
   };
 
-  const missing = form ? outlineMissing(form) : "";
+  // 관문 1 on the 원고 as it will be spoken (자동 영상 only); the OS counts it again with the canon (정본 겹침) on 다음: 제작 and on v13 음성.
+  const spokenOnly = project?.yp.topic.type === "anim";
+  const script = form?.script ?? "", runtime = form?.spec.runtimeMin ?? null;
+  const checked = useMemo(() => spokenOnly && scriptChars(script) ? checkScriptBody(myinCleanScript(script).spoken, runtime).issues : [], [spokenOnly, script, runtime]);
+  const missing = form ? outlineMissing(form) || (checked.length ? `원고 형식 검사에서 걸린 곳 ${checked.length}건을 고쳐 주세요` : "") : "";
   const action = page.bundle ? stepAction(page, 2, project?.yp.stage === "outline" ? { kind: "button", label: "다음: 제작", reason: missing, busy: moving, onClick: () => void move() } : { kind: "status", status: "구성안 끝남" }) : null;
   const current = form?.versions.at(-1)?.v ?? 0;
   const viewing = viewV && viewV !== current ? form?.versions.find(item => item.v === viewV) ?? null : null;
@@ -127,6 +133,8 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
               onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
+          {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사(관문 1)에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
+            <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
           {form.ai ? <details className="yp-card" open={notesOpen} onToggle={event => setNotesOpen((event.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
             <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>AI 작업 기록 보기</summary>
             {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검수 기록", form.ai.review]] as const).map(([label, value]) =>
