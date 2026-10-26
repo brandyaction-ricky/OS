@@ -4,14 +4,15 @@ import { checkManuscript, checkScriptBody } from "../lib/youtube-script-check.ts
 
 // 원고 검수 정본 관문 1: the OS re-counts the format of a submitted script and its result wins.
 const paragraph = (seed) => `${seed} 예를 들어 마케터 3년차 지은이 있습니다. 지은은 하고 싶은 일이 많아서 매일 저녁 새 강의를 결제하고, 주말에는 또 다른 모임에 나갑니다. 그런데 정작 무엇부터 해야 할지는 정하지 못한 채 한 달이 지나갑니다.`;
-const manuscript = (title, sections) => [`# ${title}`, "<!-- 축: 남의 1순위 | 중심 근거: 없음 | 역할: 유입형 | 길이: 1분/600자 | 가상 인물: 지은 -->", "",
+const manuscript = (title, sections) => [`# ${title}`, "<!-- 축: 남의 1순위 | 중심 근거: 없음 | 역할: 유입형 | 길이: 1분/490자 | 가상 인물: 지은 -->", "",
   ...sections.flatMap(([name, count], s) => [`## ${name}`, "", ...Array.from({ length: count }, (_, i) => [paragraph(`${s}-${i}`), ""]).flat()])].join("\n");
 
 test("a manuscript in the canon format passes and yields narration-only paragraphs", () => {
-  const result = checkManuscript(manuscript("하고 싶은 게 많은 사람", [["도입", 2], ["우선순위", 3]]), { title: "하고 싶은 게 많은 사람", targetMinutes: 1 });
+  // 공백 포함 490자 = 1분 (정본 묶음 v2.0): four paragraphs of 122자 are one minute.
+  const result = checkManuscript(manuscript("하고 싶은 게 많은 사람", [["도입", 2], ["우선순위", 2]]), { title: "하고 싶은 게 많은 사람", targetMinutes: 1 });
   assert.deepEqual(result.issues, []);
   assert.deepEqual(result.sections, ["도입", "우선순위"]);
-  assert.equal(result.paragraphs.length, 5);
+  assert.equal(result.paragraphs.length, 4);
   assert.ok(!result.narration.includes("#") && !result.narration.includes("<!--"));
 });
 
@@ -94,4 +95,10 @@ test("v1.9 해명 종결: '아니에요·아닙니다' endings outside quotes at
   assert.match(closing(["점수를 매기는 방식은 아니에요.", "효과를 검증한 건 아닙니다.", "다음 장면으로 가요."]), /해명 종결 .* 2개 — .*걸린 문단 1·2번/);
   assert.doesNotMatch(closing(["친구가 \"그건 아니에요.\" 하고 웃어요.", "다음 장면으로 가요."]), /해명/);
   assert.doesNotMatch(closing(["다음 장면으로 가요.", "그건 아니라고 봐요."]), /해명/);
+});
+
+test("length: 공백 포함 490자 = 1분, ±15%", () => {
+  const text = (n) => Array.from({ length: n }, (_, i) => paragraph(`L${i}`));
+  assert.doesNotMatch(checkScriptBody(text(4), 1).issues.join(), /±15%/);
+  assert.match(checkScriptBody(text(5), 1).issues.join(), /총 \d+자 — 목표 1분\(490자\)의 ±15% 밖/);
 });

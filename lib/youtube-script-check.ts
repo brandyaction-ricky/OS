@@ -58,7 +58,8 @@ function canonOverlap(paragraph: string, windows: Set<string>) {
   }
   return null;
 }
-export const CHARS_PER_MINUTE = 600;
+// 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
+export const CHARS_PER_MINUTE = 490;
 
 /**
  * Body rules that also apply when a staff member edits the narration text directly (no headings left to check).
