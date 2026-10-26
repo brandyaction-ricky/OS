@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { MYIN_METAPHOR_TYPES, myinPhotoFetchUrl } from "@/lib/myin-storyboard";
+import { MYIN_METAPHOR_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -431,9 +431,11 @@ export async function claimMyinPrep(service: Service = createServiceSupabase()) 
   try {
     const story = await storyboardJson(service, run);
     const assets = [];
+    const folders = myinPhotoFolders(story);
     for (const asset of run.storyboard?.assets ?? []) {
       const url = run.assets?.[asset.file]?.decision === "approved" ? myinPhotoFetchUrl(asset.url) : null;
-      if (url) assets.push({ kind: asset.kind, file: asset.file, url });
+      // The render PC saves each entry under assets/<kind>; a photo used in both places is sent twice.
+      if (url) for (const kind of folders.get(asset.file) ?? [asset.kind]) assets.push({ kind, file: asset.file, url });
     }
     const cta = [];
     for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });

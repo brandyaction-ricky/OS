@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, myinCreditsBlock, myinPhotoFetchUrl, seqRatio } from "../lib/myin-storyboard.ts";
+import { checkMyinStoryboard, myinCreditsBlock, myinPhotoFetchUrl, myinPhotoFolders, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -48,4 +48,17 @@ test("myinPhotoFetchUrl takes the image hosts' file links as they are and refuse
   assert.equal(myinPhotoFetchUrl("https://commons.wikimedia.org/wiki/File:Example.jpg"), "https://commons.wikimedia.org/wiki/Special:FilePath/Example.jpg");
   for (const link of ["https://unsplash.com/photos/green-hills-1Z2niiBPg5A", "http://images.unsplash.com/photo-1", "https://www.pexels.com/photo/1/", "not a url"])
     assert.equal(myinPhotoFetchUrl(link), null);
+});
+
+// 2026-10-26: a situations photo used as a scene's side photo was saved under assets/situations, and Logan's engine looked in
+// assets/people (FileNotFoundError, v13 preview stopped three times).
+test("myinPhotoFolders puts a scene photo in people and an opening image in situations, whatever the asset kind", () => {
+  const story = { scenes: [
+    { type: "opening", acts: [{ image: "moving_boxes.jpg" }, { image: "journal_writing.jpg" }] },
+    { type: "statement", photo: { file: "night_desk_headache.jpg", t: "x" } },
+    { type: "situation", photo: { file: "office_thinking.jpg", kind: "situation", t: "y" } },
+    { type: "hero", photo: { file: "journal_writing.jpg", t: "z" } },
+  ], music_cues: { a: { file: "music_C2_curious.mp3" } } };
+  assert.deepEqual(Object.fromEntries(myinPhotoFolders(story)), {
+    "moving_boxes.jpg": ["situations"], "journal_writing.jpg": ["situations", "people"], "night_desk_headache.jpg": ["people"], "office_thinking.jpg": ["people"] });
 });
