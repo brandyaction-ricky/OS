@@ -8,7 +8,7 @@ import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { CostTag, useCostConfirm, voiceEstimate } from "./youtube-process-cost";
+import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import type { YpBundle, YpClient, YpFinalView, YpRenderView, YpShortPatch, YpShortView } from "./youtube-process-data";
 import { GateBanner, LockedStep, stepAction, Subject, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 
@@ -80,7 +80,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
   // Narration is company money (Fish): asked once per narration text in a popup with the estimate (owner request 2026-10-25).
-  const cost = useCostConfirm(), voicePaid = useRef("");
+  const cost = useCostConfirm(), { voice } = useCostModels(), voicePaid = useRef("");
   const [send, setSend] = useState(false);
   const editRev = useRef(0);
   const saving = useRef<Promise<YpShortView | null> | null>(null);
@@ -163,8 +163,8 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     if (!client) return;
     const voiceText = scenes.map(scene => scene.voice.trim()).join("\n").trim();
     if (voiceText && voicePaid.current !== voiceText) {
-      const estimate = voiceEstimate(voiceText);
-      if (!await cost.confirm({ what: "내레이션 음성 (Fish)", amount: `약 ${estimate.krw.toLocaleString("ko-KR")}원`,
+      const estimate = voiceEstimate(voiceText, voice);
+      if (!await cost.confirm({ model: voice, amount: estimate.krw,
         detail: `${estimate.chars.toLocaleString("ko-KR")}자 · 이미 만든 문장은 다시 들지 않아요`, ok: "확인하고 만들기" })) return;
       voicePaid.current = voiceText;
     }
@@ -241,7 +241,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
           {editable ? <button type="button" className="yp-btn" disabled={scenes.some(scene => scene.diagram) || missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
             onClick={() => void make(size.aspect)}>{busy === size.aspect ? "처리 중…" : view[size.key]?.status === "done" ? `${size.again} 다시 만들기` : `${size.label} 만들기`}</button> : null}
           <RenderTag render={view[size.key]} /></Fragment>) : null}
-        {hasVoice && editable ? <CostTag cost="company" /> : null}
+        {hasVoice && editable ? <CostTag kind="paid" /> : null}
         {page.demo ? <span className="yp-muted" style={{ fontSize: 12 }}>데모에서는 영상을 만들지 않아요.</span> : null}</div>
       <div className="yp-row-btns" style={{ alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <ShortVideo page={page} final={made.vertical} />
@@ -385,7 +385,7 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
           : channels[0] ? <span className="yp-muted">채널: {channels[0].accountName}</span> : null}
         <span className="yp-sp" />
         {missing ? <span className="yp-hint">{missing}</span> : null}
-        <button type="button" className="yp-btn yp-pri" disabled={Boolean(missing) || Boolean(step)} onClick={() => void go()}><Youtube size={14} /> {step || "유튜브에 올리기"}</button><CostTag cost="youtube" />
+        <button type="button" className="yp-btn yp-pri" disabled={Boolean(missing) || Boolean(step)} onClick={() => void go()}><Youtube size={14} /> {step || "유튜브에 올리기"}</button><CostTag kind="youtube" />
       </div>
       <p className="yp-hint">공개는 올린 뒤 스튜디오에서 해요.</p>
     </>}

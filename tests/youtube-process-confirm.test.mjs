@@ -17,15 +17,38 @@ test("request → OK opens the 기획안 step; the round counts requests", () =>
   assert.equal(ok.yp.gates.topic.decidedBy, "ceo");
 });
 
-test("수정 요청 needs ticked fields and a memo; the PD may then edit only those (수용 6)", () => {
+test("수정 요청 needs ticked fields and a memo; every field stays open until the step is confirmed (staff feedback 2026-10-26)", () => {
   const waiting = act(project(), "request");
   assert.throws(() => act(waiting, "changes", { fields: [], memo: "x" }), /고칠 칸/);
   assert.throws(() => act(waiting, "changes", { fields: ["topic.title"], memo: " " }), /메모/);
   assert.throws(() => act(waiting, "changes", { fields: ["nope"], memo: "x" }), /고칠 칸/);
   const changes = act(waiting, "changes", { actor: "ceo", fields: ["topic.title", "topic.target"], memo: "타겟을 좁혀 주세요" });
-  assert.deepEqual(editableFields(changes, "topic"), ["topic.title", "topic.target"]);
-  assert.deepEqual(editableFields(waiting, "topic"), []);
+  assert.equal(editableFields(changes, "topic"), "all");
+  assert.equal(editableFields(waiting, "topic"), "all");
   assert.equal(editableFields(project(), "topic"), "all");
+  assert.deepEqual(editableFields(act(waiting, "ok", { actor: "ceo" }), "topic"), []);
+});
+
+test("PD 컨펌 (owner decision 2026-10-26): the PD confirms and the next step opens; the 대표 reads it in PD 컨펌 and may send it back", () => {
+  const ok = act(project(), "confirm");
+  assert.deepEqual([ok.yp.gates.topic.state, ok.yp.gates.topic.self, ok.yp.gates.topic.decidedBy, ok.yp.stage], ["ok", true, "pd", "draft"]);
+  assert.throws(() => act(ok, "confirm"), /컨펌할 수 없어요/);
+  // From a 수정 요청, a 보류 or a request still waiting from before, too.
+  const changes = act(act(project(), "request"), "changes", { actor: "ceo", fields: ["topic.title"], memo: "제목" });
+  assert.equal(act(changes, "confirm").yp.stage, "draft");
+  assert.equal(act(act(project(), "request"), "confirm").yp.gates.topic.state, "ok");
+  const short = { ...project(), yp: { ...project().yp, topic: { ...project().yp.topic, type: "short" } } };
+  assert.equal(act(short, "confirm").yp.stage, "make");
+  assert.deepEqual(confirmTab([ok, project("p2")], "self", "ceo").map(row => [row.project.id, row.gate]), [["p1", "topic"]]);
+  assert.deepEqual(confirmTab([ok], "done", "ceo"), []);
+  // 되돌리기 sends it back to the PD as a 수정 요청 (every field open, no reminder to the 대표); the next confirm returns to where it was.
+  const later = { ...ok, yp: { ...ok.yp, stage: "outline" } };
+  const back = act(later, "revert", { actor: "ceo", memo: "타겟을 다시 봐요" });
+  assert.deepEqual([back.yp.stage, back.yp.gates.topic.state, back.yp.gates.topic.memo, back.yp.gates.topic.fields], ["topic", "changes", "타겟을 다시 봐요", []]);
+  assert.equal(editableFields(back, "topic"), "all");
+  assert.deepEqual(dueReminders([back], kst("2026-10-30", "10:00")), []);
+  assert.equal(act(back, "confirm").yp.stage, "outline");
+  assert.equal(act(later, "revert", { actor: "ceo" }).yp.gates.topic.memo, "대표가 이 단계로 되돌렸어요.");
 });
 
 test("re-requesting without editing anything after 수정 요청 needs a one-line reason (수용 6)", () => {

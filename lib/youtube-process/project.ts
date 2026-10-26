@@ -4,7 +4,10 @@ export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "uploa
 export type YpKind = "live" | "anim" | "short";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
-export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string }
+/** self: the PD confirmed it themselves (owner decision 2026-10-26: every confirm is the PD's; the 대표 is told and leaves notes). */
+export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: string; requestedBy?: string; decidedAt?: string; decidedBy?: string; fields?: string[]; memo?: string; reason?: string; self?: boolean }
+/** A note the 대표 leaves on a step the PD confirmed; the PD is told and reads it on that step. */
+export interface YpGateNote { gate: YpGate; at: string; by: string; name: string; text: string }
 export interface YpRef { url: string; videoId?: string; title?: string }
 export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[] }
 export interface YpMeta {
@@ -13,6 +16,8 @@ export interface YpMeta {
   shortsConfirmed?: { at: string; by: string; clips: Record<string, string> };
   /** 쇼츠 확정 · 코멘트 기록, newest last: the 대표 reads it in 대표 메뉴 › 컨펌 and comments when something should change. */
   shortsLog?: YpShortsLogEntry[];
+  /** 대표 노트, newest last. */
+  notes?: YpGateNote[];
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
@@ -88,8 +93,13 @@ export function searchProjects<T extends Pick<YpProject, "title">>(projects: T[]
   return q ? projects.filter(project => project.title.toLocaleLowerCase("ko-KR").includes(q)) : projects;
 }
 
-// Bracketed labels such as [예시] or [시험] are not topic words.
-const words = (text: string) => new Set(text.replace(/\[[^\]]*\]/g, " ").toLocaleLowerCase("ko-KR").split(/[^\p{L}\p{N}]+/u).filter(word => word.length >= 2));
+// Bracketed labels such as [예시] or [시험] are not topic words, and neither are the words every title uses (usability QA
+// 2026-10-25: 이유 · 가지 · 일이 raised "비슷한 주제" on unrelated videos) or counts such as 4칸 · 30초.
+// ponytail: fixed common-word list; grow it when a new filler word starts raising false matches.
+const COMMON = new Set(["이유", "방법", "가지", "하는", "하기", "하는법", "것", "때", "진짜", "정말", "먼저", "처음", "다시", "이야기", "정리", "정리하는",
+  "시작", "시작하기", "생각", "일이", "일을", "일은", "사람", "우리", "너무", "가장", "모든", "없이", "있는", "없는", "위한", "대한", "전에", "하나", "만들기", "알아야", "해야", "할", "꼭"]);
+const words = (text: string) => new Set(text.replace(/\[[^\]]*\]/g, " ").toLocaleLowerCase("ko-KR").split(/[^\p{L}\p{N}]+/u)
+  .filter(word => word.length >= 2 && !COMMON.has(word) && !/^\d/.test(word)));
 /** Earlier projects sharing words with the topic's first line (keyword match, not AI). Most shared words first. */
 export function similarProjects<T extends Pick<YpProject, "id" | "title">>(title: string, projects: T[], selfId?: string, limit = 3) {
   const mine = words(topicLines(title)[0] ?? "");

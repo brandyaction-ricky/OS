@@ -25,7 +25,7 @@ const results=await load("lib/content-automation-results.ts",{
   zod,"./http":{ApiError},"./shortform-production":contract,"./threads-posts":{threadsPostsProblem:()=>null},
 });
 const fields=await load("components/shortform-production-fields.tsx",{
-  "react/jsx-runtime":jsx,"@/lib/shortform-production":contract,
+  "react/jsx-runtime":jsx,"@/lib/shortform-production":contract,"@/components/cost-notice":{CostTag:"cost-tag"},
 });
 const brief={...contract.DEFAULT_SHORTFORM_BRIEF,mode:"direct",purpose:"ad",product:"Sample",
   audience:"New customers",goal:"See details",landingUrl:"https://example.com/product",

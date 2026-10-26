@@ -8,12 +8,13 @@ import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
   confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
-  type YpColumn, type YpColumnItem, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
+  columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
-import { checkColumnHtml, cleanColumnHtml } from "@/lib/seo-column";
+import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
 import { shortsAction } from "@/lib/youtube-process/short";
 import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
+import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
@@ -93,7 +94,7 @@ export const stagePatchSchemas = {
     thumb: z.object({ slot: z.enum(SLOTS), path: text(300), name: text(240) }).strict(), addFinal: z.object({ path: text(300), name: text(240), bytes: z.number().int().positive() }).strict(),
     aTitle: text(100), aReason: text(200),
     // 최종 썸네일 [고치기]: one slot's title and thumbnail copy (both empty = back to the confirmed pair).
-    pair: z.object({ slot: z.enum(SLOTS), title: text(100), copy: text(40), reason: text(200) }).strict() }).partial().strict(),
+    pair: z.object({ slot: z.enum(SLOTS), title: text(100), copy: text(80), reason: text(200) }).strict() }).partial().strict(),
   upload: z.object({ utm: z.object({ cat: text(20), dest: text(30), camp: text(30), next: text(300), short: text(200) }).strict(),
     srt: z.object({ path: text(300), name: text(240) }).strict().nullable(), desc: text(5000), pinned: text(2000), privacy: z.enum(["private", "unlisted"]), title: text(100),
     checked: z.array(z.number().int().min(0).max(29)).max(30) }).partial().strict(),
@@ -272,6 +273,58 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
   return { stage: { ...saved, data }, project: next };
 }
 
+// ── 마이인 칼럼 (owner request 2026-10-25, 「초안 → 공개 버튼」): a column goes to the MYIN 아티클 as a draft with its uploaded
+// images, and the PD makes it public (or takes it back) from here. Where it went is kept on the column.
+export const myinColumnSchema = z.object({ item: z.string().trim().min(1).max(40), action: z.enum(["send", "publish", "unpublish"]), expectedVersion: z.number().int().min(0) }).strict();
+const MYIN_IMAGE_TYPES: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+export async function columnToMyin(actor: RequestActor, id: string, input: z.infer<typeof myinColumnSchema>) {
+  const project = await getYoutubeProject(actor, id);
+  assertColumnOpen(project);
+  const stages = await readStages(actor.supabase, project);
+  const current = stages.column;
+  if (current.version !== input.expectedVersion) throw conflict();
+  const item = current.data.items.find(row => row.id === input.item);
+  if (!item) throw new ApiError(404, "COLUMN_ITEM_MISSING", "칼럼을 찾지 못했어요.");
+  const source = myinSourceId(project.id, item.id);
+  let article: MyinArticle;
+  if (input.action === "send") {
+    const check = checkColumnHtml(item.html);
+    if (check.unsafe.length) throw new ApiError(422, "COLUMN_UNSAFE", "칼럼에 실행 코드가 있어 보낼 수 없어요.");
+    if (!check.meta.title) throw new ApiError(422, "COLUMN_TITLE_REQUIRED", "칼럼 제목(<title>)이 없어요.");
+    if (!MYIN_SLUG.test(check.meta.slug)) throw new ApiError(422, "COLUMN_SLUG_INVALID", "칼럼 주소(slug)를 영문 소문자 · 숫자 · -로 써 주세요.");
+    const fills: Record<string, ColumnFill> = {};
+    const images: { key: string; mime: string; base64: string }[] = [];
+    for (const [slot, fill] of Object.entries(item.fills)) {
+      if (fill.url) { fills[slot] = { src: fill.url }; continue; }
+      if (!fill.path) continue;
+      const mime = MYIN_IMAGE_TYPES[fill.path.split(".").pop()?.toLowerCase() ?? ""];
+      if (!mime) throw new ApiError(422, "COLUMN_IMAGE_TYPE", `${slot === "hero" ? "대표 이미지" : `이미지 ${slot}`}는 PNG · JPG · WEBP만 마이인에 올라가요.`);
+      const { data, error } = await createServiceSupabase().storage.from(MEDIA_BUCKET).download(fill.path);
+      if (error || !data) throw readFailed();
+      const key = `img-${slot}`.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 64);
+      images.push({ key, mime, base64: Buffer.from(await data.arrayBuffer()).toString("base64") });
+      fills[slot] = { src: `myin-image:${key}` };
+    }
+    // The video place shows the longform on YouTube unless the PD put another link there (as on the export).
+    const videoUrl = stages.upload.data.run?.videoUrl;
+    if (!fills.video && videoUrl) fills.video = { src: videoUrl };
+    const page = columnForMyin(item.html, fills);
+    const body = { slug: page.meta.slug, title: page.meta.title.slice(0, 160), excerpt: page.meta.description.slice(0, 500), category: "칼럼", html: page.html, jsonLd: page.jsonLd, images,
+      ...(images.some(image => image.key === "img-hero") ? { coverKey: "img-hero" } : {}) };
+    if (Buffer.byteLength(JSON.stringify(body)) > MYIN_BODY_MAX) throw new ApiError(413, "MYIN_TOO_LARGE", "이미지가 너무 커요. 합계 3MB 안으로 줄여 주세요.");
+    article = await callMyin(`/api/integrations/brandy-os/articles/${source}`, "PUT", body);
+  } else {
+    if (!item.myin) throw new ApiError(409, "MYIN_NOT_SENT", "먼저 마이인에 초안을 올려 주세요.");
+    article = await callMyin(`/api/integrations/brandy-os/articles/${source}/publish`, "POST", { published: input.action === "publish" });
+  }
+  const myin: YpColumnMyin = { id: article.id, slug: article.slug, status: article.status, url: article.url, at: new Date().toISOString(), by: actor.name,
+    publishedAt: article.publishedAt ?? (article.status === "published" ? item.myin?.publishedAt ?? null : null), sig: input.action === "send" ? columnSignature(item) : item.myin?.sig ?? "" };
+  const data: YpColumn = { items: current.data.items.map(row => row.id === item.id ? { ...row, myin } : row) };
+  const saved = await writeStage(actor.supabase, actor.id, actor.team, project, "column", current, data);
+  const next = await touchProject(actor, project);
+  return { stage: { ...saved, data }, project: next };
+}
+
 /** The SEO 칼럼 is written from the final 원고: a longform after its 최종 검수 OK (업로드 · 쇼츠 · 칼럼 · 끝). */
 export function assertColumnOpen(project: YpProject) {
   if (project.yp.topic.type === "short") throw locked("숏폼에는 SEO 칼럼이 없어요.");
@@ -323,18 +376,22 @@ async function adoptedClips(supabase: Supabase, projectId: string) {
   return ((data ?? []) as { id: string; title: string; metadata: Record<string, unknown> }[]).filter(row => row.metadata?.selected !== false);
 }
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
-  return actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
+  const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
+  // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
+  if (gate === "draft" && input.action === "confirm") await fixConfirmedPlan(actor, result.project);
+  return result;
+}
+async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
+  const service = createServiceSupabase();
+  const stages = await readStages(service, project);
+  const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, new Date().toISOString()) };
+  await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
 }
 
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
-  if (gate === "draft" && input.action === "ok") {
-    const service = createServiceSupabase();
-    const stages = await readStages(service, project);
-    const plan = { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, new Date().toISOString()) };
-    await writeStage(service, actor.id, actor.team, project, "plan", stages.plan, plan);
-  }
+  if (gate === "draft" && input.action === "ok") await fixConfirmedPlan(actor, project);
   return project;
 }
 

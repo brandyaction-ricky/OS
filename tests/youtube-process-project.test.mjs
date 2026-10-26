@@ -25,15 +25,12 @@ test("topic confirm request names the first missing field (수용 3)", () => {
   assert.match(topicMissing(Array.from({ length: YP_MAX_LINES + 1 }, (_, i) => `주제 ${i}`).join("\n"), { type: "live", target: "타겟" }), /20줄까지/);
 });
 
-test("topic fields lock while waiting for the confirm and after it", () => {
+test("topic fields stay open until the topic is confirmed; a 수정 요청 opens every field (staff feedback 2026-10-26)", () => {
   assert.equal(topicEditable(project("a", "x")), true);
   const changes = project("a", "x", "topic", 0, "changes");
-  assert.equal(topicEditable(changes), false, "수정 요청 with no ticked field leaves nothing to edit");
   changes.yp.gates.topic.fields = ["topic.title"];
-  assert.equal(topicEditable(changes), true);
-  assert.equal(topicFieldEditable(changes, "title"), true);
-  assert.equal(topicFieldEditable(changes, "target"), false);
-  assert.equal(topicEditable(project("a", "x", "topic", 0, "wait")), false);
+  for (const key of ["title", "kind", "target", "refs", "note"]) assert.equal(topicFieldEditable(changes, key), true, key);
+  assert.equal(topicEditable(project("a", "x", "topic", 0, "wait")), true);
   assert.equal(topicEditable(project("a", "x", "draft", 0, "ok")), false);
 });
 
@@ -49,6 +46,11 @@ test("similar topics share words with the first line and skip the project itself
   assert.deepEqual(similarProjects("부업 세금 정리하는 법\n다른 줄", list, "self").map(row => row.id), ["a"]);
   assert.deepEqual(similarProjects("전혀 다른 이야기", list), []);
   assert.deepEqual(similarProjects("[예시] 전혀 다른 이야기", [project("x", "[예시] 고객 인터뷰")]), [], "bracketed labels do not count");
+  // Usability QA 2026-10-25: words every title uses and counts are not a topic.
+  const titles = [project("w", "일이 안 맞을 때 먼저 나눠 볼 4칸"), project("t", "1인 창업 첫 달에 꼭 정해야 할 세 가지"), project("r", "구독자 1만 명 전에 할 일")];
+  assert.deepEqual(similarProjects("하루 일이 두 개뿐인데 저녁마다 지치는 이유", titles), []);
+  assert.deepEqual(similarProjects("퇴근 후 2시간 루틴 만들기 세 가지", titles), []);
+  assert.deepEqual(similarProjects("1인 창업 세금 정리", titles).map(row => row.id), ["t"], "a shared topic word still matches");
 });
 
 test("only YouTube video links become references", () => {

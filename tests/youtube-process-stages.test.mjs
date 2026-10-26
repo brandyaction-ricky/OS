@@ -46,13 +46,12 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.equal(descChecks(desc.replace("내 강점 진단 받기", "무료 진단 받기"), { srt: null, utm: { short: "", next: "" } })[4].ok, false);
 });
 
-test("기획안 수정 요청 opens only the ticked fields; 최종 검수 OK moves the project to 업로드", () => {
+test("기획안 수정 요청 opens every field; 최종 검수 OK moves the project to 업로드", () => {
   const meta = newProjectMeta({ type: "anim", target: "t", note: "", refs: [] }, "2026-10-20T00:00:00Z");
   let project = { yp: { ...meta.yp, stage: "draft", gates: { ...meta.yp.gates, topic: { state: "ok", round: 1 } } } };
   project = { yp: applyGateAction(project, "draft", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
-  assert.deepEqual(editableFields(project, "draft"), []);
   project = { yp: applyGateAction(project, "draft", "changes", { actor: "ceo", now: "2026-10-21T02:00:00Z", fields: ["draft.tt"], memo: "제목을 짧게" }) };
-  assert.deepEqual(editableFields(project, "draft"), ["draft.tt"]);
+  assert.equal(editableFields(project, "draft"), "all");
   assert.throws(() => applyGateAction(project, "draft", "changes", { actor: "ceo", now: "x", fields: ["topic.title"], memo: "m" }));
   let review = { yp: { ...project.yp, stage: "review" } };
   review = { yp: applyGateAction(review, "review", "request", { actor: "pd", now: "2026-10-21T03:00:00Z" }) };
@@ -66,7 +65,7 @@ test("내 영상 says what each video needs next in one sentence and one button"
   const project = (stage, gates = {}) => ({ id: "p", yp: { ...meta.yp, stage, gates: { ...meta.yp.gates, ...gates } } });
   assert.deepEqual([nextAction(project("outline")).tone, nextAction(project("outline")).button], ["todo", "원고 쓰기"]);
   assert.equal(nextAction(project("draft", { draft: { state: "wait", round: 1 } })).tone, "wait");
-  assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /고칠 칸: 제목 · 썸네일/);
+  assert.match(nextAction(project("draft", { draft: { state: "changes", round: 1, fields: ["draft.tt"] } })).text, /짚은 칸: 제목 · 썸네일/);
   assert.equal(nextAction(project("done")).tone, "done");
 });
 

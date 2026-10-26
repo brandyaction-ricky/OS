@@ -8,7 +8,7 @@ import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
 import { finalPair, SLOTS, stageData, STAGE_RECORD, utmUrl, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
-import { procedureRefs } from "./content-generation";
+import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
 import { assertColumnOpen, writeStage } from "./youtube-process-stages";
 import { checkColumnHtml, cleanColumnHtml, columnMeta, COLUMN_CONTRACT } from "@/lib/seo-column";
 import { CLIP_MAX_SECONDS, clipSeconds } from "@/lib/youtube-process/short";
@@ -150,19 +150,20 @@ export async function saveV1Kit(supabase: RequestActor["supabase"], ownerId: str
 }
 
 
-// ── 제목 · 썸네일 공식: the 기획실's 제목 뽑기 · 썸네일 카피 뽑기 (studio_core) on the 패키징 정본 작업 순서. The 기획안's first titles and the
-// 최종 썸네일 다시 뽑기 read the same lines (owner request 2026-10-25), from the same market search the 기획실 runs (packagingReferences).
-export const PACKAGING_FORMULA = `기획실의 「제목 뽑기 · 썸네일 카피 뽑기」와 같은 방식입니다.
-1. 레퍼런스는 market.rows입니다. OS가 market.query로 유튜브를 검색해 조회수 5만 이상 영상을 구독자 대비 조회수(ratio)가 높은 순으로 모았습니다(이 영상과 같은 형식 — 롱폼이면 롱폼). references는 PD가 직접 넣은 영상이라 함께 봅니다.
-2. 제목 공식: market.rows 상위 20개 제목을 함께 놓고, 여러 제목에 실제로 반복된 것만 고릅니다.
-   - 축: 구조(몇 부분 · 대상+상태 · 숫자+명사 · 질문형 · 방법 제시형) / 훅 유형 / 어조(단정인가 물음인가 · 2인칭을 쓰나 · 나이 · 세대를 밝히나) / 길이(대략 몇 자).
-   - 문구를 형태소 단위(조사 · 어미 · 품사)로 쪼개 슬롯 골격만 가져오고, 슬롯은 이 영상이 실제로 하는 말로 채웁니다.
-3. 썸네일 문구 공식: 제목과 다른 문구입니다. market.rows 상위 8장의 썸네일 이미지(thumbnail)를 내려받아 직접 보고, 그림이 아니라 박힌 글자에서 반복을 찾습니다. 메인 · 서브 카피가 둘 다 있으면 따로 봅니다.
-   - 축: 길이(몇 단어 · 한 줄인가 두 줄인가) / 훅 유형 / 어조 / 무엇으로 시선을 끄나(충격 · 호기심 · 공감 · 이득).
-   - 이미지를 볼 수 없으면 썸네일 문구 공식 끝에 "(썸네일 이미지 확인 못 함 — 제목으로 추정)"이라고 밝힙니다.
-4. 반복이 약하면 공식에 "공통 패턴 약함"이라 밝히고 지어내지 않습니다. market이 비었거나 실패했으면 같은 주제로 터진 영상을 직접 찾아보고, 그래도 없으면 정본의 Good · Worst 사례로 판단해 그렇게 밝힙니다.
-5. 공식마다 근거를 남깁니다: 몇 개 중 몇 개에서 무엇이 겹쳤는지(기획실 「근거」).
-6. 훅 유형은 숫자·리스트 / 금기·경고 / 질문 / 대비·반전 / 정체 폭로 / 손해·후회 / 방법 제시입니다. 후보끼리 훅이 겹치지 않게 다양하게 쓰고, A · B는 클릭 이유가 달라야 합니다.
+// ── 제목 · 썸네일 공식: the 패키징 정본 작업 순서 2 (2026-09-03) on the 기획실's market search. The 기획안's first titles and the 최종 썸네일
+// 다시 뽑기 read the same lines (owner request 2026-10-25). A formula is the words that repeat, in order, with slots — never a summary of meaning.
+export const PACKAGING_FORMULA = `1. 레퍼런스는 market.rows입니다. OS가 market.query로 유튜브를 검색해 조회수 5만 이상 영상을 구독자 대비 조회수(ratio)가 높은 순으로 모았습니다(이 영상과 같은 형식 — 롱폼이면 롱폼, 기획실과 같은 검색). references는 PD가 직접 넣은 영상이라 함께 봅니다.
+2. 제목 공식(titlePatterns): market.rows 상위 20개 제목에서 여러 제목에 글자 그대로 반복된 단어 · 구절과 그 순서부터 셉니다.
+   - 반복된 말은 그대로 두고 바뀌는 자리만 [슬롯]으로 두는 골격을 만듭니다. 형태소 단위(조사 · 어미 · 품사)로 쪼갭니다. 예: 「[조건 호명: 이런 ~면] + 빨리 퇴사하세요」, 「[N]가지」.
+   - 뜻으로 뭉뚱그린 요약(「판단 기준을 제시하는 구조」 「손해를 암시」)이나 부정형 · 긍정형 같은 논조는 공식이 아닙니다.
+   - 반복 패턴이 여럿이면 많이 나온 순서로 1~3개를 냅니다. 패턴마다 count(「20편 중 3편」)와 examples(그 패턴인 레퍼런스 제목을 글자 그대로 1~5개 — OS가 검색 결과와 대조합니다)를 붙입니다.
+3. 썸네일 문구 공식(copyPatterns): 제목과 다른 문구입니다. market.rows 상위 8장의 썸네일 이미지(thumbnail)를 내려받아 직접 보고, 그림이 아니라 박힌 글자를 읽습니다.
+   - 큰 메인 카피(main)와 작은 서브 카피(sub)는 공식을 따로 뽑습니다. 한쪽 자리의 공식을 다른 자리에 섞지 않습니다. 서브가 없으면 sub는 빈 배열입니다.
+   - 만드는 법은 제목과 같습니다: 반복된 말 그대로 + [슬롯]. 패턴마다 count(「8장 중 4장」)와 thumbs(몇 번째 썸네일인지 1~8)를 붙입니다.
+   - 이미지를 볼 수 없으면 skeleton 끝에 "(이미지 확인 못 함 — 제목으로 추정)"이라고 밝힙니다.
+4. 반복이 약하면 skeleton에 "공통 패턴 약함"이라 밝히고 지어내지 않습니다. market이 비었거나 실패했으면 같은 주제로 터진 영상을 직접 찾아보고, 그래도 없으면 정본의 Good · Worst 사례로 판단해 그렇게 밝힙니다.
+5. 후보는 패턴의 골격을 최대한 그대로 쓰고 [슬롯]만 이 영상이 실제로 하는 말로 채웁니다. 표현은 레퍼런스와 비슷해도 되지만 결론 · 주장은 우리 것이어야 하고, 논조도 우리 내용이 정합니다(레퍼런스가 부정형이어도 우리 내용이 긍정이면 긍정). 후보마다 pattern(몇 번째 패턴인지)을 적고, 패턴마다 후보가 하나 이상 나오게 고르게 씁니다.
+6. 훅 유형은 숫자·리스트 / 금기·경고 / 질문 / 대비·반전 / 정체 폭로 / 손해·후회 / 방법 제시입니다. 후보끼리 훅이 한쪽으로 몰리지 않게 쓰고, A · B는 클릭 이유가 달라야 합니다.
 7. 회사 제목 · 썸네일 원칙(반드시 지킵니다):
    - 영상이 주는 이익이나, 지금 모르면 계속 잘못 판단할 위험을 직관적으로 보여줍니다.
    - 공포를 과장하지 않습니다. 영상이 실제로 갚을 수 있는 약속만 씁니다. 낚시 · 과장 금지.
@@ -170,6 +171,29 @@ export const PACKAGING_FORMULA = `기획실의 「제목 뽑기 · 썸네일 카
    - 학술 용어 · 전문 용어 대신 30대 직장인이 바로 알아듣는 일상어로 씁니다.
    - 제목은 대략 15~40자, 썸네일 문구는 보통 2~7단어에 문장부호는 최소로 씁니다. 레퍼런스가 다르게 써서 성과를 냈으면 레퍼런스를 따릅니다.
    - 「패키징_절차」 정본의 금지 언어 · 프레임과 채널별 적용을 지킵니다. 아래 문서 목록에 없으면 search_knowledge로 찾아 엽니다.`;
+const skeletonText = z.string().trim().min(1).max(200);
+const titlePatternSchema = z.object({ skeleton: skeletonText, count: z.string().trim().min(1).max(60), examples: z.array(z.string().trim().min(1).max(200)).min(1).max(5) }).strict();
+const copyPatternSchema = z.object({ skeleton: skeletonText, count: z.string().trim().min(1).max(60), thumbs: z.array(z.number().int().min(1).max(8)).min(1).max(8) }).strict();
+/** The formulas both cards ask for: title patterns, and main · sub copy patterns read off the thumbnails (패키징 정본 2026-09-04: never mixed). */
+export const patternsSchema = {
+  titlePatterns: z.array(titlePatternSchema).min(1).max(3),
+  copyPatterns: z.object({ main: z.array(copyPatternSchema).min(1).max(3), sub: z.array(copyPatternSchema).max(3).default([]) }).strict(),
+};
+const PATTERNS_SHAPE = `"titlePatterns": [{ "skeleton": "[조건 호명: 이런 ~면] + 빨리 퇴사하세요", "count": "20편 중 3편", "examples": ["레퍼런스 제목 그대로"] }], "copyPatterns": { "main": [{ "skeleton": "퇴사 + [명사]", "count": "8장 중 4장", "thumbs": [3, 4] }], "sub": [{ "skeleton": "[~일까요?]", "count": "8장 중 2장", "thumbs": [3, 7] }] }`;
+const sameText = (text: string) => text.replace(/\s+/g, " ").trim();
+/** Examples must be real: each one is (part of) a title the search returned or the PD added, and each thumbnail number one the card showed. */
+export function patternProblems(patterns: { titlePatterns: z.infer<typeof titlePatternSchema>[]; copyPatterns: { main: z.infer<typeof copyPatternSchema>[]; sub: z.infer<typeof copyPatternSchema>[] } }, market: PackagingMarket | undefined, refTitles: string[]) {
+  if (!market?.refs.length) return [];
+  const titles = [...market.refs.map(ref => ref.title), ...refTitles].map(sameText).filter(Boolean);
+  const shown = Math.min(8, market.refs.length);
+  const problems: string[] = [];
+  patterns.titlePatterns.forEach((pattern, index) => pattern.examples.forEach(example => {
+    if (!titles.some(title => title.includes(sameText(example)))) problems.push(`제목 패턴 ${index + 1}의 예시 「${example.slice(0, 40)}」가 검색 결과 제목에 없어요 — 레퍼런스 제목을 글자 그대로 적어요`);
+  }));
+  for (const [name, list] of [["메인", patterns.copyPatterns.main], ["서브", patterns.copyPatterns.sub]] as const)
+    list.forEach((pattern, index) => pattern.thumbs.forEach(number => { if (number > shown) problems.push(`${name} 패턴 ${index + 1}의 썸네일 ${number}번은 없어요 — 1~${shown}번 중에서 적어요`); }));
+  return problems;
+}
 export type PackagingMarket = { query: string; at: string; refs: PackagingRef[]; error?: string };
 /** What a card shows of the search: the top 20 titles, thumbnails on the top 8 (the 기획실 reads 20 titles and 8 images). */
 const marketInput = (market?: PackagingMarket) => market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
@@ -190,8 +214,9 @@ export const planResultSchema = z.object({
   thumbs: z.array(z.object({ screen: z.string().trim().min(1).max(300), copy: z.string().trim().min(1).max(40) }).strict()).min(2).max(4),
   opening: z.string().trim().min(1).max(1000), body: z.string().trim().min(1).max(4000), closing: z.string().trim().min(1).max(1000),
   note: z.string().trim().max(2000).default(""),
+  ...patternsSchema,
 }).strict();
-const PLAN_SHAPE = `{ "titles": ["A 제목", "B 제목", "C 제목"], "thumbs": [{ "screen": "어떤 장면", "copy": "큰 글자" }], "opening": "", "body": "1. …\\n2. …", "closing": "", "note": "" }`;
+const PLAN_SHAPE = `{ "titles": ["A 제목", "B 제목", "C 제목"], "thumbs": [{ "screen": "어떤 장면", "copy": "큰 글자" }], "opening": "", "body": "1. …\\n2. …", "closing": "", "note": "", ${PATTERNS_SHAPE} }`;
 
 export function assertV1PlanInputs(state: Pipeline) {
   const { project } = v1Stages(state);
@@ -213,8 +238,9 @@ export async function v1PlanCard(supabase: RequestActor["supabase"], state: Pipe
 1. 제목 후보 3~6개: 첫째가 A(가장 추천), 둘째가 B. 아래 「제목 · 썸네일 공식」대로 뽑습니다.
 2. 썸네일 시안 2~4개: screen(어떤 장면) + copy(썸네일에 박을 큰 글자). 같은 공식대로 뽑고, 순서대로 A · B · C 제목과 짝이 됩니다.
 3. 영상 흐름: opening(첫 30초 — 제목 · 썸네일의 약속을 바로 보여줄 장면), body(본론 3~6줄, "1. 결핍: … – [볼거리]" 형식), closing(클로징 · 다음 행동 — 어디로 보내는지).
-4. note: 첫 두 줄에 "제목 공식: … (근거: …)" · "썸네일 문구 공식: … (근거: …)", 이어서 쓴 근거와 출처(doc_id, 레퍼런스 영상), 확인하지 못한 것.
-${inputs.ceoRequest ? "5. ceoRequest는 대표의 수정 요청입니다. 그 칸을 메모대로 고쳐서 냅니다.\n" : ""}
+4. titlePatterns · copyPatterns: 아래 공식에서 뽑은 패턴(골격 · 몇 편 중 몇 편 · 예시)을 그대로 냅니다. 대표가 컨펌할 때 이 공식을 함께 봅니다.
+5. note: 쓴 근거와 출처(doc_id, 레퍼런스 영상), 확인하지 못한 것.
+${inputs.ceoRequest ? "6. ceoRequest는 대표의 수정 요청입니다. 그 칸을 메모대로 고쳐서 냅니다.\n" : ""}
 ## 제목 · 썸네일 공식 (최종 썸네일 다시 뽑기와 같은 기준)
 ${PACKAGING_FORMULA}
 
@@ -236,15 +262,18 @@ result = ${PLAN_SHAPE}
 }
 
 /** The draft fills an empty 기획안; a 기획안 the PD already started keeps its text and gets the draft beside it (9-5). */
-export async function saveV1Plan(supabase: RequestActor["supabase"], ownerId: string, state: Pipeline, value: unknown, author: { model: string; jobId: string; name: string }) {
+export async function saveV1Plan(supabase: RequestActor["supabase"], ownerId: string, state: Pipeline, value: unknown, author: { model: string; jobId: string; name: string }, market?: PackagingMarket) {
   const parsed = planResultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "PLAN_RESULT_INVALID", `기획안 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map(issue => `${issue.path.join(".") || "result"} ${issue.message}`).join(" / ")}`);
   const stages = v1Stages(state);
+  const problems = patternProblems(parsed.data, market, [...stages.project.yp.topic.refs, ...stages.plan.data.extraRefs].map(ref => ref.title ?? ""));
+  if (problems.length) throw new ApiError(422, "PLAN_PATTERNS_UNSUPPORTED", `공식 근거 확인: ${problems.slice(0, 8).join(" / ")}`);
   const current = stages.plan.data;
   const draft = { titles: parsed.data.titles.map((text, index) => ({ id: `ai-t${index}-${Date.now().toString(36)}`, text })),
     thumbs: parsed.data.thumbs.map((thumb, index) => ({ id: `ai-h${index}-${Date.now().toString(36)}`, mode: "text" as const, screen: thumb.screen, copy: thumb.copy })),
     opening: parsed.data.opening, body: parsed.data.body, closing: parsed.data.closing, note: parsed.data.note };
-  const ai = { by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId };
+  const ai = { by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId,
+    patterns: { titlePatterns: parsed.data.titlePatterns, copyPatterns: parsed.data.copyPatterns, ...(market ? { market: { query: market.query, count: market.refs.length } } : {}) } };
   const started = current.titles.some(title => title.text.trim()) || current.opening.trim() || current.body.trim() || current.closing.trim();
   const plan = started ? { ...current, ai, aiDraft: draft } : { ...current, ...draft, note: draft.note || current.note, ai, aiDraft: undefined };
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "plan", stages.plan, plan);
@@ -277,18 +306,18 @@ export const v1ShortsInputKey = (state: Pipeline, source: { path: string | null 
 
 export async function v1ShortsCard(supabase: RequestActor["supabase"], state: Pipeline, leaseMinutes: number, count: number) {
   const source = await v1ShortsSource(supabase, state);
-  const docs = await procedureRefs(supabase, "shorts_proposal").catch(() => []);
+  const docs = withNamed(await namedProcedures(supabase, [SHORTFORM_CANON_TITLE]), await procedureRefs(supabase, "shorts_proposal").catch(() => []), 8);
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
 
 ## 할 일 — 쇼츠 대본 ${count}편
-숏폼 정본의 「모드 A — Long-form 클립 추출(Case 4)」대로, 이 롱폼에서 쇼츠 대본을 정확히 ${count}편 씁니다. 대표가 컨펌한 대본만 영상으로 만들어집니다.
+숏폼 정본(「${SHORTFORM_CANON_TITLE}」)의 「모드 A — Long-form 클립 추출(Case 4)」대로, 이 롱폼에서 쇼츠 대본을 정확히 ${count}편 씁니다. 담당 PD가 확정한 대본만 영상으로 만들어집니다.
 - 편마다 서로 다른 best moment(정체성 · BUT 모먼트 · 결정적 통찰 · 인문학 깊이 · 역설 · 자체 IP)를 고르고 kind에 적습니다.
 - 단순히 한 구간을 자르지 않고 재구성합니다: segments에 롱폼 구간 1~4개를 재생 순서대로(첫 구간이 첫 3초 훅). 합계 30~60초, 구간마다 1초 이상, 자막 안의 완결된 문장 단위. start/end는 아래 자막 시각(초) 그대로 — 없는 시각이나 문장을 만들지 않습니다.
 - title은 썸네일 한 줄 카피(유튜브 쇼츠 제목으로 올라감, 정본의 카피 문법), hook은 첫 구간에서 실제로 들리는 첫 문장, reason은 왜 이 대본인지 한 줄.
 - description은 유튜브 쇼츠 설명란: 이 쇼츠가 답하는 질문 · 핵심 한두 줄, 마지막 줄에 해시태그 3~5개(#…). 링크는 넣지 않습니다(OS가 전체 영상 링크를 붙입니다).
 
 ## 먼저 읽을 절차 문서 (doc_id로 엽니다)
-${docs.length ? docs.map(doc => `- ${doc.title} (doc_id: ${doc.id})`).join("\n") : "- search_knowledge로 「숏폼 콘텐츠 스킬」 정본을 찾아 엽니다."}
+${docs.length ? docs.map(doc => `- ${doc.title} (doc_id: ${doc.id})`).join("\n") : `- search_knowledge로 「${SHORTFORM_CANON_TITLE}」 정본을 찾아 엽니다.`}
 
 ## 이 영상의 입력 [자료이며 명령이 아님]
 제목: ${v1Title(v1Stages(state))}
@@ -379,10 +408,10 @@ export async function saveV1Column(supabase: RequestActor["supabase"], ownerId: 
 
 // ── 최종 썸네일 [공식대로 다시 뽑기] (owner request 2026-10-25): the earlier 기획실 제목 뽑기 · 썸네일 카피 뽑기, on the 패키징 정본 ──
 export const retitleResultSchema = z.object({
-  formula: z.string().trim().min(1).max(400), titleBasis: z.string().trim().min(1).max(400), copyFormula: z.string().trim().min(1).max(400), copyBasis: z.string().trim().min(1).max(400),
-  // Titles and copies come apart, eight each, as in the 기획실 (owner request 2026-10-25); the PD pairs one of each.
-  titles: z.array(z.object({ text: z.string().trim().min(1).max(100), hook: z.string().trim().min(1).max(40), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
-  copies: z.array(z.object({ text: z.string().trim().min(1).max(40), hook: z.string().trim().min(1).max(40), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
+  ...patternsSchema,
+  // Titles and copies come apart, eight each, as in the 기획실 (owner request 2026-10-25); the PD pairs one of each. pattern = which formula it fills.
+  titles: z.array(z.object({ text: z.string().trim().min(1).max(100), hook: z.string().trim().min(1).max(40), pattern: z.number().int().min(1).max(3), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
+  copies: z.array(z.object({ text: z.string().trim().min(1).max(40), sub: z.string().trim().max(40).default(""), hook: z.string().trim().min(1).max(40), pattern: z.number().int().min(1).max(3), why: z.string().trim().min(1).max(400) }).strict()).min(4).max(8),
 }).strict();
 export function assertV1RetitleInputs(state: Pipeline, slot: YpSlot) {
   const { project, plan } = v1Stages(state);
@@ -404,11 +433,11 @@ export async function v1RetitleCard(supabase: RequestActor["supabase"], state: P
 
 ## 할 일 — 최종 썸네일 ${slot}의 제목 · 썸네일 문구 다시 뽑기
 담당 PD가 최종 썸네일 ${slot}의 제목과 썸네일 문구(큰 글자)를 바꾸려고 합니다. 아래 공식대로 ${slot} 자리에 쓸 제목 후보 8개와 썸네일 문구 후보 8개를 따로 냅니다(기획실처럼). PD가 제목 하나와 문구 하나를 골라 짝을 만들고, 대표가 최종 검수에서 확인합니다.
-제목 공식은 result.formula · 근거는 result.titleBasis, 썸네일 문구 공식은 result.copyFormula · 근거는 result.copyBasis에 씁니다. 지금 다른 칸(now)과 클릭 이유가 겹치지 않게 합니다.
+titles는 titlePatterns를, copies는 copyPatterns.main을 채운 후보입니다(pattern = 몇 번째 패턴). 서브 카피가 있는 공식이면 copies에 sub도 씁니다. 지금 다른 칸(now)과 클릭 이유가 겹치지 않게 합니다.
 
 ## 제목 · 썸네일 공식 (기획안 처음 뽑을 때와 같은 기준)
 ${PACKAGING_FORMULA}
-${reason ? "- reason은 PD가 지금 것이 마음에 들지 않는 이유입니다. 그 점을 고친 후보를 냅니다.\n" : ""}- why에는 공식의 어느 슬롯을 어떻게 채웠는지와 6요소 점수 합계를 한 줄로 씁니다.
+${reason ? "- reason은 PD가 지금 것이 마음에 들지 않는 이유입니다. 그 점을 고친 후보를 냅니다.\n" : ""}- why에는 그 패턴의 어느 [슬롯]을 무엇으로 채웠는지와 6요소 점수 합계를 한 줄로 씁니다.
 
 ## 먼저 끝까지 열 문서 (doc_id로 엽니다)
 ${docs.length ? docs.map(doc => `- ${doc.title} (doc_id: ${doc.id})`).join("\n") : "- search_knowledge로 「패키징_절차」 정본을 찾아 엽니다."}
@@ -419,7 +448,7 @@ ${JSON.stringify(inputs, null, 2)}
 
 ## 제출
 process_youtube_ai_job에 action=complete, job_id, lease, model(지금 쓰는 모델 이름), result를 보냅니다.
-result = { "formula": "제목 공식 한 문장", "titleBasis": "몇 개 제목 중 몇 개에서 무엇이 겹쳤는지", "copyFormula": "썸네일 문구 공식 한 문장", "copyBasis": "몇 장 중 몇 장에서 무엇이 겹쳤는지", "titles": [{ "text": "제목", "hook": "훅 유형", "why": "왜 이 제목인지 한 줄" }], "copies": [{ "text": "썸네일 문구", "hook": "훅 유형", "why": "왜 이 문구인지 한 줄" }] } (제목 8개 · 문구 8개)
+result = { ${PATTERNS_SHAPE}, "titles": [{ "text": "제목", "hook": "훅 유형", "pattern": 1, "why": "[슬롯]을 무엇으로 채웠는지 · 6요소 점수" }], "copies": [{ "text": "메인 카피", "sub": "서브 카피(없으면 빈 문자열)", "hook": "훅 유형", "pattern": 1, "why": "…" }] } (제목 8개 · 문구 8개)
 - 형식이 틀리면 OS가 고칠 점을 돌려줍니다. 고쳐서 다시 complete 합니다.
 - ${leaseMinutes}분 안에 끝내지 못하면 list부터 다시 확인해 claim 합니다. 처리할 수 없으면 action=fail, reason="멈춘 단계 · 이유"로 끝냅니다.`;
 }
@@ -433,6 +462,13 @@ export async function saveV1Retitle(supabase: RequestActor["supabase"], ownerId:
     if (hooks < 3) throw new ApiError(422, "RETITLE_HOOKS_SAME", `${name} 후보 훅이 ${hooks}가지뿐이에요. 세 가지 이상 섞어서 다시 내 주세요.`);
   }
   const stages = v1Stages(state);
+  const problems = patternProblems(parsed.data, market, [...stages.project.yp.topic.refs, ...stages.plan.data.extraRefs].map(ref => ref.title ?? ""));
+  // Every pattern gets candidates and every candidate points at a pattern that exists.
+  for (const [name, list, count] of [["제목", parsed.data.titles, parsed.data.titlePatterns.length], ["썸네일 문구", parsed.data.copies, parsed.data.copyPatterns.main.length]] as const) {
+    if (list.some(item => item.pattern > count)) problems.push(`${name} 후보의 pattern은 1~${count} 중 하나예요`);
+    for (let index = 1; index <= count; index += 1) if (!list.some(item => item.pattern === index)) problems.push(`${name} 패턴 ${index}을 채운 후보가 없어요`);
+  }
+  if (problems.length) throw new ApiError(422, "RETITLE_PATTERNS_UNSUPPORTED", `공식 확인: ${problems.slice(0, 8).join(" / ")}`);
   const redo = { ...stages.make.data.redo, [slot]: { by: await displayName(supabase, ownerId, author.name), model: author.model, at: new Date().toISOString(), jobId: author.jobId, ...parsed.data,
     ...(market ? { market: { query: market.query, count: market.refs.length } } : {}) } };
   await writeStage(supabase, ownerId, state.source.team ?? "", stages.project, "make", stages.make, { ...stages.make.data, redo });

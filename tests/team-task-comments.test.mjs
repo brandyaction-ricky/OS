@@ -10,7 +10,7 @@ const taskId = "11111111-1111-4111-8111-111111111111";
 
 function route({ authenticated = true, visible = true, enabled = true } = {}) {
   const calls = [];
-  const taskQuery = { select() { return this; }, eq() { return this; }, is() { return this; }, async maybeSingle() { return { data: visible ? { id: taskId, title: "검증 업무", version: 3 } : null, error: null }; } };
+  const taskQuery = { select() { return this; }, eq() { return this; }, in() { return this; }, is() { return this; }, async maybeSingle() { return { data: visible ? { id: taskId, title: "검증 업무", version: 3 } : null, error: null }; } };
   const eventQuery = { select() { return this; }, eq() { return this; }, order() { return this; }, async limit() { return { data: [], error: null }; } };
   const actor = { id: "22222222-2222-4222-8222-222222222222", type: "user", supabase: { from: table => table === "os_records" ? taskQuery : eventQuery } };
   const service = { from(table) { assert.equal(table, "os_record_events"); return { async insert(row) { calls.push(row); return { error: null }; } }; } };
