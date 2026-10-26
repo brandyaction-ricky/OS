@@ -14,10 +14,11 @@ async function load(file,modules,extras={}){
   {module:compiled,exports:compiled.exports,Buffer,URL,AbortSignal,...extras,require:name=>{assert.ok(name in modules,name);return modules[name];}});
   return compiled.exports;
 }
-const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError}});
+const catalog=await load("lib/shortform-diagram-catalog.ts",{"./shortform-diagram-catalog.json":{default:JSON.parse(await readFile(new URL("../lib/shortform-diagram-catalog.json",import.meta.url),"utf8"))}});
+const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError},"./shortform-diagram-catalog":catalog});
 const owner="00000000-0000-4000-8000-000000000001",itemId="00000000-0000-4000-8000-000000000002",assetId="00000000-0000-4000-8000-000000000003";
 const code=value=>error=>error.code===value;
-async function setup(){
+async function setup(diagrams=false){
   const h={signed:[],voiceCalls:0,objects:new Map(),rows:[
     {id:owner,is_active:true,table:"os_profiles"},
     {id:itemId,record_type:"content_publish",owner_id:owner,status:"draft",version:1,title:"Example",description:"Memo",brand:"",archived_at:null,
@@ -65,7 +66,7 @@ async function setup(){
     "./content-automation-validators":{validatePersonalAsset:(metadata,who)=>{if(!metadata.storagePath.startsWith("automation/"+who+"/asset/"))throw new ApiError(422,"ASSET_FILE_REQUIRED","");}},
     "./shortform-longform":{readShortformLongform:async()=>({durationSeconds:120,videoUrl:"https://storage.example/source"})},
     "./fish-audio":{fishVoiceSettings:()=>({}),synthesizeFishSegment:async()=>{h.voiceCalls++;return {bytes:Buffer.from("ID3sample")};}},
-  },{process:{env:{YOUTUBE_MEDIA_WORKER_SECRET:"test-secret-".repeat(4),FISH_API_KEY:"test-only",FISH_VOICE_REFERENCE_ID:"test-reference"}}});
+  },{process:{env:{YOUTUBE_SHORTFORM_DIAGRAMS_ENABLED:diagrams?"true":"false",YOUTUBE_MEDIA_WORKER_SECRET:"test-secret-".repeat(4),FISH_API_KEY:"test-only",FISH_VOICE_REFERENCE_ID:"test-reference"}}});
   h.item=()=>h.rows.find(row=>row.id===itemId);
   h.enqueue=(approved=true)=>h.api.enqueueShortformRender(h.actor,itemId,h.item().version,approved);
   return h;
@@ -241,4 +242,35 @@ test("each ad size is its own job beside the vertical one; old workers skip what
   h.objects.set("os-content-media:"+path,new Blob([bytes]));
   await h.api.completeShortformRender({renderId:second.renderId,lease:second.lease,bytes:bytes.length,sha256:crypto.createHash("sha256").update(bytes).digest("hex"),duration:15},h.service);
   assert.equal(item().metadata.mp4Path,undefined);
+});
+
+const timelineDiagram={type:"lib_timeline",scene:{t0:0,items:[{text:"이전",t:.2},{text:"변화",t:1},{text:"지금",t:2}]}};
+test("diagram plans are signed, sent only to capable workers, and need no image or paid voice",async()=>{
+ const h=await setup(true),cut=h.item().metadata.cuts[0];delete cut.assetId;cut.diagram=timelineDiagram;cut.missingAsset=false;cut.voice="";
+ const queued=await h.enqueue(false);
+ assert.equal((await h.api.claimShortformRender(h.service,4,["lib_timeline"],"00000000-0000-4000-8000-000000000099")).idle,true);
+ assert.equal((await h.api.claimShortformRender(h.service,4)).idle,true);
+ assert.equal((await h.api.claimShortformRender(h.service,4,["lib_iceberg"])).idle,true);
+ const job=await h.api.claimShortformRender(h.service,4,["lib_timeline"],queued.runId);
+ assert.equal(job.scenes[0].diagram.type,"lib_timeline");assert.equal(job.scenes[0].imageUrl,undefined);assert.equal(h.voiceCalls,0);
+ assert.equal(h.signed.length,0);
+});
+test("diagram opt-in, timing and markup guards reject invalid jobs before queueing",async()=>{
+ const off=await setup();delete off.item().metadata.cuts[0].assetId;off.item().metadata.cuts[0].diagram=timelineDiagram;
+ await assert.rejects(off.enqueue(),code("SHORTFORM_DIAGRAM_DISABLED"));
+ const h=await setup(true);delete h.item().metadata.cuts[0].assetId;h.item().metadata.cuts[0].diagram={...timelineDiagram,scene:{...timelineDiagram.scene,items:[{text:"이전",t:30},{text:"변화",t:1},{text:"지금",t:2}]}};
+ await assert.rejects(h.enqueue(),code("SHORTFORM_DIAGRAM_TIMING"));
+ assert.equal(contract.shortformDiagramSchema.safeParse({...timelineDiagram,scene:{...timelineDiagram.scene,items:[{text:"<svg>",t:0},{text:"나",t:1},{text:"다",t:2}]}}).success,false);
+});
+
+test('all seventy portrait types survive saved cuts, signed queue and matching worker claim',async()=>{
+ for(const entry of catalog.DIAGRAM_CATALOG){
+  const h=await setup(true),d=catalog.defaultDiagram(entry.type,15);
+  h.rows[1].metadata.cuts=[{start:'00:00',end:'00:15',text:'검수',note:'',voice:'',asset:'',missingAsset:false,diagram:d}];
+  const queued=await h.enqueue(false);
+  const job=await h.api.claimShortformRender(h.service,4,[entry.type],queued.runId);
+  assert.equal(job.scenes[0].diagram.type,entry.type);
+  assert.deepEqual(JSON.parse(JSON.stringify(job.scenes[0].diagram.scene)),JSON.parse(JSON.stringify(d.scene)));
+  assert.equal(h.voiceCalls,0);
+ }
 });

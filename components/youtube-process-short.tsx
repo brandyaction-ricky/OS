@@ -1,4 +1,7 @@
 "use client";
+import { saveLatest } from "@/lib/save-latest";
+import { shortformDiagramSchema } from "@/lib/shortform-production";
+import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, X, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
@@ -34,10 +37,10 @@ export const latestFinals = (finals: YpFinalView[]) => {
 /** One line for a render: waiting · making · done · stopped with its reason. */
 export function RenderTag({ render }: { render: YpRenderView | null | undefined }) {
   if (!render) return null;
-  if (render.status === "done") return <span className="yp-tag yp-ok">완성 · {render.duration}초</span>;
-  if (render.status === "in_progress") return <span className="yp-tag yp-warn">만드는 중 (1~3분)</span>;
-  if (render.status === "backlog") return <span className="yp-tag yp-acc">차례를 기다려요</span>;
-  return <span className="yp-tag yp-bad" title={render.error ?? ""}>{REASON[render.error ?? ""] ?? "만들다 멈췄어요. 다시 만들어 보고, 또 멈추면 관리자에게 알려 주세요."}</span>;
+  if (render.status === "done") return <span data-render-id={render.id} className="yp-tag yp-ok">완성 · {render.duration}초</span>;
+  if (render.status === "in_progress") return <span data-render-id={render.id} className="yp-tag yp-warn">만드는 중 (1~3분)</span>;
+  if (render.status === "backlog") return <span data-render-id={render.id} className="yp-tag yp-acc">차례를 기다려요</span>;
+  return <span data-render-id={render.id} className="yp-tag yp-bad" title={render.error ?? ""}>{REASON[render.error ?? ""] ?? "만들다 멈췄어요. 다시 만들어 보고, 또 멈추면 관리자에게 알려 주세요."}</span>;
 }
 
 /** The latest MP4 with its download (숏폼 제작 · 내보내기). */
@@ -80,8 +83,11 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const cost = useCostConfirm(), { voice } = useCostModels(), voicePaid = useRef("");
   const [send, setSend] = useState(false);
   const editRev = useRef(0);
-  const saving = useRef(false);
-  const apply = useCallback((next: YpShortView) => { setView(next); setBrief(next.brief); setScenes(next.scenes); setDirty(false); }, []);
+  const saving = useRef<Promise<YpShortView | null> | null>(null);
+  const currentView = useRef<YpShortView | null>(null);
+  const draft = useRef<{brief:YpShortBrief;scenes:YpShortScene[]} | null>(null);
+  const [saveState,setSaveState]=useState("");
+  const apply = useCallback((next: YpShortView) => { currentView.current=next; draft.current={brief:next.brief,scenes:next.scenes}; setView(next); setBrief(next.brief); setScenes(next.scenes); setDirty(false); }, []);
   const load = useCallback(async () => { if (!client) return; try { apply(await client.short(id)); } catch (reason) { fail(reason); } }, [client, id, apply, fail]);
   useEffect(() => { void load(); }, [load]);
   const job = useStaffJob(page, "short", load);
@@ -98,24 +104,50 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     return () => window.clearInterval(timer);
   }, [client, id, statuses, reloadBundle]);
 
-  const save = async (patch?: YpShortPatch) => {
-    if (!client || !view || !brief || saving.current) return null;
-    saving.current = true;
-    const rev = editRev.current;
-    try {
-      const next = await client.saveShort(id, view.version, patch ?? { brief, scenes });
-      setView(next);
-      if (editRev.current === rev) { setBrief(next.brief); setScenes(next.scenes); setDirty(false); }
-      return next;
-    } catch (reason) { fail(reason); return null; } finally { saving.current = false; }
+  const save = async (patch?: YpShortPatch):Promise<YpShortView|null> => {
+    if (!client || !currentView.current || !draft.current) return null;
+    // Explicit actions wait for the previous save; ordinary edits are drained by that save.
+    if (saving.current) {
+      const saved=await saving.current;
+      if(!saved)return null;
+      if(patch?.useAiScenes)return save(patch);
+      return currentView.current;
+    }
+    const work=async()=>{
+      let action=patch?.useAiScenes?patch:undefined;
+      try{return await saveLatest(()=>{
+        if(!draft.current||!currentView.current)return null;
+        const payload=action??draft.current;
+        if((payload.scenes??draft.current.scenes).some(scene=>scene.diagram&&!shortformDiagramSchema.safeParse(scene.diagram).success)){
+          setSaveState("도식 글자를 채우면 저장됩니다");return null;
+        }
+        setSaveState("저장 중…");
+        return {input:{version:currentView.current.version,payload},revision:editRev.current};
+      },({version,payload})=>client.saveShort(id,version,payload),(next,rev)=>{
+        currentView.current=next;setView(next);action=undefined;
+        if(editRev.current!==rev)return false;
+        draft.current={brief:next.brief,scenes:next.scenes};setBrief(next.brief);setScenes(next.scenes);setDirty(false);setSaveState("저장됨");return true;
+      });}catch(reason){setSaveState("저장하지 못했어요. 다시 저장해 주세요");fail(reason);return null;}
+    };
+    saving.current=work();
+    try{return await saving.current;}finally{saving.current=null;}
   };
+  useEffect(()=>{
+    if(!dirty)return;
+    const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",warn);
+    const timer=window.setTimeout(()=>void save(),600);
+    return()=>{clearTimeout(timer);window.removeEventListener("beforeunload",warn);};
+    // save reads the latest refs; changes reschedule the idle save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[dirty,brief,scenes]);
   if (!view || !brief) return <p className="yp-hint" role="status">숏폼을 불러오는 중이에요…</p>;
   const editBrief = (patch: Partial<YpShortBrief>, now = false) => {
-    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); setDirty(true);
+    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); draft.current={brief:next,scenes:draft.current?.scenes??scenes}; setDirty(true); setSaveState("저장 대기…");
     if (now) void save({ brief: next, scenes });
   };
   const editScenes = (next: YpShortScene[], now = false) => {
-    editRev.current += 1; setScenes(next); setDirty(true);
+    editRev.current += 1; setScenes(next); draft.current={brief:draft.current?.brief??brief,scenes:next}; setDirty(true); setSaveState("저장 대기…");
     if (now) void save({ brief, scenes: next });
   };
   const upload = async (index: number, file: File) => {
@@ -124,7 +156,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     try {
       const image = await client.shortImage(id, file);
       setView(current => current ? { ...current, images: { ...current.images, [image.assetId]: { name: file.name, url: image.url } } } : current);
-      editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId } : scene), true);
+      editScenes(scenes.map((scene, at) => at === index ? { ...scene, assetId: image.assetId,diagram:undefined } : scene), true);
     } catch (reason) { fail(reason); } finally { setBusy(""); }
   };
   const make = async (aspect: "9:16" | "1:1" | "4:5" = "9:16") => {
@@ -147,6 +179,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
 
   const ad = brief.purpose === "ad";
   const missing = shortMissing(brief, scenes);
+  if (scenes.some(scene => scene.diagram && !shortformDiagramSchema.safeParse(scene.diagram).success)) missing.push("도식 글자 칸을 모두 채워 주세요");
   const hasVoice = scenes.some(scene => scene.voice.trim());
   const before = scenes.slice(0, -1).reduce((total, scene) => total + scene.seconds, 0);
   const finals = page.bundle?.finals ?? [];
@@ -158,6 +191,8 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const pageFields = <>{field("landingUrl", "연결할 페이지", "https://", ad)}{field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", ad, 3)}</>;
 
   return <div onBlur={() => { if (dirty) void save(); }}>
+    <p className="yp-hint" role="status">{dirty?(saveState||"변경 내용을 저장합니다"):saveState}</p>
+    {dirty?<button type="button" className="yp-btn yp-sm" onClick={()=>void save()}>지금 저장</button>:null}
     <YpSection n={n0 + 1} title="무엇을 만들까요" gq="용도 · 길이 · 보는 사람 · 할 행동" need>
       <div className="yp-row-btns" style={{ flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
         <div className="yp-seg2" role="group" aria-label="용도">{([["organic", "일반 콘텐츠"], ["ad", "광고"]] as const).map(([key, label]) =>
@@ -189,7 +224,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
         <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 초안으로 바꾸기</button>
         <details><summary>초안 보기</summary><ol style={{ fontSize: 13 }}>{view.aiScenes.map((scene, index) => <li key={index}>{scene.seconds}초 · {scene.text}{scene.voice ? ` — “${scene.voice}”` : ""}</li>)}</ol></details></div></div> : null}
       {scenes.map((scene, index) => <SceneRow key={index} index={index} scene={scene} last={index === scenes.length - 1} remain={Math.max(0, brief.duration - before)} count={scenes.length}
-        image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
+        diagramsEnabled={page.demo || process.env.NEXT_PUBLIC_SHORTFORM_DIAGRAMS_ENABLED === "true"} image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
         onChange={patch => editScenes(scenes.map((row, at) => at === index ? { ...row, ...patch } : row))} onUpload={file => void upload(index, file)}
         onMove={to => editScenes(move(scenes, index, to), true)} onRemove={() => editScenes(scenes.filter((_, at) => at !== index), true)} />)}
       {editable && scenes.length && scenes.length < 20 ? <button type="button" className="yp-btn yp-sm" onClick={() => editScenes([...scenes, blank(0)], true)}><Plus size={14} /> 장면 추가</button> : null}
@@ -203,7 +238,7 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
           onClick={() => void make()}>{busy === "9:16" ? "처리 중…" : render?.status === "done" ? "고친 내용으로 다시 만들기" : ad ? "세로 9:16 만들기" : "영상 만들기"}</button> : null}
         <RenderTag render={render} />
         {ad ? AD_SIZES.map(size => <Fragment key={size.aspect}>
-          {editable ? <button type="button" className="yp-btn" disabled={missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
+          {editable ? <button type="button" className="yp-btn" disabled={scenes.some(scene => scene.diagram) || missing.length > 0 || busy === size.aspect || working(view[size.key]) || page.demo}
             onClick={() => void make(size.aspect)}>{busy === size.aspect ? "처리 중…" : view[size.key]?.status === "done" ? `${size.again} 다시 만들기` : `${size.label} 만들기`}</button> : null}
           <RenderTag render={view[size.key]} /></Fragment>) : null}
         {hasVoice && editable ? <CostTag kind="paid" /> : null}
@@ -218,15 +253,15 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   </div>;
 }
 
-function SceneRow({ index, scene, last, remain, count, image, editable, busy, onChange, onUpload, onMove, onRemove }: {
-  index: number; scene: YpShortScene; last: boolean; remain: number; count: number; image?: { name: string; url: string }; editable: boolean; busy: boolean;
+function SceneRow({ index, scene, last, remain, count, image, editable, busy, diagramsEnabled, onChange, onUpload, onMove, onRemove }: {
+  index: number; scene: YpShortScene; last: boolean; remain: number; count: number; image?: { name: string; url: string }; editable: boolean; busy: boolean; diagramsEnabled: boolean;
   onChange: (patch: Partial<YpShortScene>) => void; onUpload: (file: File) => void; onMove: (to: number) => void; onRemove: () => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   return <div className="yp-scn">
     <button type="button" className="yp-scn-img" disabled={!editable || busy} onClick={() => input.current?.click()} aria-label={`장면 ${index + 1} 이미지 ${image ? "바꾸기" : "올리기"}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
-      {image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 올리기"}</span></>}</button>
+      {scene.diagram ? <span>세로 도식</span> : image ? <img src={image.url} alt={image.name} /> : <><ImagePlus size={18} aria-hidden="true" /><span>{busy ? "올리는 중…" : "이미지 올리기"}</span></>}</button>
     <div className="yp-scn-f">
       <div className="yp-scn-h"><span className="yp-n">{index + 1}</span>
         {last ? <span className="yp-tag">나머지 {Math.round(remain * 10) / 10}초</span>
@@ -236,7 +271,8 @@ function SceneRow({ index, scene, last, remain, count, image, editable, busy, on
         {editable ? <span className="yp-row-btns"><button type="button" className="yp-ib yp-xs" aria-label="위로" disabled={!index} onClick={() => onMove(index - 1)}><ArrowUp size={12} /></button>
           <button type="button" className="yp-ib yp-xs" aria-label="아래로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
           {count > 1 ? <button type="button" className="yp-ib yp-xs" aria-label="장면 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>
-      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder="화면 자막 (네 줄 안)" onChange={event => onChange({ text: event.target.value })} />
+      {diagramsEnabled || scene.diagram ? <ShortformDiagramFields value={scene.diagram} duration={last?remain:scene.seconds} disabled={!editable} onChange={diagram=>onChange({diagram,...(diagram?{assetId:undefined}:{})})}/> : null}
+      <textarea className="yp-in" rows={2} aria-label={`장면 ${index + 1} 자막`} value={scene.text} readOnly={!editable} maxLength={240} placeholder={scene.diagram?"화면 자막 (두 줄 안)":"화면 자막 (네 줄 안)"} onChange={event => onChange({ text: event.target.value })} />
       <input className="yp-in" aria-label={`장면 ${index + 1} 내레이션`} value={scene.voice} readOnly={!editable} maxLength={1800} placeholder="내레이션 (선택 · 1초에 6자 안팎)" onChange={event => onChange({ voice: event.target.value })} />
     </div>
     <input ref={input} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />

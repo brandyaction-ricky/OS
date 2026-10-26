@@ -35,3 +35,9 @@ jobs:
           HR_WORKSPACE_ENABLED: "true"
           HR_E2E_DEMO: "true"
           NEXT_PUBLIC_DEMO_MODE: "true"
+      - name: Verify portrait diagram editing
+        run: npm run test:e2e -- tests/e2e/shortform-diagrams.spec.ts
+        env:
+          PLAYWRIGHT_SERVER_MODE: production
+          YOUTUBE_V1_ENABLED: "true"
+          NEXT_PUBLIC_DEMO_MODE: "true"

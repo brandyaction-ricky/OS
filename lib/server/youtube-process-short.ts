@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
-import { DEFAULT_SHORTFORM_BRIEF, parseShortformBrief, validateDirectCuts, type ShortformBrief } from "@/lib/shortform-production";
+import { shortformDiagramSchema, DEFAULT_SHORTFORM_BRIEF, parseShortformBrief, validateDirectCuts, type ShortformBrief } from "@/lib/shortform-production";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { editableFields, GateError } from "@/lib/youtube-process/confirm";
 import { projectName, type YpProject } from "@/lib/youtube-process/project";
@@ -107,7 +107,7 @@ export async function readYoutubeShort(actor: RequestActor, id: string) {
 }
 
 const text = (max: number) => z.string().max(max);
-const sceneSchema = z.object({ seconds: z.number().min(0).max(60), text: text(240), voice: text(1800), note: text(3000), asset: text(3000), assetId: z.string().uuid().optional() }).strict();
+const sceneSchema = z.object({ seconds: z.number().min(0).max(60), text: text(240), voice: text(1800), note: text(3000), asset: text(3000), assetId: z.string().uuid().optional(),diagram:shortformDiagramSchema.optional() }).strict();
 export const shortSaveSchema = z.object({
   expectedVersion: z.number().int().positive(),
   brief: z.object({ purpose: z.enum(["organic", "ad"]), duration: z.union([z.literal(15), z.literal(30), z.literal(60)]), product: text(5000), audience: text(5000),
@@ -129,7 +129,7 @@ export async function saveYoutubeShort(actor: RequestActor, id: string, input: z
     const ai = Array.isArray(row.metadata.ypAiCuts) ? scenesFromCuts(row.metadata.ypAiCuts as YpShortCut[]) : null;
     if (!ai) throw new ApiError(409, "SHORT_AI_DRAFT_MISSING", "바꿀 AI 초안이 없어요.");
     const before = scenesFromCuts((row.metadata.cuts ?? []) as YpShortCut[]);
-    scenes = ai.map((scene, index) => ({ ...scene, ...(before[index]?.assetId ? { assetId: before[index].assetId } : {}) }));
+    scenes = ai.map((scene, index) => ({ ...scene, ...(!scene.diagram&&before[index]?.assetId ? { assetId: before[index].assetId } : {}) }));
   }
   const picked = [...new Set((scenes ?? []).map(scene => scene.assetId).filter((value): value is string => Boolean(value)))];
   if (picked.length) {

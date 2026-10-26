@@ -15,7 +15,7 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
   const mode=(metadata.shortformBrief as {mode?:string}|undefined)?.mode;
   const [sources,setSources]=useState<OsRecord[]>([]),[sourceId,setSourceId]=useState("");
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[status,setStatus]=useState(""),[video,setVideo]=useState("");
-  let cuts:{text?:string;voice?:string;assetId?:string}[]=[];
+  let cuts:{text?:string;voice?:string;assetId?:string;diagram?:{type:string}}[]=[];
   try{const value=JSON.parse(cutsText);if(Array.isArray(value))cuts=value;}catch{}
   // Narration is Fish (paid): asked once per item and narration text in the shared popup (owner request 2026-10-26).
   const cost=useCostConfirm(),{voice}=useCostModels(),voicePaid=useRef("");
@@ -86,7 +86,7 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
       {metadata.shortformSource?<p>롱폼 연결됨 · 컷의 시작·끝은 원본 영상 시각입니다. 원본 음성을 사용합니다.</p>:null}
     </>:mode==="direct"?<>
       {cuts.map((cut,index)=><label key={index}>장면 {index+1}에 사용할 내 이미지<select value={cut.assetId??""} onChange={event=>{
-        const next=cuts.map((value,i)=>i===index?{...value,assetId:event.target.value||undefined,missingAsset:!event.target.value}:value);
+        const next=cuts.map((value,i)=>i===index?{...value,diagram:undefined,assetId:event.target.value||undefined,missingAsset:!event.target.value}:value);
         onCuts(JSON.stringify(next,null,2));
       }}><option value="">확보한 이미지 선택</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.title}</option>)}</select></label>)}
       <p>720×1280 세로 영상으로 만듭니다. 사진 전체를 보존하고 여백에는 흐린 배경을 채웁니다. 가로 소재의 자막은 화면 바로 아래에 놓습니다. 내레이션이 장면보다 길면 대본을 고치도록 멈춥니다.</p>
