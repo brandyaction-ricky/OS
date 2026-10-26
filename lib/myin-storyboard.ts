@@ -140,6 +140,17 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
 }
 
+/** Where the render PC fetches a storyboard photo, or null when it cannot fetch it by itself. An Unsplash page link is refused:
+ * its unsplash.com/…/download address answered the render PC with 429 (2026-10-26, owner chose file links only). */
+export function myinPhotoFetchUrl(link: string) {
+  let url: URL;
+  try { url = new URL(link); } catch { return null; }
+  if (url.protocol !== "https:") return null;
+  if (url.hostname === "images.unsplash.com" || url.hostname === "upload.wikimedia.org") return link;
+  if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
+  return null;
+}
+
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);

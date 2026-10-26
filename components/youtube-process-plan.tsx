@@ -202,8 +202,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
             </label>)}
           </div>
         </Field>
-        <Field n={3} title="정밀 타겟" question="누가, 언제, 무엇이 막혀서 볼까요?" need rev={rev("topic.target")}>
-          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 퇴근 후 2시간 안에서 무엇부터 할지 막힌 30대 직장인" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} /></div>
+        <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
+          <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} />
+            {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
+            <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>
         {/* 레퍼런스 · 전달 사항 are optional: folded until someone wants them (or they already hold something). */}
         <details className="yp-more-fields" open={Boolean(form.refs.length || form.note || rev("topic.refs") || rev("topic.note"))}><summary>레퍼런스 · 전달 사항 더 쓰기 (선택)</summary>
