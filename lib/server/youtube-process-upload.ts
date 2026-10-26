@@ -3,7 +3,10 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { myinCreditsBlock } from "@/lib/myin-storyboard";
 import { projectName } from "@/lib/youtube-process/project";
-import { descWritten, finalPair, utmUrl } from "@/lib/youtube-process/stages";
+import { descWritten, finalPair, utmCode, utmUrl } from "@/lib/youtube-process/stages";
+
+// utm_content (utmCode): the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start.
+export { utmCode };
 import type { RequestActor } from "./auth";
 import { auditChannelAction } from "./channel-access";
 import { authorizeYoutubeConnection, getYoutubeAccessToken, youtubeConnectionStatus } from "./youtube-oauth";
@@ -27,8 +30,6 @@ export const uploadOrigin = (request: Request) => {
   return origin && /^https?:\/\/[^/]+$/.test(origin) ? origin : new URL(request.url).origin;
 };
 
-/** utm_content: the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start. */
-export const utmCode = (projectId: string) => `yp-${projectId.slice(0, 8)}`;
 
 async function uploadReady(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);

@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, CheckCircle2, Eye, Film, LayoutGrid, PenLine, Scissors, UploadCloud } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, Eye, Film, LayoutGrid, Link2, PenLine, Scissors, UploadCloud } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -7,6 +7,8 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
   { label: "내 영상", href: "/content/projects", icon: LayoutGrid, aliases: ["프로젝트", "유튜브 프로젝트", "새 영상"], ready: true },
   { label: "스케줄", href: "/content/schedule", icon: CalendarDays, aliases: ["업로드 일정", "편집 일정"], ready: true },
   { label: "성과", href: "/content/performance", icon: BarChart3, aliases: ["영상 성과", "조회수", "CTR"], ready: true },
+  // Owner decision 2026-10-26: any address shortened on the MYIN site, any time.
+  { label: "단축 링크", href: "/content/links", icon: Link2, aliases: ["단축 URL", "링크 줄이기", "UTM", "마이인 링크"], ready: true },
 ];
 /** The steps of one video: found by address (titles, breadcrumbs) and shown under 내 영상, never as their own menu. */
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
@@ -28,9 +30,10 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/upload": "upload",
   "/content/schedule": "schedule",
   "/content/confirm": "confirm",
+  "/content/links": "links",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];
-/** The seven new routes; /content/shorts is the existing screen and is not listed. */
+/** The new routes (and 단축 링크, 2026-10-26); /content/shorts is the existing screen and is not listed. */
 export const YOUTUBE_V1_HREFS = Object.keys(YOUTUBE_V1_SCREENS);
 export const youtubeV1Screen = (href: string): YoutubeV1Screen | null =>
   (YOUTUBE_V1_SCREENS as Record<string, YoutubeV1Screen>)[href] ?? null;

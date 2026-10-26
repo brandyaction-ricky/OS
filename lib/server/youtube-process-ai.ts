@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { checkManuscript } from "@/lib/youtube-script-check";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectFromRecord, projectName } from "@/lib/youtube-process/project";
-import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
+import { diagnosisLink, finalPair, SLOTS, stageData, STAGE_RECORD, utmCode, withScriptVersion, type YpSlot, type YpStageKind, type YpStageData } from "@/lib/youtube-process/stages";
 import type { RequestActor } from "./auth";
 import type { readPipeline } from "./content-pipeline";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
@@ -130,7 +130,7 @@ export function v1KitCardInputs(state: Pipeline) {
     rules: `## 유튜브 공정 업로드 칸 (위 「유튜브 발행 키트 만드는 절차」 정본 §1~§5대로, OS가 8줄로 점검합니다)
 - description: 정본 §1 순서 그대로 — 소개 1~2줄 → 해시태그 5개 → ⬇️ 진단 CTA 한 줄 + 진단 링크 → [타임라인] → [설명문 본문](핵심 요약 3줄 이내) → [인용 및 출처] → [히든 태그](맨 마지막). 구역 사이는 ----- 한 줄.
 - [타임라인]: 정본 §3대로 5~8줄, 아래 자막 시각을 그대로 씁니다(첫 줄 00:00). 자막이 없으면 시각을 [시각]으로 둡니다. 이 화면은 챕터를 설명란 [타임라인]으로만 받으니 chapters는 빈 배열로 둡니다.
-- 링크(정본 §1-1): 진단 링크 ${diagnosisLink(utm)} · 이어서 볼 영상 ${utm.next || "(없음 — [이어서 볼 영상 링크]로 둡니다)"}
+- 링크(정본 §1-1): 진단 링크 ${diagnosisLink(utm, utmCode(stages.project.id))} · 이어서 볼 영상 ${utm.next || "(없음 — [이어서 볼 영상 링크]로 둡니다)"}
 - pinnedComment(정본 §5): 첫 줄 질문형 한 줄, 그 아래 ⬇️ 진단 CTA 한 줄 + 진단 링크, "이어서 보면 좋을 영상 보러가기" + 이어서 볼 영상 링크.
 - tags: [히든 태그]와 같은 값(정본 §4, 6~12개). title은 아래 제목 그대로 둡니다(OS가 컨펌된 제목을 씁니다).`,
   };
