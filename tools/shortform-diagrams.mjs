@@ -3,18 +3,18 @@
  * No downloads, account credentials, paid synthesis, or worker registration here.
  */
 import { spawn,execFileSync } from "node:child_process";
-import { mkdirSync,writeFileSync,existsSync } from "node:fs";
+import { mkdirSync,writeFileSync,existsSync,readFileSync } from "node:fs";
 import path from "node:path";
-export const SHORTFORM_DIAGRAM_TYPES=new Set(["lib_timeline","lib_two_cards","lib_iceberg"]);
+export const SHORTFORM_DIAGRAM_TYPES=new Set(JSON.parse(readFileSync(new URL("../lib/shortform-diagram-catalog.json",import.meta.url),"utf8")).map(row=>row.type));
 
 /** Advertise only when the opt-in package and local dependencies can be loaded. */
 export function shortformDiagramCapabilities(){
   const root=process.env.SHORTFORM_DIAGRAM_PACKAGE,fonts=process.env.MYIN_FONT_DIR;
   if(!root||!path.isAbsolute(root)||!fonts||!existsSync(path.join(root,"portrait","render_job.py"))||!existsSync(path.join(fonts,"Pretendard-Bold.otf")))return [];
   try{
-    execFileSync(process.env.MINDMAP_PYTHON||"python3",["-c","import PIL; import sys; sys.path.insert(0,sys.argv[1]); import render_job",path.join(root,"portrait")],{stdio:"ignore",timeout:10000});
+    const available=JSON.parse(execFileSync(process.env.MINDMAP_PYTHON||"python3",["-c","import PIL,json,sys; sys.path.insert(0,sys.argv[1]); import render_job; print(json.dumps([\"lib_\"+r[0] for r in render_job.V.L.REGISTRY]))",path.join(root,"portrait")],{encoding:"utf8",timeout:10000}));
     execFileSync(process.execPath,["-e","const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const fs=require('fs');if(!fs.existsSync(process.env.CHROME_PATH||chromium.executablePath()))process.exit(1)"],{stdio:"ignore",timeout:10000});
-    return [...SHORTFORM_DIAGRAM_TYPES];
+    return [...SHORTFORM_DIAGRAM_TYPES].filter(type=>available.includes(type));
   }catch{return [];}
 }
 

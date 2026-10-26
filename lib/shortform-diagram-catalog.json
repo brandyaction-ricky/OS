@@ -1,0 +1,4794 @@
+[
+  {
+    "type": "lib_row_contrast",
+    "name": "행대비",
+    "slots": "a ≤ 8자, b ≤ 8자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "a": {
+        "text": "노력의 양",
+        "t": 0.5
+      },
+      "b": {
+        "text": "방향",
+        "t": 2.0
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "b": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_col_contrast",
+    "name": "세로대비",
+    "slots": "a ≤ 10자, b ≤ 10자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "a": {
+        "text": "잘하는 것",
+        "t": 0.5
+      },
+      "b": {
+        "text": "원하는 것",
+        "t": 2.0
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "b": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_two_cards",
+    "name": "2칸카드",
+    "slots": "cap ≤ 8자, text ≤ 8자 ×2",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "left": {
+        "text": "결핍",
+        "t": 0.5,
+        "cap": "뿌리"
+      },
+      "right": {
+        "text": "욕구",
+        "t": 1.8,
+        "cap": "줄기"
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "cap": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        },
+        "right": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "cap": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_venn2",
+    "name": "벤2원",
+    "slots": "a·b ≤ 7자, mid ≤ 5자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "a": {
+        "text": "하고 싶은 것",
+        "t": 0.5
+      },
+      "b": {
+        "text": "잘하는 것",
+        "t": 1.3
+      },
+      "mid": {
+        "text": "내 일",
+        "t": 2.4
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "b": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "mid": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_checklist",
+    "name": "체크목록",
+    "slots": "항목 2~5개, 각 ≤ 14자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "투두를 세우고 격파했나",
+          "t": 0.6
+        },
+        {
+          "text": "경쟁하는 걸 즐겼나",
+          "t": 1.5
+        },
+        {
+          "text": "원인을 계속 추적했나",
+          "t": 2.4
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 12
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_strike_list",
+    "name": "취소선목록",
+    "slots": "항목 2~4개, 각 ≤ 12자, 마지막 keep",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "대기업이라서",
+          "t": 0.5,
+          "t_strike": 1.2
+        },
+        {
+          "text": "전문직이라서",
+          "t": 1.6,
+          "t_strike": 2.3
+        },
+        {
+          "text": "내 결핍과 맞아서",
+          "t": 3.0,
+          "keep": true
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 9
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "t_strike": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "keep": {
+                "kind": "boolean"
+              }
+            },
+            "optional": [
+              "t_strike",
+              "keep"
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_question_card",
+    "name": "질문카드",
+    "slots": "lead ≤ 16자, q ≤ 16자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "lead": {
+        "text": "진짜 중요한 질문",
+        "t": 0.5
+      },
+      "q": {
+        "text": "그 방향은 어디서 오는가?",
+        "t": 1.4
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "lead": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 9
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "q": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 14
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_matrix2x2",
+    "name": "2×2",
+    "slots": "x·y 축 ≤ 6자, 칸 4개 각 ≤ 6자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "x": "잘한다",
+      "y": "하고 싶다",
+      "cells": [
+        {
+          "text": "하고 싶은 일",
+          "t": 0.5
+        },
+        {
+          "text": "내 일",
+          "t": 0.8
+        },
+        {
+          "text": "버릴 일",
+          "t": 1.1
+        },
+        {
+          "text": "잘하는 일",
+          "t": 1.4
+        }
+      ],
+      "pick": 1,
+      "t_pick": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "x": {
+          "kind": "text",
+          "max": 8
+        },
+        "y": {
+          "kind": "text",
+          "max": 8
+        },
+        "cells": {
+          "kind": "array",
+          "min": 4,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "t_pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_three_cols",
+    "name": "3열카드",
+    "slots": "항목 3개, 각 ≤ 6자, desc ≤ 12자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "결핍",
+          "t": 0.5,
+          "desc": "늘 부족했던 자리"
+        },
+        {
+          "text": "욕구",
+          "t": 1.3,
+          "desc": "채우고 싶은 마음"
+        },
+        {
+          "text": "강점",
+          "t": 2.1,
+          "desc": "반복이 쌓인 결과"
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 3,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "desc": {
+                "kind": "text",
+                "max": 14
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_three_rows",
+    "name": "3행카드",
+    "slots": "항목 3개(최대 4), 각 ≤ 14자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "인정을 못 받고 자란 사람",
+          "t": 0.5
+        },
+        {
+          "text": "안정이 간절했던 사람",
+          "t": 1.6
+        },
+        {
+          "text": "내 뜻대로 못 살아 본 사람",
+          "t": 2.7
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 15
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_pyramid",
+    "name": "계층",
+    "slots": "층 3~4개(아래부터), 각 ≤ 6자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "결핍",
+          "t": 0.5
+        },
+        {
+          "text": "욕구",
+          "t": 1.2
+        },
+        {
+          "text": "행동",
+          "t": 1.9
+        },
+        {
+          "text": "강점",
+          "t": 2.6
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_steps_h",
+    "name": "가로단계",
+    "slots": "단계 3~5개, 각 ≤ 5자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "결핍",
+          "t": 0.5
+        },
+        {
+          "text": "욕구",
+          "t": 1.2
+        },
+        {
+          "text": "행동",
+          "t": 1.9
+        },
+        {
+          "text": "강점",
+          "t": 2.6
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_steps_v",
+    "name": "세로단계",
+    "slots": "단계 3~4개, 각 ≤ 8자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "언어로 만든다",
+          "t": 0.5
+        },
+        {
+          "text": "이해한다",
+          "t": 1.3
+        },
+        {
+          "text": "관리한다",
+          "t": 2.1
+        },
+        {
+          "text": "개선된다",
+          "t": 2.9
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_timeline",
+    "name": "타임라인",
+    "slots": "시점 3~5개, 각 ≤ 6자, when ≤ 6자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "어린 시절",
+          "t": 0.5,
+          "when": "7살"
+        },
+        {
+          "text": "학교",
+          "t": 1.2,
+          "when": "17살"
+        },
+        {
+          "text": "첫 회사",
+          "t": 1.9,
+          "when": "27살"
+        },
+        {
+          "text": "지금",
+          "t": 2.6,
+          "when": "37살"
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "when": {
+                "kind": "text",
+                "max": 8
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_zigzag",
+    "name": "지그재그",
+    "slots": "점 4~5개, 각 ≤ 5자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "시작",
+          "t": 0.5
+        },
+        {
+          "text": "의욕",
+          "t": 1.1
+        },
+        {
+          "text": "지침",
+          "t": 1.7
+        },
+        {
+          "text": "다시",
+          "t": 2.3
+        },
+        {
+          "text": "방향",
+          "t": 2.9
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_numbered",
+    "name": "번호목록",
+    "slots": "항목 3~5개, 각 ≤ 14자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "성취 — 앞서고 이루고 싶다",
+          "t": 0.5
+        },
+        {
+          "text": "실행 — 빨리 만들고 싶다",
+          "t": 1.5
+        },
+        {
+          "text": "영향 — 사람을 움직이고 싶다",
+          "t": 2.5
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 16
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_box_emphasis",
+    "name": "검정박스강조",
+    "slots": "lead ≤ 16자, key ≤ 8자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "lead": {
+        "text": "빠르게 성장하는 건",
+        "t": 0.5
+      },
+      "key": {
+        "text": "방향의 문제",
+        "t": 1.6
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "lead": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 10
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "key": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_underline",
+    "name": "밑줄강조",
+    "slots": "lead ≤ 16자, key ≤ 6자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "lead": {
+        "text": "평생 끌려다닌 단 하나",
+        "t": 0.5
+      },
+      "key": {
+        "text": "결핍",
+        "t": 1.6
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "lead": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 12
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "key": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_quote_card",
+    "name": "인용카드",
+    "slots": "q ≤ 20자×2줄, author ≤ 10자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "q": {
+        "text": "측정할 수 없으면\n관리할 수 없다",
+        "t": 0.6
+      },
+      "author": {
+        "text": "피터 드러커",
+        "t": 2.0
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "q": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 18
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "author": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_ball_up",
+    "name": "공상승",
+    "slots": "text ≤ 6자, value ≤ 4자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "t": 0.6,
+      "text": "의미 욕구",
+      "value": "91"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "text": {
+          "kind": "text",
+          "max": 8
+        },
+        "value": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_ball_down",
+    "name": "공하강",
+    "slots": "text ≤ 6자, value ≤ 4자",
+    "duration": 4.5,
+    "scene": {
+      "t0": 0.0,
+      "t": 0.6,
+      "text": "실행 욕구",
+      "value": "47"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "text": {
+          "kind": "text",
+          "max": 8
+        },
+        "value": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_bars_v",
+    "name": "수치그래프",
+    "slots": "막대 3~5개, 이름 ≤ 4자, 값 숫자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "성취",
+          "t": 0.5,
+          "value": 62
+        },
+        {
+          "text": "실행",
+          "t": 0.8,
+          "value": 47
+        },
+        {
+          "text": "관계",
+          "t": 1.1,
+          "value": 70
+        },
+        {
+          "text": "의미",
+          "t": 1.4,
+          "value": 91
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "value": {
+                "kind": "number",
+                "min": 0,
+                "max": 1000,
+                "time": false,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_button_press",
+    "name": "버튼누르기",
+    "slots": "button ≤ 6자, result ≤ 8자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "button": {
+        "text": "진단 받기",
+        "t": 0.4,
+        "t_click": 1.6
+      },
+      "result": {
+        "text": "나의 사용 설명서",
+        "t": 2.3
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "button": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "t_click": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "result": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 9
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_scale",
+    "name": "저울기울기",
+    "slots": "left·right ≤ 6자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "left": {
+        "text": "평판",
+        "t": 0.5
+      },
+      "right": {
+        "text": "내 결핍",
+        "t": 1.2
+      },
+      "heavy": "right",
+      "t_tilt": 2.0
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "right": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "heavy": {
+          "kind": "enum",
+          "values": [
+            "left",
+            "right"
+          ]
+        },
+        "t_tilt": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_connect",
+    "name": "선그려지기",
+    "slots": "a·b ≤ 6자, link ≤ 10자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "a": {
+        "text": "결핍",
+        "t": 0.5
+      },
+      "b": {
+        "text": "강점",
+        "t": 2.2
+      },
+      "t_link": 1.0,
+      "link": "반복이 쌓여"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "b": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "t_link": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "link": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_puzzle",
+    "name": "퍼즐맞추기",
+    "slots": "조각 2~3개, 각 ≤ 4자, word ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "결핍",
+          "t": 0.3
+        },
+        {
+          "text": "욕구",
+          "t": 0.9
+        },
+        {
+          "text": "방향",
+          "t": 1.5
+        }
+      ],
+      "word": "성장 조건",
+      "t_done": 2.8
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 3,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "word": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_done": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_cards_gather",
+    "name": "카드모이기",
+    "slots": "카드 3~5개, 각 ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "성취",
+          "t": 0.3
+        },
+        {
+          "text": "실행",
+          "t": 0.45
+        },
+        {
+          "text": "영향",
+          "t": 0.6
+        },
+        {
+          "text": "관계",
+          "t": 0.75
+        },
+        {
+          "text": "이해",
+          "t": 0.9
+        },
+        {
+          "text": "의미",
+          "t": 1.05
+        }
+      ],
+      "t_gather": 1.6,
+      "pick": 5,
+      "t_pick": 2.9
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 6,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "t_gather": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "t_pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_question_typing",
+    "name": "질문타이핑",
+    "slots": "q ≤ 18자, button ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "q": {
+        "text": "나한테 맞는 방향은 뭘까?",
+        "t": 0.5
+      },
+      "button": "검색"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "q": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 14
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "button": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_range_expand",
+    "name": "범위확장",
+    "slots": "단계 2~4개, 각 ≤ 6자, caption ≤ 16자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "일할 때",
+          "t": 0.4
+        },
+        {
+          "text": "관계 맺을 때",
+          "t": 1.3
+        },
+        {
+          "text": "연애할 때",
+          "t": 2.1
+        },
+        {
+          "text": "모든 선택",
+          "t": 2.9
+        }
+      ],
+      "caption": "욕구가 관여하는 범위"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "caption": {
+          "kind": "text",
+          "max": 14
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_direction",
+    "name": "방향고르기",
+    "slots": "center ≤ 4자, 선택지 2~4개 각 ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "center": {
+        "text": "나",
+        "t": 0.3
+      },
+      "options": [
+        {
+          "text": "성취",
+          "t": 0.6
+        },
+        {
+          "text": "관계",
+          "t": 0.8
+        },
+        {
+          "text": "실행",
+          "t": 1.0
+        },
+        {
+          "text": "의미",
+          "t": 1.2
+        }
+      ],
+      "pick": 3,
+      "t_pick": 2.3
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "center": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "options": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "t_pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_ripple",
+    "name": "파동",
+    "slots": "core ≤ 5자, 바깥 2~5개 각 ≤ 5자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "core": {
+        "text": "내 한마디",
+        "t": 0.4
+      },
+      "outer": [
+        {
+          "text": "분위기",
+          "t": 1.0
+        },
+        {
+          "text": "사람들",
+          "t": 1.5
+        },
+        {
+          "text": "판",
+          "t": 2.0
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "core": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "outer": {
+          "kind": "array",
+          "min": 1,
+          "max": 5,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_speech",
+    "name": "말풍선",
+    "slots": "말 2~3개, 각 ≤ 14자, who ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "lines": [
+        {
+          "text": "이거 하면 얼마 벌지?",
+          "t": 0.5,
+          "who": "누군가"
+        },
+        {
+          "text": "이게 나한테 어떤 의미지?",
+          "t": 2.0,
+          "who": "나"
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "lines": {
+          "kind": "array",
+          "min": 1,
+          "max": 3,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 14
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "who": {
+                "kind": "text",
+                "max": 8
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_bars_h",
+    "name": "가로막대그래프",
+    "slots": "막대 3~6개, 이름 ≤ 4자, 값 숫자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "의미",
+          "t": 0.5,
+          "value": 91
+        },
+        {
+          "text": "이해",
+          "t": 0.8,
+          "value": 78
+        },
+        {
+          "text": "관계",
+          "t": 1.1,
+          "value": 70
+        },
+        {
+          "text": "실행",
+          "t": 1.4,
+          "value": 47
+        }
+      ],
+      "max": 100
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 6,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              },
+              "value": {
+                "kind": "number",
+                "min": 0,
+                "max": 1000,
+                "time": false,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "max": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_people_row",
+    "name": "인물등장",
+    "slots": "사람 3~4명, 이름 ≤ 5자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "성취형",
+          "t": 0.5
+        },
+        {
+          "text": "관계형",
+          "t": 1.0
+        },
+        {
+          "text": "의미형",
+          "t": 1.5
+        },
+        {
+          "text": "나는?",
+          "t": 2.2
+        }
+      ],
+      "pick": 3,
+      "t_pick": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "t_pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_funnel",
+    "name": "깔때기",
+    "slots": "층 3~4개, 각 ≤ 8자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "items": [
+        {
+          "text": "6가지 욕구",
+          "t": 0.5
+        },
+        {
+          "text": "28개의 결",
+          "t": 1.3
+        },
+        {
+          "text": "나의 굵은 결",
+          "t": 2.1
+        },
+        {
+          "text": "친밀",
+          "t": 2.9
+        }
+      ]
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 4,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_before_after",
+    "name": "전후비교",
+    "slots": "text ≤ 8자, desc ≤ 14자 ×2",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "before": {
+        "text": "남의 컵",
+        "t": 0.5,
+        "desc": "아무리 부어도 샌다"
+      },
+      "after": {
+        "text": "내 컵",
+        "t": 2.0,
+        "desc": "차곡차곡 쌓인다"
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "before": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "desc": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        },
+        "after": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "desc": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_cause_effect",
+    "name": "원인→결과",
+    "slots": "원인 2~3개 각 ≤ 7자, 결과 ≤ 6자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "causes": [
+        {
+          "text": "인정 부족",
+          "t": 0.5
+        },
+        {
+          "text": "불안정한 집",
+          "t": 1.0
+        },
+        {
+          "text": "시키는 대로",
+          "t": 1.5
+        }
+      ],
+      "result": {
+        "text": "결핍",
+        "t": 2.5
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "causes": {
+          "kind": "array",
+          "min": 1,
+          "max": 3,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "result": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_crossroad",
+    "name": "갈림길",
+    "slots": "left·right ≤ 6자, me ≤ 8자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "left": {
+        "text": "남의 컵",
+        "t": 0.6
+      },
+      "right": {
+        "text": "내 컵",
+        "t": 1.2
+      },
+      "pick": "right",
+      "t_pick": 2.4,
+      "me": "지금의 나"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "right": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            }
+          }
+        },
+        "pick": {
+          "kind": "enum",
+          "values": [
+            "left",
+            "right"
+          ]
+        },
+        "t_pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "me": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_vessel",
+    "name": "그릇",
+    "slots": "left·right ≤ 7자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0.0,
+      "left": {
+        "text": "맞는 방향",
+        "t": 0.4,
+        "state": "full"
+      },
+      "right": {
+        "text": "안 맞는 방향",
+        "t": 0.4,
+        "state": "broken"
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "state": {
+              "kind": "enum",
+              "values": [
+                "full",
+                "broken"
+              ]
+            }
+          }
+        },
+        "right": {
+          "kind": "object",
+          "fields": {
+            "text": {
+              "kind": "text",
+              "max": 8
+            },
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "state": {
+              "kind": "enum",
+              "values": [
+                "full",
+                "broken"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_growth_curve",
+    "name": "성장곡선",
+    "slots": "x·y ≤ 6자, flat ≤ 10자, jump ≤ 8자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0.0,
+      "x": "시간",
+      "y": "성장",
+      "t_draw": 0.5,
+      "flat": "처음엔 느리다",
+      "jump": "압도적으로"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "x": {
+          "kind": "text",
+          "max": 8
+        },
+        "y": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_draw": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "flat": {
+          "kind": "text",
+          "max": 8
+        },
+        "jump": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_half_morph",
+    "name": "반쪽 변화",
+    "slots": "left·right ≤ 6자, copy ≤ 16자, em ≤ 5자, sub ≤ 30자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "left": "누군가에겐",
+      "right": "나에겐",
+      "t_fill": 0.6,
+      "t_crack": 1.2,
+      "copy": "같은 회사, 다른 컵",
+      "em": "다른 컵",
+      "sub": "똑같은 조건도 누군가에겐 깨진 컵, 누군가에겐 채워지는 컵",
+      "t_copy": 2.0
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "text",
+          "max": 8
+        },
+        "right": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_fill": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_crack": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 32
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_text_reveal",
+    "name": "글자 속 글자",
+    "slots": "a·b ≤ 4자, copy ≤ 16자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "a": "노력",
+      "b": "방향",
+      "t_a": 0.3,
+      "t_b": 1.6,
+      "copy": "노력이라 쓰고 방향이라 읽는다",
+      "em": "방향",
+      "sub": "빠르게 성장하는 건 노력의 양 문제가 아닙니다",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "text",
+          "max": 8
+        },
+        "b": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_a": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_b": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_receipt",
+    "name": "영수증",
+    "slots": "항목 3~6개 각 ≤ 10자, value ≤ 6자, total ≤ 6자",
+    "duration": 6.0,
+    "scene": {
+      "t0": 0,
+      "title": "RECEIPT",
+      "items": [
+        {
+          "text": "성공 강의",
+          "value": "100만",
+          "t": 0.5
+        },
+        {
+          "text": "자기계발서",
+          "value": "10권",
+          "t": 0.8
+        },
+        {
+          "text": "남의 루틴",
+          "value": "30일",
+          "t": 1.1
+        },
+        {
+          "text": "새벽 기상",
+          "value": "6개월",
+          "t": 1.4
+        }
+      ],
+      "total_label": "TOTAL",
+      "total": "제자리",
+      "t_total": 2.1,
+      "copy": "남의 컵에 부은 시간은 환불되지 않습니다",
+      "em": "환불",
+      "sub": "내 결핍을 모르면 노력은 영수증만 남깁니다",
+      "t_copy": 2.8
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "title": {
+          "kind": "text",
+          "max": 8
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 6,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "value": {
+                "kind": "text",
+                "max": 8
+              },
+              "t": {
+                "kind": "number",
+                "min": 0,
+                "max": 60,
+                "time": true,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "total_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "total": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_total": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 22
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_gauge",
+    "name": "게이지",
+    "slots": "left·right ≤ 2자, marks ≤ 6자 ×3, copy ≤ 16자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "left": "E",
+      "right": "F",
+      "from": 0.06,
+      "to": 0.96,
+      "t_move": 0.7,
+      "marks": [
+        {
+          "text": "결핍",
+          "at": 0.2
+        },
+        {
+          "text": "욕구",
+          "at": 0.5
+        },
+        {
+          "text": "강점",
+          "at": 0.8
+        }
+      ],
+      "copy": "방향이 맞으면 동력이 가득 찹니다",
+      "em": "가득",
+      "sub": "결핍은 없애는 게 아니라 연료로 쓰는 것",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "left": {
+          "kind": "text",
+          "max": 8
+        },
+        "right": {
+          "kind": "text",
+          "max": 8
+        },
+        "from": {
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "time": false,
+          "integer": false
+        },
+        "to": {
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "time": false,
+          "integer": false
+        },
+        "t_move": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "marks": {
+          "kind": "array",
+          "min": 3,
+          "max": 3,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              },
+              "at": {
+                "kind": "number",
+                "min": 0,
+                "max": 1,
+                "time": false,
+                "integer": false
+              }
+            },
+            "optional": []
+          }
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_fusion",
+    "name": "사물 합체",
+    "slots": "a_icon·b_icon(아이콘), a_label·b_label ≤ 8자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "a_icon": "drop",
+      "b_icon": "cup",
+      "crack": true,
+      "a_label": "열심히 한 노력",
+      "b_label": "깨진 컵",
+      "t_fuse": 0.8,
+      "copy": "노력인 줄 알았는데, 깨진 컵",
+      "em": "깨진 컵",
+      "sub": "방향이 틀리면 노력은 그냥 새어 나갑니다",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a_icon": {
+          "kind": "enum",
+          "values": [
+            "drop",
+            "cup"
+          ]
+        },
+        "b_icon": {
+          "kind": "enum",
+          "values": [
+            "drop",
+            "cup"
+          ]
+        },
+        "crack": {
+          "kind": "boolean"
+        },
+        "a_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "b_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_fuse": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_melt",
+    "name": "녹아내림",
+    "slots": "text ≤ 4자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "text": "의욕",
+      "t_melt": 0.7,
+      "copy": "방향 없는 노력은 녹아내립니다",
+      "em": "녹아내립니다",
+      "sub": "채워지지 않고 계속 소모됐던 거죠",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "text": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_melt": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_shrink",
+    "name": "줄어드는 자리",
+    "slots": "base ≤ 6자, count 숫자, count_label ≤ 10자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "base": "내 자리",
+      "count": 100,
+      "count_label": "남을 따라 한 횟수",
+      "t_shrink": 0.6,
+      "copy": "따라 할수록 줄어듭니다",
+      "em": "줄어듭니다",
+      "sub": "남의 컵이지 내 컵이 아니거든요",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "base": {
+          "kind": "text",
+          "max": 8
+        },
+        "count": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "count_label": {
+          "kind": "text",
+          "max": 10
+        },
+        "t_shrink": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_peel",
+    "name": "들춰보기",
+    "slots": "surface ≤ 6자, hidden 1~3개 각 ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "surface": "잘하는 것",
+      "hidden": [
+        "결핍",
+        "욕구"
+      ],
+      "t_peel": 0.8,
+      "copy": "들춰보면 보입니다",
+      "em": "들춰보면",
+      "sub": "잘하는 것 밑에는 반드시 원한 욕구가 있다",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "surface": {
+          "kind": "text",
+          "max": 8
+        },
+        "hidden": {
+          "kind": "array",
+          "min": 1,
+          "max": 3,
+          "item": {
+            "kind": "text",
+            "max": 8
+          }
+        },
+        "t_peel": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_impact",
+    "name": "떨어지는 무게",
+    "slots": "heavy ≤ 6자, base ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "heavy": "평판",
+      "base": "내 길",
+      "t_drop": 0.8,
+      "copy": "평판 하나에 무너지는 선택",
+      "em": "무너지는",
+      "sub": "내 결핍하고 맞느냐 안 맞느냐가 관건",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "heavy": {
+          "kind": "text",
+          "max": 8
+        },
+        "base": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_drop": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_frame_break",
+    "name": "틀 밖으로",
+    "slots": "frame ≤ 10자, out ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "frame": "남이 정한 기준",
+      "out": "내 방향",
+      "t_break": 1.0,
+      "copy": "틀을 깨야 내 길이 보입니다",
+      "em": "틀",
+      "sub": "남의 거 말고 본인의 결핍을 지침으로",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "frame": {
+          "kind": "text",
+          "max": 8
+        },
+        "out": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_break": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_throne",
+    "name": "아이러니 왕좌",
+    "slots": "icon, label ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "icon": "building",
+      "label": "스펙",
+      "t_crown": 1.0,
+      "copy": "스펙이 왕인 줄 알았습니다",
+      "em": "왕",
+      "sub": "자리가 좋고 나쁜 게 아니에요",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "icon": {
+          "kind": "enum",
+          "values": [
+            "building",
+            "flame",
+            "cup"
+          ]
+        },
+        "label": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_crown": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_strings",
+    "name": "꼭두각시 줄",
+    "slots": "controller ≤ 5자, puppet ≤ 4자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "controller": "결핍",
+      "puppet": "나",
+      "t_pull": 0.8,
+      "copy": "끌고 갑니까, 끌려갑니까?",
+      "em": "끌려갑니까",
+      "sub": "자기도 모르게 평생 끌려다닌 단 하나",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "controller": {
+          "kind": "text",
+          "max": 8
+        },
+        "puppet": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_pull": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_hidden_danger",
+    "name": "섞여든 위험",
+    "slots": "good·bad_label ≤ 6자, bad(칸 번호)",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "good": "누군가의 약",
+      "bad_label": "나에겐 독",
+      "t_reveal": 1.0,
+      "copy": "누군가의 약이 나에겐 독",
+      "em": "독",
+      "sub": "저마다의 강점이 다 다르기 때문입니다",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "good": {
+          "kind": "text",
+          "max": 8
+        },
+        "bad_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_reveal": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_spark",
+    "name": "작은 불씨",
+    "slots": "small·big ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "small": "작은 결핍",
+      "big": "미친 동력",
+      "t_grow": 0.8,
+      "copy": "작은 결핍이 미친 동력이 됩니다",
+      "em": "동력",
+      "sub": "없애려고 하면 괴롭고, 방향으로 읽으면 동력",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "small": {
+          "kind": "text",
+          "max": 8
+        },
+        "big": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_grow": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_two_faces",
+    "name": "약과 독",
+    "slots": "icon, left·right ≤ 8자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "icon": "flame",
+      "left": "방향으로 읽으면",
+      "right": "없애려 하면",
+      "t_split": 0.8,
+      "copy": "쓰면 약, 없애면 독",
+      "em": "약",
+      "sub": "결핍은 없애는 게 아니라 쓰는 것",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "icon": {
+          "kind": "enum",
+          "values": [
+            "building",
+            "flame",
+            "cup"
+          ]
+        },
+        "left": {
+          "kind": "text",
+          "max": 8
+        },
+        "right": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_split": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_stack",
+    "name": "쌓임",
+    "slots": "count 숫자, label ≤ 10자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "count": 365,
+      "label": "같은 행동의 반복",
+      "t_stack": 0.6,
+      "copy": "반복이 쌓이면 강점이 됩니다",
+      "em": "강점",
+      "sub": "결핍 → 욕구 → 행동 → 강점",
+      "t_copy": 2.8
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "count": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "label": {
+          "kind": "text",
+          "max": 9
+        },
+        "t_stack": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_scale_compare",
+    "name": "규모 비교",
+    "slots": "small·big ≤ 6자, ratio ≤ 5자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "small": "남의 공식",
+      "big": "내 사용법",
+      "ratio": "×평생",
+      "t_grow": 0.8,
+      "copy": "죽을 때까지 써먹는 크기",
+      "em": "죽을 때까지",
+      "sub": "100만 원짜리 강의보다 나를 아는 것",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "small": {
+          "kind": "text",
+          "max": 8
+        },
+        "big": {
+          "kind": "text",
+          "max": 8
+        },
+        "ratio": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_grow": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_beacon",
+    "name": "비추는 빛",
+    "slots": "항목 3~6개 각 ≤ 4자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "items": [
+        {
+          "text": "성취"
+        },
+        {
+          "text": "실행"
+        },
+        {
+          "text": "영향"
+        },
+        {
+          "text": "관계"
+        },
+        {
+          "text": "의미"
+        }
+      ],
+      "pick": 4,
+      "t_find": 1.6,
+      "copy": "나도 몰랐던 내 결이 비춰집니다",
+      "em": "비춰집니다",
+      "sub": "28개의 결 중 나에게 가장 굵은 결",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 1,
+          "max": 6,
+          "item": {
+            "kind": "object",
+            "fields": {
+              "text": {
+                "kind": "text",
+                "max": 8
+              }
+            },
+            "optional": []
+          }
+        },
+        "pick": {
+          "kind": "number",
+          "min": 0,
+          "max": 1000,
+          "time": false,
+          "integer": true
+        },
+        "t_find": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_clock",
+    "name": "시계",
+    "slots": "start·end ≤ 6자, from·to(0~1)",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "start": "어린 시절",
+      "end": "평생",
+      "t_run": 0.6,
+      "copy": "결핍은 평생을 따라옵니다",
+      "em": "평생",
+      "sub": "어릴 때 목이 말랐던 게 평생 나를 따라온다",
+      "t_copy": 2.8,
+      "from": 0.0,
+      "to": 0.85
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "start": {
+          "kind": "text",
+          "max": 8
+        },
+        "end": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_run": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "from": {
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "time": false,
+          "integer": false
+        },
+        "to": {
+          "kind": "number",
+          "min": 0,
+          "max": 1,
+          "time": false,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_one_letter",
+    "name": "한 글자 차이",
+    "slots": "a·b ≤ 4자(글자 수 같게)",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0,
+      "a": "남의 길",
+      "b": "나의 길",
+      "t_swap": 1.2,
+      "copy": "한 글자 차이, 완전히 다른 길",
+      "em": "한 글자",
+      "sub": "나를 이해하고 선택한 게 아니라 남의 선택",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "a": {
+          "kind": "text",
+          "max": 8
+        },
+        "b": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_swap": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_watching",
+    "name": "지켜보는 눈",
+    "slots": "watcher·target ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "watcher": "결핍",
+      "target": "나의 선택",
+      "t_open": 0.8,
+      "copy": "결핍은 늘 지켜보고 있습니다",
+      "em": "지켜보고",
+      "sub": "자기도 모르게 빈자리를 채우려고 움직인다",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "watcher": {
+          "kind": "text",
+          "max": 8
+        },
+        "target": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_open": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_twin_or",
+    "name": "OR 대비",
+    "slots": "icon, left·right ≤ 8자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "icon": "cup",
+      "left": "채워지는 컵",
+      "right": "깨진 컵",
+      "t_damage": 1.0,
+      "copy": "같은 자리, 다른 결과",
+      "em": "다른 결과",
+      "sub": "자리가 좋고 나쁜 게 아니라 나와 맞느냐",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "icon": {
+          "kind": "enum",
+          "values": [
+            "building",
+            "flame",
+            "cup"
+          ]
+        },
+        "left": {
+          "kind": "text",
+          "max": 8
+        },
+        "right": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_damage": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_trap",
+    "name": "조여 오는 고리",
+    "slots": "targets 2개 각 ≤ 5자, label ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "targets": [
+        "남의 선택",
+        "남의 컵"
+      ],
+      "label": "방황",
+      "t_close": 0.6,
+      "copy": "남의 선택에 묶이는 순간",
+      "em": "묶이는",
+      "sub": "방황을 담보하게 됩니다",
+      "t_copy": 2.6
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "targets": {
+          "kind": "array",
+          "min": 2,
+          "max": 2,
+          "item": {
+            "kind": "text",
+            "max": 8
+          }
+        },
+        "label": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_close": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_clash",
+    "name": "부딪혀 깨짐",
+    "slots": "items 2개 각 ≤ 4자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "items": [
+        "결핍",
+        "억지"
+      ],
+      "t_hit": 0.8,
+      "copy": "억누르는 순간 둘 다 금이 갑니다",
+      "em": "금",
+      "sub": "결핍을 반대 방향으로 억누르고 있었던 거죠",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "items": {
+          "kind": "array",
+          "min": 2,
+          "max": 2,
+          "item": {
+            "kind": "text",
+            "max": 8
+          }
+        },
+        "t_hit": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_boomerang",
+    "name": "되돌아옴",
+    "slots": "send·back ≤ 8자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "send": "방향 없는 노력",
+      "back": "같은 제자리",
+      "t_send": 0.5,
+      "copy": "보낸 대로 돌아옵니다",
+      "em": "돌아옵니다",
+      "sub": "열심히만 하면 제자리로 돌아온다",
+      "t_copy": 2.8
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "send": {
+          "kind": "text",
+          "max": 8
+        },
+        "back": {
+          "kind": "text",
+          "max": 8
+        },
+        "t_send": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_object_head",
+    "name": "머리가 사물인 사람",
+    "slots": "icon, label ≤ 8자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "icon": "building",
+      "label": "회사가 정한 방향",
+      "t_swap": 0.8,
+      "copy": "머리를 남에게 맡긴 사람",
+      "em": "남에게",
+      "sub": "시키는 대로 움직여야 하는 상태",
+      "t_copy": 2.4
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "icon": {
+          "kind": "enum",
+          "values": [
+            "building",
+            "flame",
+            "cup"
+          ]
+        },
+        "label": {
+          "kind": "text",
+          "max": 9
+        },
+        "t_swap": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_faded_write",
+    "name": "바닥난 잉크",
+    "slots": "text ≤ 8자, pot ≤ 6자",
+    "duration": 5.5,
+    "scene": {
+      "t0": 0,
+      "text": "늘 부족했던 자리",
+      "t_write": 0.4,
+      "copy": "다 못 쓴 그 자리가 결핍입니다",
+      "em": "결핍",
+      "sub": "누구나 어떤 건 넘치고 어떤 건 늘 부족했다",
+      "t_copy": 2.8
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "text": {
+          "kind": "text",
+          "max": 9
+        },
+        "t_write": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "copy": {
+          "kind": "text",
+          "max": 20
+        },
+        "em": {
+          "kind": "text",
+          "max": 8
+        },
+        "sub": {
+          "kind": "text",
+          "max": 30
+        },
+        "t_copy": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_apple_fall",
+    "name": "떨어지는 사과",
+    "slots": "sky_label ≤ 4자",
+    "duration": 5.0,
+    "scene": {
+      "t0": 0,
+      "t_sky": 0.4,
+      "t_not": 2.4,
+      "t_root": 9,
+      "sky_label": "재능?",
+      "no": true
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_sky": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_not": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_root": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "sky_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "no": {
+          "kind": "boolean"
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_apple",
+    "name": "사과→열매 나무",
+    "slots": "sky_label·root_label·fruit_label ≤ 4자",
+    "duration": 9.0,
+    "scene": {
+      "t0": 0,
+      "t_sky": 0.4,
+      "t_not": 2.0,
+      "t_root": 3.4,
+      "sky_label": "재능?",
+      "root_label": "결핍",
+      "fruit_label": "강점"
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_sky": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_not": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "t_root": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "sky_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "root_label": {
+          "kind": "text",
+          "max": 8
+        },
+        "fruit_label": {
+          "kind": "text",
+          "max": 8
+        }
+      }
+    }
+  },
+  {
+    "type": "lib_iceberg",
+    "name": "빙산",
+    "slots": "top.name·bottom.name ≤ 8자, cap ≤ 12자, desc ≤ 14자",
+    "duration": 6.5,
+    "scene": {
+      "t0": 0,
+      "top": {
+        "t": 0.5,
+        "name": "잘하는 것",
+        "cap": "물 위 · 보이는 것"
+      },
+      "bottom": {
+        "t": 1.8,
+        "t_on": 2.6,
+        "name": "욕구",
+        "cap": "물 밑 · 보이지 않는 것",
+        "desc": "결핍에서 자란 진짜 이유"
+      }
+    },
+    "spec": {
+      "kind": "object",
+      "fields": {
+        "t0": {
+          "kind": "number",
+          "min": 0,
+          "max": 60,
+          "time": true,
+          "integer": false
+        },
+        "top": {
+          "kind": "object",
+          "fields": {
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "name": {
+              "kind": "text",
+              "max": 8
+            },
+            "cap": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        },
+        "bottom": {
+          "kind": "object",
+          "fields": {
+            "t": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "t_on": {
+              "kind": "number",
+              "min": 0,
+              "max": 60,
+              "time": true,
+              "integer": false
+            },
+            "name": {
+              "kind": "text",
+              "max": 8
+            },
+            "cap": {
+              "kind": "text",
+              "max": 14
+            },
+            "desc": {
+              "kind": "text",
+              "max": 14
+            }
+          }
+        }
+      }
+    }
+  }
+]

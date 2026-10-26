@@ -28,3 +28,9 @@
 로컬 전체 verify(정적 검사·1,034개 테스트·빌드), 데모 화면(세 종류 선택/문구 편집/390px 폭), 실제 ffmpeg 모션 진행·자막 여백, 지원 종류에 따른 대기열 분기와 서명 검사를 수행했다. 실제 계정 대기열·Macmini 설치·Preview/운영 배포·유료 음성 생성은 수행하지 않았다. 설치 후 실제 계정 검증은 별도 단계다.
 
 개별 연결 시험은 `SHORTFORM_RENDER_ID`에 이번 무음 작업 ID를 지정하고 `--shorts-only --once`로 실행한다. 해당 작업만 가져가므로 기존 개발 대기열과 유료 음성 작업을 건드리지 않는다. 개발 화면에서 새 유튜브 공정을 사용하려면 `YOUTUBE_V1_ENABLED=true`도 필요하다.
+
+## Full catalog and serialized saving (2026-10-26)
+
+All 70 Logan portrait types are selectable. The checked-in catalog defines per-type defaults and a bounded field tree (text, number, enum, boolean, array). The API rejects unknown nested fields and invalid selection indices; narration cues, markup, paths and arbitrary renderer options are not accepted. Scene-local clocks are rescaled when choosing a template. Each worker advertises only catalog types also present in its installed portrait registry. Deploy the worker with the repository `tools/` and `lib/shortform-diagram-catalog.json` relative layout intact.
+
+The editor saves the latest draft again if edits arrive while a previous save is pending, using the returned version. Idle edits save after 600 ms, render submission waits for the save drain, and unsaved changes warn before browser unload. Save failures retain the draft and show an explicit retry button. Automated tests exercise delayed saves and failure recovery.

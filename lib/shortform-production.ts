@@ -1,3 +1,4 @@
+import { DIAGRAM_TYPES,diagramProblem } from "./shortform-diagram-catalog";
 import { z } from "zod";
 import { ApiError } from "./http";
 
@@ -41,16 +42,11 @@ export const shortformAppealsSchema=z.object({
     title:line,reason:line,evidence:z.string().max(5000),basis:z.enum(["evidence","hypothesis"]),
   }).strict()).min(2).max(5),
 }).strict();
-// Reviewed portrait inputs only. No executable markup, remote URLs, or arbitrary scene keys.
-const diagramText=(max:number)=>z.string().trim().min(1).max(max).refine(value=>!/[<>]/.test(value),"도식에는 글자만 입력해 주세요.");
-const diagramTime=z.number().finite().min(0).max(60);
-const diagramBase={t0:diagramTime.default(0),theme:z.enum(["myin","card"]).optional()};
-const diagramItem=z.object({text:diagramText(8),t:diagramTime,cap:diagramText(8).optional()}).strict();
-export const shortformDiagramSchema=z.discriminatedUnion("type",[
-  z.object({type:z.literal("lib_timeline"),scene:z.object({...diagramBase,items:z.array(z.object({text:diagramText(6),t:diagramTime,when:diagramText(6).optional()}).strict()).min(3).max(5),pick:z.number().int().min(0).max(4).optional()}).strict()}).strict(),
-  z.object({type:z.literal("lib_two_cards"),scene:z.object({...diagramBase,left:diagramItem,right:diagramItem}).strict()}).strict(),
-  z.object({type:z.literal("lib_iceberg"),scene:z.object({...diagramBase,top:z.object({name:diagramText(8),t:diagramTime,cap:diagramText(16).optional()}).strict(),bottom:z.object({name:diagramText(8),t:diagramTime,t_on:diagramTime.optional(),cap:diagramText(16).optional(),desc:diagramText(14).optional()}).strict()}).strict()}).strict(),
-]);
+// Every accepted key and nested field is constrained by the reviewed portrait catalog.
+export const shortformDiagramSchema=z.object({type:z.enum(DIAGRAM_TYPES),scene:z.record(z.unknown())}).strict().superRefine((value,ctx)=>{
+  const error=diagramProblem(value.type,value.scene);
+  if(error)ctx.addIssue({code:z.ZodIssueCode.custom,message:error});
+});
 export type ShortformDiagram=z.infer<typeof shortformDiagramSchema>;
 export const shortformCutsSchema=z.object({
   cuts:z.array(z.object({

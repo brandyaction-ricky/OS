@@ -101,7 +101,6 @@ async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9
       const visit=(value:unknown):void=>{if(value&&typeof value==="object")for(const [key,child] of Object.entries(value)){if(key==="t"||key==="t0"||key.startsWith("t_"))times.push(Number(child));else visit(child);}};
       visit(cut.diagram.scene);
       if(times.some(time=>!Number.isFinite(time)||time<0||time>=end-start))throw new ApiError(422,"SHORTFORM_DIAGRAM_TIMING","도식 시각을 해당 장면의 길이 안으로 맞춰 주세요.");
-      if(cut.diagram.type==="lib_timeline"&&cut.diagram.scene.pick!==undefined&&cut.diagram.scene.pick>=cut.diagram.scene.items.length)throw new ApiError(422,"SHORTFORM_DIAGRAM_INVALID","강조할 항목을 확인해 주세요.");
       scene.diagram=cut.diagram;
     }else if(brief.mode==="direct"){
       if(cut.missingAsset||!cut.assetId)throw new ApiError(422,"SHORTFORM_ASSET_REQUIRED","각 장면에 확보한 내 이미지를 선택해 주세요.");

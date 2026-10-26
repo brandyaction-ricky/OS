@@ -14,7 +14,8 @@ async function load(file,modules,extras={}){
   {module:compiled,exports:compiled.exports,Buffer,URL,AbortSignal,...extras,require:name=>{assert.ok(name in modules,name);return modules[name];}});
   return compiled.exports;
 }
-const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError}});
+const catalog=await load("lib/shortform-diagram-catalog.ts",{"./shortform-diagram-catalog.json":{default:JSON.parse(await readFile(new URL("../lib/shortform-diagram-catalog.json",import.meta.url),"utf8"))}});
+const contract=await load("lib/shortform-production.ts",{zod,"./http":{ApiError},"./shortform-diagram-catalog":catalog});
 const owner="00000000-0000-4000-8000-000000000001",itemId="00000000-0000-4000-8000-000000000002",assetId="00000000-0000-4000-8000-000000000003";
 const code=value=>error=>error.code===value;
 async function setup(diagrams=false){
@@ -260,4 +261,16 @@ test("diagram opt-in, timing and markup guards reject invalid jobs before queuei
  const h=await setup(true);delete h.item().metadata.cuts[0].assetId;h.item().metadata.cuts[0].diagram={...timelineDiagram,scene:{...timelineDiagram.scene,items:[{text:"이전",t:30},{text:"변화",t:1},{text:"지금",t:2}]}};
  await assert.rejects(h.enqueue(),code("SHORTFORM_DIAGRAM_TIMING"));
  assert.equal(contract.shortformDiagramSchema.safeParse({...timelineDiagram,scene:{...timelineDiagram.scene,items:[{text:"<svg>",t:0},{text:"나",t:1},{text:"다",t:2}]}}).success,false);
+});
+
+test('all seventy portrait types survive saved cuts, signed queue and matching worker claim',async()=>{
+ for(const entry of catalog.DIAGRAM_CATALOG){
+  const h=await setup(true),d=catalog.defaultDiagram(entry.type,15);
+  h.rows[1].metadata.cuts=[{start:'00:00',end:'00:15',text:'검수',note:'',voice:'',asset:'',missingAsset:false,diagram:d}];
+  const queued=await h.enqueue(false);
+  const job=await h.api.claimShortformRender(h.service,4,[entry.type],queued.runId);
+  assert.equal(job.scenes[0].diagram.type,entry.type);
+  assert.deepEqual(JSON.parse(JSON.stringify(job.scenes[0].diagram.scene)),JSON.parse(JSON.stringify(d.scene)));
+  assert.equal(h.voiceCalls,0);
+ }
 });

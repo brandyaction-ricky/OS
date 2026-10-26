@@ -1,3 +1,4 @@
+import { DIAGRAM_TYPES } from "@/lib/shortform-diagram-catalog";
 import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
@@ -14,7 +15,7 @@ export const maxDuration = 180;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const inputSchema = z.discriminatedUnion("action", [
-  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(["lib_timeline","lib_two_cards","lib_iceberg"])).max(3).optional()}).strict(),
+  z.object({action:z.literal("shorts_claim"),layoutVersion:z.union([z.literal(2),z.literal(3),z.literal(4)]),renderId:z.string().uuid().optional(),diagramTypes:z.array(z.enum(DIAGRAM_TYPES)).max(70).optional()}).strict(),
   z.object({action:z.literal("shorts_voice"),...lease,index:z.number().int().min(0).max(19)}).strict(),
   z.object({action:z.literal("shorts_complete"),...lease,bytes:z.number().int().positive().max(50_000_000),
     sha256:z.string().regex(/^[a-f0-9]{64}$/),duration:z.number().positive().max(61)}).strict(),

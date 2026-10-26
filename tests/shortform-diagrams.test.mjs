@@ -13,7 +13,7 @@ test("diagram preparation leaves image inputs intact and fails closed before loa
  const cut={start:0,end:1,text:"diagram",diagram:{type:"lib_timeline",scene:{t0:0}}};
  for(const aspect of ["1:1","4:5"])await assert.rejects(prepareShortformDiagrams({scenes:[cut],dir:"unused",mode:"direct",aspect}),{code:"SHORTFORM_DIAGRAM_ASPECT_UNSUPPORTED"});
  await assert.rejects(prepareShortformDiagrams({scenes:[cut],dir:"unused",mode:"reuse"}),{code:"SHORTFORM_DIAGRAM_ASPECT_UNSUPPORTED"});
- await assert.rejects(prepareShortformDiagrams({scenes:[{...cut,diagram:{...cut.diagram,type:"lib_receipt"}}],dir:"unused",mode:"direct"}),{code:"SHORTFORM_DIAGRAM_UNSUPPORTED"});
+ await assert.rejects(prepareShortformDiagrams({scenes:[{...cut,diagram:{...cut.diagram,type:"lib_not_registered"}}],dir:"unused",mode:"direct"}),{code:"SHORTFORM_DIAGRAM_UNSUPPORTED"});
  await assert.rejects(prepareShortformDiagrams({scenes:[{...cut,imageFile:"ambiguous.png"}],dir:"unused",mode:"direct"}),{code:"SHORTFORM_DIAGRAM_INVALID"});
  await assert.rejects(prepareShortformDiagrams({scenes:[cut],dir:"unused",mode:"direct",packageRoot:""}),{code:"SHORTFORM_DIAGRAM_PACKAGE_MISSING"});
 });

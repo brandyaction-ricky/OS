@@ -1,4 +1,5 @@
 "use client";
+import { saveLatest } from "@/lib/save-latest";
 import { shortformDiagramSchema } from "@/lib/shortform-production";
 import { ShortformDiagramFields } from "./shortform-diagram-fields";
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -82,8 +83,11 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const cost = useCostConfirm(), voicePaid = useRef("");
   const [send, setSend] = useState(false);
   const editRev = useRef(0);
-  const saving = useRef(false);
-  const apply = useCallback((next: YpShortView) => { setView(next); setBrief(next.brief); setScenes(next.scenes); setDirty(false); }, []);
+  const saving = useRef<Promise<YpShortView | null> | null>(null);
+  const currentView = useRef<YpShortView | null>(null);
+  const draft = useRef<{brief:YpShortBrief;scenes:YpShortScene[]} | null>(null);
+  const [saveState,setSaveState]=useState("");
+  const apply = useCallback((next: YpShortView) => { currentView.current=next; draft.current={brief:next.brief,scenes:next.scenes}; setView(next); setBrief(next.brief); setScenes(next.scenes); setDirty(false); }, []);
   const load = useCallback(async () => { if (!client) return; try { apply(await client.short(id)); } catch (reason) { fail(reason); } }, [client, id, apply, fail]);
   useEffect(() => { void load(); }, [load]);
   const job = useStaffJob(page, "short", load);
@@ -100,25 +104,50 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     return () => window.clearInterval(timer);
   }, [client, id, statuses, reloadBundle]);
 
-  const save = async (patch?: YpShortPatch) => {
-    if (!client || !view || !brief || saving.current) return null;
-    if ((patch?.scenes ?? scenes).some(scene => scene.diagram && !shortformDiagramSchema.safeParse(scene.diagram).success)) return null;
-    saving.current = true;
-    const rev = editRev.current;
-    try {
-      const next = await client.saveShort(id, view.version, patch ?? { brief, scenes });
-      setView(next);
-      if (editRev.current === rev) { setBrief(next.brief); setScenes(next.scenes); setDirty(false); }
-      return next;
-    } catch (reason) { fail(reason); return null; } finally { saving.current = false; }
+  const save = async (patch?: YpShortPatch):Promise<YpShortView|null> => {
+    if (!client || !currentView.current || !draft.current) return null;
+    // Explicit actions wait for the previous save; ordinary edits are drained by that save.
+    if (saving.current) {
+      const saved=await saving.current;
+      if(!saved)return null;
+      if(patch?.useAiScenes)return save(patch);
+      return currentView.current;
+    }
+    const work=async()=>{
+      let action=patch?.useAiScenes?patch:undefined;
+      try{return await saveLatest(()=>{
+        if(!draft.current||!currentView.current)return null;
+        const payload=action??draft.current;
+        if((payload.scenes??draft.current.scenes).some(scene=>scene.diagram&&!shortformDiagramSchema.safeParse(scene.diagram).success)){
+          setSaveState("도식 글자를 채우면 저장됩니다");return null;
+        }
+        setSaveState("저장 중…");
+        return {input:{version:currentView.current.version,payload},revision:editRev.current};
+      },({version,payload})=>client.saveShort(id,version,payload),(next,rev)=>{
+        currentView.current=next;setView(next);action=undefined;
+        if(editRev.current!==rev)return false;
+        draft.current={brief:next.brief,scenes:next.scenes};setBrief(next.brief);setScenes(next.scenes);setDirty(false);setSaveState("저장됨");return true;
+      });}catch(reason){setSaveState("저장하지 못했어요. 다시 저장해 주세요");fail(reason);return null;}
+    };
+    saving.current=work();
+    try{return await saving.current;}finally{saving.current=null;}
   };
+  useEffect(()=>{
+    if(!dirty)return;
+    const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue="";};
+    window.addEventListener("beforeunload",warn);
+    const timer=window.setTimeout(()=>void save(),600);
+    return()=>{clearTimeout(timer);window.removeEventListener("beforeunload",warn);};
+    // save reads the latest refs; changes reschedule the idle save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[dirty,brief,scenes]);
   if (!view || !brief) return <p className="yp-hint" role="status">숏폼을 불러오는 중이에요…</p>;
   const editBrief = (patch: Partial<YpShortBrief>, now = false) => {
-    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); setDirty(true);
+    editRev.current += 1; const next = { ...brief, ...patch }; setBrief(next); draft.current={brief:next,scenes:draft.current?.scenes??scenes}; setDirty(true);
     if (now) void save({ brief: next, scenes });
   };
   const editScenes = (next: YpShortScene[], now = false) => {
-    editRev.current += 1; setScenes(next); setDirty(true);
+    editRev.current += 1; setScenes(next); draft.current={brief:draft.current?.brief??brief,scenes:next}; setDirty(true);
     if (now) void save({ brief, scenes: next });
   };
   const upload = async (index: number, file: File) => {
@@ -162,6 +191,8 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   const pageFields = <>{field("landingUrl", "연결할 페이지", "https://", ad)}{field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", ad, 3)}</>;
 
   return <div onBlur={() => { if (dirty) void save(); }}>
+    <p className="yp-hint" role="status">{dirty?(saveState||"변경 내용을 저장합니다"):saveState}</p>
+    {dirty?<button type="button" className="yp-btn yp-sm" onClick={()=>void save()}>지금 저장</button>:null}
     <YpSection n={n0 + 1} title="무엇을 만들까요" gq="용도 · 길이 · 보는 사람 · 할 행동" need>
       <div className="yp-row-btns" style={{ flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
         <div className="yp-seg2" role="group" aria-label="용도">{([["organic", "일반 콘텐츠"], ["ad", "광고"]] as const).map(([key, label]) =>
