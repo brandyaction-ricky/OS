@@ -3,7 +3,7 @@
 // then "## 섹션" headings over blank-line-separated paragraphs. 도입 length is left to the separate review: where 도입 ends
 // and the main body starts is a judgement, and each paragraph is already capped at 300 characters here.
 
-export interface ManuscriptCheck { narration: string; sections: string[]; paragraphs: string[]; chars: number; issues: string[] }
+export interface ManuscriptCheck { narration: string; sections: string[]; paragraphs: string[]; chars: number; issues: string[]; notes: string[] }
 
 const BANNED: [string, string[]][] = [
   ["2인칭", ["당신", "여러분"]],
@@ -67,10 +67,13 @@ export const CHARS_PER_MINUTE = 490;
  */
 export function checkScriptBody(paragraphs: string[], targetMinutes: number | null, sourced: Set<number> | null = null, canon = "") {
   const issues: string[] = [];
+  // Length is a note, not a refusal (owner decision 2026-10-26): good content is not cut or padded to fit; the 러닝타임 follows the 원고.
+  const notes: string[] = [];
   const chars = paragraphs.reduce((sum, paragraph) => sum + paragraph.length, 0);
   if (targetMinutes) {
     const target = targetMinutes * CHARS_PER_MINUTE;
-    if (Math.abs(chars - target) > target * 0.15) issues.push(`총 ${chars}자 — 목표 ${targetMinutes}분(${target}자)의 ±15% 밖입니다.`);
+    if (Math.abs(chars - target) > target * 0.15)
+      notes.push(`총 ${chars}자(약 ${Math.round(chars / CHARS_PER_MINUTE)}분) — 목표 ${targetMinutes}분(${target}자)과 15% 넘게 다릅니다. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다.`);
   }
   let subscribe = 0;
   const windows = canon ? canonWindows(canon) : null;
@@ -118,7 +121,7 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
     issues.push(`요약 종결 "~거예요·~겁니다·~거죠"로 끝나는 문단 ${summaries.length}개 — 전체 ${paragraphs.length}개의 1/3 이상입니다. 문단 끝은 다음 장면·질문·가장 센 문장으로 닫습니다. 걸린 문단 ${numbered(summaries)}번`);
   const disclaimerRate = per6000(disclaimers, chars);
   if (disclaimerRate >= 8) issues.push(`해명 종결 "~아니에요"로 맺는 문장 ${disclaimers}개 — 6,000자당 ${disclaimerRate.toFixed(1)}회입니다(8회 미만이어야 합니다). 맞는 것을 단정하고 이유를 붙입니다. 걸린 문단 ${numbered(disclaimed)}번`);
-  return { chars, issues };
+  return { chars, issues, notes };
 }
 
 export function checkManuscript(text: string, options: { title: string; targetMinutes: number; canon?: string }): ManuscriptCheck {
@@ -157,6 +160,6 @@ export function checkManuscript(text: string, options: { title: string; targetMi
   for (const name of sections) if (name.length > 8) issues.push(`섹션 제목 "${name}"이 ${name.length}자입니다(8자 이내).`);
   const body = checkScriptBody(paragraphs, options.targetMinutes, sourced, options.canon);
   const all = [...issues, ...body.issues];
-  return { narration: paragraphs.join("\n\n"), sections, paragraphs, chars: body.chars,
+  return { narration: paragraphs.join("\n\n"), sections, paragraphs, chars: body.chars, notes: body.notes,
     issues: all.length > MAX_ISSUES ? [...all.slice(0, MAX_ISSUES), `외 ${all.length - MAX_ISSUES}건`] : all };
 }

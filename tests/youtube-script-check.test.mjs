@@ -18,12 +18,15 @@ test("a manuscript in the canon format passes and yields narration-only paragrap
 
 test("title, head line, sections and length problems are all listed at once", () => {
   const text = manuscript("다른 제목", [["아주 긴 섹션 제목입니다", 1]]).replace("<!-- 축:", "<!-- 메모:");
-  const issues = checkManuscript(text, { title: "채택 제목", targetMinutes: 10 }).issues.join("\n");
+  const checked = checkManuscript(text, { title: "채택 제목", targetMinutes: 10 });
+  const issues = checked.issues.join("\n");
   assert.match(issues, /채택 제목과 다릅니다/);
   assert.match(issues, /머리 블록/);
   assert.match(issues, /섹션\(##\)이 1개/);
   assert.match(issues, /8자 이내/);
-  assert.match(issues, /±15% 밖/);
+  // Length is a note now (owner decision 2026-10-26), not a reason to refuse.
+  assert.doesNotMatch(issues, /15%/);
+  assert.match(checked.notes.join(), /목표 10분\(4900자\)과 15% 넘게 다릅니다/);
 });
 
 test("body rules: paragraph length, banned words, stage cues and unsourced research", () => {
@@ -97,8 +100,10 @@ test("v1.9 해명 종결: '아니에요·아닙니다' endings outside quotes at
   assert.doesNotMatch(closing(["다음 장면으로 가요.", "그건 아니라고 봐요."]), /해명/);
 });
 
-test("length: 공백 포함 490자 = 1분, ±15%", () => {
+test("length: 공백 포함 490자 = 1분; more than 15% off is a note to fix the 러닝타임, never a refusal", () => {
   const text = (n) => Array.from({ length: n }, (_, i) => paragraph(`L${i}`));
-  assert.doesNotMatch(checkScriptBody(text(4), 1).issues.join(), /±15%/);
-  assert.match(checkScriptBody(text(5), 1).issues.join(), /총 \d+자 — 목표 1분\(490자\)의 ±15% 밖/);
+  assert.deepEqual(checkScriptBody(text(4), 1).notes, []);
+  const long = checkScriptBody(text(5), 1);
+  assert.deepEqual(long.issues, []);
+  assert.match(long.notes.join(), /총 \d+자\(약 1분\) — 목표 1분\(490자\)과 15% 넘게 다릅니다\. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다/);
 });
