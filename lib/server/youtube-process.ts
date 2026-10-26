@@ -19,10 +19,11 @@ const topicFields = {
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
 export const projectPatchSchema = z.object({ ...topicFields, expectedVersion: z.number().int().positive() }).partial().required({ expectedVersion: true }).strict();
-export const gateActionSchema = z.object({ action: z.enum(["request", "cancel"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
-export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert"]), expectedVersion: z.number().int().positive(),
+export const gateActionSchema = z.object({ action: z.enum(["confirm", "request", "cancel"]), expectedVersion: z.number().int().positive(), reply: z.string().max(200).optional() }).strict();
+// note: the 대표 leaves a note on a step the PD confirmed (owner decision 2026-10-26); it changes nothing else.
+export const confirmActionSchema = z.object({ action: z.enum(["ok", "changes", "hold", "revert", "note"]), expectedVersion: z.number().int().positive(),
   fields: z.array(z.string().max(40)).max(20).optional(), memo: z.string().max(1000).optional(), reason: z.string().max(300).optional() }).strict();
-export const confirmTabSchema = z.enum(["wait", "done", "hold", "shorts"]);
+export const confirmTabSchema = z.enum(["self", "wait", "done", "hold", "shorts"]);
 
 /** Whether v1 is on for this person: everyone, a listed id, or a listed "approver" who is the company approver. */
 export async function youtubeV1Allowed(actor: RequestActor) {
@@ -130,8 +131,8 @@ const apply = (project: YpProject, gate: YpGate, action: Parameters<typeof apply
 };
 
 /**
- * A confirm request (with an optional PD reply) and its cancel (8-1). `missing` says why 기획안 · 최종 검수 are not ready;
- * a multi-line topic becomes one waiting project per line.
+ * The PD's own confirm (owner decision 2026-10-26), or the older confirm request (with an optional PD reply) and its cancel (8-1).
+ * `missing` says why 기획안 · 최종 검수 are not ready; a multi-line topic becomes one project per line, confirmed together.
  */
 export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>, missing: (project: YpProject) => Promise<string>) {
   const project = await getYoutubeProject(actor, id);
@@ -144,28 +145,36 @@ export async function actOnGate(actor: RequestActor, id: string, gate: YpGate, i
   }
   const reason = gate === "topic" ? topicMissing(project.title, project.yp.topic) : await missing(project);
   if (reason) throw new ApiError(400, gate === "topic" ? "TOPIC_INCOMPLETE" : "GATE_INCOMPLETE", reason);
+  // confirm (owner decision 2026-10-26): the PD confirms and the step opens; the 대표 is told and may leave a note. request stays for
+  // anything still sent the old way.
+  const action = input.action;
+  const told = async (row: YpProject, yp: YpProject["yp"]) => {
+    if (quietHours(now)) return;
+    if (action === "confirm") await notify(await approverIds(), "yt_confirm_result", row.id, `self:${row.id}:${gate}:${yp.gates[gate].round}`);
+    else await notify(await approverIds(), "yt_confirm_request", row.id, `confirm:${row.id}:${gate}:${yp.gates[gate].round}:0`);
+  };
   if (gate !== "topic") {
-    const yp = apply(project, gate, "request", gateInput);
+    const yp = apply(project, gate, action, gateInput);
     const saved = await saveProject(actor, project, input.expectedVersion, { yp });
-    await recordConfirmation(saved, gate, "request", actor.ownerId, { memo: input.reply });
-    if (!quietHours(now)) await notify(await approverIds(), "yt_confirm_request", saved.id, `confirm:${saved.id}:${gate}:${yp.gates[gate].round}:0`);
+    await recordConfirmation(saved, gate, action, actor.ownerId, { memo: input.reply });
+    await told(saved, yp);
     return { project: saved, created: [] as YpProject[] };
   }
   const [first, ...rest] = topicLines(project.title);
   if (rest.length >= YP_MAX_LINES) throw new ApiError(400, "TOPIC_INCOMPLETE", `주제는 한 번에 ${YP_MAX_LINES}줄까지 보낼 수 있어요`);
-  const yp = { ...apply(project, "topic", "request", gateInput), ...(rest.length ? { contentUpdatedAt: now } : {}) };
+  const yp = { ...apply(project, "topic", action, gateInput), ...(rest.length ? { contentUpdatedAt: now } : {}) };
   const saved = await saveProject(actor, project, input.expectedVersion, { title: first, yp });
   // ponytail: lines after the first are inserted one by one after the first project is saved; a failure leaves the
   // projects made so far waiting (each is complete on its own). One database function can make it atomic if that matters.
   const created: YpProject[] = [];
   for (const line of rest) {
     const meta = newProjectMeta(project.yp.topic, now, project.id);
-    meta.yp = applyGateAction({ yp: meta.yp }, "topic", "request", { actor: actor.ownerId, now });
+    meta.yp = applyGateAction({ yp: meta.yp }, "topic", action, { actor: actor.ownerId, now });
     created.push(await insertProject(actor, line, project.assigneeId, meta));
   }
-  for (const row of [saved, ...created]) await recordConfirmation(row, "topic", "request", actor.ownerId, { memo: input.reply });
+  for (const row of [saved, ...created]) await recordConfirmation(row, "topic", action, actor.ownerId, { memo: input.reply });
   // 3차 결정 1: nothing at night; the 08:00 reminder announces overnight requests.
-  if (!quietHours(now)) await notify(await approverIds(), "yt_confirm_request", saved.id, `confirm:${saved.id}:topic:${yp.gates.topic.round}:0`);
+  await told(saved, yp);
   return { project: saved, created };
 }
 
@@ -195,7 +204,12 @@ export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: 
   if (error) throw readFailed();
   const project = asProject(row);
   if (project.version !== input.expectedVersion) throw conflict();
-  const yp = apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now: new Date().toISOString(), fields: input.fields, memo: input.memo, reason: input.reason });
+  const now = new Date().toISOString();
+  const memo = input.memo?.trim() ?? "";
+  if (input.action === "note" && !memo) throw new ApiError(400, "MEMO_REQUIRED", "노트를 써 주세요.");
+  const yp = input.action === "note"
+    ? { ...project.yp, notes: [...(project.yp.notes ?? []), { gate, at: now, by: actor.ownerId, name: actor.name, text: memo.slice(0, 1000) }].slice(-50) }
+    : apply(project, gate, input.action as YpApproverAction, { actor: actor.ownerId, now, fields: input.fields, memo: input.memo, reason: input.reason });
   const { data: current } = await service.from("os_records").select("metadata").eq("id", id).maybeSingle();
   const { data: saved, error: saveError } = await service.from("os_records").update({ metadata: { ...(current?.metadata ?? {}), workflow: "youtube_v1", yp }, updated_by: actor.ownerId })
     .eq("id", id).eq("version", input.expectedVersion).is("archived_at", null).select(COLUMNS).maybeSingle();
@@ -204,7 +218,11 @@ export async function confirmYoutubeGate(actor: RequestActor, id: string, gate: 
   const next = asProject(saved);
   await recordConfirmation(next, gate, input.action, actor.ownerId, { fields: input.fields, memo: input.memo ?? input.reason });
   const info = next.yp.gates[gate];
-  if (input.action === "revert") await notify(await approverIds(), "yt_confirm_request", id, `confirm:${id}:${gate}:${info.round}:revert:${Date.now()}`);
+  const pds = [next.assigneeId, info.requestedBy, project.yp.gates[gate].decidedBy].filter((value): value is string => Boolean(value) && value !== actor.ownerId);
+  // A note, or a step the PD confirmed and the 대표 sent back, goes to the PD; the PD confirms it again after fixing.
+  if (input.action === "note") await notify(pds, "yt_feedback", id, `note:${id}:${gate}:${now}`);
+  else if (input.action === "revert" && project.yp.gates[gate].self) await notify(pds, "yt_confirm_result", id, `result:${id}:${gate}:${info.round}:revert:${Date.now()}`);
+  else if (input.action === "revert") await notify(await approverIds(), "yt_confirm_request", id, `confirm:${id}:${gate}:${info.round}:revert:${Date.now()}`);
   else await notify([next.assigneeId, info.requestedBy].filter((value): value is string => Boolean(value)), "yt_confirm_result", id, `result:${id}:${gate}:${info.round}:${input.action}`);
   return next;
 }

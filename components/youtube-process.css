@@ -567,6 +567,7 @@
 .linear-shell .ui-v2.yp .yp-cwait-h b{font-size:14px}
 .linear-shell .ui-v2.yp .yp-cwait-a{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
 .linear-shell .ui-v2.yp .yp-cwait-a .yp-sp{flex:1}
+.linear-shell .ui-v2.yp .yp-gnotes{margin:6px 0 0;padding:0;list-style:none;display:grid;gap:4px;font-size:12px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-reply-note{margin-top:6px;padding:6px 10px;border-left:3px solid var(--accent);background:var(--card);font-size:12px;color:var(--text-2)}
 /* 레퍼런스 카드 (3차-13 · 19) */
 .linear-shell .ui-v2.yp .yp-rthumb{position:relative;aspect-ratio:16/9;border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb,var(--media-text) 18%,var(--media-bg)),var(--media-bg));color:var(--media-muted);display:grid;place-items:center;overflow:hidden;cursor:zoom-in;border:0;padding:0;width:100%}

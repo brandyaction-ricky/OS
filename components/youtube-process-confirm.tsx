@@ -15,8 +15,9 @@ import { ShortsLog } from "./youtube-process-shorts";
 import { clipConfirmed, clipParts, clipSeconds, formatParts } from "@/lib/youtube-process/short";
 import type { OsRecord } from "@/lib/record-types";
 
-// 쇼츠 확정 (owner decision 2026-10-25): the PD confirms; the 대표 reads the record here and comments.
-const TABS = [["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"], ["shorts", "쇼츠 확정"]] as const;
+// PD 컨펌 (owner decision 2026-10-26) and 쇼츠 확정 (2026-10-25): the PD confirms; the 대표 reads it here, leaves notes, and sends a step
+// back only when it must. 컨펌 대기 keeps requests sent before the change.
+const TABS = [["self", "PD 컨펌"], ["wait", "컨펌 대기"], ["done", "내가 처리한 것"], ["hold", "보류함"], ["shorts", "쇼츠 확정"]] as const;
 type Tab = (typeof TABS)[number][0];
 const when = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 const days = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : 0;
@@ -61,16 +62,36 @@ export function ConfirmActions({ project, gate, client, onDone }: { project: YpP
   </>;
 }
 
-/** S10 대표 메뉴 › 컨펌: waiting oldest first, what I decided (with 결정 되돌리기), and holds. */
+/** 노트 남기기 · 이 단계로 되돌리기 for a step the PD confirmed: a note tells the PD; a send-back reopens the step with the note as memo. */
+function SelfActions({ project, gate, client, onDone }: { project: YpProject; gate: YpGate; client: YpClient; onDone: (next: YpProject | null) => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const run = async (action: "note" | "revert") => {
+    setBusy(true); setError("");
+    try { const next = await client.confirm(project.id, gate, action, project.version, text.trim() ? { memo: text.trim() } : {}); setText(""); onDone(action === "note" ? next : null); }
+    catch (reason) { setError(errorMessage(reason)); } finally { setBusy(false); }
+  };
+  const notes = (project.yp.notes ?? []).filter(note => note.gate === gate);
+  return <div className="yp-card yp-confirm-form">
+    {notes.length ? <ul className="yp-gnotes">{notes.map(note => <li key={note.at}><b>{when(note.at)}</b> “{note.text}”</li>)}</ul> : null}
+    <label>대표 노트 (PD에게 알림이 가요)<textarea className="yp-in" id="yp-self-note" rows={2} maxLength={1000} value={text} onChange={event => setText(event.target.value)} placeholder="좋은 점이나 다음에 챙길 점을 남겨요" /></label>
+    <div><button type="button" className="yp-btn yp-pri" disabled={busy || !text.trim()} onClick={() => void run("note")}>노트 남기기</button>{" "}
+      <button type="button" className="yp-btn" disabled={busy} onClick={() => { if (window.confirm(`${GATE_NAME[gate]} 단계로 되돌릴까요? 담당 PD가 고치고 다시 컨펌해요.`)) void run("revert"); }}>이 단계로 되돌리기</button></div>
+    {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
+  </div>;
+}
+
+/** S10 대표 메뉴 › 컨펌: what PDs confirmed (newest first), older requests still waiting, what I decided (with 결정 되돌리기), and holds. */
 export function YoutubeConfirmScreen() {
   const router = useRouter();
   const params = useSearchParams();
-  const tab = (TABS.some(([key]) => key === params.get("tab")) ? params.get("tab") : "wait") as Tab;
+  const tab = (TABS.some(([key]) => key === params.get("tab")) ? params.get("tab") : "self") as Tab;
   const selectedKey = params.get("item");
   const { accessToken, demo } = useSession();
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
   const [items, setItems] = useState<{ project: YpProject; gate: YpGate }[] | null>(null);
-  const [counts, setCounts] = useState<Record<Tab, number>>({ wait: 0, done: 0, hold: 0, shorts: 0 });
+  const [counts, setCounts] = useState<Record<Tab, number>>({ self: 0, wait: 0, done: 0, hold: 0, shorts: 0 });
   const [members, setMembers] = useState<YpMember[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -78,9 +99,9 @@ export function YoutubeConfirmScreen() {
     if (!client) return;
     setError("");
     try {
-      const [wait, done, hold, shorts, people] = await Promise.all([client.confirmList("wait"), client.confirmList("done"), client.confirmList("hold"), client.confirmList("shorts"), client.members().catch(() => [])]);
-      setCounts({ wait: wait.length, done: done.length, hold: hold.length, shorts: shorts.length });
-      setItems({ wait, done, hold, shorts }[tab]); setMembers(people);
+      const [self, wait, done, hold, shorts, people] = await Promise.all([client.confirmList("self"), client.confirmList("wait"), client.confirmList("done"), client.confirmList("hold"), client.confirmList("shorts"), client.members().catch(() => [])]);
+      setCounts({ self: self.length, wait: wait.length, done: done.length, hold: hold.length, shorts: shorts.length });
+      setItems({ self, wait, done, hold, shorts }[tab]); setMembers(people);
     } catch (reason) { setError(errorMessage(reason)); }
   }, [client, tab]);
   useEffect(() => { void load(); }, [load]);
@@ -106,16 +127,17 @@ export function YoutubeConfirmScreen() {
         {items === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
           : items?.length ? items.map(({ project, gate }) => { const info = project.yp.gates[gate]; return <button key={`${project.id}-${gate}`} type="button" className={`yp-ci${selected?.project.id === project.id ? " yp-on" : ""}`} onClick={() => go({ item: project.id })}>
             <div className="yp-ci-top"><span className="yp-tag yp-acc">{GATE_NAME[gate].replace(" 컨펌", "")}</span><span className="yp-sp" />
-              {tab === "wait" ? <span className={days(info.requestedAt) >= 2 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"}</span>
+              {tab === "self" ? <span className="yp-tag yp-ok">PD 컨펌{project.yp.notes?.some(note => note.gate === gate) ? " · 노트 있음" : ""}</span>
+                : tab === "wait" ? <span className={days(info.requestedAt) >= 2 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"}</span>
                 : tab === "hold" ? <span className="yp-tag yp-bad">보류</span>
                 : tab === "shorts" ? <span>{when(project.yp.shortsLog?.at(-1)?.at)} · {project.yp.shortsLog?.at(-1)?.kind === "comment" ? "코멘트" : "확정"}</span> : <span className={`yp-tag ${RESULT_TONE[info.state] ?? ""}`}>{RESULT[info.state]}</span>}</div>
             <div className="yp-ci-t">{projectName(project)}</div>
-            <div className="yp-ci-m"><span>{pd(project.assigneeId)}</span>{info.requestedAt ? <span>{when(info.requestedAt)} {gate === "shorts" ? "확정" : "요청"}</span> : null}{"revertedFrom" in info && info.revertedFrom ? <span className="yp-tag yp-warn">되돌린 건</span> : null}{info.reason ? <span>사유: {info.reason}</span> : null}</div>
+            <div className="yp-ci-m"><span>{pd(project.assigneeId)}</span>{info.requestedAt ? <span>{when(info.requestedAt)} {info.self ? "컨펌" : gate === "shorts" ? "확정" : "요청"}</span> : null}{"revertedFrom" in info && info.revertedFrom ? <span className="yp-tag yp-warn">되돌린 건</span> : null}{info.reason ? <span>사유: {info.reason}</span> : null}</div>
           </button>; })
-          : <div className="yp-locked"><Check size={18} className="yp-i" aria-hidden="true" /><div><b>비어 있어요</b><p>{tab === "wait" ? "새 건이 오면 알림이 가요." : "아직 없어요."}</p></div></div>}
+          : <div className="yp-locked"><Check size={18} className="yp-i" aria-hidden="true" /><div><b>비어 있어요</b><p>{tab === "self" ? "PD가 컨펌하면 여기에 쌓이고 알림이 가요." : tab === "wait" ? "남은 요청이 없어요." : "아직 없어요."}</p></div></div>}
       </div>
       <div className="yp-cf-view">{selected ? (() => { const { project, gate } = selected; const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string }; return <div className="yp-cv">
-        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} ${gate === "shorts" ? "확정" : "요청"}` : ""}</span></div>
+        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} ${info.self ? "컨펌" : gate === "shorts" ? "확정" : "요청"}` : ""}</span></div>
         <div className="yp-cv-b">
           <h2>{projectName(project)}</h2>
           {gate !== "topic" && client ? <StepDetail project={project} gate={gate} client={client} /> : null}
@@ -126,9 +148,11 @@ export function YoutubeConfirmScreen() {
           {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
           <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : gate === "shorts" ? 6 : 4, project.id)}>{{ topic: "주제", draft: "기획안", review: "최종 검수", shorts: "쇼츠" }[gate]} 화면에서 보기 →</Link></p>
         </div>
-        {tab === "shorts" && client ? <div style={{ padding: "0 16px 12px" }}><ShortsLog project={project} client={client} compact onSaved={() => void load()} onError={reason => setError(errorMessage(reason))} /></div>
+        {tab === "self" && client ? <div style={{ padding: "0 16px 12px" }}><SelfActions project={project} gate={gate} client={client} onDone={next => {
+            if (next) setItems(list => list?.map(item => item.project.id === next.id && item.gate === gate ? { project: next, gate } : item) ?? list); else { go({ item: null }); void load(); } }} /></div>
+          : tab === "shorts" && client ? <div style={{ padding: "0 16px 12px" }}><ShortsLog project={project} client={client} compact onSaved={() => void load()} onError={reason => setError(errorMessage(reason))} /></div>
           : tab === "wait" && client ? <ConfirmActions project={project} gate={gate} client={client} onDone={() => { go({ item: null }); void load(); }} />
-          : tab === "hold" ? <div className="yp-abar"><span className="yp-abar-msg">보류한 건이에요. 담당 PD가 손보고 다시 요청하면 컨펌 대기로 와요.</span></div>
+          : tab === "hold" ? <div className="yp-abar"><span className="yp-abar-msg">보류한 건이에요. 담당 PD가 손보고 컨펌하면 PD 컨펌으로 와요.</span></div>
             : <div className="yp-abar"><span className="yp-abar-msg">결과: <b>{RESULT[info.state]}</b> · {when(info.decidedAt)}</span>
               {info.state === "ok" ? <button type="button" className="yp-btn" disabled={busy} onClick={() => void revert(selected)}>결정 되돌리기</button> : null}</div>}
       </div>; })() : null}</div>

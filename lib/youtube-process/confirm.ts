@@ -13,7 +13,7 @@ export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
   shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
-export type YpPdAction = "request" | "cancel";
+export type YpPdAction = "request" | "cancel" | "confirm";
 export type YpApproverAction = "ok" | "changes" | "hold" | "revert";
 export interface YpGateInput { actor: string; now: string; fields?: string[]; memo?: string; reason?: string; reply?: string }
 
@@ -43,13 +43,15 @@ export function firstRemindAt(requestIso: string) {
   return quietHours(requestIso) ? new Date(nextEight(Date.parse(requestIso))).toISOString() : nextRemindAt(requestIso);
 }
 
-/** Which topic fields the PD may change now: all while writing, only the ticked ones after 수정 요청, none otherwise. */
+/**
+ * Which fields the PD may change now: every field until the step is confirmed (owner decision 2026-10-26 — the PD confirms; and staff
+ * feedback the same day — a 수정 요청 opens every field, since a new topic moves the target and references with it). The ticked
+ * fields of a 수정 요청 stay as a hint (고칠 칸), not a lock.
+ */
 export function editableFields(project: Pick<YpProject, "yp">, gate: YpGate): string[] | "all" {
   const info = project.yp.gates[gate];
   if (project.yp.stage !== GATE_STAGE[gate]) return [];
-  if (info.state === "none" || info.state === "hold") return "all";
-  if (info.state === "changes") return info.fields ?? [];
-  return [];
+  return info.state === "ok" ? [] : "all";
 }
 /** True when the PD changed the content after the last decision (an unchanged re-request needs a reason, S11-5). */
 export const editedSinceDecision = (project: Pick<YpProject, "yp">, gate: YpGate) => {
@@ -74,6 +76,12 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       return put({ state: "wait", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, remindAt: firstRemindAt(input.now),
         prev: { state: info.state, fields: info.fields, memo: info.memo, reason: info.reason }, ...(reply ? { pdReply: reply.slice(0, 200) } : {}),
         ...(info.revertedFrom ? { revertedFrom: info.revertedFrom } : {}) });
+    }
+    case "confirm": {
+      // The PD's own confirm: from writing, a 수정 요청 or 보류, or a request still waiting from before (or a step the 대표 sent back).
+      if (gate === "shorts" || yp.stage !== GATE_STAGE[gate] || info.state === "ok") throw new GateError("INVALID_TRANSITION", "지금은 이 단계를 컨펌할 수 없어요.");
+      return put({ state: "ok", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, decidedAt: input.now, decidedBy: input.actor, self: true },
+        info.revertedFrom ?? (gate === "topic" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate]));
     }
     case "cancel": {
       waitingNeeded();
@@ -106,17 +114,22 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       if (info.state !== "ok") throw new GateError("INVALID_TRANSITION", "처리한 OK만 되돌릴 수 있어요.");
       // D20: 최종 검수 only until the upload starts (T10 adds the upload record).
       if (gate === "review" && !["upload", "review"].includes(yp.stage)) throw new GateError("INVALID_TRANSITION", "업로드를 시작한 뒤에는 최종 검수를 되돌릴 수 없어요.");
+      // A step the PD confirmed goes back to the PD as a 수정 요청 (with the 대표's memo) to fix and confirm again — no reminders to the 대표.
+      if (info.self) return put({ state: "changes", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor,
+        fields: [], memo: input.memo?.trim().slice(0, 1000) || "대표가 이 단계로 되돌렸어요.", revertedFrom: yp.stage }, GATE_STAGE[gate]);
       return put({ state: "wait", round: info.round, requestedAt: input.now, requestedBy: input.actor, remindAt: firstRemindAt(input.now), revertedFrom: yp.stage }, GATE_STAGE[gate]);
     }
   }
 }
 
 /** A gate needs attention from the approver while it waits; 처리한 것 lists what they decided; 보류함 lists holds (S10). */
-export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "wait" | "done" | "hold" | "shorts", me: string) {
+export function confirmTab<T extends Pick<YpProject, "yp">>(projects: T[], tab: "self" | "wait" | "done" | "hold" | "shorts", me: string) {
   // 쇼츠 확정: every project whose PD confirmed shorts scripts or where someone commented, newest first.
   if (tab === "shorts") return projects.filter(project => project.yp.shortsLog?.length)
     .map(project => ({ project, gate: "shorts" as YpGate, info: project.yp.gates.shorts, at: project.yp.shortsLog!.at(-1)!.at })).sort((a, b) => b.at.localeCompare(a.at));
   const rows = projects.flatMap(project => (Object.keys(project.yp.gates) as YpGate[]).filter(gate => gate !== "shorts").map(gate => ({ project, gate, info: project.yp.gates[gate] })));
+  // PD 컨펌: what the PDs confirmed themselves, newest first — the 대표 reads it and leaves notes.
+  if (tab === "self") return rows.filter(row => row.info.state === "ok" && row.info.self).sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));
   if (tab === "wait") return rows.filter(row => row.info.state === "wait").sort((a, b) => (a.info.requestedAt ?? "").localeCompare(b.info.requestedAt ?? ""));
   if (tab === "hold") return rows.filter(row => row.info.state === "hold").sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));
   return rows.filter(row => row.info.decidedBy === me && ["ok", "changes"].includes(row.info.state)).sort((a, b) => (b.info.decidedAt ?? "").localeCompare(a.info.decidedAt ?? ""));

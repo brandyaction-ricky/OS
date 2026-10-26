@@ -7,11 +7,11 @@ export type YpTone = "todo" | "wait" | "fix" | "hold" | "done";
 export interface YpNext { tone: YpTone; text: string; button: string; href: string; step: number; total: number; stepName: string }
 
 const TODO: Record<Exclude<YpProject["yp"]["stage"], "done">, [string, string]> = {
-  topic: ["주제를 마저 쓰고 컨펌을 요청해요", "주제 쓰기"],
+  topic: ["주제를 마저 쓰고 컨펌해요", "주제 쓰기"],
   draft: ["제목 · 썸네일 · 영상 흐름을 정해요", "기획안 쓰기"],
   outline: ["러닝타임을 정하고 원고를 써요", "원고 쓰기"],
   make: ["영상을 만들고 최종 썸네일을 올려요", "영상 만들기"],
-  review: ["최종본을 보고 컨펌을 요청해요", "검수하기"],
+  review: ["최종본을 보고 컨펌해요", "검수하기"],
   upload: ["설명란을 채우고 유튜브에 올려요", "유튜브에 올리기"],
   shorts: ["쇼츠 · 칼럼을 만들거나 여기서 끝내요", "쇼츠 · 칼럼"],
 };
@@ -28,8 +28,8 @@ export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   if (stage === "done") return { ...base, tone: "done", text: "끝난 영상이에요", button: "보기" };
   const gate = GATE_OF[stage];
   const info = gate ? gates[gate] : null;
-  if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${GATE_NAME[gate]} 대기 중`, button: "보기" };
-  if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청 · 고칠 칸: ${(info.fields ?? []).map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}`, button: "고치기" };
+  if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${GATE_NAME[gate]} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };
+  if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청${info.fields?.length ? ` · 짚은 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}` : ` · ${info.memo ?? ""}`}`, button: "고치기" };
   if (gate && info?.state === "hold") return { ...base, tone: "hold", text: `보류됨${info.reason ? ` · ${info.reason}` : ""}`, button: "손보기" };
   const [text, button] = (project.yp.topic.type === "short" ? SHORT_TODO[stage] : undefined) ?? TODO[stage];
   return { ...base, tone: "todo", text, button };
