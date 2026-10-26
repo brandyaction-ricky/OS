@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, readFileSync } from "node:fs";
-import { createServer } from "node:http";
-import os from "node:os";
-import path from "node:path";
 import { checkMyinStoryboard, myinCreditsBlock, myinPhotoFetchUrl, seqRatio } from "../lib/myin-storyboard.ts";
-import { fetchTo } from "../tools/youtube-media-worker.mjs";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -46,33 +41,11 @@ test("myinCreditsBlock drops file names and angle brackets, and is empty without
     '\n\n사진·음악 출처\n- Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x\n- "Intro" by alex. https://pixabay.com/music/y/');
 });
 
-// 2026-10-26: Unsplash page downloads got 429 on the render PC, so the image hosts' own file links are taken as they are.
-test("myinPhotoFetchUrl takes the image hosts' file links as they are and turns photo pages into download links", () => {
+// 2026-10-26: Unsplash page downloads got 429 on the render PC; the owner chose file links only, so a page link is refused up front.
+test("myinPhotoFetchUrl takes the image hosts' file links as they are and refuses Unsplash photo pages", () => {
   for (const link of ["https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=1920&fm=jpg", "https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg"])
     assert.equal(myinPhotoFetchUrl(link), link);
-  assert.equal(myinPhotoFetchUrl("https://unsplash.com/photos/green-hills-1Z2niiBPg5A?utm=x"), "https://unsplash.com/photos/1Z2niiBPg5A/download?force=true");
   assert.equal(myinPhotoFetchUrl("https://commons.wikimedia.org/wiki/File:Example.jpg"), "https://commons.wikimedia.org/wiki/Special:FilePath/Example.jpg");
-  for (const link of ["http://images.unsplash.com/photo-1", "https://www.pexels.com/photo/1/", "https://unsplash.com/photos/", "not a url"]) assert.equal(myinPhotoFetchUrl(link), null);
-});
-
-test("fetchTo waits out a 429, sends its own User-Agent, and refuses a web page where a photo was expected", async () => {
-  const seen = [];
-  const replies = [[429, "text/plain", { "retry-after": "0" }], [200, "image/jpeg"], [200, "text/html"], [404, "text/html"]];
-  const server = createServer((req, res) => {
-    seen.push(req.headers["user-agent"]);
-    const [status, type, extra] = replies.shift();
-    res.writeHead(status, { "content-type": type, ...extra }).end(type === "image/jpeg" ? "jpeg-bytes" : "<html>");
-  });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const url = `http://127.0.0.1:${server.address().port}/photo.jpg`;
-  const file = path.join(mkdtempSync(path.join(os.tmpdir(), "fetchto-")), "photo.jpg");
-  try {
-    await fetchTo(url, file, "image/");
-    assert.equal(readFileSync(file, "utf8"), "jpeg-bytes");
-    assert.equal(seen.length, 2);
-    assert.match(seen[0], /^BrandyActionOS-media-worker\//);
-    await assert.rejects(fetchTo(url, file, "image/"), { code: "WORKER_DOWNLOAD_NOT_IMAGE" });
-    await assert.rejects(fetchTo(url, file), { code: "WORKER_DOWNLOAD_FAILED" });
-    assert.equal(seen.length, 4, "a 404 is not retried");
-  } finally { server.close(); }
+  for (const link of ["https://unsplash.com/photos/green-hills-1Z2niiBPg5A", "http://images.unsplash.com/photo-1", "https://www.pexels.com/photo/1/", "not a url"])
+    assert.equal(myinPhotoFetchUrl(link), null);
 });

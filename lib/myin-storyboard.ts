@@ -140,15 +140,13 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };
 }
 
-/** Where the render PC fetches a storyboard photo, or null when it cannot fetch it by itself. The image hosts' own links come first:
- * an Unsplash page goes through unsplash.com/…/download, which answered the render PC with 429 (2026-10-26). */
+/** Where the render PC fetches a storyboard photo, or null when it cannot fetch it by itself. An Unsplash page link is refused:
+ * its unsplash.com/…/download address answered the render PC with 429 (2026-10-26, owner chose file links only). */
 export function myinPhotoFetchUrl(link: string) {
   let url: URL;
   try { url = new URL(link); } catch { return null; }
   if (url.protocol !== "https:") return null;
   if (url.hostname === "images.unsplash.com" || url.hostname === "upload.wikimedia.org") return link;
-  const pageId = url.pathname.split("/photos/")[1]?.split("/")[0]?.split("-").pop();
-  if (url.hostname === "unsplash.com" && pageId) return `https://unsplash.com/photos/${pageId}/download?force=true`;
   if (url.hostname === "commons.wikimedia.org" && url.pathname.startsWith("/wiki/File:")) return `https://commons.wikimedia.org/wiki/Special:FilePath/${url.pathname.slice("/wiki/File:".length)}`;
   return null;
 }

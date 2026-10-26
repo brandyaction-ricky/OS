@@ -369,7 +369,7 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
   const unreachable = used.filter((file) => !myinPhotoFetchUrl(byFile.get(file)!.url));
-  if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(Unsplash·위키미디어만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
+  if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(위키미디어, Unsplash 사진 파일 주소만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   const at = new Date().toISOString();
   const assets = Object.fromEntries(used.map((file) => [file, { decision: "approved" as const, by, at }]));
   const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) =>
