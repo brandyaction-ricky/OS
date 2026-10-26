@@ -4,6 +4,7 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { connectionConfiguration, probeConnection, readConnectionChecks } from "@/lib/server/connection-checks";
+import { CLAUDE_FAST_MODEL, CLAUDE_SMART_MODEL, OPENAI_ANSWER_MODEL } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -14,7 +15,7 @@ async function admin(request: Request) {
   return actor;
 }
 export async function GET(request: Request) {
-  try { await admin(request); return NextResponse.json({ checks: await readConnectionChecks(), checkedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } }); }
+  try { await admin(request); return NextResponse.json({ checks: await readConnectionChecks(), models: { openaiAnswer: OPENAI_ANSWER_MODEL, claudeFast: CLAUDE_FAST_MODEL, claudeSmart: CLAUDE_SMART_MODEL }, checkedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } }); }
   catch (error) { return apiErrorResponse(error); }
 }
 export async function POST(request: Request) {

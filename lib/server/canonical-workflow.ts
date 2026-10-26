@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CLAUDE_FAST_MODEL } from "@/lib/config";
 import { ApiError } from "@/lib/http";
 import { canonicalExtractionPrompt, validateCanonicalRules, type CanonicalRun } from "@/lib/canonical-workflow";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -73,7 +74,7 @@ export async function extractCanonicalRules(actor:RequestActor,document:Knowledg
   const {run,fresh}=await beginCanonicalRun(actor,document,"rules",mode,`${document.current_version}:${canonicalHash(document.content_md)}:${mode}${retryRunId?`:retry:${retryRunId}`:""}`);
   if(!fresh||mode==="queue")return run;
   try {
-    const generated=await claude(canonicalExtractionPrompt(document.content_md),process.env.CLAUDE_HAIKU_MODEL||"claude-haiku-4-5-20251001",outputSchema,8000);
+    const generated=await claude(canonicalExtractionPrompt(document.content_md),CLAUDE_FAST_MODEL,outputSchema,8000);
     return await finishCanonicalRules(actor,run,generated.text,generated.model,generated.usage as Record<string,unknown>);
   } catch(error) { await failCanonicalRun(run.id,error); throw error; }
 }

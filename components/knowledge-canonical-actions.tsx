@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { canonicalRuleKinds, canonicalRunLabels, type CanonicalRun, type CanonicalSource } from "@/lib/canonical-workflow";
 import type { KnowledgeDocument } from "@/lib/types";
+import { CostTag, tokenEstimate, useCostConfirm, useCostModels } from "./cost-notice";
 import { useSession } from "./session-provider";
 
 type Workspace = {source:CanonicalSource|null;runs:CanonicalRun[];canConfigure:boolean;apiConfigured:boolean;autoSyncConfigured:boolean;allowedHosts:string[]};
@@ -16,6 +17,8 @@ export function KnowledgeCanonicalActions({document,onSkillSaved}:{document:Know
   const [url,setUrl]=useState(""),[enabled,setEnabled]=useState(false),[dirty,setDirty]=useState(false);
   const [file,setFile]=useState<{name:string;content:string}|null>(null),[mode,setMode]=useState("queue");
   const active=useRef(true),sequence=useRef(0);
+  // 바로 받기 is the company's Claude Haiku (lib/server/canonical-workflow.ts, at most 8,000 tokens out): the model and the estimate first.
+  const cost=useCostConfirm(),{haiku}=useCostModels();
   useEffect(()=>{active.current=true;return()=>{active.current=false;sequence.current+=1;};},[]);
   const load=useCallback(async()=>{
     if(demo||!accessToken)return;const generation=++sequence.current;setLoading(true);
@@ -40,6 +43,9 @@ export function KnowledgeCanonicalActions({document,onSkillSaved}:{document:Know
     }catch(reason){if(active.current)setError(reason instanceof Error?reason.message:"작업을 저장하지 못했습니다. 입력은 유지됩니다.");}
     finally{if(active.current)setBusy(false);}
   };
+  const extract=async()=>{const length=[...document.content_md].length;
+    if(mode==="api"&&!await cost.confirm({model:haiku,amount:tokenEstimate(haiku,length+1_000,8_000),upTo:true,detail:`정본 ${length.toLocaleString("ko-KR")}자 기준`,ok:"확인하고 추출"}))return;
+    await act({action:"extract",mode});};
   const disabled=demo||busy||loading||!data;
   return <section className="canonical-actions" aria-label="정본 동기화와 규칙 추출">
     <header><div><h3>원문 연결 · 규칙 추출</h3><p>외부 변경은 승인 전까지 제안으로, 추출 결과는 실행 전까지 초안으로 보관합니다.</p></div><button className="secondary-button" disabled={demo||busy||loading} onClick={()=>void load()}>작업 이력 새로고침</button></header>
@@ -62,9 +68,9 @@ export function KnowledgeCanonicalActions({document,onSkillSaved}:{document:Know
         <button className="secondary-button" disabled={disabled||!file?.content.trim()} onClick={()=>void act({action:"sync",content:file?.content})}>파일 내용으로 변경 제안</button>
       </details>
       <section aria-label="규칙 추출 요청"><h4>규칙 문장 뽑기</h4><p>현재 승인된 v{document.current_version}에서만 추출합니다. 인용·줄 번호를 검증하고 자동으로 회사 규칙을 확정하지 않습니다.</p>
-        <label>처리 방식<select value={mode} disabled={disabled} onChange={event=>setMode(event.target.value)}><option value="queue">구독 대기열</option><option value="api" disabled={!data?.apiConfigured}>바로 받기 · API 비용 발생</option></select></label>
-        <p>{mode==="queue"?"요청자 소유의 구독 워커를 별도로 연결해야 처리됩니다.":"현재 정본 본문을 설정된 Claude API로 전송합니다. API 비용이 발생합니다."}</p>
-        <button className="primary-button" disabled={disabled||(mode==="api"&&!data?.apiConfigured)} onClick={()=>void act({action:"extract",mode})}>{busy?"처리 중…":"규칙 추출 요청"}</button>
+        <label>처리 방식<select value={mode} disabled={disabled} onChange={event=>setMode(event.target.value)}><option value="queue">구독 대기열</option><option value="api" disabled={!data?.apiConfigured}>바로 받기</option></select></label>
+        <p>{mode==="queue"?"요청자 소유의 구독 워커를 별도로 연결해야 처리됩니다.":"현재 정본 본문을 Claude에 보내 바로 추출해요."}</p>
+        <span className="generation-actions"><button className="primary-button" disabled={disabled||(mode==="api"&&!data?.apiConfigured)} onClick={()=>void extract()}>{busy?"처리 중…":"규칙 추출 요청"}</button><CostTag kind={mode==="api"?"paid":"ai"}/></span>{cost.element}
       </section>
     </div>
     <h4>내 작업 이력</h4><p>최근 30건 · 결과는 현재 읽을 수 있는 정본에서만 열립니다.</p>
@@ -74,7 +80,7 @@ export function KnowledgeCanonicalActions({document,onSkillSaved}:{document:Know
       {run.status==="queued"?<p>구독 워커 처리 대기 중입니다. 요청만 저장한 상태이며 추출 완료가 아닙니다.</p>:null}
       {run.kind==="rules"&&(run.status==="queued"||run.status==="running")?<button className="secondary-button" disabled={disabled} onClick={()=>void act({action:"cancel",runId:run.id})}>{run.status==="queued"?"대기 작업 취소":"응답 없는 작업 중단 (10분 이후)"}</button>:null}
       {run.status==="failed"?<p role="status">처리에 실패했습니다. 원문·연결을 확인하세요. ({run.error_code})</p>:null}
-      {run.status==="failed"&&run.kind==="rules"?<button className="secondary-button" disabled={disabled} onClick={()=>void act({action:"extract",mode:"queue",retryRunId:run.id})}>구독 대기열로 재요청</button>:null}
+      {run.status==="failed"&&run.kind==="rules"?<span className="generation-actions"><button className="secondary-button" disabled={disabled} onClick={()=>void act({action:"extract",mode:"queue",retryRunId:run.id})}>구독 대기열로 재요청</button><CostTag kind="ai"/></span>:null}
       {run.result.proposalId?<Link className="secondary-button" href={`/knowledge/review?proposal=${encodeURIComponent(run.result.proposalId)}`}>변경 제안 검토</Link>:null}
       {run.result.unchanged?<p>원문 동일 · 정본을 변경하지 않았습니다.</p>:null}
       {run.kind==="rules"&&run.status==="done"&&!run.result.rules?.length?<p>원문에서 확인되는 실행 규칙이 없습니다.</p>:null}

@@ -190,7 +190,8 @@ test("embedding backlog has admin control, cron authentication and bounded batch
   assert.match(indexing, /limit = Math\.min\(Math\.max/);
   assert.match(indexing, /retryFailedEmbeddingJobs/);
   assert.match(indexing, /중단된 실행을 자동 복구했습니다/);
-  assert.match(indexing, /새 문서 버전으로 대체된 작업입니다/);
+  // Superseded never-run jobs are removed rather than failed, so they never count as connection failures.
+  assert.match(indexing, /delete\(\)\.eq\("document_id", documentId\)\.eq\("status", "pending"\)\.neq\("content_hash", contentHash\)/);
   assert.match(indexing, /rpc\("os_finish_embedding_job"/);
   assert.doesNotMatch(indexing,/from\("os_document_chunks"\)\.delete/);
   const baseline=await readFile(new URL("../supabase/migrations/20260917082749_core_baseline.sql",import.meta.url),"utf8");

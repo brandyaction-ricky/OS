@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, Copy, Sparkles, X } from "lucide-react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { MyAiConnect } from "./my-ai-connect";
-import { CostTag } from "./youtube-process-cost";
+import { CostTag } from "./cost-notice";
 import { MY_AI_PROMPT, type StaffJobStatus } from "./youtube-production-steps";
 import type { YpPage } from "./youtube-process-frame";
 import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
@@ -127,7 +127,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
       {waiting ? <div className="yp-note"><div>이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
-        <dt>비용</dt><dd><CostTag cost="ai" /> 회사 비용은 없어요</dd></dl>
+        <dt>비용</dt><dd><CostTag kind="ai" />{searches ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{searches ? " · 레퍼런스는 유튜브에서 찾아요" : ""}</dd></dl>
       {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>
