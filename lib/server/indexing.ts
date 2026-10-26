@@ -48,7 +48,7 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
         .eq("id", documentId)
         .single();
     if (error)
-        throw new ApiError(503, "INDEX_STORAGE_ERROR", "색인할 문서를 읽지 못했습니다.");
+        throw new ApiError(503, "INDEX_STORAGE_ERROR", "색인할 문서를 읽지 못했습니다.", `read:${error.code ?? ""}`);
     if (!document)
         return "queued";
     if (document.status === "archived") {
@@ -70,7 +70,7 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
         .select("id")
         .maybeSingle();
     if (claimError)
-        throw new ApiError(503, "INDEX_STORAGE_ERROR", safeIndexingFailure(claimError));
+        throw new ApiError(503, "INDEX_STORAGE_ERROR", safeIndexingFailure(claimError), `claim:${claimError.code ?? ""}`);
     if (!claimed)
         return "queued";
     try {
@@ -94,7 +94,7 @@ export async function indexDocument(documentId: string): Promise<"ready" | "queu
     }
     catch (error) {
         await failJob(documentId, contentHash, error);
-        throw new ApiError(503, "INDEXING_FAILED", safeIndexingFailure(error));
+        throw new ApiError(503, "INDEXING_FAILED", safeIndexingFailure(error), `index:${(error as { code?: string }).code ?? ""}`);
     }
 }
 export async function processEmbeddingQueue(options: {
@@ -131,7 +131,8 @@ export async function processEmbeddingQueue(options: {
                 completed += 1;
         }
         catch (reason) {
-            console.error("embedding queue job failed", { category: classifyIndexingFailure(reason) });
+            // Step and provider/database code only (never messages or content), so failures can be told apart.
+            console.error("embedding queue job failed", { category: classifyIndexingFailure(reason), where: reason instanceof ApiError ? reason.details : undefined });
             failed += 1;
         }
     }
