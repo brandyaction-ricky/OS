@@ -130,6 +130,23 @@ export function myinVisualShare(scenes: { type: string; photo?: unknown }[]) {
   const visual = body.filter((sc) => sc.type.startsWith("lib_") || MYIN_METAPHOR_TYPES.includes(sc.type) || Boolean(sc.photo));
   return { body: body.length, visual: visual.length };
 }
+/**
+ * Logan's puzzle (v13 기본 도식): pieces of ≤ 4 letters and a word under them of ≤ 4 letters that must be set — left empty,
+ * the engine shows his sample video's 「조건」 (로건 피드백 A-10).
+ */
+function puzzleIssues(scenes: { type: string; pieces?: unknown; word?: unknown }[]) {
+  const issues: string[] = [];
+  const letters = (value: unknown) => String(value ?? "").replace(/\s/g, "").length;
+  scenes.forEach((sc, index) => {
+    if (sc.type !== "puzzle") return;
+    const where = `[장면 ${index + 1}] 퍼즐`;
+    if (!letters(sc.word)) issues.push(`${where}: 조각 아래 단어(word, 4자 이하)를 꼭 씁니다. 비우면 「조건」이 그대로 떠요.`);
+    else if (letters(sc.word) > 4) issues.push(`${where}: word 「${sc.word}」는 4자 이하로 줄여 주세요.`);
+    for (const piece of Array.isArray(sc.pieces) ? sc.pieces as { text?: unknown }[] : [])
+      if (letters(piece?.text) > 4) issues.push(`${where}: 조각 「${piece.text}」는 4자 이하로 줄여 주세요.`);
+  });
+  return issues;
+}
 function stageReuseIssues(types: string[]) {
   const issues: string[] = [];
   const counts = new Map<string, number>();
@@ -159,7 +176,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const share = myinVisualShare(story.scenes as { type: string; photo?: unknown }[]);
   if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
     issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
-  issues.push(...stageReuseIssues(types));
+  issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };

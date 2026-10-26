@@ -56,3 +56,14 @@ test("half the body scenes must be diagrams or images, and a stage is used at mo
   // The approved 퇴사 전 순서 storyboard (2026-10-25): 32 body scenes, 20 stage diagrams.
   assert.deepEqual(myinVisualShare([{ type: "opening" }, ...Array.from({ length: 20 }, () => ({ type: "lib_stage_x" })), ...Array.from({ length: 12 }, () => ({ type: "statement" })), { type: "outro" }]), { body: 32, visual: 20 });
 });
+
+// 로건 피드백 A-10: the v13 puzzle's word must be set (empty shows 「조건」), and pieces and word stay within 4 letters.
+test("a puzzle needs its word and keeps pieces and word to 4 letters", () => {
+  const puzzle = (extra) => story([{ type: "opening", at: "오늘은 성격" }, { type: "puzzle", at: "같은 성격인데", pieces: [{ text: "일" }, { text: "역할" }], ...extra },
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+  const of = (extra) => checkMyinStoryboard(puzzle(extra), words).issues.filter((issue) => issue.includes("퍼즐"));
+  assert.match(of({})[0], /word, 4자 이하.*「조건」/);
+  assert.deepEqual(of({ word: "맞는 일" }), []);
+  assert.match(of({ word: "맞는 일자리" })[0], /4자 이하로 줄여/);
+  assert.match(of({ word: "조합", pieces: [{ text: "일하는 방식" }] })[0], /조각 「일하는 방식」/);
+});
