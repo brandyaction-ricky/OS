@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(() => {
+  test.skip(process.env.YOUTUBE_V1_ENABLED !== "true", "Portrait editing requires the YouTube process v1 flag.");
+});
+
 test("local demo edits portrait diagram labels and returns to image mode", async ({page}) => {
   const errors:string[]=[];page.on("pageerror",error=>errors.push(error.message));
   await page.goto("/content/make?project=demo-p9");
