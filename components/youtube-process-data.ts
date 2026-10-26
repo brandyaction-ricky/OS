@@ -2,7 +2,7 @@
 
 import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMedia } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
-import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef } from "@/lib/youtube-process/project";
+import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
 import { columnMeta } from "@/lib/seo-column";
@@ -58,6 +58,11 @@ export interface YpClient {
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
   adopt(id: string): Promise<YpProject>;
+  /** 내 영상 휴지통 (staff request 2026-10-26): trash · restore by the maker, PD or an admin; 영구 삭제 by an admin after 30 days. */
+  trashList(): Promise<(YpTrashed & { canManage: boolean })[]>;
+  trash(id: string, expectedVersion: number, reason: string): Promise<void>;
+  restore(id: string): Promise<void>;
+  purge(id: string, reason: string): Promise<void>;
   short(id: string): Promise<YpShortView>;
   saveShort(id: string, expectedVersion: number, patch: YpShortPatch): Promise<YpShortView>;
   shortImage(id: string, file: File): Promise<{ assetId: string; url: string }>;
@@ -111,6 +116,10 @@ function apiClient(token: string): YpClient {
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
+    trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
+    trash: async (id, expectedVersion, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "trash", expectedVersion, reason }) }); },
+    restore: async id => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "restore" }) }); },
+    purge: async (id, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "purge", reason, confirm: true }) }); },
     short: async id => (await apiRequest<{ short: YpShortView }>(`${base}/${id}/short`, { token })).short,
     saveShort: async (id, expectedVersion, patch) => (await apiRequest<{ short: YpShortView }>(`${base}/${id}/short`, { token, method: "PATCH", body: json({ expectedVersion, ...patch }) })).short,
     shortImage: async (id, file) => {
@@ -150,6 +159,7 @@ function demoProject(id: string, title: string, kind: YpKind, stage: YpProject["
   return { id, version: 1, title, assigneeId, ownerId: DEMO_ME, updatedAt: daysAgo(days), yp: { ...meta.yp, stage } };
 }
 let demoStore: YpProject[] | null = null;
+let demoTrash: YpTrashed[] = [];
 const demoProjects = () => demoStore ??= [
   demoProject("demo-p1", "[예시] 하루 일이 두 개뿐인데 저녁마다 지치는 이유", "anim", "topic", 0),
   demoProject("demo-p2", "[예시] 1인 창업 첫 달에 꼭 정해야 할 세 가지", "live", "draft", 1, "demo-logan"),
@@ -382,6 +392,26 @@ function demoClient(): YpClient {
       demoStages.set(id, { ...stages, make: { ...make, version: make.version + 1, data: { ...make.data, editDue, uploadPlan, log } } });
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
+    trashList: async () => structuredClone(demoTrash.map(item => ({ ...item, canManage: true }))),
+    trash: async (id, expectedVersion, reason) => {
+      const project = find(id);
+      checkVersion(project.version, expectedVersion);
+      demoStore = demoProjects().filter(row => row.id !== id);
+      demoTrash.unshift({ project, trash: { at: new Date().toISOString(), by: DEMO_ME, name: "리키", reason, stage: project.yp.stage } });
+    },
+    restore: async id => {
+      const item = demoTrash.find(row => row.project.id === id);
+      if (!item) throw demoError(404, "NOT_IN_TRASH", "휴지통에 없는 영상이에요.");
+      demoTrash = demoTrash.filter(row => row !== item);
+      demoStore = [item.project, ...demoProjects()];
+    },
+    purge: async id => {
+      const item = demoTrash.find(row => row.project.id === id);
+      if (!item) throw demoError(404, "NOT_IN_TRASH", "휴지통에 없는 영상이에요.");
+      const left = trashDaysLeft(item.trash.at);
+      if (left > 0) throw demoError(409, "PURGE_TOO_EARLY", `휴지통에 넣은 지 30일이 지나야 영구 삭제할 수 있어요. ${left}일 남았어요.`);
+      demoTrash = demoTrash.filter(row => row !== item);
+    },
     short: async id => structuredClone(demoShort(find(id))),
     saveShort: async (id, expectedVersion, patch) => {
       const current = demoShort(find(id));
