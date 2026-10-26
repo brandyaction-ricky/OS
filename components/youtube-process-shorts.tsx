@@ -7,7 +7,7 @@ import type { ChannelConnection } from "@/lib/channel-types";
 import { parseTimedTranscript } from "@/lib/content-input";
 import type { OsRecord } from "@/lib/record-types";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { CostTag } from "./youtube-process-cost";
+import { CostTag } from "./cost-notice";
 import type { YpClient, YpRenderView } from "./youtube-process-data";
 import { clipConfirmed, clipParts, clipScriptProblems, clipSeconds, formatParts, parseParts } from "@/lib/youtube-process/short";
 import type { YpProject } from "@/lib/youtube-process/project";
@@ -278,7 +278,7 @@ function ClipPublish({ clip, render, longformUp, confirmed, sending, demo, onPub
   if (render?.status !== "done") return null;
   const missing = !confirmed ? "쇼츠 확정 뒤에 올려요" : !clip.metadata?.desc ? "설명을 채워 주세요" : !longformUp ? "롱폼을 먼저 유튜브에 올려요" : demo ? "데모에서는 올리지 않아요" : "";
   return <span className="yp-row-btns">
-    <button type="button" className="yp-btn yp-sm" disabled={Boolean(missing || sending)} title={missing || undefined} onClick={() => onPublish(render.id)}><Youtube size={14} /> {sending || "유튜브에 올리기"}</button><CostTag cost="youtube" />
+    <button type="button" className="yp-btn yp-sm" disabled={Boolean(missing || sending)} title={missing || undefined} onClick={() => onPublish(render.id)}><Youtube size={14} /> {sending || "유튜브에 올리기"}</button><CostTag kind="youtube" />
   </span>;
 }
 

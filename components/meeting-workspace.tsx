@@ -46,6 +46,7 @@ import { PRIMARY_MEETING_BUSINESSES, resolveMeetingBusiness } from "@/lib/meetin
 import { buildMeetingRawDocument, buildMeetingSummaryDocument } from "@/lib/meeting-documents";
 import type { OsRecord } from "@/lib/record-types";
 import { useSession } from "./session-provider";
+import { audioMinutes, CostTag, fileAsk, recordAsk, summaryAsk, useCostConfirm, useCostModels } from "./cost-notice";
 
 function meta(record: OsRecord | null, key: string) {
   const value = record?.metadata?.[key];
@@ -118,6 +119,8 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const recorderRef = useRef<MediaRecorder | null>(null);
+  // Transcription and the summary are paid OpenAI calls: each asks first with the model and the estimate (owner request 2026-10-26).
+  const cost = useCostConfirm(), costModels = useCostModels();
   const chunksRef = useRef<Blob[]>([]);
 
   const load = useCallback(async () => {
@@ -198,6 +201,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   useRecordDeepLink("meeting", "meeting", openEdit, setError);
   const startRecording = async () => {
     setError("");
+    if (!await cost.confirm({ ...recordAsk(costModels.transcribe), detail: "녹음 1시간 기준 · 끝나면 결정·업무 추출까지 해요", ok: "동의 확인 · 녹음 시작" })) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -258,7 +262,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     }
   };
 
-  const makeSummary = () => extractFromText(transcript);
+  const makeSummary = async () => { if (await cost.confirm({ ...summaryAsk(costModels.answer, transcript), ok: "확인하고 추출" })) await extractFromText(transcript); };
 
   // 녹음 종료 → 전사 → (20자 이상이면) 결정·미해결·업무 추출까지 이어서 끝낸다.
   // 실패해도 앞 단계 결과(녹음/전사)는 남아있어 수동 재시도 버튼으로 이어갈 수 있다.
@@ -281,7 +285,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     }
   };
 
-  const makeTranscript = () => recordedBlob && transcribeBlob(recordedBlob);
+  const makeTranscript = async () => { if (recordedBlob && await cost.confirm({ ...fileAsk(costModels.transcribe, await audioMinutes(recordedBlob)), ok: "확인하고 전사" })) await transcribeBlob(recordedBlob); };
 
   const loadPrep = async () => {
     setBusy(true);
@@ -459,6 +463,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
 
   return (
     <>
+      {cost.element}
       <header className="page-header">
         <div className="page-title-group">
           <PageTitle />
@@ -827,6 +832,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                     <Mic size={14} /> {recordedBlob ? "다시 녹음" : "녹음 시작"}
                   </button>
                 )}
+                {!recording ? <CostTag kind="paid" /> : null}
               </div>
             </div>
             <label>
@@ -846,6 +852,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
             >
               <Bot size={15} /> {busy ? "분석 중…" : "결정·미해결·업무 추출"}
             </button>
+            <CostTag kind="paid" />
             {transcript.trim().length < 20 ? <small className="field-hint">회의 원문을 20자 이상 입력하면 결정·미해결·업무 추출을 사용할 수 있습니다.</small> : null}
             </details>
             <label>

@@ -11,7 +11,7 @@ import {
   type DiscoverChannel, type DiscoverVideo, type NicheCluster, type NicheDecision, type NicheVideo,
 } from "@/lib/youtube-process/discover";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
-import { CostTag } from "./youtube-process-cost";
+import { CostTag } from "./cost-notice";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
@@ -147,14 +147,14 @@ export function YoutubeDiscoverScreen() {
     {searchable ? <>
       <form className="yp-disc-search" onSubmit={event => { event.preventDefault(); if (query.trim().length >= 2) { setSource("found"); setPick({ q: query.trim() }); } }}>
         <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
-        <button type="submit" className="yp-btn yp-pri" disabled={query.trim().length < 2}>찾기</button></form>
+        <button type="submit" className="yp-btn yp-pri" disabled={query.trim().length < 2}>찾기</button><CostTag kind="youtube" /></form>
       <div className="yp-chips" role="group" aria-label="분류">
         <button type="button" className={`yp-chip${"category" in pick && pick.category === "all" ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: "all" }); }}>전체</button>
         {DISCOVER_CATEGORIES.map(([letter, name]) => <button key={letter} type="button" className={`yp-chip${"category" in pick && pick.category === letter ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: letter }); }}>{letter} {name}</button>)}
       </div>
       <div className="yp-disc-bar">
         {found && !busy ? <span className="yp-hint" style={{ margin: 0 }}>{found.cached ? `${hoursAgo ? `${hoursAgo}시간` : "조금"} 전에 찾아 둔 결과예요.` : "방금 유튜브에서 찾았어요."}
-          {!demo ? <> <button type="button" className="yp-lnk" onClick={() => void search(true)}><RefreshCw size={12} aria-hidden="true" /> 다시 찾기</button> <CostTag cost="youtube" /></> : null}</span> : null}
+          {!demo ? <> <button type="button" className="yp-lnk" onClick={() => void search(true)}><RefreshCw size={12} aria-hidden="true" /> 다시 찾기</button> <CostTag kind="youtube" /></> : null}</span> : null}
         <span style={{ flex: 1 }} />
         <select className="yp-in yp-w-auto" aria-label="기간" value={days} onChange={event => setDays(event.target.value)}><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option><option value="all">전체 기간</option></select>
       </div>
@@ -312,7 +312,7 @@ function ChannelManager({ channels, onChanged, demo, token, team }: { channels: 
         <button type="button" className="yp-ib" disabled={demo || busy} aria-label={`${channel.title} 빼기`} onClick={() => void remove(channel)}><X size={14} /></button></li>)}</ul>
         : <p className="yp-hint" style={{ marginTop: 0 }}>아직 매일 보는 채널이 없어요. 위에서 [매일 보기에 넣기]를 누르거나 주소로 넣어요.</p>}
       <div className="yp-savebar"><input className="yp-in" style={{ flex: 1, minWidth: 200 }} value={input} onChange={event => { setInput(event.target.value); setFound(null); }} placeholder="채널 주소 또는 @핸들로 넣기" aria-label="채널 주소" />
-        <button type="button" className="yp-btn" disabled={demo || busy || input.trim().length < 2} onClick={() => void verify()}>채널 확인</button></div>
+        <button type="button" className="yp-btn" disabled={demo || busy || input.trim().length < 2} onClick={() => void verify()}>채널 확인</button><CostTag kind="youtube" /></div>
       {found ? <div className="yp-savebar" style={{ marginTop: 8 }}><span style={{ flex: 1, minWidth: 0 }}><b>{found.title}</b> <span className="yp-muted">{found.handle} · 구독자 {compactCount(found.subscribers)}</span></span>
         <select className="yp-in yp-w-auto" aria-label="분류" value={category} onChange={event => setCategory(event.target.value)}>{DISCOVER_CATEGORIES.map(([letter]) => <option key={letter} value={categoryName(letter)}>{categoryName(letter)}</option>)}</select>
         <button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => void add()}><Plus size={14} /> 넣기</button></div> : null}

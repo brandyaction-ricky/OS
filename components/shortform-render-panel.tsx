@@ -2,6 +2,7 @@
 import { useEffect,useRef,useState } from "react";
 import { apiRequest,getShortformLongform,listAllRecordsOfType } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
+import { CostTag,useCostConfirm,useCostModels,voiceEstimate } from "./cost-notice";
 import { useSession } from "./session-provider";
 
 type Props={item:OsRecord;metadata:Record<string,unknown>;cutsText:string;assets:OsRecord[];
@@ -12,11 +13,13 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
   activeItem.current=item.id;
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const mode=(metadata.shortformBrief as {mode?:string}|undefined)?.mode;
-  const [sources,setSources]=useState<OsRecord[]>([]),[sourceId,setSourceId]=useState(""),[consent,setConsent]=useState(false);
+  const [sources,setSources]=useState<OsRecord[]>([]),[sourceId,setSourceId]=useState("");
   const [busy,setBusy]=useState(false),[error,setError]=useState(""),[status,setStatus]=useState(""),[video,setVideo]=useState("");
   let cuts:{text?:string;voice?:string;assetId?:string}[]=[];
   try{const value=JSON.parse(cutsText);if(Array.isArray(value))cuts=value;}catch{}
-  useEffect(()=>{setConsent(false);},[cutsText,metadata.shortformBrief,item.id]);
+  // Narration is Fish (paid): asked once per item and narration text in the shared popup (owner request 2026-10-26).
+  const cost=useCostConfirm(),{voice}=useCostModels(),voicePaid=useRef("");
+  const voiceText=mode==="direct"?cuts.map(cut=>cut.voice?.trim()??"").join("\n").trim():"";
   useEffect(()=>{setStatus("");setError("");setSourceId("");},[item.id]);
   useEffect(()=>{
     let active=true;
@@ -58,12 +61,18 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
   };
   const request=async()=>{
     if(!accessToken)return;
+    if(voiceText&&voicePaid.current!==item.id+"\n"+voiceText){
+      const estimate=voiceEstimate(voiceText,voice);
+      if(!await cost.confirm({model:voice,amount:estimate.krw,
+        detail:`${estimate.chars.toLocaleString("ko-KR")}자 · 이미 만든 문장은 다시 들지 않아요`,ok:"확인하고 만들기"}))return;
+      voicePaid.current=item.id+"\n"+voiceText;
+    }
     setBusy(true);setError("");
     try{
       if(!await save())return;
       const current=await apiRequest<{record:OsRecord}>("/api/v1/content/automation/items/"+item.id,{token:accessToken});
       await apiRequest("/api/v1/content/shorts/render",{method:"POST",token:accessToken,
-        body:JSON.stringify({itemId:item.id,version:current.record.version,confirmVoiceCost:consent})});
+        body:JSON.stringify({itemId:item.id,version:current.record.version,confirmVoiceCost:Boolean(voiceText)})});
       await inspect();
     }catch(issue){setError(issue instanceof Error?issue.message:"제작 요청 실패");}
     finally{setBusy(false);}
@@ -81,14 +90,13 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
         onCuts(JSON.stringify(next,null,2));
       }}><option value="">확보한 이미지 선택</option>{assets.map(asset=><option key={asset.id} value={asset.id}>{asset.title}</option>)}</select></label>)}
       <p>720×1280 세로 영상으로 만듭니다. 사진 전체를 보존하고 여백에는 흐린 배경을 채웁니다. 가로 소재의 자막은 화면 바로 아래에 놓습니다. 내레이션이 장면보다 길면 대본을 고치도록 멈춥니다.</p>
-      {cuts.some(cut=>cut.voice?.trim())?<label><input type="checkbox" checked={consent} onChange={event=>setConsent(event.target.checked)}/>선택한 대본의 Fish 내레이션 생성 비용이 발생할 수 있음을 확인했습니다.</label>:null}
     </>:<p>제작 방식과 조건을 먼저 선택해 주세요.</p>}
-    <button type="button" disabled={busy||!mode||mode==="direct"&&cuts.some(cut=>cut.voice?.trim())&&!consent}
-      onClick={()=>void request()}>{busy?"요청 준비 중…":"확인한 구성으로 MP4 만들기"}</button>
+    <div className="ca-v07-actions"><button type="button" disabled={busy||!mode} onClick={()=>void request()}>{busy?"요청 준비 중…":"확인한 구성으로 MP4 만들기"}</button>{voiceText?<CostTag kind="paid"/>:null}</div>
     <button type="button" disabled={busy} onClick={()=>void inspect()}>제작 상태 확인</button>
     {status?<p role="status">{status}</p>:null}
     <button type="button" disabled={busy} onClick={()=>void refresh()}>카드·완성본 새로 불러오기</button>
     {video?<><video controls preload="metadata" src={video} style={{width:"100%",maxHeight:480}}/><a href={video} target="_blank" rel="noreferrer">완성 MP4 열기</a></>:null}
     {error?<p role="alert">{error}</p>:null}
+    {cost.element}
   </div>;
 }

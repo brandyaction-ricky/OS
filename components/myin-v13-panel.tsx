@@ -5,7 +5,7 @@ import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { useSession } from "./session-provider";
 import { StaffDesign, Step, type StaffJobStatus, type StepState } from "./youtube-production-steps";
 import "./youtube-production-steps.css";
-import { CostTag, useCostConfirm, voiceEstimate } from "./youtube-process-cost";
+import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -35,12 +35,12 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  */
 export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string }) {
-  const cost = useCostConfirm();
+  const cost = useCostConfirm(), { myinVoice } = useCostModels();
   // Fish drama-3 bills by the bytes it reads; ask before a new script is voiced, and before the storyboard's 구독 요청 lines are.
-  const askVoice = async (what: string, text: string, again: string) => {
+  const askVoice = async (text: string, again: string) => {
     if (!text.trim()) return true;
-    const estimate = voiceEstimate(text, "drama-3");
-    return cost.confirm({ what, amount: `약 ${estimate.krw.toLocaleString("ko-KR")}원`, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${again}`, ok: "확인하고 만들기" });
+    const estimate = voiceEstimate(text, myinVoice);
+    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${again}`, ok: "확인하고 만들기" });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
@@ -114,8 +114,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       <p>승인된 원고를 대표 목소리(drama-3)로 만들고, 렌더 PC가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다.</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 시안 확인도 다시 거쳐요.</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice("대표 목소리 음성 (Fish)", voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요")) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? "바뀐 원고로 v13 음성 다시 만들기" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
-        <small><CostTag cost="company" /> 같은 원고로 다시 누르면 만든 음성을 이어 써요.</small>
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요")) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? "바뀐 원고로 v13 음성 다시 만들기" : run ? "v13 음성 다시 시작" : "v13 음성 만들기"}</button>
+        <small><CostTag kind="paid" /> 같은 원고로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words ? "approved" : "scheduled"}>{run.words ? "받아쓰기·자막 완료" : phase}</span>
@@ -159,8 +159,8 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           {run.stage === "storyboard_review" ? <p>확인 완료를 누르면 기획표에 쓰인 사진이 허락되고 3단계가 바로 시작됩니다. 음악은 음악 창고 곡이라 따로 받을 것이 없습니다.</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로" /></label>
           <div className="yt-actions">
-            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (await askVoice("구독 요청 문장 음성 (Fish)", board.cta.map(c => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요")) await act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note })); })()}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료"}</button> : null}
-            {run.stage === "storyboard_review" && board.cta.length ? <CostTag cost="company" /> : null}
+            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (await askVoice(board.cta.map(c => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요")) await act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note })); })()}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료"}</button> : null}
+            {run.stage === "storyboard_review" && board.cta.length ? <CostTag kind="paid" /> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
           </div>
           {run.review?.decision === "confirmed" ? <small>{run.review.name} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}

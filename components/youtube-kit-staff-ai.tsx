@@ -37,7 +37,7 @@ export function YoutubeKitStaffAi({ sourceId, hasKit, onAvailable, onDone }: { s
     finally { setBusy(false); }
   };
   return <section className="panel yt-steps" aria-label="내 AI로 발행키트 만들기">
-    <p>내 AI(Claude 또는 Codex)가 발행키트 절차 정본과 승인된 원고, 완성 영상의 자막을 읽고 제목·설명·태그·챕터·고정 댓글·체크리스트를 제출합니다. 회사 AI 비용은 들지 않습니다. 제출되면 아래 칸에 나타나고, 문안과 체크리스트를 검수합니다.</p>
+    <p>내 AI(Claude 또는 Codex)가 발행키트 절차 정본과 승인된 원고, 완성 영상의 자막을 읽고 제목·설명·태그·챕터·고정 댓글·체크리스트를 제출합니다. 제출되면 아래 칸에 나타나고, 문안과 체크리스트를 검수합니다.</p>
     {/* A new kit replaces the current one (kept in history), so sending again sits behind one more click. */}
     {hasKit && !open ? <details className="yt-details"><summary>발행키트 다시 만들기</summary><StaffDesign status={status} busy={busy} onSend={() => void send()} /></details>
       : <StaffDesign status={status} busy={busy} onSend={() => void send()} />}
