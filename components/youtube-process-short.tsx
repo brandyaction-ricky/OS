@@ -346,7 +346,7 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
       setDirty(false); return true;
     } catch (reason) { page.fail(reason); return false; }
   };
-  const edit = (patch: Partial<typeof form>) => { setForm(current => ({ ...current, ...patch })); setDirty(true); setSaveState("저장 대기…"); };
+  const edit = (patch: Partial<typeof form>) => { setForm(current => ({ ...current, ...patch })); setDirty(true); };
   const go = async () => {
     if (!page.client || !last) return;
     page.setError("");
