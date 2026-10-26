@@ -12,7 +12,7 @@ class ApiError extends Error {constructor(status,code,message){super(message);th
 function load(path,stubs={}){
   const compiled={exports:{}};
   const code=ts.transpileModule(read(path),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  runInNewContext(code,{module:compiled,exports:compiled.exports,URL,Buffer,setTimeout,clearTimeout,process:{env:{}},require:name=>name in stubs?stubs[name]:name==="@/lib/http"?{ApiError}:require(name)});
+  runInNewContext(code,{module:compiled,exports:compiled.exports,URL,Buffer,setTimeout,clearTimeout,process:{env:{}},require:name=>name in stubs?stubs[name]:name==="@/lib/http"?{ApiError}:name==="@/lib/config"?{CLAUDE_FAST_MODEL:"claude-haiku-5-5",CLAUDE_SMART_MODEL:"claude-sonnet-5-5",OPENAI_ANSWER_MODEL:"gpt-6-luna"}:require(name)});
   return compiled.exports;
 }
 const source="# 절차\n근거를 먼저 확인한다.\n승인 전 발행하지 않는다.\n";

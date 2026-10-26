@@ -1,4 +1,4 @@
-import { OPENAI_ANSWER_MODEL } from "@/lib/config";
+import { CLAUDE_SMART_MODEL, OPENAI_ANSWER_MODEL } from "@/lib/config";
 import { ApiError } from "@/lib/http";
 import { generateContentText, hasClaudeKey } from "@/lib/server/content-model";
 
@@ -78,7 +78,7 @@ export async function summarizeMeetingText(transcript: string, meetingDate?: str
   const date = meetingDate && /^\d{4}-\d{2}-\d{2}$/.test(meetingDate) ? meetingDate : new Date().toISOString().slice(0, 10);
   if (hasClaudeKey()) {
     try {
-      const text = await generateContentText({ prompt: claudeMeetingPrompt(transcript, date, context), model: process.env.CLAUDE_SONNET_MODEL || "claude-sonnet-4-5-20250929", jsonSchema: SUMMARY_SCHEMA, maxTokens: 8000, timeoutMs: 170_000 });
+      const text = await generateContentText({ prompt: claudeMeetingPrompt(transcript, date, context), model: CLAUDE_SMART_MODEL, jsonSchema: SUMMARY_SCHEMA, maxTokens: 8000, timeoutMs: 170_000 });
       return { ...normalize(JSON.parse(text), fallback), mode: "ai" };
     } catch (error) {
       // The web asks for strict: a rule-based copy of the first sentences is worse than a clear retry.

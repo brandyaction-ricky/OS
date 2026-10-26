@@ -26,6 +26,19 @@ test("token, minute and model estimates use the official prices", async () => {
   assert.equal(modelName("s2.1-pro"), "Fish Audio s2.1-pro");
   assert.equal(modelName("gpt-4o-mini-transcribe"), "OpenAI gpt-4o-mini-transcribe");
   assert.equal(tokenEstimate("claude-sonnet-4-5", GENERATION_INPUT, GENERATION.derivatives.output), Math.round((85_000 * 3 + 14_000 * 15) / 1e6 * 1400));
+  // Model tiers (PR #253): Haiku 5.5 $0.10 / $0.50, over 100,000 prompt tokens $0.50 / $2.50; Sonnet 5.5 $2 / $10.
+  assert.equal(tokenEstimate("claude-haiku-5-5", 100_000, 10_000), Math.round((100_000 * 0.1 + 10_000 * 0.5) / 1e6 * 1400));
+  assert.equal(tokenEstimate("claude-haiku-5-5", 200_000, 10_000), Math.round((200_000 * 0.5 + 10_000 * 2.5) / 1e6 * 1400));
+  assert.equal(tokenEstimate("claude-sonnet-5-5", 1_000_000, 1_000_000), 12 * 1400);
+  assert.equal(modelName("claude-sonnet-5-5"), "Claude Sonnet 5.5");
+});
+
+test("the popup's default models are the server's model tiers", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { DEFAULT_COST_MODELS } = await import("../lib/cost.ts");
+  const config = readFileSync(new URL("../lib/config.ts", import.meta.url), "utf8");
+  assert.match(config, new RegExp(`CLAUDE_FAST_MODEL = process\\.env\\.CLAUDE_HAIKU_MODEL \\|\\| "${DEFAULT_COST_MODELS.haiku}"`));
+  assert.match(config, new RegExp(`CLAUDE_SMART_MODEL = process\\.env\\.CLAUDE_SONNET_MODEL \\|\\| "${DEFAULT_COST_MODELS.sonnet}"`));
 });
 
 test("the server's generation budgets come from the same table as the popup", async () => {

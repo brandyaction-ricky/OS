@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { CLAUDE_FAST_MODEL, CLAUDE_SMART_MODEL } from "@/lib/config";
 import { DEFAULT_COST_MODELS, type CostModels } from "@/lib/cost";
 import { MYIN_VOICE_MODEL } from "@/lib/server/myin-run";
 
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
     const models: CostModels = {
       voice: env.FISH_TTS_MODEL?.trim() || DEFAULT_COST_MODELS.voice,
       myinVoice: MYIN_VOICE_MODEL,
-      haiku: env.CLAUDE_HAIKU_MODEL || DEFAULT_COST_MODELS.haiku,
-      sonnet: env.CLAUDE_SONNET_MODEL || DEFAULT_COST_MODELS.sonnet,
+      haiku: CLAUDE_FAST_MODEL,
+      sonnet: CLAUDE_SMART_MODEL,
       transcribe: env.OPENAI_TRANSCRIPTION_MODEL || DEFAULT_COST_MODELS.transcribe,
     };
     return NextResponse.json({ models });

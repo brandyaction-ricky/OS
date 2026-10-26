@@ -15,8 +15,14 @@ export function voiceEstimate(text: string, model = "s2.1-pro", now = Date.now()
   return { chars: [...text.replace(/\s/g, "")].length, usd, krw: won(usd) };
 }
 
-/** USD per 1M tokens, input and output (platform.claude.com and developers.openai.com pricing, checked 2026-10-26). */
-const TOKEN_USD: [prefix: string, name: string, input: number, output: number][] = [
+/**
+ * USD per 1M tokens, input and output (platform.claude.com pricing, checked 2026-10-26); Claude Haiku 5.5 bills a prompt over
+ * 100,000 tokens at the higher pair. The 4.5 rows stay for a server whose CLAUDE_*_MODEL still names one.
+ */
+const TOKEN_USD: [prefix: string, name: string, input: number, output: number, long?: [input: number, output: number]][] = [
+  ["claude-haiku-5-5", "Claude Haiku 5.5", 0.1, 0.5, [0.5, 2.5]],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5", 2, 10],
+  ["claude-opus-5-5", "Claude Opus 5.5", 4, 20],
   ["claude-sonnet-4-5", "Claude Sonnet 4.5", 3, 15],
   ["claude-haiku-4-5", "Claude Haiku 4.5", 1, 5],
 ];
@@ -32,7 +38,9 @@ export const modelName = (model: string) => /^(s1|s2|drama)/.test(model) ? `Fish
 /** 원 for a request of at most `input` and `output` tokens, or null when the model is not in the table. */
 export function tokenEstimate(model: string, input: number, output: number) {
   const row = tokenRow(model);
-  return row ? won((input * row[2] + output * row[3]) / 1_000_000) : null;
+  if (!row) return null;
+  const [inUsd, outUsd] = row[4] && input > 100_000 ? row[4] : [row[2], row[3]];
+  return won((input * inUsd + output * outUsd) / 1_000_000);
 }
 /** 원 for `minutes` of audio, or null when the model is not in the table. */
 export const minuteEstimate = (model: string, minutes: number) => MINUTE_USD[model] ? won(MINUTE_USD[model] * minutes) : null;
@@ -49,9 +57,9 @@ export const GENERATION = {
 export type GenerationAction = keyof typeof GENERATION;
 export const GENERATION_INPUT = 85_000;
 
-/** The models each paid button uses on the server (env names as the server reads them; defaults as in the server code). */
+/** The models each paid button uses on the server; the defaults are lib/config.ts's (CLAUDE_FAST_MODEL · CLAUDE_SMART_MODEL). */
 export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string }
 export const DEFAULT_COST_MODELS: CostModels = {
-  voice: "s2.1-pro", myinVoice: "drama-3", haiku: "claude-haiku-4-5-20251001", sonnet: "claude-sonnet-4-5-20250929",
+  voice: "s2.1-pro", myinVoice: "drama-3", haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5",
   transcribe: "gpt-4o-mini-transcribe",
 };
