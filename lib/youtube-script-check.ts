@@ -3,6 +3,20 @@
 // then "## 섹션" headings over blank-line-separated paragraphs. 도입 length is left to the separate review: where 도입 ends
 // and the main body starts is a judgement, and each paragraph is already capped at 300 characters here.
 
+/**
+ * Paragraph numbers the 출처 line covers: one number, a range (9~15, 9-15) or a group (8, 9) before each "→"
+ * (로건 피드백 A-4: only one number per arrow was read, and ranges and groups failed with no hint).
+ */
+export function sourcedParagraphs(line: string) {
+  const numbers = new Set<number>();
+  for (const match of line.matchAll(/((?:\d+\s*(?:[~\-–]\s*\d+)?\s*[,，·]\s*)*\d+\s*(?:[~\-–]\s*\d+)?)\s*→/g))
+    for (const part of match[1].split(/[,，·]/)) {
+      const [from, to = from] = part.split(/[~\-–]/).map(text => Number(text.trim()));
+      for (let n = from; n <= Math.min(to, from + 200); n += 1) numbers.add(n);
+    }
+  return numbers;
+}
+
 export interface ManuscriptCheck { narration: string; sections: string[]; paragraphs: string[]; chars: number; issues: string[] }
 
 const BANNED: [string, string[]][] = [
@@ -78,7 +92,7 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
     const cue = paragraph.match(/\([^)]*\)/);
     if (cue) issues.push(`${n}번 문단 괄호 지시 "${cue[0]}"`);
     subscribe += paragraph.split("구독").length - 1;
-    if (sourced && NEEDS_SOURCE.test(paragraph) && !sourced.has(n)) issues.push(`${n}번 문단에 수치·연구·후기가 있는데 출처 줄에 ${n}번이 없습니다.`);
+    if (sourced && NEEDS_SOURCE.test(paragraph) && !sourced.has(n)) issues.push(`${n}번 문단에 수치·연구·후기가 있는데 출처 줄에 ${n}번이 없습니다. (예: <!-- 출처: ${n} → 칙센트미하이·르페브르(1989) | 9~15 → 같은 연구 | 8, 9 → 통계청 -->)`);
   });
   if (subscribe >= 3) issues.push(`구독 요청이 ${subscribe}회입니다(2회까지).`);
   const body = paragraphs.join("\n");
@@ -102,7 +116,7 @@ export function checkManuscript(text: string, options: { title: string; targetMi
   const sourceLine = (lines[2] ?? "").match(/^<!--\s*출처:(.*)-->\s*$/);
   if (sourceLine) {
     bodyStart = 3;
-    for (const match of sourceLine[1].matchAll(/(\d+)\s*→/g)) sourced.add(Number(match[1]));
+    for (const n of sourcedParagraphs(sourceLine[1])) sourced.add(n);
   }
   const sections: string[] = [];
   const paragraphs: string[] = [];

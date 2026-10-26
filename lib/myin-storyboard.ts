@@ -121,6 +121,27 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
 
 /** Shape and cue problems as a list the staff AI can fix (empty = passes), plus notes for Logan that do not block.
  *  catalogTypes: the lib_ diagrams the render PC reported (도식 창고); they count as known types. */
+// 로건 운영 시험 (2026-10-23) 제작 기본값: 본문 장면의 절반 이상이 도식 · 이미지(창고 lib_ 도식, v13 비유 도식, 사진이 붙은 장면),
+// 같은 무대(lib_stage_)는 영상당 2번까지 · 연달아 쓰지 않기. The first storyboard at ~15% read as too wordy; the approved 퇴사 전 순서 is 62%.
+const FRAME_TYPES = new Set(["opening", "outro", "summary", "endscreen", "site_ad"]);
+export const MYIN_MIN_VISUAL_SHARE = 0.5;
+export function myinVisualShare(scenes: { type: string; photo?: unknown }[]) {
+  const body = scenes.filter((sc) => !FRAME_TYPES.has(sc.type));
+  const visual = body.filter((sc) => sc.type.startsWith("lib_") || MYIN_METAPHOR_TYPES.includes(sc.type) || Boolean(sc.photo));
+  return { body: body.length, visual: visual.length };
+}
+function stageReuseIssues(types: string[]) {
+  const issues: string[] = [];
+  const counts = new Map<string, number>();
+  types.forEach((type, index) => {
+    if (!type.startsWith("lib_stage_")) return;
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+    if (types[index - 1] === type) issues.push(`"${type}" 무대가 ${index}번째와 ${index + 1}번째 장면에 연달아 나와요. 사이에 다른 장면을 넣어 주세요.`);
+  });
+  for (const [type, count] of counts) if (count > 2) issues.push(`"${type}" 무대를 ${count}번 썼어요. 같은 무대는 영상당 2번까지예요.`);
+  return issues;
+}
+
 export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = []) {
   const parsed = myinStoryboardSchema.safeParse(value);
   if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], story: null };
@@ -135,6 +156,10 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const unknown = [...new Set(types.filter((type) => !known.has(type)))];
   // A lib_ type outside the render PC's list would fail the render, so the staff AI must swap it; other new types stay notes for Logan.
   issues.push(...unknown.filter((type) => type.startsWith("lib_")).map((type) => `"${type}"는 렌더 PC가 그릴 수 없는 도식입니다. 도식 창고 목록에 있는 것으로 바꿔 주세요.`));
+  const share = myinVisualShare(story.scenes as { type: string; photo?: unknown }[]);
+  if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
+    issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
+  issues.push(...stageReuseIssues(types));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };

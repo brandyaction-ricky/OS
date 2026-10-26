@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, myinCreditsBlock, seqRatio } from "../lib/myin-storyboard.ts";
+import { checkMyinStoryboard, myinCreditsBlock, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -13,7 +13,7 @@ test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
 const words = "오늘은 성격 이야기를 해볼게요 같은 성격인데 자리만 바꿨더니 팀 전체 약점이 사라졌어요 마지막으로 정리해 볼게요 구독 부탁드려요"
   .split(" ").map((word, i) => [i, i + 0.9, word]);
 const story = (scenes, cta = [{ after: "자리만 바꿨더니", line: "구독 눌러 주세요" }]) => ({ end: 30, scenes, cta });
-const frame = [{ type: "opening", at: "오늘은 성격" }, { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]] },
+const frame = [{ type: "opening", at: "오늘은 성격" }, { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]], photo: { file: "situ_a.jpg" } },
   { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }];
 
 test("a storyboard whose phrases are all in the transcription passes", () => {
@@ -39,4 +39,20 @@ test("myinCreditsBlock drops file names and angle brackets, and is empty without
   assert.equal(myinCreditsBlock([]), "");
   assert.equal(myinCreditsBlock(["situ_a.jpg — Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x", 'music_b.mp3 — "Intro" by <alex>. https://pixabay.com/music/y/']),
     '\n\n사진·음악 출처\n- Unsplash · Kim · Unsplash License · https://unsplash.com/photos/x\n- "Intro" by alex. https://pixabay.com/music/y/');
+});
+
+// 로건 운영 시험 (2026-10-23) 기본값: 본문 장면 절반 이상이 도식 · 이미지, 같은 무대는 2번까지 · 연달아 금지.
+test("half the body scenes must be diagrams or images, and a stage is used at most twice and never back to back", () => {
+  const body = (types) => story([{ type: "opening", at: "오늘은 성격" }, ...types.map((type) => ({ type, at: "같은 성격인데" })),
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+  const wordy = checkMyinStoryboard(body(["statement", "hero", "steps", "lib_stage_road"]), words);
+  assert.ok(wordy.issues.some((issue) => /본문 4개 중 1개\(25%\)/.test(issue)));
+  // (Cue placement and the catalog are checked elsewhere; only the share and reuse rules matter here.)
+  const rule = (issue) => /도식 · 이미지|무대/.test(issue);
+  assert.deepEqual(checkMyinStoryboard(body(["statement", "lib_stage_road", "iceberg", "hero"]), words, ["lib_stage_road"]).issues.filter(rule), []);
+  const reuse = checkMyinStoryboard(body(["lib_stage_road", "lib_stage_road", "hero", "lib_stage_road", "lib_stage_fork"]), words, ["lib_stage_road", "lib_stage_fork"]).issues;
+  assert.ok(reuse.some((issue) => /연달아/.test(issue)));
+  assert.ok(reuse.some((issue) => /3번 썼어요/.test(issue)));
+  // The approved 퇴사 전 순서 storyboard (2026-10-25): 32 body scenes, 20 stage diagrams.
+  assert.deepEqual(myinVisualShare([{ type: "opening" }, ...Array.from({ length: 20 }, () => ({ type: "lib_stage_x" })), ...Array.from({ length: 12 }, () => ({ type: "statement" })), { type: "outro" }]), { body: 32, visual: 20 });
 });

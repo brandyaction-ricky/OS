@@ -12,7 +12,7 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
-import { checkMyinStoryboardResult, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
+import { checkMyinStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
@@ -342,6 +342,13 @@ async function currentScriptInput(job: OsRecord) {
   return state;
 }
 
+/** title → doc_id for the storyboard card's documents; a missing or doubled title just goes without an id. */
+async function myinCardDocIds() {
+  const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", MYIN_CARD_DOCS.map(([title]) => title)).neq("status", "archived");
+  const rows = data ?? [];
+  return Object.fromEntries(rows.filter(row => rows.filter(other => other.title === row.title).length === 1).map(row => [row.title as string, row.id as string]));
+}
+
 export async function claimStaffJob(agent: RequestActor, jobId: string) {
   const job = await ownJob(agent, jobId);
   const m = meta(job);
@@ -357,7 +364,7 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     const lease = await take();
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
-        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog() }) };
+        note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds() }) };
   }
   if (m.task === "niche") {
     const lease = await take();
