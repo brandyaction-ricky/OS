@@ -8,7 +8,7 @@ import { z } from "zod";
 // reported for Logan instead of being rejected outright.
 export const MYIN_SCENE_TYPES = ["opening", "hero", "statement", "strike", "steps", "versus", "list", "layers", "darkstat", "bigcircle",
   "need", "profiles", "bars", "quote", "outro", "iceberg", "apple", "puzzle", "cycle", "ripple", "button", "scale", "people", "compass",
-  "venn", "site_ad", "summary", "endscreen"] as const;
+  "venn", "site_ad", "summary", "endscreen", "situation"] as const;  // situation: 로건 QA 기준 E8 (2026-10-27), drawn by s_situation
 export const MYIN_METAPHOR_TYPES = ["iceberg", "apple", "puzzle", "cycle", "ripple", "button", "scale", "people", "compass", "venn"];
 
 const scene = z.object({ type: z.string().min(1), at: z.string().min(1).optional(), at_time: z.number().nonnegative().optional() })
@@ -147,6 +147,95 @@ function puzzleIssues(scenes: { type: string; pieces?: unknown; word?: unknown }
   });
   return issues;
 }
+// ── 로건 「마이인 기획표 QA 기준 v1」 3부 (2026-10-27): what any AI's storyboard must pass, from the 연봉 video's QA. ──
+type Piece = { text: string; cue?: string };
+/** Text pieces of a field: [text, cue, style?] arrays and { text, cue } objects, at any depth (title → lines → pieces). */
+function textPieces(value: unknown): Piece[] {
+  if (Array.isArray(value)) {
+    if (typeof value[0] === "string" && typeof value[1] === "string") return value[0].trim() ? [{ text: value[0], cue: value[1] }] : [];
+    return value.flatMap(textPieces);
+  }
+  if (value && typeof value === "object") {
+    const o = value as { text?: unknown; cue?: unknown };
+    return typeof o.text === "string" && o.text.trim() ? [{ text: o.text, cue: typeof o.cue === "string" ? o.cue : undefined }] : [];
+  }
+  return [];
+}
+/** Where each scene starts in the transcription, the way myinCueMisses (and Logan's resolve()) walks it. */
+function sceneStarts(story: MyinStoryboard, find: ReturnType<typeof finder>) {
+  let pos = 0;
+  return story.scenes.map((sc) => {
+    if (sc.at_time !== undefined) return pos;
+    const start = find(String(sc.at), pos, 2500)?.at ?? pos;
+    pos = start + 1;
+    return start;
+  });
+}
+// Top to bottom on screen: the title lines, chip, source, subtitle, row list, quote author, tag.
+const SCREEN_ORDER: [string, string][] = [["title", "제목"], ["lines", "제목"], ["q", "제목"], ["chip", "칩"], ["source", "출처"], ["sub", "소제목"], ["rows", "줄"], ["items", "줄"], ["author", "인용 출처"], ["tag", "꼬리표"]];
+/** QA 1: in a scene, nothing lower on the screen appears before what is above it (a piece without a cue shows at the scene start). */
+function screenOrderIssues(story: MyinStoryboard, words: [number, number, string][]) {
+  const find = finder(words);
+  const starts = sceneStarts(story, find);
+  const issues: string[] = [];
+  story.scenes.forEach((sc, n) => {
+    if (sc.type === "opening" || sc.at_time !== undefined) return;
+    const shown = SCREEN_ORDER.flatMap(([key, name]) => textPieces((sc as Record<string, unknown>)[key])
+      .map((piece) => ({ name, text: piece.text.trim(), at: piece.cue ? find(piece.cue, starts[n], 1400)?.at ?? null : starts[n] })))
+      .filter((item): item is { name: string; text: string; at: number } => item.at !== null);
+    let top = shown[0];
+    for (const item of shown.slice(1)) {
+      if (top && item.at < top.at) { issues.push(`[장면 ${n + 1}] 화면 아래 「${item.text.slice(0, 20)}」(${item.name})가 위 「${top.text.slice(0, 20)}」(${top.name})보다 먼저 떠요 — 위에서 아래 순서로 뜨게 글 배치나 등장 문구를 바꿔요`); return; }
+      if (!top || item.at >= top.at) top = item;
+    }
+  });
+  return issues;
+}
+/** QA 2: before the reel there are no subtitles, so every spoken sentence of the opening gets text on screen. */
+function openingTextIssues(story: MyinStoryboard, words: [number, number, string][], speech: string) {
+  const opening = story.scenes[0];
+  if (!speech.trim() || opening?.type !== "opening" || story.scenes.length < 2) return [];
+  const find = finder(words);
+  const [start, end] = sceneStarts(story, find);
+  const shown: number[] = [];
+  for (const act of ((opening as { acts?: unknown }).acts ?? []) as Record<string, unknown>[]) {
+    const actAt = typeof act.cue === "string" ? find(act.cue, start, 2500)?.at ?? null : start;
+    for (const [key, value] of Object.entries(act)) {
+      if (key === "cue" || key === "image") continue;
+      for (const piece of textPieces(value)) { const at = piece.cue ? find(piece.cue, start, 2500)?.at ?? null : actAt; if (at !== null) shown.push(at); }
+    }
+  }
+  const sentences = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION")).join(" ")
+    .split(/(?<=[.?!…])\s+/).map((text) => text.trim()).filter((text) => myinNorm(text).length >= 4);
+  const issues: string[] = [];
+  let cursor = 0;
+  const spans: { text: string; at: number }[] = [];
+  for (const text of sentences) {
+    const at = find(myinNorm(text).slice(0, 10), cursor, 600)?.at;
+    if (at === undefined) continue;
+    spans.push({ text, at });
+    cursor = at + 1;
+    if (at >= end) break;
+  }
+  spans.forEach((span, i) => {
+    const next = spans[i + 1]?.at ?? end;
+    if (span.at < start || span.at >= end) return;
+    if (!shown.some((at) => at >= span.at && at < next)) issues.push(`[오프닝] 「${span.text.slice(0, 24)}」 문장에 화면 글자가 없어요 — 쇼릴 전에는 자막이 없으니 그 문장 첫 말을 cue로 줄 하나를 붙여요`);
+  });
+  return issues;
+}
+/** QA 3: a row list with two or more % figures is a chart (bars, donut, big number), not text rows. */
+function statListIssues(story: MyinStoryboard) {
+  return story.scenes.flatMap((sc, n) => {
+    const rows = [...textPieces((sc as Record<string, unknown>).rows), ...textPieces((sc as Record<string, unknown>).items),
+      ...(["list", "lib_numbered"].includes(sc.type) ? textPieces((sc as Record<string, unknown>).lines) : [])];
+    const figures = rows.reduce((count, piece) => count + (piece.text.match(/\d\s*%/g)?.length ?? 0), 0);
+    return figures >= 2 ? [`[장면 ${n + 1}] 줄 목록에 % 수치가 ${figures}개예요 — 수치는 그래프 장면(막대 · 도넛 · 큰 숫자 · 사람 그림)으로 바꾸고 출처를 맨 위 라벨에 둬요`] : [];
+  });
+}
+/** QA 5: the subscribe line says 「눌러 주세요」, not 「눌러 두고 들어 주세요」. */
+const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
+
 function stageReuseIssues(types: string[]) {
   const issues: string[] = [];
   const counts = new Map<string, number>();
@@ -159,7 +248,7 @@ function stageReuseIssues(types: string[]) {
   return issues;
 }
 
-export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = []) {
+export function checkMyinStoryboard(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "") {
   const parsed = myinStoryboardSchema.safeParse(value);
   if (!parsed.success) return { issues: parsed.error.issues.slice(0, 20).map((issue) => `${issue.path.join(".") || "기획표"}: ${issue.message}`), notes: [] as string[], fuzzy: [] as string[], story: null };
   const story = parsed.data;
@@ -177,6 +266,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
     issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
   issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]));
+  issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };

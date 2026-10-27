@@ -114,7 +114,7 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
   if (!file) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await file.text()) as { words: [number, number, string][]; speech: string };
   const input = await currentInput(service, sourceId);
-  return { record, run, words: bundle.words, markdown: input.markdown, title: input.title };
+  return { record, run, words: bundle.words, speech: bundle.speech ?? "", markdown: input.markdown, title: input.title };
 }
 
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */
