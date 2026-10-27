@@ -7,8 +7,8 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/server/auth";
 import { getDefaultOrganization } from "@/lib/server/organization";
 
-const TOOL_LABEL = { claude: "Claude", codex: "Codex" } as const;
-const inputSchema = z.object({ tool: z.enum(["claude", "codex"]) }).strict();
+const TOOL_LABEL = { claude: "Claude", codex: "Codex", render: "컴퓨터 렌더" } as const;
+const inputSchema = z.object({ tool: z.enum(["claude", "codex", "render"]) }).strict();
 
 /**
  * [내 AI 연결]: a signed-in member issues a key for their own AI, without an admin. It is always theirs, 초안 쓰기 (no canonical
@@ -38,6 +38,8 @@ export async function POST(request: Request) {
       expires_at: new Date(`${defaultAgentExpiry()}T23:59:59Z`).toISOString(),
     });
     if (error) throw new ApiError(400, "AGENT_KEY_CREATE_FAILED", "내 AI 연결 키를 만들지 못했습니다.", error.message);
+    // 내 컴퓨터 렌더 (2026-10-27): the key itself, for the worker on this member's own Mac (local-render route), shown once.
+    if (tool === "render") return NextResponse.json({ name, key: raw }, { status: 201, headers: { "cache-control": "no-store" } });
     // One line to paste into Claude's 커넥터 추가: the MCP address with the key in it (app/api/mcp reads ?key=).
     const connectorUrl = new URL(`/api/mcp?${new URLSearchParams({ organizationId: organization.id, key: raw })}`, request.url).toString();
     return NextResponse.json({ name, connectorUrl }, { status: 201, headers: { "cache-control": "no-store" } });

@@ -7,6 +7,7 @@ import { StaffDesign, Step, type StaffJobStatus, type StepState } from "./youtub
 import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
+import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -18,7 +19,7 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
-  sound: { report: string; at: string; edited?: { name: string; at: string } } | null }
+  sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "렌더 PC가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -39,7 +40,10 @@ const STOP: Record<string, string> = {
 };
 // 2026-10-27 대표: ③ 시안 → ④ 자료 준비(사진 확정 · 구독 대사 · 사운드) → ⑤ 최종 시안. The same stages run twice: before the drafts are
 // confirmed (clipsReview empty) the preparation is the ③ draft one, after it the ④ one.
-const phaseLabel = (run: MyinRun) => run.stage === "prep_pending" ? run.clipsReview ? "렌더 PC가 자료 준비 · 다시 점검 중" : "렌더 PC가 시안 준비 · 자동 선곡 · 미리보기 점검 중"
+// 내 컴퓨터로 시안 (2026-10-27): the ③ drafts of a run sent to a member's own Mac name that computer instead of the render PC.
+const maker = (run: MyinRun) => run.local && !run.clipsReview ? `${run.local.name}님 컴퓨터` : "렌더 PC";
+const phaseLabel = (run: MyinRun) => run.stage === "prep_pending" ? run.clipsReview ? "렌더 PC가 자료 준비 · 다시 점검 중" : `${maker(run)}가 시안 준비 · 자동 선곡 · 미리보기 점검 중`
+  : run.stage === "clips_pending" ? `${maker(run)}가 시안 영상 만드는 중`
   : run.stage === "prep_ready" ? run.clipsReview ? "자료 준비 끝 · 사운드 확인 대기" : "미리보기 점검 끝" : PHASE[run.stage] ?? run.stage;
 
 const KIND: Record<string, string> = { people: "인물 사진", situations: "상황 사진", bgm: "음악" };
@@ -53,7 +57,7 @@ function RunState({ run }: { run: MyinRun }) {
     <span className="status-pill" data-status={run.status === "blocked" ? "failed" : "scheduled"}>{run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run)}</span>
     {run.status === "blocked" ? STOP[run.lastErrorCode ?? ""] ? <small>{STOP[run.lastErrorCode ?? ""]}</small> : null
       : minutes !== null ? <small>시작 {started} · {minutes}분째{typical ? minutes > typical * 1.5 ? " · 평소보다 오래 걸려요(확인 필요)" : ` · 보통 ${typical}분쯤 걸려요${run.stage === "clips_pending" ? `(시안 ${(run.storyboard?.metaphors.length ?? 0) + 1}개)` : ""}` : ""}</small>
-      : typical && run.status === "backlog" ? <small>렌더 PC 차례를 기다리는 중</small> : null}
+      : typical && run.status === "backlog" ? <small>{maker(run)} 차례를 기다리는 중</small> : null}
   </>;
 }
 const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
@@ -83,6 +87,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [sheets, setSheets] = useState<string[]>([]);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
   const lastStage = useRef<string | null>(null);
+  const [place, setPlace] = useState<DraftPlace>("pc");
+  const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
+  const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, run?.stage === "storyboard_review" || draftWaiting);
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
@@ -190,8 +197,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>확인 완료를 누르면 3단계 시안이 바로 시작됩니다. 기획표의 사진 · 도식 · 글자 · 음악으로 시안을 만들고, 구독 대사 음성(유료)과 사운드 편집은 시안 확인 뒤 4단계에서 합니다.</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로" /></label>
+          {run.stage === "storyboard_review" ? <DraftPlacePicker value={place} onChange={setPlace} status={localPc} token={accessToken} onConnected={() => void reloadLocal()} /> : null}
           <div className="yt-actions">
-            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 시안 만들기"}</button> : null}
+            {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 시안 만들기"}</button> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
           </div>
           {run.review?.decision === "confirmed" ? <small>{run.review.name} 확인 · {when(run.review.at)}{run.review.note ? ` · ${run.review.note}` : ""}</small> : null}
@@ -200,8 +208,14 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={2} state={step3} title="시안 확인 (도식 · 글자 · 음악 — 로건, 유쓰)" idBase="myin-step">
-      <p>기획표 확인이 끝나면 자동으로 시작합니다. 렌더 PC가 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 로건님 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 시안으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>
-      {run && !materials && ["prep_pending", "clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head"><RunState run={run} /></div></div> : null}
+      <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(렌더 PC 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 로건님 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 시안으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>
+      {run && !materials && ["prep_pending", "clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head"><RunState run={run} /></div>
+        {draftWaiting ? <div className="yt-actions"><small>만드는 곳 · {maker(run)}</small>
+          {run.local ? <button type="button" className="secondary-button compact" disabled={Boolean(busy) || (Boolean(run.workingSince) && localPc?.state === "online")}
+            onClick={() => void act("place", () => post("/myin", "PATCH", { action: "place", runId: run.id, place: "pc" }))}>렌더 PC로 돌리기</button>
+            : !localBlocker(localPc) && !run.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
+              onClick={() => void act("place", () => post("/myin", "PATCH", { action: "place", runId: run.id, place: "local" }))}>내 컴퓨터로 만들기</button> : null}
+        </div> : null}</div> : null}
       {run?.prepared && !materials ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.prepared.misses.length ? "failed" : "approved"}>문구 못 찾음 {run.prepared.misses.length}개</span><small>{when(run.prepared.at)}</small></div>
         {run.prepared.misses.length ? <ul className="yt-list">{run.prepared.misses.map((m) => <li key={m}>{m}</li>)}</ul> : null}
