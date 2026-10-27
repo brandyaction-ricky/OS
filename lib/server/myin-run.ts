@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
-import { MYIN_METAPHOR_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
+import { MYIN_METAPHOR_TYPES, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -452,7 +452,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase()) 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, storyboard: story, assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, storyboard: myinDriftPairs(story), assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
