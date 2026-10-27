@@ -25,6 +25,8 @@ const WORDS_LEASE_MS = 30 * 60_000;
 // One clip per metaphor scene takes about two minutes on the render PC; a stage-diagram video has 20+ (2026-10-25: 21 clips, 38 minutes).
 // ponytail: fixed two hours covers ~50 clips; scale with the clip count if storyboards grow past that.
 const CLIPS_LEASE_MS = 120 * 60_000;
+// 10 MB parts of 48 kHz mono voice: 12 hold about 20 minutes, longer than any v13 video so far.
+export const MYIN_VOICE_PARTS = 12;
 type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
@@ -35,7 +37,9 @@ const runSchema = z.object({
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional(),
     breath: z.array(z.number().int().min(0)).max(80).optional() }).strict()).min(1).max(150),
-  words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime() }).strict().optional(),
+  words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime(),
+    // 내 컴퓨터로 시안: his processed voice.wav as the render PC made it, in parts (the voice bucket takes 12 MB a file).
+    voice: z.object({ path: z.string(), parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: hex }).strict().optional() }).strict().optional(),
   // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
   storyboard: z.object({ path: z.string(), scenes: z.number().int().positive(), model: z.string(), at: z.string().datetime(),
     metaphors: z.array(z.object({ scene: z.number().int(), type: z.string(), at: z.string() }).strict()),
@@ -104,7 +108,7 @@ export function presentMyinRun(record: OsRecord) {
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
-    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null,
+    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice),
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
 }
@@ -165,7 +169,7 @@ export async function reviewMyinStoryboard(actor: RequestActor, runId: string, d
 }
 
 function draftPlace(run: MyinRun, actor: RequestActor, place: "pc" | "local") {
-  if (place === "local") run.local = { by: actor.ownerId, name: actor.name, at: new Date().toISOString() };
+  if (place === "local") { assertLocalReady(run); run.local = { by: actor.ownerId, name: actor.name, at: new Date().toISOString() }; }
   else delete run.local;
 }
 
@@ -295,6 +299,7 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
 // so every write goes to a new name: per lease for the render PC's files, per content for the OS's own.
 const tag = (lease: string) => lease.slice(0, 8);
 const bundlePath = (record: OsRecord, run: MyinRun, lease: string) => `${record.owner_id}/${run.sourceId}/${record.id}/myin-words-${tag(lease)}.json`;
+const voicePartPath = (prefix: string, n: number) => `${prefix}.part${String(n).padStart(2, "0")}.wav`;
 
 /** Render PC: the paragraphs still to voice, for Logan's breath model (tools/voice_timing in the installed package). */
 export async function claimMyinBreath(service: Service = createServiceSupabase()) {
@@ -321,6 +326,8 @@ export async function completeMyinBreath(input: { runId: string; lease: string; 
 }
 
 /** Render PC: take a run whose voice is complete, with the script file, each paragraph's text and wav, and where to put the bundle. */
+const voicePrefix = (record: OsRecord, run: MyinRun, lease: string) => `${record.owner_id}/${run.sourceId}/${record.id}/voice48k-${tag(lease)}`;
+
 /** The approved script and its Fish paragraphs, as the render PC's stage 1 reads them. */
 async function voiceFiles(service: Service, run: MyinRun) {
   const input = await assertCurrent(service, run);
@@ -341,7 +348,10 @@ export async function claimMyinWords(service: Service = createServiceSupabase())
     const voice = await voiceFiles(service, run);
     const { data: upload, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(bundlePath(record, run, lease.token), { upsert: true });
     if (error || !upload) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl };
+    const prefix = voicePrefix(record, run, lease.token);
+    const voiceUploadUrls = (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
+      service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(voicePartPath(prefix, n), { upsert: true })))).map(({ data }) => data?.signedUrl).filter(Boolean);
+    return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
     throw error;
@@ -362,7 +372,7 @@ const bundleSchema = z.object({
 }).passthrough();
 
 /** Render PC: the bundle is up; the OS reads it back before the run moves on. */
-export async function completeMyinWords(input: { runId: string; lease: string }, service: Service = createServiceSupabase()) {
+export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string } }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const path = bundlePath(record, run, input.lease);
   const { data, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(path);
@@ -373,7 +383,8 @@ export async function completeMyinWords(input: { runId: string; lease: string },
   if (spoken.length !== run.paragraphs.length || spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
     throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "렌더 PC가 읽은 문단이 OS 원고와 다릅니다.");
   const next: MyinRun = { ...run, attempts: 0, words: { path, words: bundle.data.words.length,
-    subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString() } };
+    subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),
+    ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}) } };
   delete next.lease; delete next.lastError;
   await save(service, record, "done", "words_ready", next);
   return { runId: record.id, stage: "words_ready" };
@@ -518,17 +529,23 @@ const sign = async (service: Service, bucket: string, path: string) => {
 };
 
 /**
- * What a staff Mac needs to rebuild the run's work folder the render PC made in stage 1: the Fish paragraphs (his stage_voice
- * post-processing runs again on them) and the frozen transcription (words.json, subs_myin.ass) — never transcribed twice.
+ * What a staff Mac needs to rebuild the run's work folder the render PC made in stage 1: his processed voice.wav byte for byte
+ * (its sentence gaps are a seeded random draw, never recomputed) and the frozen transcription and subtitles.
  */
 async function localSeed(service: Service, run: MyinRun) {
-  const voice = await voiceFiles(service, run);
-  return { ...voice, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
+  const voice = run.words?.voice;
+  if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 렌더 PC로 만들어 주세요.");
+  const urls = await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n))));
+  return { voice: { urls, bytes: voice.bytes, sha256: voice.sha256 }, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
 }
+/** Only a run whose stage 1 left its voice for staff Macs can be sent to one. */
+const assertLocalReady = (run: MyinRun) => {
+  if (!run.words?.voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 렌더 PC로 만들어 주세요.");
+};
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
 export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string) {
-  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, draftFilter(owner));
+  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -617,7 +634,7 @@ const uploadUrl = async (service: Service, bucket: string, path: string) => {
 
 /** Render PC (or that member's own Mac): which clips to cut (the opening with its reel, then each metaphor scene) and where to put them. */
 export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string) {
-  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, draftFilter(owner));
+  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {

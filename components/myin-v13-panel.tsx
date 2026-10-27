@@ -19,7 +19,7 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   prepared: { misses: string[]; sheets: number; credits: string[]; at: string } | null;
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
-  sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null }
+  sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localReady: boolean }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "렌더 PC가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -197,7 +197,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <strong>{run.stage === "storyboard_review" ? "로건, 유쓰 확인" : "기획표 다시 고치기"}</strong>
           {run.stage === "storyboard_review" ? <p>확인 완료를 누르면 3단계 시안이 바로 시작됩니다. 기획표의 사진 · 도식 · 글자 · 음악으로 시안을 만들고, 구독 대사 음성(유료)과 사운드 편집은 시안 확인 뒤 4단계에서 합니다.</p> : null}
           <label>메모 (수정 요청할 때는 필수)<textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} placeholder="예) 7번 비유는 빼고, 구독은 두 번째 섹션 끝으로" /></label>
-          {run.stage === "storyboard_review" ? <DraftPlacePicker value={place} onChange={setPlace} status={localPc} token={accessToken} onConnected={() => void reloadLocal()} /> : null}
+          {run.stage === "storyboard_review" ? <DraftPlacePicker value={place} onChange={setPlace} status={localPc} ready={run.localReady} token={accessToken} onConnected={() => void reloadLocal()} /> : null}
           <div className="yt-actions">
             {run.stage === "storyboard_review" ? <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "confirmed", note, place }))}>{busy === "confirm" ? "저장 중…" : "기획표 확인 완료 · 시안 만들기"}</button> : null}
             <button type="button" className="secondary-button" disabled={Boolean(busy) || !note.trim()} onClick={() => void act("revise", () => post("/myin", "PATCH", { action: "review", runId: run.id, decision: "revise", note }))}>수정 요청</button>
@@ -213,7 +213,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {draftWaiting ? <div className="yt-actions"><small>만드는 곳 · {maker(run)}</small>
           {run.local ? <button type="button" className="secondary-button compact" disabled={Boolean(busy) || (Boolean(run.workingSince) && localPc?.state === "online")}
             onClick={() => void act("place", () => post("/myin", "PATCH", { action: "place", runId: run.id, place: "pc" }))}>렌더 PC로 돌리기</button>
-            : !localBlocker(localPc) && !run.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
+            : !localBlocker(localPc, run.localReady) && !run.workingSince ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)}
               onClick={() => void act("place", () => post("/myin", "PATCH", { action: "place", runId: run.id, place: "local" }))}>내 컴퓨터로 만들기</button> : null}
         </div> : null}</div> : null}
       {run?.prepared && !materials ? <div className="yt-run">

@@ -287,46 +287,47 @@ export async function processMyinBreath() {
   return true;
 }
 
-/**
- * Stage 1's clone and voice: the package copied for this one video, the OS's Fish paragraphs as his 48 kHz pNN.wav, and his
- * stage_voice post-processing (no Fish call: every pNN.wav exists). Shared by the words job and a staff Mac's rebuild.
- */
-async function myinVoice(work, job) {
-  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
-  const voiceDir = path.join(work, "voice", "os_voice");
-  mkdirSync(voiceDir, { recursive: true });
-  for (const paragraph of job.paragraphs) {
-    const n = String(paragraph.index).padStart(2, "0");
-    const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
-    if (existsSync(pcm)) continue;
-    await fetchTo(paragraph.url, raw);
-    execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", pcm]); // his exact conversion
-  }
-  const script = path.join(voiceDir, "script.md");
-  writeFileSync(script, job.scriptMarkdown);
-  // Dummy keys only pass his "keys present" check; every pNN.wav exists, so no Fish call is made.
-  const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: "unused", FISH_VOICE_ID: "unused" };
-  if (current) current.step = "narration";
-  await runAsync(myinPython, ["stage_voice.py", script, "os_voice"], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
-  const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
-  const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
-  if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
-    throw Object.assign(new Error("speech.txt differs from the OS paragraphs"), { code: "MYIN_PARAGRAPHS_MISMATCH" });
-  return { voiceDir, script, speech, env };
+// 내 컴퓨터로 시안: his processed voice leaves the render PC byte for byte in parts under the voice bucket's 12 MB limit.
+const VOICE_PART_BYTES = 10_000_000;
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+export async function uploadVoiceParts(file, urls) {
+  const bytes = readFileSync(file), parts = Math.ceil(bytes.length / VOICE_PART_BYTES);
+  if (parts > urls.length) { console.error(`myin voice: ${parts} parts is more than ${urls.length}; this video's drafts stay on the render PC`); return null; }
+  const dir = mkdtempSync(path.join(os.tmpdir(), "myin-voice-"));
+  try {
+    for (let i = 0; i < parts; i++) {
+      const part = path.join(dir, `part${i}.wav`);
+      writeFileSync(part, bytes.subarray(i * VOICE_PART_BYTES, (i + 1) * VOICE_PART_BYTES));
+      await upload(urls[i], part, "audio/wav");
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  return { parts, bytes: bytes.length, sha256: sha256(bytes) };
 }
 
 /**
- * 내 컴퓨터로 시안: the run's work folder as the render PC left it after stage 1 — the voice again from the same paragraphs, and the
- * frozen transcription and subtitles from the OS (never transcribed again, so every cue matches the render PC's).
+ * 내 컴퓨터로 시안: the run's work folder as the render PC left it after stage 1 — a copy of the engine, its processed voice.wav
+ * (downloaded, never recomputed: his sentence gaps come from a seeded random draw, so another run could shift every cue) and the
+ * frozen transcription and subtitles.
  */
 export async function myinRebuild(runId, seed) {
-  const work = path.join(myinWork, runId), videoDir = path.join(work, "voice", "os_myin");
-  if (existsSync(path.join(videoDir, "words.json"))) return;
-  await myinVoice(work, seed);
+  const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
+  if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav"))) return;
+  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
+  mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
+  const parts = [];
+  for (const url of seed.voice.urls) {
+    const response = await fetch(url);
+    if (!response.ok) throw Object.assign(new Error(`voice part ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
+    parts.push(Buffer.from(await response.arrayBuffer()));
+  }
+  const voice = Buffer.concat(parts);
+  if (voice.length !== seed.voice.bytes || sha256(voice) !== seed.voice.sha256)
+    throw Object.assign(new Error("voice.wav differs from the render PC's"), { code: "MYIN_VOICE_MISMATCH" });
   const response = await fetch(seed.wordsUrl);
   if (!response.ok) throw Object.assign(new Error(`words bundle ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
   const bundle = await response.json();
-  mkdirSync(videoDir, { recursive: true });
+  writeFileSync(path.join(voiceDir, "voice.wav"), voice);
+  writeFileSync(path.join(voiceDir, "speech.txt"), bundle.speech);
   writeFileSync(path.join(videoDir, "subs_myin.ass"), bundle.subtitlesAss);
   writeFileSync(path.join(videoDir, "subs_qc.md"), bundle.subtitleQc ?? "");
   writeFileSync(path.join(videoDir, "words.json"), JSON.stringify(bundle.words));
@@ -342,8 +343,27 @@ export async function processMyinWords() {
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
+    if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
     const voiceJob = "os_voice", videoJob = "os_myin"; // fixed names: the clone belongs to this one video
-    const { voiceDir, script, speech, env } = await myinVoice(work, job);
+    const voiceDir = path.join(work, "voice", voiceJob);
+    mkdirSync(voiceDir, { recursive: true });
+    for (const paragraph of job.paragraphs) {
+      const n = String(paragraph.index).padStart(2, "0");
+      const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
+      if (existsSync(pcm)) continue;
+      await fetchTo(paragraph.url, raw);
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", raw, "-ar", "48000", "-ac", "1", "-c:a", "pcm_s16le", pcm]); // his exact conversion
+    }
+    const script = path.join(voiceDir, "script.md");
+    writeFileSync(script, job.scriptMarkdown);
+    // Dummy keys only pass his "keys present" check; every pNN.wav exists, so no Fish call is made.
+    const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: "unused", FISH_VOICE_ID: "unused" };
+    current.step = "narration";
+    await runAsync(myinPython, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+    const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
+    const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
+    if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
+      throw Object.assign(new Error("speech.txt differs from the OS paragraphs"), { code: "MYIN_PARAGRAPHS_MISMATCH" });
     current.step = "drawing";
     const myinDir = path.join(work, "tools", "myin_pipeline");
     await runAsync(myinPython, ["stage_words.py", voiceJob, videoJob], { cwd: myinDir, env });
@@ -355,7 +375,10 @@ export async function processMyinWords() {
       speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
-    await call({ action: "myin_complete", ...lease });
+    // A staff Mac's ③ drafts need this exact voice; without it (older OS, too long, upload trouble) they stay on the render PC.
+    const voice = job.voiceUploadUrls ? await uploadVoiceParts(path.join(voiceDir, "voice.wav"), job.voiceUploadUrls).catch((error) => {
+      console.error(`myin voice upload skipped: ${job.runId}: ${error.message}`); return null; }) : null;
+    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}) });
     console.log(`myin words ready: ${job.runId}`);
   } catch (error) {
     console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);

@@ -27,9 +27,9 @@ export function useLocalRender(token: string | null, enabled: boolean) {
 }
 
 /** 시안을 만들 곳: 렌더 PC (default) or this member's own Mac, with a one-line state for the latter. */
-export function DraftPlacePicker({ value, onChange, status, token, onConnected }: { value: DraftPlace; onChange: (place: DraftPlace) => void;
-  status: LocalRenderStatus | null; token: string | null; onConnected: () => void }) {
-  const blocker = localBlocker(status);
+export function DraftPlacePicker({ value, onChange, status, ready, token, onConnected }: { value: DraftPlace; onChange: (place: DraftPlace) => void;
+  status: LocalRenderStatus | null; ready: boolean; token: string | null; onConnected: () => void }) {
+  const blocker = localBlocker(status, ready);
   const [connect, setConnect] = useState(false);
   useEffect(() => { if (blocker && value === "local") onChange("pc"); }, [blocker, value, onChange]);
   return <div style={{ display: "grid", gap: 6 }}>
@@ -40,7 +40,7 @@ export function DraftPlacePicker({ value, onChange, status, token, onConnected }
         <button type="button" aria-pressed={value === "local"} disabled={Boolean(blocker)} title={blocker ?? undefined} onClick={() => onChange("local")}>내 컴퓨터</button>
       </div>
       <small>{value === "local" ? "내 맥에서 바로 만들어요 · 렌더 PC를 기다리지 않아요" : blocker ? `내 컴퓨터: ${blocker}` : "내 컴퓨터도 쓸 수 있어요 · 켜짐 · 엔진 같음"}</small>
-      {status?.state !== "online" ? <button type="button" className="secondary-button compact" onClick={() => setConnect(!connect)}>{connect ? "닫기" : "내 컴퓨터 연결"}</button> : null}
+      {ready && status?.state !== "online" ? <button type="button" className="secondary-button compact" onClick={() => setConnect(!connect)}>{connect ? "닫기" : "내 컴퓨터 연결"}</button> : null}
     </div>
     {connect ? <LocalConnect token={token} onDone={onConnected} /> : null}
   </div>;
