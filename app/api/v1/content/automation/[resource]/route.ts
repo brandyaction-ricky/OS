@@ -6,6 +6,8 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
 import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
+import { parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
+import { getThreadsJobInput,threadsCollectionContext,threadsReferenceRequestId } from "@/lib/server/threads-reference";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
   createJob,createPersonalRecord,getPersonalRecord,getRunRules,isContentReviewer,listPersonalRecords,
@@ -20,6 +22,11 @@ const topicSchema=z.object({
   title:z.string().trim().min(1).max(240),brand:z.string().trim().max(120).default(""),
   source:z.enum(["longform","comment","reference","ai","direct"]).default("direct"),
   sourceRef:z.string().max(2000).optional(),
+  kind:z.literal(THREADS_REFERENCE_KIND).optional(),
+  editorial_workflow:z.literal(THREADS_REFERENCE_WORKFLOW).optional(),
+  reference_items:threadsReferenceItemsSchema.optional(),
+  referenceIds:z.array(uuid).min(1).max(20).optional(),
+  sourceJobId:uuid.optional(),candidateIndex:z.number().int().min(0).max(9).optional(),
   // Same value on a retry (double click, slow response, an automation run re-sending a candidate) returns the same topic.
   requestId:z.string().regex(/^[A-Za-z0-9:_-]{8,200}$/).optional(),
 }).strict();
@@ -186,7 +193,7 @@ export async function GET(request:Request,{params}:Params) {
     const {resource}=await params,url=new URL(request.url),limit=limitFrom(request),db=createServiceSupabase();
     if(resource==="runs.csv")return exportRuns(ownerId,url);
     if(resource==="publications.csv")return exportPublications(ownerId,url);
-    if(url.searchParams.get("scope")==="team")return teamList(resource,limit);
+    if(url.searchParams.get("scope")==="team")return await teamList(resource,limit);
     if(resource==="reviewers"){
       const {data,error}=await db.from("os_content_reviewers").select("user_id,created_at").order("created_at");
       if(error)throw new ApiError(503,"REVIEWERS_FAILED","검수자 명단을 불러오지 못했습니다.");
@@ -194,7 +201,10 @@ export async function GET(request:Request,{params}:Params) {
       return NextResponse.json({reviewers:(data??[]).map(row=>({id:row.user_id,name:names.get(row.user_id)??"구성원"})),
         canReview:await isContentReviewer(ownerId),canManage:actor.role==="admin"});
     }
-    if(resource==="topics")return NextResponse.json({topics:await listPersonalRecords(actor,"content_topic",limit)});
+    if(resource==="topics"||resource==="references"){
+      const rows=await listPersonalRecords(actor,"content_topic",limit,resource);
+      return NextResponse.json(resource==="references"?{references:rows,collectionContext:await threadsCollectionContext(actor)}:{topics:rows});
+    }
     if(resource==="items"){
       const channel=url.searchParams.get("channel");
       if(channel&&!AUTOMATION_CHANNELS.includes(channel as typeof AUTOMATION_CHANNELS[number]))throw new ApiError(400,"INVALID_CHANNEL","채널을 확인해 주세요.");
@@ -286,12 +296,49 @@ export async function POST(request:Request,{params}:Params) {
     const raw=await parseJson(request,250_000);
     if(resource==="topics"){
       const input=topicSchema.parse(raw);
+      if(input.kind&&input.referenceIds)throw new ApiError(422,"THREADS_REFERENCE_INPUT_INVALID","원문 저장과 주제 선택을 따로 진행해 주세요.");
+      if(Boolean(input.sourceJobId)!==(input.candidateIndex!==undefined)
+        ||input.sourceJobId&&(input.referenceIds||input.reference_items||input.kind))
+        throw new ApiError(422,"THREADS_REFERENCE_INPUT_INVALID","AI 후보 선택과 원문 선택을 따로 진행해 주세요.");
+      let referenceItems=input.reference_items;
+      let sourceRef=input.sourceRef??"";
+      let title=input.title,source=input.source,sourceWorkflow=false;
+      if(input.sourceJobId){
+        const job=await getPersonalRecord(actor,input.sourceJobId,"ai_job");
+        const result=job.metadata.result as {candidates?:{title?:unknown;source?:unknown}[]}|undefined;
+        const candidate=result?.candidates?.[input.candidateIndex!];
+        if(job.stage!=="completed"||job.metadata.proc!=="topic"||!candidate
+          ||typeof candidate.title!=="string"||!candidate.title.trim()||typeof candidate.source!=="string")
+          throw new ApiError(409,"JOB_RESULT_UNAVAILABLE","내가 받은 주제 후보를 다시 확인해 주세요.");
+        title=candidate.title.trim().slice(0,240);source="ai";sourceRef=candidate.source.slice(0,2000);
+        const snapshot=getThreadsJobInput(job);
+        if(snapshot){referenceItems=parseThreadsReferences(snapshot.topic.reference_items);sourceWorkflow=true;}
+      }
+      if(input.referenceIds){
+        if(input.reference_items)throw new ApiError(422,"THREADS_REFERENCE_INPUT_INVALID","선택한 원문은 서버에 저장된 기록으로 읽습니다.");
+        const ids=[...new Set(input.referenceIds)];
+        const references=await Promise.all(ids.map(id=>getPersonalRecord(actor,id,"content_topic")));
+        if(references.some(row=>row.metadata.kind!==THREADS_REFERENCE_KIND))
+          throw new ApiError(422,"THREADS_REFERENCE_REQUIRED","내 레퍼런스에서 원문을 선택해 주세요.");
+        referenceItems=parseThreadsReferences(references.flatMap(row=>parseThreadsReferences(row.metadata.reference_items)));
+        sourceRef=referenceItems.map(item=>item.url).join("\n").slice(0,2000);
+      }
+      const workflow=sourceWorkflow||input.editorial_workflow||input.kind||input.referenceIds||input.reference_items?THREADS_REFERENCE_WORKFLOW:undefined;
+      const metadata=validateThreadsTopicMetadata({source:input.referenceIds?"reference":source,sourceRef,brief:{},channels:[],
+        ...(workflow?{editorial_workflow:workflow,reference_items:referenceItems??[]}:{ }),
+        ...(input.kind?{kind:input.kind}:{}),...(input.referenceIds?{sourceReferenceIds:[...new Set(input.referenceIds)]}:{}),
+        ...(input.requestId?{requestId:input.requestId}:{}),
+        ...(input.sourceJobId?{sourceJobId:input.sourceJobId,sourceCandidateIndex:input.candidateIndex,requestId:`job:${input.sourceJobId}:${input.candidateIndex}`}:{})});
+      if(input.kind===THREADS_REFERENCE_KIND&&referenceItems?.[0]){
+        metadata.sourceRef=referenceItems[0].url;
+        metadata.requestId=threadsReferenceRequestId(referenceItems[0].url);
+      }
       const topic=await createPersonalRecord(actor,"content_topic",{
-        title:input.title,brand:input.brand,status:"draft",stage:"candidate",
-        metadata:{source:input.source,sourceRef:input.sourceRef??"",brief:{},channels:[],
-          ...(input.requestId?{requestId:input.requestId}:{})},
+        title,brand:input.brand,status:"draft",stage:"candidate",
+        metadata,
       });
-      return NextResponse.json({topic},{status:201});
+      const {_reused,...responseTopic}=topic as typeof topic&{_reused?:boolean};
+      return NextResponse.json({topic:responseTopic,reused:_reused===true},{status:201});
     }
     if(resource==="reviewers"){
       const ownerId=assertHumanOwner(actor);
@@ -311,7 +358,9 @@ export async function POST(request:Request,{params}:Params) {
     }
     if(resource==="items"){
       const input=itemSchema.parse(raw);
-      await getPersonalRecord(actor,input.topicId,"content_topic");
+      const topic=await getPersonalRecord(actor,input.topicId,"content_topic");
+      if(topic.metadata.kind===THREADS_REFERENCE_KIND)
+        throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","원문은 레퍼런스 화면에서 주제로 선택한 뒤 제작해 주세요.");
       const ownerId=assertHumanOwner(actor);
       const db=createServiceSupabase();
       const existing=await db.from("os_records").select("*").eq("record_type","content_publish")

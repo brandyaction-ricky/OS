@@ -24,14 +24,17 @@ import {
   tablePlugin,
   thematicBreakPlugin,
   toolbarPlugin,
+  useCodeBlockEditorContext,
   useMdastNodeUpdater,
+  type CodeBlockEditorDescriptor,
+  type CodeBlockEditorProps,
   type DirectiveDescriptor,
   type DirectiveEditorProps,
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
 import type { ForwardedRef } from "react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { attachmentForLinkText, parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
@@ -94,6 +97,19 @@ const toggleDescriptor: DirectiveDescriptor<ContainerDirective> = {
   hasChildren: true,
   Editor: ToggleDirectiveEditor,
 };
+
+// Fenced code blocks (```python …) had no editor registered, so any document holding one
+// failed to open in the block editor. Every language gets a plain monospace box that saves
+// the code, language and meta back unchanged.
+const CodeReadOnly = createContext(false);
+function PlainCodeBlockEditor({ code, language }: CodeBlockEditorProps) {
+  const { setCode } = useCodeBlockEditorContext(), readOnly = useContext(CodeReadOnly);
+  return <div className="knowledge-code-block">
+    {language ? <small>{language}</small> : null}
+    <textarea aria-label="코드" spellCheck={false} readOnly={readOnly} defaultValue={code} rows={Math.min(24, Math.max(2, code.split("\n").length))} onChange={event => setCode(event.target.value)} />
+  </div>;
+}
+const plainCodeDescriptor: CodeBlockEditorDescriptor = { priority: 0, match: () => true, Editor: PlainCodeBlockEditor };
 
 // Directive syntax turns ordinary text such as "HH:MM" into a ":MM" text directive. Only
 // the toggle is a real directive here; any other is shown as the text it came from and saved
@@ -220,7 +236,7 @@ export default function KnowledgeRichEditorInitialized({
     linkPlugin(),
     linkDialogPlugin(),
     tablePlugin(),
-    codeBlockPlugin({ defaultCodeBlockLanguage: "text" }),
+    codeBlockPlugin({ defaultCodeBlockLanguage: "text", codeBlockEditorDescriptors: [plainCodeDescriptor] }),
     frontmatterPlugin(),
     imagePlugin({
       disableImageSettingsButton: true,
@@ -250,7 +266,7 @@ export default function KnowledgeRichEditorInitialized({
     }),
   ], [accessToken, hasInlineOptions]); // Options themselves update through context without resetting the editor.
 
-  return <KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onClickCapture={openAttachmentLink} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
+  return <CodeReadOnly.Provider value={!!disabled}><KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onClickCapture={openAttachmentLink} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
     {!disabled ? <button type="button" className="knowledge-block-add" aria-label="블록 추가" onMouseDown={event => event.preventDefault()} onClick={openPicker}>＋ 블록 추가</button> : null}
     <MDXEditor
     ref={instance => { localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance; }}
@@ -279,5 +295,5 @@ export default function KnowledgeRichEditorInitialized({
       <small>블록 찾기 {picker.query ? `· ${picker.query}` : "· / 입력 후 검색"} · ↑↓ 선택 · Enter 추가</small>
       {choices.length ? choices.map((block, index) => <button type="button" key={block.id} role="option" aria-selected={picker.index === index} onMouseDown={event => event.preventDefault()} onClick={() => insertBlock(block.id)}><strong>{block.label}</strong><span>{block.hint}</span></button>) : <p>일치하는 블록이 없습니다.</p>}
     </div> : null}
-  </div></KnowledgeInlineOptions.Provider>;
+  </div></KnowledgeInlineOptions.Provider></CodeReadOnly.Provider>;
 }

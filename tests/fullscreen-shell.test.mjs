@@ -5,8 +5,9 @@ import { NAV_STAGES } from "../lib/navigation.ts";
 
 test("content automation is implemented as internal OS routes", () => {
   const automation = NAV_STAGES.find((stage) => stage.id === "automation");
-  assert.equal(automation?.pages.length, 10);
-  assert.equal(automation?.pages.filter((page) => page.href.startsWith("/automation/")).length, 10);
+  assert.equal(automation?.pages.length, 11);
+  assert.equal(automation?.pages.filter((page) => page.href.startsWith("/automation/")).length, 11);
+  assert.ok(automation?.pages.some((page) => page.href === "/automation/references"));
   assert.equal(automation?.pages.at(-1)?.href, "/automation/settings");
   for (const page of automation?.pages ?? []) assert.equal(page.href.startsWith("http"), false);
 });

@@ -664,6 +664,16 @@
       "notes": "Applied to confirmed brandyaction-os-dev after an explicit continuation request and rollback-only SQL validation. Supabase migration version matches this filename. Production remains unapproved and unapplied; existing company document rows were not changed."
     },
     {
+      "file": "20261011061610_team_absences_read.sql",
+      "sha256": "68e38c5f01ea85f7cecdc384d2b0042d1bb5a4695f9db12ea489ba49117a07a6",
+      "purpose": "provide a bounded, authenticated team-calendar view of approved HR absence dates without granting direct HR table access",
+      "requiresApproval": true,
+      "developmentApprovedAt": "2026-10-11",
+      "productionApprovedAt": "2026-10-27",
+      "appliedEnvironments": ["development", "production"],
+      "notes": "Ricky's PR #169 (2026-10-11), carried onto current main on 2026-10-27. Applied to confirmed brandyaction-os-dev after explicit approval (Supabase-generated version 20261011064111). The function grants execution only to authenticated; existing HR and company document row counts stayed unchanged. Production: owner request 2026-10-27 ('부재 일정도 고쳐줘', '진행해'); function absent before; rollback-only test with the migration on Production passed 10/10 checks (approved-only, am part, no reason/type, date window, range limits, anon refused, service_role no execute/no leave-table select) and left no function behind; then applied, recorded in schema history as 20261011061610 and read back (security definer, search_path empty, authenticated execute only)."
+    },
+    {
       "file": "20261013020000_fast_document_record_rls.sql",
       "sha256": "64ba7c3f9decda1018d73db369838b76a1769f84e46a5b7ac9390ea8f7d6069e",
       "purpose": "evaluate document and record read policies once per query instead of per row; read rules unchanged",

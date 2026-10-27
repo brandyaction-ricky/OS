@@ -57,8 +57,8 @@ export function TossSyncPanel({token,onRefresh}:{token:string|null;onRefresh:()=
   const days=(Date.parse(to)-Date.parse(from))/86400000;
   const valid=Number.isFinite(days)&&days>=0&&days<=30&&to<=today();
   const ready=status?.enabled&&status.connection.configured;
-  return <section className="panel finance-toss-sync" aria-label="에듀 토스 원장 수집" aria-busy={busy}>
-    <div className="panel-header"><h2>에듀 · 토스 원장 수집</h2><span className="finance-sync-mode">{status?.connection.mode==="live"?"라이브":status?.connection.mode==="test"?"테스트":"미설정"} · 수동 수집</span></div>
+  return <details className="panel finance-toss-panel finance-toss-sync" aria-label="에듀 토스 원장 수집" aria-busy={busy}>
+    <summary>에듀 · 토스 원장 수집 · {status?.connection.mode==="live"?"라이브":status?.connection.mode==="test"?"테스트":"미설정"} · {run?`${active?"수집 중":run.state==="complete"?"완료":"종료"} · 마지막 저장 ${new Date(run.updated_at).toLocaleString("ko-KR",{timeZone:"Asia/Seoul"})}`:"수동 수집"}</summary>
     <div className="finance-sync-body">
       <p>결제·취소와 정산 내역을 재무 원장에 저장합니다. 실제 결제·환불은 실행하지 않으며, 통장 입금은 별도로 확인합니다.</p>
       {!status?<p role="status">수집 상태를 확인하고 있습니다.</p>:!status.enabled?<p role="status">원장 수집은 검수·승인 후 활성화됩니다. 기존 토스 조회는 저장 없이 사용할 수 있습니다.</p>:!status.connection.configured?<p role="status">{status.connection.message}</p>:null}
@@ -83,8 +83,8 @@ export function TossSyncPanel({token,onRefresh}:{token:string|null;onRefresh:()=
         <button className="secondary-button" disabled={busy||!(saved||run?.page_count)} onClick={()=>{onRefresh();setSaved(false);}}>저장 원장 새로고침</button>
       </div>
       {active?<p className="finance-sync-note">버튼 한 번에 결제 최대 10건 또는 정산 100건을 처리합니다. 화면을 닫아도 저장한 위치에서 이어받을 수 있습니다. 기간을 바꾸려면 현재 수집을 종료해 주세요.</p>:null}
-      {saved?<p role="status">묶음 저장됨 · ‘저장 원장 새로고침’을 누르면 아래 재무 화면에 반영됩니다.</p>:null}
+      {saved?<p role="status">묶음 저장됨 · ‘저장 원장 새로고침’을 누르면 위 재무 화면에 반영됩니다.</p>:null}
       {error?<p role="alert" className="finance-sync-warning">{error}</p>:null}
     </div>
-  </section>;
+  </details>;
 }

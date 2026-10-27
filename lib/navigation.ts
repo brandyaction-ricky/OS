@@ -74,6 +74,7 @@ export const NAV_STAGES: NavStage[] = [
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
     { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
+    { label: "레퍼런스", href: "/automation/references", icon: BookOpen, ready: true },
     { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
     { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
     { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },

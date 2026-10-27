@@ -11,7 +11,7 @@
   line-height: 1.5;
 }
 .hr-workspace {
-  padding: 18px 24px 64px;
+  padding: 20px 0 48px;
   min-width: 0;
   width: 100%;
   max-width: 1530px;
@@ -309,7 +309,7 @@
   background: color-mix(in srgb, #5e6ad2 7%, var(--hr-panel));
   border: 1px solid var(--hr-line);
   border-radius: 6px;
-  margin-bottom: 14px;
+  margin: 0 0 14px;
   font-size: 12px;
 }
 .hr-banner.error {
@@ -597,7 +597,7 @@
 }
 @media (max-width: 800px) {
   .hr-workspace {
-    padding: 16px 14px 60px;
+    padding-top: 16px;
   }
   .hr-head {
     flex-wrap: wrap;

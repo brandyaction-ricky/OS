@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmMyinClips, createMyinRun, latestMyinRun, myinOutputs, myinPreviewSheets, myinWordsReport, reviewMyinStoryboard, startMyinPrep } from "@/lib/server/myin-run";
+import { confirmMyinClips, createMyinRun, latestMyinRun, myinOutputs, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinSound, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -22,6 +22,8 @@ export async function GET(request: Request) {
     if (sheets) return NextResponse.json(await myinPreviewSheets(actor, z.string().uuid().parse(sheets)), { headers });
     const outputs = query.get("outputs");
     if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs)), { headers });
+    const sound = query.get("sound");
+    if (sound) return NextResponse.json(await myinSoundState(actor, z.string().uuid().parse(sound)), { headers });
     return NextResponse.json({ run: await latestMyinRun(actor, z.string().uuid().parse(query.get("sourceId"))) }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
@@ -33,16 +35,28 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default("") }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
   z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default("") }),
+  // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
+  z.object({ action: z.literal("final"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("sound"), runId: z.string().uuid(), plan: z.object({
+    music: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), start: z.number().min(0).max(3600).optional() }).strict()).max(60),
+    amb: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), dur: z.number().positive().max(600).optional(),
+      cue: z.string().max(200).optional(), cueEnd: z.string().max(200).optional() }).strict()).max(60),
+    sfx: z.array(z.object({ scene: z.number().int().min(1).max(200), cue: z.string().min(1).max(200), key: z.string().min(1).max(80) }).strict()).max(200),
+  }).strict() }),
 ]);
 
-/** Logan's storyboard review (confirming starts stage 3), and a restart of the preparation. */
+/** Logan's storyboard review (confirming starts the ③ drafts), the drafts' OK (starts ④), the sound plan, the full video, and restarts. */
 export async function PATCH(request: Request) {
   try {
     pilot();
     const actor = await authenticateRequest(request, { allowAgent: false });
-    const input = patchSchema.parse(await parseJson(request, 4_000));
+    const input = patchSchema.parse(await parseJson(request, 60_000));
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note) }
+      : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
+      : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
+      : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
       : { run: await startMyinPrep(actor, input.runId) };
     return NextResponse.json(result, { headers });
   } catch (error) {
