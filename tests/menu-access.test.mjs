@@ -41,6 +41,11 @@ test("menu selection preserves role/data boundaries and always-available destina
 });
 
 test("aliases and query-backed menus cannot sidestep page selection", () => {
+  assert.equal(access.canOpenMenu(member, "/automation/references", ["/automation/topics"]), true);
+  assert.equal(access.canOpenMenu(member, "/automation/references", ["/automation/review"]), true);
+  assert.equal(access.canOpenMenu(member, "/automation/references", ["/content/scripts"]), false);
+  assert.equal(access.canOpenMenu(member, "/automation/references", []), false);
+  assert.equal(access.canOpenMenu({ ...member, isActive: false }, "/automation/references", ["/automation/topics"]), false);
   assert.equal(access.canOpenMenu(member, "/organization/leave", ["/organization/schedule"]), true);
   assert.equal(access.canOpenMenu(member, "/content/automation", []), false);
   assert.equal(access.canOpenMenu(member, "/knowledge/development?tab=history", ["/knowledge/development"]), false);

@@ -16,6 +16,7 @@ export const MENU_HREFS = [...NAV_STAGES.flatMap(stage => stage.pages.map(page =
 export const REQUIRED_MENUS = ["/home", ACCOUNT_PAGE.href];
 const LEGACY_DOCUMENT_MENUS = ["/knowledge", "/knowledge/decisions", "/knowledge/docs", "/knowledge/graph", "/knowledge/review", "/knowledge/templates"];
 const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
+  "/automation/references": ["/automation/topics", "/automation/review"],
   "/automation/topics": ["/automation/review"],
   "/automation/cardnews": ["/automation/review"],
   "/automation/shorts": ["/automation/review"],

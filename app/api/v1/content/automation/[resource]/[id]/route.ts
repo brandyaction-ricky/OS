@@ -6,6 +6,8 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { assertCanEdit,assertHumanOwner,assertSameOrigin,getContentRecord,TEAM_FIELDS,updatePersonalRecord } from "@/lib/server/content-automation-v07";
 import { validatePersonalAsset,validatePersonalItem,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { AUTOMATION_PROCS } from "@/lib/server/content-automation-v07";
+import { validateThreadsTopicMetadata,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
+import { threadsReferenceRequestId } from "@/lib/server/threads-reference";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -59,6 +61,19 @@ export async function PATCH(request:Request,{params}:Params){
         ...(resource==="templates"?{packageKind:"cardnews_template_v2"}:{})};
       // File paths belong to the draft's owner, also when a reviewer edits a shared draft.
       if(resource==="items")validatePersonalItem(metadata,String(current.metadata.channel),String(current.owner_id));
+      if(resource==="topics"){
+        if(input.metadata.kind!==undefined&&input.metadata.kind!==current.metadata.kind
+          ||current.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW&&input.metadata.editorial_workflow!==undefined
+            &&input.metadata.editorial_workflow!==THREADS_REFERENCE_WORKFLOW)
+          throw new ApiError(422,"THREADS_WORKFLOW_IMMUTABLE","원문은 레퍼런스 화면에서 별도 주제로 선택해 주세요.");
+        if(current.metadata.kind===THREADS_REFERENCE_KIND)metadata.kind=THREADS_REFERENCE_KIND;
+        Object.assign(metadata,validateThreadsTopicMetadata(metadata));
+        if(current.metadata.kind===THREADS_REFERENCE_KIND){
+          const reference=(metadata.reference_items as {url:string}[])[0];
+          metadata.sourceRef=reference.url;
+          metadata.requestId=threadsReferenceRequestId(reference.url);
+        }
+      }
       if(resource==="assets"){
         if(metadata.storagePath!==current.metadata.storagePath)
           throw new ApiError(422,"ASSET_FILE_IMMUTABLE","이미지 파일은 바꿀 수 없습니다. 새 이미지를 올려 주세요.");
