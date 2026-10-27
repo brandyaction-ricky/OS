@@ -178,7 +178,7 @@ test("local queue → real worker MP4 → verified upload → same draft, with m
     const png=execFileSync("ffmpeg",["-v","error","-f","lavfi","-i","color=c=blue:s=640x480","-frames:v","1","-f","image2pipe","-vcodec","png","pipe:1"]);
     const {renderPcSignalSchema}=await load("lib/server/youtube-render-pc.ts",{
       zod,"@/lib/http":{ApiError},"@/lib/supabase/server":{},
-      "./youtube-render-run":{},"./youtube-voice-run":{},
+      "./youtube-render-run":{},"./youtube-voice-run":{},"./render-engine":{engineBundleSaved:async()=>true},
     });
     const signals=[];
     const originalFetch=globalThis.fetch;

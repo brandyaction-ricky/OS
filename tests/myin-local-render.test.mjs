@@ -97,3 +97,35 @@ test("the render PC's voice.wav leaves stage 1 in parts the voice bucket accepts
     assert.equal(await worker.uploadVoiceParts(file, [`${base}/only`]), null, "a voice longer than the parts allow stays on the render PC");
   } finally { server.close(); }
 });
+
+// The staff PC runner (public/myin-local): the render PC's bundle, checked part by part, becomes this PC's engine.
+test("a staff PC installs the render PC's engine bundle only when every part matches", { skip: spawnSync("python3", ["-V"]).status !== 0 }, async () => {
+  const { createHash } = await import("node:crypto");
+  const src = mkdtempSync(path.join(os.tmpdir(), "myin-bundle-"));
+  mkdirSync(path.join(src, "engine", "pkg", "tools", "myin_pipeline"), { recursive: true }); mkdirSync(path.join(src, "tools"), { recursive: true });
+  writeFileSync(path.join(src, "engine", "pkg", "tools", "myin_pipeline", "render_myin.py"), "print(1)\n");
+  writeFileSync(path.join(src, "tools", "youtube-media-worker.mjs"), "process.exit(0)\n");
+  writeFileSync(path.join(src, "requirements.lock"), ""); writeFileSync(path.join(src, "python-version"), "3.9");
+  const fingerprint = "a".repeat(32); writeFileSync(path.join(src, "FINGERPRINT"), `${fingerprint}\n`);
+  const tarball = path.join(mkdtempSync(path.join(os.tmpdir(), "myin-tar-")), "bundle.tar.gz");
+  assert.equal(spawnSync("tar", ["-czf", tarball, "-C", src, "."]).status, 0);
+  const bytes = readFileSync(tarball), parts = [bytes.subarray(0, 100), bytes.subarray(100)];
+  const server = createServer((request, response) => { response.end(parts[Number(request.url.slice(1))]); });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    process.env.MYIN_LOCAL_PYTHON = "python3";
+    const runner = await import(`../public/myin-local/myin-local.mjs?install=${Math.random()}`);
+    const home = mkdtempSync(path.join(os.tmpdir(), "myin-home-"));
+    const info = { fingerprint, python: "3.9", parts: parts.map((part, n) => ({ url: `${base}/${n}`, bytes: part.length, sha256: createHash("sha256").update(part).digest("hex") })) };
+    await assert.rejects(runner.installEngine({ ...info, parts: [{ ...info.parts[0], sha256: "0".repeat(64) }, info.parts[1]] }, home), /손상/);
+    assert.equal(existsSync(path.join(home, `engine-${fingerprint}`)), false, "a damaged bundle is never installed");
+    const engine = await runner.installEngine(info, home);
+    assert.ok(existsSync(path.join(engine.dir, "tools", "youtube-media-worker.mjs")) && existsSync(path.join(engine.dir, ".ready")));
+    assert.ok(existsSync(engine.python), "a Python environment for the engine's packages");
+    const env = runner.workerEnv(engine, home, "bos_pat_x");
+    assert.equal(env.MYIN_PKG, path.join(engine.dir, "engine", "pkg"));
+    assert.equal("MYIN_DIAGRAM_DIR" in env, false, "a folder the render PC did not have is not set, so both fingerprints agree");
+    assert.equal(env.MYIN_LOCAL_KEY, "bos_pat_x");
+  } finally { server.close(); delete process.env.MYIN_LOCAL_PYTHON; }
+});
