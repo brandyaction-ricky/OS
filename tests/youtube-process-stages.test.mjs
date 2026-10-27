@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, utmBase, utmUrl, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -40,7 +40,7 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   make.thumbs.A = { path: "p", at: "t", name: "a.png" }; make.thumbs.B = { path: "p", at: "t", name: "b.png" };
   assert.equal(thumbsMissing(make), "");
   // 「유튜브 발행 키트 만드는 절차」 정본 v1.3 (2026-10-26): 소개로 시작, 타임라인 5~8줄, 요약 3줄 이내, 히든 태그 6~12개.
-  const desc = "같은 일인데 왜 나만 지칠까요? 그 이유를 세 칸으로 나눠 봐요.\n-----\n#강점 #성격\n-----\n⬇️ 내 강점 진단 받기\nhttps://www.brandyaction.com/classes/294620?utm_source=youtube\n-----\n[타임라인]\n00:00 시작\n01:10 둘째\n03:00 셋째\n05:00 넷째\n07:00 다섯째\n-----\n[설명문 본문]\n1\n2\n3\n-----\n[인용 및 출처]\n- 수치 / 통계 / 기관 (2026, 2026-01)\n-----\n[히든 태그]\n강점, 성격, 직장인, 이직, 퇴사, 일";
+  const desc = "같은 일인데 왜 나만 지칠까요? 그 이유를 세 칸으로 나눠 봐요.\n-----\n#강점 #성격\n-----\n⬇️ 내 강점 진단 받기\nhttps://www.myinlab.co.kr/services/n6?utm_source=youtube\n-----\n[타임라인]\n00:00 시작\n01:10 둘째\n03:00 셋째\n05:00 넷째\n07:00 다섯째\n-----\n[설명문 본문]\n1\n2\n3\n-----\n[인용 및 출처]\n- 수치 / 통계 / 기관 (2026, 2026-01)\n-----\n[히든 태그]\n강점, 성격, 직장인, 이직, 퇴사, 일";
   const checks = descChecks(desc, { srt: { path: "s", name: "s.srt" }, utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" } });
   assert.deepEqual(checks.map(check => check.ok), [true, true, true, true, true, true, true, true]);
   assert.deepEqual(hiddenTagsOf(desc), ["강점", "성격", "직장인", "이직", "퇴사", "일"]);
@@ -50,11 +50,15 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.equal(descChecks(desc.replace("내 강점 진단 받기", "무료 진단 받기"), { srt: null, utm: { short: "", next: "" } })[4].ok, false);
   // 로건 피드백 10/26-10 · 11: a YouTube address under the 진단 CTA fails, also when it was pasted into the 단축 링크 field.
   const youtube = "https://youtu.be/abcdefghijk";
-  const withYoutube = desc.replace("https://www.brandyaction.com/classes/294620?utm_source=youtube", youtube);
+  const withYoutube = desc.replace("https://www.myinlab.co.kr/services/n6?utm_source=youtube", youtube);
   assert.equal(descChecks(withYoutube, { srt: null, utm: { short: youtube, next: youtube } })[5].ok, false);
-  assert.equal(descChecks(desc.replace("https://www.brandyaction.com/classes/294620?utm_source=youtube", "https://buly.kr/abc"), { srt: null, utm: { short: "https://buly.kr/abc", next: "" } })[5].ok, true);
+  assert.equal(descChecks(desc.replace("https://www.myinlab.co.kr/services/n6?utm_source=youtube", "https://buly.kr/abc"), { srt: null, utm: { short: "https://buly.kr/abc", next: "" } })[5].ok, true);
   const utm = { cat: "키", dest: "진단", camp: "jindan_report", next: youtube, short: youtube };
-  assert.match(diagnosisLink(utm), /^https:\/\/www\.brandyaction\.com\/classes\/294620\?/);
+  assert.match(diagnosisLink(utm), /^https:\/\/www\.myinlab\.co\.kr\/services\/n6\?/);
+  // 보낼 곳 (owner decision 2026-10-26): any https address carries the video's UTM, also one with its own query.
+  assert.equal(utmUrl({ ...utm, url: "https://www.myinlab.co.kr/services/free?ref=yt", camp: "jindan_report" }, "yp-1a2b3c4d"),
+    "https://www.myinlab.co.kr/services/free?ref=yt&utm_source=youtube&utm_medium=organic&utm_campaign=jindan_report&utm_content=yp-1a2b3c4d");
+  assert.equal(utmBase({ url: "javascript:alert(1)" }), "https://www.myinlab.co.kr/services/n6");
   assert.equal(diagnosisLink({ ...utm, short: "https://buly.kr/abc" }), "https://buly.kr/abc");
   assert.match(shortLinkProblem(youtube), /유튜브 주소/);
   assert.equal(shortLinkProblem("buly.kr/abc"), "");

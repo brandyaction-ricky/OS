@@ -5,8 +5,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Check, Copy, ExternalLink, FileText, RefreshCw, Sparkles, Upload, Youtube } from "lucide-react";
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
-import { stepHref } from "@/lib/youtube-process/project";
-import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, shortLinkProblem, SLOTS, UTM_OPTIONS, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
+import { projectName, stepHref } from "@/lib/youtube-process/project";
+import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { CostTag } from "./cost-notice";
@@ -32,6 +32,8 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [step, setStep] = useState("");
   // 로건 피드백 10/26-9: an upload failure showed only at the top of the page, far from the button that was pressed.
   const [goError, setGoError] = useState("");
+  const [shortBusy, setShortBusy] = useState(false);
+  const [shortError, setShortError] = useState("");
   const [copied, setCopied] = useState("");
   const [myinSrt, setMyinSrt] = useState<string | null>(null);
   const [handouts, setHandouts] = useState<{ deck: string | null; summary: string | null }>({ deck: null, summary: null });
@@ -103,6 +105,16 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       await page.reload(); setDirty(false);
     } catch (reason) { page.fail(reason); setGoError(errorMessage(reason)); } finally { setProgress(null); setStep(""); }
   };
+  // 마이인 단축 링크 (owner decision 2026-10-26): the UTM address of this video, shortened on the MYIN site, straight into the field.
+  const dest = form ? (form.utm.dest === "직접 입력" ? "직접 입력" : UTM_DESTS.find(([, url]) => url && url === utmBase(form.utm))?.[0] ?? "직접 입력") : "정밀 진단";
+  const makeShort = async () => {
+    if (!form || !project || !page.accessToken) return;
+    setShortBusy(true); setShortError("");
+    try {
+      const made = await apiRequest<{ url: string }>("/api/v1/short-links", { method: "POST", token: page.accessToken, body: JSON.stringify({ url: utmUrl(form.utm, utmCode(project.id)), label: `유튜브 · ${projectName(project)}`.slice(0, 80) }) });
+      edit({ utm: { ...form.utm, short: made.url } }, true);
+    } catch (reason) { setShortError(errorMessage(reason)); } finally { setShortBusy(false); }
+  };
   // After the upload the project moves on to 쇼츠 · 칼럼 (it ends there, with or without shorts and a column).
   const router = useRouter();
   const onward = async () => {
@@ -130,12 +142,23 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="UTM 설정" need>
           <div className="yp-g2">
-            {(["cat", "dest", "camp"] as const).map(key => <div key={key}><label className="yp-lbl" style={{ marginTop: 0 }}>{{ cat: "영상 카테고리", dest: "보낼 곳", camp: "캠페인" }[key]}</label>
-              <select className="yp-in" disabled={!editable} value={form.utm[key]} onChange={event => edit({ utm: { ...form.utm, [key]: event.target.value } }, true)} aria-label={key}>{UTM_OPTIONS[key].map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>)}
+            {/* 보낼 곳 (owner decision 2026-10-26): a MYIN mall page or any https address; changing it or the campaign drops the old 단축 링크. */}
+            <div><label className="yp-lbl" style={{ marginTop: 0 }}>보낼 곳</label>
+              <select className="yp-in" disabled={!editable} value={dest} aria-label="보낼 곳" onChange={event => {
+                const preset = UTM_DESTS.find(([name]) => name === event.target.value);
+                edit({ utm: { ...form.utm, dest: event.target.value, url: preset?.[1] ?? "", short: "" } }, true);
+              }}>{UTM_DESTS.map(([name]) => <option key={name} value={name}>{name}</option>)}</select>
+              {dest === "직접 입력" ? <input className="yp-in" style={{ marginTop: 6 }} value={form.utm.url ?? ""} readOnly={!editable} placeholder="https://로 시작하는 주소" aria-label="보낼 곳 주소"
+                onChange={event => edit({ utm: { ...form.utm, url: event.target.value.trim(), short: "" } })} /> : null}</div>
+            {(["cat", "camp"] as const).map(key => <div key={key}><label className="yp-lbl" style={{ marginTop: 0 }}>{{ cat: "영상 카테고리", camp: "캠페인" }[key]}</label>
+              <select className="yp-in" disabled={!editable} value={form.utm[key]} onChange={event => edit({ utm: { ...form.utm, [key]: event.target.value, ...(key === "camp" ? { short: "" } : {}) } }, true)} aria-label={key}>{UTM_OPTIONS[key].map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></div>)}
             <div><label className="yp-lbl" style={{ marginTop: 0 }}>이어서 볼 영상 <span className="yp-gq">유튜브 링크</span></label><input className="yp-in" value={form.utm.next} readOnly={!editable} placeholder="예) https://youtu.be/…" onChange={event => edit({ utm: { ...form.utm, next: event.target.value } })} aria-label="이어서 볼 영상 링크" /></div>
           </div>
-          <label className="yp-lbl">UTM 주소</label><div className="yp-utm">{utmUrl(form.utm, done ? `yp-${project.id.slice(0, 8)}` : undefined)}</div>
-          <label className="yp-lbl">단축 링크 <span className="yp-gq">만들어서 붙여 넣어요</span></label><input className="yp-in" value={form.utm.short} readOnly={!editable} placeholder="예) buly.kr/○○ 붙여 넣기" onChange={event => edit({ utm: { ...form.utm, short: event.target.value } })} aria-label="단축 링크" />
+          <label className="yp-lbl">UTM 주소</label><div className="yp-utm">{utmUrl(form.utm, utmCode(project.id))}</div>
+          <label className="yp-lbl">단축 링크 <span className="yp-gq">마이인 단축 링크로 만들어요</span></label>
+          <div className="yp-savebar"><input className="yp-in" value={form.utm.short} readOnly={!editable} placeholder="[단축 링크 만들기]를 누르거나 붙여 넣어요" onChange={event => edit({ utm: { ...form.utm, short: event.target.value } })} aria-label="단축 링크" />
+            {editable ? <button type="button" className="yp-btn" disabled={shortBusy || page.demo} title={page.demo ? "데모에서는 만들지 않아요" : undefined} onClick={() => void makeShort()}>{shortBusy ? "만드는 중…" : "단축 링크 만들기"}</button> : null}</div>
+          {shortError ? <div className="yp-errline" role="alert">{shortError}</div> : null}
           {shortLinkProblem(form.utm.short) ? <div className="yp-errline" role="alert">{shortLinkProblem(form.utm.short)}</div> : null}
         </YpSection>
         <YpSection n={2} title="자막(SRT)">

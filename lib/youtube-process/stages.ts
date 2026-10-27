@@ -63,7 +63,8 @@ export interface YpRedo extends Partial<YpPatterns> {
 }
 export interface YpRedoPick { text: string; sub?: string; hook: string; pattern?: number; why: string }
 export interface YpUpload {
-  utm: { cat: string; dest: string; camp: string; next: string; short: string };
+  /** url: where the 진단 링크 goes (owner decision 2026-10-26: the MYIN mall); missing = 정밀 진단. */
+  utm: { cat: string; dest: string; camp: string; next: string; short: string; url?: string };
   srt: { path: string; name: string } | null;
   desc: string; pinned: string; hiddenTags: string[];
   descBy: { userId: string; name: string; model: string; jobId: string; at: string; draft: string; title?: string } | null;
@@ -112,10 +113,16 @@ export const SPEC_OPTIONS = {
   fps: ["30fps (기본)", "24fps", "60fps"],
   ratio: ["16:9 가로 (롱폼 · 기본)", "9:16 세로", "1:1 정사각"],
 };
-export const UTM_BASE = "https://www.brandyaction.com/classes/294620";
+// 보낼 곳 (owner decision 2026-10-26: 회사 유튜브는 마이인 자사몰로, 영상마다 UTM을 따로): a MYIN page, or any https address.
+export const UTM_DESTS = [["정밀 진단", "https://www.myinlab.co.kr/services/n6"], ["무료 진단", "https://www.myinlab.co.kr/services/free"],
+  ["마이인 홈", "https://www.myinlab.co.kr/"], ["직접 입력", ""]] as const;
+export const UTM_DEFAULT_URL = UTM_DESTS[0][1];
+/** The address the UTM is put on: the video's own, else 정밀 진단. */
+export const utmBase = (utm: Pick<YpUpload["utm"], "url">) => /^https:\/\/[^\s]+$/.test(utm.url?.trim() ?? "") ? utm.url!.trim() : UTM_DEFAULT_URL;
+/** utm_content: the project code, known before the upload, so the 단축 링크 can be made from the start. */
+export const utmCode = (projectId: string) => `yp-${projectId.slice(0, 8)}`;
 export const UTM_OPTIONS = {
   cat: [["키", "키"], ["풀링", "풀링"], ["키+풀링", "키+풀링"]],
-  dest: [["진단", "진단"], ["진단+키", "진단+키"], ["진단+키+PPT", "진단+키+PPT"]],
   camp: [["jindan_report", "jindan_report (기본)"], ["keycontent", "keycontent (키 콘텐츠)"], ["lecture", "lecture (강의)"], ["community", "community (커뮤니티)"]],
 } as const;
 
@@ -220,15 +227,16 @@ export function thumbsMissing(make: YpMake) {
 }
 
 // ── 업로드 (S7) ──
-export function utmUrl(utm: YpUpload["utm"], videoId?: string) {
-  return `${UTM_BASE}?utm_source=youtube&utm_medium=organic&utm_campaign=${utm.camp}&utm_content=${videoId ?? "[올린 뒤 채워짐]"}&utm_term={query}`;
+export function utmUrl(utm: YpUpload["utm"], code?: string) {
+  const base = utmBase(utm);
+  return `${base}${base.includes("?") ? "&" : "?"}utm_source=youtube&utm_medium=organic&utm_campaign=${encodeURIComponent(utm.camp)}&utm_content=${code ?? "[올린 뒤 채워짐]"}`;
 }
 const isYoutubeLink = (link: string) => /^(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\//i.test(link.trim());
 /** The 단축 링크 when it is one: a YouTube address pasted there went out as the 진단 링크 (로건 피드백 10/26-10). */
 const shortLink = (utm: Pick<YpUpload["utm"], "short">) => utm.short.trim() && !isYoutubeLink(utm.short) ? utm.short.trim() : "";
 export const shortLinkProblem = (short: string) => isYoutubeLink(short) ? "단축 링크 칸에 유튜브 주소가 들어 있어요. 위 UTM 주소로 만든 단축 링크를 넣어요." : "";
 /** The 진단 링크 the description and pinned comment carry: the 단축 링크, else the UTM address. */
-export const diagnosisLink = (utm: YpUpload["utm"]) => shortLink(utm) || utmUrl(utm);
+export const diagnosisLink = (utm: YpUpload["utm"], code?: string) => shortLink(utm) || utmUrl(utm, code);
 export function pinnedDraft(utm: YpUpload["utm"]) {
   return `[질문 한 줄]\n⬇️ [진단 CTA 한 줄]\n${shortLink(utm) || "[진단 단축 링크]"}\n이어서 보면 좋을 영상 보러가기\n${utm.next || "[이어서 볼 영상 링크 — 1번에 붙여넣기]"}`;
 }
@@ -260,12 +268,13 @@ export function descChecks(text: string, upload: Pick<YpUpload, "srt" | "utm">) 
   const cta = text.split("\n").find(line => line.trim().startsWith("⬇️")) ?? "";
   const links = text.match(/https?:\/\/\S+/g) ?? [];
   const short = shortLink(upload.utm);
-  const fake = links.filter(link => !link.startsWith(UTM_BASE) && !(short && link.startsWith(short)) && !(upload.utm.next && link.startsWith(upload.utm.next)));
+  const base = utmBase(upload.utm);
+  const fake = links.filter(link => !link.startsWith(base) && !(short && link.startsWith(short)) && !(upload.utm.next && link.startsWith(upload.utm.next)));
   // 로건 피드백 10/26-11: the link under the ⬇️ 진단 CTA must be the UTM address or its short link — a youtu.be there passed before.
   const lines = text.split("\n");
   const ctaAt = lines.findIndex(line => line.trim().startsWith("⬇️"));
   const underCta = ctaAt >= 0 ? lines.slice(ctaAt, ctaAt + 3).join("\n") : "";
-  const diagnosisOk = Boolean(short && underCta.includes(short)) || (underCta.match(/https?:\/\/\S+/)?.[0] ?? "").startsWith(UTM_BASE);
+  const diagnosisOk = Boolean(short && underCta.includes(short)) || (underCta.match(/https?:\/\/\S+/)?.[0] ?? "").startsWith(base);
   const sources = (section(text, "[인용 및 출처]") ?? []).filter(line => line.startsWith("-"));
   return [
     { ok: order, text: order ? "소개로 시작하고 구역 순서가 맞고 히든 태그가 맨 마지막이에요" : "소개 1~2줄로 시작하지 않거나, 구역 순서가 다르거나, 히든 태그가 맨 뒤가 아니에요" },
