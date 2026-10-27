@@ -51,7 +51,8 @@ async function topicForItem(item: OsRecord) {
   const { data, error } = await createServiceSupabase().from("os_records").select("*")
     .eq("id", item.parent_id).eq("owner_id", item.owner_id).eq("record_type", "content_topic")
     .eq("metadata->>space", "personal").is("archived_at", null).maybeSingle();
-  if (error || !data) throw new ApiError(409, "THREADS_TOPIC_UNAVAILABLE", "원고에 연결된 주제와 근거를 읽지 못했습니다.");
+  if (error) throw new ApiError(503, "THREADS_TOPIC_READ_FAILED", "원고에 연결된 주제와 근거를 일시적으로 읽지 못했습니다. 다시 시도해 주세요.");
+  if (!data) throw new ApiError(409, "THREADS_TOPIC_UNAVAILABLE", "원고에 연결된 주제와 근거를 읽지 못했습니다.");
   return data as OsRecord;
 }
 export async function threadsSourceInput(target: OsRecord, proc: string) {

@@ -34,7 +34,7 @@ const topic = () => ({ ...record(topicId, { editorial_workflow: contract.THREADS
 const item = () => ({ ...record("66666666-6666-4666-8666-666666666666", { channel: "threads", posts: ["An existing paragraph"] }),
   record_type: "content_publish", parent_id: topicId, stage: "making" });
 const code = expected => error => error.code === expected;
-function memoryDb(tables) {
+function memoryDb(tables, errors = {}) {
   const queries = [];
   return { queries, from(table) {
     const filters = [];
@@ -47,6 +47,7 @@ function memoryDb(tables) {
         return { data: rows.slice(0, max), error: null };
       },
       async maybeSingle() {
+        if (errors[table]) return { data: null, error: errors[table] };
         const value = key => row => key.startsWith("metadata->>") ? row.metadata[key.slice(11)] : row[key];
         const rows = tables[table] ?? [];
         return { data: rows.find(row => filters.every(([key, wanted]) => value(key)(row) === wanted)) ?? null, error: null };
@@ -55,9 +56,9 @@ function memoryDb(tables) {
     return builder;
   } };
 }
-async function serverHarness({ docs, topics = [topic()], readable = true } = {}) {
+async function serverHarness({ docs, topics = [topic()], readable = true, topicReadError } = {}) {
   const store = memoryDb({ os_documents: docs ?? [{ id: "77777777-7777-4777-8777-777777777777", title: "쓰레드 자동화 운영 정본 — 안저 · Aside × OS",
-    status: "canonical", reader_scope: "all", current_version: 10, content_md: "Approved procedure and examples" }], os_records: topics });
+    status: "canonical", reader_scope: "all", current_version: 10, content_md: "Approved procedure and examples" }], os_records: topics }, { os_records: topicReadError });
   let accessChecks = 0;
   const server = await load("lib/server/threads-reference.ts", {
     "node:crypto": crypto, "@/lib/http": { ApiError }, "@/lib/threads-reference": contract,
@@ -128,6 +129,17 @@ test("reference request identity reuses the same URL without fragments or campai
   const {server}=await serverHarness();
   assert.equal(server.threadsReferenceRequestId("https://example.com/p/one?utm_source=mail#part"),server.threadsReferenceRequestId("https://example.com/p/one"));
   assert.notEqual(server.threadsReferenceRequestId("https://example.com/p/one?id=1"),server.threadsReferenceRequestId("https://example.com/p/one?id=2"));
+});
+test("a transient parent-topic read stays retryable during job creation and current-input validation",async()=>{
+  const {server:healthy}=await serverHarness();
+  const draft=item(), input=await healthy.createThreadsJobInput(actor,draft,"threads");
+  const job={metadata:{proc:"threads",threadsInput:input,threadsInputKey:healthy.threadsInputKey(input)}};
+  const {server:unavailable}=await serverHarness({topicReadError:{message:"Temporary database connection failure"}});
+  const retryable=error=>error.status===503&&error.code==="THREADS_TOPIC_READ_FAILED";
+  await assert.rejects(unavailable.createThreadsJobInput(actor,draft,"threads"),retryable);
+  await assert.rejects(unavailable.assertThreadsJobCurrent(draft,job),retryable);
+  const {server:missing}=await serverHarness({topics:[]});
+  await assert.rejects(missing.assertThreadsJobCurrent(draft,job),error=>error.status===409&&error.code==="THREADS_TOPIC_UNAVAILABLE");
 });
 test("topic/brief and review use this workflow only for Threads while ordinary channel jobs are untouched", async () => {
   const { server, store } = await serverHarness();
