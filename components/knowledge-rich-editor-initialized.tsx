@@ -39,6 +39,7 @@ import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-uti
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
 import { attachmentForLinkText, parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
+import { escapeLooseAngles } from "@/lib/knowledge-markdown";
 import { matchesVaultName } from "@/lib/knowledge-vault-interactions";
 import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
 import {KnowledgeInlineOptions, knowledgeInlinePickerPlugin, type InlineOptions} from "./knowledge/inline-picker-plugin";
@@ -269,8 +270,12 @@ export default function KnowledgeRichEditorInitialized({
   return <CodeReadOnly.Provider value={!!disabled}><KnowledgeInlineOptions.Provider value={inlineOptions}><div className="knowledge-block-editor" ref={wrapperRef} onKeyDownCapture={handlePickerKey} onClickCapture={openAttachmentLink} onBlur={event=>{if(inlineOptions&&!event.currentTarget.contains(event.relatedTarget))setPicker(null);}}>
     {!disabled ? <button type="button" className="knowledge-block-add" aria-label="블록 추가" onMouseDown={event => event.preventDefault()} onClick={openPicker}>＋ 블록 추가</button> : null}
     <MDXEditor
-    ref={instance => { localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance; }}
-    markdown={markdown}
+    ref={editor => {
+      // Every way Markdown enters the editor escapes prose "<" first (see escapeLooseAngles).
+      const instance = editor && { ...editor, setMarkdown: (value: string) => editor.setMarkdown(escapeLooseAngles(value)), insertMarkdown: (value: string) => editor.insertMarkdown(escapeLooseAngles(value)) };
+      localRef.current = instance; if (typeof editorRef === "function") editorRef(instance); else if (editorRef) editorRef.current = instance;
+    }}
+    markdown={escapeLooseAngles(markdown)}
     readOnly={disabled}
     className="knowledge-rich-editor"
     contentEditableClassName="knowledge-rich-content"
