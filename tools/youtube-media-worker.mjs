@@ -267,6 +267,61 @@ const runCapture = (command, args, options) => new Promise((resolve, reject) => 
   child.on("exit", (code) => code === 0 ? resolve(out) : reject(Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
 });
 
+// ③ 시안 (2026-10-27 대표): the drafts use the storyboard's photos; a gray 「사진 자리」 stands in only for one the render PC could not fetch
+// (his engine stops on a missing file). The ④ preparation fetches the photo again under the same name over it.
+const PLACEHOLDER_PY = `import os, sys
+from PIL import Image, ImageDraw, ImageFont
+out, name, fonts = sys.argv[1:4]
+im = Image.new("RGB", (1600, 1000), (214, 214, 220)); d = ImageDraw.Draw(im)
+def font(size):
+    for n in ("Pretendard-Bold.otf", "Pretendard-SemiBold.otf", "Pretendard-Black.otf"):
+        if os.path.exists(os.path.join(fonts, n)): return ImageFont.truetype(os.path.join(fonts, n), size)
+    return ImageFont.load_default()
+for text, size, y in (("사진 자리", 120, 360), (name, 48, 540), ("사진을 받지 못했어요 · 4단계 자료 준비에서 다시 받아요", 40, 620)):
+    f = font(size); d.text(((1600 - d.textlength(text, font=f)) / 2, y), text, font=f, fill=(96, 96, 104))
+im.save(out, quality=90)`;
+
+// 사운드 창고 목록 (로건 2026-10-27): the music, effect and ambience keys this PC's package can play, sent like the diagram list so the
+// ④ editor offers only sounds the render PC has. Keys as his storyboard writes them: music_09 · stamp_press · amb_cafe.
+export function soundCatalog(pkg) {
+  const read = (file) => existsSync(file) ? readFileSync(file, "utf8") : "";
+  const table = (file) => new Map(read(file).split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| 파일"))
+    .map((line) => line.split("|").map((cell) => cell.trim())).map((cells) => [cells[1], cells.slice(2)]));
+  const items = [];
+  try {
+    for (const song of JSON.parse(read(path.join(pkg, "assets", "bgm", "catalog.json")) || "[]")) {
+      const key = String(song.file ?? "").match(/^(music_\d+)/)?.[1];
+      const note = [song.slot, song.bright].filter(Boolean).join(" · ");
+      if (key) items.push({ kind: "music", key, title: `${song.title ?? key}${song.artist ? ` · ${song.artist}` : ""}`.slice(0, 200), ...(note ? { note: note.slice(0, 200) } : {}) });
+    }
+  } catch { /* no song list: no music keys */ }
+  for (const [kind, pattern] of [["sfx", /^sfx_(.+)_1\.(mp3|wav)$/], ["amb", /^(amb_.+)_1\.(mp3|wav)$/]]) {
+    const folder = path.join(pkg, "assets", kind);
+    if (!existsSync(folder)) continue;
+    const credits = table(path.join(folder, "CREDITS.md"));
+    for (const name of readdirSync(folder).sort()) {
+      const key = name.match(pattern)?.[1];
+      if (!key) continue;
+      const [original = "", cell = ""] = credits.get(name) ?? [];
+      const use = /mixkit/i.test(cell) ? "" : cell;   // Mixkit rows carry the source in the 쓰임 column
+      items.push({ kind, key, title: (use || original || key).slice(0, 200), ...(use && original ? { note: original.slice(0, 200) } : {}) });
+    }
+  }
+  return { items: items.slice(0, 600) };
+}
+let soundsSent = "";
+export async function reportSoundCatalog() {
+  if (!myinPkg) return;
+  try {
+    const catalog = soundCatalog(myinPkg);
+    const hash = createHash("sha256").update(JSON.stringify(catalog)).digest("hex");
+    if (!catalog.items.length || hash === soundsSent) return;
+    const saved = await call(catalog, "sounds");
+    soundsSent = hash;
+    console.log(`sound catalog: ${saved.items} sounds`);
+  } catch (error) { console.error(`sound catalog: ${error.message}`); } // never stops the worker (an older OS answers 404)
+}
+
 /**
  * v13 stage 3 in the same clone: the confirmed storyboard, approved photos and music, the CTA lines (his ffmpeg line, his
  * tighten(), his md5 tag so stage_cta would say "그대로"), the site capture when a site_ad scene exists, then his preview,
@@ -284,10 +339,30 @@ export async function processMyinPrep() {
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
     const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" };
-    writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
+    const storyFile = path.join(videoDir, "myin_storyboard.json");
+    writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
+    for (const spot of job.placeholders ?? []) {
+      const file = path.join(work, "assets", spot.kind, spot.file);
+      if (existsSync(file)) continue;
+      mkdirSync(path.dirname(file), { recursive: true });
+      execFileSync(myinPython, ["-c", PLACEHOLDER_PY, file, spot.file, path.join(work, "assets", "fonts")], { env });
+    }
+    // ③: Logan's music match writes 곡·앰비언스 keys into the storyboard; it and his report go back for the ④ editor. A package without
+    // it (older run copies) or a failed match keeps the storyboard's own music.
+    let soundReport;
+    if (job.draft && existsSync(path.join(myinDir, "music_match.py"))) {
+      try {
+        await runAsync(myinPython, ["music_match.py", "os_myin", "--write"], { cwd: myinDir, env });
+        soundReport = existsSync(path.join(videoDir, "음악매칭.md")) ? readFileSync(path.join(videoDir, "음악매칭.md"), "utf8") : "";
+      } catch (error) {
+        console.error(`myin music match failed: ${job.runId}: ${error.message}`);
+        writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
+      }
+    }
     for (const asset of job.assets) {
       mkdirSync(path.join(work, "assets", asset.kind), { recursive: true });
-      await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file));
+      try { await fetchTo(asset.url, path.join(work, "assets", asset.kind, asset.file)); }
+      catch (error) { if (!job.draft) throw error; console.error(`myin draft photo kept as 사진 자리: ${asset.file}: ${error.message}`); }   // ③ goes on
     }
     const bgmDir = path.join(work, "assets", "bgm");
     mkdirSync(bgmDir, { recursive: true });
@@ -318,7 +393,8 @@ export async function processMyinPrep() {
     const creditLines = [path.join(bgmDir, "CREDITS.md"), path.join(myinLibrary, "bgm", "CREDITS.md")].filter(existsSync)
       .flatMap((file) => readFileSync(file, "utf8").split("\n")).map((line) => line.replace(/^-\s*/, "").trim());
     const musicCredits = [...new Set(music)].map((file) => creditLines.find((line) => line.startsWith(`${file} `)) ?? `${file} — 출처 기록 없음`);
-    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, musicCredits, log: log.slice(-20_000) }));
+    writeFileSync(bundle, JSON.stringify({ misses, sheets: sheets.length, musicCredits, log: log.slice(-20_000),
+      ...(soundReport !== undefined ? { storyboard: JSON.parse(readFileSync(storyFile, "utf8")), soundReport } : {}) }));
     await upload(job.bundleUploadUrl, bundle, "application/json");
     await call({ action: "myin_prep_complete", ...lease });
     console.log(`myin prep ready: ${job.runId} (문구 못 찾음 ${misses.length})`);
@@ -386,6 +462,8 @@ export async function processMyinFinal() {
   try {
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = myinEnv();
+    // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
+    if (job.storyboard) writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...env, OUTNAME: "final_myin_v1_raw.mp4" } });
     await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env });
     await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env });
@@ -467,6 +545,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setInterval(() => void heartbeat(), 60_000).unref();
   void reportDiagramCatalog();
   setInterval(() => void reportDiagramCatalog(), 60 * 60_000).unref();
+  void reportSoundCatalog();
+  setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
     const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
