@@ -119,3 +119,10 @@ test("myinDriftPairs turns an opening act's bare-number camera drift into the [x
   const out = myinDriftPairs({ scenes: [{ type: "opening", at: "a", acts }, { type: "hero", at: "b" }] });
   assert.deepEqual(out.scenes[0].acts.map((act) => act.cam?.drift), [[16, 0], [-12, 0], undefined]);
 });
+
+// 로건 엔진 v15.3 (2026-10-27): photo.focus_x sets the horizontal crop; both focus values stay within 0–1.
+test("photo focus_x and focus_y are numbers between 0 and 1", () => {
+  const withPhoto = (photo) => checkMyinStoryboard(story(frame.map((sc) => sc.type === "hero" ? { ...sc, photo } : sc)), words).issues.filter((issue) => issue.includes("photo."));
+  assert.deepEqual(withPhoto({ file: "situ_a.jpg", focus_x: 0.8, focus_y: 0.4 }), []);
+  assert.deepEqual(withPhoto({ file: "situ_a.jpg", focus_x: 1.5, focus_y: "0.4" }), ["[장면 2] photo.focus_x는 0~1 사이 숫자예요(0.5 = 가운데)", "[장면 2] photo.focus_y는 0~1 사이 숫자예요(0.5 = 가운데)"]);
+});

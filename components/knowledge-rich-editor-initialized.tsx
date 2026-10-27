@@ -34,7 +34,7 @@ import type { ForwardedRef } from "react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { ContainerDirective, LeafDirective, TextDirective } from "mdast-util-directive";
 import { getKnowledgeAttachmentUrl } from "@/lib/api-client";
-import { parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
+import { attachmentForLinkText, parseKnowledgeAttachmentTarget } from "@/lib/knowledge-attachments";
 import { knowledgeToggleMarkdown } from "@/lib/knowledge-toggle";
 import { matchesVaultName } from "@/lib/knowledge-vault-interactions";
 import { knowledgeImageDragPlugin } from "./knowledge-image-drag-plugin";
@@ -160,13 +160,10 @@ export default function KnowledgeRichEditorInitialized({
   const hasInlineOptions=Boolean(inlineOptions);
   // Lexical blanks link URLs whose scheme it does not know, so a file link (knowledge-attachment:)
   // would open about:blank. Find the link's attachment in the markdown by its text and download it.
-  // ponytail: two file links with the same text resolve to the first one.
   const openAttachmentLink = (event: ReactMouseEvent) => {
     const link = event.target instanceof Element ? event.target.closest("a") : null;
     if (!link || !wrapperRef.current?.contains(link)) return;
-    const text = link.textContent ?? "", source = localRef.current?.getMarkdown() ?? markdown;
-    const match = [...source.matchAll(/(?<!!)\[([^\]]*)\]\((knowledge-attachment:\?[^)\s]+)\)/g)].find(found => found[1] === text);
-    const attachment = parseKnowledgeAttachmentTarget(match?.[2] ?? text);
+    const attachment = attachmentForLinkText(localRef.current?.getMarkdown() ?? markdown, link.textContent ?? "");
     if (!attachment) return;
     event.preventDefault(); event.stopPropagation();
     getKnowledgeAttachmentUrl(accessToken, attachment.path, attachment.name).then(result => window.location.assign(result.url)).catch(() => onError(`첨부 파일을 열지 못했습니다 · ${attachment.name}`));

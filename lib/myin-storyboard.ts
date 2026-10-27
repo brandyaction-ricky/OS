@@ -233,6 +233,15 @@ function statListIssues(story: MyinStoryboard) {
     return figures >= 2 ? [`[장면 ${n + 1}] 줄 목록에 % 수치가 ${figures}개예요 — 수치는 그래프 장면(막대 · 도넛 · 큰 숫자 · 사람 그림)으로 바꾸고 출처를 맨 위 라벨에 둬요`] : [];
   });
 }
+/** A photo's crop: focus_y (vertical) and, from Logan's engine v15.3 (2026-10-27), focus_x (horizontal) are 0–1. */
+function photoFocusIssues(story: MyinStoryboard) {
+  return story.scenes.flatMap((sc, n) => {
+    const photo = (sc as { photo?: Record<string, unknown> }).photo;
+    if (!photo || typeof photo !== "object") return [];
+    return (["focus_x", "focus_y"] as const).filter((key) => key in photo && !(typeof photo[key] === "number" && (photo[key] as number) >= 0 && (photo[key] as number) <= 1))
+      .map((key) => `[장면 ${n + 1}] photo.${key}는 0~1 사이 숫자예요(0.5 = 가운데)`);
+  });
+}
 /** QA 5: the subscribe line says 「눌러 주세요」, not 「눌러 두고 들어 주세요」. */
 const ctaWordingIssues = (story: MyinStoryboard) => story.cta.flatMap((cta, k) => /눌러\s*두/.test(cta.line) ? [`[구독 ${k + 1}] 「눌러 두…」 대신 「눌러 주세요」로 써요`] : []);
 
@@ -266,7 +275,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
     issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
   issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]));
-  issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story));
+  issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story), ...photoFocusIssues(story));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
   return { issues: issues.slice(0, 40), notes, fuzzy: cues.fuzzy, story };

@@ -60,6 +60,17 @@ export function parseKnowledgeAttachmentTarget(target: string): KnowledgeAttachm
   return { path, name, type, ...(Number.isFinite(size) && size > 0 ? { size } : {}) };
 }
 
+/**
+ * The file link in the editor's markdown whose text reads `text` on screen. The editor writes link text with markdown escapes
+ * (approved\_native\_adapter\_v4.zip), so a name with "_" never matched and the link opened about:blank (Logan 2026-10-27).
+ * ponytail: two file links with the same text resolve to the first one.
+ */
+export function attachmentForLinkText(markdown: string, text: string) {
+  const unescape = (value: string) => value.replace(/\\([!-/:-@[-`{-~])/g, "$1");
+  const match = [...markdown.matchAll(/(?<!!)\[([^\]]*)\]\((knowledge-attachment:\?[^)\s]+)\)/g)].find(found => unescape(found[1]) === text);
+  return parseKnowledgeAttachmentTarget(match?.[2] ?? text);
+}
+
 export function knowledgeAttachmentMarkdown(reference: KnowledgeAttachmentReference) {
   const target = knowledgeAttachmentTarget(reference);
   const safeName = reference.name.replace(/[\[\]\r\n]/g, " ").trim() || "첨부 파일";
