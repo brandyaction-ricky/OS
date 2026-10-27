@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
+  attachmentForLinkText,
   KNOWLEDGE_ATTACHMENT_MAX_BYTES,
   knowledgeAttachmentCreateSchema,
   knowledgeAttachmentDocumentId,
@@ -116,4 +117,12 @@ test("knowledge attachment migration creates a private 100MB bucket", async () =
   const migration = await readFile(new URL("../supabase/migrations/20260929013627_knowledge_document_attachments.sql", import.meta.url), "utf8");
   assert.match(migration, /'os-knowledge-attachments'.*false, 104857600/s);
   assert.doesNotMatch(migration, /public\s*=\s*true/i);
+});
+
+// Logan 2026-10-27: the editor writes link text with markdown escapes, so a file whose name has "_" never downloaded.
+test("a file link is found by its on-screen text even when the markdown escapes it", () => {
+  const target = "knowledge-attachment:?path=documents%2F11111111-1111-4111-8111-111111111111%2F22222222-2222-4222-8222-222222222222%2F2026-10-27%2F33333333-3333-4333-8333-333333333333.zip\\&name=approved_native_adapter_v4.zip\\&type=application%2Fzip";
+  const markdown = `회신\n\n[approved\\_native\\_adapter\\_v4.zip](${target}) [다른 파일](knowledge-attachment:?path=x)`;
+  assert.equal(attachmentForLinkText(markdown, "approved_native_adapter_v4.zip")?.name, "approved_native_adapter_v4.zip");
+  assert.equal(attachmentForLinkText(markdown, "없는 파일"), null);
 });
