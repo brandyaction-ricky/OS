@@ -19,14 +19,15 @@ interface MyinRun { id: string; status: string; stage: string; paragraphs: numbe
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
-const PHASE: Record<string, string> = { voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
+const PHASE: Record<string, string> = { breath_pending: "렌더 PC가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "렌더 PC가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
   storyboard_review: "기획표 확인 대기 (로건, 유쓰)", storyboard_confirmed: "기획표 확인 완료", cta_pending: "구독 대사 음성 만드는 중",
   prep_pending: "렌더 PC가 자료 준비·미리보기 점검 중", prep_ready: "미리보기 점검 끝", clips_pending: "렌더 PC가 시안 영상 만드는 중",
   clips_review: "시안 확인 대기 (로건, 유쓰)", final_pending: "렌더 PC가 전체 영상 만드는 중", final_ready: "완성" };
 // 로건 피드백 10/26-8: how long each render-PC step usually takes on the Mac mini; past 1.5× the screen says to check.
 // Preview clips scale with the storyboard: one per metaphor scene plus the opening, about 1.5 minutes each (2026-10-26: 31 clips, 45 minutes).
 // ponytail: estimates, no per-scene progress — that needs the render PC to report it.
-const TYPICAL_MIN: Record<string, number> = { words_pending: 5, prep_pending: 5, final_pending: 20 };
+// words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
+const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5, final_pending: 20 };
 const typicalMinutes = (run: MyinRun) => run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5) : TYPICAL_MIN[run.stage];
 // What a stop means, so a staff member knows whether pressing again can help (2026-10-26: three presses hit the same stop).
 const STOP: Record<string, string> = {
@@ -90,7 +91,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [accessToken, sourceId, onFinal]);
   useEffect(() => { void load(); }, [load]);
-  const working = Boolean(run && (["voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
+  const working = Boolean(run && (["breath_pending", "voice_pending", "words_pending", "cta_pending", "prep_pending", "clips_pending", "final_pending"].includes(run.stage) && run.status !== "blocked" || (job?.job && ["backlog", "active"].includes(job.job.status))));
   useEffect(() => {
     if (!working) return;
     const timer = window.setInterval(() => void load(), 20_000);

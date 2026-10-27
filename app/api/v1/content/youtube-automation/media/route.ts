@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords } from "@/lib/server/myin-run";
+import { claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
@@ -24,7 +24,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("brief"), ...lease, segmentDurations: z.array(z.number().positive().max(3_600)).min(1).max(80), durationSeconds: z.number().positive().max(14_400) }).strict(),
   z.object({ action: z.literal("complete"), ...lease, videoBytes: z.number().int().positive(), videoSha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   z.object({ action: z.literal("fail"), ...lease, code: z.string().max(80) }).strict(),
-  // 마이인 v13 stage 1: voice post-processing, words.json and subtitles on the render PC.
+  // 마이인 v13 stage 1: breath commas for Fish (로건 호흡·타이밍), then voice post-processing, words.json and subtitles on the render PC.
+  z.object({ action: z.literal("myin_breath_claim") }).strict(),
+  z.object({ action: z.literal("myin_breath_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
+    breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
   z.object({ action: z.literal("myin_claim") }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
@@ -59,6 +62,8 @@ export async function POST(request: Request) {
       : input.action === "claim" ? await claimYoutubeRender(undefined, input.voiceRunId)
       : input.action === "brief" ? await buildYoutubeRenderBrief(input)
       : input.action === "complete" ? await completeYoutubeRender(input)
+      : input.action === "myin_breath_claim" ? await claimMyinBreath()
+      : input.action === "myin_breath_complete" ? await completeMyinBreath(input)
       : input.action === "myin_claim" ? await claimMyinWords()
       : input.action === "myin_complete" ? await completeMyinWords(input)
       : input.action === "myin_fail" ? await failMyinWords(input)
