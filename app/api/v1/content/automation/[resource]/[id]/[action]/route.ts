@@ -11,6 +11,9 @@ import type { OsRecord } from "@/lib/record-types";
 import { mayHideComment } from "@/lib/content-comments";
 import { moderateChannelComment } from "@/lib/server/channel-comments";
 import { assertCanEdit,assertHumanOwner,assertSameOrigin,AUTOMATION_PROCS,browserCookieKey,hashBrowserKey,createJob,createPersonalRecord,getContentRecord,getItemJob,getPersonalRecord,memberNames,updatePersonalRecord } from "@/lib/server/content-automation-v07";
+import { assertThreadsJobCurrent,getThreadsJobInput } from "@/lib/server/threads-reference";
+import { jobInstructions } from "@/lib/server/content-automation-worker";
+import { assertThreadsReferencesReady,parseThreadsReferences,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -44,6 +47,10 @@ export async function GET(request:Request,{params}:Params){
   try{
     const actor=await authenticateRequest(request),ownerId=assertHumanOwner(actor);
     const {resource,id,action}=await params;
+    if(resource==="jobs"&&action==="instructions"&&z.string().uuid().safeParse(id).success){
+      const job=await getPersonalRecord(actor,id,"ai_job");
+      return NextResponse.json(await jobInstructions(actor,job),{headers:{"Cache-Control":"private, no-store"}});
+    }
     if(resource==="items"&&action==="comments"&&z.string().uuid().safeParse(id).success){
       await getContentRecord(actor,id,"content_publish");
       const {data,error}=await createServiceSupabase().from("os_content_review_comments")
@@ -77,8 +84,20 @@ export async function POST(request:Request,{params}:Params){
     const {resource,id,action}=await params;
     if(!z.string().uuid().safeParse(id).success)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
     const db=createServiceSupabase();
+    if(resource==="topics"&&action==="archive-reference"){
+      const input=z.object({version:z.number().int().positive()}).strict().parse(await parseJson(request,1000));
+      const current=await getPersonalRecord(actor,id,"content_topic");
+      if(current.metadata.kind!==THREADS_REFERENCE_KIND)throw new ApiError(422,"THREADS_REFERENCE_REQUIRED","레퍼런스 수집 기록만 보관할 수 있습니다.");
+      if(current.version!==input.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 원문 기록을 다시 불러와 주세요.");
+      return NextResponse.json({record:await updatePersonalRecord(actor,current,{archived_at:new Date().toISOString()})});
+    }
     if(resource==="topics"&&action==="start"){
       const input=topicStartSchema.parse(await parseJson(request,30_000));
+      const topic=await getPersonalRecord(actor,id,"content_topic");
+      if(topic.metadata.kind===THREADS_REFERENCE_KIND)
+        throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","원문은 레퍼런스 화면에서 주제로 선택한 뒤 제작해 주세요.");
+      if(topic.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW&&input.channels.threads)
+        assertThreadsReferencesReady(parseThreadsReferences(topic.metadata.reference_items??[]));
       const selected=Object.entries(input.channels).map(([channel,options])=>({channel,...options}));
       const {data,error}=await db.rpc("os_start_personal_content_topic",{
         p_owner:ownerId,p_topic:id,p_expected_version:input.version,
@@ -137,6 +156,7 @@ export async function POST(request:Request,{params}:Params){
       if(current.version!==input.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 주제를 다시 불러와 주세요.");
       let topic=current;
       if(action==="adopt"){
+        await assertThreadsJobCurrent(current,job);
         const candidate=job.metadata.result as Record<string,unknown>|undefined;
         if(!candidate||typeof candidate.one!=="string")throw new ApiError(422,"JOB_RESULT_INVALID","브리프 결과를 확인해 주세요.");
         topic=await updatePersonalRecord(actor,current,{stage:"brief",metadata:{...current.metadata,
@@ -246,6 +266,7 @@ export async function POST(request:Request,{params}:Params){
           if(!["draft","blocked"].includes(current.status))
             throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠에만 AI 결과를 반영할 수 있습니다.");
           assertShortformJobCurrent(current,job);
+          await assertThreadsJobCurrent(current,job);
           const candidate=validateShortformJobResult(job,job.metadata.result);
           if(typeof candidate!=="object"||candidate===null)throw new ApiError(422,"JOB_RESULT_INVALID","AI 결과 형식을 확인해 주세요.");
           const result=candidate as Record<string,unknown>;
@@ -273,7 +294,9 @@ export async function POST(request:Request,{params}:Params){
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{metadata:{...job.metadata,rush:true,space:"personal"}})});
       }
       if(action==="cancel"){
-        if(!["backlog","blocked"].includes(job.status))throw new ApiError(409,"JOB_BUSY","처리 중 작업은 닫을 수 없습니다.");
+        const obsoleteThreads=job.metadata.proc==="threads"&&!job.metadata.threadsInput;
+        if(!["backlog","blocked"].includes(job.status)&&!(job.status==="active"&&obsoleteThreads))
+          throw new ApiError(409,"JOB_BUSY","처리 중 작업은 닫을 수 없습니다.");
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"done",stage:"cancelled",
           metadata:{...job.metadata,closedReason:"cancelled",space:"personal"}})});
       }
@@ -291,6 +314,10 @@ export async function POST(request:Request,{params}:Params){
         const proc=String(job.metadata.proc);
         if(!AUTOMATION_PROCS.includes(proc as typeof AUTOMATION_PROCS[number]))
           throw new ApiError(422,"JOB_PROCESS_INVALID","작업 공정을 확인해 주세요.");
+        if(getThreadsJobInput(job)){
+          const target=await getPersonalRecord(actor,String(job.metadata.targetId));
+          await assertThreadsJobCurrent(target,job);
+        }
         const result=validateShortformJobResult(job,parseAutomationResult(proc as typeof AUTOMATION_PROCS[number],input.result));
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"done",stage:"completed",
           metadata:{...job.metadata,result,via:"copy",completedAt:new Date().toISOString(),space:"personal"}})});

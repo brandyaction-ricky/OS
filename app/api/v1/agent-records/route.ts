@@ -11,6 +11,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { protectedPipelineChange } from "@/lib/content-pipeline";
 import { isDevelopmentRequest } from "@/lib/development-requests";
 import { assertDevelopmentRequestLink } from "@/lib/development-links";
+import { protectedThreadsAutomationJob } from "@/lib/threads-reference";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +105,8 @@ export async function POST(request: Request) {
     const input = recordCreateSchema.parse(raw);
     if (input.recordType === "content_publish" && input.metadata.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 만들고 확인해 주세요.");
+    if (protectedThreadsAutomationJob(input.recordType, input.metadata))
+      throw new ApiError(403,"THREADS_AUTOMATION_API_REQUIRED","Threads AI 작업과 정본 입력은 콘텐츠 자동화 화면에서 만들어 주세요.");
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
     if (protectedPipelineChange({}, input.metadata)) throw new ApiError(403, "PIPELINE_API_REQUIRED", "공정 승인·실행 이력은 공정 화면에서 처리해 주세요.");
@@ -141,6 +144,9 @@ export async function PATCH(request: Request) {
     if ((current.metadata?.space === "personal" || input.metadata?.space === "personal") && current.owner_id !== actor.ownerId) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (current.record_type === "content_publish" && current.metadata?.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 확인·수정해 주세요.");
+    if (protectedThreadsAutomationJob(current.record_type, current.metadata)
+      || protectedThreadsAutomationJob(current.record_type, { ...current.metadata, ...input.metadata }))
+      throw new ApiError(403,"THREADS_AUTOMATION_API_REQUIRED","Threads AI 작업과 정본 입력은 콘텐츠 자동화 작업 화면에서 처리해 주세요.");
     if (current.metadata?.space === "personal" && input.metadata && input.metadata.space !== "personal")
       throw new ApiError(403,"PERSONAL_SPACE_IMMUTABLE","개인 기록의 공간을 바꿀 수 없습니다.");
     if ([current.metadata?.kind, input.metadata?.kind].some(kind => ["meta_tester_request", "channel_audit"].includes(String(kind)))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");

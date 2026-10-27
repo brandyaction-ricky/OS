@@ -101,6 +101,7 @@ export default async function GenericPage({ params, searchParams }: GenericPageP
   if (href === "/content/performance") return youtubeV1Enabled() ? <YoutubeV1Switch mode={youtubeV1Mode()} v1={<YoutubeProcessWorkspace screen="performance" />} old={<ContentPerformanceWorkspace youtubeOnly />} /> : <ContentPerformanceWorkspace youtubeOnly />;
   if (href === "/content/comments") redirect("/automation/performance?tab=comments");
   if (href === "/automation/topics") return <ContentAutomationV07 page="topics" />;
+  if (href === "/automation/references") return <ContentAutomationV07 page="references" />;
   if (href === "/automation/cardnews") return <ContentAutomationV07 page="cardnews" />;
   if (href === "/automation/shorts") return <ContentAutomationV07 page="shorts" />;
   if (href === "/automation/threads") return <ContentAutomationV07 page="threads" />;

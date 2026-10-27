@@ -1,4 +1,5 @@
 import { assertShortformJobCurrent,shortformJobInput,shortformInputKey } from "./shortform-production";
+import { assertThreadsJobCurrent,createThreadsJobInput,threadsInputKey } from "./threads-reference";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ApiError } from "@/lib/http";
 import type { OsRecord, RecordType } from "@/lib/record-types";
@@ -37,11 +38,14 @@ export async function getPersonalRecord(actor: RequestActor,id:string,type?:Reco
   if(!data)throw new ApiError(404,"AUTOMATION_NOT_FOUND","내 기록을 찾을 수 없습니다.");
   return data as OsRecord;
 }
-export async function listPersonalRecords(actor:RequestActor,type:RecordType,limit=100) {
+export async function listPersonalRecords(actor:RequestActor,type:RecordType,limit=100,topicScope?:"topics"|"references") {
   const ownerId=assertHumanOwner(actor);
-  const {data,error}=await createServiceSupabase().from("os_records").select("*")
+  let query=createServiceSupabase().from("os_records").select("*")
     .eq("owner_id",ownerId).eq("metadata->>space","personal").eq("record_type",type)
-    .is("archived_at",null).order("updated_at",{ascending:false}).limit(limit);
+    .is("archived_at",null);
+  if(type==="content_topic"&&topicScope==="references")query=query.eq("metadata->>kind","threads_reference");
+  if(type==="content_topic"&&topicScope==="topics")query=query.or("metadata->>kind.is.null,metadata->>kind.neq.threads_reference");
+  const {data,error}=await query.order("updated_at",{ascending:false}).limit(limit);
   if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","내 기록을 불러오지 못했습니다.");
   return (data??[]) as OsRecord[];
 }
@@ -77,7 +81,7 @@ export async function createPersonalRecord(actor:RequestActor,type:RecordType,in
     const existing=await createServiceSupabase().from("os_records").select("*")
       .eq("record_type","content_topic").eq("owner_id",ownerId).eq("metadata->>space","personal")
       .eq("metadata->>requestId",input.metadata.requestId).is("archived_at",null).maybeSingle();
-    if(existing.data)return existing.data as OsRecord;
+    if(existing.data)return {...existing.data,...(input.metadata.kind==="threads_reference"?{_reused:true}:{})} as OsRecord;
   }
   if(error||!data)throw new ApiError(503,"AUTOMATION_SAVE_FAILED","내 기록을 저장하지 못했습니다.");
   return data as OsRecord;
@@ -91,6 +95,8 @@ export async function updatePersonalRecord(actor:RequestActor,current:OsRecord,c
     .update({...changes,updated_by:ownerId}).eq("id",current.id).eq("owner_id",current.owner_id)
     .eq("metadata->>space","personal").eq("version",current.version).is("archived_at",null)
     .select("*").maybeSingle();
+  if(error?.code==="23505"&&current.record_type==="content_topic"&&current.metadata.kind==="threads_reference")
+    throw new ApiError(409,"THREADS_REFERENCE_EXISTS","같은 원문이 이미 수집함에 있습니다. 기존 기록을 열어 수정해 주세요.");
   if(error)throw new ApiError(503,"AUTOMATION_SAVE_FAILED","내 기록을 저장하지 못했습니다.");
   if(!data)throw new ApiError(409,"AUTOMATION_CHANGED","다른 작업이 먼저 수정했습니다. 다시 불러와 주세요.");
   return data as OsRecord;
@@ -244,7 +250,8 @@ export async function createJob(actor:RequestActor,input:{
   open=input.targetId?open.eq("metadata->>targetId",input.targetId):open.is("metadata->>targetId",null);
   const {data:existing,error:readError}=await open.limit(1).maybeSingle();
   if(readError)throw new ApiError(503,"JOB_CHECK_FAILED","기존 작업을 확인하지 못했습니다.");
-  if(existing){if(target)assertShortformJobCurrent(target,existing as OsRecord);return {job:existing as OsRecord,reused:true};}
+  if(existing){if(target){assertShortformJobCurrent(target,existing as OsRecord);await assertThreadsJobCurrent(target,existing as OsRecord);}return {job:existing as OsRecord,reused:true};}
+  const threadsInput=await createThreadsJobInput(actor,target,input.proc);
   const {data:skill,error:skillError}=await db.from("os_records").select("id,version")
     .eq("record_type","skill").eq("owner_id",ownerId).eq("metadata->>space","personal")
     .eq("metadata->>process",input.proc).eq("metadata->>active","true")
@@ -259,7 +266,8 @@ export async function createJob(actor:RequestActor,input:{
     metadata:{space:"personal",proc:input.proc,targetId:input.targetId??null,sub,
       fix:input.fix??"",rush:input.rush===true,attempt:0,
       skillId:skill?.id??null,skillVersion:skill?.version??null,
-      createdVia:"automation-v07",...(shortformInput?{shortformInput,shortformInputKey:shortformInputKey(shortformInput)}:{})},
+      createdVia:"automation-v07",...(shortformInput?{shortformInput,shortformInputKey:shortformInputKey(shortformInput)}:{}),
+      ...(threadsInput?{threadsInput,threadsInputKey:threadsInputKey(threadsInput),editorial_workflow:threadsInput.workflow}:{})},
   }).select("*").single();
   if(error?.code==="23505") {
     let retryQuery=db.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",ownerId)
@@ -267,7 +275,7 @@ export async function createJob(actor:RequestActor,input:{
       .eq("metadata->>sub",sub).in("status",["backlog","active"]).is("archived_at",null);
     retryQuery=input.targetId?retryQuery.eq("metadata->>targetId",input.targetId):retryQuery.is("metadata->>targetId",null);
     const retry=await retryQuery.limit(1).maybeSingle();
-    if(retry.data){if(target)assertShortformJobCurrent(target,retry.data as OsRecord);return {job:retry.data as OsRecord,reused:true};}
+    if(retry.data){if(target){assertShortformJobCurrent(target,retry.data as OsRecord);await assertThreadsJobCurrent(target,retry.data as OsRecord);}return {job:retry.data as OsRecord,reused:true};}
   }
   if(error||!data)throw new ApiError(503,"JOB_CREATE_FAILED","AI 작업을 대기열에 넣지 못했습니다.");
   return {job:data as OsRecord,reused:false};
