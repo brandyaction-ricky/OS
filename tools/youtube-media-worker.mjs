@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, appendFileSync,closeSync,copyFileSync, cpSync, existsSync, openSync, readSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -38,9 +38,41 @@ const gb = (bytes) => Math.round(bytes / 1e8) / 10;
 const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os.tmpdir()); return gb(bavail * bsize); };
 /** 렌더 PC 상태: never stops the worker if the OS is unreachable or older. */
 export async function heartbeat() {
-  await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
+  const answer = await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
     packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
-    ...(engine() ? { engine: engine() } : {}) }).catch((error) => console.error(`heartbeat: ${error.message}`));
+    ...(engine() ? { engine: engine() } : {}) }).catch((error) => { console.error(`heartbeat: ${error.message}`); return null; });
+  // The OS has no bundle of this engine for staff PCs yet: pack and upload it while nothing renders (render PC only).
+  if (!local && answer?.engineBundle === false && !current && !enginePublish && Date.now() >= enginePublishAfter)
+    enginePublish = publishEngine().catch((error) => { console.error(`engine bundle: ${error.message}`); enginePublishAfter = Date.now() + 60 * 60_000; })
+      .finally(() => { enginePublish = null; });
+}
+
+// 내 컴퓨터로 시안: the engine bundle for staff PCs, packed by tools/myin-engine-pack.sh and uploaded in parts. A failure waits
+// an hour before the next try, so a missing bucket or a full disk never repacks every minute.
+const ENGINE_PART_BYTES = 45_000_000;
+let enginePublish = null, enginePublishAfter = 0;
+export async function publishEngine() {
+  const pack = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin-engine-pack.sh");
+  if (!existsSync(pack) || !engine()) return;
+  const out = await runCapture("nice", ["-n", "19", "zsh", pack], { env: { ...process.env, MYIN_LIBRARY: myinLibrary, WORKER_PATH: fileURLToPath(import.meta.url) } });
+  const file = out.match(/^BUNDLE=(.+)$/m)?.[1], python = out.match(/^PYTHON=(\d+\.\d+)$/m)?.[1];
+  if (!file || !python || !path.basename(file).includes(engine())) throw new Error("the pack script did not make this engine's bundle");
+  const bytes = statSync(file).size, count = Math.ceil(bytes / ENGINE_PART_BYTES);
+  const { urls } = await call({ action: "engine_upload", fingerprint: engine(), parts: count });
+  const parts = [], dir = mkdtempSync(path.join(os.tmpdir(), "myin-engine-")), fd = openSync(file, "r");
+  try {
+    for (let n = 0; n < count; n++) {
+      const chunk = Buffer.alloc(Math.min(ENGINE_PART_BYTES, bytes - n * ENGINE_PART_BYTES));
+      readSync(fd, chunk, 0, chunk.length, n * ENGINE_PART_BYTES);
+      const part = path.join(dir, `part${n}.bin`);
+      writeFileSync(part, chunk);
+      await upload(urls[n], part, "application/octet-stream");
+      rmSync(part);
+      parts.push({ bytes: chunk.length, sha256: createHash("sha256").update(chunk).digest("hex") });
+    }
+  } finally { closeSync(fd); rmSync(dir, { recursive: true, force: true }); }
+  await call({ action: "engine_ready", fingerprint: engine(), python, parts });
+  console.log(`engine bundle for staff PCs: ${engine()} (${count} parts, ${gb(bytes)} GB)`);
 }
 
 async function call(body, route = mediaRoute) {
@@ -187,6 +219,10 @@ export async function drawMindmap(brief, parts, name) {
 // clone (his scripts write inside the package, and SRC defaults to an old video). The OS made each paragraph's wav exactly as his
 // stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
 const myinPkg = process.env.MYIN_PKG ?? "";
+// 내 컴퓨터로 시안 runs on staff Macs and on Logan's Windows PC too: Homebrew's folder only on a Mac, and the engine copy is an
+// APFS clone on a Mac (instant, no extra disk) and a plain copy elsewhere.
+const withTools = (env) => process.platform === "darwin" ? { ...env, PATH: `/opt/homebrew/bin${path.delimiter}${env.PATH ?? ""}` } : env;
+const copyEngine = (from, to) => process.platform === "darwin" ? execFileSync("cp", ["-c", "-R", from, to]) : cpSync(from, to, { recursive: true });
 const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
 const myinPython = process.env.MYIN_PYTHON || "python3";
 // 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
@@ -208,7 +244,7 @@ export function engine() {
       if (name === "__pycache__" || name.startsWith(".")) continue;
       const rel = path.join(dir, name), full = path.join(root, rel), stat = statSync(full);
       if (stat.isDirectory()) walk(root, rel);
-      else h.update(`${rel}\0${code.test(name) ? createHash("sha256").update(readFileSync(full)).digest("hex") : stat.size}\n`);
+      else h.update(`${rel.split(path.sep).join("/")}\0${code.test(name) ? createHash("sha256").update(readFileSync(full)).digest("hex") : stat.size}\n`);
     }
   };
   for (const part of ["tools", "assets"]) { h.update(`#pkg/${part}\n`); walk(path.join(myinPkg, part)); }
@@ -220,7 +256,9 @@ export function engine() {
   // -s: packages under the user's home are not the engine's (a venv never sees them, a bare python3 would).
   const pip = spawnSync(myinPython, ["-s", "-c", "import sys, subprocess; print('%d.%d' % sys.version_info[:2]); sys.stdout.flush(); subprocess.run([sys.executable, '-s', '-m', 'pip', 'freeze'])"],
     { encoding: "utf8", timeout: 60_000 });
-  h.update(`#python\n${(pip.stdout ?? "").split("\n").filter(Boolean).sort().join("\n")}`);
+  // Packages pip adds only on one system (colorama for click/tqdm on Windows, appnope on a Mac) draw nothing.
+  const platformOnly = /^(colorama|pywin32|pywin32-ctypes|appnope|pyobjc[a-z0-9-]*)==/i;
+  h.update(`#python\n${(pip.stdout ?? "").split(/\r?\n/).filter((line) => line && !platformOnly.test(line)).sort().join("\n")}`);
   engineHash = h.digest("hex").slice(0, 32);
   return engineHash;
 }
@@ -312,7 +350,7 @@ export async function uploadVoiceParts(file, urls) {
 export async function myinRebuild(runId, seed) {
   const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
   if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav"))) return;
-  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
+  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(myinPkg, work); }
   mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
   const parts = [];
   for (const url of seed.voice.urls) {
@@ -470,7 +508,7 @@ export async function processMyinPrep() {
     if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
-    const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" };
+    const env = withTools({ ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" });
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
     for (const spot of job.placeholders ?? []) {
@@ -539,7 +577,7 @@ export async function processMyinPrep() {
   return true;
 }
 
-const myinEnv = () => ({ ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" });
+const myinEnv = () => withTools({ ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" });
 const myinDirs = (runId) => {
   const work = path.join(myinWork, runId);
   if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
@@ -679,8 +717,9 @@ async function runLocal() {
   setInterval(() => void heartbeat(), 60_000).unref();
   do {
     const worked = await processMyinPrep().then((done) => done || processMyinClips()).catch((error) => {
-      // A different engine is not this Mac's to fix by retrying; the OS screen says so too.
-      console.error(error.code === "MYIN_ENGINE_DIFFERENT" || error.code === "MYIN_ENGINE_UNKNOWN" ? `${error.message} (engine ${engine()})` : error.message);
+      // The render PC moved to another engine: exit 3 between jobs, so the runner (public/myin-local) installs it and starts again.
+      if (error.code === "MYIN_ENGINE_DIFFERENT") { console.error(`${error.message} (engine ${engine()})`); process.exit(3); }
+      console.error(error.message);
       return false;
     });
     if (process.argv.includes("--once")) break;
