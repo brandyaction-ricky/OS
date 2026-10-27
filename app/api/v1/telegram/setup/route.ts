@@ -53,7 +53,8 @@ export async function GET(request: Request) {
       configured,
       diagnosticError: configured && (!botResult || !webhookResult) ? "Telegram 연결 상태를 확인하지 못했습니다. 저장된 사용자·수신 이력만 표시합니다." : null,
       lastReceivedAt: turns.data?.[0]?.created_at ?? null,
-      lastProcessingError: turns.data?.filter((turn) => turn.answer?.startsWith("TELEGRAM_ERROR:")).slice(0, 1).map((turn) => ({ at: turn.created_at, message: turn.answer.slice("TELEGRAM_ERROR:".length) }))[0] ?? null,
+      // An error stays on screen only until a later answer goes through.
+      lastProcessingError: turns.data?.slice(0, 1).filter((turn) => turn.answer?.startsWith("TELEGRAM_ERROR:")).map((turn) => ({ at: turn.created_at, message: turn.answer.slice("TELEGRAM_ERROR:".length) }))[0] ?? null,
       pendingCount: pending.count ?? 0,
       approvedCount: approved.count ?? 0,
       approvedUsers: withLastSeen(approved.data ?? []),

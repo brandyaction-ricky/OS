@@ -2004,7 +2004,15 @@
 .page-content .finance-workspace .samplebar {
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 10px 14px;
+  padding: 4px 4px 4px 12px;
+  margin-bottom: 16px;
+}
+.page-content .finance-workspace .samplebar > span {
+  flex: 1 1 0;
+  min-width: min(100%, 240px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .page-content .finance-workspace .drawer,
 .page-content .finance-workspace .modal,
@@ -2043,11 +2051,7 @@
     padding-top: 16px;
   }
 }
-.finance-toss-sync { margin-bottom: 16px; overflow: hidden; }
-.finance-toss-sync .panel-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
-.finance-toss-sync h2 { margin: 0; font-size: 14px; }
-.finance-sync-mode { font-size: 12px; color: var(--muted, #626675); }
-.finance-sync-body { padding: 16px; display: grid; gap: 12px; }
+.finance-sync-body { padding: 0 16px 16px; display: grid; gap: 12px; }
 .finance-sync-body p { margin: 0; font-size: 13px; line-height: 1.6; }
 .finance-sync-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
 .finance-sync-form label { display: grid; gap: 6px; font-size: 12px; }

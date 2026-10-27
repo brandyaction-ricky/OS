@@ -212,7 +212,7 @@
 .linear-shell .ui-v2 .tm-root .tm-task-row:last-child { border-bottom: 0; }
 .linear-shell .ui-v2 .tm-root .tm-task-row:hover { background: var(--surface-hover); }
 .linear-shell .ui-v2 .tm-root .tm-task-main { flex: 1; min-width: 0; }
-.linear-shell .ui-v2 .tm-root .tm-task-title { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.linear-shell .ui-v2 .tm-root .tm-task-title { display: block; font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .linear-shell .ui-v2 .tm-root .tm-task-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .linear-shell .ui-v2 .tm-root .tm-check {
   width: 18px; height: 18px; border-radius: 9px; flex: none; display: inline-flex; align-items: center; justify-content: center;

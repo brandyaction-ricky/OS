@@ -5,7 +5,7 @@ export const CONTENT_STATUS_LABELS:Record<string,string>={
 };
 export const JOB_STATUS_LABELS:Record<string,string>={
   backlog:"대기",queued:"대기",active:"처리 중",running:"처리 중",
-  completed:"결과 도착",failed:"막힘",adopted:"반영 완료",
+  completed:"결과 도착",done:"결과 도착",failed:"막힘",adopted:"반영 완료",
   rejected:"채택 안 함",cancelled:"닫음",
 };
 export const CHANNEL_LABELS:Record<string,string>={card:"카드뉴스",shorts:"쇼츠",threads:"쓰레드"};
