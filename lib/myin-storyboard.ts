@@ -322,6 +322,67 @@ export function myinDriftPairs<T extends { scenes: Record<string, unknown>[] }>(
   return story;
 }
 
+// ── 사운드 창고 (로건 2026-10-27): 장면의 "music" {key, start} · "amb" · "sfx" [{cue, key}]. ③ 시안 준비 때 렌더 PC가 로건님 자동 선곡
+// (music_match.py)으로 적고, ④ 자료 준비에서 사람이 고친다(2026-10-27 대표). 곡은 그 장면부터 다음 "music"까지 깔린다. ──
+export type MyinSoundPlan = {
+  music: { scene: number; key: string; start?: number }[];
+  amb: { scene: number; key: string; dur?: number; cue?: string; cueEnd?: string }[];
+  sfx: { scene: number; cue: string; key: string }[];
+};
+export type MyinSoundItem = { kind: "music" | "sfx" | "amb"; key: string; title: string; note?: string };
+const SOUND_FIELDS = ["music", "music_start", "amb", "amb_dur", "cue_amb", "cue_amb_end", "sfx"];
+const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+/** The sound plan as the storyboard has it (scene numbers from 1). An old 「C1」 cue-sheet name reads as its name. */
+export function myinSoundPlan(story: { scenes: Record<string, unknown>[] }): MyinSoundPlan {
+  const plan: MyinSoundPlan = { music: [], amb: [], sfx: [] };
+  story.scenes.forEach((sc, n) => {
+    const scene = n + 1, m = sc.music as unknown;
+    if (typeof m === "string" && m) plan.music.push({ scene, key: m, start: num(sc.music_start) });
+    else if (m && typeof m === "object" && typeof (m as { key?: unknown }).key === "string") plan.music.push({ scene, key: (m as { key: string }).key, start: num((m as { start?: unknown }).start) });
+    if (typeof sc.amb === "string" && sc.amb) plan.amb.push({ scene, key: sc.amb, dur: num(sc.amb_dur),
+      cue: typeof sc.cue_amb === "string" ? sc.cue_amb : undefined, cueEnd: typeof sc.cue_amb_end === "string" ? sc.cue_amb_end : undefined });
+    for (const fx of Array.isArray(sc.sfx) ? sc.sfx as { cue?: unknown; key?: unknown }[] : [])
+      if (typeof fx?.cue === "string" && typeof fx.key === "string") plan.sfx.push({ scene, cue: fx.cue, key: fx.key });
+  });
+  return plan;
+}
+
+/** The storyboard with its sound fields replaced by `plan` (the ④ editor sends the whole plan); every other field stays as written. */
+export function applyMyinSoundPlan<T extends { scenes: Record<string, unknown>[]; music_cues?: unknown }>(story: T, plan: MyinSoundPlan): T {
+  const next = JSON.parse(JSON.stringify(story)) as T;
+  const legacy = (key: string) => Boolean(next.music_cues && typeof next.music_cues === "object" && key in (next.music_cues as object));
+  for (const sc of next.scenes) for (const field of SOUND_FIELDS) delete sc[field];
+  const at = (scene: number) => next.scenes[scene - 1];
+  for (const m of plan.music) if (at(m.scene)) at(m.scene).music = legacy(m.key) && m.start === undefined ? m.key : { key: m.key, ...(m.start === undefined ? {} : { start: m.start }) };
+  for (const a of plan.amb) if (at(a.scene)) Object.assign(at(a.scene), { amb: a.key }, a.dur === undefined ? {} : { amb_dur: a.dur },
+    a.cue ? { cue_amb: a.cue } : {}, a.cueEnd ? { cue_amb_end: a.cueEnd } : {});
+  for (const fx of plan.sfx) if (at(fx.scene)) at(fx.scene).sfx = [...((at(fx.scene).sfx as unknown[]) ?? []), { cue: fx.cue, key: fx.key }];
+  return next;
+}
+
+/** What would stop or silently drop a sound: a key the render PC does not have, an effect line not in the transcription after its scene start. */
+export function myinSoundIssues(story: MyinStoryboard, words: [number, number, string][], catalog: MyinSoundItem[] | null) {
+  const plan = myinSoundPlan(story);
+  const has = (kind: MyinSoundItem["kind"], key: string) => !catalog || catalog.some((item) => item.kind === kind && item.key === key);
+  const legacy = (key: string) => Boolean(story.music_cues && key in story.music_cues);
+  const find = finder(words); const starts = sceneStarts(story, find);
+  const issues: string[] = [];
+  for (const m of plan.music) {
+    if (!legacy(m.key) && !has("music", m.key)) issues.push(`[장면 ${m.scene}] 음악 키 「${m.key}」가 렌더 PC 사운드 창고에 없어요`);
+    if (m.start !== undefined && m.start < 0) issues.push(`[장면 ${m.scene}] 음악 시작점은 0초 이상이에요`);
+  }
+  for (const a of plan.amb) {
+    if (!has("amb", a.key)) issues.push(`[장면 ${a.scene}] 앰비언스 키 「${a.key}」가 사운드 창고에 없어요`);
+    if (a.dur !== undefined && a.dur <= 0) issues.push(`[장면 ${a.scene}] 앰비언스 길이는 0초보다 길어야 해요`);
+  }
+  for (const fx of plan.sfx) {
+    if (!has("sfx", fx.key)) issues.push(`[장면 ${fx.scene}] 효과음 키 「${fx.key}」가 사운드 창고에 없어요`);
+    if (!find(fx.cue, starts[fx.scene - 1] ?? 0, 1400)) issues.push(`[장면 ${fx.scene}] 효과음 문구 「${fx.cue}」를 그 장면 뒤 받아쓰기에서 못 찾았어요`);
+  }
+  return issues;
+}
+
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);

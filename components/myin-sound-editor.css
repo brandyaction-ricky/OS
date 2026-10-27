@@ -1,0 +1,43 @@
+/* ④ 자료 준비 › 사운드 (components/myin-sound-editor.tsx): three small cards (음악 · 앰비언스 · 효과음) with aligned rows, a dashed add
+   row and a save bar. Theme tokens only, scoped like youtube-production-steps.css; phones stack each row. */
+.linear-shell .ui-v2 .yt-sound { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--panel-2); }
+.linear-shell .ui-v2 .yt-sound-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.linear-shell .ui-v2 .yt-sound-head h3 { margin: 0; color: var(--text); font-size: 14px; font-weight: 700; }
+.linear-shell .ui-v2 .yt-sound-head p { margin-top: 2px; font-size: 12px; }
+.linear-shell .ui-v2 .yt-sound-state { padding: 3px 10px; border-radius: 999px; background: var(--mint-soft); color: var(--mint); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.linear-shell .ui-v2 .yt-sound-state.changed { background: var(--warning-soft); color: var(--warning); }
+
+.linear-shell .ui-v2 .yt-sound-sec { display: grid; gap: 6px; padding: 10px 12px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); }
+.linear-shell .ui-v2 .yt-sound-sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.linear-shell .ui-v2 .yt-sound-sec-head strong { color: var(--text); font-size: 13px; }
+.linear-shell .ui-v2 .yt-sound-sec-head small { color: var(--muted); font-size: 12px; }
+.linear-shell .ui-v2 .yt-sound-count { padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-2); font-size: 11px; font-weight: 700; }
+
+.linear-shell .ui-v2 .yt-sound-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(200px, 2fr) 104px 34px; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line-soft); }
+.linear-shell .ui-v2 .yt-sound-sec-head + .yt-sound-row { border-top: 0; }
+.linear-shell .ui-v2 .yt-sound-row.sfx { grid-template-columns: minmax(150px, 1fr) minmax(160px, 1.4fr) minmax(160px, 1.4fr) 34px; }
+.linear-shell .ui-v2 .yt-sound-row.add { margin-top: 4px; padding: 8px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel-2); }
+.linear-shell .ui-v2 .yt-sound-row.add.sfx, .linear-shell .ui-v2 .yt-sound-row.add { grid-template-columns: minmax(150px, 1fr) minmax(200px, 2fr) auto; }
+.linear-shell .ui-v2 .yt-sound-row.add.sfx { grid-template-columns: minmax(150px, 1fr) minmax(160px, 1.4fr) minmax(160px, 1.4fr) auto; }
+.linear-shell .ui-v2 .yt-sound-scene { display: grid; gap: 1px; line-height: 1.35; }
+.linear-shell .ui-v2 .yt-sound-scene b { color: var(--text); font-size: 12.5px; }
+.linear-shell .ui-v2 .yt-sound-scene small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.linear-shell .ui-v2 .yt-sound-cue { color: var(--text-2); font-size: 12.5px; word-break: keep-all; overflow-wrap: anywhere; }
+.linear-shell .ui-v2 .yt-sound :is(select, input) { width: 100%; min-height: 34px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); font-size: 12.5px; }
+.linear-shell .ui-v2 .yt-sound :is(select, input):focus-visible { outline: 2px solid var(--accent-2); outline-offset: 1px; }
+.linear-shell .ui-v2 .yt-sound-sec-time { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.linear-shell .ui-v2 .yt-sound-sec-time input { text-align: right; }
+.linear-shell .ui-v2 .yt-sound-remove { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.linear-shell .ui-v2 .yt-sound-remove:hover:not(:disabled) { border-color: var(--line); background: var(--danger-soft); color: var(--danger); }
+.linear-shell .ui-v2 .yt-sound-remove:disabled { opacity: .4; cursor: default; }
+.linear-shell .ui-v2 .yt-sound-empty { padding: 4px 0; color: var(--muted); font-size: 12px; }
+
+.linear-shell .ui-v2 .yt-sound-bar { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--panel); }
+.linear-shell .ui-v2 .yt-sound-bar small { margin-right: auto; }
+
+@media (max-width: 640px) {
+  .linear-shell .ui-v2 .yt-sound-row, .linear-shell .ui-v2 .yt-sound-row.sfx, .linear-shell .ui-v2 .yt-sound-row.add, .linear-shell .ui-v2 .yt-sound-row.add.sfx { grid-template-columns: minmax(0, 1fr) 34px; }
+  .linear-shell .ui-v2 .yt-sound-row > :not(.yt-sound-remove):not(:first-child), .linear-shell .ui-v2 .yt-sound-row.add > * { grid-column: 1 / -1; }
+  .linear-shell .ui-v2 .yt-sound-row > .yt-sound-remove { grid-row: 1; grid-column: 2; }
+  .linear-shell .ui-v2 .yt-sound-row.add > button { justify-self: start; }
+}

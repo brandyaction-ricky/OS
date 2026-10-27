@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -125,4 +125,33 @@ test("photo focus_x and focus_y are numbers between 0 and 1", () => {
   const withPhoto = (photo) => checkMyinStoryboard(story(frame.map((sc) => sc.type === "hero" ? { ...sc, photo } : sc)), words).issues.filter((issue) => issue.includes("photo."));
   assert.deepEqual(withPhoto({ file: "situ_a.jpg", focus_x: 0.8, focus_y: 0.4 }), []);
   assert.deepEqual(withPhoto({ file: "situ_a.jpg", focus_x: 1.5, focus_y: "0.4" }), ["[장면 2] photo.focus_x는 0~1 사이 숫자예요(0.5 = 가운데)", "[장면 2] photo.focus_y는 0~1 사이 숫자예요(0.5 = 가운데)"]);
+});
+
+// 사운드 창고 (로건 2026-10-27): ③ writes song · ambience keys into the storyboard, ④ changes them; only the sound fields move.
+test("myinSoundPlan reads songs, ambience and effects; applyMyinSoundPlan replaces only those fields", () => {
+  const board = { end: 30, cta: [{ after: "자리만 바꿨더니", line: "구독 눌러 주세요" }], music_cues: { C1: { file: "bgm_main.mp3" } }, scenes: [
+    { type: "opening", at: "오늘은 성격", music: "C1" },
+    { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]], music: { key: "music_13", start: 13, why: "통계" }, amb: "amb_cafe", amb_dur: 7.5 },
+    { type: "outro", at: "마지막으로 정리해", sfx: [{ cue: "정리해 볼게요", key: "chime_done" }] }] };
+  const plan = myinSoundPlan(board);
+  assert.deepEqual(plan, { music: [{ scene: 1, key: "C1", start: undefined }, { scene: 2, key: "music_13", start: 13 }],
+    amb: [{ scene: 2, key: "amb_cafe", dur: 7.5, cue: undefined, cueEnd: undefined }], sfx: [{ scene: 3, cue: "정리해 볼게요", key: "chime_done" }] });
+  const next = applyMyinSoundPlan(board, { music: [{ scene: 1, key: "C1" }, { scene: 3, key: "music_05" }], amb: [], sfx: [{ scene: 2, cue: "자리만 바꿨더니", key: "snap_click" }] });
+  assert.equal(next.scenes[0].music, "C1");
+  assert.equal(next.scenes[1].music, undefined);
+  assert.equal(next.scenes[1].amb, undefined);
+  assert.deepEqual(next.scenes[1].sfx, [{ cue: "자리만 바꿨더니", key: "snap_click" }]);
+  assert.deepEqual(next.scenes[2].music, { key: "music_05" });
+  assert.deepEqual(next.scenes[1].title, board.scenes[1].title);
+  assert.equal(board.scenes[1].amb, "amb_cafe");   // the input is not changed
+});
+
+test("myinSoundIssues stops keys the render PC lacks and effect lines not heard after their scene starts", () => {
+  const catalog = [{ kind: "music", key: "music_05", title: "Daydreamer" }, { kind: "sfx", key: "snap_click", title: "click" }, { kind: "amb", key: "amb_cafe", title: "카페" }];
+  const ok = applyMyinSoundPlan(story(frame), { music: [{ scene: 1, key: "music_05" }], amb: [{ scene: 2, key: "amb_cafe", dur: 5 }], sfx: [{ scene: 2, cue: "자리만 바꿨더니", key: "snap_click" }] });
+  assert.deepEqual(myinSoundIssues(ok, words, catalog), []);
+  const bad = applyMyinSoundPlan(story(frame), { music: [{ scene: 1, key: "music_99" }], amb: [{ scene: 2, key: "amb_moon" }], sfx: [{ scene: 3, cue: "전혀 없는 말", key: "boom" }] });
+  const issues = myinSoundIssues(bad, words, catalog);
+  assert.equal(issues.length, 4);
+  assert.ok(issues.some((issue) => issue.includes("music_99")) && issues.some((issue) => issue.includes("amb_moon")) && issues.some((issue) => issue.includes("boom")) && issues.some((issue) => issue.includes("전혀 없는 말")));
 });
