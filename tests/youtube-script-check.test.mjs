@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkManuscript, checkScriptBody } from "../lib/youtube-script-check.ts";
+import { checkManuscript, checkScriptBody, sourcedParagraphs } from "../lib/youtube-script-check.ts";
 
 // 원고 검수 정본 관문 1: the OS re-counts the format of a submitted script and its result wins.
 const paragraph = (seed) => `${seed} 예를 들어 마케터 3년차 지은이 있습니다. 지은은 하고 싶은 일이 많아서 매일 저녁 새 강의를 결제하고, 주말에는 또 다른 모임에 나갑니다. 그런데 정작 무엇부터 해야 할지는 정하지 못한 채 한 달이 지나갑니다.`;
@@ -75,6 +75,16 @@ test("v1.6 사슬 낭독: four or more links of the IP chain in one paragraph", 
   assert.match(body("결핍이 욕구가 되고 행동이 강점이 되고 그게 정체성과 업으로 이어져요."), /사슬 낭독 — .* 6개/);
   assert.match(body("결핍이 욕구가 되고 행동이 강점이 됩니다."), /사슬 낭독 — .* 4개/);
   assert.equal(body("사업과 작업, 업무 얘기에서 결핍과 욕구, 강점을 봅니다."), "");
+});
+
+// 로건 피드백 A-4: the 출처 line takes ranges and groups, and a missing one says how to write it.
+test("the 출처 line reads one number, ranges and groups before each arrow", () => {
+  assert.deepEqual([...sourcedParagraphs(" 3 → 칙센트미하이(1989) | 9~15 → 같은 연구 | 8, 9 → 통계청 ")].sort((a, b) => a - b), [3, 8, 9, 10, 11, 12, 13, 14, 15]);
+  assert.deepEqual([...sourcedParagraphs(" 20-22 → 보고서 ")], [20, 21, 22]);
+  const study = "1989년 연구에서 직장인 78명이 일주일 동안 기록했습니다. ".repeat(3);
+  const sourced = sourcedParagraphs(" 1~2 → 칙센트미하이 ");
+  assert.equal(checkScriptBody([study, study, study], null, sourced).issues.filter(issue => /출처 줄/.test(issue)).length, 1);
+  assert.match(checkScriptBody([study, study, study], null, sourced).issues.find(issue => /출처 줄/.test(issue)), /3번 문단.*예: <!-- 출처: 3 → .*9~15 → .*8, 9 →/);
 });
 
 // 원고 정본 묶음 v1.9 (원고 검수 정본 v1.6, 2026-10-26): how sentences and paragraphs close, against the script's length.

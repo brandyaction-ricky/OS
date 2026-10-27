@@ -18,6 +18,15 @@ export const uploadSessionSchema = z.object({ fileName: z.string().trim().min(1)
   mimeType: z.string().regex(/^video\/[a-z0-9.+-]+$/i), connectionOwnerId: z.string().uuid().optional() }).strict();
 export const uploadCompleteSchema = z.object({ videoId: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/), connectionOwnerId: z.string().uuid().optional() }).strict();
 
+/**
+ * The page that will send the file (로건 피드백 10/26-9): YouTube answers the browser's PUT with CORS headers only when the
+ * session was opened with that page's Origin — opened from the server without it, every upload was refused.
+ */
+export const uploadOrigin = (request: Request) => {
+  const origin = request.headers.get("origin");
+  return origin && /^https?:\/\/[^/]+$/.test(origin) ? origin : new URL(request.url).origin;
+};
+
 /** utm_content: the Data API cannot edit a video with the upload permission alone, so the link carries the project code from the start. */
 export const utmCode = (projectId: string) => `yp-${projectId.slice(0, 8)}`;
 
@@ -30,7 +39,7 @@ async function uploadReady(actor: RequestActor, id: string) {
   return { project, stages, final: finals.filter(final => !final.aspect).at(-1) ?? null };
 }
 
-export async function startYoutubeUpload(actor: RequestActor, id: string, input: z.infer<typeof uploadSessionSchema>) {
+export async function startYoutubeUpload(actor: RequestActor, id: string, input: z.infer<typeof uploadSessionSchema>, origin: string) {
   const { project, stages, final } = await uploadReady(actor, id);
   const upload = stages.upload.data;
   if (upload.run?.status === "done") throw new ApiError(409, "UPLOAD_DONE", "이미 유튜브에 올린 영상이에요.");
@@ -50,17 +59,17 @@ export async function startYoutubeUpload(actor: RequestActor, id: string, input:
   }
   const description = upload.desc.replaceAll("[업로드 후 영상 ID]", utmCode(project.id)).replaceAll(utmUrl(upload.utm), utmUrl(upload.utm, utmCode(project.id))).slice(0, 5000 - credits.length) + credits;
   const tags = short ? (upload.desc.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30) : upload.hiddenTags.slice(0, 60);
-  const uploadUrl = await openUploadSession(ownerId, input, { title, description, tags, categoryId: "22" }, upload.privacy);
+  const uploadUrl = await openUploadSession(ownerId, input, { title, description, tags, categoryId: "22" }, upload.privacy, origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "업로드 세션 생성");
   return { uploadUrl, channelId: connection.channelId, finalV: final.v };
 }
 
 /** YouTube's resumable session for one file; the browser sends the bytes straight to the returned address. */
-async function openUploadSession(ownerId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, privacy: string) {
+async function openUploadSession(ownerId: string, file: { fileSize: number; mimeType: string }, snippet: { title: string; description: string; tags: string[]; categoryId: string }, privacy: string, origin: string) {
   const accessToken = await getYoutubeAccessToken(ownerId);
   const google = await fetch(`https://www.googleapis.com/upload/youtube/v3/videos?${new URLSearchParams({ uploadType: "resumable", part: "snippet,status" })}`, {
     method: "POST", cache: "no-store",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-length": String(file.fileSize), "x-upload-content-type": file.mimeType },
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8", "x-upload-content-length": String(file.fileSize), "x-upload-content-type": file.mimeType, origin },
     body: JSON.stringify({ snippet, status: { privacyStatus: privacy, selfDeclaredMadeForKids: false } }),
   });
   const uploadUrl = google.headers.get("location");
@@ -134,7 +143,7 @@ async function clipReady(actor: RequestActor, id: string, clipId: string) {
   // Only a confirmed script (쇼츠 확정) goes up, as it was confirmed.
   return { project, stages, clip: await confirmedClip(actor, project, clipId), longformUrl: longform.videoUrl };
 }
-export async function startClipUpload(actor: RequestActor, id: string, input: z.infer<typeof clipUploadSessionSchema>) {
+export async function startClipUpload(actor: RequestActor, id: string, input: z.infer<typeof clipUploadSessionSchema>, origin: string) {
   const { stages, clip, longformUrl } = await clipReady(actor, id, input.clipId);
   if ((clip.metadata.youtube as { videoId?: string } | undefined)?.videoId) throw new ApiError(409, "UPLOAD_DONE", "이미 유튜브에 올린 쇼츠예요.");
   const text = String(clip.metadata.desc ?? "");
@@ -142,7 +151,7 @@ export async function startClipUpload(actor: RequestActor, id: string, input: z.
   const ownerId = input.connectionOwnerId ?? actor.id;
   await authorizeYoutubeConnection(actor, ownerId);
   const tags = (text.match(/#[^\s#]+/g) ?? []).map(tag => tag.slice(1)).slice(0, 30);
-  const uploadUrl = await openUploadSession(ownerId, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, stages.upload.data.privacy);
+  const uploadUrl = await openUploadSession(ownerId, input, { title: clip.title.trim().slice(0, 100), description: clipDescription(text, longformUrl), tags, categoryId: "22" }, stages.upload.data.privacy, origin);
   await auditChannelAction(actor.id, ownerId, "youtube", "쇼츠 업로드 세션 생성");
   return { uploadUrl };
 }

@@ -58,6 +58,8 @@ export async function POST(request: Request) {
       headers: {
         authorization: `Bearer ${accessToken}`, "content-type": "application/json; charset=UTF-8",
         "x-upload-content-length": String(input.fileSize), "x-upload-content-type": input.mimeType,
+        // The browser sends the file; YouTube allows its PUT (CORS) only for the Origin the session was opened with.
+        origin: request.headers.get("origin") ?? new URL(request.url).origin,
       },
       body: JSON.stringify({
         snippet: { title, description, tags: lines(result.tags).slice(0, 60), categoryId: "22" },

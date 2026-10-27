@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { confirmPlan, descChecks, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
+import { confirmPlan, descChecks, diagnosisLink, shortLinkProblem, draftMissing, emptyStage, hiddenTagsOf, lengthEstimate, outlineMissing, slotOf, thumbsMissing, withScriptVersion } from "../lib/youtube-process/stages.ts";
 import { applyGateAction, editableFields } from "../lib/youtube-process/confirm.ts";
 import { newProjectMeta } from "../lib/youtube-process/project.ts";
 
@@ -44,6 +44,16 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.deepEqual(checks.map(check => check.ok), [true, true, true, true, true, true, true]);
   assert.deepEqual(hiddenTagsOf(desc), ["강점", "성격"]);
   assert.equal(descChecks(desc.replace("내 강점 진단 받기", "무료 진단 받기"), { srt: null, utm: { short: "", next: "" } })[4].ok, false);
+  // 로건 피드백 10/26-10 · 11: a YouTube address under the 진단 CTA fails, also when it was pasted into the 단축 링크 field.
+  const youtube = "https://youtu.be/abcdefghijk";
+  const withYoutube = desc.replace("https://www.brandyaction.com/classes/294620?utm_source=youtube", youtube);
+  assert.equal(descChecks(withYoutube, { srt: null, utm: { short: youtube, next: youtube } })[5].ok, false);
+  assert.equal(descChecks(desc.replace("https://www.brandyaction.com/classes/294620?utm_source=youtube", "https://buly.kr/abc"), { srt: null, utm: { short: "https://buly.kr/abc", next: "" } })[5].ok, true);
+  const utm = { cat: "키", dest: "진단", camp: "jindan_report", next: youtube, short: youtube };
+  assert.match(diagnosisLink(utm), /^https:\/\/www\.brandyaction\.com\/classes\/294620\?/);
+  assert.equal(diagnosisLink({ ...utm, short: "https://buly.kr/abc" }), "https://buly.kr/abc");
+  assert.match(shortLinkProblem(youtube), /유튜브 주소/);
+  assert.equal(shortLinkProblem("buly.kr/abc"), "");
 });
 
 test("기획안 수정 요청 opens every field; 최종 검수 OK moves the project to 업로드", () => {

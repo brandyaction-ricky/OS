@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ageLabel, categoryQuery, channelNormal, durationLabel, isBreakout, nicheStage, NOT_A_TOPIC } from "../lib/youtube-process/discover.ts";
+import { ageLabel, categoryQuery, channelNormal, durationLabel, isBreakout, keptVideoRecord, nicheStage, NOT_A_TOPIC } from "../lib/youtube-process/discover.ts";
+import { protectedPipelineChange } from "../lib/content-pipeline.ts";
 
 // 주제 찾기 (owner decision 2026-10-21, the 기획실 concept): a video breaks out against its own channel's normal views.
 const upload = (views, durationSeconds = 600, title = "영상") => ({ views, durationSeconds, title });
@@ -33,4 +34,16 @@ test("the same formula at 3 different channels is 확인된 주제, 2 is 지켜�
 test("background sound and music are not topics; long videos show hours", () => {
   assert.deepEqual(["relaxing rain sounds☔ - 빗소리 8시간 수면용 백색소음 ASMR", "공부할 때 듣는 플레이리스트", "단점이 강점이 되는 이유"].map(title => NOT_A_TOPIC.test(title)), [true, true, false]);
   assert.deepEqual([durationLabel(28801), durationLabel(1587)], ["8:00:01", "26:27"]);
+});
+
+// 로건 피드백 A-1: 틈새 재료로 담기 sent the video's publishedAt, a protected publish-history key, so the server refused every save.
+test("a kept video saves past the publish-history guard and keeps its upload date", () => {
+  const video = { id: "abc", title: "퇴사 고민", channelId: "c", channelTitle: "채널", viewCount: 179_668, subscribers: 1350, durationSeconds: 600,
+    publishedAt: "2025-03-01T00:00:00Z", thumbnail: "", url: "https://www.youtube.com/watch?v=abc", median: 20_000, ratio: 9, viewSubscriberRatio: 133.1 };
+  const record = keptVideoRecord(video, "퇴사 고민", "콘텐츠");
+  assert.equal(protectedPipelineChange({}, record.metadata), false);
+  assert.equal(record.metadata.videoPublishedAt, "2025-03-01T00:00:00Z");
+  assert.equal("publishedAt" in record.metadata, false);
+  assert.equal(record.metadata.studioKind, "outlier");
+  assert.equal(record.metadata.discoverySource, "keyword");
 });

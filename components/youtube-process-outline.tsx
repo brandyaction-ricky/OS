@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { apiRequest } from "@/lib/api-client";
 import { Clock, Eye, Info, Sparkles } from "lucide-react";
 import { myinCleanScript } from "@/lib/myin-script";
 import { lengthEstimate, outlineMissing, runtimeError, scriptChars, SPEC_OPTIONS, type YpOutline } from "@/lib/youtube-process/stages";
@@ -35,6 +36,16 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
   const editable = Boolean(project && ["outline", "make", "review"].includes(project.yp.stage));
   const reloadAll = useCallback(() => { setDirty(false); setEditorKey(key => key + 1); void page.reload(); }, [page]);
   const job = useStaffJob(page, "script", reloadAll);
+  // Logan's test (A-5): once the voice exists, its real length sits next to the estimate.
+  const [voiceSec, setVoiceSec] = useState<number | null>(null);
+  const projectId = project?.id, token = page.accessToken, demo = page.demo;
+  useEffect(() => {
+    if (!projectId || demo) return;
+    let live = true;
+    apiRequest<{ run: { words: { durationSeconds: number } | null } | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${encodeURIComponent(projectId)}`, { token })
+      .then(result => { if (live) setVoiceSec(result.run?.words?.durationSeconds ?? null); }, () => undefined);
+    return () => { live = false; };
+  }, [projectId, token, demo]);
 
   // The 2.5 s autosave and the blur save can overlap: each save reads the latest version (a stale one was a false "먼저 고쳤어요"),
   // and a save asked for while one is running runs right after it with the newest text.
@@ -117,6 +128,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
         </YpSection>
         <YpSection n={2} title="원고" need extra={editable && !viewing && !ways ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button> : null}>
           <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
+            {voiceSec ? <span className="yp-tag" title="렌더 PC가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
             {estimate?.verdict ? <span className={estimate.verdict.ok ? "yp-ok" : "yp-bad"}>{estimate.verdict.ok ? "✓" : "⚠"} {estimate.verdict.text}</span> : null}</div>
           {aiOpen ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
           {form.versions.length ? <div className="yp-vstrip yp-vrel"><b style={{ fontSize: 12, color: "var(--muted)" }}>버전</b>

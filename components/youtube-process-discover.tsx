@@ -7,7 +7,7 @@ import { apiRequest, archiveRecord, createRecord, listAllRecordsOfType, resolveY
 import { contentOrigin } from "@/lib/content-origin";
 import type { OsRecord } from "@/lib/record-types";
 import {
-  ageLabel, BREAKOUT, compactCount, DISCOVER_CATEGORIES, durationLabel, isBreakout, ratioLabel,
+  ageLabel, BREAKOUT, compactCount, DISCOVER_CATEGORIES, durationLabel, isBreakout, keptVideoRecord, ratioLabel,
   type DiscoverChannel, type DiscoverVideo, type NicheCluster, type NicheDecision, type NicheVideo,
 } from "@/lib/youtube-process/discover";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -33,7 +33,7 @@ const asVideo = (record: OsRecord): DiscoverVideo => {
   const baseline = meta<{ ratio?: unknown; medianViews?: unknown }>(record, "baseline", {}) ?? {};
   const viewCount = Number(meta(record, "views", record.metric_current ?? 0)); const subscribers = num(record.metadata?.subscribers);
   return { id: meta(record, "youtubeId", record.id), title: record.title, channelId: meta(record, "channelId", ""), channelTitle: meta(record, "channelTitle", ""), viewCount, subscribers,
-    durationSeconds: Number(meta(record, "durationSeconds", 0)), publishedAt: meta<string | null>(record, "publishedAt", null), thumbnail: meta(record, "thumbnail", ""), url: record.source_url ?? "",
+    durationSeconds: Number(meta(record, "durationSeconds", 0)), publishedAt: meta<string | null>(record, "videoPublishedAt", meta<string | null>(record, "publishedAt", null)), thumbnail: meta(record, "thumbnail", ""), url: record.source_url ?? "",
     median: num(record.metadata?.median) ?? num(baseline.medianViews), ratio: num(record.metadata?.ratio) ?? num(baseline.ratio),
     viewSubscriberRatio: num(record.metadata?.viewSubscriberRatio) ?? (subscribers ? Math.round(viewCount / subscribers * 100) / 100 : null) };
 };
@@ -65,6 +65,8 @@ export function YoutubeDiscoverScreen() {
   const [tab, setTab] = useState<Tab>("breakouts");
   const [source, setSource] = useState<Source>("found");
   const [pick, setPick] = useState<Query>({ category: "all" });
+  // 틈새 재료로 담기 failures stay on the video's own row: the screen-top error was out of sight (로건 피드백 A-1).
+  const [keepFailed, setKeepFailed] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [days, setDays] = useState("365");
   const [onlyBreakouts, setOnlyBreakouts] = useState(true);
@@ -114,15 +116,11 @@ export function YoutubeDiscoverScreen() {
 
   const keep = async (video: DiscoverVideo) => {
     if (!accessToken || keptIds.has(video.id)) return;
-    setSaving(video.id); setError("");
+    setSaving(video.id); setError(""); setKeepFailed(current => { const next = { ...current }; delete next[video.id]; return next; });
     try {
-      await createRecord(accessToken, { recordType: "content_topic", title: video.title, description: `${video.channelTitle}에서 찾은 터진 영상`, status: "review", priority: "normal",
-        stage: "레퍼런스", team, sourceUrl: video.url, metricCurrent: video.viewCount, metricUnit: "조회", tags: ["레퍼런스", "틈새재료"],
-        metadata: { studioKind: "outlier", discoverySource: "keyword", baseline: null, youtubeId: video.id, channelId: video.channelId, channelTitle: video.channelTitle, thumbnail: video.thumbnail,
-          publishedAt: video.publishedAt, views: video.viewCount, subscribers: video.subscribers, median: video.median, ratio: video.ratio, viewSubscriberRatio: video.viewSubscriberRatio,
-          durationSeconds: video.durationSeconds, query: video.query ?? ("q" in pick ? pick.q : pick.category) } });
+      await createRecord(accessToken, keptVideoRecord(video, video.query ?? ("q" in pick ? pick.q : pick.category), team));
       await loadRecords();
-    } catch (reason) { setError(errorMessage(reason)); } finally { setSaving(""); }
+    } catch (reason) { setKeepFailed(current => ({ ...current, [video.id]: errorMessage(reason) })); } finally { setSaving(""); }
   };
   const track = async (channel: DiscoverChannel) => {
     if (!accessToken || trackedChannelIds.has(channel.id)) return;
@@ -146,7 +144,7 @@ export function YoutubeDiscoverScreen() {
     <p className="yp-hint" style={{ margin: "8px 0 12px" }}>{TAB_HINT[tab]}</p>
     {searchable ? <>
       <form className="yp-disc-search" onSubmit={event => { event.preventDefault(); if (query.trim().length >= 2) { setSource("found"); setPick({ q: query.trim() }); } }}>
-        <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
+        <Search size={16} className="yp-i" aria-hidden="true" /><input className="yp-in" type="search" value={query} onChange={event => setQuery(event.target.value)} onFocus={event => event.currentTarget.select()} placeholder="키워드로 찾기 · 예) 직장인 강점 찾기" aria-label="키워드로 찾기" />
         <button type="submit" className="yp-btn yp-pri" disabled={query.trim().length < 2}>찾기</button><CostTag kind="youtube" /></form>
       <div className="yp-chips" role="group" aria-label="분류">
         <button type="button" className={`yp-chip${"category" in pick && pick.category === "all" ? " yp-on" : ""}`} onClick={() => { setSource("found"); setPick({ category: "all" }); }}>전체</button>
@@ -198,8 +196,9 @@ export function YoutubeDiscoverScreen() {
               {video.ratio !== null ? <span className={`yp-tag${video.ratio >= BREAKOUT.ratio ? " yp-ok" : ""}`}>평소의 {ratioLabel(video.ratio)}{video.median ? ` (평소 ${compactCount(video.median)}회)` : ""}</span> : null}
               {video.viewSubscriberRatio !== null ? <span className="yp-tag">구독자의 {ratioLabel(video.viewSubscriberRatio)}</span> : null}</span>
             <div className="yp-row-btns">
-              {source !== "kept" ? <button type="button" className="yp-btn yp-sm" disabled={demo || keptIds.has(video.id) || saving === video.id} onClick={() => void keep(video)}>{keptIds.has(video.id) ? "담김" : saving === video.id ? "담는 중…" : "틈새 재료로 담기"}</button> : null}
+              {source !== "kept" ? <button type="button" className="yp-btn yp-sm" disabled={demo || keptIds.has(video.id) || saving === video.id} onClick={() => void keep(video)}>{keptIds.has(video.id) ? "담았어요" : saving === video.id ? "담는 중…" : keepFailed[video.id] ? "다시 담기" : "틈새 재료로 담기"}</button> : null}
               <Link className="yp-btn yp-sm yp-pri" href={newVideoHref(video)}>새 영상으로 만들기</Link></div>
+            {keepFailed[video.id] ? <span className="yp-errline" role="alert">담지 못했어요: {keepFailed[video.id]}</span> : null}
           </div></article>)}</div>
         : <p className="yp-pempty">{source === "kept" ? "담아 둔 영상이 없어요. 찾은 영상에서 [틈새 재료로 담기]를 눌러요." : source === "tracked" ? "매일 보는 채널에서 평소보다 크게 나온 영상이 생기면 여기에 모여요. ① 채널 모으기에서 채널을 넣어요."
           : onlyBreakouts && found?.videos.length ? `찾은 영상 ${found.videos.length}개 중 평소의 ${BREAKOUT.ratio}배를 넘은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요.` : "찾은 영상이 없어요. 기간을 늘리거나 다른 분류를 눌러 보세요."}</p>}

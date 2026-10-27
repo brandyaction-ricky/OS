@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { parseYoutubeRef, projectName } from "@/lib/youtube-process/project";
+import { parseYoutubeRef, projectName, sameRef } from "@/lib/youtube-process/project";
 import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type YpThumb } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
@@ -28,6 +28,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const [uploading, setUploading] = useState("");
   const editRev = useRef(0);
   const saving = useRef(false);
+  // A save asked for while one is running goes out right after it, on the newest version (로건 피드백 A-2: it was dropped, then a stale save read as an error).
+  const queued = useRef<YpPlan | null>(null);
+  const savedVersion = useRef({ project: "", version: 0 });
   const [send, setSend] = useState(false);
   const [manual, setManual] = useState(false);
   const plan = page.bundle?.stages.plan;
@@ -42,16 +45,22 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
   const rev = (key: string) => project?.yp.gates.draft.state === "changes" && (project.yp.gates.draft.fields ?? []).includes(key);
 
   const save = async (next: YpPlan | null = form) => {
-    if (!page.client || !project || !plan || !next || saving.current) return;
+    if (!page.client || !project || !plan || !next) return;
+    if (saving.current) { queued.current = next; return; }
     saving.current = true;
     const rev0 = editRev.current;
     const patch = Object.fromEntries((Object.keys(PLAN_FIELD_KEY) as (keyof typeof PLAN_FIELD_KEY)[]).filter(key => can(key)).map(key => [key, next[key]]));
     try {
-      const result = await page.client.saveStage(project.id, "plan", plan.version, patch);
+      const result = await page.client.saveStage(project.id, "plan", savedVersion.current.project === project.id ? Math.max(plan.version, savedVersion.current.version) : plan.version, patch);
+      savedVersion.current = { project: project.id, version: result.stage.version };
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current);
       setSavedAt(hhmm());
       if (editRev.current === rev0) setDirty(false);
-    } catch (reason) { page.fail(reason); } finally { saving.current = false; }
+    } catch (reason) { page.fail(reason); } finally {
+      saving.current = false;
+      const after = queued.current; queued.current = null;
+      if (after) void save(after);
+    }
   };
   const edit = (patch: Partial<YpPlan>, now = false) => {
     editRev.current += 1;
@@ -121,13 +130,13 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
             </div>
         </YpSection>
         <YpSection n={2} title="영상 흐름 (뼈대)" gq="어떤 순서로 보여 주나요?" need>
-          <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
-            <input className="yp-in" aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
+          <div className={`yp-field${rev("draft.opening") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>오프닝 (첫 30초)</b><span className="yp-gq">처음 30초에 뭘 보여 주나요?</span>{rev("draft.opening") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+            <textarea className="yp-in" rows={3} aria-label="오프닝" value={form.opening} readOnly={!can("opening")} placeholder="예) 회의에서 내 의견이 무시당했을 때, 그릇 큰 사람은 이렇게 반응한다" onChange={event => edit({ opening: event.target.value })} />
             <p className="yp-hint">제목 · 썸네일에서 한 약속을 바로 보여 줄 장면</p></div>
-          <div className={`yp-field${rev("draft.body") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>본론</b><span className="yp-gq">본론은 어떻게 이어지나요?</span>{rev("draft.body") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
+          <div className={`yp-field${rev("draft.body") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>본론</b><span className="yp-gq">본론은 어떻게 이어지나요?</span>{rev("draft.body") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
             <textarea className="yp-in" rows={6} aria-label="본론" value={form.body} readOnly={!can("body")} placeholder={"예) 소제목 – 보여 줄 장면\n1. 남 탓을 하지 않는다 – 같은 실수, 두 사람 반응 비교\n2. 끝까지 듣는다 – 말 끊는 사람 vs 듣는 사람\n3. …"} onChange={event => edit({ body: event.target.value })} /></div>
-          <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">고칠 칸</span> : null}</div>
-            <input className="yp-in" aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
+          <div className={`yp-field${rev("draft.closing") ? " yp-rev" : ""}`}><div className="yp-fld-h"><b>클로징 · 다음 행동</b><span className="yp-gq">끝나고 어디로 보내나요?</span>{rev("draft.closing") ? <span className="yp-revtag">대표가 짚은 칸</span> : null}</div>
+            <textarea className="yp-in" rows={3} aria-label="클로징 · 다음 행동" value={form.closing} readOnly={!can("closing")} placeholder="예) 그릇은 습관이라는 말로 마무리하고, 진단으로 보내요" onChange={event => edit({ closing: event.target.value })} /></div>
         </YpSection>
         <details className="yp-more-fields" open={Boolean(form.note) || rev("draft.note")}><summary>전달 사항 더 쓰기 (선택)</summary>
           <textarea className="yp-in" rows={2} aria-label="전달 사항" value={form.note} readOnly={!can("note")} placeholder="예) 지난주 댓글에 비슷한 질문이 많았어요. 레퍼런스 1번은 제목 구조만 참고했어요" onChange={event => edit({ note: event.target.value })} />
@@ -138,7 +147,9 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
           {own && can("extraRefs") ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => edit({ extraRefs: form.extraRefs.filter(row => row.url !== ref.url) }, true)}><X size={14} /></button> : null}</li>)}</ul>
         {!project.yp.topic.refs.length && !form.extraRefs.length ? <p className="yp-pempty">아직 없어요</p> : null}
-        {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; } setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
+        {can("extraRefs") ? <form className="yp-savebar" onSubmit={event => { event.preventDefault(); const ref = parseYoutubeRef(refUrl); if (!ref) { page.setError("유튜브 영상 주소를 붙여 넣어 주세요."); return; }
+          if ([...project.yp.topic.refs, ...form.extraRefs].some(row => sameRef(row, ref))) { page.setError("이미 있는 레퍼런스예요."); return; }
+          setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
       </div></section></aside></div>
       <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? projectName(project) : undefined} />

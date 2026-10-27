@@ -50,6 +50,7 @@
 .linear-shell .ui-v2.yp .yp-sub{color:var(--muted);margin:4px 0 0}
 .linear-shell .ui-v2.yp .yp-savebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .linear-shell .ui-v2.yp .yp-stamp{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:4px}
+.linear-shell .ui-v2.yp .yp-stamp.yp-unsaved{color:var(--danger);font-weight:600}
 .linear-shell .ui-v2.yp .yp-stamp i{width:7px;height:7px;border-radius:50%;background:var(--mint);display:inline-block}
 
 .linear-shell .ui-v2.yp .yp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:12px;font-weight:500;white-space:nowrap}

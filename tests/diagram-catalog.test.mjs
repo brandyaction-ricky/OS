@@ -40,7 +40,8 @@ test("a reported lib_ type passes and its beats' cues are checked like any cue",
 test("a lib_ type the render PC did not report blocks; another new type is only a note for Logan", () => {
   const scene = { type: "lib_stage_road", at: "처음엔 누구나" };
   assert.ok(checkMyinStoryboard(story(scene), words).issues.some((issue) => issue.includes("렌더 PC가 그릴 수 없는 도식")));
-  const other = checkMyinStoryboard(story({ type: "spiral", at: "처음엔 누구나" }), words, diagramCatalogTypes(catalog));
+  // (A new type with a photo still counts toward the 도식 · 이미지 share.)
+  const other = checkMyinStoryboard(story({ type: "spiral", at: "처음엔 누구나", photo: { file: "situ_a.jpg" } }), words, diagramCatalogTypes(catalog));
   assert.deepEqual(other.issues, []);
   assert.equal(other.notes.length, 1);
 });
