@@ -18,6 +18,6 @@ export function defaultGenerationMode(records: OsRecord[]): GenerationMode {
 export function generationJobLabel(job: Pick<OsRecord, "status" | "stage" | "metadata">) {
   if (job.status === "blocked" && job.stage === "credentials") return "이전 방식 — 연결 대기";
   if (job.stage === "failed" || job.status === "failed") return "실패";
-  return ({ backlog: "대기", active: "처리 중", done: "완료", review: "검수 중", draft: "초안", ready: "승인 대기", blocked: "막힘" } as Record<string, string>)[job.status] ?? job.status;
+  return ({ backlog: "대기", active: "처리 중", in_progress: "처리 중", done: "완료", review: "검수 중", draft: "초안", ready: "승인 대기", blocked: "막힘", cancelled: "취소" } as Record<string, string>)[job.status] ?? job.status;
 }
 export const GENERATION_QUEUED_NOTICE = "구독 대기열에 저장했습니다. AI 작업에서 처리 상태를 확인할 수 있습니다.";

@@ -1120,3 +1120,8 @@ select option { background:var(--panel-2); color:var(--text); }
   .menu-access-mode,.menu-access-groups { grid-template-columns: 1fr; }
   .menu-access-group > div { grid-template-columns: 1fr 1fr; }
 }
+/* Fenced code blocks in the block editor */
+.knowledge-code-block { position: relative; margin: 8px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); }
+.knowledge-code-block small { position: absolute; top: 4px; right: 8px; font-size: 11px; color: var(--muted); }
+.knowledge-code-block textarea { display: block; width: 100%; min-width: 0; padding: 10px 12px; border: 0; background: transparent; color: var(--text); font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; white-space: pre; overflow-x: auto; }
+.knowledge-code-block textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }

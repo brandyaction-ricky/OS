@@ -86,7 +86,10 @@
 .linear-shell .ui-v2 .dev-detail { border: 1px solid var(--line); border-radius: 10px; background: var(--card); min-width: 0; }
 .linear-shell .ui-v2 .dev-detail-body { padding: 12px 14px; }
 .linear-shell .ui-v2 .dev-detail h2 { font-size: 18px; }
-.linear-shell .ui-v2 .dev-history { display: grid; gap: 12px; }
+.linear-shell .ui-v2 .dev-history { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.linear-shell .ui-v2 .dev-history > article > div { flex: 1; }
+/* Long work notes fold to three lines; a tap or focus opens the whole note */
+.linear-shell .ui-v2 .dev-history .dev-history-desc:not(:focus) { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
 .linear-shell .ui-v2 .dev-history > article { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--card); }
 .linear-shell .ui-v2 .dev-history p { font-size: 12px; }
 .linear-shell .ui-v2 .dev-overview { padding: 8px 0; }
@@ -162,6 +165,8 @@
 .linear-shell .ui-v2 .company-settings-grid > * { min-width: 0; margin: 0; }
 .linear-shell .ui-v2 .company-settings-stack :is(.generation-settings,.meeting-term-settings) { padding: 0 0 14px; overflow: hidden; }
 .linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) { padding: 0 0 16px; }
+.linear-shell .ui-v2.screen-company .company-settings-grid .generation-settings { display: grid; grid-template-columns: minmax(0,1fr); align-content: start; gap: 0; }
+.linear-shell .ui-v2.screen-company .company-settings-grid .generation-settings .primary-button { width: fit-content; margin-top: 12px; }
 .linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > :not(h2) { margin-inline: 18px; }
 .linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > h2 { padding: 12px 18px; }
 .linear-shell .ui-v2.screen-company .company-settings-grid :is(.generation-settings,.meeting-term-settings) > p { line-height: 1.6; }

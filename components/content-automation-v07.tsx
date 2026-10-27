@@ -208,7 +208,7 @@ function DashboardView({data}:Pick<ViewProps,"data">){
   const review=data.items.filter(row=>row.status==="review");
   const publishing=data.items.filter(row=>["ready","scheduled"].includes(row.status));
   const published=data.publications.filter(row=>["published","nourl"].includes(row.status));
-  const cards=[["① 주제 기획",topics.length,"/automation/topics"],["②③④ 제작 중",making.length,"/automation/cardnews"],
+  const cards=[["① 주제 기획",topics.length,"/automation/topics"],["②~④ 제작 중",making.length,"/automation/cardnews"],
     ["⑤ 최종 확인",review.length,"/automation/review"],["⑥ 게시 대기",publishing.length,"/automation/calendar"],
     ["⑥ 발행 기록",published.length,"/automation/calendar?tab=history"]] as const;
   return <><Tabs base="/automation/dashboard" active={tab} tabs={[{id:"today",label:"오늘"},{id:"accounts",label:"내 채널 계정"}]}/>

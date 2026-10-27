@@ -81,8 +81,6 @@ export function FinanceWorkspace() {
     );
   return (
     <>
-      {!demo&&["/finance/overview","/finance/sales","/finance/settlements"].includes(pathname)?<TossSyncPanel key={`sync:${actor}`} token={accessToken} onRefresh={()=>setRevision(value=>value+1)}/>:null}
-      {!demo&&(pathname==="/finance/sales"||pathname==="/finance/settlements")?<TossReadPanel key={`${actor}:${pathname}`} token={accessToken} kind={pathname==="/finance/sales"?"transactions":"settlements"}/>:null}
       {error ? (
         <div className="inline-alert" role="alert">
           {error}{" "}
@@ -97,6 +95,8 @@ export function FinanceWorkspace() {
         className="finance-workspace"
         aria-label={demo?"재무관리 모의 작업공간":"재무관리 작업공간"}
       />
+      {!demo&&["/finance/overview","/finance/sales","/finance/settlements"].includes(pathname)?<TossSyncPanel key={`sync:${actor}`} token={accessToken} onRefresh={()=>setRevision(value=>value+1)}/>:null}
+      {!demo&&(pathname==="/finance/sales"||pathname==="/finance/settlements")?<TossReadPanel key={`${actor}:${pathname}`} token={accessToken} kind={pathname==="/finance/sales"?"transactions":"settlements"}/>:null}
     </>
   );
 }
