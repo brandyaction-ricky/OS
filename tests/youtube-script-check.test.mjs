@@ -98,8 +98,11 @@ test("v1.9 흐림 종결: '수 있-' sentence endings at 20 or more per 6,000 ch
   assert.doesNotMatch(closing(long), /흐림/);
 });
 
-test("v1.9 요약 종결: a third or more of the paragraphs end on '~거예요·~겁니다·~거죠'", () => {
-  assert.match(closing(["그래서 다시 보는 거예요.", "그게 기준인 겁니다.", "다음 장면으로 가요."]), /요약 종결 .* 2개 — 전체 3개의 1\/3 이상.*걸린 문단 1·2번/);
+test("v1.10 요약 종결: a third or more of the paragraphs restate on '~하는 거예요·~하는 겁니다·~하는 거죠'", () => {
+  assert.match(closing(["그래서 다시 보는 거예요.", "그 조건을 적어보는 겁니다.", "다음 장면으로 가요."]), /요약 종결 .* 2개 — 전체 3개의 1\/3 이상.*걸린 문단 1·2번/);
+  assert.match(closing(["그날 다시 확인하는거죠.", "다음 장면으로 가요."]), /요약 종결 .* 1개/);
+  // The owner's live endings (검수 정본 v1.10): a past event, a 매듭 "~다는 거죠", a copula — none restates.
+  assert.doesNotMatch(closing(["그래서 원인을 밖에서 찾은 거예요.", "반대 성격이 하나 더 있다는 거죠.", "그게 기준인 겁니다.", "이렇게 말한거죠."]), /요약/);
   assert.doesNotMatch(closing(["그래서 다시 보는 거예요.", "다음 장면으로 가요.", "그날 바로 적었어요.", "왜 그랬을까요?"]), /요약/);
   assert.doesNotMatch(closing(["다들 그렇게 하는 거죠?", "다음 장면으로 가요."]), /요약/);
 });

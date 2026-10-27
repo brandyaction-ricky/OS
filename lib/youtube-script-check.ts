@@ -46,7 +46,9 @@ const squeeze = (text: string) => text.replace(/\s+/g, "");
 // 흐림·요약·해명 종결 (원고 말투 정본 ⑭⑮⑯): how sentences and paragraphs close, counted against the script's length.
 const sentencesOf = (text: string) => text.split(/(?<=[.?!]["”’]?)\s+/).map((part) => part.trim()).filter(Boolean);
 const HEDGE_END = /(?<![가-힣])수도?\s*있[가-힣]*[.?!]?["”’]*$/;
-const SUMMARY_END = /(?:거예요|겁니다|거죠)\.?$/;
+// 요약 종결 counts the present "~하는 거예요" that restates what to do (검수 정본 v1.10): the owner's live talk closes on
+// "~한 거죠" (a past event) and "~다는 거죠" (말투 정본 §8 매듭), which the wider count rejected in the owner's own lecture.
+const SUMMARY_END = /(?<![다라])는\s?(?:거예요|겁니다|거죠)\.?$/;
 // 해명 종결 leaves quoted lines out: a character saying "그건 아니에요" is speech, not the narrator excusing itself.
 const DISCLAIMER_END = /(?:아니에요|아니예요|아닙니다|아니고요|아니죠)[.?!]?$/;
 const QUOTED = /"[^"]*"|“[^”]*”/g;
@@ -134,7 +136,7 @@ export function checkScriptBody(paragraphs: string[], targetMinutes: number | nu
   const hedgeRate = per6000(hedges, chars);
   if (hedgeRate >= 20) issues.push(`흐림 종결 "~수 있어요·~수 있죠"로 맺는 문장 ${hedges}개 — 6,000자당 ${hedgeRate.toFixed(1)}회입니다(20회 미만이어야 합니다). 확인된 것은 단정합니다. 걸린 문단 ${numbered(hedged)}번`);
   if (paragraphs.length && summaries.length * 3 >= paragraphs.length)
-    issues.push(`요약 종결 "~거예요·~겁니다·~거죠"로 끝나는 문단 ${summaries.length}개 — 전체 ${paragraphs.length}개의 1/3 이상입니다. 문단 끝은 다음 장면·질문·가장 센 문장으로 닫습니다. 걸린 문단 ${numbered(summaries)}번`);
+    issues.push(`요약 종결 "~하는 거예요·~하는 겁니다·~하는 거죠"로 끝나는 문단 ${summaries.length}개 — 전체 ${paragraphs.length}개의 1/3 이상입니다. 문단 끝은 다음 장면·질문·가장 센 문장으로 닫습니다. 걸린 문단 ${numbered(summaries)}번`);
   const disclaimerRate = per6000(disclaimers, chars);
   if (disclaimerRate >= 8) issues.push(`해명 종결 "~아니에요"로 맺는 문장 ${disclaimers}개 — 6,000자당 ${disclaimerRate.toFixed(1)}회입니다(8회 미만이어야 합니다). 맞는 것을 단정하고 이유를 붙입니다. 걸린 문단 ${numbered(disclaimed)}번`);
   return { chars, issues, notes };
