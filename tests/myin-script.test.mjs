@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "../lib/myin-script.ts";
+import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "../lib/myin-script.ts";
 
 // The render PC runs Logan's stage_voice.py unchanged; the OS must send Fish exactly the paragraphs it speaks.
 test("an OS manuscript becomes Logan's script: head comments dropped, title and sections not spoken, 출처 cut", () => {
@@ -28,4 +28,10 @@ test("a v13 run stops matching once the 원고 changes: key, markdown, or any sp
   assert.equal(myinRunMatchesScript(run, { ...now, markdownHash: "m2" }), false);
   assert.equal(myinRunMatchesScript(run, { ...now, spokenHashes: ["a", "c"] }), false);
   assert.equal(myinRunMatchesScript(run, { ...now, spokenHashes: ["a", "b", "c"] }), false);
+});
+
+// 로건 호흡·타이밍 (2026-10-27): Fish reads a copy with commas after the render PC's word positions; the 원고 stays as it is.
+test("myinBreathText puts a comma after the picked words only, never twice", () => {
+  assert.equal(myinBreathText("자 그래서 저는 오늘 이 얘기를, 해볼게요.", [0, 2, 4, 9]), "자, 그래서 저는, 오늘 이, 얘기를, 해볼게요.");
+  assert.equal(myinBreathText("그대로 둡니다."), "그대로 둡니다.");
 });

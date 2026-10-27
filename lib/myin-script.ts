@@ -33,6 +33,16 @@ export function myinScriptMarkdown(manuscript: string | null, narration: string)
   return source.replace(/\r/g, "").split("\n").filter((line) => !line.trim().startsWith("<!--")).join("\n").trim() + "\n";
 }
 
+/**
+ * 로건 호흡·타이밍 (2026-10-27): the copy Fish reads gets a comma after the words where 안저님 breathes mid-sentence. The render PC
+ * picks them with Logan's model and sends word positions only; the 원고, speech.txt and subtitles keep the original text.
+ */
+export function myinBreathText(text: string, after: readonly number[] = []) {
+  const picks = new Set(after);
+  let k = -1;
+  return text.replace(/\S+/g, (word) => { k += 1; return picks.has(k) && !word.endsWith(",") ? `${word},` : word; });
+}
+
 /** A v13 run belongs to the current 원고 only while its input key, script and spoken paragraphs (hashes) are all unchanged. */
 export function myinRunMatchesScript(run: { inputKey: string; scriptMarkdownHash: string; paragraphs: { textHash: string }[] },
   now: { inputKey: string; markdownHash: string; spokenHashes: string[] }) {

@@ -206,6 +206,45 @@ const runAsync = (command, args, options) => new Promise((resolve, reject) => {
   child.on("exit", (code) => code === 0 ? resolve() : reject(Object.assign(new Error(`${args[0]} exited with ${code}`), { code: "WORKER_STAGE_FAILED" })));
 });
 
+// 로건 호흡·타이밍 (2026-10-27): his breath model picks where 안저님 breathes mid-sentence; Fish (on the OS) reads those commas.
+// Only word positions go back. A package without tools/voice_timing, or VOICE_TIMING=off, sends none and the voice is as before.
+const BREATH_PY = `import sys, json, os
+sys.path.insert(0, os.path.join(sys.argv[1], "tools", "voice_timing"))
+import voice_timing as VT
+out = []
+for p in json.load(sys.stdin):
+    a = p["text"].split(); b = VT.prepare_text(p["text"]).split()
+    out.append({"index": p["index"], "after": [k for k, (x, y) in enumerate(zip(a, b)) if y == x + ","] if len(a) == len(b) else []})
+print(json.dumps(out))`;
+export function myinBreaths(paragraphs) {
+  const none = paragraphs.map((p) => ({ index: p.index, after: [] }));
+  if (process.env.VOICE_TIMING === "off" || !existsSync(path.join(myinPkg, "tools", "voice_timing", "voice_timing.py"))) return none;
+  const result = spawnSync(myinPython, ["-c", BREATH_PY, myinPkg], { input: JSON.stringify(paragraphs), encoding: "utf8", maxBuffer: 8e6, timeout: 300_000,
+    env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
+  if (result.status !== 0) throw Object.assign(new Error(`breath model exited with ${result.status}: ${String(result.stderr).slice(-300)}`), { code: "WORKER_BREATH_FAILED" });
+  return JSON.parse(result.stdout.trim().split("\n").pop());
+}
+
+/** Process one v13 breath job; an OS without this step (older deploy) answers 400, which counts as no job. */
+export async function processMyinBreath() {
+  if (!myinPkg) return false;
+  const job = await call({ action: "myin_breath_claim" }).catch(() => ({ idle: true }));
+  if (job.idle) return false;
+  const lease = { runId: job.runId, lease: job.lease };
+  current = { step: "breath" };
+  try {
+    const breaths = myinBreaths(job.paragraphs);
+    const saved = await call({ action: "myin_breath_complete", ...lease, breaths });
+    console.log(`myin breath ready: ${job.runId} (${saved.commas} commas)`);
+  } catch (error) {
+    console.error(`myin breath failed: ${job.runId}: ${error.message}`);
+    await call({ action: "myin_fail", ...lease, code: String(error.code ?? "WORKER_BREATH_FAILED") }).catch(() => {});
+  } finally {
+    current = null;
+  }
+  return true;
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -549,7 +588,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
+    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
-import { myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
+import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
@@ -13,7 +13,8 @@ import { assertSpokenScript } from "./youtube-script-canon";
 import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
 // 마이인 v13 (owner decision 2026-10-19: the default format; design https://claude.ai/artifact/NCJ5qjYNeBYgfwjCnm1JgQ).
-// One run per approved script. Stage 1: the OS server asks Fish for each paragraph exactly as Logan's stage_voice.py does and
+// One run per approved script. Stage 1: the render PC picks each paragraph's breath commas with Logan's model (breath_pending, 로건
+// 호흡·타이밍 2026-10-27), the OS server asks Fish for each paragraph exactly as Logan's stage_voice.py does and
 // keeps the wav (voice_pending); the render PC then runs his pipeline unchanged on those files — voice post-processing, words.json
 // and subtitles — and sends back one JSON bundle (words_pending → words_ready). The voice is frozen from here: Fish never reads a
 // line the same way twice, and every later cue is matched against this transcription.
@@ -31,7 +32,8 @@ const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().d
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
-  paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).min(1).max(150),
+  paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional(),
+    breath: z.array(z.number().int().min(0)).max(80).optional() }).strict()).min(1).max(150),
   words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime() }).strict().optional(),
   // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
   storyboard: z.object({ path: z.string(), scenes: z.number().int().positive(), model: z.string(), at: z.string().datetime(),
@@ -181,7 +183,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id, record_type: "ai_job", title: `${input.state.source.title} · v13 음성·받아쓰기`.slice(0, 240),
-    description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: "voice_pending",
+    description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: "breath_pending",
     priority: "normal", brand: input.state.source.brand, team: input.state.source.team, owner_id: actor.id, parent_id: sourceId,
     created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "마이인v13"], metadata: run,
   }).select("*").maybeSingle();
@@ -193,7 +195,8 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
   if (existing.status !== "blocked") return presentMyinRun(existing as OsRecord);
   const prior = parse(existing as OsRecord);
   const resumed: MyinRun = { ...prior, attempts: 0 }; delete resumed.lease;
-  const stage = prior.paragraphs.every((p) => p.status === "ready") ? "words_pending" : "voice_pending";
+  const stage = prior.paragraphs.every((p) => p.status === "ready") ? "words_pending"
+    : prior.paragraphs.some((p) => p.status === "pending" && !p.breath) ? "breath_pending" : "voice_pending";
   return presentMyinRun(await save(createServiceSupabase(), existing as OsRecord, "backlog", stage, resumed));
 }
 
@@ -245,7 +248,7 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
     const pending = run.paragraphs.find((p) => p.status === "pending");
     let paragraphs = run.paragraphs;
     if (pending) {
-      const audio = await synthesizeFishWav(input.spoken[pending.index], { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: MYIN_VOICE_MODEL });
+      const audio = await synthesizeFishWav(myinBreathText(input.spoken[pending.index], pending.breath), { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: MYIN_VOICE_MODEL });
       const path = paragraphPath(record, run, pending.index);
       const { error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), { contentType: audio.mimeType, upsert: true });
       if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "생성된 음성을 저장하지 못했습니다.");
@@ -265,6 +268,30 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
 // so every write goes to a new name: per lease for the render PC's files, per content for the OS's own.
 const tag = (lease: string) => lease.slice(0, 8);
 const bundlePath = (record: OsRecord, run: MyinRun, lease: string) => `${record.owner_id}/${run.sourceId}/${record.id}/myin-words-${tag(lease)}.json`;
+
+/** Render PC: the paragraphs still to voice, for Logan's breath model (tools/voice_timing in the installed package). */
+export async function claimMyinBreath(service: Service = createServiceSupabase()) {
+  const claimed = await claim(service, "breath_pending", 10 * 60_000);
+  if (!claimed) return { idle: true as const };
+  const { record, run, lease } = claimed;
+  try {
+    const input = await assertCurrent(service, run);
+    return { runId: record.id, lease: lease.token, paragraphs: run.paragraphs.filter((p) => p.status === "pending").map((p) => ({ index: p.index, text: input.spoken[p.index] })) };
+  } catch (error) {
+    await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
+    throw error;
+  }
+}
+
+/** Render PC: the word positions to put a comma after (none when the package has no breath model); then Fish voices them. */
+export async function completeMyinBreath(input: { runId: string; lease: string; breaths: { index: number; after: number[] }[] }, service: Service = createServiceSupabase()) {
+  const { record, run } = await leased(service, input.runId, input.lease);
+  const byIndex = new Map(input.breaths.map((b) => [b.index, b.after]));
+  const paragraphs = run.paragraphs.map((p) => p.status === "pending" ? { ...p, breath: [...new Set(byIndex.get(p.index) ?? [])].sort((a, b) => a - b) } : p);
+  const next: MyinRun = { ...run, paragraphs, attempts: 0 }; delete next.lease; delete next.lastError;
+  await save(service, record, "backlog", "voice_pending", next);
+  return { runId: record.id, stage: "voice_pending", commas: paragraphs.reduce((n, p) => n + (p.breath?.length ?? 0), 0) };
+}
 
 /** Render PC: take a run whose voice is complete, with the script file, each paragraph's text and wav, and where to put the bundle. */
 export async function claimMyinWords(service: Service = createServiceSupabase()) {
