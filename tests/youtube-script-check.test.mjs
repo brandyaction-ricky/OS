@@ -117,3 +117,10 @@ test("length: 공백 포함 490자 = 1분; more than 15% off is a note to fix th
   assert.deepEqual(long.issues, []);
   assert.match(long.notes.join(), /총 \d+자\(약 1분\) — 목표 1분\(490자\)과 15% 넘게 다릅니다\. 내용에 필요한 길이면 러닝타임을 원고에 맞춰 고칩니다/);
 });
+
+test("정본 겹침 skips the owner's own two lines in 말투 정본 §11, which the script they were written for uses verbatim", () => {
+  const canon = "| 얻을 것 약속 | (…) | 답은 이렇게 괜찮다고 넘긴 상황에 다 들어있거든요. 이 영상을 다 보시면, 내가 원하는 게 뭔지 알고, 선택하는데 도움을 받을 거예요 | 방향 |";
+  const issues = (extra) => checkScriptBody([`${paragraph("o")} ${extra}`], null, null, canon).issues.join("\n");
+  assert.doesNotMatch(issues("답은 이렇게 괜찮다고 넘긴 상황에 다 들어 있거든요. 이 영상을 다 보시면, 내가 원하는 게 뭔지 알고, 선택하는 데 도움을 받을 거예요."), /정본 겹침/);
+  assert.match(checkScriptBody([`${paragraph("p")} 그래도 저는 이 연구가 좋습니다.`], null, null, `${canon} "그래도 저는 이 연구가 좋습니다"`).issues.join(), /정본 겹침/);
+});

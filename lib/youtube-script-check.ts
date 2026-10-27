@@ -37,9 +37,11 @@ const ALONE = "(?:이라고|이라는|이에요|입니다|이죠|으로|에서|�
 const CONCEPT_NAME = new RegExp(`(?:영상|오늘|이번|편|이야기)의\\s*[축결]${ALONE}|(?:개|가지)의?\\s+[축결]${ALONE}|(?<![가-힣])[축결]이?라고\\s*(?:불러|부르|부릅|하|해|할)[가-힣]*`);
 // 사슬 낭독: four or more links of the IP chain (결핍 → 욕구 → 행동 → 강점 → 정체성 → 업) in one paragraph.
 const CHAIN = [/결핍/, /욕구/, /행동/, /강점/, /정체성/, new RegExp(`(?<![가-힣])업${ALONE}`)];
-// 정본 겹침: 10 characters in a row (spaces removed) that also stand in the four 원고 정본; the canon allows one set phrase.
+// 정본 겹침: 10 characters in a row (spaces removed) that also stand in the four 원고 정본; the canon allows a few set phrases.
 const OVERLAP = 10;
-const ALLOWED_PHRASES = ["저희 진단 받으신 분 중에"];
+// The owner's own two lines (말투 정본 §11, 2026-10-27) are also the 키 콘텐츠 opening they were written for (owner decision).
+const ALLOWED_PHRASES = ["저희 진단 받으신 분 중에", "답은 이렇게 괜찮다고 넘긴 상황에 다 들어있거든요",
+  "이 영상을 다 보시면, 내가 원하는 게 뭔지 알고, 선택하는데 도움을 받을 거예요"];
 const squeeze = (text: string) => text.replace(/\s+/g, "");
 // 흐림·요약·해명 종결 (원고 말투 정본 ⑭⑮⑯): how sentences and paragraphs close, counted against the script's length.
 const sentencesOf = (text: string) => text.split(/(?<=[.?!]["”’]?)\s+/).map((part) => part.trim()).filter(Boolean);
