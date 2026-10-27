@@ -25,7 +25,7 @@ export function PageGuide() {
   if(guide.next.startsWith("/content/")&&search.get("topic"))query.set("topic",search.get("topic")!);
   const href=`${guide.next.split("?")[0]}${query.size?`?${query}`:""}`;
   return <section className="guide-strip" data-ui="guide-strip" aria-label="이 화면에서 할 일">
-    <div className="guide-heading guide-strip-head"><CircleHelp size={16}/><strong className="guide-strip-title">이 화면에서 할 일</strong><span className="guide-strip-next">다음 단계 <Link href={href}>{next.processNumber?`${next.processNumber}. `:""}{next.label} →</Link></span><button type="button" className="icon-button guide-strip-close" aria-label="이 화면 가이드 닫기" onClick={()=>{setClosed(true);try{localStorage.setItem(guideClosedKey(key),"closed");}catch{/* In-memory state remains usable. */}}}><X size={14}/></button></div>
+    <div className="guide-heading guide-strip-head"><CircleHelp size={16}/><strong className="guide-strip-title">이 화면에서 할 일</strong>{key!=="/automation/topics"?<span className="guide-strip-next">다음 단계 <Link href={href}>{next.processNumber?`${next.processNumber}. `:""}{next.label} →</Link></span>:null}<button type="button" className="icon-button guide-strip-close" aria-label="이 화면 가이드 닫기" onClick={()=>{setClosed(true);try{localStorage.setItem(guideClosedKey(key),"closed");}catch{/* In-memory state remains usable. */}}}><X size={14}/></button></div>
     <ol className="guide-strip-items">{guide.steps.map((step,index)=><li className="guide-item" data-ui="guide-item" key={step}><GuideNumber number={(index+1) as 1|2|3}/><span>{step}</span></li>)}</ol>
   </section>;
 }

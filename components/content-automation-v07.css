@@ -59,6 +59,43 @@
 .linear-shell .ui-v2.ca-v07 .ca-v07-channel-picks{display:flex;flex-wrap:wrap;gap:14px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-channel-picks>div{display:grid;gap:4px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-check{display:flex;align-items:center;gap:8px;margin:8px 0;font-weight:400}
+/* Topic planning: a reviewable brief first, with one explicit handoff to writing. */
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor{margin:0 auto;padding:24px;max-width:980px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor .ca-v07-topic-title{font-size:21px;line-height:1.5;margin:20px 0;overflow-wrap:anywhere}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-steps{list-style:none;display:flex;flex-wrap:wrap;gap:8px;margin:0 0 24px;padding:0;color:var(--muted)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-steps li{padding:7px 12px;border:1px solid var(--line);border-radius:6px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-steps [aria-current=step]{color:var(--accent-2);border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-intro,.linear-shell .ui-v2.ca-v07 .ca-v07-topic-next{padding:16px;background:var(--accent-soft);border-radius:8px;margin:16px 0}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-intro p,.linear-shell .ui-v2.ca-v07 .ca-v07-topic-next p{margin:6px 0 0}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-next h3{margin:0}
+.linear-shell .ui-v2.ca-v07 .ca-v07-next-link{display:inline-flex;padding:9px 14px;border:1px solid var(--accent);border-radius:6px;background:var(--accent-soft);font-weight:600}
+.linear-shell .ui-v2.ca-v07 .ca-v07-section-title{font-size:16px;font-weight:600;margin:24px 0 12px;padding:0}
+.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields{gap:20px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields>label:first-child,.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields>label:nth-child(4),.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields>label:last-child{grid-column:1/-1}
+.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields label>span{display:flex;align-items:center;gap:8px;color:var(--text)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields small{font-weight:400;line-height:1.5}
+.linear-shell .ui-v2.ca-v07 .ca-v07-brief-fields textarea{background:var(--card);line-height:1.65}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor input[type=checkbox]{appearance:auto;width:18px;height:18px;min-width:18px;min-height:18px;max-width:18px;max-height:18px;margin:0;padding:0;flex:none;accent-color:var(--accent)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor .ca-v07-channel-picks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor .ca-v07-channel-picks>div{padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--card)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor .ca-v07-channel-picks>div.selected{border-color:var(--accent);background:var(--accent-soft)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-channel-choice{display:flex;align-items:center;gap:9px;min-height:28px;cursor:pointer}
+.linear-shell .ui-v2.ca-v07 .ca-v07-due-label{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12px;font-weight:400;margin-top:10px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-due-label input{flex-basis:100%;background:var(--card)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-sharing{padding:12px 14px;background:var(--panel-2);border-radius:8px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-sharing p{margin:4px 0 0 27px;font-size:12px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-ai{padding:14px 0;margin:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-ai summary{cursor:pointer;color:var(--text-2)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-ai p{margin-top:12px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-footer{position:sticky;bottom:0;z-index:2;padding:14px 0 4px;background:var(--card);border-top:1px solid var(--line)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-footer p{font-size:12px;margin:0 0 8px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-topic-footer .ca-v07-actions{justify-content:flex-end;margin:8px 0}
+@media(max-width:820px){
+  .linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor{padding:16px}
+  .linear-shell .ui-v2.ca-v07 .ca-v07-topic-editor .ca-v07-channel-picks{grid-template-columns:1fr}
+  .linear-shell .ui-v2.ca-v07 .ca-v07-topic-footer{position:static}
+  .linear-shell .ui-v2.ca-v07 .ca-v07-topic-footer button{width:100%;white-space:normal}
+}
 .linear-shell .ui-v2.ca-v07 .ca-v07-error{color:var(--danger);border:1px solid var(--danger);padding:10px;border-radius:7px}
 .linear-shell .ui-v2.ca-v07 .ca-v07-notice{color:var(--mint)}
 .linear-shell .ui-v2.ca-v07 .ca-v07-loading{padding:40px;text-align:center;color:var(--muted)}

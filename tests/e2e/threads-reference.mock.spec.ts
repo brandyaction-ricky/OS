@@ -13,6 +13,7 @@ const WEAK = "00000000-0000-4000-8000-000000000014";
 const LEGACY = "00000000-0000-4000-8000-000000000015";
 const CREATED = "00000000-0000-4000-8000-000000000013";
 const TOPIC = "00000000-0000-4000-8000-000000000021";
+const ITEM_IDS: Record<string, string> = { threads: "00000000-0000-4000-8000-000000000041", card: "00000000-0000-4000-8000-000000000042", shorts: "00000000-0000-4000-8000-000000000043" };
 const JOB = "00000000-0000-4000-8000-000000000031";
 const AT = "2026-01-15T03:00:00.000Z";
 
@@ -32,6 +33,12 @@ function record(id: string, title: string, metadata: Record<string, unknown>): O
     assignee_id: null, parent_id: null, due_date: null, starts_at: null, ends_at: null, progress: 0, metric_target: null, metric_current: null, metric_unit: "", amount: null, currency: "KRW",
     source_url: null, tags: [], version: 1, created_by: OWNER, updated_by: OWNER, created_at: AT, updated_at: AT, archived_at: null };
 }
+function importedTopic() {
+  return record(TOPIC, "한 가지 일을 마치려면 무엇을 줄여야 할까?", {
+    source: "reference", editorial_workflow: "threads_reference_v1", brief: {}, channels: [],
+    reference_items: [reference("example-two", "가상 원문 둘")],
+  });
+}
 
 async function mockWorkspace(page: Page, noRecommendations = false) {
   const first = reference("example-one", "The cost of a big plan"), second = reference("example-two", "가상 원문 둘");
@@ -45,7 +52,8 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
       ...noRecommendations ? [] : [record(FIRST, first.title, { kind: "threads_reference", reference_items: [first] }), record(SECOND, second.title, { kind: "threads_reference", reference_items: [second] })],
       record(WEAK, weak.title, { kind: "threads_reference", reference_items: [weak] }), record(LEGACY, legacy.title, { kind: "threads_reference", reference_items: [legacyStored] }),
     ],
-    topics: [] as OsRecord[], writes: [] as { path: string; body: Record<string, unknown> }[], external: [] as string[],
+    topics: [] as OsRecord[], items: [] as OsRecord[], queuedJobs: [] as OsRecord[], startFailures: 0,
+    writes: [] as { path: string; body: Record<string, unknown> }[], external: [] as string[],
   };
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const jwt = `${Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url")}.${Buffer.from(JSON.stringify({ sub: OWNER, role: "authenticated", exp: expiresAt })).toString("base64url")}.fixture`;
@@ -78,6 +86,36 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
         const topic = record(TOPIC, String(body.title), { source: "reference", editorial_workflow: "threads_reference_v1", reference_items: selected.flatMap(row => row.metadata.reference_items as ThreadsReferenceItem[]), channels: [], brief: {} });
         state.topics.push(topic); return json({ topic });
       }
+      if (path === `topics/${TOPIC}` && request.method() === "PATCH") {
+        const current = state.topics.find(topic => topic.id === TOPIC)!;
+        expect(body.expectedVersion).toBe(current.version);
+        const topic = { ...current, version: current.version + 1, stage: String(body.stage), metadata: { ...current.metadata, ...(body.metadata as Record<string, unknown>) } };
+        state.topics = state.topics.map(row => row.id === TOPIC ? topic : row);
+        return json({ record: topic });
+      }
+      if (path === `topics/${TOPIC}/start`) {
+        if (state.startFailures > 0) {
+          state.startFailures -= 1;
+          return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "시험용 제작 오류 — 다시 시도해 주세요." } }) });
+        }
+        const current = state.topics.find(topic => topic.id === TOPIC)!;
+        expect(body.version).toBe(current.version);
+        const channelOptions = body.channels as Record<string, { due?: string }>;
+        const channels = Object.keys(channelOptions);
+        const topic = { ...current, stage: "confirmed", version: current.version + 1, metadata: { ...current.metadata, brief: body.brief, channels } };
+        const items = channels.map(channel => ({ ...record(ITEM_IDS[channel], topic.title, {
+          space: "personal", channel, step: 0, pages: [], cuts: [], posts: [], ...(body.teamThreads && channel === "threads" ? { shared: "team" } : {}),
+        }), record_type: "content_publish", stage: "making", parent_id: TOPIC, due_date: channelOptions[channel].due ?? null } as OsRecord));
+        expect(state.items).toHaveLength(0);
+        state.topics = state.topics.map(row => row.id === TOPIC ? topic : row);
+        state.items.push(...items);
+        return json({ topic, items });
+      }
+      if (path === "jobs" && body.proc === "brief" && body.targetId === TOPIC) {
+        const job: OsRecord = { ...record("00000000-0000-4000-8000-000000000032", "요청한 기획 초안", { proc: body.proc, targetId: body.targetId, jobNo: 2 }), record_type: "ai_job", status: "backlog" };
+        state.queuedJobs.push(job);
+        return json({ job });
+      }
       if (path === `topics/${SECOND}/archive-reference`) {
         state.references = state.references.filter(row => row.id !== SECOND); return json({ archived: true });
       }
@@ -86,9 +124,11 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
     if (path === "references") return json({ references: state.references, collectionContext: { canonicalUrl: "https://example.test/canonical", canonicalTitle: "예시 쓰레드 정본", canonicalVersion: 2 } });
     if (path === "worker/state") return json({ browser: { id: "fixture-browser", name: "시험 브라우저", registeredAt: AT }, rules: { per_run: 3, daily_max: 10, long_only_now: true }, run: null, pending: 1, todayTaken: 0 });
     if (path === "topics") return json({ topics: state.topics });
-    if (path === "items") return json({ items: [] });
+    if (path === "items") return json({ items: state.items });
+    if (path === "review-log") return json({ reviews: [] });
+    if (/^items\/[^/]+\/comments$/.test(path)) return json({ comments: [] });
     if (path === "reviewers") return json({ reviewers: [], canReview: false, canManage: false });
-    if (path === "jobs") return json({ jobs: [record(JOB, "가상 브리프 작업", { proc: "brief", targetId: TOPIC, jobNo: 1 }),].map(row => ({ ...row, record_type: "ai_job", status: "backlog" })) });
+    if (path === "jobs") return json({ jobs: [record(JOB, "가상 브리프 작업", { proc: "brief", targetId: TOPIC, jobNo: 1 }), ...state.queuedJobs].map(row => ({ ...row, record_type: "ai_job", status: "backlog" })) });
     if (path === `jobs/${JOB}/instructions`) return json({ target: { topic: { reference_items: [second] }, canonical: { title: "예시 집필 기준", version: 2, body: "원문의 장면과 독자의 질문을 이어 쓴다." } }, instructions: "확인한 근거만 사용한다.", skill: "개인 스킬 예시", resultFormat: { one: "한 줄 주제" } });
     if (path === "browsers") return json({ browsers: [] });
     if (path === "runs") return json({ runs: [], silent: false });
@@ -125,10 +165,11 @@ test("qualified Korean references propose a topic and preserve human edits until
   await expect(page).toHaveURL(new RegExp(`/automation/topics\\?sel=${TOPIC}`));
   expect(state.writes[0].body.referenceIds).toEqual([SECOND]);
   expect(state.writes[0].body.title).toBe("한 가지 일을 마치려면 무엇을 줄여야 할까?");
+  await expect(page.locator(".tr-evidence")).not.toHaveAttribute("open");
+  await page.getByText("선택한 레퍼런스 1개", { exact: true }).click();
   await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await expect(page.locator(".tr-evidence").getByText("The cost of a big plan", { exact: true })).toHaveCount(0);
-  await expect(page.getByLabel("쓰레드", { exact: true })).not.toBeChecked();
-  await page.getByLabel("쓰레드", { exact: true }).check();
+  await expect(page.getByLabel("쓰레드", { exact: true })).toBeChecked();
   await page.setViewportSize({ width: 390, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   await page.goto("/automation/references");
@@ -136,8 +177,156 @@ test("qualified Korean references propose a topic and preserve human edits until
   await expect(page.locator(".tr-reference")).toHaveCount(1);
   expect(state.writes[1]).toEqual({ path: `topics/${SECOND}/archive-reference`, body: { version: 1 } });
   await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await page.getByText("선택한 레퍼런스 1개", { exact: true }).click();
   await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("topic-evidence-mobile.png"), fullPage: true });
+  expect(state.external).toEqual([]);
+});
+
+test("reference planning starts with a draft and preserves edited fields, intentional blanks and channel choices after saving", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveValue(state.topics[0].title);
+  await expect(page.getByLabel("누구에게", { exact: true })).toHaveValue("계획은 많지만 실행을 시작하기 어려운 독자의 일상 고민과 연결된다.");
+  await expect(page.getByLabel("핵심 메시지", { exact: true })).toHaveValue("계획 크기와 시작 비용을 함께 살펴본다.");
+  await expect(page.getByLabel("근거·자료", { exact: true })).toHaveValue(/https:\/\/example\.test\/example-two/);
+  await expect(page.getByLabel("근거·자료", { exact: true })).toHaveValue(/읽은 범위: 전체 읽음/);
+  await expect(page.getByLabel("쓰레드", { exact: true })).toBeChecked();
+  await expect(page.locator(".ca-v07-board")).toHaveCount(0);
+  await expect(page.locator(".tr-evidence")).not.toHaveAttribute("open");
+  expect(state.writes).toEqual([]);
+
+  await page.getByLabel("한 줄 주제", { exact: true }).fill("사람이 다시 정한 질문");
+  await page.getByLabel("누구에게", { exact: true }).fill("");
+  await page.getByLabel("주의할 표현", { exact: true }).fill("");
+  await page.getByLabel("쓰레드", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "기획만 저장", exact: true }).click();
+  await expect.poll(() => state.topics[0].stage).toBe("brief");
+  await expect(page.getByRole("button", { name: "기획만 저장", exact: true })).toBeEnabled();
+  await page.reload();
+  await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveValue("사람이 다시 정한 질문");
+  await expect(page.getByLabel("누구에게", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("주의할 표현", { exact: true })).toHaveValue("");
+  await expect(page.getByLabel("쓰레드", { exact: true })).not.toBeChecked();
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}`]);
+  expect(state.items).toEqual([]);
+  expect(state.external).toEqual([]);
+});
+
+test("confirming a Threads plan opens its draft and a started topic resumes the same item without running AI or publishing", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await page.getByLabel("핵심 메시지", { exact: true }).fill("원고에서 끝까지 답할 관점을 사람이 확인했다.");
+  await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
+  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
+  await expect(page.getByRole("button", { name: "내 AI로 초안 받기", exact: true })).toBeVisible();
+  expect(state.items).toHaveLength(1);
+  expect(state.items[0].status).toBe("draft");
+  expect(state.items[0].metadata.posts).toEqual([]);
+  expect(state.items[0].due_date).toBe("2026-12-01");
+  expect((state.topics[0].metadata.brief as Record<string, string>).message).toBe("원고에서 끝까지 답할 관점을 사람이 확인했다.");
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`]);
+
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await expect(page.getByLabel("한 줄 주제", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "기획만 저장", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
+  await page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`]);
+  expect(state.external).toEqual([]);
+});
+
+test("missing planning fields block production and a failed start preserves edits for a safe retry", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await page.getByLabel("핵심 메시지", { exact: true }).fill("");
+  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await expect(page.locator(".ca-v07-topic-editor").getByRole("alert")).toContainText("핵심 메시지");
+  expect(state.writes).toEqual([]);
+
+  await page.getByLabel("핵심 메시지", { exact: true }).fill("실패해도 남아 있어야 하는 수정한 관점");
+  await page.getByLabel("주의할 표현", { exact: true }).fill("사람이 확인한 주의사항");
+  state.startFailures = 1;
+  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await expect(page.locator(".ca-v07-topic-editor").getByRole("alert")).toContainText("시험용 제작 오류");
+  await expect(page.getByLabel("핵심 메시지", { exact: true })).toHaveValue("실패해도 남아 있어야 하는 수정한 관점");
+  await expect(page.getByLabel("주의할 표현", { exact: true })).toHaveValue("사람이 확인한 주의사항");
+  expect(state.items).toHaveLength(0);
+  await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
+  expect(state.items).toHaveLength(1);
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`, `topics/${TOPIC}/start`]);
+  expect((state.writes[1].body.brief as Record<string, string>).message).toBe("실패해도 남아 있어야 하는 수정한 관점");
+  expect(state.external).toEqual([]);
+});
+
+test("optional AI planning saves the edited brief before confirmation and cancelling does not queue a job", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await page.getByLabel("핵심 메시지", { exact: true }).fill("AI에게 전달할 사람이 수정한 관점");
+  await page.getByText("AI와 기획을 더 다듬고 싶다면", { exact: true }).click();
+  await page.getByRole("button", { name: "내 AI로 브리프 초안", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "내 AI로 보내기", exact: true });
+  await expect(dialog).toBeVisible();
+  expect((state.topics[0].metadata.brief as Record<string, string>).message).toBe("AI에게 전달할 사람이 수정한 관점");
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}`]);
+  await dialog.getByRole("button", { name: "취소", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByLabel("핵심 메시지", { exact: true })).toHaveValue("AI에게 전달할 사람이 수정한 관점");
+  expect(state.queuedJobs).toHaveLength(0);
+
+  await page.getByLabel("핵심 메시지", { exact: true }).fill("취소 후 한 번 더 고친 관점");
+  await page.getByRole("button", { name: "내 AI로 브리프 초안", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "대기열에 두기", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect((state.topics[0].metadata.brief as Record<string, string>).message).toBe("취소 후 한 번 더 고친 관점");
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}`, `topics/${TOPIC}`, "jobs"]);
+  expect(state.writes[2].body).toMatchObject({ proc: "brief", targetId: TOPIC, rush: false });
+  expect(state.queuedJobs).toHaveLength(1);
+  expect(state.items).toHaveLength(0);
+  expect(state.external).toEqual([]);
+});
+
+test("multiple production channels stay on the plan with separate resume links", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  await page.getByLabel("카드뉴스", { exact: true }).check();
+  await page.getByRole("button", { name: "기획 확인하고 제작 항목 만들기", exact: true }).click();
+  await expect(page.getByRole("link", { name: "카드뉴스 제작 계속하기", exact: true })).toHaveAttribute("href", `/automation/cardnews?sel=${ITEM_IDS.card}`);
+  await expect(page.getByRole("link", { name: "쓰레드 집필 계속하기", exact: true })).toHaveAttribute("href", `/automation/threads?sel=${ITEM_IDS.threads}`);
+  await expect(page).toHaveURL(new RegExp(`/automation/topics\\?sel=${TOPIC}`));
+  expect(state.items).toHaveLength(2);
+  expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}/start`]);
+  expect(state.external).toEqual([]);
+});
+
+test("mobile topic planning keeps native controls compact and its next action visible without horizontal scrolling", async ({ page }, testInfo) => {
+  const state = await mockWorkspace(page);
+  state.topics.push(importedTopic());
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto(`/automation/topics?sel=${TOPIC}`);
+  const checkbox = page.getByLabel("쓰레드", { exact: true });
+  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toHaveCSS("width", "18px");
+  await expect(checkbox).toHaveCSS("height", "18px");
+  const next = page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true });
+  await next.scrollIntoViewIfNeeded();
+  await expect(next).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  const nextBounds = await next.boundingBox();
+  expect(nextBounds?.width).toBeLessThanOrEqual(390);
+  await page.screenshot({ path: testInfo.outputPath("topic-planning-mobile.png"), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.screenshot({ path: testInfo.outputPath("topic-planning-desktop.png"), fullPage: true });
+  expect(state.writes).toEqual([]);
   expect(state.external).toEqual([]);
 });
 

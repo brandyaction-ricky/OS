@@ -24,7 +24,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/content/comments": {steps:["‘답할 것’에서 질문부터 봅니다","초안을 받아 고친 뒤 답글을 보냅니다","좋은 질문은 ① 주제·기획으로 보냅니다"],next:"/content/performance"},
   "/automation/dashboard": {steps:["오늘 할 일을 위에서부터 처리합니다","AI에게 맡길 일은 대기열에 넣고 내 Chrome에서 실행합니다","AI 결과가 오면 다듬고 최종 확인으로 보냅니다"],next:"/automation/topics"},
   "/automation/references": {steps:["직접 또는 Aside로 확인한 원문을 등록합니다","장면·반응·질문·더할 관점을 비교합니다","쓸 원문을 골라 주제 후보로 가져옵니다"],next:"/automation/topics"},
-  "/automation/topics": {steps:["롱폼·댓글 질문·레퍼런스에서 후보를 모읍니다","브리프를 직접 쓰거나 AI 초안을 확인합니다","만들 채널을 고르고 제작을 시작합니다"],next:"/automation/cardnews"},
+  "/automation/topics": {steps:["다룰 주제를 고릅니다","독자·메시지·근거를 확인합니다","선택한 채널에서 집필을 이어갑니다"],next:"/automation/topics"},
   "/automation/cardnews": {steps:["템플릿의 칸 이름과 이미지 출처를 확인합니다","글을 채우고 넘친 칸을 고칩니다","캡션을 다듬어 최종 확인으로 보냅니다"],next:"/automation/review"},
   "/automation/shorts": {steps:["컷 구성과 영상 파일을 준비합니다","커버와 설명을 확인합니다","MP4와 커버를 확인한 뒤 최종 확인으로 보냅니다"],next:"/automation/review"},
   "/automation/threads": {steps:["글타래 초안을 만듭니다","문장과 출처를 직접 확인합니다","완성한 글을 최종 확인으로 보냅니다"],next:"/automation/review"},
