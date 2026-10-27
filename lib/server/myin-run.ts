@@ -25,8 +25,9 @@ const WORDS_LEASE_MS = 30 * 60_000;
 // One clip per metaphor scene takes about two minutes on the render PC; a stage-diagram video has 20+ (2026-10-25: 21 clips, 38 minutes).
 // ponytail: fixed two hours covers ~50 clips; scale with the clip count if storyboards grow past that.
 const CLIPS_LEASE_MS = 120 * 60_000;
-// 10 MB parts of 48 kHz mono voice: 12 hold about 20 minutes, longer than any v13 video so far.
-export const MYIN_VOICE_PARTS = 12;
+// 10 MB parts of 48 kHz mono 16-bit voice (≈96 KB/s): 18 hold about 31 minutes; longforms run 11–14. A longer voice is logged by the
+// render PC and its drafts stay there.
+export const MYIN_VOICE_PARTS = 18;
 type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);

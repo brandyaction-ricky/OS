@@ -91,7 +91,7 @@ test("the render PC's voice.wav leaves stage 1 in parts the voice bucket accepts
     const worker = await import(`../tools/youtube-media-worker.mjs?parts=${Math.random()}`);
     const file = path.join(mkdtempSync(path.join(os.tmpdir(), "myin-voice-")), "voice.wav");
     writeFileSync(file, Buffer.alloc(25_000_001, 7));
-    const info = await worker.uploadVoiceParts(file, Array.from({ length: 12 }, (_, i) => `${base}/u${i}`));
+    const info = await worker.uploadVoiceParts(file, Array.from({ length: 18 }, (_, i) => `${base}/u${i}`));
     assert.deepEqual([info.parts, info.bytes], [3, 25_000_001]);
     assert.deepEqual(received.map(([url, type, body]) => [url, type, body.length]), [["/u0", "audio/wav", 10_000_000], ["/u1", "audio/wav", 10_000_000], ["/u2", "audio/wav", 5_000_001]]);
     assert.equal(await worker.uploadVoiceParts(file, [`${base}/only`]), null, "a voice longer than the parts allow stays on the render PC");
