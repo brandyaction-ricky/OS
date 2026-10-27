@@ -314,6 +314,14 @@ export function myinPhotoFolders(storyboard: unknown) {
   return folders;
 }
 
+/** Logan's engine reads an opening act's `cam.drift` as an [x, y] pair; a staff AI wrote a bare number and the opening clip
+ * stopped with TypeError (2026-10-27). A number is the horizontal drift (the engine never drifts vertically), so it becomes [n, 0]. */
+export function myinDriftPairs<T extends { scenes: Record<string, unknown>[] }>(story: T) {
+  for (const act of story.scenes.flatMap((sc) => (Array.isArray(sc.acts) ? sc.acts : []) as { cam?: { drift?: unknown } }[]))
+    if (typeof act?.cam?.drift === "number") act.cam.drift = [act.cam.drift, 0];
+  return story;
+}
+
 /** The credits block appended to the YouTube description: the run's credit lines without the render PC's file names. */
 export function myinCreditsBlock(credits: string[]) {
   const lines = credits.map((line) => line.replace(/^\S+\s+—\s+/, "").replace(/[<>]/g, "").trim()).filter(Boolean);

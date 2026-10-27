@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkMyinStoryboard, myinCreditsBlock, myinPhotoFetchUrl, myinPhotoFolders, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -112,6 +112,12 @@ test("QA: every opening sentence has text on screen; a row list with % figures a
   assert.ok(stats.some((issue) => /\[장면 3\] 줄 목록에 % 수치가 2개예요/.test(issue)));
   const cta = checkMyinStoryboard(story(frame, [{ after: "자리만 바꿨더니", line: "구독 한 번 눌러 두고 들어 주세요" }]), words).issues;
   assert.deepEqual(cta.filter((issue) => issue.startsWith("[구독")), ["[구독 1] 「눌러 두…」 대신 「눌러 주세요」로 써요"]);
+});
+
+test("myinDriftPairs turns an opening act's bare-number camera drift into the [x, y] pair Logan's engine reads", () => {
+  const acts = [{ cue: "a", cam: { push: 0.035, drift: 16 } }, { cue: "b", cam: { drift: [-12, 0] } }, { cue: "c" }];
+  const out = myinDriftPairs({ scenes: [{ type: "opening", at: "a", acts }, { type: "hero", at: "b" }] });
+  assert.deepEqual(out.scenes[0].acts.map((act) => act.cam?.drift), [[16, 0], [-12, 0], undefined]);
 });
 
 // 로건 엔진 v15.3 (2026-10-27): photo.focus_x sets the horizontal crop; both focus values stay within 0–1.
