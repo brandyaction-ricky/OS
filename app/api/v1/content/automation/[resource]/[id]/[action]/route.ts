@@ -302,6 +302,10 @@ export async function POST(request:Request,{params}:Params){
       }
       if(action==="requeue"){
         if(job.status!=="blocked")throw new ApiError(409,"JOB_NOT_BLOCKED","막힌 작업만 다시 대기열에 넣을 수 있습니다.");
+        if(getThreadsJobInput(job)){
+          const target=await getPersonalRecord(actor,String(job.metadata.targetId));
+          await assertThreadsJobCurrent(target,job);
+        }
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"backlog",stage:"queued",
           metadata:{...job.metadata,prevReason:job.metadata.failureReason??job.metadata.failureCode??"",
             failureReason:"",failureCode:"",rush:false,space:"personal"}})});

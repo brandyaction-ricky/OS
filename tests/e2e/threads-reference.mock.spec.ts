@@ -9,15 +9,22 @@ test.skip(process.env.REFERENCE_MOCK_E2E !== "true", "Requires the isolated loca
 const OWNER = "00000000-0000-4000-8000-000000000001";
 const FIRST = "00000000-0000-4000-8000-000000000011";
 const SECOND = "00000000-0000-4000-8000-000000000012";
+const WEAK = "00000000-0000-4000-8000-000000000014";
+const LEGACY = "00000000-0000-4000-8000-000000000015";
 const CREATED = "00000000-0000-4000-8000-000000000013";
 const TOPIC = "00000000-0000-4000-8000-000000000021";
 const JOB = "00000000-0000-4000-8000-000000000031";
 const AT = "2026-01-15T03:00:00.000Z";
 
-function reference(id: string, title: string, verified = false): ThreadsReferenceItem {
-  return { id, title, url: `https://example.test/${id}`, platform: "threads", author: "예시 작성자", publishedAt: "2026-01-14", observedAt: AT,
-    metrics: { views: { value: null, verified: false }, likes: { value: verified ? 0 : null, verified }, comments: { value: null, verified: false }, reposts: { value: null, verified: false } },
-    readScope: "full", readNote: "예시 본문의 반응 표시를 직접 확인함.", capturedBy: "human", scene: "예시 작성자가 한 번에 한 가지 일을 마쳤다.",
+function reference(id: string, title: string): ThreadsReferenceItem {
+  return { id, title, koreanTitle: id === "example-one" ? "계획을 줄이면 시작이 쉬워지는 이유" : "한 가지 일을 마치는 연습",
+    summary: "작은 계획을 끝낸 경험을 통해 시작할 때의 부담과 실제 행동의 차이를 설명한다.",
+    suggestedTopic: id === "example-one" ? "계획의 크기와 시작 비용은 어떻게 연결될까?" : "한 가지 일을 마치려면 무엇을 줄여야 할까?",
+    relevanceNote: "계획은 많지만 실행을 시작하기 어려운 독자의 일상 고민과 연결된다.",
+    audienceNote: "댓글에서 여러 독자가 할 일을 줄인 날 실제로 시작하기 쉬웠다고 말했고, 남은 일의 우선순위를 묻는 질문이 반복됐다.",
+    url: `https://example.test/${id}`, platform: "threads", author: "예시 작성자", publishedAt: "2026-01-14", observedAt: AT,
+    metrics: { views: { value: 120000, verified: true }, likes: { value: 0, verified: true }, comments: { value: 10, verified: true }, reposts: { value: null, verified: false } },
+    readScope: "full", readNote: "예시 본문 전체와 댓글의 질문, 화면의 반응 표시를 직접 확인함.", capturedBy: "human", scene: "예시 작성자가 한 번에 한 가지 일을 마쳤다.",
     readerQuestion: "일을 작게 나누면 무엇이 달라질까?", addedPerspective: "계획 크기와 시작 비용을 함께 살펴본다." };
 }
 function record(id: string, title: string, metadata: Record<string, unknown>): OsRecord {
@@ -26,10 +33,18 @@ function record(id: string, title: string, metadata: Record<string, unknown>): O
     source_url: null, tags: [], version: 1, created_by: OWNER, updated_by: OWNER, created_at: AT, updated_at: AT, archived_at: null };
 }
 
-async function mockWorkspace(page: Page) {
-  const first = reference("example-one", "가상 원문 하나", true), second = reference("example-two", "가상 원문 둘");
+async function mockWorkspace(page: Page, noRecommendations = false) {
+  const first = reference("example-one", "The cost of a big plan"), second = reference("example-two", "가상 원문 둘");
+  const weak: ThreadsReferenceItem = { ...reference("example-weak", "A quiet example"), platform: "substack", koreanTitle: "작은 반응에 머문 예시", metrics: { ...first.metrics, views: { value: null, verified: false }, likes: { value: 6, verified: true }, comments: { value: 1, verified: true } } };
+  const legacy = { ...reference("example-legacy", "Earlier collected example"), koreanTitle: "", summary: "", suggestedTopic: "", audienceNote: "", relevanceNote: "", metrics: { ...first.metrics, views: { value: null, verified: false } } };
+  // Missing fields represent records collected before the quality policy existed.
+  const { koreanTitle: _koreanTitle, summary: _summary, suggestedTopic: _suggestedTopic, audienceNote: _audienceNote, relevanceNote: _relevanceNote, ...legacyStored } = legacy;
+  void _koreanTitle; void _summary; void _suggestedTopic; void _audienceNote; void _relevanceNote;
   const state = {
-    references: [record(FIRST, first.title, { kind: "threads_reference", reference_items: [first] }), record(SECOND, second.title, { kind: "threads_reference", reference_items: [second] })],
+    references: [
+      ...noRecommendations ? [] : [record(FIRST, first.title, { kind: "threads_reference", reference_items: [first] }), record(SECOND, second.title, { kind: "threads_reference", reference_items: [second] })],
+      record(WEAK, weak.title, { kind: "threads_reference", reference_items: [weak] }), record(LEGACY, legacy.title, { kind: "threads_reference", reference_items: [legacyStored] }),
+    ],
     topics: [] as OsRecord[], writes: [] as { path: string; body: Record<string, unknown> }[], external: [] as string[],
   };
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
@@ -82,55 +97,124 @@ async function mockWorkspace(page: Page) {
   return state;
 }
 
-test("registered evidence stays private and only checked references become a topic", async ({ page }, testInfo) => {
+test("qualified Korean references propose a topic and preserve human edits until explicitly replaced", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/references");
+  await expect(page.getByRole("button", { name: "추천 후보 2개", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".tr-reference")).toHaveCount(2);
-  await page.screenshot({ path: testInfo.outputPath("references-comparison.png"), fullPage: true });
-  await page.getByText("Aside에 원문 조사 맡기기", { exact: true }).click();
-  await page.getByLabel("이번에 살펴볼 주제·범위", { exact: true }).fill("작은 계획의 실제 장면");
-  await page.getByRole("button", { name: "Aside 조사 지침 복사" }).click();
-  const collection = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
-  expect(collection).toContain("https://example.test/canonical");
-  expect(collection).toContain("작은 계획의 실제 장면");
-  expect(collection).toContain("최대 5개");
-  expect(collection).toContain("수집함에 등록");
-  await expect(page.locator(".tr-reference").filter({ hasText: "가상 원문 하나" }).getByText("확인한 반응 있음")).toBeVisible();
-  await expect(page.locator(".tr-reference").filter({ hasText: "가상 원문 둘" }).getByText("반응 미확인")).toBeVisible();
-  await expect(page.locator(".tr-reference").first().locator(".tr-metrics dd").nth(1)).toHaveText("0");
-  await page.getByRole("button", { name: "+ 원문 등록" }).click();
-  await page.getByLabel("제목", { exact: true }).fill("직접 등록한 가상 원문");
-  await page.getByLabel("원문 URL", { exact: true }).fill("https://example.test/new-reference");
-  await page.getByRole("combobox", { name: "읽은 범위", exact: true }).selectOption("partial");
-  await page.getByRole("combobox", { name: "좋아요 확인", exact: true }).selectOption("verified");
-  await page.getByLabel("좋아요 수", { exact: true }).fill("0");
-  await page.getByRole("button", { name: "내 레퍼런스에 저장" }).click();
-  await expect(page.locator(".tr-reference")).toHaveCount(3);
-  const saved = state.writes[0].body;
-  expect(saved.kind).toBe("threads_reference");
-  const savedItem = (saved.reference_items as ThreadsReferenceItem[])[0];
-  expect(savedItem.metrics.likes).toEqual({ value: 0, verified: true });
-  expect(savedItem.metrics.views).toEqual({ value: null, verified: false });
-  expect(savedItem.capturedBy).toBe("human");
-  await page.getByLabel("가상 원문 둘 선택", { exact: true }).check();
-  await page.getByLabel("주제 후보 이름", { exact: true }).fill("선택한 원문의 질문");
+  const first = page.locator(".tr-reference").filter({ hasText: "The cost of a big plan" });
+  await expect(first.getByRole("heading", { name: "계획을 줄이면 시작이 쉬워지는 이유" })).toBeVisible();
+  await expect(first.locator(".tr-original-title")).toHaveText("원제: The cost of a big plan");
+  await expect(first.locator(".tr-summary")).toContainText("작은 계획을 끝낸 경험");
+  await page.getByLabel("계획을 줄이면 시작이 쉬워지는 이유 선택", { exact: true }).check();
+  const topicName = page.getByLabel("주제 후보 이름", { exact: true });
+  await expect(topicName).toHaveValue("계획의 크기와 시작 비용은 어떻게 연결될까?");
+  await page.screenshot({ path: testInfo.outputPath("references-korean-recommendations.png"), fullPage: true });
+  await topicName.fill("사람이 정한 내부 기획 이름");
+  await page.getByLabel("한 가지 일을 마치는 연습 선택", { exact: true }).check();
+  await expect(topicName).toHaveValue("사람이 정한 내부 기획 이름");
+  await page.getByLabel("계획을 줄이면 시작이 쉬워지는 이유 선택", { exact: true }).uncheck();
+  await expect(topicName).toHaveValue("사람이 정한 내부 기획 이름");
+  await page.getByRole("button", { name: "제안 사용: 한 가지 일을 마치려면 무엇을 줄여야 할까?", exact: true }).click();
+  await expect(topicName).toHaveValue("한 가지 일을 마치려면 무엇을 줄여야 할까?");
+  await page.getByRole("button", { name: "선택 해제", exact: true }).click();
+  await expect(topicName).toHaveCount(0);
+  await page.getByLabel("한 가지 일을 마치는 연습 선택", { exact: true }).check();
+  await expect(topicName).toHaveValue("한 가지 일을 마치려면 무엇을 줄여야 할까?");
   await page.getByRole("button", { name: "주제 후보로 가져오기" }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/topics\\?sel=${TOPIC}`));
-  expect(state.writes[1].body.referenceIds).toEqual([SECOND]);
-  expect(state.writes).toHaveLength(2);
-  await expect(page.locator(".tr-evidence").getByText("가상 원문 둘", { exact: true })).toBeVisible();
-  await expect(page.locator(".tr-evidence").getByText("가상 원문 하나", { exact: true })).toHaveCount(0);
+  expect(state.writes[0].body.referenceIds).toEqual([SECOND]);
+  expect(state.writes[0].body.title).toBe("한 가지 일을 마치려면 무엇을 줄여야 할까?");
+  await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
+  await expect(page.locator(".tr-evidence").getByText("The cost of a big plan", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("쓰레드", { exact: true })).not.toBeChecked();
   await page.getByLabel("쓰레드", { exact: true }).check();
   await page.setViewportSize({ width: 390, height: 900 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   await page.goto("/automation/references");
-  await page.locator(".tr-reference").filter({ hasText: "가상 원문 둘" }).getByRole("button", { name: "보관", exact: true }).click();
-  await expect(page.locator(".tr-reference")).toHaveCount(2);
-  expect(state.writes[2]).toEqual({ path: `topics/${SECOND}/archive-reference`, body: { version: 1 } });
+  await page.locator(".tr-reference").filter({ hasText: "한 가지 일을 마치는 연습" }).getByRole("button", { name: "보관", exact: true }).click();
+  await expect(page.locator(".tr-reference")).toHaveCount(1);
+  expect(state.writes[1]).toEqual({ path: `topics/${SECOND}/archive-reference`, body: { version: 1 } });
   await page.goto(`/automation/topics?sel=${TOPIC}`);
-  await expect(page.locator(".tr-evidence").getByText("가상 원문 둘", { exact: true })).toBeVisible();
+  await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("topic-evidence-mobile.png"), fullPage: true });
+  expect(state.external).toEqual([]);
+});
+
+test("six likes and one comment are content reference only and legacy evidence stays pending", async ({ page }, testInfo) => {
+  const state = await mockWorkspace(page);
+  await page.goto("/automation/references");
+  await page.getByRole("button", { name: "내용 참고 1개", exact: true }).click();
+  const weak = page.locator(".tr-reference");
+  await expect(weak).toHaveCount(1);
+  await expect(weak.getByRole("checkbox")).toBeDisabled();
+  await expect(weak.locator(".tr-selection-reason")).toContainText("좋아요 100개");
+  await weak.getByText("원문·반응 근거 보기", { exact: true }).click();
+  await expect(weak.locator(".tr-metrics dd").nth(1)).toHaveText("6");
+  await expect(weak.locator(".tr-metrics dd").nth(2)).toHaveText("1");
+  await page.screenshot({ path: testInfo.outputPath("weak-content-only.png"), fullPage: true });
+  await expect(page.locator(".tr-selection")).toHaveCount(0);
+  await page.getByRole("button", { name: "검증 대기 1개", exact: true }).click();
+  await expect(page.locator(".tr-reference").getByRole("checkbox")).toBeDisabled();
+  await expect(page.locator(".tr-reference")).toContainText("Earlier collected example");
+  await expect(page.locator(".tr-reference")).toContainText("한국어 내용 제목 확인 필요");
+  await page.getByRole("button", { name: "전체 4개", exact: true }).click();
+  await expect(page.locator(".tr-reference")).toHaveCount(4);
+  expect(state.writes).toEqual([]);
+  expect(state.external).toEqual([]);
+});
+
+test("zero recommendations is an honest empty state and collection instructions require qualified candidates", async ({ page }, testInfo) => {
+  const state = await mockWorkspace(page, true);
+  await page.goto("/automation/references");
+  await expect(page.locator(".ca-v07-empty")).toContainText("추천 후보 0개");
+  await expect(page.locator(".ca-v07-empty")).toContainText("수를 채울 필요는 없습니다");
+  await expect(page.locator(".tr-workspace").getByRole("alert")).toHaveCount(0);
+  await page.getByText("Aside에 원문 조사 맡기기", { exact: true }).click();
+  await page.getByLabel("이번에 살펴볼 주제·범위", { exact: true }).fill("작은 계획의 실제 장면");
+  await expect(page.getByRole("combobox", { name: "추천 후보 수", exact: true })).toHaveValue("3");
+  await page.getByRole("button", { name: "Aside 조사 지침 복사" }).click();
+  const collection = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
+  for (const text of ["https://example.test/canonical", "작은 계획의 실제 장면", "최대 3개", "100,000", "100개 이상", "5개 이상", "중앙값의 2배", "후보 0개도 정상", "한국어 내용 제목", "suggestedTopic", "의미 있는 댓글을 직접 읽어", "수를 채우기 위해 약한 글을 추천하지", "자동으로 주제를 선택·승격", "수집함에 등록"]) expect(collection).toContain(text);
+  await page.screenshot({ path: testInfo.outputPath("zero-recommendations.png"), fullPage: true });
+  await page.getByRole("button", { name: "전체 2개", exact: true }).click();
+  await expect(page.locator(".tr-reference")).toHaveCount(2);
+  expect(state.writes).toEqual([]);
+  expect(state.external).toEqual([]);
+});
+
+test("incomplete evidence may be saved and comparison draft input is not discarded", async ({ page }) => {
+  const state = await mockWorkspace(page);
+  await page.goto("/automation/references");
+  await page.getByRole("button", { name: "+ 원문 등록" }).click();
+  await page.getByLabel("원문 제목", { exact: true }).fill("직접 등록한 가상 원문");
+  await page.getByLabel("한국어 내용 제목", { exact: true }).fill("아직 비교 근거를 모으는 글");
+  await page.getByLabel("원문 URL", { exact: true }).fill("https://example.test/new-reference");
+  await page.getByRole("combobox", { name: "플랫폼", exact: true }).selectOption("substack");
+  await page.getByRole("combobox", { name: "읽은 범위", exact: true }).selectOption("partial");
+  await page.getByRole("combobox", { name: "좋아요 확인", exact: true }).selectOption("verified");
+  await page.getByLabel("좋아요 수", { exact: true }).fill("0");
+  await page.getByRole("button", { name: "+ 비교 글 추가", exact: true }).click();
+  const comparisonUrl = page.getByLabel("비교 글 1 URL", { exact: true });
+  await comparisonUrl.fill("https://example.test/comparison-one");
+  await page.getByLabel("비교 글 1 좋아요", { exact: true }).fill("작성 중");
+  await page.getByRole("button", { name: "내 레퍼런스에 저장" }).click();
+  await expect(page.locator(".tr-workspace").getByRole("alert")).toContainText("작성 중인 내용은 그대로 남아 있습니다");
+  await expect(comparisonUrl).toHaveValue("https://example.test/comparison-one");
+  await expect(page.getByLabel("비교 글 1 좋아요", { exact: true })).toHaveValue("작성 중");
+  expect(state.writes).toEqual([]);
+  await page.getByLabel("비교 글 1 좋아요", { exact: true }).fill("24");
+  await page.getByLabel("비교 글 1 게시일", { exact: true }).fill("2026-01-10");
+  await page.getByRole("button", { name: "내 레퍼런스에 저장" }).click();
+  const savedItem = (state.writes[0].body.reference_items as ThreadsReferenceItem[])[0];
+  expect(savedItem.metrics.likes).toEqual({ value: 0, verified: true });
+  expect(savedItem.metrics.views).toEqual({ value: null, verified: false });
+  expect(savedItem.capturedBy).toBe("human");
+  expect(savedItem.koreanTitle).toBe("아직 비교 근거를 모으는 글");
+  expect(savedItem.comparison?.posts).toEqual([{ url: "https://example.test/comparison-one", likes: 24, publishedAt: "2026-01-10" }]);
+  await page.getByRole("button", { name: "내용 참고 2개", exact: true }).click();
+  await expect(page.locator(".tr-reference").filter({ hasText: "아직 비교 근거를 모으는 글" }).getByRole("checkbox")).toBeDisabled();
+  expect(state.writes).toHaveLength(1);
   expect(state.external).toEqual([]);
 });
 
