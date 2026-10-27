@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
@@ -29,7 +29,8 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_breath_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
   z.object({ action: z.literal("myin_claim") }).strict(),
-  z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
+  z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
+    voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 3: approved photos and music, CTA voice, Logan's preview check.
   z.object({ action: z.literal("myin_prep_claim") }).strict(),

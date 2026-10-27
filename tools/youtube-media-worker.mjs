@@ -8,10 +8,15 @@
  * MINDMAP_FFMPEG=<ffmpeg with libass> HAN_BATANG=<serif font for quote decks> node tools/youtube-media-worker.mjs [--once] [--run <voice run id>]
  * --run limits both the voice steps and the render claim to one voice run, so older queued runs are left alone.
  * Once a minute it reports disk, memory and the current step to the OS (렌더 PC 상태); with under 60 GB free it takes no new render.
+ *
+ * 내 컴퓨터로 시안 (owner decision 2026-10-27): on a member's own Mac, `--local` with OS_URL, MYIN_LOCAL_KEY (their 「내 컴퓨터 렌더」
+ * key, never the render PC's secret) and the same MYIN_PKG / MYIN_DIAGRAM_DIR / MYIN_PYTHON as the render PC makes only the ③ drafts
+ * that member sent to their computer. It rebuilds each run's work folder from the OS (stage 1's Fish paragraphs and frozen words), and
+ * the OS hands it work only while its engine fingerprint equals the render PC's.
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, appendFileSync,copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -19,7 +24,9 @@ import { shortformDiagramCapabilities } from "./shortform-diagrams.mjs";
 import { checkShortformRuntime,renderShortform } from "./shortform-renderer.mjs";
 
 const osUrl = (process.env.OS_URL ?? "").replace(/\/$/, "");
-const secret = process.env.YOUTUBE_MEDIA_WORKER_SECRET ?? "";
+const local = process.argv.includes("--local");
+const secret = (local ? process.env.MYIN_LOCAL_KEY : process.env.YOUTUBE_MEDIA_WORKER_SECRET) ?? "";
+const mediaRoute = local ? "local-render" : "media";
 const runArg = process.argv.indexOf("--run");
 const runId = runArg > 0 ? process.argv[runArg + 1] : undefined;
 const mindmapDir = process.env.MINDMAP_DIR ?? "";
@@ -32,10 +39,11 @@ const diskFreeGb = () => { const { bavail, bsize } = statfsSync(mindmapDir || os
 /** 렌더 PC 상태: never stops the worker if the OS is unreachable or older. */
 export async function heartbeat() {
   await call({ action: "heartbeat", diskFreeGb: diskFreeGb(), memUsedGb: gb(os.totalmem() - os.freemem()), memTotalGb: gb(os.totalmem()), job: current,
-    packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(mindmapDir, ".."))).slice(0, 80) }).catch((error) => console.error(`heartbeat: ${error.message}`));
+    packageName: (process.env.MINDMAP_PACKAGE_NAME || path.basename(path.resolve(local ? myinPkg : mindmapDir, ".."))).slice(0, 80),
+    ...(engine() ? { engine: engine() } : {}) }).catch((error) => console.error(`heartbeat: ${error.message}`));
 }
 
-async function call(body, route = "media") {
+async function call(body, route = mediaRoute) {
   const response = await fetch(`${osUrl}/api/v1/content/youtube-automation/${route}`, {
     method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" }, body: JSON.stringify(body),
   });
@@ -179,10 +187,46 @@ export async function drawMindmap(brief, parts, name) {
 // clone (his scripts write inside the package, and SRC defaults to an old video). The OS made each paragraph's wav exactly as his
 // stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
 const myinPkg = process.env.MYIN_PKG ?? "";
+// A staff PC's copy of the engine for one video: an APFS clone on a Mac (instant, no extra disk), a plain copy elsewhere.
+const copyEngine = (from, to) => process.platform === "darwin" ? execFileSync("cp", ["-c", "-R", from, to]) : cpSync(from, to, { recursive: true });
 const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
 const myinPython = process.env.MYIN_PYTHON || "python3";
 // 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
 const myinLibrary = process.env.MYIN_LIBRARY || path.join(os.homedir(), "myin", "library");
+/**
+ * The v13 engine as a hash: Logan's package (code by content, fonts, sounds and images by name and size), the diagram package,
+ * the font folder, the music library and the Python packages. A staff Mac with the same hash draws the same drafts as the
+ * render PC. Computed once; an engine swap restarts the worker.
+ */
+let engineHash = null;
+export function engine() {
+  if (engineHash !== null || !myinPkg) return engineHash || "";
+  const h = createHash("sha256");
+  const code = /\.(py|json|md|txt|ass|svg|html|js|css|ya?ml)$/i;
+  const walk = (root, dir = "") => {
+    const here = path.join(root, dir);
+    if (!existsSync(here)) return;
+    for (const name of readdirSync(here).sort()) {
+      if (name === "__pycache__" || name.startsWith(".")) continue;
+      const rel = path.join(dir, name), full = path.join(root, rel), stat = statSync(full);
+      if (stat.isDirectory()) walk(root, rel);
+      else h.update(`${rel}\0${code.test(name) ? createHash("sha256").update(readFileSync(full)).digest("hex") : stat.size}\n`);
+    }
+  };
+  for (const part of ["tools", "assets"]) { h.update(`#pkg/${part}\n`); walk(path.join(myinPkg, part)); }
+  for (const [label, dir] of [["diagrams", process.env.MYIN_DIAGRAM_DIR], ["fonts", process.env.MYIN_FONT_DIR], ["library", myinLibrary]]) {
+    h.update(`#${label}\n`);
+    if (dir) walk(dir);
+  }
+  // The packages his code imports, not pip itself (a fresh venv's pip differs and draws nothing), and the Python minor version.
+  // -s: packages under the user's home are not the engine's (a venv never sees them, a bare python3 would).
+  const pip = spawnSync(myinPython, ["-s", "-c", "import sys, subprocess; print('%d.%d' % sys.version_info[:2]); sys.stdout.flush(); subprocess.run([sys.executable, '-s', '-m', 'pip', 'freeze'])"],
+    { encoding: "utf8", timeout: 60_000 });
+  h.update(`#python\n${(pip.stdout ?? "").split("\n").filter(Boolean).sort().join("\n")}`);
+  engineHash = h.digest("hex").slice(0, 32);
+  return engineHash;
+}
+
 // 도식 창고 목록 (owner decision 2026-10-22): what the installed v13 engine can draw, sent to the OS when it changes, so the
 // storyboard staff AI picks only diagrams this PC renders. The script sits next to this file, like shortform-caption.py.
 const catalogScript = path.join(path.dirname(fileURLToPath(import.meta.url)), "myin-diagram-catalog.py");
@@ -245,6 +289,53 @@ export async function processMyinBreath() {
   return true;
 }
 
+// 내 컴퓨터로 시안: his processed voice leaves the render PC byte for byte in parts under the voice bucket's 12 MB limit.
+const VOICE_PART_BYTES = 10_000_000;
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+export async function uploadVoiceParts(file, urls) {
+  const bytes = readFileSync(file), parts = Math.ceil(bytes.length / VOICE_PART_BYTES);
+  if (parts > urls.length) { console.error(`myin voice: ${parts} parts is more than ${urls.length}; this video's drafts stay on the render PC`); return null; }
+  const dir = mkdtempSync(path.join(os.tmpdir(), "myin-voice-"));
+  try {
+    for (let i = 0; i < parts; i++) {
+      const part = path.join(dir, `part${i}.wav`);
+      writeFileSync(part, bytes.subarray(i * VOICE_PART_BYTES, (i + 1) * VOICE_PART_BYTES));
+      await upload(urls[i], part, "audio/wav");
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+  return { parts, bytes: bytes.length, sha256: sha256(bytes) };
+}
+
+/**
+ * 내 컴퓨터로 시안: the run's work folder as the render PC left it after stage 1 — a copy of the engine, its processed voice.wav
+ * (downloaded, never recomputed: his sentence gaps come from a seeded random draw, so another run could shift every cue) and the
+ * frozen transcription and subtitles.
+ */
+export async function myinRebuild(runId, seed) {
+  const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
+  if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav"))) return;
+  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(myinPkg, work); }
+  mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
+  const parts = [];
+  for (const url of seed.voice.urls) {
+    const response = await fetch(url);
+    if (!response.ok) throw Object.assign(new Error(`voice part ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
+    parts.push(Buffer.from(await response.arrayBuffer()));
+  }
+  const voice = Buffer.concat(parts);
+  if (voice.length !== seed.voice.bytes || sha256(voice) !== seed.voice.sha256)
+    throw Object.assign(new Error("voice.wav differs from the render PC's"), { code: "MYIN_VOICE_MISMATCH" });
+  const response = await fetch(seed.wordsUrl);
+  if (!response.ok) throw Object.assign(new Error(`words bundle ${response.status}`), { code: "WORKER_DOWNLOAD_FAILED" });
+  const bundle = await response.json();
+  writeFileSync(path.join(voiceDir, "voice.wav"), voice);
+  writeFileSync(path.join(voiceDir, "speech.txt"), bundle.speech);
+  writeFileSync(path.join(videoDir, "subs_myin.ass"), bundle.subtitlesAss);
+  writeFileSync(path.join(videoDir, "subs_qc.md"), bundle.subtitleQc ?? "");
+  writeFileSync(path.join(videoDir, "words.json"), JSON.stringify(bundle.words));
+  console.log(`myin work folder rebuilt from the OS: ${runId}`);
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -286,7 +377,10 @@ export async function processMyinWords() {
       speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
-    await call({ action: "myin_complete", ...lease });
+    // A staff Mac's ③ drafts need this exact voice; without it (older OS, too long, upload trouble) they stay on the render PC.
+    const voice = job.voiceUploadUrls ? await uploadVoiceParts(path.join(voiceDir, "voice.wav"), job.voiceUploadUrls).catch((error) => {
+      console.error(`myin voice upload skipped: ${job.runId}: ${error.message}`); return null; }) : null;
+    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}) });
     console.log(`myin words ready: ${job.runId}`);
   } catch (error) {
     console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
@@ -368,12 +462,13 @@ export async function reportSoundCatalog() {
  */
 export async function processMyinPrep() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_prep_claim" });
+  const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : {}) });
   if (job.idle) return false;
   current = { step: "download" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
+    if (job.seed) await myinRebuild(job.runId, job.seed);
     if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
@@ -461,11 +556,12 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 /** v13 stage 4a: his 720p clips of the opening with its reel and of each metaphor scene, for Logan to check before the full render. */
 export async function processMyinClips() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_clips_claim" });
+  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : {}) });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
+    if (job.seed) await myinRebuild(job.runId, job.seed);
     const { videoDir, myinDir } = myinDirs(job.runId);
     const env = myinEnv();
     const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
@@ -576,7 +672,26 @@ async function fetchShortformTo(url,file,max){
   }finally{await reader.cancel().catch(()=>{});reader.releaseLock();}
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+/** A member's own Mac: only the ③ drafts they sent to it, one step at a time; nothing of the render PC's queue or catalogs. */
+async function runLocal() {
+  if (!osUrl.startsWith("https://") || !secret.startsWith("bos_pat_")) throw new Error("OS_URL (https) and MYIN_LOCAL_KEY (내 컴퓨터 렌더 키) are required");
+  if (!existsSync(path.join(myinPkg, "tools", "myin_pipeline", "render_myin.py"))) throw new Error("MYIN_PKG must point at the same v13 engine as the render PC");
+  console.log(`내 컴퓨터 렌더: engine ${engine()}`);
+  void heartbeat();
+  setInterval(() => void heartbeat(), 60_000).unref();
+  do {
+    const worked = await processMyinPrep().then((done) => done || processMyinClips()).catch((error) => {
+      // A different engine is not this Mac's to fix by retrying; the OS screen says so too.
+      console.error(error.code === "MYIN_ENGINE_DIFFERENT" || error.code === "MYIN_ENGINE_UNKNOWN" ? `${error.message} (engine ${engine()})` : error.message);
+      return false;
+    });
+    if (process.argv.includes("--once")) break;
+    if (!worked) await new Promise((resolve) => setTimeout(resolve, 30_000));
+  } while (true);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href && local) await runLocal();
+else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   if (!osUrl.startsWith("https://") || secret.length < 32) throw new Error("OS_URL (https) and YOUTUBE_MEDIA_WORKER_SECRET are required");
   const shortsOnly=process.argv.includes("--shorts-only");
   if (!shortsOnly&&!existsSync(path.join(mindmapDir, "tools", "mindmap_pipeline", "stage_render.py"))) throw new Error("MINDMAP_DIR must point at Logan's unzipped mind-map package");
