@@ -89,3 +89,27 @@ test("myinPhotoFolders puts a scene photo in people and an opening image in situ
   assert.deepEqual(Object.fromEntries(myinPhotoFolders(story)), {
     "moving_boxes.jpg": ["situations"], "journal_writing.jpg": ["situations", "people"], "night_desk_headache.jpg": ["people"], "office_thinking.jpg": ["people"] });
 });
+
+// 로건 「마이인 기획표 QA 기준 v1」 3부 (2026-10-27), from the 연봉 video's QA: the OS refuses what any AI keeps getting wrong.
+test("QA: what is lower on the screen never appears before what is above it", () => {
+  const hero = (extra) => story([{ type: "opening", at: "오늘은 성격" }, { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]], ...extra },
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+  const order = (extra) => checkMyinStoryboard(hero(extra), words).issues.filter((issue) => issue.includes("먼저 떠요"));
+  assert.match(order({ sub: { text: "같은 성격", cue: "같은 성격인데" } })[0], /\[장면 2\] 화면 아래 「같은 성격」\(소제목\)가 위 「자리만」\(제목\)보다 먼저 떠요/);
+  assert.deepEqual(order({ sub: { text: "약점이 사라짐", cue: "팀 전체" } }), []);
+  // A quote's author comes after the quote; a piece without a cue shows at the scene start.
+  assert.equal(order({ title: undefined, lines: [{ text: "팀 전체", cue: "팀 전체" }], author: { text: "코치", cue: "자리만 바꿨더니" } }).length, 1);
+});
+
+test("QA: every opening sentence has text on screen; a row list with % figures and 「눌러 두」 are refused", () => {
+  const speech = "#SECTION 도입\n오늘은 성격 이야기를 해볼게요. 같은 성격인데 자리만 바꿨더니 팀 전체 약점이 사라졌어요.\n#SECTION 끝\n마지막으로 정리해 볼게요. 구독 부탁드려요.";
+  const open = (lines) => story([{ type: "opening", at: "오늘은 성격", acts: [{ cue: "오늘은 성격", lines }] }, { type: "outro", at: "마지막으로 정리해" },
+    { type: "statement", at: "구독 부탁드려요" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+  const gaps = (lines) => checkMyinStoryboard(open(lines), words, [], speech).issues.filter((issue) => issue.startsWith("[오프닝]"));
+  assert.match(gaps([[{ text: "성격 이야기", cue: "오늘은 성격" }]])[0], /「같은 성격인데 자리만 바꿨더니/);
+  assert.deepEqual(gaps([[{ text: "성격 이야기", cue: "오늘은 성격" }], [{ text: "자리만 바꿨더니", cue: "같은 성격인데" }]]), []);
+  const stats = checkMyinStoryboard(story([...frame.slice(0, 2), { type: "lib_numbered", at: "팀 전체", items: [{ text: "직무 53.3%", cue: "팀 전체" }, { text: "회사 30%" }] }, ...frame.slice(2)]), words, ["lib_numbered"]).issues;
+  assert.ok(stats.some((issue) => /\[장면 3\] 줄 목록에 % 수치가 2개예요/.test(issue)));
+  const cta = checkMyinStoryboard(story(frame, [{ after: "자리만 바꿨더니", line: "구독 한 번 눌러 두고 들어 주세요" }]), words).issues;
+  assert.deepEqual(cta.filter((issue) => issue.startsWith("[구독")), ["[구독 1] 「눌러 두…」 대신 「눌러 주세요」로 써요"]);
+});

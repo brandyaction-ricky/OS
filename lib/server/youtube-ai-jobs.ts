@@ -496,7 +496,7 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
-    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words, catalogTypes));
+    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });

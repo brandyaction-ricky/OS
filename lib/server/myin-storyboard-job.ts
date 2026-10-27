@@ -51,6 +51,19 @@ ${MYIN_CARD_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` (
 - 무대형 도식(lib_stage_)을 먼저 고릅니다. 문단 하나에 무대 하나를 깔고 문장마다 beats로 움직입니다. 같은 무대는 영상당 2번까지, 연달아 쓰지 않습니다(OS가 검사합니다).
 - 사진은 오프닝만이 아니라 본론 · 엔딩에도 씁니다. 연구 · 실험 같은 실제 사례가 나오면 그 장소 · 대상 사진을 넣습니다(예: 미국 로체스터대 실험 → 캠퍼스 · 강의실). Unsplash · 위키미디어만, assets에 출처를 적습니다.
 
+## 마이인 기획표 QA 기준 (로건 2026-10-27 · 전문: 「마이인 기획표 QA 기준 v1 (로건, 2026-10-27)」 — 열 수 있으면 끝까지 읽습니다)
+- 오프닝: 쇼릴 전에는 자막이 없습니다. 말하는 문장마다 화면 글자 줄을 붙입니다(cue = 그 문장 첫 말). 글자 없는 화면이 1초 넘게 이어지지 않게, 사진 위 글씨는 크고 대비 높게.
+- 통계: %·명 수치는 글자 목록이 아니라 그래프(막대 · 도넛 · 큰 숫자 · 사람 그림)로, 출처(기관 · 인원 · 연도)는 장면 맨 위 라벨에. 말 맥락이 다른 수치를 한 순위 목록으로 묶지 않고, 원고에 없는 숫자를 만들지 않습니다.
+- 화면 요소는 위 → 아래 순서로 뜹니다(제목 줄 → 칩 → 출처 → 소제목 → 줄 목록 → 인용 출처 → 꼬리표). 말 순서가 반대면 글 배치를 바꿉니다.
+- 실존 인물(연구자 · 저자)이 나오면 그 사람 본인 사진(위키미디어 먼저, 동명이인 주의). 자유 라이선스 사진이 없으면 suggestions 첫 줄에 적어 담당자에게 알립니다.
+- 인물 사진은 엔진 크롭(가로 가운데 고정, 세로 focus_y)으로 미리 잘라 보고 얼굴 · 몸이 다 들어오는지 확인합니다. 잘리면 Unsplash 자르기 옵션(&rect= 또는 &fit=crop&crop=faces)을 씁니다.
+- 상황 · 사례 사진은 화면 정중앙에 크게(situation 장면). 글 왼쪽 · 사진 오른쪽으로 두지 않습니다.
+- 인용 장면: 따옴표 아래는 말한 사람만 짧게, 인용문이 다 나온 뒤에 뜨게.
+- 구독 멘트는 「눌러 주세요」(「눌러 두고 들어 주세요」 아님).
+- 연결 줄 · 강조 · 확대 · 줄긋기는 무엇을 왜 묶는지 먼저 정하고, reasons에 목적을 한 줄씩 적습니다.
+- 잘 된 것: 시청자가 직접 해 보는 순간에는 lib_question_typing, 숫자 강조는 darkstat 톤.
+- 제출 전에 위 항목을 하나씩 스스로 점검합니다. 이 중 위 → 아래 순서, 오프닝 문장 글자, 줄 목록의 % 수치, 구독 멘트는 OS도 검사합니다.
+
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
 - 문구(장면 at, cue와 cue_로 시작하는 키, 제목 조각 ["텍스트", "등장 문구"]의 두 번째 값, cta[].after)는 아래 words의 철자 그대로 씁니다. 받아쓰기가 원고와 다른 철자여도 받아쓰기를 따릅니다. 장면 시작 문구는 앞 장면 시작 뒤 2,500자 안, 나머지 문구는 그 장면 시작 뒤 1,400자 안에 있어야 합니다(글자 수는 한글·영문·숫자만 셉니다).
 - 첫 장면은 opening, 끝은 outro → summary(at_time) → endscreen(at_time). end는 마지막 말이 끝난 뒤 여유를 둔 초입니다(낭독 ${input.durationSeconds.toFixed(1)}초 기준).
@@ -76,10 +89,10 @@ result = ${MYIN_STORYBOARD_RESULT_SHAPE}
 }
 
 /** The result's shape and the storyboard check; 422 lists every problem so the AI can fix them in one pass. */
-export function checkMyinStoryboardResult(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = []) {
+export function checkMyinStoryboardResult(value: unknown, words: [number, number, string][], catalogTypes: readonly string[] = [], speech = "") {
   const parsed = resultSchema.safeParse(value);
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
-  const checked = checkMyinStoryboard(parsed.data.storyboard, words, catalogTypes);
+  const checked = checkMyinStoryboard(parsed.data.storyboard, words, catalogTypes, speech);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
   return { ...parsed.data, fuzzy: checked.fuzzy, notes: [...checked.notes, ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
