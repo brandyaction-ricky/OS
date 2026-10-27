@@ -6,7 +6,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
 import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
-import { parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
+import { assertThreadsReferencesReady,parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
 import { getThreadsJobInput,threadsCollectionContext,threadsReferenceRequestId } from "@/lib/server/threads-reference";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
@@ -324,6 +324,7 @@ export async function POST(request:Request,{params}:Params) {
         sourceRef=referenceItems.map(item=>item.url).join("\n").slice(0,2000);
       }
       const workflow=sourceWorkflow||input.editorial_workflow||input.kind||input.referenceIds||input.reference_items?THREADS_REFERENCE_WORKFLOW:undefined;
+      if(workflow&&input.kind!==THREADS_REFERENCE_KIND)assertThreadsReferencesReady(referenceItems??[]);
       const metadata=validateThreadsTopicMetadata({source:input.referenceIds?"reference":source,sourceRef,brief:{},channels:[],
         ...(workflow?{editorial_workflow:workflow,reference_items:referenceItems??[]}:{ }),
         ...(input.kind?{kind:input.kind}:{}),...(input.referenceIds?{sourceReferenceIds:[...new Set(input.referenceIds)]}:{}),
@@ -368,6 +369,8 @@ export async function POST(request:Request,{params}:Params) {
         .eq("metadata->>channel",input.channel).is("archived_at",null).limit(1).maybeSingle();
       if(existing.error)throw new ApiError(503,"ITEM_CHECK_FAILED","기존 채널 콘텐츠를 확인하지 못했습니다.");
       if(existing.data)return NextResponse.json({item:existing.data,reused:true});
+      if(input.channel==="threads"&&topic.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW)
+        assertThreadsReferencesReady(parseThreadsReferences(topic.metadata.reference_items??[]));
       const item=await createPersonalRecord(actor,"content_publish",{
         title:input.title,brand:input.brand,parentId:input.topicId,dueDate:input.dueDate,
         status:"draft",stage:"making",metadata:{channel:input.channel,step:0,pages:[],cuts:[],posts:[]},

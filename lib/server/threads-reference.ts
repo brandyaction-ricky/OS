@@ -55,7 +55,7 @@ async function topicForItem(item: OsRecord) {
   if (!data) throw new ApiError(409, "THREADS_TOPIC_UNAVAILABLE", "원고에 연결된 주제와 근거를 읽지 못했습니다.");
   return data as OsRecord;
 }
-export async function threadsSourceInput(target: OsRecord, proc: string) {
+export async function threadsSourceInput(target: OsRecord, proc: string, requireRecommended = false) {
   const item = target.record_type === "content_publish";
   if (proc === "threads" && (!item || target.metadata.channel !== "threads" || !["draft", "blocked"].includes(target.status)))
     throw new ApiError(422, "THREADS_TARGET_INVALID", "제작 중인 Threads 원고에서 초안을 요청해 주세요.");
@@ -66,7 +66,7 @@ export async function threadsSourceInput(target: OsRecord, proc: string) {
   if (proc === "threads" && topic.metadata.editorial_workflow === THREADS_REFERENCE_WORKFLOW) {
     if (topic.metadata.kind === THREADS_REFERENCE_KIND || topic.stage !== "confirmed")
       throw new ApiError(409, "THREADS_HUMAN_SELECTION_REQUIRED", "사람이 주제를 선택하고 확정한 뒤 원고를 요청해 주세요.");
-    assertThreadsReferencesReady(references);
+    if (requireRecommended) assertThreadsReferencesReady(references);
   }
   return { target: { id: target.id, version: target.version, title: target.title, brand: target.brand,
     description: target.description, channel: target.metadata.channel ?? null,
@@ -83,12 +83,17 @@ export function threadsInputKey(input: ThreadsSourceInput) {
   const { version: targetVersion, ...target } = input.target;
   const { version: topicVersion, ...topic } = input.topic;
   void targetVersion; void topicVersion;
-  return createHash("sha256").update(JSON.stringify({ target, topic })).digest("hex");
+  // Empty newly optional fields must not stale a snapshot made before this
+  // policy existed. Nonempty edits still change the source fingerprint.
+  const optionalContext = new Set(["koreanTitle", "summary", "suggestedTopic", "relevanceNote", "audienceNote"]);
+  const reference_items = topic.reference_items.map(item => Object.fromEntries(Object.entries(item)
+    .filter(([key, value]) => !optionalContext.has(key) || value !== "")));
+  return createHash("sha256").update(JSON.stringify({ target, topic: { ...topic, reference_items } })).digest("hex");
 }
 export async function createThreadsJobInput(actor: RequestActor, target: OsRecord | null, proc: string): Promise<ThreadsJobInput | null> {
   if (!usesThreadsReferenceInput(target, proc)) return null;
   if (!target) throw new ApiError(422, "THREADS_TARGET_REQUIRED", "레퍼런스 또는 확정한 주제를 먼저 선택해 주세요.");
-  const source = await threadsSourceInput(target, proc);
+  const source = await threadsSourceInput(target, proc, true);
   return { schemaVersion: 1, workflow: THREADS_REFERENCE_WORKFLOW, proc, ...source, canonical: await threadsCanonicalSnapshot(actor) };
 }
 export function getThreadsJobInput(job: OsRecord): ThreadsJobInput | null {
@@ -104,9 +109,11 @@ export function getThreadsJobInput(job: OsRecord): ThreadsJobInput | null {
 export async function assertThreadsJobCurrent(target: OsRecord, job: OsRecord) {
   const input = getThreadsJobInput(job);
   if (!input) return;
-  // A review may run after the draft was sent to the review inbox. The source
-  // comparison itself never performs approval or publication.
-  const current = await threadsSourceInput(target, String(job.metadata.proc));
+  // Queued/retried work must meet today's criteria before it starts, even when
+  // it carries an older snapshot. Running result saves and completed-result
+  // adoption retain their pinned input and only check that it has not changed.
+  const requireRecommended = job.status === "backlog" || job.status === "blocked";
+  const current = await threadsSourceInput(target, String(job.metadata.proc), requireRecommended);
   if (threadsInputKey(current) !== job.metadata.threadsInputKey)
     throw new ApiError(409, "THREADS_INPUT_CHANGED", "AI 작업 뒤 주제·근거·원고가 바뀌었습니다. 새 작업으로 다시 확인해 주세요.");
 }

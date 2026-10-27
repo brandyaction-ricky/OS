@@ -17,6 +17,7 @@ import { assertDevelopmentRequestLink } from "@/lib/development-links";
 import { assertLegacyLeaveWritable } from "@/lib/server/hr-legacy-menus";
 import { recordDateColumn, recordDateRange } from "@/lib/team/dates";
 import { protectedThreadsAutomationJob } from "@/lib/threads-reference";
+import { protectedThreadsReferenceTopic } from "@/lib/threads-reference-record-guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -115,6 +116,8 @@ export async function POST(request: Request) {
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 만들고 확인해 주세요.");
     if (protectedThreadsAutomationJob(input.recordType, input.metadata))
       throw new ApiError(403,"THREADS_AUTOMATION_API_REQUIRED","Threads AI 작업과 정본 입력은 콘텐츠 자동화 화면에서 만들어 주세요.");
+    if (protectedThreadsReferenceTopic(input.recordType, input.metadata))
+      throw new ApiError(403,"THREADS_REFERENCE_API_REQUIRED","레퍼런스와 레퍼런스 기반 주제는 콘텐츠 자동화 화면에서 만들어 주세요.");
     await assertLegacyLeaveWritable(actor.supabase, input.recordType);
     await assertReviewedMeetingTask(actor,input);
     if (["meta_tester_request", "channel_audit"].includes(String(input.metadata.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 연결 전용 화면에서 처리해 주세요.");
@@ -164,6 +167,9 @@ export async function PATCH(request: Request) {
     if (protectedThreadsAutomationJob(current.record_type, current.metadata)
       || protectedThreadsAutomationJob(current.record_type, { ...current.metadata, ...input.metadata }))
       throw new ApiError(403,"THREADS_AUTOMATION_API_REQUIRED","Threads AI 작업과 정본 입력은 콘텐츠 자동화 작업 화면에서 처리해 주세요.");
+    if (protectedThreadsReferenceTopic(current.record_type, current.metadata)
+      || protectedThreadsReferenceTopic(current.record_type, { ...current.metadata, ...input.metadata }))
+      throw new ApiError(403,"THREADS_REFERENCE_API_REQUIRED","레퍼런스와 레퍼런스 기반 주제는 콘텐츠 자동화 화면에서 수정해 주세요.");
     if (current.metadata?.space === "personal" && input.metadata && input.metadata.space !== "personal")
       throw new ApiError(403,"PERSONAL_SPACE_IMMUTABLE","개인 기록의 공간을 바꿀 수 없습니다.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
@@ -223,6 +229,8 @@ export async function DELETE(request: Request) {
     if (!current) throw new ApiError(404, "RECORD_NOT_FOUND", "운영 기록을 찾지 못했습니다.");
     if (current.record_type === "content_publish" && current.metadata?.space === "personal")
       throw new ApiError(403,"PERSONAL_AUTOMATION_API_REQUIRED","개인 콘텐츠는 콘텐츠 자동화 화면에서 관리해 주세요.");
+    if (protectedThreadsReferenceTopic(current.record_type, current.metadata))
+      throw new ApiError(403,"THREADS_REFERENCE_API_REQUIRED","레퍼런스와 레퍼런스 기반 주제는 콘텐츠 자동화 화면에서 관리해 주세요.");
     await assertLegacyLeaveWritable(actor.supabase, current.record_type);
     if (["meta_tester_request", "channel_audit"].includes(String(current.metadata?.kind))) throw new ApiError(403, "CHANNEL_API_REQUIRED", "채널 변경 기록은 보존합니다.");
     if (isDevelopmentRequest(current)) throw new ApiError(403, "REQUEST_API_REQUIRED", "수정 요청은 처리 이력을 보존합니다. 요청 화면에서 상태를 변경해 주세요.");
