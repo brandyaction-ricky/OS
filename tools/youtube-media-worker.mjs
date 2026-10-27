@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { constants as fsConstants, appendFileSync,copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, appendFileSync,copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -187,6 +187,8 @@ export async function drawMindmap(brief, parts, name) {
 // clone (his scripts write inside the package, and SRC defaults to an old video). The OS made each paragraph's wav exactly as his
 // stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
 const myinPkg = process.env.MYIN_PKG ?? "";
+// A staff PC's copy of the engine for one video: an APFS clone on a Mac (instant, no extra disk), a plain copy elsewhere.
+const copyEngine = (from, to) => process.platform === "darwin" ? execFileSync("cp", ["-c", "-R", from, to]) : cpSync(from, to, { recursive: true });
 const myinWork = process.env.MYIN_WORK || path.join(os.homedir(), "myin", "work");
 const myinPython = process.env.MYIN_PYTHON || "python3";
 // 음악 창고 (owner decision 2026-10-19): tracks beyond the package's own assets/bgm live here and are copied into each run.
@@ -312,7 +314,7 @@ export async function uploadVoiceParts(file, urls) {
 export async function myinRebuild(runId, seed) {
   const work = path.join(myinWork, runId), voiceDir = path.join(work, "voice", "os_voice"), videoDir = path.join(work, "voice", "os_myin");
   if (existsSync(path.join(videoDir, "words.json")) && existsSync(path.join(voiceDir, "voice.wav"))) return;
-  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
+  if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); copyEngine(myinPkg, work); }
   mkdirSync(voiceDir, { recursive: true }); mkdirSync(videoDir, { recursive: true });
   const parts = [];
   for (const url of seed.voice.urls) {
