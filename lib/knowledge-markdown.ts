@@ -31,3 +31,23 @@ export function markdownInlineTokens(text: string): MarkdownInlineToken[] {
   if (cursor < text.length) tokens.push({ type: "text", text: text.slice(cursor) });
   return tokens;
 }
+
+// The block editor reads Markdown as MDX, where any "<name" starts a JSX tag: "<작업>" or
+// "<API 키>" in plain prose then fails the whole document ("Expected a closing tag"). Escape
+// every "<" that does not open a real HTML tag or comment, outside code, so it reads as text.
+const HTML_TAG = /^<\/?(?:a|abbr|audio|b|blockquote|br|caption|center|cite|code|col|colgroup|dd|del|details|div|dl|dt|em|figcaption|figure|font|h[1-6]|hr|i|iframe|img|ins|kbd|li|mark|ol|p|picture|pre|q|s|section|small|source|span|strong|sub|summary|sup|table|tbody|td|th|thead|tr|u|ul|video)(?=[\s/>])/i;
+// JSX also needs void tags closed: "<br>" → "<br />".
+const VOID_TAG = /<(br|hr|img|col|source)\b([^<>]*?)>/gi;
+export function escapeLooseAngles(markdown: string): string {
+  let fence = "";
+  return markdown.split("\n").map(line => {
+    const marker = line.match(/^\s{0,3}(`{3,}|~{3,})/)?.[1];
+    if (fence) { if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = ""; return line; }
+    if (marker) { fence = marker; return line; }
+    // "<details><summary>…" on one line is read as inline JSX that never closes; split it.
+    line = line.replace(/^(\s{0,3}<details\b[^<>]*>)(?=<summary)/i, "$1\n");
+    return line.split(/(`+[^`]*`+)/).map((part, index) => index % 2 ? part
+      : part.replace(/(\\?)<(?!!--)/g, (match, escaped, offset) => escaped || HTML_TAG.test(part.slice(offset + escaped.length)) ? match : "\\<")
+        .replace(VOID_TAG, (_tag, name: string, rest: string) => `<${name}${rest.replace(/\s*\/?$/, "")} />`)).join("");
+  }).join("\n");
+}
