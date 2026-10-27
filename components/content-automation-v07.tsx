@@ -41,7 +41,7 @@ const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows.map(row=>({...row,...mor
   ...more.filter(row=>!rows.some(existing=>existing.id===row.id))];
 const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:string}>={
   dashboard:{title:"자동화 현황",description:"내가 만든 콘텐츠·AI 작업·내 채널 계정만 봅니다.",next:"/automation/topics"},
-  references:{title:"내 레퍼런스",description:"원문의 장면·반응·질문·관점을 비교하고 쓸 주제를 고릅니다.",next:"/automation/topics"},
+  references:{title:"레퍼런스",description:"원문의 장면·반응·질문·관점을 비교하고 쓸 주제를 고릅니다.",next:"/automation/topics"},
   topics:{title:"① 주제 기획",description:"주제 후보를 모으고 브리프와 제작 채널을 정합니다.",next:"/automation/cardnews"},
   cardnews:{title:"② 카드뉴스",description:"템플릿의 칸 이름에 맞춰 글과 이미지를 준비합니다.",next:"/automation/review"},
   shorts:{title:"③ 쇼츠",description:"컷 구성·MP4·커버와 설명을 준비합니다.",next:"/automation/review"},
