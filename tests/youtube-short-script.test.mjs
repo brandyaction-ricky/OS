@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, refHostOk, refTexts, scriptLines, shortScriptMissing } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, refHostOk, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
+import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
 const good = `퇴근하고 소파에 누워 휴대폰만 봐요
@@ -60,4 +61,19 @@ test("대본 확정 needs the 통찰 한 줄, a 헤드 카피 and a script that 
 test("the render PC is handed YouTube, Instagram, TikTok and Meta ad links only", () => {
   for (const ok of ["https://www.youtube.com/shorts/abc", "https://youtu.be/abc", "https://www.instagram.com/reel/abc/", "https://www.facebook.com/ads/library/?id=1", "https://vt.tiktok.com/x"]) assert.equal(refHostOk(ok), true, ok);
   for (const bad of ["http://youtube.com/x", "https://evil.com/youtube.com", "https://youtube.com.evil.com/x", "file:///etc/passwd", "-o /tmp/x"]) assert.equal(refHostOk(bad), false, bad);
+});
+
+// 숏폼 주제 (owner direction 2026-10-28): a 초안 주제 → 참고 영상 → 공식 → 주제 후보 셋 → 주제 확정, so references and formulas open on 주제.
+test("참고 영상 · 공식 are worked on from 주제 until the 대본 is confirmed, on a 숏폼 only", () => {
+  const project = (stage, type = "short") => ({ yp: { stage, topic: { type }, gates: emptyGates() } });
+  assert.deepEqual(["topic", "draft", "make"].map(stage => shortResearchOpen(project(stage))), [true, true, false]);
+  assert.equal(shortResearchOpen(project("topic", "anim")), false);
+});
+
+test("three 주제 후보, one line each, on a formula drawn now or kept in the 공식 창고", () => {
+  const topic = (title, formula = "숫자 반전") => ({ title, insight: "통찰", formula, why: "" });
+  assert.deepEqual(shortTopicPickProblems([topic("하나"), topic("둘"), topic("셋", "창고 공식")], ["숫자 반전", "창고 공식"]), []);
+  assert.match(shortTopicPickProblems([topic("하나"), topic("둘")], ["숫자 반전"]).join(" "), /3개예요 — 지금 2개/);
+  assert.match(shortTopicPickProblems([topic("하나"), topic("둘"), topic("셋", "없는 공식")], ["숫자 반전"]).join(" "), /「없는 공식」가 formulas에도 창고에도 없어요/);
+  assert.match(shortTopicPickProblems([topic("하나"), topic("하나"), topic("가".repeat(41))], ["숫자 반전"]).join(" "), /한 줄 40자 이하.*같아요/);
 });

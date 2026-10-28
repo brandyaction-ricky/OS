@@ -10,12 +10,13 @@ import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 업로드 자료), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-script";
+type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-formula" | "short-script";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
   "short-topics": { name: "숏폼 주제 뽑기", result: "롱폼 원고에서 숏폼 주제 후보 3개(통찰 한 줄 · 장면 · 원고 어디서)를 뽑아 줘요. 하나씩 숏폼으로 만들어요." },
-  "short-script": { name: "숏폼 대본 쓰기", result: "참고 영상에서 헤드 카피 · 첫 문장 · 흐름 공식을 뽑고, 그 공식으로 헤드 카피와 대본을 써 줘요. PD가 다듬고 확정해요." },
+  "short-formula": { name: "공식 · 주제 후보 뽑기", result: "참고 영상에서 헤드 카피 · 첫 문장 · 흐름 공식을 뽑고, 그 공식으로 주제 후보 3개를 내 줘요. PD가 하나를 골라 주제를 확정해요." },
+  "short-script": { name: "숏폼 대본 쓰기", result: "주제를 확정할 때 고른 공식으로 헤드 카피와 대본을 써 줘요. PD가 다듬고 확정해요." },
   retitle: { name: "제목 · 썸네일 문구 다시 뽑기", result: "시장 영상에서 제목 공식 · 문구 공식을 뽑아 제목 8개 · 문구 8개를 따로 줘요. 하나씩 골라 짝을 만들어요." },
   niche: { name: "틈새 묶기", result: "터진 영상을 같은 제목 공식끼리 묶어 틈새 판에 넣어 줘요." },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", result: "쇼츠 제목과 설명을 써 줘요." },
@@ -91,8 +92,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   const [role, setRole] = useState("유입형");
   const [query, setQuery] = useState(queryDefault ?? "");
   const searches = task === "plan" || task === "retitle";
-  // 숏폼 대본: the OS searches the 대본 step's 검색어 for Shorts too; the words are edited on that step, not here.
-  const youtube = searches || task === "short-script";
+  // 숏폼 주제 · 대본: without fetched 참고 영상 the OS searches the step's 검색어 for Shorts; the words are edited on that step, not here.
+  const youtube = searches || task === "short-formula" || task === "short-script";
   const [attachments, setAttachments] = useState("");
   const [paste, setPaste] = useState({ manuscript: "", materials: "", axis: "", design: "", review: "" });
   const [busy, setBusy] = useState(false);

@@ -96,7 +96,7 @@ test("숏폼: 주제 → 대본 → 제작 → 최종 검토 → 내보내기; t
   let project = { id: "p", yp: applyGateAction({ yp: meta.yp }, "topic", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
   project = { ...project, yp: applyGateAction(project, "topic", "ok", { actor: "ceo", now: "2026-10-21T02:00:00Z" }) };
   assert.equal(project.yp.stage, "draft");
-  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project), gateName("draft", "short"), gateName("draft", "anim")], ["대본 쓰기", 1, 5, "대본", "대본 확정", "기획안 컨펌"]);
+  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project), gateName("draft", "short"), gateName("draft", "anim"), gateName("topic", "short"), gateName("topic", "anim")], ["대본 쓰기", 1, 5, "대본", "대본 확정", "기획안 컨펌", "주제 확정", "주제 컨펌"]);
   project = { ...project, yp: applyGateAction(project, "draft", "confirm", { actor: "pd", now: "2026-10-21T03:00:00Z" }) };
   assert.equal(project.yp.stage, "make");
   assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project)], ["숏폼 만들기", 2, 5, "제작"]);

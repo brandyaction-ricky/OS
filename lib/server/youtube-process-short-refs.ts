@@ -3,10 +3,9 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { editableFields } from "@/lib/youtube-process/confirm";
 import { packagingPick } from "@/lib/youtube-process/discover";
 import { projectName } from "@/lib/youtube-process/project";
-import { refHostOk, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { refHostOk, shortResearchOpen, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { RequestActor } from "./auth";
 import { packagingReferences } from "./youtube-discover";
 import { getYoutubeProject, readFailed } from "./youtube-process";
@@ -37,11 +36,10 @@ async function latestJob(service: Service, projectId: string) {
   return (data?.[0] ?? null) as OsRecord | null;
 }
 
-/** [레퍼런스 받기] on the 대본 step: the market search for the 검색어 (Shorts first) plus the PD's links, frozen into one render PC job. */
+/** [찾기] on the 주제 (or 대본) step: the market search for the 검색어 (Shorts first) plus the PD's links, frozen into one render PC job. */
 export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const project = await getYoutubeProject(actor, projectId);
-  if (project.yp.topic.type !== "short" || project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")
-    throw new ApiError(409, "STAGE_LOCKED", "대본 단계에서 참고 영상을 찾을 수 있어요.");
+  if (!shortResearchOpen(project)) throw new ApiError(409, "STAGE_LOCKED", "숏폼의 주제 · 대본 단계에서 참고 영상을 찾을 수 있어요.");
   const script = (await readStages(actor.supabase, project)).shortScript.data;
   const query = script.query.trim() || projectName(project);
   const market = packagingPick(await packagingReferences(query), true).filter(ref => ref.short).slice(0, MARKET_TAKE);

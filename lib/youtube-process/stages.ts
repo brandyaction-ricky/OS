@@ -100,7 +100,7 @@ export function columnSignature(item: Pick<YpColumnItem, "html" | "fills">) {
 }
 /** The columns of one longform: as many as the PD asked for, each aimed at its own search question. */
 export interface YpColumn { items: YpColumnItem[] }
-// 숏폼 대본 정본 (owner direction 2026-10-28): 입구 셋 · 길 하나 — 주제 확정(PD) → 레퍼런스 → 공식 뽑기 → 우리 말로 대본 → 대본 확정(PD).
+// 숏폼 대본 정본 (owner direction 2026-10-28): 입구 셋 · 길 하나 — 초안 주제(키워드 · 링크) → 레퍼런스 → 공식 뽑기 → 주제 확정(PD) → 우리 말로 대본 → 대본 확정(PD).
 /** 입구 A on a longform: the staff AI's 숏폼 주제 후보 from the 원고 (통찰 한 줄 + 장면 하나 + 어느 문단), and the 숏폼 made from each. */
 export interface YpShortTopic { id: string; insight: string; scene: string; paragraph: string; why: string; made?: { projectId: string; at: string; by: string } }
 export interface YpShortTopics { items: YpShortTopic[]; ai?: { by: string; model: string; at: string; jobId: string } }
@@ -114,12 +114,16 @@ export interface YpShortFormula { name: string; head: string; cover: string; hoo
 /** A formula as the 공식 창고 keeps it: who added it and how many 대본 used it. */
 export interface YpStoredFormula extends YpShortFormula { at: string; by: string; uses: number }
 export interface YpShortHook { kind: "반전형" | "직격형"; text: string }
+/** A 주제 후보 the staff AI drew from the references' formulas (owner 2026-10-28: 주제는 참고 영상 · 공식을 본 뒤에 정한다). */
+export interface YpShortTopicPick { title: string; insight: string; formula: string; why: string }
 /** A 숏폼's 대본 step: the search and references behind it, the formula used and the script (한 줄 = 한 문장 = 화면 한 장). */
 export interface YpShortScript {
   query: string; refs: YpShortRef[]; text: string; hooks: YpShortHook[]; insight: string; formula: string;
   /** The big words on this 숏폼's first screen (헤드 카피), over the first three seconds. */
   headCopy: string;
   ai?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; notes: string; text: string };
+  /** 주제 step (owner 2026-10-28): the formulas the staff AI drew from the references and the 주제 후보 made from them; the PD fixes one. */
+  research?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; topics: YpShortTopicPick[]; notes: string };
   /** The AI's script when the PD had already written: shown beside the fields, applied only on [이 초안으로 바꾸기]. */
   aiDraft?: Pick<YpShortScript, "text" | "hooks" | "insight" | "formula" | "headCopy">;
   /** Copied when the 대본 확정 is made: what 제작 starts from (headCopy since 2026-10-28; older ones read the step's headCopy). */

@@ -1,7 +1,9 @@
 // 숏폼 대본 정본 (03_Content/숏폼, owner direction 2026-10-28: "가장 중요한 게 주제 선정과 스크립트 확정"): §3 길이 · §5 첫 문장 ·
 // §6 말투 · §10 기계 검사 on a 숏폼 대본. The OS counts these when the staff AI submits and while the PD edits; its count wins.
 import { CHARS_PER_MINUTE, overlapWith } from "../youtube-script-check.ts";
-import type { YpShortScript } from "./stages.ts";
+import { editableFields } from "./confirm.ts";
+import { topicEditable, type YpProject } from "./project.ts";
+import type { YpShortScript, YpShortTopicPick } from "./stages.ts";
 
 export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3, head: 20 } as const;
 const MARK = /^\s*\[(관계|사람)\]\s*/;
@@ -51,6 +53,25 @@ export function headCopyProblem(head: string) {
   const text = head.trim();
   return !text ? "첫 화면 헤드 카피를 써 주세요" : text.length > SHORT_SCRIPT.head ? `헤드 카피가 ${text.length}자예요 — ${SHORT_SCRIPT.head}자 이하로 써요` : "";
 }
+// ── 주제 (owner direction 2026-10-28): 숏폼 starts from a 초안 주제 (keywords or a link); the references and their formulas come first and
+// the PD fixes the topic from them, so 참고 영상 · 공식 are worked on from 주제 until the 대본 is confirmed. ──
+export const SHORT_TOPIC_MAX = 40;
+export function shortResearchOpen(project: Pick<YpProject, "yp">) {
+  if (project.yp.topic.type !== "short") return false;
+  return project.yp.stage === "topic" ? topicEditable(project) : project.yp.stage === "draft" && editableFields(project, "draft") === "all";
+}
+/** The staff AI's 주제 후보: three, each one line and each on a formula it drew now or one in the 공식 창고. */
+export function shortTopicPickProblems(topics: YpShortTopicPick[], formulas: string[]) {
+  const problems: string[] = [];
+  if (topics.length !== 3) problems.push(`주제 후보는 3개예요 — 지금 ${topics.length}개`);
+  topics.forEach((topic, index) => {
+    if (/\n/.test(topic.title) || topic.title.length > SHORT_TOPIC_MAX) problems.push(`${index + 1}번째 주제는 한 줄 ${SHORT_TOPIC_MAX}자 이하예요 — 지금 ${topic.title.length}자`);
+    if (!formulas.includes(topic.formula)) problems.push(`${index + 1}번째 주제의 공식 「${topic.formula}」가 formulas에도 창고에도 없어요`);
+  });
+  if (new Set(topics.map(topic => topic.title)).size !== topics.length) problems.push("주제 후보끼리 같아요");
+  return problems;
+}
+
 /** The one-line reason the 대본 확정 cannot be made yet, or "" (the canon overlap is counted when the AI submits). */
 export function shortScriptMissing(script: YpShortScript, fetched?: Pick<YpShortRefFetch, "items"> | null) {
   if (!script.insight.trim()) return "통찰 한 줄을 써 주세요";

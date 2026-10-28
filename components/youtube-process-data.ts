@@ -186,6 +186,7 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
   demoProject("demo-p10", "[예시] 일이 안 맞을 때 먼저 볼 4칸 (릴스)", "short", "upload", 1),
   demoProject("demo-p11", "[예시] 만나고 싶은데 쉬고도 싶다면", "short", "make", 0),
+  demoProject("demo-p12", "[예시] 주말 약속 피곤함", "short", "topic", 0),
 ];
 // 숏폼 made from a confirmed 대본 (2026-10-28) in the demo; demo-p9 keeps the older scene editor (made before the 대본 step).
 const CONFIRMED_SHORT_DEMOS = ["demo-p10", "demo-p11"];
@@ -226,6 +227,15 @@ function demoFilledStages(project: YpProject): YpStagesView {
     const text = "[예시] 친구는 만나고 싶은데 약속은 부담돼요.\n주말을 전부 약속으로 채우면 지치거든요.\n[관계] 만나고 싶은 마음과 쉬고 싶은 마음이 같이 있는 거예요.\n그래서 토요일 오후만 만나고 저녁엔 먼저 들어가요.";
     Object.assign(shortScript, { headCopy: "[예시] 만나고 싶은데 쉬고 싶다", text, confirmed: { at: daysAgo(1), text, headCopy: "[예시] 만나고 싶은데 쉬고 싶다" } });
   }
+  // A 숏폼 at 주제 (2026-10-28) starts from a 초안 주제: its 참고 영상 are found and the staff AI's formulas and 주제 후보 wait for the PD.
+  if (project.id === "demo-p12") shortScript.research = { by: "리키", model: "예시", at: daysAgo(0), jobId: "demo-job", picked: [], notes: "[예시] 두 영상 모두 첫 화면 큰 글자가 조건과 감정을 부딪치게 했어요.",
+    formulas: [
+      { name: "[예시] 좋은 조건, 반대 감정", head: "[좋은 조건]인데 [반대 감정]", cover: "[숫자] [조건]인데 [감정]", hook: "[좋은 조건]인데 [반대 감정]이라는 사연이 왔어요", flow: "사연 → 다들 하는 오해 → 진짜 이유 → 작은 해결 (2:2:4:2)", why: "좋은 조건과 반대 감정이 부딪혀 멈춰요", refs: [] },
+      { name: "[예시] 체력 문제가 아니에요", head: "[흔한 장면]하는 진짜 이유", cover: "[장면]하는 이유", hook: "[흔한 장면]하면 끝이죠", flow: "장면 → 오해 부정 → 진짜 이유 → 바꾼 하루", why: "누구나 겪는 장면에서 오해를 뒤집어요", refs: [] }],
+    topics: [
+      { title: "[예시] 약속은 잡았는데 가기 싫을 때", insight: "만나고 싶은 마음과 쉬고 싶은 마음은 같이 있어도 돼요", formula: "[예시] 좋은 조건, 반대 감정", why: "약속을 잡고 나서 취소하고 싶어지는 날" },
+      { title: "[예시] 주말 약속 뒤에 더 지치는 진짜 이유", insight: "지치는 건 사람 때문이 아니라 쉴 틈 없는 일정 때문이에요", formula: "[예시] 체력 문제가 아니에요", why: "주말이 끝나면 오히려 더 피곤한 장면" },
+      { title: "[예시] 친구는 좋은데 약속은 부담될 때", insight: "부담은 친구가 아니라 약속의 개수에서 와요", formula: "[예시] 좋은 조건, 반대 감정", why: "좋은 사람과의 약속도 부담스러운 마음" }] };
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
     shortScript: { id: null, version: 0, data: shortScript } };
@@ -237,7 +247,16 @@ const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
-const demoRefs = new Map<string, YpShortRefFetch>();
+/** The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images). */
+function exampleRefs(id: string, query: string): YpShortRefFetch {
+  const now = new Date().toISOString();
+  const example = (n: number, title: string, views: number, transcript: string) => ({ url: `https://www.youtube.com/shorts/demo-${n}`, title, channel: "예시 채널", views, ratio: 12, source: "market" as const,
+    result: { ok: true, durationSeconds: 40, transcript, thumb: false, sheet: false, error: "" }, thumbUrl: null, sheetUrl: null });
+  return { id: `demo-refs-${id}`, status: "done", query, requestedAt: now, doneAt: now, error: null, items: [
+    example(1, "[예시] 연봉 7천인데 그만두고 싶어요", 1_250_000, "0.0 [예시] 연봉 7천인데 그만두고 싶다는 사연이 왔어요\n2.6 조건은 좋은데 매일 지옥 같대요"),
+    example(2, "[예시] 퇴근하면 아무것도 못 하는 이유", 640_000, "0.0 [예시] 퇴근하고 소파에 누우면 끝이죠\n2.1 체력 문제가 아니에요")] };
+}
+const demoRefs = new Map<string, YpShortRefFetch>([["demo-p12", exampleRefs("demo-p12", "주말 약속 피곤함")]]);
 const demoError = (status: number, code: string, message: string) => new ApiRequestError(message, code, status);
 const gateApply = (...args: Parameters<typeof applyGateAction>) => {
   try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
@@ -471,15 +490,9 @@ function demoClient(): YpClient {
     clipRenders: async () => ({}),
     clips: async () => [],
     shortVideoUrl: async () => "",
-    // The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images).
     shortRefs: async id => structuredClone(demoRefs.get(id) ?? null),
     fetchShortRefs: async id => {
-      const now = new Date().toISOString();
-      const example = (n: number, title: string, views: number, transcript: string) => ({ url: `https://www.youtube.com/shorts/demo-${n}`, title, channel: "예시 채널", views, ratio: 12, source: "market" as const,
-        result: { ok: true, durationSeconds: 40, transcript, thumb: false, sheet: false, error: "" }, thumbUrl: null, sheetUrl: null });
-      const refs: YpShortRefFetch = { id: `demo-refs-${id}`, status: "done", query: find(id).title, requestedAt: now, doneAt: now, error: null, items: [
-        example(1, "[예시] 연봉 7천인데 그만두고 싶어요", 1_250_000, "0.0 [예시] 연봉 7천인데 그만두고 싶다는 사연이 왔어요\n2.6 조건은 좋은데 매일 지옥 같대요"),
-        example(2, "[예시] 퇴근하면 아무것도 못 하는 이유", 640_000, "0.0 [예시] 퇴근하고 소파에 누우면 끝이죠\n2.1 체력 문제가 아니에요")] };
+      const refs = exampleRefs(id, find(id).title);
       demoRefs.set(id, refs);
       return structuredClone(refs);
     },
