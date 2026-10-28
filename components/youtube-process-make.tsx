@@ -50,7 +50,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const short = kind === "short";
   // 숏폼 (2026-10-28): one made from a confirmed 대본 is made like a longform, by the vertical engine; older ones keep the scene editor.
   const shortScript = bundle?.stages.shortScript.data.confirmed;
-  const auto = anim || Boolean(short && shortScript);
+  // A 숏폼 goes to the automatic panel only with a confirmed 대본 text; one made in the older scene editor keeps it (2026-10-28 review).
+  const auto = anim || Boolean(short && shortScript?.text.trim());
 
   const save = async (patch: Record<string, unknown>, label: string) => {
     if (!page.client || !project || !make) return false;

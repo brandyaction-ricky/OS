@@ -373,9 +373,13 @@ export async function processShortRefs() {
       const base = path.join(dir, `r${item.index}`);
       try {
         // The page's counts too (반응도 기준, 2026-10-28): yt-dlp prints NA for what a platform hides.
-        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--print", "after_move:%(title)s\t%(duration)s\t%(view_count)s\t%(like_count)s\t%(channel_follower_count)s", "--max-filesize", "150M",
+        // Only the allowed sites' own extractors (no generic or redirect pages), 2026-10-28 review.
+        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--use-extractors", "youtube.*,instagram.*,tiktok.*,facebook.*", "--print", "after_move:%(title)s\t%(duration)s\t%(view_count)s\t%(like_count)s\t%(channel_follower_count)s", "--max-filesize", "150M",
           "--match-filter", "duration <= 600", "-f", "worst[height>=360]/worst", "--write-thumbnail", "--convert-thumbnails", "jpg", "-o", `${base}.%(ext)s`, "--", item.url], { env });
-        const [title = "", duration = "", views = "", likes = "", followers = ""] = printed.trim().split("\n").pop().split("\t");
+        // From the right: a tab inside a title must not shift the counts.
+        const fields = printed.trim().split("\n").pop().split("\t");
+        const [duration = "", views = "", likes = "", followers = ""] = fields.splice(-4);
+        const title = fields.join(" ");
         const count = (value) => /^\d+$/.test(value) ? Number(value) : null;
         Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null, views: count(views), likes: count(likes), followers: count(followers) });
         const video = readdirSync(dir).map((name) => path.join(dir, name)).find((file) => path.basename(file).startsWith(`r${item.index}.`) && !file.endsWith(".jpg"));

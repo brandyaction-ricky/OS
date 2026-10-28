@@ -116,12 +116,25 @@ export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
     views === null || !views || likes === null ? null : likes / views >= SHORT_REF_BAR.likeRate];
   return checks.includes(false) ? "below" : views === null || likes === null ? "unknown" : "pass";
 }
-/** A count as a page shows it — 「12.5만」, 「3,400」, 「1.2M」 — as a number; "" or anything else is null. */
+/**
+ * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.
+ * 천 adds inside a group and 만 · 억 close one (1천만 = 1,000 × 10,000).
+ */
 export function parseCount(text: string) {
-  const match = text.replace(/[,\s]/g, "").match(/^(\d+(?:\.\d+)?)(만|천|억|[kKmM])?$/);
-  if (!match) return null;
-  const unit = { 만: 1e4, 천: 1e3, 억: 1e8, k: 1e3, K: 1e3, m: 1e6, M: 1e6 }[match[2] ?? ""] ?? 1;
-  return Math.round(Number(match[1]) * unit);
+  const s = text.replace(/[,\s]/g, "").replace(/(회|명|개|뷰|views?)$/i, "");
+  const latin = s.match(/^(\d+(?:\.\d+)?)([kKmM])?$/);
+  if (latin) return Math.round(Number(latin[1]) * (latin[2] ? (/k/i.test(latin[2]) ? 1e3 : 1e6) : 1));
+  const tokens = s.match(/(\d+(?:\.\d+)?)?(억|만|천)|\d+(?:\.\d+)?$/g);
+  if (!s || !tokens || tokens.join("") !== s) return null;
+  let total = 0, group = 0;
+  for (const token of tokens) {
+    const [, digits, unit] = token.match(/^(\d+(?:\.\d+)?)?(억|만|천)?$/)!;
+    const n = digits === undefined ? 0 : Number(digits);
+    if (unit === "천") group += (digits === undefined ? 1 : n) * 1e3;
+    else if (unit) { total += (group + n || 1) * (unit === "억" ? 1e8 : 1e4); group = 0; }
+    else group += n;
+  }
+  return Math.round(total + group);
 }
 /** Where a reference is from, for its card. */
 export function refPlatform(url: string) {

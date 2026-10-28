@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
-import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/project";
+import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/youtube-process/project";
 import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
@@ -230,6 +230,8 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   const job = useStaffJob(page, "short-formula", useCallback(() => { setDirty(false); void reload(); }, [reload, setDirty]));
   const shortRefs = useShortRefs(page);
   const can = shortResearchOpen(project);
+  // Formulas and 주제 후보 belong to 주제: once the topic is fixed they are read-only here (the 대본 keeps the chosen formula).
+  const canPick = project.yp.stage === "topic" && topicEditable(project);
   // References the AI may use: fetched, and not known to be under the 반응도 기준.
   const found = Boolean(shortRefs.done?.items.some(item => (item.result?.ok || item.source === "pd") && refReaction(refCounts(item)) !== "below"));
   // What 주제 확정 checks is the saved formula, not one still being typed.
@@ -238,7 +240,12 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   if (!form) return loaded.error ? <div className="yp-note yp-warn" role="alert"><div>{loaded.error}</div></div> : null;
   const research = form.research;
   // The 초안 주제 stays as the search words, so [다시 찾기] still looks for what the references were found with.
-  const pick = (topic: YpShortTopicPick) => { edit({ formula: topic.formula, insight: topic.insight, ...(form.query.trim() ? {} : { query: projectName(project).slice(0, 60) }) }, true); onPick(topic.title); };
+  // The 대본 record first, then the title: the record's save may move the project's version, and the title save starts from that.
+  const pick = async (topic: YpShortTopicPick) => {
+    const patch = { formula: topic.formula, insight: topic.insight, ...(form.query.trim() ? {} : { query: projectName(project).slice(0, 60) }) };
+    edit(patch);
+    if (await save({ ...form, ...patch })) onPick(topic.title);
+  };
   const askAi = async () => { if (await saved()) setSend(true); };
   return <div onBlur={() => { if (dirty && can) void save(); }}>
     {loaded.conflict ? <div className="yp-note yp-warn" role="alert"><div>참고 영상 · 공식을 다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => { setDirty(false); void reload(); }}>새로 불러오기</button></div></div> : null}
@@ -247,10 +254,10 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
       <div className="yp-max720"><ShortRefs page={page} form={form} can={can} refs={shortRefs.refs} working={shortRefs.working} onFetch={() => void shortRefs.fetch(saved)} onEdit={edit} /></div>
     </YpSection>
     <YpSection n={5} title="공식 · 주제 후보" gq="먹힌 공식으로 어떤 주제를 할까요?" need
-      extra={can && research && !job.open ? <button type="button" className="yp-btn yp-sm" onClick={() => void askAi()}><Sparkles size={14} /> 내 AI로 다시 뽑기</button> : null}>
+      extra={canPick && research && !job.open ? <button type="button" className="yp-btn yp-sm" onClick={() => void askAi()}><Sparkles size={14} /> 내 AI로 다시 뽑기</button> : null}>
       <div className="yp-max720">
-        {can && (job.open || job.status?.job?.status === "blocked") ? <JobLine job={job} onRetry={() => void askAi()} />
-          : can && !research ? <div className="yp-ways" style={{ marginBottom: 0 }}>
+        {canPick && (job.open || job.status?.job?.status === "blocked") ? <JobLine job={job} onRetry={() => void askAi()} />
+          : canPick && !research ? <div className="yp-ways" style={{ marginBottom: 0 }}>
             <button type="button" className="yp-way yp-rec" disabled={!found} onClick={() => void askAi()}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b>
               <span>{found ? "참고 영상에서 공식을 뽑고, 그 공식으로 주제 후보 3개를 내 줘요" : "먼저 4에서 참고 영상을 찾아요"}</span></button></div> : null}
         {research ? <ul className="yp-hist">{research.topics.map(topic => {
@@ -258,13 +265,14 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
           return <li key={topic.title} style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
             <span style={{ flex: "1 1 260px", minWidth: 0 }}><b>{topic.title}</b><br /><span style={{ fontSize: 13 }}>{topic.insight}</span><br />
               <span className="yp-muted" style={{ fontSize: 12 }}>공식: {topic.formula}{topic.why ? ` · ${topic.why}` : ""}</span></span>
-            {chosen ? <span className="yp-tag yp-ok">고른 주제</span> : can ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => pick(topic)}>이 주제로</button> : null}
+            {/* Not while a new run is open: a pick changes the 초안 주제 the run was asked with, and the run would be closed. */}
+            {chosen ? <span className="yp-tag yp-ok">고른 주제</span> : canPick && !job.open ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => void pick(topic)}>이 주제로</button> : null}
           </li>;
         })}</ul> : null}
         {research?.formulas.length ? <details className="yp-more-fields"><summary>뽑은 공식 {research.formulas.length}개</summary>
           <ol style={{ margin: "8px 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>{research.formulas.map(item => <li key={item.name} style={{ marginBottom: 6 }}><b>{item.name}</b><br />{formulaLines(item)}</li>)}</ol></details> : null}
         {research?.notes ? <details className="yp-more-fields"><summary>내 AI가 남긴 메모</summary><p style={{ whiteSpace: "pre-line", fontSize: 13 }}>{research.notes}</p></details> : null}
-        <FormulaBox page={page} form={form} can={can} drawn={false} label="공식 창고에서 직접 고르기" onChange={value => edit({ formula: value })} />
+        <FormulaBox page={page} form={form} can={canPick} drawn={false} label="공식 창고에서 직접 고르기" onChange={value => edit({ formula: value })} />
       </div>
     </YpSection>
     <SendDialog page={page} task="short-formula" open={send} onClose={() => setSend(false)} job={job} />
@@ -307,6 +315,8 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
     if (form.refs.some(ref => ref.url === link.url.trim())) { page.setError("이미 넣은 영상이에요."); return; }
     if (form.refs.length >= 12) { page.setError("직접 넣는 링크는 12개까지예요."); return; }
     const counts = { views: parseCount(nums.views), likes: parseCount(nums.likes), followers: parseCount(nums.followers) };
+    const unread = (["views", "likes", "followers"] as const).filter(key => nums[key].trim() && counts[key] === null);
+    if (unread.length) { page.setError(`숫자를 읽지 못했어요: ${unread.map(key => nums[key]).join(", ")} — 12.5만, 3,400처럼 적어 주세요.`); return; }
     onEdit({ refs: [...form.refs, { url: link.url.trim(), title: link.title.trim(), script: link.script.trim(), ...counts }] }, true);
     setLink(blankRef); setNums({ views: "", likes: "", followers: "" }); setAdding(false);
   };
@@ -325,7 +335,7 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
       <input className="yp-in" style={{ flex: 1, minWidth: 0 }} value={form.query} maxLength={60} placeholder={projectName(project)} onChange={event => onEdit({ query: event.target.value })} aria-label="참고 영상 검색어" />
       <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button></form> : null}
     {working ? <p className="yp-hint" role="status">참고 영상을 가져오는 중이에요. 영상이 많으면 5~10분 걸려요.</p>
-      : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : null}
+      : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : refs?.error ? <p className="yp-errline">{refs.error}</p> : null}
     <p className="yp-hint" style={{ margin: "6px 0 0" }}>반응도 기준: {SHORT_REF_BAR_TEXT}</p>
     {items.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 }}>{items.map(item => {
       const shown = open === item.url;

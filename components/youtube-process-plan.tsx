@@ -50,7 +50,14 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   const { accessToken, demo, profile } = useSession();
   const canConfirm = useYoutubeCanConfirm(true, accessToken, demo, profile?.role === "admin");
   const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
-  const [project, setProject] = useState<YpProject | null>(null);
+  const [project, setProjectState] = useState<YpProject | null>(null);
+  // The newest project the server returned: saves start from it, and an older answer arriving late (a 숏폼 참고 영상 · 공식 save that
+  // touched the project, a blur save finishing after 주제 확정) never sets the screen back (2026-10-28 review).
+  const latest = useRef<YpProject | null>(null);
+  const setProject = useCallback((next: YpProject) => {
+    if (latest.current?.id === next.id && next.version < latest.current.version) return;
+    latest.current = next; setProjectState(next);
+  }, []);
   const [projects, setProjects] = useState<YpProject[]>([]);
   const [members, setMembers] = useState<YpMember[]>([]);
   const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], assigneeId: null });
@@ -101,7 +108,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     loadedId.current = found.id;
     setProject(found); setForm(formOf(found)); setDirty(false); setLoading(false);
     try { localStorage.setItem(LAST_KEY, found.id); } catch { /* convenience only */ }
-  }, [client, projectParam, profile?.id, params]);
+  }, [client, projectParam, profile?.id, params, setProject]);
   useEffect(() => { load().catch(reason => { setError(errorMessage(reason)); setLoading(false); }); }, [load]);
 
   const editable = project ? topicEditable(project) : projectParam === "new";
@@ -117,7 +124,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     const key = JSON.stringify(input);
     // One save at a time: a click during a save of the same content uses its result; newer content (a second reference added
     // meanwhile) waits and saves on top of it with its version — it used to go out with the old one and read as an error (로건 피드백 A-2).
-    let base = project;
+    let base = latest.current?.id === project?.id ? latest.current : project;
     while (saving.current) {
       if (savingKey.current === key) return saving.current;
       base = (await saving.current) ?? base;
@@ -142,7 +149,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     })();
     saving.current = run; savingKey.current = key;
     return run;
-  }, [client, form, project, router]);
+  }, [client, form, project, router, setProject]);
 
   const saveIfDirty = () => { if (dirty && editable) void save(); };
   const open = (key: "title" | "kind" | "target" | "refs" | "note") => project ? topicFieldEditable(project, key) : projectParam === "new";
@@ -152,7 +159,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     if (!client) return;
     setBusy(true); setError(""); setCreated([]);
     try {
-      const base = saving.current ? await saving.current : dirty || !project ? await save() : project;
+      const base = saving.current ? await saving.current : dirty || !project ? await save() : latest.current?.id === project.id ? latest.current : project;
       if (!base) return;
       // S11-5: after 수정 요청, re-requesting without changing anything needs a one-line reason.
       if (action === "request" && !reply && base.yp.gates.topic.state === "changes" && !editedSinceDecision(base, "topic")) { setReplyOpen(true); return; }

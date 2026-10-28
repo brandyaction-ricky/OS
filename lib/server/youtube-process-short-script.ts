@@ -71,7 +71,10 @@ async function referenceInputs(service: Service, projectId: string, draft: YpSho
   // 반응도 기준 (owner 2026-10-28): a reference known to be under the bar is not handed on.
   const kept = (fetched?.items ?? []).filter(item => item.result?.ok && refReaction(refCounts(item)) !== "below").map(item => ({ url: item.url, title: item.title, channel: item.channel,
     reaction: refReaction(refCounts(item)), counts: refCountsLine(refCounts(item)), thumbnail: item.thumbUrl ?? null, firstSeconds: item.sheetUrl ?? null, transcript: item.result?.transcript ?? "" }));
-  return { fetched: kept.length ? kept : null, references: draft.refs,
+  // A link the PD put in counts with what the render PC read off its page, else the numbers typed with it.
+  const read = new Map((fetched?.items ?? []).map(item => [item.url, refCounts(item)]));
+  const references = draft.refs.filter(ref => refReaction(read.get(ref.url) ?? { views: ref.views ?? null, followers: ref.followers ?? null, likes: ref.likes ?? null }) !== "below");
+  return { fetched: kept.length ? kept : null, references,
     market: !kept.length && market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
       rows: market.refs.filter(ref => refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass").slice(0, 20)
         .map(ref => ({ title: ref.title, channel: ref.channel, counts: refCountsLine({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }), url: ref.url })) } : null, warehouse };
@@ -233,7 +236,7 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
   const draft = shortScript.data;
   const refs = await referenceInputs(service, project.id, draft, market);
   // 주제 확정 (owner 2026-10-28): the formula the PD fixed the topic with, from the 주제 step's run or the 공식 창고.
-  const chosen = [...(draft.research?.formulas ?? []), ...(draft.ai?.formulas ?? []), ...refs.warehouse].find(item => draft.formula.trim() && item.name === draft.formula.trim());
+  const chosen = draft.formula.trim() ? [...(draft.research?.formulas ?? []), ...(draft.ai?.formulas ?? []), ...await readShortFormulas(service)].find(item => item.name === draft.formula.trim()) : undefined;
   const inputs = {
     topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note,
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),

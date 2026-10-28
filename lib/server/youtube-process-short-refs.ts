@@ -45,7 +45,8 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const query = script.query.trim() || projectName(project);
   // 반응도 기준 (owner 2026-10-28): only the Shorts over the bar, the most watched for their channel's size first. Two searches (the most
   // relevant and the most watched, ~204 quota units) find more of them than one.
-  const found = (await Promise.all([packagingReferences(query, true), packagingReferences(query, true, "viewCount")])).flat()
+  const searches = await Promise.allSettled([packagingReferences(query, true), packagingReferences(query, true, "viewCount")]);
+  const found = searches.flatMap(result => result.status === "fulfilled" ? result.value : [])
     .filter((ref, index, list) => list.findIndex(other => other.id === ref.id) === index);
   const market = packagingPick(found, true).filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass")
     .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.views - a.views).slice(0, MARKET_TAKE);
@@ -53,6 +54,9 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
     followers: ref.followers ?? null, likes: ref.likes ?? null, source: "pd" as const }));
   const items = [...own, ...market.map(ref => ({ url: ref.url, title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, followers: ref.subscribers, likes: ref.likes ?? null, source: "market" as const }))]
     .filter((item, index, list) => list.findIndex(other => other.url === item.url) === index).slice(0, MAX_REFS).map(item => ({ ...item, result: null }));
+  // Both searches failed (quota, key, timeout) and there is no link of the PD's: say why.
+  const failed = searches.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (!items.length && failed && searches.every(result => result.status === "rejected")) throw failed.reason;
   if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘은 영상이 없어요. 검색어를 넓히거나 링크를 직접 넣어 주세요.`);
   const service = createServiceSupabase();
   const before = await latestJob(service, project.id);
@@ -80,6 +84,10 @@ export async function readShortRefs(actor: RequestActor, projectId: string) {
   const project = await getYoutubeProject(actor, projectId);
   const service = createServiceSupabase();
   const row = await latestJob(service, project.id);
+  if (row && ["blocked", "cancelled"].includes(row.status)) {
+    const done = await doneShortRefs(service, project.id, 3600);
+    if (done) return { ...done, error: "마지막 찾기가 끝나지 못해 이전 결과를 보여 줘요. 다시 찾아 주세요." };
+  }
   return row ? shortRefsView(service, row, 3600) : null;
 }
 /** The finished references a 대본 job reads (the newest done job), or null. */

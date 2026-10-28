@@ -98,6 +98,8 @@ test("a reference passes the 반응도 기준 only over all three; a known low c
 
 test("Reels · TikTok counts as pages show them, and where each reference is from", () => {
   assert.deepEqual(["12.5만", "3,400", "1.2M", "7천", "980", "", "많음"].map(parseCount), [125_000, 3_400, 1_200_000, 7_000, 980, null, null]);
+  // As people type them off a page (2026-10-28 review): units after the number, groups, 천 inside 만.
+  assert.deepEqual(["12만회", "10,000회", "1천만", "12만5천", "3억2천만", "1만2345", "2.3K", "12만 명"].map(parseCount), [120_000, 10_000, 10_000_000, 125_000, 320_000_000, 12_345, 2_300, 120_000]);
   assert.deepEqual(["https://www.tiktok.com/@a/video/1", "https://www.instagram.com/reel/x/", "https://www.facebook.com/ads/library/?id=1", "https://youtu.be/a", "https://www.youtube.com/shorts/a"].map(refPlatform),
     ["틱톡", "릴스", "메타 광고", "유튜브", "유튜브"]);
 });
