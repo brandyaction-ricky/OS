@@ -4,7 +4,7 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { safeSecretMatch } from "@/lib/server/auth";
 import { buildYoutubeRenderBrief, claimYoutubeRender, completeYoutubeRender, failYoutubeRender } from "@/lib/server/youtube-render-run";
-import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords } from "@/lib/server/myin-run";
+import { MYIN_VOICE_PARTS, claimMyinBreath, claimMyinClips, claimMyinFinal, claimMyinPrep, claimMyinWords, completeMyinBreath, completeMyinClips, completeMyinFinal, completeMyinPrep, completeMyinVoiceBackfill, completeMyinWords, failMyinPrep, failMyinStage, failMyinWords, myinVoiceBackfill } from "@/lib/server/myin-run";
 import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-render-pc";
 import { engineReadySchema, engineUploadSchema, engineUploadUrls, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -35,6 +35,10 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
+  // 지난 영상 음성 (2026-10-28): stage-1 voice.wav for runs made before the render PC kept it in the OS (tools/myin-voice-backfill.mjs).
+  z.object({ action: z.literal("myin_voice_backfill"), runId: z.string().uuid().optional() }).strict(),
+  z.object({ action: z.literal("myin_voice_backfill_complete"), runId: z.string().uuid(), parts: z.number().int().min(1).max(MYIN_VOICE_PARTS),
+    bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   // Stage 3: approved photos and music, CTA voice, Logan's preview check.
   z.object({ action: z.literal("myin_prep_claim") }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
@@ -76,6 +80,8 @@ export async function POST(request: Request) {
       : input.action === "myin_claim" ? await claimMyinWords()
       : input.action === "myin_complete" ? await completeMyinWords(input)
       : input.action === "myin_fail" ? await failMyinWords(input)
+      : input.action === "myin_voice_backfill" ? await myinVoiceBackfill(input)
+      : input.action === "myin_voice_backfill_complete" ? await completeMyinVoiceBackfill(input)
       : input.action === "myin_prep_claim" ? await claimMyinPrep()
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
