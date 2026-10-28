@@ -33,7 +33,7 @@ export const uploadOrigin = (request: Request) => {
 
 async function uploadReady(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검수 컨펌 OK 뒤에 올릴 수 있어요.");
+  if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "REVIEW_CONFIRM_REQUIRED", "최종 검토 컨펌 OK 뒤에 올릴 수 있어요.");
   const stages = await readStages(actor.supabase, project);
   const finals = await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type);
   // A 숏폼's 1:1 or 4:5 feed ad never goes up as a Short; the latest 9:16 final does.

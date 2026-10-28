@@ -62,7 +62,7 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
 
   return <section className="panel writing-workflow" aria-label="내 AI로 원고 쓰기">
     <header className="panel-header"><div><span className="eyebrow">원고 공정 정본대로</span><h2>내 AI로 원고 쓰기</h2>
-      <p>내 AI(Claude 또는 Codex)가 정본·기획·자료를 직접 읽고 축 → 설계 → 초안 → 검수를 돌려 원고를 제출합니다. OS가 형식을 세고, 직원이 읽고 한 번 확인하면 대표 최종 승인으로 넘어갑니다.</p></div></header>
+      <p>내 AI(Claude 또는 Codex)가 정본·기획·자료를 직접 읽고 축 → 설계 → 초안 → 검토를 돌려 원고를 제출합니다. OS가 형식을 세고, 직원이 읽고 한 번 확인하면 대표 최종 승인으로 넘어갑니다.</p></div></header>
     {!ready ? <p className="yt-note">{writing.steps[0]?.blocker || "기획 승인과 제목·썸네일 채택이 먼저 필요합니다."}</p> : (() => {
       const send = <>
         <label className="yt-actions">목표 길이 <input type="number" min={1} max={60} value={minutes} onChange={(event) => setMinutes(Number(event.target.value) || 10)} style={{ width: 72 }} /> 분 (공백 포함 약 {minutes * 600}자)</label>
@@ -76,16 +76,16 @@ export function YoutubeScriptStaffAi({ sourceId, state, onChange }: { sourceId: 
     })()}
     {byStaff ? <div className="yt-run">
       <div className="yt-run-head"><span className="status-pill" data-status={confirmed ? "approved" : "review"}>{confirmed ? "직원 확인 완료" : "직원 확인 필요"}</span>
-        <small>{script.metadata.generatedBy === "staff_ai" ? `직원 AI · ${String(script.metadata.model ?? "")}` : "직원 직접 입력"}{submission.canonBundle ? ` · 정본 묶음 ${submission.canonBundle}` : ""}{submission.reReviews ? ` · 재검수 ${submission.reReviews}회` : ""}</small></div>
-      {submission.osCheck ? <small>OS 형식 검사(관문 1) 통과 · {submission.osCheck.chars.toLocaleString()}자 · 문단 {submission.osCheck.paragraphs}개 · 섹션 {submission.osCheck.sections}개</small> : null}
+        <small>{script.metadata.generatedBy === "staff_ai" ? `직원 AI · ${String(script.metadata.model ?? "")}` : "직원 직접 입력"}{submission.canonBundle ? ` · 정본 묶음 ${submission.canonBundle}` : ""}{submission.reReviews ? ` · 재검토 ${submission.reReviews}회` : ""}</small></div>
+      {submission.osCheck ? <small>OS 형식 검사 통과 · {submission.osCheck.chars.toLocaleString()}자 · 문단 {submission.osCheck.paragraphs}개 · 섹션 {submission.osCheck.sections}개</small> : null}
       {submission.suggestions?.length ? <details className="yt-details"><summary>정본 개선 제안 {submission.suggestions.length}개</summary><ul className="yt-list">{submission.suggestions.map((item) => <li key={item}>{item}</li>)}</ul></details> : null}
       {confirmed ? <p className="yt-note">다음: 대표 최종 승인 · <Link href={`/content/production?sourceId=${sourceId}`}>제작 허브에서 승인 요청 보기</Link></p>
         : <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void act("confirm", { action: "confirm", expectedVersion: source.version })}>{busy === "confirm" ? "확인 중…" : "읽고 확인했어요 (한 번에 확인)"}</button>
-          <small>아래 원고·자료·축·설계·검수 기록을 읽은 뒤 누릅니다. 원고를 고쳤으면 고친 문단은 관문 1·6을 다시 거칩니다.</small></div>}
+          <small>아래 원고·자료·축·설계·검토 기록을 읽은 뒤 누릅니다. 원고를 고쳤으면 고친 문단은 검사 1·6단계를 다시 거칩니다.</small></div>}
     </div> : null}
     {ready ? <details className="yt-details"><summary>내 AI와 대화로 직접 쓴 원고 붙여 넣기</summary>
       <form onSubmit={(event) => { event.preventDefault(); void act("paste", { action: "submit", expectedVersion: source.version, targetMinutes: minutes, bundle: paste }).then((ok) => { if (ok) setPaste(EMPTY); }); }}>
-        {([["manuscript", "원고 (§8 형식: # 제목, 머리 블록, ## 섹션, 문단)", 12], ["materials", "자료 표 (찾아본 곳 · 쓴 재료와 출처 · 뺀 후보)", 4], ["axis", "축 (채택 축 · 축 채점 · 중심 인물)", 4], ["design", "설계표", 6], ["review", "검수 기록 (관문별 결과 · 틀렸을 만한 것 3개 · 재검수 이력)", 5]] as const).map(([key, label, rows]) =>
+        {([["manuscript", "원고 (§8 형식: # 제목, 머리 블록, ## 섹션, 문단)", 12], ["materials", "자료 표 (찾아본 곳 · 쓴 재료와 출처 · 뺀 후보)", 4], ["axis", "축 (채택 축 · 축 채점 · 중심 인물)", 4], ["design", "설계표", 6], ["review", "검토 기록 (단계별 결과 · 틀렸을 만한 것 3개 · 재검토 이력)", 5]] as const).map(([key, label, rows]) =>
           <label key={key}>{label}<textarea rows={rows} value={paste[key]} onChange={(event) => setPaste((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
         <label>정본 묶음 값 (선택)<input value={paste.canonBundle} onChange={(event) => setPaste((current) => ({ ...current, canonBundle: event.target.value }))} placeholder="예) v1.0 (2026-10-18)" /></label>
         <div className="yt-actions"><button type="submit" className="secondary-button" disabled={Boolean(busy) || !paste.manuscript.trim() || !paste.materials.trim() || !paste.axis.trim() || !paste.design.trim() || !paste.review.trim()}>{busy === "paste" ? "넣는 중…" : "원고 넣기"}</button>

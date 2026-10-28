@@ -254,6 +254,13 @@ export function engine() {
     h.update(`#${label}\n`);
     if (dir) walk(dir);
   }
+  // This worker's own files go into the staff bundle too (myin-engine-pack.sh copies tools/*.mjs · *.py and the ../lib catalog),
+  // so a release that changes only them still makes the render PC upload a new bundle and staff PCs take it (owner 2026-10-28).
+  const tools = path.dirname(fileURLToPath(import.meta.url));
+  h.update("#worker\n");
+  for (const name of readdirSync(tools).filter((name) => /\.(mjs|py)$/.test(name)).sort()) h.update(`${name}\0${createHash("sha256").update(readFileSync(path.join(tools, name))).digest("hex")}\n`);
+  const catalog = path.join(tools, "..", "lib", "shortform-diagram-catalog.json");
+  if (existsSync(catalog)) h.update(`lib/shortform-diagram-catalog.json\0${createHash("sha256").update(readFileSync(catalog)).digest("hex")}\n`);
   // The packages his code imports, not pip itself (a fresh venv's pip differs and draws nothing), and the Python minor version.
   // -s: packages under the user's home are not the engine's (a venv never sees them, a bare python3 would).
   const pip = spawnSync(myinPython, ["-s", "-c", "import sys, subprocess; print('%d.%d' % sys.version_info[:2]); sys.stdout.flush(); subprocess.run([sys.executable, '-s', '-m', 'pip', 'freeze'])"],

@@ -959,7 +959,7 @@ function AccountPanel({
                   </dd>
                   <dt>메뉴 권한</dt>
                   <dd>
-                    <Link href="/settings/access">권한·접근 키에서 관리 →</Link>
+                    <Link href="/settings/access">권한·연결 키에서 관리 →</Link>
                   </dd>
                 </dl>
                 {reset ? (

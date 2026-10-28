@@ -37,7 +37,7 @@ export function checkShortScript(text: string, against: { refs?: string[]; canon
     const find = overlapWith(source);
     for (const [index, line] of lines.entries()) { const hit = find(line.text); if (hit) { problems.push(`${name} 같은 구간 「${hit}」 (${index + 1}번째 줄) — 구조만 빌리고 문장은 새로 써요`); return; } }
   };
-  for (const ref of against.refs ?? []) copied(ref, "레퍼런스와");
+  for (const ref of against.refs ?? []) copied(ref, "참고 영상과");
   copied(against.canon ?? "", "정본과");
   return result();
 }

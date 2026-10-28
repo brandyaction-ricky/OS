@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   try {
     if (!canUseYoutubeAutomationPilot(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
     const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
-    if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "내 컴퓨터 렌더 키로만 쓸 수 있어요.");
+    if (actor.type !== "agent") throw new ApiError(403, "LOCAL_RENDER_KEY_REQUIRED", "「내 컴퓨터 연결」 키로만 쓸 수 있어요.");
     const input = inputSchema.parse(await parseJson(request, 8_000));
     if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim") await assertLocalEngine(input.engine);
     const result = input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)

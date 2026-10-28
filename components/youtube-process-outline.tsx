@@ -128,7 +128,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
         </YpSection>
         <YpSection n={2} title="원고" need extra={editable && !viewing && !ways ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button> : null}>
           <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
-            {voiceSec ? <span className="yp-tag" title="렌더 PC가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
+            {voiceSec ? <span className="yp-tag" title="영상 만드는 컴퓨터가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
             {estimate?.verdict ? <span className={estimate.verdict.ok ? "yp-ok" : "yp-bad"}>{estimate.verdict.ok ? "✓" : "⚠"} {estimate.verdict.text}</span> : null}</div>
           {aiOpen ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
           {form.versions.length ? <div className="yp-vstrip yp-vrel"><b style={{ fontSize: 12, color: "var(--muted)" }}>버전</b>
@@ -145,17 +145,17 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
               onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
-          {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사(관문 1)에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
+          {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
           {form.ai ? <details className="yp-card" open={notesOpen} onToggle={event => setNotesOpen((event.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
             <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>AI 작업 기록 보기</summary>
-            {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검수 기록", form.ai.review]] as const).map(([label, value]) =>
+            {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검토 기록", form.ai.review]] as const).map(([label, value]) =>
               <div key={label}><div className="yp-lbl">{label}</div><pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }}>{value}</pre></div>)}
               {form.ai.suggestions.length ? <><div className="yp-lbl">AI가 남긴 개선 제안</div><ul>{form.ai.suggestions.map(item => <li key={item}>{item}</li>)}</ul></> : null}</div> : null}
           </details> : null}
         </YpSection>
       </div>
-      <aside className="yp-rside"><section className="yp-card"><div className="yp-rtabs"><button type="button" className={tab === "flow" ? "yp-on" : ""} onClick={() => setTab("flow")}>영상 흐름</button><button type="button" className={tab === "refs" ? "yp-on" : ""} onClick={() => setTab("refs")}>레퍼런스</button></div>
+      <aside className="yp-rside"><section className="yp-card"><div className="yp-rtabs"><button type="button" className={tab === "flow" ? "yp-on" : ""} onClick={() => setTab("flow")}>영상 흐름</button><button type="button" className={tab === "refs" ? "yp-on" : ""} onClick={() => setTab("refs")}>참고 영상</button></div>
         <div className="yp-card-b">{tab === "flow" ? <>
           <div className="yp-muted" style={{ fontSize: 12, marginBottom: 6 }}>컨펌본 · 제목 A × 썸네일 A</div>
           <YtCard page={page} thumb={confirmed?.A?.thumb} title={confirmed?.A?.title ?? ""} />

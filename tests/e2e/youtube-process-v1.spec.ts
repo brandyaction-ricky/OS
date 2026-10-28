@@ -9,7 +9,7 @@ test.describe("유튜브 공정 v1 smoke", () => {
 
   test("the YouTube menu becomes the v1 pages with 대표 메뉴 on top, and existing screens still open", async ({ page }) => {
     await page.goto("/content/projects");
-    await expect(page.locator("#nav-content a.page-link")).toHaveText(["프로젝트", "기획", "제작", "최종 검수", "업로드", "쇼츠", "스케줄"]);
+    await expect(page.locator("#nav-content a.page-link")).toHaveText(["프로젝트", "기획", "제작", "최종 검토", "업로드", "쇼츠", "스케줄"]);
     await expect(page.locator("#nav-ceo a.page-link")).toHaveText(["컨펌"]);
     await page.getByRole("navigation", { name: "기존 화면" }).getByRole("link", { name: "3. 영상 제작" }).click();
     await expect(page).toHaveURL(/\/content\/video$/);
@@ -84,7 +84,7 @@ test.describe("유튜브 공정 v1 smoke", () => {
         ["projects", "/content/projects", "프로젝트"],
         ["plan", "/content/plan?project=demo-p1&view=topic", "기획"],
         ["make", "/content/make?project=demo", "제작"],
-        ["final-check", "/content/final-check?project=demo&tab=video", "최종 검수"],
+        ["final-check", "/content/final-check?project=demo&tab=video", "최종 검토"],
         ["upload", "/content/upload?project=demo", "업로드"],
         ["schedule", "/content/schedule?mode=month", "스케줄"],
         ["confirm", "/content/confirm?tab=wait", "컨펌"],

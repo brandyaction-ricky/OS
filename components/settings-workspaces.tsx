@@ -163,7 +163,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
       },
       {
         system: "Vercel",
-        purpose: "OS 웹·API·예약 작업",
+        purpose: "OS 웹·서버·예약 작업",
         owner: "작동 상태에서 지정",
         status: health?.checkedAt ? "ready" : "waiting",
         location: "Vercel 환경변수",
@@ -191,10 +191,10 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
       },
       {
         system: "Claude·Codex MCP",
-        purpose: "회사 지식 검색·개인 초안 생성·수정·휴지통",
+        purpose: "회사 지식 검색·개인 초안 만들기·수정·휴지통",
         owner: "작동 상태에서 지정",
         status: health?.agentMcp === "ready" ? "ready" : "waiting",
-        location: "설정 → 권한 → AI 접근 키",
+        location: "설정 → 권한·연결 키",
       },
       {
         system: "YouTube Data API",
@@ -374,7 +374,7 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
                     <div><h2>연차 운영 기준</h2><p>부여·신청·승인·차감은 실제 연차 기록 기준</p></div>
                     <Link className="panel-link" href="/organization/leave">연차에서 관리 <ArrowRight size={13} /></Link>
                   </div>
-                  <div className="company-list-row"><CheckCircle2 size={16} /><span><strong>관리자만 연차 부여·승인</strong><small>승인 시 잔여 일수를 원자적으로 차감</small></span><em>강제 적용</em></div>
+                  <div className="company-list-row"><CheckCircle2 size={16} /><span><strong>관리자만 연차 부여·승인</strong><small>승인하면 잔여 일수를 바로 차감</small></span><em>강제 적용</em></div>
                   <div className="company-list-row"><Users size={16} /><span><strong>계정 연결 전 구성원도 명부 표시</strong><small>정책·부여 일수 미입력은 “미등록”으로 구분</small></span><em>명부 기준</em></div>
                 </article>
               </section>
@@ -387,17 +387,17 @@ export function SettingsWorkspace({ page, embedded = false }: { page: Page; embe
               <section className="channel-hero panel">
                 <div className="connection-icon"><Bot /></div>
                 <div><span className="eyebrow">텔레그램</span><h2>@brandyOS_Bot</h2><p>회사 정본 질문, 프로젝트·업무 조회, 아이디어·후기·사진 캡처를 처리합니다.</p></div>
-                <em className={`status-pill status-${telegram?.configured ? "ready" : "waiting"}`}>{telegram?.configured ? "키 등록됨 · 모니터링에서 웹훅 확인" : "연결 대기"}</em>
+                <em className={`status-pill status-${telegram?.configured ? "ready" : "waiting"}`}>{telegram?.configured ? "키 등록됨 · 작동 상태에서 연결 확인" : "연결 대기"}</em>
               </section>
               <section className="studio-two">
                 <article className="panel company-block">
                   <div className="panel-header"><div><h2>지원 기능</h2><p>한 두뇌 · 여러 통로</p></div></div>
-                  {["회사 정본 검색", "프로젝트·업무·목표 조회", "#인박스 아이디어 저장", "/후기 상품후기 초안", "/썸네일기록 결정 로그", "/요약 주소 요약", "사진 글자 읽기"].map((item) => <div className="company-list-row" key={item}><CheckCircle2 size={15} /><strong>{item}</strong></div>)}
+                  {["회사 정본 검색", "프로젝트·업무·목표 조회", "#인박스 아이디어 저장", "/후기 상품후기 자동 작성", "/썸네일기록 결정 로그", "/요약 링크 내용 정리", "사진 글자 읽기"].map((item) => <div className="company-list-row" key={item}><CheckCircle2 size={15} /><strong>{item}</strong></div>)}
                 </article>
                 <article className="panel company-block">
                   <div className="panel-header"><div><h2>접근 승인</h2><p>미등록 사용자는 기본 차단</p></div></div>
                   <div className="channel-stat"><MessageSquareText /><span><strong>{telegram ? `${telegram.pendingCount ?? telegram.pendingUsers?.length ?? 0}명 승인 대기` : "관리자 확인 필요"}</strong><small>위의 접근 승인·수신 상태에서 확인</small></span></div>
-                  <div className="channel-stat"><KeyRound /><span><strong>허용 명단 + 관리자 승인</strong><small>토큰과 사용자 ID는 화면에 노출하지 않음</small></span></div>
+                  <div className="channel-stat"><KeyRound /><span><strong>허용 명단 + 관리자 승인</strong><small>연결 키와 사용자 번호는 화면에 보이지 않음</small></span></div>
                 </article>
               </section>
             </>

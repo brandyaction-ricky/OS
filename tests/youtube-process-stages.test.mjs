@@ -9,7 +9,7 @@ test("기획안 needs titles A · B, thumbnails A · B and the 영상 흐름; th
   const plan = emptyStage("plan", "anim");
   assert.equal(draftMissing(plan), "첫째 줄 제목(A)을 써 주세요");
   plan.titles[0].text = "A 제목"; plan.titles[1].text = "B 제목";
-  assert.equal(draftMissing(plan), "첫 번째 썸네일 시안(A)을 넣어 주세요");
+  assert.equal(draftMissing(plan), "첫 번째 썸네일 후보(A)를 넣어 주세요");
   plan.thumbs[0] = { id: "a", mode: "text", copy: "큰 글자" }; plan.thumbs[1] = { id: "b", mode: "img", path: "youtube/x/plan_thumb/y.png" };
   assert.equal(draftMissing(plan), "오프닝을 써 주세요");
   Object.assign(plan, { opening: "o", body: "b", closing: "c" });
@@ -64,7 +64,7 @@ test("제작 finishes with thumbnails A · B; 설명란 checks are advisory and 
   assert.equal(shortLinkProblem("buly.kr/abc"), "");
 });
 
-test("기획안 수정 요청 opens every field; 최종 검수 OK moves the project to 업로드", () => {
+test("기획안 수정 요청 opens every field; 최종 검토 OK moves the project to 업로드", () => {
   const meta = newProjectMeta({ type: "anim", target: "t", note: "", refs: [] }, "2026-10-20T00:00:00Z");
   let project = { yp: { ...meta.yp, stage: "draft", gates: { ...meta.yp.gates, topic: { state: "ok", round: 1 } } } };
   project = { yp: applyGateAction(project, "draft", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
@@ -87,11 +87,11 @@ test("내 영상 says what each video needs next in one sentence and one button"
   assert.equal(nextAction(project("done")).tone, "done");
 });
 
-test("숏폼: 주제 → 대본 → 제작 → 최종 검수 → 내보내기; the 주제 OK opens 대본, the 대본 확정 opens 제작, and each step says what to do", async () => {
+test("숏폼: 주제 → 대본 → 제작 → 최종 검토 → 내보내기; the 주제 OK opens 대본, the 대본 확정 opens 제작, and each step says what to do", async () => {
   const { flowOf, stageLabel } = await import("../lib/youtube-process/project.ts");
   const { nextAction } = await import("../lib/youtube-process/next.ts");
   const { gateName } = await import("../lib/youtube-process/confirm.ts");
-  assert.deepEqual(flowOf("short").map(step => step.name), ["주제", "대본", "제작", "최종 검수", "내보내기"]);
+  assert.deepEqual(flowOf("short").map(step => step.name), ["주제", "대본", "제작", "최종 검토", "내보내기"]);
   const meta = newProjectMeta({ type: "short", target: "t", note: "", refs: [] }, "2026-10-21T00:00:00Z");
   let project = { id: "p", yp: applyGateAction({ yp: meta.yp }, "topic", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
   project = { ...project, yp: applyGateAction(project, "topic", "ok", { actor: "ceo", now: "2026-10-21T02:00:00Z" }) };

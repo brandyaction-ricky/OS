@@ -29,7 +29,7 @@ test("every screen that calls a paid API or YouTube shows the cost tag", () => {
 
 test("paid popups say the model and the cost, not who pays", () => {
   const notice = readFileSync("components/cost-notice.tsx", "utf8");
-  assert.match(notice, /<dt>모델<\/dt>/);
+  assert.match(notice, /<dt>사용하는 AI<\/dt>/);
   assert.match(notice, /<dt>예상 비용<\/dt>/);
   for (const path of files("components")) {
     const source = readFileSync(path, "utf8");

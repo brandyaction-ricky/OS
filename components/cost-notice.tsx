@@ -11,7 +11,7 @@ export { minuteEstimate, tokenEstimate, voiceEstimate } from "@/lib/cost";
 // screen of the OS; free buttons (save, next, 컨펌 요청) stay plain. A paid API asks first, with the model and the estimate only.
 export type CostKind = "paid" | "ai" | "youtube";
 const KINDS: Record<CostKind, { label: string; title: string; icon: ReactNode }> = {
-  paid: { label: "비용 발생", title: "누르면 쓰는 모델과 예상 비용을 먼저 보여 줘요.", icon: <Coins size={12} aria-hidden="true" /> },
+  paid: { label: "비용 발생", title: "누르면 사용하는 AI와 예상 비용을 먼저 보여 줘요.", icon: <Coins size={12} aria-hidden="true" /> },
   ai: { label: "내 AI 사용량", title: "내 AI 구독 사용량으로 처리돼요.", icon: <Sparkles size={12} aria-hidden="true" /> },
   youtube: { label: "유튜브 한도", title: "유튜브가 채널마다 하루에 쓸 수 있는 양을 정해 둬요.", icon: <Youtube size={12} aria-hidden="true" /> },
 };
@@ -79,12 +79,12 @@ export function useCostConfirm() {
   const [ask, setAsk] = useState<CostAsk | null>(null);
   const close = (ok: boolean) => { answer.current(ok); answer.current = () => undefined; dialog.current?.close(); };
   const confirm = (next: CostAsk) => new Promise<boolean>(resolve => { answer.current = resolve; setAsk(next); dialog.current?.showModal(); });
-  const amount = ask?.amount == null ? "단가표에 없는 모델이에요" : `${ask.upTo ? "최대 " : ""}약 ${ask.amount.toLocaleString("ko-KR")}원`;
+  const amount = ask?.amount == null ? "가격표에 없는 AI예요" : `${ask.upTo ? "최대 " : ""}약 ${ask.amount.toLocaleString("ko-KR")}원`;
   const element = !mounted ? null : createPortal(<dialog ref={dialog} className="cost-dlg" aria-labelledby="cost-dlg-title" onClose={() => close(false)}>
     <div className="cost-dlg-h"><Coins size={16} aria-hidden="true" /><span id="cost-dlg-title">비용이 들어요</span>
       <button type="button" className="cost-x" aria-label="닫기" onClick={() => close(false)}><X size={14} /></button></div>
     <dl className="cost-dlg-b">
-      <dt>모델</dt><dd>{ask ? modelName(ask.model) : ""}</dd>
+      <dt>사용하는 AI</dt><dd>{ask ? modelName(ask.model) : ""}</dd>
       <dt>예상 비용</dt><dd><b>{amount}</b>{ask?.detail ? <small> · {ask.detail}</small> : null}</dd>
     </dl>
     {ask?.note ? <p className="cost-dlg-note">{ask.note}</p> : null}

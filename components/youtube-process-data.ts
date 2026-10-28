@@ -340,7 +340,7 @@ function demoClient(): YpClient {
       const now = new Date().toISOString();
       const items = stages.column.data.items.map(item => {
         if (item.id !== itemId) return item;
-        if (action !== "send" && !item.myin) throw demoError(409, "MYIN_NOT_SENT", "먼저 마이인에 초안을 올려 주세요.");
+        if (action !== "send" && !item.myin) throw demoError(409, "MYIN_NOT_SENT", "먼저 마이인에 임시 글로 올려 주세요.");
         const slug = columnMeta(item.html).slug || "demo-column";
         const status = action === "send" ? item.myin?.status ?? "draft" : action === "publish" ? "published" : "draft";
         return { ...item, myin: { id: item.myin?.id ?? `demo-${item.id}`, slug, status, url: `https://www.myinlab.co.kr/articles/${slug}`, at: now, by: "리키",
@@ -453,7 +453,7 @@ function demoClient(): YpClient {
       demoShorts.set(id, { ...current, images: { ...current.images, [assetId]: { name: file.name, url } } });
       return { assetId, url };
     },
-    renderShort: async () => { throw demoError(409, "DEMO", "데모에서는 MP4를 만들지 않아요. 실제 화면에서 렌더 PC가 만들어요."); },
+    renderShort: async () => { throw demoError(409, "DEMO", "데모에서는 MP4를 만들지 않아요. 실제 화면에서 영상 만드는 컴퓨터가 만들어요."); },
     renderClip: async () => { throw demoError(409, "DEMO", "데모에서는 세로 영상을 만들지 않아요."); },
     clipRenders: async () => ({}),
     clips: async () => [],

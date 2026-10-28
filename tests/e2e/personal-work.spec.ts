@@ -11,7 +11,7 @@ test("personal home defaults to received work and preserves tab/view URLs", asyn
 test("request drawer keeps the original screen and supports unsaved input and legacy URLs",async({page})=>{
  await page.goto("/content/comments");
  await expect(page).toHaveURL(/\/automation\/performance\?tab=comments$/);
- await expect(page.getByRole("button",{name:"모의 댓글 불러오기"})).toBeVisible();
+ await expect(page.getByRole("button",{name:"연습용 댓글 불러오기"})).toBeVisible();
  await page.getByRole("button",{name:"수정 요청 남기기"}).click();
  const drawer=page.getByRole("dialog",{name:"수정 요청",exact:true});await expect(drawer).toBeVisible();
  await expect(drawer.getByLabel("화면 주소")).toHaveValue(/\/automation\/performance\?tab=comments$/);await expect(drawer.getByLabel("프로젝트")).toHaveValue("demo-os");

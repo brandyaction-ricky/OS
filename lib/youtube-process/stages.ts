@@ -177,7 +177,7 @@ export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.m
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
 export function draftMissing(plan: YpPlan) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;
-  for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 시안(${slotOf(index)})을 넣어 주세요`;
+  for (const [index, name] of [[0, "첫 번째"], [1, "두 번째"]] as const) if (!thumbFilled(plan.thumbs[index])) return `${name} 썸네일 후보(${slotOf(index)})를 넣어 주세요`;
   if (!plan.opening.trim()) return "오프닝을 써 주세요";
   if (!plan.body.trim()) return "본론을 써 주세요";
   if (!plan.closing.trim()) return "클로징 · 다음 행동을 써 주세요";

@@ -201,7 +201,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
   useRecordDeepLink("meeting", "meeting", openEdit, setError);
   const startRecording = async () => {
     setError("");
-    if (!await cost.confirm({ ...recordAsk(costModels.transcribe), detail: "녹음 1시간 기준 · 끝나면 결정·업무 추출까지 해요", ok: "동의 확인 · 녹음 시작" })) return;
+    if (!await cost.confirm({ ...recordAsk(costModels.transcribe), detail: "녹음 1시간 기준 · 끝나면 결정·업무 뽑기까지 해요", ok: "동의 확인 · 녹음 시작" })) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -255,14 +255,14 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
       setError(
         reason instanceof Error
           ? reason.message
-          : "회의를 요약하지 못했습니다.",
+          : "회의를 정리하지 못했습니다.",
       );
     } finally {
       setBusy(false);
     }
   };
 
-  const makeSummary = async () => { if (await cost.confirm({ ...summaryAsk(costModels.sonnet, transcript), ok: "확인하고 추출" })) await extractFromText(transcript); };
+  const makeSummary = async () => { if (await cost.confirm({ ...summaryAsk(costModels.sonnet, transcript), ok: "확인하고 뽑기" })) await extractFromText(transcript); };
 
   // 녹음 종료 → 전사 → (20자 이상이면) 결정·미해결·업무 추출까지 이어서 끝낸다.
   // 실패해도 앞 단계 결과(녹음/전사)는 남아있어 수동 재시도 버튼으로 이어갈 수 있다.
@@ -278,14 +278,14 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
       setError(
         reason instanceof Error
           ? reason.message
-          : "녹음을 전사하지 못했습니다.",
+          : "녹음을 받아쓰지 못했습니다.",
       );
     } finally {
       setBusy(false);
     }
   };
 
-  const makeTranscript = async () => { if (recordedBlob && await cost.confirm({ ...fileAsk(costModels.transcribe, await audioMinutes(recordedBlob)), ok: "확인하고 전사" })) await transcribeBlob(recordedBlob); };
+  const makeTranscript = async () => { if (recordedBlob && await cost.confirm({ ...fileAsk(costModels.transcribe, await audioMinutes(recordedBlob)), ok: "확인하고 받아쓰기" })) await transcribeBlob(recordedBlob); };
 
   const loadPrep = async () => {
     setBusy(true);
@@ -324,7 +324,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
     event.preventDefault();
     if (savingRef.current) return;
     const errors=meetingReviewErrors(reviewItems,members);
-    if(errors.length || manualDecisions.trim() || manualTasks.trim()){setError(errors[0]||"직접 입력한 내용을 검수에 추가해 주세요.");return;}
+    if(errors.length || manualDecisions.trim() || manualTasks.trim()){setError(errors[0]||"직접 입력한 내용을 검토 목록에 추가해 주세요.");return;}
     savingRef.current=true;
     const form = new FormData(event.currentTarget);
     const value = (name: string) => String(form.get(name) ?? "").trim();
@@ -507,13 +507,13 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
         </div>
         <div className="metric-card">
           <div className="metric-top">
-            <span>요약 완료</span>
+            <span>정리 완료</span>
             <span className="metric-icon">
               <Bot size={16} />
             </span>
           </div>
           <div className="metric-value">{summarized}</div>
-          <div className="metric-caption good">원문 기반 요약</div>
+          <div className="metric-caption good">원문으로 정리</div>
         </div>
         <div className="metric-card">
           <div className="metric-top">
@@ -523,7 +523,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
             </span>
           </div>
           <div className="metric-value">{meetingDecisions.length}</div>
-          <div className="metric-caption">회의에서 생성</div>
+          <div className="metric-caption">회의에서 나옴</div>
         </div>
         <div className="metric-card">
           <div className="metric-top">
@@ -559,7 +559,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
               </p>
               {entry.result.latestMeeting?.summary ? (
                 <div className="meeting-prep-summary">
-                  <strong>지난 회의 요약</strong>
+                  <strong>지난 회의 정리</strong>
                   {entry.result.latestMeeting.summary
                     .split("\n")
                     .map((line) => line.trim())
@@ -647,7 +647,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                   ?.replace(/^#+\s*/gm, "")
                   .slice(0, 180) ||
                   meeting.description ||
-                  "회의 요약이 아직 없습니다."}
+                  "회의 정리가 아직 없습니다."}
               </p>
               <footer>
                 <span>
@@ -703,10 +703,10 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 <X size={18} />
               </button>
             </div>
-            <p className="field-hint">회의명과 요약만으로 먼저 기록할 수 있습니다. 녹음·참석자·후속 업무는 필요한 경우 펼쳐 입력하세요.</p>
+            <p className="field-hint">회의명과 짧은 정리만으로 먼저 기록할 수 있습니다. 녹음·참석자·후속 업무는 필요한 경우 펼쳐 입력하세요.</p>
             {error&&<p role="alert" className="inline-alert danger">{error}</p>}
             {similar.length>0&&<section className="meeting-duplicates"><p>같은 날 비슷한 회의가 있습니다. 원문을 비교하고 같은 회의라면 기존 회의에 이어서 기록하세요.</p>{similar.map(meeting=><button type="button" key={meeting.id} onClick={()=>setComparison(meeting)}>비교 · {meeting.title}</button>)}</section>}
-            {comparison&&<section className="meeting-comparison"><h3>회의 비교</h3><strong>현재 작성</strong><p>{transcript||"원문 없음"}</p><strong>{comparison.title}</strong><p>{String(comparison.metadata.transcript||comparison.description||"원문 없음")}</p>{!editing&&<button type="button" onClick={()=>{const draft=transcript, draftSummary=summary, draftItems=reviewItems;openEdit(comparison);setTranscript([String(comparison.metadata.transcript||""),draft].filter(Boolean).join("\n\n"));setSummary([String(comparison.metadata.summary||""),draftSummary].filter(Boolean).join("\n"));setReviewItems(previous=>[...previous,...draftItems]);setNotice("기존 회의에 새 원문을 이어 붙였습니다. 검수 후 저장하면 반영됩니다.");}}>기존 회의에 이어쓰기</button>}<button type="button" onClick={()=>setComparison(null)}>비교 닫기</button></section>}
+            {comparison&&<section className="meeting-comparison"><h3>회의 비교</h3><strong>현재 작성</strong><p>{transcript||"원문 없음"}</p><strong>{comparison.title}</strong><p>{String(comparison.metadata.transcript||comparison.description||"원문 없음")}</p>{!editing&&<button type="button" onClick={()=>{const draft=transcript, draftSummary=summary, draftItems=reviewItems;openEdit(comparison);setTranscript([String(comparison.metadata.transcript||""),draft].filter(Boolean).join("\n\n"));setSummary([String(comparison.metadata.summary||""),draftSummary].filter(Boolean).join("\n"));setReviewItems(previous=>[...previous,...draftItems]);setNotice("기존 회의에 새 원문을 이어 붙였습니다. 검토 후 저장하면 반영됩니다.");}}>기존 회의에 이어쓰기</button>}<button type="button" onClick={()=>setComparison(null)}>비교 닫기</button></section>}
             <label>
               <span>회의명</span>
               <input
@@ -758,7 +758,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                   }}
                   placeholder="마이인 · 브랜디에듀 · 회사(전체)"
                 />
-                <small className="field-hint">이 셋 중 하나로 입력해야 문서함(원문·요약)에 자동 반영됩니다.</small>
+                <small className="field-hint">이 셋 중 하나로 입력해야 문서함(원문·정리)에 자동 반영됩니다.</small>
               </label>
               <label>
                 <span>담당 팀</span>
@@ -798,10 +798,10 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                       : recordedBlob
                         ? "새 녹음 준비됨"
                         : transcript
-                          ? "전사 완료 · 원본 폐기됨"
+                          ? "받아쓰기 완료 · 녹음 파일 지움"
                           : "회의 녹음"}
                   </strong>
-                  <small>전사가 끝나면 녹음 원본은 즉시 폐기하고 텍스트만 보관합니다.</small>
+                  <small>받아쓰기가 끝나면 녹음 파일은 바로 지우고 글만 보관합니다.</small>
                 </span>
               </div>
               <div className="header-actions">
@@ -812,7 +812,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                     disabled={busy}
                     onClick={makeTranscript}
                   >
-                    <AudioLines size={14} /> 녹음 전사
+                    <AudioLines size={14} /> 녹음 받아쓰기
                   </button>
                 ) : null}
                 {recording ? (
@@ -836,12 +836,12 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
               </div>
             </div>
             <label>
-              <span>회의 원문·전사</span>
+              <span>회의 원문·받아쓴 글</span>
               <textarea
                 rows={9}
                 value={transcript}
                 onChange={(event) => setTranscript(event.target.value)}
-                placeholder="녹음을 전사하거나 직접 정리한 원문을 붙여넣으세요."
+                placeholder="녹음을 받아쓰거나 직접 정리한 원문을 붙여넣으세요."
               />
             </label>
             <button
@@ -850,27 +850,27 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
               disabled={busy || transcript.trim().length < 20}
               onClick={makeSummary}
             >
-              <Bot size={15} /> {busy ? "분석 중…" : "결정·미해결·업무 추출"}
+              <Bot size={15} /> {busy ? "분석 중…" : "결정·미해결·업무 뽑기"}
             </button>
             <CostTag kind="paid" />
-            {transcript.trim().length < 20 ? <small className="field-hint">회의 원문을 20자 이상 입력하면 결정·미해결·업무 추출을 사용할 수 있습니다.</small> : null}
+            {transcript.trim().length < 20 ? <small className="field-hint">회의 원문을 20자 이상 입력하면 결정·미해결·업무 뽑기를 쓸 수 있습니다.</small> : null}
             </details>
             <label>
               <span>
-                회의 요약{" "}
+                회의 정리{" "}
                 {summaryMode
-                  ? `· ${summaryMode === "ai" ? "AI" : "규칙 기반"}`
+                  ? `· ${summaryMode === "ai" ? "자동 작성" : "기본 방식"}`
                   : ""}
               </span>
               <textarea
                 rows={7}
                 value={summary}
                 onChange={(event) => setSummary(event.target.value)}
-                placeholder="핵심 회의 요약"
+                placeholder="회의 핵심 정리"
               />
             </label>
             <details ref={reviewDetailsRef} className="meeting-optional-section">
-              <summary>결정·후속 업무 검수 {reviewItems.length ? `· ${reviewItems.length}건` : ""}</summary>
+              <summary>결정·후속 업무 검토 {reviewItems.length ? `· ${reviewItems.length}건` : ""}</summary>
             <MeetingReviewEditor items={reviewItems} members={members} terms={meetingTerms} onChange={setReviewItems} disabled={busy}/>
             {reviewErrors.length>0&&<p className="field-hint" role="status">{reviewErrors[0]}</p>}
             {linkedDocuments ? (
@@ -879,7 +879,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 {linkedDocuments.summaryId ? (
                   <>
                     {" · "}
-                    <Link href={`/knowledge?document=${linkedDocuments.summaryId}`}>요약 보기</Link>
+                    <Link href={`/knowledge?document=${linkedDocuments.summaryId}`}>정리 보기</Link>
                   </>
                 ) : null}
                 {linkedDocuments.rawId ? (
@@ -900,7 +900,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 <textarea name="actions" rows={4} value={manualTasks} onChange={event=>setManualTasks(event.target.value)}/>
               </label>
             </div>
-            <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members,undefined,meetingTerms)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검수에 추가</button>
+            <button type="button" className="secondary-button" disabled={busy||(!manualDecisions.trim()&&!manualTasks.trim())} onClick={()=>{const lines=(text:string)=>text.split("\n").map(line=>line.replace(/^[-*]\s*/,"").trim()).filter(Boolean);setReviewItems(previous=>[...previous,...makeMeetingReview({decisions:lines(manualDecisions),pending:[],todos:lines(manualTasks).map(title=>({title,assignee:"",dueDate:"",dueLabel:""}))},members,undefined,meetingTerms)]);setManualDecisions("");setManualTasks("");}}>직접 입력을 검토 목록에 추가</button>
             </details>
             {reviewErrors.length>0&&<p className="field-hint" role="status">후속 업무를 확인해 주세요: {reviewErrors[0]}</p>}
             <div className="drawer-actions">
@@ -913,7 +913,7 @@ export function MeetingWorkspace({initialTab="meetings"}:{initialTab?:"meetings"
                 취소
               </button>
               <button className="primary-button" disabled={busy || recording || reviewErrors.length>0 || Boolean(manualDecisions.trim()||manualTasks.trim())}>
-                {busy ? "저장 중…" : "검수 확정·회의 저장"}
+                {busy ? "저장 중…" : "검토 확정·회의 저장"}
               </button>
             </div>
           </form>

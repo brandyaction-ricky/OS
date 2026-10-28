@@ -270,7 +270,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const known = new Set<string>([...MYIN_SCENE_TYPES, ...catalogTypes]);
   const unknown = [...new Set(types.filter((type) => !known.has(type)))];
   // A lib_ type outside the render PC's list would fail the render, so the staff AI must swap it; other new types stay notes for Logan.
-  issues.push(...unknown.filter((type) => type.startsWith("lib_")).map((type) => `"${type}"는 렌더 PC가 그릴 수 없는 도식입니다. 도식 창고 목록에 있는 것으로 바꿔 주세요.`));
+  issues.push(...unknown.filter((type) => type.startsWith("lib_")).map((type) => `"${type}"는 영상 만드는 컴퓨터가 그릴 수 없는 도식입니다. 도식 창고 목록에 있는 것으로 바꿔 주세요.`));
   const share = myinVisualShare(story.scenes as { type: string; photo?: unknown }[]);
   if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
     issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
@@ -369,7 +369,7 @@ export function myinSoundIssues(story: MyinStoryboard, words: [number, number, s
   const find = finder(words); const starts = sceneStarts(story, find);
   const issues: string[] = [];
   for (const m of plan.music) {
-    if (!legacy(m.key) && !has("music", m.key)) issues.push(`[장면 ${m.scene}] 음악 키 「${m.key}」가 렌더 PC 사운드 창고에 없어요`);
+    if (!legacy(m.key) && !has("music", m.key)) issues.push(`[장면 ${m.scene}] 음악 키 「${m.key}」가 영상 만드는 컴퓨터의 사운드 창고에 없어요`);
     if (m.start !== undefined && m.start < 0) issues.push(`[장면 ${m.scene}] 음악 시작점은 0초 이상이에요`);
   }
   for (const a of plan.amb) {

@@ -393,7 +393,7 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
   </YpSection>;
 }
 
-/** What the 대표 decides on for a 숏폼's 최종 검수: the vertical MP4, what it was made for, and the open feedback. */
+/** What the 대표 decides on for a 숏폼's 최종 검토: the vertical MP4, what it was made for, and the open feedback. */
 export function ShortConfirmDetail({ client, bundle, open }: { client: YpClient; bundle: YpBundle; open: number | null }) {
   const [src, setSrc] = useState<string | null>(null);
   const [view, setView] = useState<YpShortView | null>(null);

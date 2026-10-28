@@ -108,7 +108,7 @@ export function ContentAutomationWorkerScreen(){
   return <main className="ca-worker">
     <header><h1>AI 작업 화면</h1><p>Claude in Chrome 바로가기 /브랜디예약 · /브랜디작업에서 엽니다. 이 화면에는 다른 메뉴로 가는 링크가 없습니다 — 사람은 탭을 닫으면 됩니다.</p></header>
     <section aria-label="Claude에게" className="ca-worker-rules"><h2>Claude에게 — 이 화면의 규칙</h2><ol>{RULES.map(rule=><li key={rule}>{rule}</li>)}</ol></section>
-    {unregistered?<section className="ca-worker-panel" role="status"><h2>등록되지 않은 브라우저입니다.</h2><p>이 Chrome에서는 작업을 내주지 않습니다. Claude라면 여기서 마칩니다.</p><p>사람은 AI 작업함 › 내 컴퓨터 › 설정 순서 2단계에서 등록합니다.</p></section>
+    {unregistered?<section className="ca-worker-panel" role="status"><h2>등록되지 않은 브라우저입니다.</h2><p>이 Chrome에서는 작업을 내주지 않습니다. Claude라면 여기서 마칩니다.</p><p>사람은 맡긴 일 › 내 컴퓨터 › 설정 순서 2단계에서 등록합니다.</p></section>
       :error&&!state?<section className="ca-worker-panel" role="alert">{error}</section>
       :!state?<section className="ca-worker-panel" role="status">작업 상태를 확인하는 중입니다…</section>
       :<>

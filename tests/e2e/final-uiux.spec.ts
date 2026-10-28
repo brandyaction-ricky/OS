@@ -54,8 +54,8 @@ for (const theme of ["light", "dark"]) for (const width of [1440, 390]) {
 test("mock metrics preserve missing snapshots and show measured sample bounds", async ({ page }) => {
   await page.goto("/content/performance");
   const panel = page.getByRole("region", { name: "게시 후 경과일 비교" });
-  await panel.getByRole("button", { name: "모의 성과 불러오기" }).click();
-  await expect(panel.getByText("모의 수치 · 실제 API 호출 없음", { exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "연습용 성과 불러오기" }).click();
+  await expect(panel.getByText("연습용 수치 · 실제 플랫폼 조회 없음", { exact: true })).toBeVisible();
   await expect(panel.getByRole("button", { name: "인스타" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Threads" })).toHaveCount(0);
   await expect(panel.getByRole("table", {name:"선택 경과일 측정 기록"}).getByRole("row")).toHaveCount(13);
@@ -65,18 +65,18 @@ test("mock metrics preserve missing snapshots and show measured sample bounds", 
 });
 test("mock comment handling protects private channels and requires human confirmation", async ({ page }) => {
   await page.goto("/content/comments");
-  await page.getByRole("button", { name: "모의 댓글 불러오기" }).click();
+  await page.getByRole("button", { name: "연습용 댓글 불러오기" }).click();
   const privateRow = page.locator(".comment-row").filter({ hasText: "비공유 · 보기 전용" });
   await privateRow.getByRole("button", { name: "답글 · 처리" }).click();
   const composer = page.locator(".comment-composer");
-  await expect(composer.getByRole("button", { name: "모의 답글 보내기" })).toBeDisabled();
+  await expect(composer.getByRole("button", { name: "연습용 답글 보내기" })).toBeDisabled();
   await composer.getByRole("button", { name: "닫기", exact: true }).click();
   await page.locator(".comment-row").filter({ hasText: "내 채널" }).first().getByRole("button", { name: "답글 · 처리" }).click();
   await composer.getByLabel("답글 내용").fill("모의 검수 답변입니다.");
-  await expect(composer.getByRole("button", { name: "모의 답글 보내기" })).toBeDisabled();
+  await expect(composer.getByRole("button", { name: "연습용 답글 보내기" })).toBeDisabled();
   await composer.getByRole("checkbox").check();
-  await composer.getByRole("button", { name: "모의 답글 보내기" }).click();
-  await expect(page.getByText("모의 처리 완료 · 외부 전송 없음", { exact: true })).toBeVisible();
+  await composer.getByRole("button", { name: "연습용 답글 보내기" }).click();
+  await expect(page.getByText("연습용 처리 완료 · 외부 전송 없음", { exact: true })).toBeVisible();
   await page.getByRole("navigation",{name:"댓글 보기"}).getByRole("button", { name: /^답함/ }).click();
   await expect(page.locator(".comment-row")).toHaveCount(1);
 });

@@ -150,7 +150,7 @@ function v1Setup(finals, srtPath) {
 const upload = { v: 1, at: "2026-10-21T00:00:00.000Z", by: "PD", path: `youtube/${sourceId}/final/00000000-0000-4000-8000-0000000000aa.mp4`, name: "final.mp4", bytes: 10 };
 const uploadSrt = `youtube/${sourceId}/srt/00000000-0000-4000-8000-0000000000bb.srt`;
 
-test("a v1 project past 제작 still reads its OS-made final (no approval key is needed after 최종 검수)", async () => {
+test("a v1 project past 제작 still reads its OS-made final (no approval key is needed after 최종 검토)", async () => {
   const h = v1Setup([], null);
   const result = await h.read();
   assert.equal(result.reference.runId, runId);

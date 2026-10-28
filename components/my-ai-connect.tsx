@@ -50,7 +50,7 @@ export function MyAiConnect() {
         <option value="claude">Claude</option><option value="codex">ChatGPT · Codex</option>
       </select>
       <button type="button" className="primary-button" disabled={busy} onClick={() => void issue()}>{busy ? <LoaderCircle size={14} className="spin" /> : <KeyRound size={14} />}내 AI 연결 주소 만들기</button>
-      <small>내 이름으로 초안 쓰기 키(90일)를 만듭니다. 같은 AI로 다시 누르면 이전 주소는 끊깁니다.</small>
+      <small>내 이름으로 연결 키(90일)를 만듭니다. 이 키로는 정본을 고칠 수 없고 개인 초안만 쓸 수 있습니다. 같은 AI로 다시 누르면 이전 주소는 끊깁니다.</small>
     </div> : <div style={{ display: "grid", gap: 8 }}>
       <strong>연결 주소 · 지금 한 번만 보입니다</strong>
       <textarea ref={field} readOnly rows={3} aria-label="연결 주소" value={address} onFocus={(event) => event.currentTarget.select()}

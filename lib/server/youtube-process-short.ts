@@ -60,8 +60,8 @@ async function shortProject(actor: RequestActor, id: string) {
 /** 제작 is open; during 최종 검수 only after a 수정 요청 that ticked 최종본 (like the longform 제작). */
 function assertShortEditable(project: YpProject) {
   if (project.yp.stage === "make") return;
-  if (project.yp.stage !== "review") throw locked(project.yp.stage === "topic" ? "주제 컨펌 뒤에 제작이 열려요." : project.yp.stage === "draft" ? "대본 확정 뒤에 제작이 열려요." : "최종 검수 컨펌이 끝나 제작은 고칠 수 없어요.");
-  if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검수 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
+  if (project.yp.stage !== "review") throw locked(project.yp.stage === "topic" ? "주제 컨펌 뒤에 제작이 열려요." : project.yp.stage === "draft" ? "대본 확정 뒤에 제작이 열려요." : "최종 검토 컨펌이 끝나 제작은 고칠 수 없어요.");
+  if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검토 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
   const fields = editableFields(project, "review");
   if (fields !== "all" && !fields.includes("make.final")) throw new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.");
 }
@@ -189,7 +189,7 @@ export async function confirmedClip(actor: RequestActor, project: YpProject, cli
 // ── 롱폼 → 쇼츠: one confirmed clip, its parts cut from the final in order, with the subtitles as the captions ──
 export async function renderYoutubeClip(actor: RequestActor, id: string, clipId: string) {
   const project = await getYoutubeProject(actor, id);
-  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 쇼츠를 만들 수 있어요.");
+  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검토 컨펌 OK 뒤에 쇼츠를 만들 수 있어요.");
   const clip = await confirmedClip(actor, project, clipId);
   const parts = clipParts(clip.metadata);
   const problems = clipScriptProblems(clip);
@@ -314,7 +314,7 @@ export function checkShortResult(value: unknown, brief: ShortformBrief) {
 // final scenes; the PD edits them and sends the MP4 up as a Short (the longform upload path, see youtube-process-upload.ts). ──
 export function assertShortCopyOpen(project: YpProject, upload: { run: { status: string } | null }) {
   if (project.yp.topic.type !== "short") throw locked("숏폼 프로젝트에서만 쓸 수 있어요.");
-  if (project.yp.stage !== "upload") throw locked("최종 검수 컨펌 OK 뒤 내보내기에서 쓸 수 있어요.");
+  if (project.yp.stage !== "upload") throw locked("최종 검토 컨펌 OK 뒤 내보내기에서 쓸 수 있어요.");
   if (upload.run?.status === "done") throw locked("이미 유튜브에 올린 숏폼이에요.");
 }
 /** Changes with what the 숏폼 is for and its scenes: a job for other inputs is closed. */

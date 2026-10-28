@@ -11,12 +11,12 @@ const TODO: Record<Exclude<YpProject["yp"]["stage"], "done">, [string, string]> 
   draft: ["제목 · 썸네일 · 영상 흐름을 정해요", "기획안 쓰기"],
   outline: ["러닝타임을 정하고 원고를 써요", "원고 쓰기"],
   make: ["영상을 만들고 최종 썸네일을 올려요", "영상 만들기"],
-  review: ["최종본을 보고 컨펌해요", "검수하기"],
+  review: ["최종본을 보고 컨펌해요", "검토하기"],
   upload: ["설명란을 채우고 유튜브에 올려요", "유튜브에 올리기"],
   shorts: ["쇼츠 · 칼럼을 만들거나 여기서 끝내요", "쇼츠 · 칼럼"],
 };
 // A 숏폼's 제작 holds what to make, the scenes and the MP4; it is handed out by download, not uploaded to YouTube here.
-const SHORT_TODO: Partial<typeof TODO> = { draft: ["레퍼런스로 공식을 뽑고 대본을 확정해요", "대본 쓰기"], make: ["무엇을 만들지 정하고 장면 · 영상을 만들어요", "숏폼 만들기"], upload: ["유튜브에 올리거나 MP4를 내려받아 올려요", "내보내기"] };
+const SHORT_TODO: Partial<typeof TODO> = { draft: ["참고 영상으로 공식을 뽑고 대본을 확정해요", "대본 쓰기"], make: ["무엇을 만들지 정하고 장면 · 영상을 만들어요", "숏폼 만들기"], upload: ["유튜브에 올리거나 MP4를 내려받아 올려요", "내보내기"] };
 const GATE_OF: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { topic: "topic", draft: "draft", review: "review" };
 
 export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {

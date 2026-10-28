@@ -152,7 +152,7 @@ export function Subject({ page }: { page: YpPage }) {
       <button type="button" className="yp-btn" aria-expanded={open} onClick={() => setOpen(value => !value)}>{open ? "접기" : "더 보기"} {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button></section>
     {open ? <section className="yp-card yp-more"><div className="yp-card-b"><dl className="yp-kv">
       <dt>정밀 타겟</dt><dd>{project.yp.topic.target || "—"}</dd>
-      <dt>레퍼런스</dt><dd>{project.yp.topic.refs.length ? project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>) : "없음"}</dd>
+      <dt>참고 영상</dt><dd>{project.yp.topic.refs.length ? project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>) : "없음"}</dd>
       <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd>
       <dt>주제 화면</dt><dd><Link className="yp-lnk" href={stepHref(0, project.id)}>주제 보기 →</Link></dd></dl></div></section> : null}
   </>;

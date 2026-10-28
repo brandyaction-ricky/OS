@@ -174,7 +174,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     setAppealCommentIndex(null); setAppealCommentError("");
     apiRequest<{ comments: typeof appealComments }>(`/api/v1/content/appeals/comments?packageId=${encodeURIComponent(appealSet.id)}`, { token: accessToken })
       .then((result) => { if (active) setAppealComments(result.comments); })
-      .catch(() => { if (active) { setAppealComments([]); setAppealCommentError("댓글을 불러오지 못했습니다. 개발 DB의 댓글 기능 적용 상태를 확인해 주세요."); } });
+      .catch(() => { if (active) { setAppealComments([]); setAppealCommentError("댓글을 불러오지 못했습니다. 댓글 기능이 아직 준비되지 않았을 수 있으니 관리자에게 확인해 주세요."); } });
     return () => { active = false; };
   }, [appealSet, accessToken, demo]);
   useEffect(() => {
@@ -434,7 +434,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const makePlan = async (mode: GenerationMode = "queue") => {
     if (!selected) return;
-    if (!researchReady) return setError("승인된 소구점의 레퍼런스 검증을 먼저 완료해 주세요.");
+    if (!researchReady) return setError("승인된 소구점의 참고 자료 검증을 먼저 완료해 주세요.");
     setBusy(true); setError("");
     try {
       const response = await generateContent(accessToken, { mode, action: "topic_plan", sourceId: selected.id });
@@ -451,7 +451,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
     try {
       const response = await generateContent(accessToken, { mode, action: "appeal_candidates", sourceId: selected.id, count: 10 });
       if (response.queued) setError(GENERATION_QUEUED_NOTICE);
-      else setNotice("설명과 레퍼런스 없이 소구점 후보 10개를 만들었습니다. 진행할 후보를 사람이 승인해 주세요.");
+      else setNotice("설명과 참고 자료 없이 소구점 후보 10개를 만들었습니다. 진행할 후보를 사람이 승인해 주세요.");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "소구점 후보를 만들지 못했습니다.");
@@ -474,7 +474,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       });
       setPackages((current) => current.map((item) => item.id === record.id ? record : item));
       setAppealNote(""); setSelectedAppeals(new Set());
-      setNotice(`소구점 ${indices.length}개 판정을 저장했습니다. 승인 구성이 바뀌면 레퍼런스를 다시 검증해야 합니다.`);
+      setNotice(`소구점 ${indices.length}개 판정을 저장했습니다. 승인 구성이 바뀌면 참고 자료를 다시 검증해야 합니다.`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "소구점 판정을 저장하지 못했습니다.");
     } finally { setBusy(false); }
@@ -512,7 +512,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
 
   const decideTopic = async (status: "planned" | "review" | "blocked") => {
     if (!selected) return;
-    if (status === "planned" && !researchReady) return setError("승인된 소구점과 레퍼런스 검증을 완료한 뒤 기획으로 넘길 수 있습니다.");
+    if (status === "planned" && !researchReady) return setError("승인된 소구점과 참고 자료 검증을 완료한 뒤 기획으로 넘길 수 있습니다.");
     setBusy(true); setError("");
     try {
       const { record } = await updateRecord(accessToken, {
@@ -558,7 +558,7 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
       });
       setRecords((current) => current.map((item) => item.id === updatedSource.id ? updatedSource : item));
       setPackages((current) => current.map((item) => item.id === updatedPlan.id ? updatedPlan : item));
-      setNotice("기획 방향을 채택했습니다. 같은 content_id로 기획·근거를 승인한 뒤 제목·썸네일에서 이어가세요.");
+      setNotice("기획 방향을 채택했습니다. 같은 콘텐츠에서 기획·근거를 승인한 뒤 제목·썸네일에서 이어가세요.");
       await load();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "후보 채택을 저장하지 못했습니다.");
@@ -599,15 +599,15 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         },
       });
       setRecords((current) => current.map((item) => item.id === record.id ? record : item));
-      setNotice(researchBriefReady(nextBrief) ? "레퍼런스 검증을 완료했습니다. 이제 기획안을 만들 수 있습니다." : "리서치 초안을 저장했습니다. URL·세 가지 적합성·검증 한계를 모두 채우면 다음 단계가 열립니다.");
+      setNotice(researchBriefReady(nextBrief) ? "참고 자료 검증을 완료했습니다. 이제 기획안을 만들 수 있습니다." : "조사 메모를 임시 저장했습니다. URL·세 가지 적합성·검증 한계를 모두 채우면 다음 단계가 열립니다.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "리서치 메모를 저장하지 못했습니다.");
+      setError(reason instanceof Error ? reason.message : "조사 메모를 저장하지 못했습니다.");
     } finally { setBusy(false); }
   };
 
   return <>
     <header className="page-header">
-      {startProjectHref ? <div className="page-title-group"><p>채널을 모으고 터진 영상을 찾아요. 마음에 드는 영상에서 [이 영상으로 새 프로젝트]를 누르면 레퍼런스가 들어간 주제 화면이 열려요.</p></div>
+      {startProjectHref ? <div className="page-title-group"><p>채널을 모으고 터진 영상을 찾아요. 마음에 드는 영상에서 [이 영상으로 새 프로젝트]를 누르면 참고 자료가 들어간 주제 화면이 열려요.</p></div>
         : <div className="page-title-group"><PageTitle /><p>채널을 모으고 터진 영상을 발굴한 뒤, 반복 근거가 있는 틈새만 제작 기획으로 넘깁니다.</p></div>}
       <div className="header-actions">
         <label className="content-origin-filter"><input type="checkbox" checked={includeTests} onChange={event => setIncludeTests(event.target.checked)} /> 테스트 데이터 포함</label>
@@ -646,14 +646,14 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
         <div className="radar-filters"><label>길이<select value={durationFilter} onChange={(event) => setDurationFilter(event.target.value)}><option value="long">롱폼 · 4분 이상</option><option value="short">4분 미만 · 참고만</option></select></label><label>발행 기간<select value={daysFilter} onChange={(event) => setDaysFilter(event.target.value)}><option value="all">전체</option><option value="30">최근 30일</option><option value="90">최근 90일</option><option value="365">최근 1년</option></select></label><label>정렬<select value={resultSort} onChange={(event) => setResultSort(event.target.value)}><option value="views">조회순</option><option value="recent">최신순</option><option value="ratio">채널 중앙값 배율순</option><option value="fit">팀 검토 적합도순</option></select></label><label>검색 지역<select value={region} disabled={busy} onChange={(event) => setRegion(event.target.value)}><option value="KR">한국</option><option value="US">미국</option><option value="JP">일본</option><option value="all">전체</option></select></label><label><input type="checkbox" checked={outliersOnly} disabled={durationFilter === "short"} onChange={(event) => setOutliersOnly(event.target.checked)} /> 비교 기준을 넘은 후보만</label><small>표시 {visibleResults.length}/{results.length} · 결과 지역 {resultRegion} · 지역 변경은 다음 검색에 적용</small></div>
       </section>
       <section className="panel content-data-table">
-        <div className="panel-header"><div><h2>추적 채널 자동 발견</h2><p>시간별 스냅숏의 조기 상승 신호와 회사 아웃라이어 정본을 함께 표시합니다.</p></div><span>{trackedOutliers.length + risingSignals.length}개</span></div>
+        <div className="panel-header"><div><h2>추적 채널 자동 발견</h2><p>시간마다 모은 수치로 빠르게 오르는 영상과, 회사 정본 기준으로 유난히 잘된 영상을 함께 표시합니다.</p></div><span>{trackedOutliers.length + risingSignals.length}개</span></div>
         <div className="content-table-head"><span>영상</span><span>채널</span><span>조회</span><span>비교 기준</span></div>
         {[...risingSignals, ...trackedOutliers].slice(0, 12).map((record) => { const rising = meta<string>(record, "discoverySource", "") === "rising_channel"; return <a className="content-table-row" href={record.source_url || "#"} target="_blank" rel="noreferrer" key={record.id}><span><strong>{record.title}</strong><small>{new Date(meta(record, "observedAt", record.created_at)).toLocaleString("ko-KR")}</small></span><span>{meta(record, "channelTitle", "채널 미입력")}</span><span>{Number(meta(record, "views", record.metric_current ?? 0)).toLocaleString("ko-KR")}</span><span>{rising ? `조기 상승 · ${Number(meta<Record<string, unknown>>(record, "momentum", {}).velocity ?? 0).toFixed(0)}/h` : `${Number(meta<Record<string, unknown>>(record, "baseline", {}).ratio ?? 0).toFixed(2)}배`}</span></a>; })}
-        {!trackedOutliers.length && !risingSignals.length ? <div className="list-empty">세 번의 시간별 수집 뒤 조기 상승 후보가, 표본 20개 충족 뒤 정본 아웃라이어가 표시됩니다.</div> : null}
+        {!trackedOutliers.length && !risingSignals.length ? <div className="list-empty">세 번 모은 뒤부터 빠르게 오르는 후보가, 표본 20개가 모이면 정본 기준으로 유난히 잘된 영상이 표시됩니다.</div> : null}
       </section>
       {notice ? <p className="inline-alert" role="status">{notice}</p> : null}
       {results.length > 0 && visibleResults.length === 0 ? <p className="list-empty">현재 기준을 넘은 영상이 없습니다. “후보만”을 해제하면 표본 부족·일반 범위의 비교 결과도 볼 수 있습니다.</p> : null}
-      {results.length ? <div className="radar-filters"><label><input type="checkbox" checked={singleCard} onChange={(event) => { setSingleCard(event.target.checked); setCardIndex(0); }} /> 빠른 넘기기</label><label><input type="checkbox" checked={showDiscarded} onChange={(event) => setShowDiscarded(event.target.checked)} /> 검토 제외도 보기</label><button className="secondary-button" disabled={busy || !checkedVideos.size || durationFilter === "short"} onClick={() => void bulkSave()}>선택 근거 저장 ({checkedVideos.size})</button>{singleCard ? <><button disabled={cardIndex <= 0} onClick={() => setCardIndex((index) => Math.max(0, index - 1))}>이전</button><span>{visibleResults.length ? Math.min(cardIndex + 1, visibleResults.length) : 0} / {visibleResults.length}</span><button disabled={cardIndex >= visibleResults.length - 1} onClick={() => setCardIndex((index) => index + 1)}>다음</button></> : null}<small>폭넓게 모으려면 “비교 기준을 넘은 후보만”을 해제하세요. 적합도는 AI 추정이 아닌 팀이 지정한 값입니다.</small></div> : null}
+      {results.length ? <div className="radar-filters"><label><input type="checkbox" checked={singleCard} onChange={(event) => { setSingleCard(event.target.checked); setCardIndex(0); }} /> 빠른 넘기기</label><label><input type="checkbox" checked={showDiscarded} onChange={(event) => setShowDiscarded(event.target.checked)} /> 검토 제외도 보기</label><button className="secondary-button" disabled={busy || !checkedVideos.size || durationFilter === "short"} onClick={() => void bulkSave()}>선택 근거 저장 ({checkedVideos.size})</button>{singleCard ? <><button disabled={cardIndex <= 0} onClick={() => setCardIndex((index) => Math.max(0, index - 1))}>이전</button><span>{visibleResults.length ? Math.min(cardIndex + 1, visibleResults.length) : 0} / {visibleResults.length}</span><button disabled={cardIndex >= visibleResults.length - 1} onClick={() => setCardIndex((index) => index + 1)}>다음</button></> : null}<small>폭넓게 모으려면 “비교 기준을 넘은 후보만”을 해제하세요. 적합도는 자동 추정이 아니라 팀이 정한 값입니다.</small></div> : null}
       {results.length ? <section className="outlier-result-grid">{visibleCards.map((item) => {
         const saved = outliers.some((record) => meta(record, "youtubeId", "") === item.id);
         const engagement = item.viewCount ? (item.likeCount + item.commentCount) / item.viewCount * 100 : 0;
@@ -690,23 +690,23 @@ export function ContentRadarWorkspace({ showPlanningHandoff = false, showTopicJe
             {appealCandidates.length ? <div className="appeal-candidate-list">
               {appealCandidates.map((candidate, index) => <article className={`appeal-candidate decision-${candidate.decision}`} key={`${candidate.text}-${index}`}><label><input type="checkbox" aria-label={`${index + 1}번 소구점 선택`} checked={selectedAppeals.has(index)} onChange={(event) => setSelectedAppeals((current) => { const next = new Set(current); if (event.target.checked) next.add(index); else next.delete(index); return next; })} /> {index + 1}</label><strong>{candidate.text}</strong><span className="status-pill">{candidate.decision === "approved" ? "승인" : candidate.decision === "revision" ? "수정 요청" : candidate.decision === "held" ? "보류" : "미결정"}</span><button type="button" className="ghost-button" onClick={() => { setAppealCommentIndex(appealCommentIndex === index ? null : index); setAppealCommentBody(""); }}>댓글 {appealComments.filter((item) => item.candidate_index === index).length}</button>{appealCommentIndex === index ? <div className="appeal-candidate-comment">{appealComments.filter((item) => item.candidate_index === index).map((item) => <p key={item.id}><strong>{memberNames[item.author_id] ?? "구성원"}</strong> · {new Date(item.created_at).toLocaleString("ko-KR")}<br />{item.body}</p>)}<textarea aria-label={`${index + 1}번 소구점 댓글`} value={appealCommentBody} maxLength={2000} onChange={(event) => setAppealCommentBody(event.target.value)} placeholder="확인할 점이나 수정 의견" /><button type="button" className="secondary-button" disabled={busy || !appealCommentBody.trim()} onClick={() => void addAppealComment()}>댓글 저장</button>{appealCommentError ? <small role="alert">{appealCommentError}</small> : null}</div> : null}</article>)}
               <div className="appeal-bulk-actions"><strong>{selectedAppeals.size}개 선택됨</strong><input aria-label="소구점 판정 메모" maxLength={500} value={appealNote} onChange={(event) => setAppealNote(event.target.value)} placeholder="수정 요청 사유 · 판정 메모" /><button type="button" className="primary-button" disabled={busy || !selectedAppeals.size || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "approved")}>승인</button><button type="button" className="secondary-button" disabled={busy || !selectedAppeals.size || !appealNote.trim() || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "revision")}>수정 요청</button><button type="button" className="secondary-button" disabled={busy || !selectedAppeals.size || !appealApprovalLoaded || !appealCanApprove} onClick={() => void decideAppeals([...selectedAppeals], "held")}>보류</button><button type="button" className="ghost-button" disabled={busy || !selectedAppeals.size} onClick={() => setSelectedAppeals(new Set())}>선택 해제</button></div>
-            </div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 레퍼런스 없이 짧은 소구점만 만듭니다.</div>}
+            </div> : <div className="list-empty">아직 후보가 없습니다. 이 단계에서는 설명이나 참고 자료 없이 짧은 소구점만 만듭니다.</div>}
           </section>
           {approvedAppealItems.length ? <form className="research-brief" key={`${selected.id}-${selected.version}-${appealSet?.version ?? 0}`} onSubmit={saveResearchBrief}>
-            <div><h3>승인 소구점 레퍼런스 검증</h3><p>YouTube와 Instagram Reels 출처를 남기고, 세 가지 적합성과 확인 한계를 각각 기록합니다. 확인하지 못한 수치는 비워 두세요.</p></div>
+            <div><h3>승인 소구점 참고 자료 검증</h3><p>YouTube와 Instagram Reels 출처를 남기고, 세 가지 적합성과 확인 한계를 각각 기록합니다. 확인하지 못한 수치는 비워 두세요.</p></div>
             <label><span>YouTube 출처 · 한 줄에 하나</span><textarea name="youtubeSources" rows={3} defaultValue={(researchBrief.youtubeUrls as string[] | undefined ?? (selected.source_url && !selected.source_url.includes("instagram.com") ? [selected.source_url] : [])).join("\n")} placeholder="https://youtube.com/…" /></label>
             <label><span>Instagram Reels 출처 · 한 줄에 하나</span><textarea name="instagramSources" rows={3} defaultValue={(researchBrief.instagramUrls as string[] | undefined ?? (selected.source_url?.includes("instagram.com") ? [selected.source_url] : [])).join("\n")} placeholder="https://instagram.com/reel/…" /></label>
-            <label><span>주제 적합성</span><textarea name="topicFit" required rows={3} defaultValue={String(researchBrief.topicFit ?? "")} placeholder="이 레퍼런스가 승인 소구점의 주제를 얼마나 직접 다루는지" /></label>
-            <label><span>핵심 대상 적합성</span><textarea name="audienceFit" required rows={3} defaultValue={String(researchBrief.audienceFit ?? "")} placeholder="우리 핵심 대상과 레퍼런스 시청자가 어떻게 맞는지" /></label>
+            <label><span>주제 적합성</span><textarea name="topicFit" required rows={3} defaultValue={String(researchBrief.topicFit ?? "")} placeholder="이 참고 자료가 승인 소구점의 주제를 얼마나 직접 다루는지" /></label>
+            <label><span>핵심 대상 적합성</span><textarea name="audienceFit" required rows={3} defaultValue={String(researchBrief.audienceFit ?? "")} placeholder="우리 핵심 대상과 참고 자료 시청자가 어떻게 맞는지" /></label>
             <label><span>검색 의도 적합성</span><textarea name="queryIntentFit" required rows={3} defaultValue={String(researchBrief.queryIntentFit ?? "")} placeholder="사람이 실제로 찾는 질문·검색 의도와 어떻게 맞는지" /></label>
             <label><span>검증된 수치 · 선택</span><textarea name="verifiedMetrics" rows={3} defaultValue={String(researchBrief.verifiedMetrics ?? "")} placeholder="직접 확인한 조회·반응 수치와 확인 시각만 기록" /></label>
             <label><span>검증 한계 · 필수</span><textarea name="limitations" required rows={3} defaultValue={String(researchBrief.limitations ?? "")} placeholder="확인하지 못한 수치, 플랫폼 차이, 해석의 한계" /></label>
             <label><span>분석 메모</span><textarea name="analystNotes" rows={3} defaultValue={String(researchBrief.analystNotes ?? "")} placeholder="구조·훅·증거에서 참고할 점" /></label>
             <label><span>브랜드 맥락</span><textarea name="brandContext" rows={3} defaultValue={String(researchBrief.brandContext ?? "")} placeholder="브랜디액션 관점에서 가져올 것과 가져오지 않을 것" /></label>
             <div className="drawer-actions"><button className="secondary-button" disabled={busy}>검증 내용 저장</button>{selected.status === "planned" ? <a className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일 작업으로 인계 <ArrowRight size={14} /></a> : null}</div>
-          </form> : <div className="research-locked"><CircleAlert size={16} /><div><strong>레퍼런스 검증 잠김</strong><p>먼저 진행할 소구점을 한 개 이상 승인해 주세요.</p></div></div>}
-          {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>소구점 승인과 레퍼런스 검증이 끝난 주제만 기획으로 넘길 수 있습니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy || !researchReady} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
-          {candidates.length ? <div className="planning-candidates"><h3>기획 방향 후보 <small>제목·썸네일은 패키징에서 최종 확정</small></h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "기획 방향 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}{planningReady ? <div className="planning-next-actions"><Link className="secondary-button" href={`/content/automation?sourceId=${selected.id}`}>기획·근거 승인하기</Link><Link className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일에서 이어하기 <ArrowRight size={14} /></Link></div> : null}</div> : <div className="list-empty"><Sparkles size={20} /> 승인된 소구점과 레퍼런스 검증을 바탕으로 기획안을 만들면 다음 공정 HANDOFF가 표시됩니다.</div>}
+          </form> : <div className="research-locked"><CircleAlert size={16} /><div><strong>참고 자료 검증 잠김</strong><p>먼저 진행할 소구점을 한 개 이상 승인해 주세요.</p></div></div>}
+          {tab === "niches" ? <section className="niche-decision-bar"><div><strong>사람 판정</strong><small>소구점 승인과 참고 자료 검증이 끝난 주제만 기획으로 넘길 수 있습니다.</small></div><button className="ghost-button" disabled={busy} onClick={() => decideTopic("blocked")}>보류</button><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>더 지켜보기</button><button className="primary-button" disabled={busy || !researchReady} onClick={() => decideTopic("planned")}><Check size={14} /> 기획으로 넘기기</button></section> : <section className="niche-decision-bar"><div><strong>기획 전달 완료</strong><small>확정된 주제입니다. 정본 후보를 만들거나 다음 콘텐츠 공정에서 이어서 작업하세요.</small></div><button className="secondary-button" disabled={busy} onClick={() => decideTopic("review")}>틈새로 되돌리기</button></section>}
+          {candidates.length ? <div className="planning-candidates"><h3>기획 방향 후보 <small>제목·썸네일은 패키징에서 최종 확정</small></h3>{candidates.map((candidate, index) => <article className={candidate.picked ? "picked" : ""} key={`${String(candidate.title)}-${index}`}><div><strong>{String(candidate.title ?? "기획 방향 후보")}</strong><p>{String(candidate.thumbnailCopy ?? "")}</p><small>{String(candidate.narrative ?? candidate.evidence ?? "")}</small></div><button className="ghost-button" onClick={() => pickCandidate(index)}>{candidate.picked ? "★ 채택됨" : "☆ 채택"}</button></article>)}{planningReady ? <div className="planning-next-actions"><Link className="secondary-button" href={`/content/automation?sourceId=${selected.id}`}>기획·근거 승인하기</Link><Link className="primary-button" href={`/content/packages?sourceId=${selected.id}`}>제목·썸네일에서 이어하기 <ArrowRight size={14} /></Link></div> : null}</div> : <div className="list-empty"><Sparkles size={20} /> 승인된 소구점과 참고 자료 검증을 바탕으로 기획안을 만들면 다음 공정으로 넘길 내용이 표시됩니다.</div>}
           {showPlanningHandoff ? <ContentPlanningHandoff key={`handoff:${selected.id}:${selected.version}`} source={selected} onSaved={(record) => { setRecords((current) => current.map((item) => item.id === record.id ? record : item)); setNotice("인계 메모를 저장했습니다. 승인·공유는 실행되지 않았습니다."); }} /> : null}
           {String(planResult.handoff ?? "") ? <section className="handoff-box"><span>다음에 할 일 · 넘길 말</span><p>{String(planResult.handoff)}</p></section> : null}
           {showTopicJevAssist ? <ContentTopicJevAssist key={`topic-jev:${selected.id}:${selected.version}:${plan?.id ?? "no-plan"}:${plan?.version ?? 0}`} topicId={selected.id} topicVersion={selected.version} {...(plan ? { planId: plan.id, planVersion: plan.version } : {})} /> : null}

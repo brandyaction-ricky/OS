@@ -33,7 +33,7 @@ function runPhase(run: VoiceRun): { label: string; tone: "progress" | "ready" | 
   if (run.render?.status === "blocked") return { label: "영상 제작 실패", tone: "problem", detail: `세 번 시도했지만 실패했습니다(오류 코드 ${run.render.lastErrorCode ?? "없음"}). 개발 담당에게 알려 주세요.` };
   if (run.stage !== "voice_ready") return { label: `음성 만드는 중 · ${run.segmentsReady}/${run.segmentCount}단락`, tone: "progress", detail: "같은 원고면 기존 녹음을 다시 써서 바로 끝납니다." };
   if (run.render?.stage === "rendering") return { label: "영상 만드는 중", tone: "progress", detail: "10분 안팎 걸립니다." };
-  return { label: "영상 제작 대기", tone: "progress", detail: run.render?.lastErrorCode ? `한 번 실패해 다시 시도합니다(오류 코드 ${run.render.lastErrorCode}).` : "렌더 PC가 차례대로 가져가 만듭니다." };
+  return { label: "영상 제작 대기", tone: "progress", detail: run.render?.lastErrorCode ? `한 번 실패해 다시 시도합니다(오류 코드 ${run.render.lastErrorCode}).` : "영상 만드는 컴퓨터가 차례대로 가져가 만듭니다." };
 }
 const PHASE_PILL = { progress: "scheduled", ready: "approved", problem: "failed" } as const;
 const ago = (seconds: number) => seconds < 90 ? `${seconds}초` : seconds < 5400 ? `${Math.round(seconds / 60)}분` : `${Math.round(seconds / 3600)}시간`;
@@ -202,7 +202,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
     </Step>
 
     <Step index={2} state={states[2]}>
-      <p>대표 목소리 음성을 만들고, 이어서 마인드맵 영상을 만들어 비공개로 저장합니다. 늘 켜 둔 렌더 PC가 차례대로 만듭니다.</p>
+      <p>대표 목소리 음성을 만들고, 이어서 마인드맵 영상을 만들어 비공개로 저장합니다. 늘 켜 둔 영상 만드는 컴퓨터가 차례대로 만듭니다.</p>
       {renderPc ? <RenderPcLine status={renderPc} /> : null}
       {notesDone && !madeForDesign ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy) || !isAdmin} onClick={() => void (async () => { if (await cost.confirm({ model: voice, amount: voiceEstimate("가".repeat(1_000), voice).krw, detail: "원고 1,000자 기준", ok: "확인하고 만들기" })) await act("run", () => post("/runs", "POST", {})); })()}>
@@ -276,15 +276,15 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
   </>;
 }
 
-/** 렌더 PC (Mac mini) on/off, what it is doing, the queue and disk, from its once-a-minute signal. */
+/** 영상 만드는 컴퓨터 (Mac mini) on/off, what it is doing, the queue and disk, from its once-a-minute signal. */
 function RenderPcLine({ status }: { status: RenderPc }) {
   const queue = status.queue.voice + status.queue.render;
-  if (status.state === "unknown") return <p className="yt-note">렌더 PC가 아직 OS에 연결되지 않았어요. 연결되면 여기에 상태가 보여요.</p>;
+  if (status.state === "unknown") return <p className="yt-note">영상 만드는 컴퓨터가 아직 OS에 연결되지 않았어요. 연결되면 여기에 상태가 보여요.</p>;
   return <div className="yt-run">
-    <div className="yt-run-head"><span className="status-pill" data-status={status.state === "online" ? "approved" : "failed"}>{status.state === "online" ? "렌더 PC 켜짐" : "렌더 PC 연결 끊김"}</span>
+    <div className="yt-run-head"><span className="status-pill" data-status={status.state === "online" ? "approved" : "failed"}>{status.state === "online" ? "영상 만드는 컴퓨터 켜짐" : "영상 만드는 컴퓨터 연결 끊김"}</span>
       <small>마지막 신호 {ago(status.ageSeconds ?? 0)} 전</small></div>
     <small>{status.state === "online" ? `지금: ${status.job ? RENDER_STEP[status.job.step] ?? "작업 중" : "쉬는 중"} · 기다리는 작업 ${queue}건${status.averageRenderMinutes ? ` · 영상 한 편 평균 ${status.averageRenderMinutes}분` : ""}`
-      : "신호가 5분 넘게 없어요. 관리자가 렌더 PC 전원과 인터넷을 확인하면, 켜지는 대로 차례대로 이어서 만들어요."}</small>
-    {status.lowDisk ? <p className="yt-note yt-warn">렌더 PC 디스크 여유가 {status.diskFreeGb}GB예요. 60GB 아래라 새 영상을 받지 않아요. 관리자가 공간을 비워 주세요.</p> : null}
+      : "신호가 5분 넘게 없어요. 관리자가 영상 만드는 컴퓨터 전원과 인터넷을 확인하면, 켜지는 대로 차례대로 이어서 만들어요."}</small>
+    {status.lowDisk ? <p className="yt-note yt-warn">영상 만드는 컴퓨터 디스크 여유가 {status.diskFreeGb}GB예요. 60GB 아래라 새 영상을 받지 않아요. 관리자가 공간을 비워 주세요.</p> : null}
   </div>;
 }

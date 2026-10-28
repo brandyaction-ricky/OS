@@ -26,7 +26,7 @@ export function useLocalRender(token: string | null, enabled: boolean) {
   return { status, reload: load };
 }
 
-/** 시안을 만들 곳: 렌더 PC (default) or this member's own Mac, with a one-line state for the latter. */
+/** 시안을 만들 곳: 영상 만드는 컴퓨터 (default) or this member's own Mac, with a one-line state for the latter. */
 export function DraftPlacePicker({ value, onChange, status, ready, token, onConnected }: { value: DraftPlace; onChange: (place: DraftPlace) => void;
   status: LocalRenderStatus | null; ready: boolean; token: string | null; onConnected: () => void }) {
   const blocker = localBlocker(status, ready);
@@ -34,12 +34,12 @@ export function DraftPlacePicker({ value, onChange, status, ready, token, onConn
   useEffect(() => { if (blocker && value === "local") onChange("pc"); }, [blocker, value, onChange]);
   return <div style={{ display: "grid", gap: 6 }}>
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-      <span>시안을 만들 곳</span>
-      <div className="segmented" role="group" aria-label="시안을 만들 곳">
-        <button type="button" aria-pressed={value === "pc"} onClick={() => onChange("pc")}>렌더 PC</button>
+      <span>미리보기 영상을 만들 곳</span>
+      <div className="segmented" role="group" aria-label="미리보기 영상을 만들 곳">
+        <button type="button" aria-pressed={value === "pc"} onClick={() => onChange("pc")}>영상 만드는 컴퓨터</button>
         <button type="button" aria-pressed={value === "local"} disabled={Boolean(blocker)} title={blocker ?? undefined} onClick={() => onChange("local")}>내 컴퓨터</button>
       </div>
-      <small>{value === "local" ? "내 맥에서 바로 만들어요 · 렌더 PC를 기다리지 않아요" : blocker ? `내 컴퓨터: ${blocker}` : "내 컴퓨터도 쓸 수 있어요 · 켜짐 · 엔진 같음"}</small>
+      <small>{value === "local" ? "내 컴퓨터에서 바로 만들어요 · 영상 만드는 컴퓨터를 기다리지 않아요" : blocker ? `내 컴퓨터: ${blocker}` : "내 컴퓨터도 쓸 수 있어요 · 켜짐 · 엔진 같음"}</small>
       {ready && status?.state !== "online" ? <button type="button" className="secondary-button compact" onClick={() => setConnect(!connect)}>{connect ? "닫기" : "내 컴퓨터 연결"}</button> : null}
     </div>
     {connect ? <LocalConnect token={token} onDone={onConnected} /> : null}
@@ -83,8 +83,8 @@ function LocalConnect({ token, onDone }: { token: string | null; onDone: () => v
     </div>
     <ol style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 4 }}>
       <li>설치 명령을 만들어 복사해요.</li>
-      <li>{system === "windows" ? "PowerShell" : "터미널"}에 붙여 넣고 Enter. 필요한 프로그램과 렌더 PC의 엔진을 받아 바로 켜져요(처음엔 몇 분 걸려요).</li>
-      <li>다음부터는 바탕화면의 「{system === "windows" ? "MYIN local render" : "내 컴퓨터 렌더"}」를 두 번 누르면 켜져요. 창을 열어 두는 동안 시안을 만들어요.</li>
+      <li>{system === "windows" ? "PowerShell" : "터미널"}에 붙여 넣고 Enter. 필요한 프로그램과 영상 만드는 컴퓨터의 엔진을 받아 바로 켜져요(처음엔 몇 분 걸려요).</li>
+      <li>다음부터는 바탕화면의 「{system === "windows" ? "MYIN local render" : "내 컴퓨터 영상 만들기"}」를 두 번 누르면 켜져요. 창을 열어 두는 동안 미리보기 영상을 만들어요.</li>
     </ol>
     {!key ? <div className="yt-actions"><button type="button" className="primary-button" disabled={busy} onClick={() => void issue()}>{busy ? <LoaderCircle size={14} className="spin" /> : <KeyRound size={14} />}설치 명령 만들기</button>
       <small>내 이름으로 연결 키(90일)를 만들어요. 다시 누르면 이전 키는 끊겨요.</small></div>

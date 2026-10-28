@@ -52,7 +52,7 @@ export function AdPerformanceWorkspace() {
   const runSync = async () => {
     if (!data) return;
     if (!connectedCount) {
-      setError("Meta·Google 광고 계정이 아직 연결되지 않았습니다. 설정 > 연결에서 자격 증명을 등록하세요.");
+      setError("Meta·Google 광고 계정이 아직 연결되지 않았습니다. 설정 > 연결에서 계정 연결 정보를 등록하세요.");
       return;
     }
     setSyncing(true);
@@ -64,11 +64,11 @@ export function AdPerformanceWorkspace() {
         to: data.range.to,
       });
       const failures = result.result.results.filter((item) => item.status === "failed");
-      if (failures.length) setError(`${failures.length}개 광고 계정 동기화에 실패했습니다. 연결 자격 증명을 확인하세요.`);
-      else setNotice("광고 API 동기화를 완료했습니다.");
+      if (failures.length) setError(`${failures.length}개 광고 계정에서 데이터를 불러오지 못했습니다. 연결 정보를 확인하세요.`);
+      else setNotice("광고 데이터를 불러왔습니다.");
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "광고 데이터를 동기화하지 못했습니다.");
+      setError(reason instanceof Error ? reason.message : "광고 데이터를 불러오지 못했습니다.");
     } finally {
       setSyncing(false);
     }
@@ -109,12 +109,12 @@ export function AdPerformanceWorkspace() {
         <div className="ad-toolbar">
           {profile?.role === "admin" ? <button type="button" className="ghost-button" onClick={downloadAdCsvSample}>CSV 예제</button> : null}
           {profile?.role === "admin" ? <label className="secondary-button file-button"><FileUp size={15} /> CSV 가져오기<input type="file" accept=".csv,text/csv" onChange={importCsv} /></label> : null}
-          <button className="secondary-button" disabled={loading} title="OS에 저장된 광고 데이터를 다시 불러옵니다. 외부 API는 호출하지 않습니다." onClick={load}><RefreshCw size={15} className={loading ? "spin" : ""} /> 새로고침</button>
-          {profile?.role === "admin" ? <button className="primary-button" disabled={syncing || loading || Boolean(loadError) || !data || data.period !== month || data.brand !== brand} title="Meta·Google 광고 API에서 최신 데이터를 수집해 저장합니다." onClick={runSync}><RefreshCw size={15} className={syncing ? "spin" : ""} /> API 동기화</button> : null}
+          <button className="secondary-button" disabled={loading} title="OS에 저장된 광고 데이터를 다시 보여 줍니다. 광고 플랫폼에는 접속하지 않습니다." onClick={load}><RefreshCw size={15} className={loading ? "spin" : ""} /> 새로고침</button>
+          {profile?.role === "admin" ? <button className="primary-button" disabled={syncing || loading || Boolean(loadError) || !data || data.period !== month || data.brand !== brand} title="Meta·Google 광고에서 최신 데이터를 가져와 저장합니다." onClick={runSync}><RefreshCw size={15} className={syncing ? "spin" : ""} /> 광고 데이터 불러오기</button> : null}
         </div>
       </header>
       {error ? <div className="inline-alert danger"><CircleAlert size={16} />{error}</div> : null}
-      <p className="field-hint">새로고침: 저장된 결과 조회 · API 동기화: 광고 플랫폼에서 최신 데이터 수집</p>
+      <p className="field-hint">새로고침: 저장된 결과 다시 보기 · 광고 데이터 불러오기: 광고 플랫폼에서 최신 데이터 가져오기</p>
       {notice ? <div className="inline-alert success">{notice}</div> : null}
 
       <WorkspaceLoadState loading={loading || (!demo && !loadError && Boolean(data) && (data!.period !== month || data!.brand !== brand))} error={loadError} retry={load}>
@@ -123,7 +123,7 @@ export function AdPerformanceWorkspace() {
         {(["meta", "google"] as const).map((provider) => {
           const connection = data?.connections[provider];
           const title = provider === "meta" ? "Meta Ads" : "Google Ads";
-          return <article className="panel ad-connection" key={provider}><span className="waiting"><BarChart3 size={17} /></span><div><strong>{title}</strong><small>{connection?.configured ? "설정됨(미확인) · 작동 상태에서 테스트" : "광고 계정 환경변수 등록 대기"}</small></div><em className="waiting">{connection?.configured ? "설정" : "대기"}</em></article>;
+          return <article className="panel ad-connection" key={provider}><span className="waiting"><BarChart3 size={17} /></span><div><strong>{title}</strong><small>{connection?.configured ? "설정됨(미확인) · 작동 상태에서 테스트" : "광고 계정 연결 설정 대기"}</small></div><em className="waiting">{connection?.configured ? "설정" : "대기"}</em></article>;
         })}
         <article className="panel ad-principle"><Target size={17} /><div><strong>운영은 광고 플랫폼에서</strong><small>소재·타깃·입찰 변경 없이 성과만 집계합니다.</small></div></article>
       </section>
@@ -136,8 +136,8 @@ export function AdPerformanceWorkspace() {
       </section>
 
       <section className="ad-layout">
-        <article className="panel ad-channel-panel"><div className="panel-header"><div><h2>채널별 성과</h2><p>동일 기간·브랜드 기준 API·CSV 집계</p></div><BarChart3 size={17} /></div><div className="ad-channel-table"><header><span>채널</span><span>광고비</span><span>전환 매출</span><span>ROAS</span><span>CPA</span></header>{(data?.channels ?? []).map((channel) => <div key={channel.provider}><strong>{channel.provider === "meta" ? "Meta" : "Google"}</strong><span>{money(channel.spend)}</span><span>{money(channel.attributedRevenue)}</span><span>{ratio(channel.roas)}</span><span>{money(channel.cpa)}</span></div>)}</div>{!data?.rows.length ? <div className="empty-state compact-empty"><div><BarChart3 /><h3>수집된 광고 데이터가 없습니다.</h3><p>광고 계정을 연결해 API 동기화를 실행하거나 CSV로 초기 데이터를 가져오세요.</p></div></div> : null}</article>
-        <article className="panel ad-comparison-panel"><div className="panel-header"><div><h2>매출·비용 교차 확인</h2><p>OS 매출 상세와 경영지원 광고비 비교</p></div><CircleDollarSign size={17} /></div><div className="ad-comparison-values"><div><span>OS 순매출</span><strong>{money(summary?.operatingRevenue)}</strong></div><div><span>API·CSV 광고비</span><strong>{money(summary?.spend)}</strong></div><div><span>재무 광고비</span><strong>{data?.financeVisible ? money(summary?.financeAdExpense) : "권한 필요"}</strong></div></div><p className="ad-note">광고 플랫폼 전환 매출은 귀속 모델 기준이며 실제 OS 순매출과 다를 수 있습니다. 차이를 함께 보고 수익성을 판단합니다.</p><div className="ad-external-links"><a href="https://adsmanager.facebook.com/" target="_blank" rel="noreferrer">Meta 광고 관리자 <ExternalLink size={13} /></a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads <ExternalLink size={13} /></a></div></article>
+        <article className="panel ad-channel-panel"><div className="panel-header"><div><h2>채널별 성과</h2><p>동일 기간·브랜드 기준 자동 수집·CSV 집계</p></div><BarChart3 size={17} /></div><div className="ad-channel-table"><header><span>채널</span><span>광고비</span><span>전환 매출</span><span>ROAS</span><span>CPA</span></header>{(data?.channels ?? []).map((channel) => <div key={channel.provider}><strong>{channel.provider === "meta" ? "Meta" : "Google"}</strong><span>{money(channel.spend)}</span><span>{money(channel.attributedRevenue)}</span><span>{ratio(channel.roas)}</span><span>{money(channel.cpa)}</span></div>)}</div>{!data?.rows.length ? <div className="empty-state compact-empty"><div><BarChart3 /><h3>수집된 광고 데이터가 없습니다.</h3><p>광고 계정을 연결해 광고 데이터를 불러오거나 CSV로 초기 데이터를 가져오세요.</p></div></div> : null}</article>
+        <article className="panel ad-comparison-panel"><div className="panel-header"><div><h2>매출·비용 교차 확인</h2><p>OS 매출 상세와 경영지원 광고비 비교</p></div><CircleDollarSign size={17} /></div><div className="ad-comparison-values"><div><span>OS 순매출</span><strong>{money(summary?.operatingRevenue)}</strong></div><div><span>자동 수집·CSV 광고비</span><strong>{money(summary?.spend)}</strong></div><div><span>재무 광고비</span><strong>{data?.financeVisible ? money(summary?.financeAdExpense) : "권한 필요"}</strong></div></div><p className="ad-note">광고 플랫폼 전환 매출은 각 플랫폼이 자체 기준으로 계산한 값이며 실제 OS 순매출과 다를 수 있습니다. 차이를 함께 보고 수익성을 판단합니다.</p><div className="ad-external-links"><a href="https://adsmanager.facebook.com/" target="_blank" rel="noreferrer">Meta 광고 관리자 <ExternalLink size={13} /></a><a href="https://ads.google.com/" target="_blank" rel="noreferrer">Google Ads <ExternalLink size={13} /></a></div></article>
       </section>
 
       {daily.length ? <section className="panel ad-daily-panel"><div className="panel-header"><div><h2>최근 일별 집계</h2><p>선택한 월에서 최근 14일</p></div></div><div className="ad-daily-list">{daily.map(([date, value]) => <div key={date}><time>{date}</time><span>광고비 {money(value.spend)}</span><strong>전환 매출 {money(value.revenue)}</strong><em>{ratio(safeRatio(value.revenue, value.spend))}</em></div>)}</div></section> : null}

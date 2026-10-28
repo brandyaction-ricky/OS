@@ -40,7 +40,7 @@ test("length, the first line, long lines and the banned words are counted", () =
 
 test("10 letters the same as a 레퍼런스 or the 정본 is copying; a shorter match is not", () => {
   const ref = "회사 그만두기 전에 이것부터 하세요\n작은 결정이 하루에 백 번 넘게 쌓였어요";
-  assert.match(checkShortScript(good, { refs: [ref] }).problems[0], /레퍼런스와 같은 구간 「작은 결정이 하루에 백 번 넘게 쌓였어요」 \(10번째 줄\)/);
+  assert.match(checkShortScript(good, { refs: [ref] }).problems[0], /참고 영상과 같은 구간 「작은 결정이 하루에 백 번 넘게 쌓였어요」 \(10번째 줄\)/);
   assert.deepEqual(checkShortScript(good, { refs: ["작은 결정이 하루"] }).problems, []);
   assert.match(checkShortScript(good, { canon: "그래서 몸보다 머리가 먼저 지친" }).problems[0], /정본과 같은 구간/);
 });
@@ -52,9 +52,9 @@ test("대본 확정 needs the 통찰 한 줄, a 헤드 카피 and a script that 
   assert.match(headCopyProblem("저녁마다 지치는 진짜 이유는 일이 아니었어요"), /20자 이하/);
   assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문", headCopy: "일은 두 개뿐인데 왜 지칠까" }), "");
   const fetched = { items: [{ title: "퇴사 고민", result: { transcript: "0.0 그래서 몸보다 머리가 먼저 지친 거예요\n2.1 다음 줄" } }] };
-  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드" }, fetched), /레퍼런스와 같은 구간/);
+  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드" }, fetched), /참고 영상과 같은 구간/);
   assert.ok(refTexts(script, fetched)[0].includes("그래서 몸보다") && !refTexts(script, fetched)[0].includes("0.0"));
-  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드", refs: [{ url: "https://youtu.be/x", title: "", script: "다들 체력 문제라고 생각하죠 그게 아니에요" }] }), /레퍼런스와 같은 구간/);
+  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드", refs: [{ url: "https://youtu.be/x", title: "", script: "다들 체력 문제라고 생각하죠 그게 아니에요" }] }), /참고 영상과 같은 구간/);
 });
 
 test("the render PC is handed YouTube, Instagram, TikTok and Meta ad links only", () => {

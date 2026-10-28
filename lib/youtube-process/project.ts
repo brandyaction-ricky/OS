@@ -24,7 +24,7 @@ export interface YpMeta {
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
 
-export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검수", "업로드", "쇼츠 · 칼럼"] as const;
+export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검토", "업로드", "쇼츠 · 칼럼"] as const;
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };
 export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션", short: "숏폼 (릴스 · 광고)" };
 export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션", short: "숏폼" };
@@ -34,7 +34,7 @@ export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "�
  * Its 기획안 place is the 대본 (숏폼 대본 정본, owner direction 2026-10-28: 주제 확정 and 대본 확정 decide a 숏폼).
  */
 export function flowOf(kind: YpKind | null) {
-  return kind === "short" ? [{ index: 0, name: "주제" }, { index: 1, name: "대본" }, { index: 3, name: "제작" }, { index: 4, name: "최종 검수" }, { index: 5, name: "내보내기" }]
+  return kind === "short" ? [{ index: 0, name: "주제" }, { index: 1, name: "대본" }, { index: 3, name: "제작" }, { index: 4, name: "최종 검토" }, { index: 5, name: "내보내기" }]
     : YP_FLOW.map((name, index) => ({ index, name: name as string }));
 }
 export const stepName = (index: number, kind: YpKind | null) => flowOf(kind).find(step => step.index === index)?.name ?? YP_FLOW[index] ?? "완료";

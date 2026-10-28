@@ -123,16 +123,16 @@ function assertPlanEditable(project: YpProject, patch: Patch<"plan">) {
 }
 function assertMakeEditable(project: YpProject, patch: Patch<"make">) {
   if (project.yp.stage === "make") return;
-  if (project.yp.stage !== "review") throw locked(project.yp.stage === "upload" || project.yp.stage === "done" ? "최종 검수 컨펌이 끝나 제작은 고칠 수 없어요." : "구성안을 마치면 제작이 열려요.");
+  if (project.yp.stage !== "review") throw locked(project.yp.stage === "upload" || project.yp.stage === "done" ? "최종 검토 컨펌이 끝나 제작은 고칠 수 없어요." : "구성안을 마치면 제작이 열려요.");
   const fields = editableFields(project, "review");
   if (fields === "all") return;
-  if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검수 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
+  if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검토 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
   const needs = [patch.addFinal ? "make.final" : "", patch.thumb || patch.pair ? "make.thumbs" : ""].filter(Boolean);
   if (needs.some(key => !fields.includes(key))) throw new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.");
 }
 
 function nextPlan(current: YpPlan, patch: Patch<"plan">, projectId: string): YpPlan {
-  for (const thumb of patch.thumbs ?? []) if (thumb.path && !assetPath(projectId, "plan_thumb").test(thumb.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "썸네일 시안 파일을 다시 올려 주세요.");
+  for (const thumb of patch.thumbs ?? []) if (thumb.path && !assetPath(projectId, "plan_thumb").test(thumb.path)) throw new ApiError(400, "ASSET_PATH_INVALID", "썸네일 후보 파일을 다시 올려 주세요.");
   const { aiDraft, ...fields } = patch;
   // [이 초안으로 바꾸기] sends the draft's fields and aiDraft: null together.
   return { ...current, ...fields, ...(aiDraft === null ? { aiDraft: undefined } : {}) };
@@ -275,7 +275,7 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     throw locked("숏폼 주제 후보는 내 AI가 쓰고, [숏폼으로 만들기]로만 바뀌어요.");
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
-    if (stage !== "upload") throw locked("최종 검수 컨펌이 OK가 나야 업로드가 열려요.");
+    if (stage !== "upload") throw locked("최종 검토 컨펌이 OK가 나야 업로드가 열려요.");
     if (stages.upload.data.run?.status === "done") throw locked("이미 유튜브에 올린 영상이에요.");
     data = nextUpload(stages.upload.data, patch, project.id);
   }
@@ -325,7 +325,7 @@ export async function columnToMyin(actor: RequestActor, id: string, input: z.inf
     if (Buffer.byteLength(JSON.stringify(body)) > MYIN_BODY_MAX) throw new ApiError(413, "MYIN_TOO_LARGE", "이미지가 너무 커요. 합계 3MB 안으로 줄여 주세요.");
     article = await callMyin(`/api/integrations/brandy-os/articles/${source}`, "PUT", body);
   } else {
-    if (!item.myin) throw new ApiError(409, "MYIN_NOT_SENT", "먼저 마이인에 초안을 올려 주세요.");
+    if (!item.myin) throw new ApiError(409, "MYIN_NOT_SENT", "먼저 마이인에 임시 글로 올려 주세요.");
     article = await callMyin(`/api/integrations/brandy-os/articles/${source}/publish`, "POST", { published: input.action === "publish" });
   }
   const myin: YpColumnMyin = { id: article.id, slug: article.slug, status: article.status, url: article.url, at: new Date().toISOString(), by: actor.name,
@@ -339,7 +339,7 @@ export async function columnToMyin(actor: RequestActor, id: string, input: z.inf
 /** The SEO 칼럼 is written from the final 원고: a longform after its 최종 검수 OK (업로드 · 쇼츠 · 칼럼 · 끝). */
 export function assertColumnOpen(project: YpProject) {
   if (project.yp.topic.type === "short") throw locked("숏폼에는 SEO 칼럼이 없어요.");
-  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
+  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검토 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
 }
 
 // ── Moving on (S0 '지금 할 일') ──
@@ -359,14 +359,14 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
     // The 원고 the production starts from is kept as its own version (제작 시작 원고 vN).
     await writeStage(actor.supabase, actor.id, actor.team, project, "outline", stages.outline, withScriptVersion(stages.outline.data, stages.outline.data.script, actor.name, now, "make"));
   } else if (input.to === "review") {
-    need(project.yp.stage === "make", "제작 단계에서만 최종 검수로 넘어갈 수 있어요.");
+    need(project.yp.stage === "make", "제작 단계에서만 최종 검토로 넘어갈 수 있어요.");
     const short = project.yp.topic.type === "short";
     need((await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length > 0, short ? "MP4를 만들거나 올려 주세요" : "최종본을 올려 주세요");
     // A 숏폼 has no YouTube thumbnails.
     const missing = short ? "" : thumbsMissing(stages.make.data);
     need(!missing, missing);
   } else if (project.yp.topic.type === "short") {
-    need(project.yp.stage === "upload" && input.to === "done", "최종 검수 컨펌 OK 뒤에 마칠 수 있어요.");
+    need(project.yp.stage === "upload" && input.to === "done", "최종 검토 컨펌 OK 뒤에 마칠 수 있어요.");
   } else {
     // After the YouTube upload: on to 쇼츠 · 칼럼, or done (from either).
     need((input.to === "shorts" ? project.yp.stage === "upload" : ["upload", "shorts"].includes(project.yp.stage)) && stages.upload.data.run?.status === "done", "유튜브 업로드가 끝난 뒤에 넘어갈 수 있어요.");
@@ -417,7 +417,7 @@ export const shortsActionSchema = z.discriminatedUnion("action", [
 export async function actOnShorts(actor: RequestActor, id: string, input: z.infer<typeof shortsActionSchema>) {
   const project = await getYoutubeProject(actor, id);
   if (project.version !== input.expectedVersion) throw conflict();
-  if (project.yp.topic.type === "short" || !["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검수 컨펌 OK 뒤에 쇼츠를 확정할 수 있어요.");
+  if (project.yp.topic.type === "short" || !["upload", "shorts", "done"].includes(project.yp.stage)) throw locked("최종 검토 컨펌 OK 뒤에 쇼츠를 확정할 수 있어요.");
   const now = new Date().toISOString();
   let yp: YpProject["yp"];
   try {

@@ -93,14 +93,14 @@ test("audit events and statuses are rendered in plain Korean", async () => {
     import("../lib/audit-labels.ts"),
     read("app/api/v1/audit/route.ts"),
   ]);
-  assert.equal(labels.auditEventLabel("created"), "생성");
+  assert.equal(labels.auditEventLabel("created"), "만듦");
   assert.equal(labels.auditRecordLabel("title_package"), "제목·썸네일");
   assert.equal(labels.auditRecordLabel("shorts_proposal"), "숏폼 기획안");
-  assert.equal(labels.auditRecordLabel("derivatives"), "파생물");
+  assert.equal(labels.auditRecordLabel("derivatives"), "파생 콘텐츠");
   assert.equal(labels.auditRecordLabel("development_request"), "개발 요청");
   assert.equal(labels.auditStatusLabel("blocked", "content_package"), "비공개");
   assert.equal(labels.auditStatusLabel("review", "content_package"), "검토 중");
-  assert.equal(labels.auditStatusLabel("review", "development_request"), "검수 요청");
+  assert.equal(labels.auditStatusLabel("review", "development_request"), "검토 요청");
   assert.equal(labels.auditStatusLabel("done", "development_request"), "해결");
   assert.equal(labels.auditStatusLabel("unknown", "task"), "기타 상태");
   assert.match(route, /record\.metadata\?\.kind === "development_request"/);
@@ -167,5 +167,5 @@ test("sensitive access gaps, shared knowledge categories and action confirmation
   assert.match(monitoring, /confirmationDialog\.current\?\.showModal/);
   assert.match(monitoring, /onCancel=\{\(\) => setConfirmation\(null\)\}/);
   assert.match(monitoring, /지식 문서 최대 25건/);
-  assert.match(monitoring, /텔레그램 웹훅을 운영 주소에 연결하거나 갱신/);
+  assert.match(monitoring, /텔레그램을 운영 주소에 연결하거나 다시 연결/);
 });

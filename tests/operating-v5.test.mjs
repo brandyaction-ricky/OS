@@ -71,7 +71,7 @@ test("session QA keeps the five canonical derivative channels and editable publi
   assert.match(automation, /승인완료 일괄 예약/);
   assert.match(automation, /type="datetime-local"/);
   assert.match(automation, /archiveRecord/);
-  assert.match(studio, /키트 수정/);
+  assert.match(studio, /업로드 자료 수정/);
   assert.match(studio, /수정 저장/);
 });
 
@@ -163,5 +163,5 @@ test("non-content workspaces use everyday Korean labels and real team examples",
   ]) assert.doesNotMatch(source, new RegExp(oldLabel));
   assert.doesNotMatch(source, /데이빗|프로젝트 관제에서 요청서를/);
   assert.match(source, /예: 안저, 리키, 에릭/);
-  assert.match(source, /AI 작업에서 요청서를 등록하면/);
+  assert.match(source, /요청서를 등록하면 여기에 모입니다/);
 });

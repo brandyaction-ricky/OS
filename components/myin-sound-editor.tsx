@@ -110,7 +110,7 @@ export function MyinSoundEditor({ runId, token, editable, onSaved }: { runId: st
       </div> : null}
     </div>
 
-    {!state.catalog.length ? <p className="yt-note">렌더 PC가 사운드 목록을 아직 보내지 않았어요. 지금 적힌 소리만 쓸 수 있어요.</p> : null}
+    {!state.catalog.length ? <p className="yt-note">영상 만드는 컴퓨터가 사운드 목록을 아직 보내지 않았어요. 지금 적힌 소리만 쓸 수 있어요.</p> : null}
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     {editable ? <div className="yt-sound-bar">
       <small>{pending ? "저장해야 전체 영상에 들어가요." : "바꾸면 여기서 저장해요."}</small>

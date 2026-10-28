@@ -185,7 +185,7 @@ function contentStage(record: OsRecord) {
     const kind = String(record.metadata.packageKind ?? "");
     if (kind === "youtube_kit") return "발행 키트";
     if (kind === "title_package") return "제목·썸네일";
-    if (kind === "topic_plan") return "기획 브리핑";
+    if (kind === "topic_plan") return "기획 메모";
   }
   if (record.stage) return record.stage;
   const labels: Partial<Record<OsRecord["record_type"], string>> = {

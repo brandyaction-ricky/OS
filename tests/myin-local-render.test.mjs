@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { draftFilter, localBlocker, localDraft } from "../lib/myin-local.ts";
 
@@ -50,6 +51,26 @@ test("the engine fingerprint follows the engine's content, not where it is insta
   assert.equal(a, b, "the same engine in another folder (a staff Mac) gives the same fingerprint; caches are ignored");
   assert.notEqual(a, c, "a changed engine file changes the fingerprint");
   assert.equal(await engineOf(fakePackage("print('v1')\n", "NFD")), a, "a Korean name stored decomposed (a Mac's tar) is the same engine");
+});
+
+// A release that changes only the worker must still refresh the staff bundle: the worker's files count as part of the engine.
+test("the engine fingerprint follows the worker's own files, wherever the release folder is", { skip: spawnSync("python3", ["-V"]).status !== 0 }, async () => {
+  const release = (extra) => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "myin-release-"));
+    mkdirSync(path.join(root, "tools")); mkdirSync(path.join(root, "lib"));
+    for (const name of ["youtube-media-worker.mjs", "shortform-diagrams.mjs", "shortform-renderer.mjs"]) copyFileSync(path.join("tools", name), path.join(root, "tools", name));
+    copyFileSync(path.join("lib", "shortform-diagram-catalog.json"), path.join(root, "lib", "shortform-diagram-catalog.json"));
+    if (extra) writeFileSync(path.join(root, "tools", "extra.mjs"), extra);
+    return root;
+  };
+  const pkg = fakePackage("print('v1')\n");
+  const of = async (root) => {
+    Object.assign(process.env, { MYIN_PKG: pkg, MYIN_PYTHON: "python3", MYIN_LIBRARY: path.join(pkg, "no-library") });
+    return (await import(`${pathToFileURL(path.join(root, "tools", "youtube-media-worker.mjs")).href}?fp=${Math.random()}`)).engine();
+  };
+  const a = await of(release()), b = await of(release()), c = await of(release("export const x = 1;\n"));
+  assert.equal(a, b, "the same release in another folder (a staff PC's bundle) gives the same fingerprint");
+  assert.notEqual(a, c, "a changed worker file makes a new engine, so staff PCs take the new bundle");
 });
 
 // A staff Mac never had stage 1's work folder: it is rebuilt from the OS — the render PC's processed voice.wav byte for byte
