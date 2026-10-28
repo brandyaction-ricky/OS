@@ -13,7 +13,7 @@ const KINDS = ["제목", "썸네일 문구", "이미지 연출", "기타"];
 const closed = (item: YpFeedbackView) => item.status !== "open";
 const label = (item: YpFeedbackView) => item.target !== "video" ? `🖼 ${item.target}` : item.range ? `▷ ${fmt(item.range[0])}~${fmt(item.range[1])}` : `▷ ${fmt(item.t ?? 0)}`;
 
-/** S6 최종 검수: the latest final with time-coded feedback, the thumbnails, and the 최종 검수 컨펌 (4-7). */
+/** S6 최종 검토: the latest final with time-coded feedback, the thumbnails, and the 최종 검토 컨펌 (4-7). */
 export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
   const control = useGate(page, "review");
@@ -99,9 +99,9 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   // A 숏폼 is a vertical video with no YouTube thumbnails.
   const short = project?.yp.topic.type === "short";
 
-  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검수" sub={gateSub(project, "review", "끝까지 보고, 고칠 곳은 그 시간에 남겨요.", short ? "최종 검수가 끝났어요. 내보내기로 넘어가요." : "최종 검수가 끝났어요. 업로드로 넘어가요.")}
+  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검토" sub={gateSub(project, "review", "끝까지 보고, 고칠 곳은 그 시간에 남겨요.", short ? "최종 검토가 끝났어요. 내보내기로 넘어가요." : "최종 검토가 끝났어요. 업로드로 넘어가요.")}
     todo={project?.yp.stage === "review" && project.yp.gates.review.state !== "wait" ? [{ label: "최종본", done: finals.length > 0 }, ...(unresolved ? [{ label: `남은 피드백 ${unresolved}개 (그래도 요청 가능)`, done: false }] : [])] : undefined}>
-    {page.bundle && project && make ? ["topic", "draft", "outline", "make"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검수" /> : <>
+    {page.bundle && project && make ? ["topic", "draft", "outline", "make"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검토" /> : <>
       <GateBanner page={page} gate="review" okExtra={project.yp.stage === "upload" ? <> · <Link className="yp-lnk" href={stepHref(5, project.id)}>{short ? "내보내기로" : "업로드로"} →</Link></> : null} />
       <ReplyForm control={control} />
       <Subject page={page} />

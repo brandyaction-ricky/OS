@@ -11,7 +11,7 @@ import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { YtCard } from "./youtube-process-media";
 
-const WHY: Record<string, string> = { manual: "", ai: " · 내 AI", make: " · 제작 시작", restore: " · 되돌림" };
+const WHY: Record<string, string> = { manual: "", ai: " · 자동 작성", make: " · 제작 시작", restore: " · 되돌림" };
 
 /** S4 구성안: 영상 스펙 · 원고 (versions, 예상 길이, 내 AI 원고). No 대표 컨펌; [다음: 제작] moves on (4-5). */
 export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
@@ -114,7 +114,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
       <Subject page={page} />
       {/* Before any 원고 is saved, the step starts with how to write it (owner request 2026-10-21: no guide text). */}
       {ways ? <div className="yp-ways">
-        <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>원고 초안을 써서 넣어 줘요 (10~20분)</span></button>
+        <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 자동으로 채우기</b><span>첫 원고를 써서 넣어 줘요 (10~20분)</span></button>
         <button type="button" className="yp-way" onClick={() => setManual(true)}><b>직접 쓰기</b><span>기획안 흐름이 들어간 편집기에서 바로 써요</span></button></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="영상 스펙" gq={anim ? "최종본 기준" : "촬영 · 최종본 기준"} need className="yp-compact">
@@ -126,9 +126,9 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
           </div>
           {runtimeError(form.spec.runtimeMin) ? <div className="yp-errline">{runtimeError(form.spec.runtimeMin)}</div> : null}
         </YpSection>
-        <YpSection n={2} title="원고" need extra={editable && !viewing && !ways ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 원고 쓰기"}</button> : null}>
+        <YpSection n={2} title="원고" need extra={editable && !viewing && !ways ? <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "다시 자동으로 쓰기" : "원고 자동으로 쓰기"}</button> : null}>
           <div className="yp-est"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 예상 길이 {estimate?.label}</span><span className="yp-muted" style={{ fontSize: 12 }} title="공백 · 제목 줄 · 사진 · 표를 빼고 분당 350자로 셈">원고 {estimate?.chars.toLocaleString()}자</span>
-            {voiceSec ? <span className="yp-tag" title="렌더 PC가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
+            {voiceSec ? <span className="yp-tag" title="영상 만드는 컴퓨터가 만든 음성의 실제 길이">실제 음성 {Math.floor(voiceSec / 60)}분 {Math.round(voiceSec % 60)}초</span> : null}
             {estimate?.verdict ? <span className={estimate.verdict.ok ? "yp-ok" : "yp-bad"}>{estimate.verdict.ok ? "✓" : "⚠"} {estimate.verdict.text}</span> : null}</div>
           {aiOpen ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
           {form.versions.length ? <div className="yp-vstrip yp-vrel"><b style={{ fontSize: 12, color: "var(--muted)" }}>버전</b>
@@ -139,23 +139,23 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
           {viewing ? <div className="yp-vbanner"><Eye size={14} aria-hidden="true" /> <b>v{viewing.v} 보는 중</b> (보기 전용) · {viewing.by}<span style={{ flex: 1 }} />
             {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => { setViewV(null); setEditorKey(key => key + 1); void save({ restore: viewing.v }, form); }}>이 버전을 최신으로</button> : null}
             <button type="button" className="yp-btn yp-sm yp-pri" onClick={() => { setViewV(null); setEditorKey(key => key + 1); }}>보기 닫기</button></div> : null}
-          {form.ai && form.versions.at(-1)?.why === "ai" && !viewing ? <p className="yp-hint" style={{ margin: "0 0 6px" }}><span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span></p> : null}
+          {form.ai && form.versions.at(-1)?.why === "ai" && !viewing ? <p className="yp-hint" style={{ margin: "0 0 6px" }}><span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> 자동 작성본 · {form.ai.by}</span></p> : null}
           <div className="yp-rte yp-tall" onBlur={() => { if (dirty) saveNow(); }}>
             <KnowledgeRichEditor key={`${editorKey}-${viewing?.v ?? "cur"}`} markdown={viewing?.md ?? form.script} accessToken={page.accessToken} disabled={!editable || Boolean(viewing)}
               onChange={markdown => { if (!viewing && markdown !== form.script) edit({ script: markdown }); }} onError={message => page.setError(message)} />
           </div>
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
-          {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사(관문 1)에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
+          {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
           {form.ai ? <details className="yp-card" open={notesOpen} onToggle={event => setNotesOpen((event.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
-            <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>AI 작업 기록 보기</summary>
-            {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검수 기록", form.ai.review]] as const).map(([label, value]) =>
+            <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>자동 작성 기록 보기</summary>
+            {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검토 기록", form.ai.review]] as const).map(([label, value]) =>
               <div key={label}><div className="yp-lbl">{label}</div><pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }}>{value}</pre></div>)}
-              {form.ai.suggestions.length ? <><div className="yp-lbl">AI가 남긴 개선 제안</div><ul>{form.ai.suggestions.map(item => <li key={item}>{item}</li>)}</ul></> : null}</div> : null}
+              {form.ai.suggestions.length ? <><div className="yp-lbl">자동 작성 때 남긴 개선 제안</div><ul>{form.ai.suggestions.map(item => <li key={item}>{item}</li>)}</ul></> : null}</div> : null}
           </details> : null}
         </YpSection>
       </div>
-      <aside className="yp-rside"><section className="yp-card"><div className="yp-rtabs"><button type="button" className={tab === "flow" ? "yp-on" : ""} onClick={() => setTab("flow")}>영상 흐름</button><button type="button" className={tab === "refs" ? "yp-on" : ""} onClick={() => setTab("refs")}>레퍼런스</button></div>
+      <aside className="yp-rside"><section className="yp-card"><div className="yp-rtabs"><button type="button" className={tab === "flow" ? "yp-on" : ""} onClick={() => setTab("flow")}>영상 흐름</button><button type="button" className={tab === "refs" ? "yp-on" : ""} onClick={() => setTab("refs")}>참고 영상</button></div>
         <div className="yp-card-b">{tab === "flow" ? <>
           <div className="yp-muted" style={{ fontSize: 12, marginBottom: 6 }}>컨펌본 · 제목 A × 썸네일 A</div>
           <YtCard page={page} thumb={confirmed?.A?.thumb} title={confirmed?.A?.title ?? ""} />

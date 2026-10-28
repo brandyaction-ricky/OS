@@ -158,7 +158,7 @@ export async function confirmScriptPreparation(client: Client, sourceId: string,
   const source = state.source;
   const script = pipelineArtifacts(state.records).script;
   if (!script?.description.trim()) throw new ApiError(409, "SCRIPT_REQUIRED", "확인할 원고가 없습니다.");
-  if (!state.writing.currentPackage) throw new ApiError(409, "WRITING_PACKAGE_CHANGED", "제목·썸네일이 바뀌었습니다. 내 AI에 다시 보내 주세요.");
+  if (!state.writing.currentPackage) throw new ApiError(409, "WRITING_PACKAGE_CHANGED", "제목·썸네일이 바뀌었습니다. 다시 자동으로 써 주세요.");
   const writing = writingWorkflowOf(source.metadata.writingWorkflow);
   if (!writing.materials || !writing.axis || !writing.design) throw new ApiError(409, "WRITING_CONTENT_REQUIRED", "자료 · 축 · 설계가 모두 있어야 확인할 수 있습니다.");
   const targetMinutes = Number(script.metadata.targetMinutes) || null;

@@ -55,8 +55,8 @@ export function ShortformRenderPanel({item,metadata,cutsText,assets,onMetadata,o
       const reasons:Record<string,string>={SHORTFORM_VOICE_TOO_LONG:"내레이션이 장면보다 깁니다. 대본을 줄이거나 장면 시간을 조정해 주세요.",
         SHORTFORM_CAPTION_TOO_LONG:"한 장면 자막이 너무 깁니다. 네 줄 안으로 줄여 주세요.",SHORTFORM_INPUT_CHANGED:"제작 조건이 바뀌었습니다. 현재 내용으로 다시 요청해 주세요."};
       setStatus(!run?"제작 요청 없음":run.status==="done"?"완성 영상이 카드에 연결됐습니다. 아래에서 불러와 확인해 주세요.":
-        run.status==="blocked"?(reasons[run.error??""]??"제작이 멈췄습니다. 소재와 렌더 PC 연결을 확인한 뒤 다시 요청해 주세요."):
-        run.status==="in_progress"?"영상 만드는 중":"렌더 PC가 요청을 기다리는 중");
+        run.status==="blocked"?(reasons[run.error??""]??"제작이 멈췄습니다. 소재와 영상 만드는 컴퓨터 연결을 확인한 뒤 다시 요청해 주세요."):
+        run.status==="in_progress"?"영상 만드는 중":"영상 만드는 컴퓨터가 요청을 기다리는 중");
     }catch(issue){setError(issue instanceof Error?issue.message:"상태 확인 실패");}
   };
   const request=async()=>{

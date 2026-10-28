@@ -62,7 +62,7 @@ test("the go-out pair: confirmed by default, an edit wins, empty fields keep the
   assert.equal(legacy.reason, "질문형");
 });
 
-test("다시 뽑기 opens in 제작 · 최종 검수 for a confirmed slot; the key follows the slot and the reason only", () => {
+test("다시 뽑기 opens in 제작 · 최종 검토 for a confirmed slot; the key follows the slot and the reason only", () => {
   assert.throws(() => ai.assertV1RetitleInputs(state("outline"), "A"), (error) => error.status === 409);
   assert.throws(() => ai.assertV1RetitleInputs(state("make"), "C"), (error) => error.code === "SLOT_EMPTY");
   assert.doesNotThrow(() => ai.assertV1RetitleInputs(state("review"), "B"));

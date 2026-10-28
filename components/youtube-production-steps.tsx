@@ -33,7 +33,7 @@ function runPhase(run: VoiceRun): { label: string; tone: "progress" | "ready" | 
   if (run.render?.status === "blocked") return { label: "영상 제작 실패", tone: "problem", detail: `세 번 시도했지만 실패했습니다(오류 코드 ${run.render.lastErrorCode ?? "없음"}). 개발 담당에게 알려 주세요.` };
   if (run.stage !== "voice_ready") return { label: `음성 만드는 중 · ${run.segmentsReady}/${run.segmentCount}단락`, tone: "progress", detail: "같은 원고면 기존 녹음을 다시 써서 바로 끝납니다." };
   if (run.render?.stage === "rendering") return { label: "영상 만드는 중", tone: "progress", detail: "10분 안팎 걸립니다." };
-  return { label: "영상 제작 대기", tone: "progress", detail: run.render?.lastErrorCode ? `한 번 실패해 다시 시도합니다(오류 코드 ${run.render.lastErrorCode}).` : "렌더 PC가 차례대로 가져가 만듭니다." };
+  return { label: "영상 제작 대기", tone: "progress", detail: run.render?.lastErrorCode ? `한 번 실패해 다시 시도합니다(오류 코드 ${run.render.lastErrorCode}).` : "영상 만드는 컴퓨터가 차례대로 가져가 만듭니다." };
 }
 const PHASE_PILL = { progress: "scheduled", ready: "approved", problem: "failed" } as const;
 const ago = (seconds: number) => seconds < 90 ? `${seconds}초` : seconds < 5400 ? `${Math.round(seconds / 60)}분` : `${Math.round(seconds / 3600)}시간`;
@@ -170,11 +170,11 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
     </Step>
 
     <Step index={1} state={states[1]}>
-      <p>내 AI(Claude 또는 Codex)가 원고를 읽고 단락마다 도식 하나와 화면에 나올 짧은 문구, 위쪽 막대에 보일 섹션을 정하고, 목소리로 읽기 어려운 곳이 없는지 봅니다.</p>
-      {outdatedDesign ? <p className="yt-note yt-warn"><strong>다시 설계 필요</strong> 저장된 화면 설계가 지금 도식 규칙(항목 수 · 글자 수)에 맞지 않아 새로 만들 수 없어요. 내 AI에 다시 보내 주세요. 이미 완성된 영상은 그대로 볼 수 있어요.</p> : null}
+      <p>원고를 읽고 단락마다 도식 하나와 화면에 나올 짧은 문구, 위쪽 막대에 보일 섹션을 자동으로 정하고, 목소리로 읽기 어려운 곳이 없는지 봅니다.</p>
+      {outdatedDesign ? <p className="yt-note yt-warn"><strong>다시 설계 필요</strong> 저장된 화면 설계가 지금 도식 규칙(항목 수 · 글자 수)에 맞지 않아 새로 만들 수 없어요. 다시 자동으로 써 주세요. 이미 완성된 영상은 그대로 볼 수 있어요.</p> : null}
       {!design && scriptReady ? <StaffDesign status={staff} busy={Boolean(busy)} onSend={() => void act("design", () => post("/ai-jobs", "POST", { task: "scene-plan" }))} /> : null}
       {design ? <>
-        {stored?.author?.type === "staff_ai" ? <small>직원 AI가 설계 · {stored.author.model ?? "모델 이름 없음"} (AI가 적은 이름)</small> : null}
+        {stored?.author?.type === "staff_ai" ? <small>자동 설계 · 사용한 AI {stored.author.model ?? "이름 없음"}</small> : null}
         <p className="yt-summary"><strong>{design.scenes?.length ?? 0}단락</strong> · 섹션 {sections.length}개 {sections.map((name, index) => <span key={`${index}-${name}`} className="yt-chip">{name}</span>)}</p>
         <details className="yt-details">
           <summary>단락별 화면 보기</summary>
@@ -187,11 +187,11 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
           </table></div>
         </details>
         {notes.length && notesDone ? <details className="yt-details">
-          <summary>AI가 남긴 확인할 점 {notes.length}개 · 확인 완료</summary>
+          <summary>확인할 점 {notes.length}개 · 확인 완료</summary>
           <ul className="yt-list">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
         </details> : null}
         {notes.length && !notesDone ? <div className="yt-note yt-warn">
-          <strong>AI가 남긴 확인할 점 {notes.length}개</strong>
+          <strong>확인할 점 {notes.length}개</strong>
           <ul className="yt-list">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
           {isAdmin ? <div className="yt-actions">
             <label className="yt-check"><input type="checkbox" checked={notesRead} onChange={(event) => setNotesRead(event.target.checked)} />위 내용을 읽었고, 이대로 제작해도 됩니다.</label>
@@ -202,7 +202,7 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
     </Step>
 
     <Step index={2} state={states[2]}>
-      <p>대표 목소리 음성을 만들고, 이어서 마인드맵 영상을 만들어 비공개로 저장합니다. 늘 켜 둔 렌더 PC가 차례대로 만듭니다.</p>
+      <p>대표 목소리 음성을 만들고, 이어서 마인드맵 영상을 만들어 비공개로 저장합니다. 늘 켜 둔 영상 만드는 컴퓨터가 차례대로 만듭니다.</p>
       {renderPc ? <RenderPcLine status={renderPc} /> : null}
       {notesDone && !madeForDesign ? <div className="yt-actions">
         <button type="button" className="primary-button" disabled={Boolean(busy) || !isAdmin} onClick={() => void (async () => { if (await cost.confirm({ model: voice, amount: voiceEstimate("가".repeat(1_000), voice).krw, detail: "원고 1,000자 기준", ok: "확인하고 만들기" })) await act("run", () => post("/runs", "POST", {})); })()}>
@@ -245,29 +245,29 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
 }
 
 /** 화면 설계 by the requester's own AI: send, then the job's state in words (대기 · 처리 중 · 확인 필요 · 못 함). */
-/** [내 AI에 보내기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
+/** [자동으로 쓰기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
 export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void }) {
   const job = status?.job;
   const lastSeen = sinceIso(status?.myAi.lastUsedAt ?? null);
   const connected = (status?.myAi.keys ?? 0) > 0;
   const open = job && ["backlog", "active"].includes(job.status);
   const send = <div className="yt-actions">
-    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button><CostTag kind="ai" />
+    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "다시 자동으로 쓰기" : "자동으로 쓰기"}</button><CostTag kind="ai" />
   </div>;
   return <>
     {!open ? send : null}
     {job?.status === "backlog" ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="waiting">대기</span>
       <small>{lastSeen === null ? "내 AI가 아직 OS를 확인한 적이 없어요." : `내 AI가 ${ago(lastSeen)} 전에 마지막으로 확인했어요. 다음 확인 때 가져가요.`}</small></div></div> : null}
     {job?.status === "active" && !job.issues.length ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="scheduled">처리 중</span>
-      <small>내 AI가 처리 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small></div></div> : null}
+      <small>자동으로 쓰는 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small></div></div> : null}
     {job?.status === "active" && job.issues.length ? <div className="yt-note yt-warn"><strong>확인 필요 · 검사에서 걸린 곳</strong>
-      <ul className="yt-list">{job.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul><p>내 AI가 고쳐서 다시 제출하면 넘어갑니다.</p></div> : null}
+      <ul className="yt-list">{job.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul><p>자동으로 고쳐서 다시 내면 넘어갑니다.</p></div> : null}
     {job?.status === "blocked" ? <div className="yt-note yt-warn"><strong>못 함</strong><p>{job.failReason ?? "이유가 남지 않았어요."}</p></div> : null}
     {!connected || (open && (lastSeen === null || lastSeen > 30 * 60)) ? <details className="yt-details">
       <summary>{connected ? "내 AI가 30분 넘게 확인하지 않았어요 · 확인할 것" : "내 AI가 아직 연결되지 않았어요 · 연결 방법"}</summary>
       <ol className="yt-list">
         <li>아래에서 연결 주소를 만들어 내 AI의 커넥터 추가에 붙여 넣습니다. 처음 한 번만 하면 됩니다.</li>
-        <li>[내 AI에 보내기]를 누른 뒤 내 AI에 아래 문장을 보냅니다. 예약 실행이 되는 AI라면 10분마다 실행하도록 맡겨 두면 알아서 가져가요.</li>
+        <li>[자동으로 쓰기]를 누른 뒤 내 AI에 아래 문장을 보냅니다. 예약 실행이 되는 AI라면 10분마다 실행하도록 맡겨 두면 알아서 가져가요.</li>
         <li>그래도 가져가지 않으면 연결 주소를 다시 만들어 붙여 넣어 주세요.</li>
       </ol>
       <MyAiConnect />
@@ -276,15 +276,15 @@ export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus |
   </>;
 }
 
-/** 렌더 PC (Mac mini) on/off, what it is doing, the queue and disk, from its once-a-minute signal. */
+/** 영상 만드는 컴퓨터 (Mac mini) on/off, what it is doing, the queue and disk, from its once-a-minute signal. */
 function RenderPcLine({ status }: { status: RenderPc }) {
   const queue = status.queue.voice + status.queue.render;
-  if (status.state === "unknown") return <p className="yt-note">렌더 PC가 아직 OS에 연결되지 않았어요. 연결되면 여기에 상태가 보여요.</p>;
+  if (status.state === "unknown") return <p className="yt-note">영상 만드는 컴퓨터가 아직 OS에 연결되지 않았어요. 연결되면 여기에 상태가 보여요.</p>;
   return <div className="yt-run">
-    <div className="yt-run-head"><span className="status-pill" data-status={status.state === "online" ? "approved" : "failed"}>{status.state === "online" ? "렌더 PC 켜짐" : "렌더 PC 연결 끊김"}</span>
+    <div className="yt-run-head"><span className="status-pill" data-status={status.state === "online" ? "approved" : "failed"}>{status.state === "online" ? "영상 만드는 컴퓨터 켜짐" : "영상 만드는 컴퓨터 연결 끊김"}</span>
       <small>마지막 신호 {ago(status.ageSeconds ?? 0)} 전</small></div>
     <small>{status.state === "online" ? `지금: ${status.job ? RENDER_STEP[status.job.step] ?? "작업 중" : "쉬는 중"} · 기다리는 작업 ${queue}건${status.averageRenderMinutes ? ` · 영상 한 편 평균 ${status.averageRenderMinutes}분` : ""}`
-      : "신호가 5분 넘게 없어요. 관리자가 렌더 PC 전원과 인터넷을 확인하면, 켜지는 대로 차례대로 이어서 만들어요."}</small>
-    {status.lowDisk ? <p className="yt-note yt-warn">렌더 PC 디스크 여유가 {status.diskFreeGb}GB예요. 60GB 아래라 새 영상을 받지 않아요. 관리자가 공간을 비워 주세요.</p> : null}
+      : "신호가 5분 넘게 없어요. 관리자가 영상 만드는 컴퓨터 전원과 인터넷을 확인하면, 켜지는 대로 차례대로 이어서 만들어요."}</small>
+    {status.lowDisk ? <p className="yt-note yt-warn">영상 만드는 컴퓨터 디스크 여유가 {status.diskFreeGb}GB예요. 60GB 아래라 새 영상을 받지 않아요. 관리자가 공간을 비워 주세요.</p> : null}
   </div>;
 }

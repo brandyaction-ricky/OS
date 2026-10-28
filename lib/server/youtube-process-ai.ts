@@ -67,7 +67,7 @@ export function v1AutomationInput(state: Pipeline) {
 export function assertV1ScriptInputs(state: Pipeline) {
   const { project, plan } = v1Stages(state);
   if (!["outline", "make", "review"].includes(project.yp.stage) || !plan.data.confirmed)
-    throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "기획안 컨펌 OK 뒤에 구성안 원고를 내 AI에 보낼 수 있어요.");
+    throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "기획안 컨펌 OK 뒤에 구성안 원고를 자동으로 쓸 수 있어요.");
   if (["upload", "done", "shorts"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "업로드 단계에서는 원고를 다시 쓰지 않아요.");
 }
 /** Changes when the confirmed 기획안 or the topic changes; a job for older inputs is closed. */
@@ -97,7 +97,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
   const stages = v1Stages(state);
   const title = stages.plan.data.confirmed?.A?.title ?? projectName(stages.project);
   const check = checkManuscript(bundle.manuscript, { title, targetMinutes: author.targetMinutes, canon });
-  if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사(관문 1)에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
+  if (check.issues.length) throw new ApiError(422, "SCRIPT_FORMAT_INVALID", `원고 형식 검사에서 걸린 곳 ${check.issues.length}건: ${check.issues.join(" / ")}`);
   const now = new Date().toISOString();
   // The head comments (축 · 출처) stay with the AI notes; the editor gets the readable 원고.
   const md = bundle.manuscript.replace(/\r/g, "").split("\n").filter(line => !line.trim().startsWith("<!--")).join("\n").trim() + "\n";
@@ -112,7 +112,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
 // ── ⑦ 설명란 · 고정 댓글 (S7 3번) ──
 export function assertV1KitInputs(state: Pipeline) {
   const { project } = v1Stages(state);
-  if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "최종 검수 컨펌 OK 뒤에 설명란을 내 AI에 보낼 수 있어요.");
+  if (project.yp.stage !== "upload" || project.yp.gates.review.state !== "ok") throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "최종 검토 컨펌 OK 뒤에 설명란을 자동으로 쓸 수 있어요.");
 }
 /** The latest OS-made final for the subtitles, the UTM settings and the title: a job for other inputs is closed. */
 export function v1KitInputKey(state: Pipeline, myinFinalId: string | null) {
@@ -222,7 +222,7 @@ const PLAN_SHAPE = `{ "titles": ["A 제목", "B 제목", "C 제목"], "thumbs": 
 
 export function assertV1PlanInputs(state: Pipeline) {
   const { project } = v1Stages(state);
-  if (project.yp.stage !== "draft") throw new ApiError(409, "STAGE_LOCKED", "기획안 단계에서 내 AI에 보낼 수 있어요.");
+  if (project.yp.stage !== "draft") throw new ApiError(409, "STAGE_LOCKED", "기획안 단계에서 자동으로 쓸 수 있어요.");
   if (project.yp.gates.draft.state === "wait") throw new ApiError(409, "GATE_WAITING", "대표 컨펌을 기다리는 중이에요. 요청을 취소하면 보낼 수 있어요.");
 }
 export const v1PlanInputKey = (state: Pipeline) => { const { project } = v1Stages(state); return digest(["yp-v1-plan", project.title, project.yp.topic]); };
@@ -302,7 +302,7 @@ export async function v1ShortsSource(supabase: RequestActor["supabase"], state: 
 }
 export function assertV1ShortsInputs(state: Pipeline) {
   const { project } = v1Stages(state);
-  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검수 컨펌 OK 뒤에 쇼츠 구간을 고를 수 있어요.");
+  if (!["upload", "shorts", "done"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검토 컨펌 OK 뒤에 쇼츠 구간을 고를 수 있어요.");
 }
 export const v1ShortsInputKey = (state: Pipeline, source: { path: string | null }) => digest(["yp-v1-shorts", v1Stages(state).project.id, source.path]);
 
@@ -417,8 +417,8 @@ export const retitleResultSchema = z.object({
 }).strict();
 export function assertV1RetitleInputs(state: Pipeline, slot: YpSlot) {
   const { project, plan } = v1Stages(state);
-  if (!["make", "review"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "제작 · 최종 검수 단계에서 다시 뽑을 수 있어요.");
-  if (project.yp.stage === "review" && project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검수 컨펌을 기다리는 중이에요. 요청을 취소하면 보낼 수 있어요.");
+  if (!["make", "review"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "제작 · 최종 검토 단계에서 다시 뽑을 수 있어요.");
+  if (project.yp.stage === "review" && project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검토 컨펌을 기다리는 중이에요. 요청을 취소하면 보낼 수 있어요.");
   if (!plan.data.confirmed?.[slot]) throw new ApiError(409, "SLOT_EMPTY", `기획안 컨펌본에 ${slot}가 없어요.`);
 }
 /** The slot and the PD's reason only: the PD may keep editing the fields while the job waits. */

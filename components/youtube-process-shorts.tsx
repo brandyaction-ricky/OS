@@ -200,10 +200,10 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
           {range.end - range.start > 60 ? <div className="yp-errline">쇼츠는 60초 안쪽이 좋아요.</div> : null}
         </YpSection>
         <YpSection n={2} title="쇼츠 대본" gq={`${adopted.length}편 고름 · 확정 ${adopted.filter(confirmedOf).length}편`} extra={<>
-          <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open || !srt} onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 대본 쓰기</button>
+          <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open || !srt} onClick={() => setSend(true)}><Sparkles size={14} /> 대본 자동으로 쓰기</button>
           <button type="button" className="yp-btn yp-sm" disabled={!adopted.length} onClick={exportList}><Download size={14} /> 편집용 목록 내려받기</button></>}>
           {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-          {!srt ? <p className="yp-hint">자막이 없어 내 AI가 대본을 못 써요. 업로드 단계에서 자막(SRT)을 올려요.</p> : null}
+          {!srt ? <p className="yp-hint">자막이 없어 대본을 자동으로 쓸 수 없어요. 업로드 단계에서 자막(SRT)을 올려요.</p> : null}
           {clips.length ? <ul className="yp-hist">{clips.map(clip => <li key={clip.id} style={{ alignItems: "center", flexWrap: "wrap" }}>
             <time><button type="button" className="yp-lnk yp-tlink" onClick={() => { if (video.current) { video.current.currentTime = clipParts(clip.metadata)[0].start; void video.current.play(); } }}>▷ {fmt(clipParts(clip.metadata)[0].start)}</button></time>
             {/* The title keeps a readable width; the buttons wrap under it on a narrow screen. */}
@@ -212,7 +212,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
               {clip.metadata?.selected !== false ? confirmedOf(clip) ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>확정</span>
                 : project?.yp.shortsConfirmed?.clips[clip.id] ? <span className="yp-tag yp-warn" style={{ marginLeft: 6 }}>확정 뒤 바뀜</span> : <span className="yp-tag" style={{ marginLeft: 6 }}>확정 전</span> : null}
               {clip.metadata?.hook ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>첫 3초: {String(clip.metadata.hook)}</span></> : null}
-              {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> AI 초안</span> : null}
+              {clip.metadata?.generatedBy === "staff_ai" ? <span className="yp-aitag" style={{ marginLeft: 6 }}><Sparkles size={10} aria-hidden="true" /> 자동 작성본</span> : null}
               {clip.metadata?.desc ? <><br /><span className="yp-muted" style={{ fontSize: 12, whiteSpace: "pre-line" }}>설명: {String(clip.metadata.desc)}</span></> : null}</span>
             {clip.metadata?.selected !== false ? <ClipRender render={renders[clip.id]} busy={making === clip.id} demo={page.demo} confirmed={confirmedOf(clip)} onMake={() => void makeVertical(clip)}
               onWatch={renderId => void open(clip.id, renderId)} onDownload={renderId => void open(clip.id, renderId, true)} /> : null}
@@ -229,7 +229,7 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
             </div> : null}
             <button type="button" className={`yp-btn yp-sm${clip.metadata?.selected !== false ? " yp-pri" : ""}`} onClick={() => void toggle(clip)}>{clip.metadata?.selected !== false ? <><Check size={14} /> 골랐어요</> : "고르기"}</button>
             <button type="button" className="yp-ib" aria-label="빼기" onClick={() => void remove(clip)}><Trash2 size={14} /></button></li>)}</ul>
-            : <p className="yp-pempty">아직 대본이 없어요. [내 AI로 대본 쓰기]를 누르거나 위에서 구간을 골라 추가해요.</p>}
+            : <p className="yp-pempty">아직 대본이 없어요. [대본 자동으로 쓰기]를 누르거나 위에서 구간을 골라 추가해요.</p>}
           {watch ? <div className="yp-short-out" style={{ marginTop: 10 }}><video className="yp-vid9" src={watch.url} controls autoPlay preload="metadata" /><button type="button" className="yp-btn yp-sm" onClick={() => setWatch(null)}>닫기</button></div> : null}
           {needConfirm && adopted.length ? <label className="yp-lbl" style={{ display: "block", marginTop: 8 }}>확정 메모 <span className="yp-gq">대표에게 보여요 (선택)</span>
             <input className="yp-in" value={note} maxLength={500} onChange={event => setNote(event.target.value)} aria-label="확정 메모" /></label> : null}

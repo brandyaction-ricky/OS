@@ -22,7 +22,7 @@ function DueChip({ date }: { date: string }) {
 }
 export const sizeLabel = (bytes: number) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)}GB` : `${(bytes / 1e6).toFixed(1)}MB`;
 
-/** S5 제작: 일정 · 진행 상태 · (실사) 작업 자료 · 최종본 (OS 자동 제작 or 파일) · 최종 썸네일, then [다음: 최종 검수] (4-6). */
+/** S5 제작: 일정 · 진행 상태 · (실사) 작업 자료 · 최종본 (OS 자동 제작 or 파일) · 최종 썸네일, then [다음: 최종 검토] (4-6). */
 export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
   const router = useRouter();
@@ -85,13 +85,13 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const canThumb = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
   // 일정 is optional (owner decision 2026-10-25): making goes on without a date; the date only feeds 스케줄.
   const reason = !finals.length ? (short ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : data && !short ? thumbsMissing(data) : "";
-  const action = bundle ? stepAction(page, 3, project?.yp.stage === "make" ? { kind: "button", label: "다음: 최종 검수", reason, busy: moving, onClick: () => void move() } : { kind: "status", status: "제작 끝남" }) : null;
+  const action = bundle ? stepAction(page, 3, project?.yp.stage === "make" ? { kind: "button", label: "다음: 최종 검토", reason, busy: moving, onClick: () => void move() } : { kind: "status", status: "제작 끝남" }) : null;
   const confirmed = bundle?.stages.plan.data.confirmed;
   const steps = MAKE_STEPS[kind];
   const statusIndex = data ? Math.max(0, steps.findIndex(([key]) => key === (anim && data.status === "shoot" ? "prep" : data.status))) : 0;
   let n = 0;
 
-  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검수 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? "무엇을 만들지 정하고, 장면마다 이미지를 넣어 영상을 만들어요." : anim ? "원고로 영상을 자동으로 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
+  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검토 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? "무엇을 만들지 정하고, 장면마다 이미지를 넣어 영상을 만들어요." : anim ? "원고로 영상을 자동으로 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
     todo={data && project?.yp.stage === "make" ? short ? [{ label: "최종본", done: finals.length > 0 }] : [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
     {bundle && data && project ? ["topic", "draft", "outline"].includes(project.yp.stage) ? <LockedStep page={page} name="제작" /> : <>
       {project.yp.stage === "review" ? <GateBanner page={page} gate="review" /> : null}
@@ -124,7 +124,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
       </div></YpSection>}
       {short ? <details className="yp-more-fields" open={finals.some(final => final.source === "upload")}><summary>직접 편집한 영상이 있으면 올려요 (선택)</summary>
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
-          : canFinal ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 올리기</button><span className="yp-muted" style={{ fontSize: 12 }}>올린 파일이 최종 검수 새 버전이 돼요</span></div> : null}
+          : canFinal ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 올리기</button><span className="yp-muted" style={{ fontSize: 12 }}>올린 파일이 최종 검토 새 버전이 돼요</span></div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </details> : <>
       <YpSection n={++n} title={anim ? "최종본 만들기" : "최종본 올리기"} gq={anim ? "원고로 영상을 자동으로 만들어요" : undefined} need>
@@ -147,7 +147,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         {fixing && canThumb ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
           onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
-        <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검수에서 대표가 확인해요.</p>
+        <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={projectName(project)} />
       </YpSection></>}
     </> : null}
@@ -205,7 +205,7 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
       <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
     {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
     {redo ? <>
-      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 레퍼런스: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
+      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> 공식대로 뽑은 후보 · {redo.by}{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
       <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
         {([["title", "제목", redo.titles], ["copy", "썸네일 문구", redo.copies]] as const).map(([field, name, list]) => <div key={field}>
           <b style={{ fontSize: 15 }}>{name} 후보 {list.length}개</b>
@@ -218,6 +218,6 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
               {item.sub ? <span style={{ fontSize: 12 }}>{item.sub}</span> : null}
               <b style={{ fontSize: 15, lineHeight: 1.4 }}>{on ? <Check size={14} aria-hidden="true" /> : null} {field === "copy" ? `「${item.text}」` : item.text}</b>
               <span>{item.pattern ? <span className="yp-tag">공식 {item.pattern}</span> : null} <span className="yp-tag">{item.hook}</span> {item.why}</span></button>; })}</div></div>)}
-      </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 내 AI가 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 보내요. 이유를 적으면 그 점을 고쳐요.</p>}
+      </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 자동으로 받아요. 이유를 적으면 그 점을 고쳐요.</p>}
   </div>;
 }

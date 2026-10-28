@@ -264,14 +264,14 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
     <section className="yp-card" style={{ marginBottom: 12 }}><div className="yp-card-b">
       <div className="yp-row-btns" style={{ marginTop: 0, alignItems: "center" }}>
         <span style={{ flex: 1, minWidth: 220 }}><b>묶을 재료: 터진 영상 {board.pool}개</b><br /><span className="yp-muted">담아 둔 영상 · 매일 보는 채널 · 지금까지 찾은 터진 영상{board.at ? ` · 마지막 묶음 ${ageLabel(board.at)}${board.by ? ` (${board.by})` : ""}` : ""}</span></span>
-        <button type="button" className="yp-btn yp-pri" disabled={demo || board.pool < 3 || job.open} onClick={() => setSend(true)}><Sparkles size={14} aria-hidden="true" /> 내 AI로 틈새 묶기</button></div>
+        <button type="button" className="yp-btn yp-pri" disabled={demo || board.pool < 3 || job.open} onClick={() => setSend(true)}><Sparkles size={14} aria-hidden="true" /> 틈새 자동으로 묶기</button></div>
       <JobLine job={job} onRetry={() => setSend(true)} />
       {board.pool < 3 ? <p className="yp-hint" style={{ margin: "8px 0 0" }}>터진 영상이 3개 이상 모이면 묶을 수 있어요. ② 터진 영상에서 분류를 눌러 찾아요.</p> : null}
     </div></section>
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
     {sections.map(([stage, name, hint]) => { const list = open.filter(niche => niche.stage === stage); return <section key={stage} style={{ marginBottom: 16 }}>
       <div className="yp-fld-h"><b>{name} {list.length}</b><span className="yp-gq">{hint}</span></div>
-      {list.length ? list.map(card) : <p className="yp-pempty" style={{ padding: "12px 0" }}>{board.at ? "없어요." : "아직 묶은 적이 없어요. [내 AI로 틈새 묶기]를 눌러요."}</p>}</section>; })}
+      {list.length ? list.map(card) : <p className="yp-pempty" style={{ padding: "12px 0" }}>{board.at ? "없어요." : "아직 묶은 적이 없어요. [틈새 자동으로 묶기]를 눌러요."}</p>}</section>; })}
     {decided.length ? <section><div className="yp-fld-h"><b>이미 정한 것 {decided.length}</b></div>{decided.map(card)}</section> : null}
     <SendDialog page={page} task="niche" open={send} onClose={() => setSend(false)} job={job} />
   </>;

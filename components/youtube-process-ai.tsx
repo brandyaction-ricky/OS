@@ -9,7 +9,7 @@ import type { YpPage } from "./youtube-process-frame";
 import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
-// running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
+// running for ② 원고 · ⑦ 업로드 자료), so the screen talks to the same staff-AI queue instead of a Chrome extension.
 type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
@@ -20,8 +20,8 @@ const TASK: Record<Task, { name: string; result: string }> = {
   short: { name: "숏폼 장면 쓰기", result: "장면 3~8개를 자막 · 내레이션 · 필요한 이미지까지 채워 줘요. 광고면 구매 이유 후보도 줘요." },
   column: { name: "SEO 칼럼 쓰기", result: "정한 편수만큼 SEO 칼럼을 써 줘요." },
   shorts: { name: "쇼츠 대본 쓰기", result: "정한 편수만큼 쇼츠 대본을 써 줘요. PD가 고르고 확정해요." },
-  plan: { name: "기획안 쓰기", result: "시장 영상에서 뽑은 공식대로 제목 후보 · 썸네일 시안을, 영상 흐름 초안과 함께 채워 줘요." },
-  script: { name: "구성안 원고 쓰기", result: "원고 초안을 써서 새 버전으로 넣어 줘요." },
+  plan: { name: "기획안 쓰기", result: "시장 영상에서 뽑은 공식대로 제목 후보 · 썸네일 후보를 영상 흐름 첫 원고와 함께 채워 줘요." },
+  script: { name: "구성안 원고 쓰기", result: "첫 원고를 써서 새 버전으로 넣어 줘요." },
   kit: { name: "설명란 · 고정 댓글 만들기", result: "설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요." },
 };
 const since = (iso: string | null) => iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000)) : null;
@@ -63,19 +63,19 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
   if (!current || current.status === "done" || current.status === "cancelled") return null;
   const seen = since(job.status?.myAi.lastUsedAt ?? null);
   if (current.status === "backlog") return <>
-    <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
-    {seen === null || seen > 30 ? <div className="yp-errline">[내 AI로 보내기] › 바로 시키기에서 문장을 복사해 붙여 넣어요.</div> : null}
+    <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 차례 기다리는 중</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
+    {seen === null || seen > 30 ? <div className="yp-errline">바로 해야 하면 맡기기 창의 [바로 시키기]에서 문장을 복사해 내 AI에 붙여 넣어요.</div> : null}
   </>;
   if (current.status === "active") return current.issues.length
-    ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">확인 필요</span><span>형식이 안 맞아요: {current.issues.join(" / ")} (내 AI가 고쳐서 다시 보내요)</span></div>
-    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn">처리 중</span><span>내 AI가 쓰는 중이에요</span></div>;
+    ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">확인 필요</span><span>형식이 안 맞아요: {current.issues.join(" / ")} (자동으로 고쳐서 다시 보내요)</span></div>
+    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn">처리 중</span><span>자동으로 쓰는 중이에요</span></div>;
   return <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">못 함</span><span>{current.failReason ?? "이유가 남지 않았어요."}</span><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onRetry}>다시 보내기</button></div>;
 }
 
-/** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
+/** S12-2 자동으로 쓰기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
 export function SendDialog({ page, task, open, onClose, job, defaults, extra, queryDefault }: {
   page: JobPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
-  /** 기획안 · 다시 뽑기: the 기획실 레퍼런스 검색어 the OS searches before the job (the PD can change it). */
+  /** 기획안 · 다시 뽑기: the 기획실 참고 영상 검색어 the OS searches before the job (the PD can change it). */
   queryDefault?: string;
   /** Fields the task needs beyond the project (다시 뽑기: slot · reason). */
   extra?: Record<string, unknown>;
@@ -122,15 +122,15 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
       onClose(); await page.reload?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "넣지 못했어요."); } finally { setBusy(false); }
   };
-  const tabs: ["queue" | "now" | "paste", string][] = [["queue", "내 AI가 가져가게 두기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as ["paste", string]] : [])];
+  const tabs: ["queue" | "now" | "paste", string][] = [["queue", "차례대로 맡기기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as ["paste", string]] : [])];
   return <dialog ref={dialog} className="yp-modal" aria-labelledby={`yp-ai-${task}`} onClose={onClose} style={{ maxWidth: 640 }}>
-    <div className="yp-modal-h"><span id={`yp-ai-${task}`}>내 AI로 보내기 · {info.name}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
+    <div className="yp-modal-h"><span id={`yp-ai-${task}`}>자동으로 맡기기 · {info.name}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
     <div className="yp-modal-b">
-      {waiting ? <div className="yp-note"><div>이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
+      {waiting ? <div className="yp-note"><div>이미 맡긴 일이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
-        <dt>비용</dt><dd><CostTag kind="ai" />{searches ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{searches ? " · 레퍼런스는 유튜브에서 찾아요" : ""}</dd></dl>
-      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
+        <dt>비용</dt><dd><CostTag kind="ai" />{searches ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{searches ? " · 참고 영상은 유튜브에서 찾아요" : ""}</dd></dl>
+      {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>참고 영상 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>
         <input className="yp-in" type="number" min={1} max={maxCount} value={count} onChange={event => setCount(Math.min(maxCount, Math.max(1, Number(event.target.value) || 1)))} style={{ width: 90 }} /> 편</label> : null}
@@ -140,7 +140,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
         <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>참고 자료 (선택) <span className="yp-gq">댓글 원문 등</span>
           <textarea className="yp-in" rows={3} value={attachments} onChange={event => setAttachments(event.target.value)} /></label>
       </div> : null}
-      {running ? <div className="yp-note"><div>내 AI가 쓰는 중이에요. 끝나면 이 칸에 들어가요.</div></div> : <>
+      {running ? <div className="yp-note"><div>자동으로 쓰는 중이에요. 끝나면 이 칸에 들어가요.</div></div> : <>
         <div className="yp-seg2 yp-aitabs" role="tablist">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         <div style={{ marginTop: 10 }}>
           {tab === "queue" ? <div className="yp-kvbox"><b>내 AI</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 연결되지 않았어요"}</span><br />
@@ -148,8 +148,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
           {tab === "now" ? <><ol className="yp-nowsteps"><li>[보내고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요. 그동안 대화는 열어 둬요</li></ol>
             <div className="yp-linkbox"><code>{MY_AI_PROMPT}</code></div>{copied ? <p className="yp-hint">복사했어요. Claude에 붙여 넣어 주세요.</p> : null}</> : null}
           {tab === "paste" ? <form onSubmit={event => { event.preventDefault(); void submitPaste(); }}>
-            <p className="yp-hint" style={{ marginTop: 0 }}>다른 AI 창에서 쓴 원고를 붙여 넣어요.</p>
-            {([["manuscript", "원고", 8], ["materials", "자료 표", 3], ["axis", "축", 2], ["design", "설계표", 3], ["review", "검수 기록", 3]] as const).map(([key, label, rows]) =>
+            <p className="yp-hint" style={{ marginTop: 0 }}>다른 곳에서 쓴 원고를 붙여 넣어요.</p>
+            {([["manuscript", "원고", 8], ["materials", "자료 표", 3], ["axis", "축", 2], ["design", "설계표", 3], ["review", "검토 기록", 3]] as const).map(([key, label, rows]) =>
               <label key={key} className="yp-lbl" style={{ display: "block" }}>{label}<textarea className="yp-in" rows={rows} value={paste[key]} onChange={event => setPaste(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           </form> : null}
         </div>
@@ -179,7 +179,7 @@ export function FormulaNote({ name, patterns, fallback, basis }: { name: string;
 
 /** All the formulas behind an AI 기획안: title patterns, then main · sub copy patterns. */
 export function PatternsBox({ patterns }: { patterns: YpPatterns }) {
-  return <>{patterns.market ? <div className="yp-muted" style={{ fontSize: 12 }}>레퍼런스: 「{patterns.market.query}」 시장 영상 {patterns.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
+  return <>{patterns.market ? <div className="yp-muted" style={{ fontSize: 12 }}>참고 영상: 「{patterns.market.query}」 시장 영상 {patterns.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
     <FormulaNote name="제목 공식" patterns={patterns.titlePatterns} />
     <FormulaNote name="썸네일 메인 카피 공식" patterns={patterns.copyPatterns.main} />
     <FormulaNote name="썸네일 서브 카피 공식" patterns={patterns.copyPatterns.sub} /></>;

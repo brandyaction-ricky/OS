@@ -28,7 +28,7 @@ const KIT_SHAPE = `{ "summary": "", "title": "", "description": "", "tags": [], 
 export function assertKitInputs(state: Pipeline) {
   if (isYoutubeV1(state.source)) return assertV1KitInputs(state);
   if (state.source.metadata.pipelineEnabled !== true) throw new ApiError(409, "PIPELINE_NOT_ENABLED", "콘텐츠 공정을 먼저 시작해 주세요.");
-  if (!state.approved[0] || !state.approved[1]) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "원고(관문 2)까지 승인한 뒤 보낼 수 있습니다.");
+  if (!state.approved[0] || !state.approved[1]) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "원고 승인까지 끝난 뒤 맡길 수 있습니다.");
   if (!pipelineArtifacts(state.records).script?.description.trim()) throw new ApiError(409, "CONTENT_SCRIPT_REQUIRED", "승인된 원고가 없습니다.");
 }
 
@@ -115,6 +115,6 @@ export async function saveStaffKit(supabase: RequestActor["supabase"], ownerId: 
     metadata: { packageKind: "youtube_kit", result, finalApprovalRequired: true, rulesVersion: 4, generatedAt: new Date().toISOString(), contentId: source.id,
       generationMode: "staff_ai", generatedBy: "staff_ai", model: author.model, author: { type: "staff_ai", ownerId, model: author.model, jobId: author.jobId } },
   }).select("id").single();
-  if (error || !data) throw new ApiError(400, "CONTENT_SAVE_FAILED", "발행키트를 저장하지 못했습니다.");
+  if (error || !data) throw new ApiError(400, "CONTENT_SAVE_FAILED", "업로드 자료를 저장하지 못했습니다.");
   return { kitId: data.id as string, chapters: (result.chapters as string[]).length, chapterTimingVerified: result.chapterTimingVerified };
 }

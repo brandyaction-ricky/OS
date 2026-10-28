@@ -182,7 +182,7 @@ export async function setMyinDraftPlace(actor: RequestActor, runId: string, plac
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   if (!["prep_pending", "clips_pending"].includes(record.stage ?? "") || run.clipsReview)
-    throw new ApiError(409, "MYIN_PLACE_NOT_OPEN", "시안을 기다리는 동안에만 만들 곳을 바꿀 수 있어요.");
+    throw new ApiError(409, "MYIN_PLACE_NOT_OPEN", "미리보기를 기다리는 동안에만 만들 곳을 바꿀 수 있어요.");
   if (run.lease && Date.parse(run.lease.expiresAt) > Date.now()) throw new ApiError(409, "MYIN_PLACE_BUSY", "지금 만드는 중이에요. 끝난 뒤에 바꿔 주세요.");
   const next: MyinRun = { ...run, attempts: 0 };
   delete next.lease; delete next.lastError;
@@ -283,7 +283,7 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
       const audio = await synthesizeFishWav(myinBreathText(input.spoken[pending.index], pending.breath), { apiKey: process.env.FISH_API_KEY ?? "", referenceId: voiceReference, model: MYIN_VOICE_MODEL });
       const path = paragraphPath(record, run, pending.index);
       const { error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).upload(path, new Uint8Array(audio.bytes), { contentType: audio.mimeType, upsert: true });
-      if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "생성된 음성을 저장하지 못했습니다.");
+      if (error) throw new ApiError(502, "VOICE_STORAGE_UPLOAD_FAILED", "만든 음성을 저장하지 못했습니다.");
       paragraphs = run.paragraphs.map((p) => p.index === pending.index ? { ...p, status: "ready" as const, path, bytes: audio.bytes.length } : p);
     }
     const done = paragraphs.every((p) => p.status === "ready");
@@ -382,7 +382,7 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   if (!bundle.success) throw new ApiError(422, "MYIN_BUNDLE_INVALID", "받아쓰기 결과 형식이 맞지 않습니다.");
   const spoken = bundle.data.speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
   if (spoken.length !== run.paragraphs.length || spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
-    throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "렌더 PC가 읽은 문단이 OS 원고와 다릅니다.");
+    throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "영상 만드는 컴퓨터가 읽은 문단이 OS 원고와 다릅니다.");
   const next: MyinRun = { ...run, attempts: 0, words: { path, words: bundle.data.words.length,
     subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),
     ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}) } };
@@ -535,13 +535,13 @@ const sign = async (service: Service, bucket: string, path: string) => {
  */
 async function localSeed(service: Service, run: MyinRun) {
   const voice = run.words?.voice;
-  if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 렌더 PC로 만들어 주세요.");
+  if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
   const urls = await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n))));
   return { voice: { urls, bytes: voice.bytes, sha256: voice.sha256 }, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
 }
 /** Only a run whose stage 1 left its voice for staff Macs can be sent to one. */
 const assertLocalReady = (run: MyinRun) => {
-  if (!run.words?.voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 렌더 PC로 만들어 주세요.");
+  if (!run.words?.voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
 };
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
@@ -653,7 +653,7 @@ export async function completeMyinClips(input: { runId: string; lease: string; n
   const { record, run } = await leased(service, input.runId, input.lease);
   const labels = new Map([["clip_opening", "오프닝 + 쇼릴"], ...(run.storyboard?.metaphors ?? []).map((m) => [`clip_scene_${m.scene}`, `${m.scene}번 장면 · ${m.type}`] as [string, string])]);
   const items = input.names.filter((name) => labels.has(name)).map((name) => ({ name, label: labels.get(name)!, path: outPath(record, run, `${name}-${tag(input.lease)}.mp4`) }));
-  if (!items.length) throw new ApiError(409, "MYIN_CLIPS_MISSING", "시안 영상이 올라오지 않았습니다.");
+  if (!items.length) throw new ApiError(409, "MYIN_CLIPS_MISSING", "미리보기 영상이 올라오지 않았습니다.");
   const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString() } };
   delete next.lease; delete next.lastError; delete next.clipsReview;
   await save(service, record, "done", "clips_review", next);
@@ -665,7 +665,7 @@ export async function confirmMyinClips(actor: RequestActor, runId: string, note:
   const service = createServiceSupabase();
   const { record, run } = await visibleRun(actor, runId);
   await assertCurrent(service, run);
-  if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 시안이 없습니다.");
+  if (record.stage !== "clips_review" || !run.clips) throw new ApiError(409, "MYIN_CLIPS_NOT_IN_REVIEW", "확인을 기다리는 미리보기가 없습니다.");
   const next: MyinRun = { ...run, attempts: 0, clipsReview: { by: actor.id, name: actor.name, note: note.trim().slice(0, 2000), at: new Date().toISOString() } };
   delete next.final;
   // 2026-10-27 대표: 시안 확인이 사진 허락 — ④ 자료 준비(사진 받기 · 구독 대사 음성)를 바로 시작한다.

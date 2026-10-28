@@ -14,10 +14,10 @@ export interface LocalRenderStatus { state: "online" | "offline" | "unknown"; ag
 
 /** Why 내 컴퓨터 cannot take this video's drafts right now, or null when it can (`ready`: its stage 1 left the voice for staff Macs). */
 export function localBlocker(status: LocalRenderStatus | null, ready = true) {
-  if (!ready) return "이 영상은 렌더 PC로 만들어요 · 내 컴퓨터용 음성이 없어요";
+  if (!ready) return "이 영상은 영상 만드는 컴퓨터로 만들어요 · 내 컴퓨터용 음성이 없어요";
   if (!status || status.state === "unknown") return "아직 연결하지 않았어요";
   if (status.state === "offline") return "내 컴퓨터가 꺼져 있어요";
-  if (status.engine === "different") return "엔진이 렌더 PC와 달라요 · 새 엔진을 받아 주세요";
-  if (status.engine === "unknown") return "렌더 PC 엔진 버전을 확인하는 중이에요";
+  if (status.engine === "different") return "엔진이 영상 만드는 컴퓨터와 달라요 · 새 엔진을 받아 주세요";
+  if (status.engine === "unknown") return "영상 만드는 컴퓨터 엔진 버전을 확인하는 중이에요";
   return null;
 }
