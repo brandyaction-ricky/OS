@@ -14,7 +14,7 @@ const words = "오늘은 성격 이야기를 해볼게요 같은 성격인데 �
   .split(" ").map((word, i) => [i, i + 0.9, word]);
 const story = (scenes, cta = [{ after: "자리만 바꿨더니", line: "구독 눌러 주세요" }]) => ({ end: 30, scenes, cta });
 const frame = [{ type: "opening", at: "오늘은 성격" }, { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]], photo: { file: "situ_a.jpg" } },
-  { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }];
+  { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }];
 
 test("a storyboard whose phrases are all in the transcription passes", () => {
   const result = checkMyinStoryboard(story(frame), words);
@@ -44,7 +44,7 @@ test("myinCreditsBlock drops file names and angle brackets, and is empty without
 // 로건 운영 시험 (2026-10-23) 기본값: 본문 장면 절반 이상이 도식 · 이미지, 같은 무대는 2번까지 · 연달아 금지.
 test("half the body scenes must be diagrams or images, and a stage is used at most twice and never back to back", () => {
   const body = (types) => story([{ type: "opening", at: "오늘은 성격" }, ...types.map((type) => ({ type, at: "같은 성격인데" })),
-    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
   const wordy = checkMyinStoryboard(body(["statement", "hero", "steps", "lib_stage_road"]), words);
   assert.ok(wordy.issues.some((issue) => /본문 4개 중 1개\(25%\)/.test(issue)));
   // (Cue placement and the catalog are checked elsewhere; only the share and reuse rules matter here.)
@@ -60,12 +60,22 @@ test("half the body scenes must be diagrams or images, and a stage is used at mo
 // 로건 피드백 A-10: the v13 puzzle's word must be set (empty shows 「조건」), and pieces and word stay within 4 letters.
 test("a puzzle needs its word and keeps pieces and word to 4 letters", () => {
   const puzzle = (extra) => story([{ type: "opening", at: "오늘은 성격" }, { type: "puzzle", at: "같은 성격인데", pieces: [{ text: "일" }, { text: "역할" }], ...extra },
-    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
   const of = (extra) => checkMyinStoryboard(puzzle(extra), words).issues.filter((issue) => issue.includes("퍼즐"));
   assert.match(of({})[0], /word, 4자 이하.*「조건」/);
   assert.deepEqual(of({ word: "맞는 일" }), []);
   assert.match(of({ word: "맞는 일자리" })[0], /4자 이하로 줄여/);
   assert.match(of({ word: "조합", pieces: [{ text: "일하는 방식" }] })[0], /조각 「일하는 방식」/);
+});
+
+// 2026-10-28: a scale scene with a label but no title stopped 자료 준비 six times (KeyError 'title' in Logan's s_scale).
+test("scenes Logan's engine reads without a fallback must carry those fields", () => {
+  const scale = (extra) => story([{ type: "opening", at: "오늘은 성격" }, { type: "scale", at: "같은 성격인데", label: "무게", left: { name: "일", cue: "같은 성격인데" }, right: { name: "역할", cue: "같은 성격인데" }, cue_tilt: "같은 성격인데", ...extra },
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
+  const of = (extra) => checkMyinStoryboard(scale(extra), words).issues.filter((issue) => issue.includes("칸이 비었어요"));
+  assert.deepEqual(of({}).map((issue) => issue.split(":")[1].trim().split(" ")[0]), ["title"]);
+  assert.deepEqual(of({ title: "어느 쪽이 무거울까" }), []);
+  assert.equal(of({ title: "무게", cue_tilt: undefined, right: "" }).length, 2);
 });
 
 // 2026-10-26: Unsplash page downloads got 429 on the render PC; the owner chose file links only, so a page link is refused up front.
@@ -93,7 +103,7 @@ test("myinPhotoFolders puts a scene photo in people and an opening image in situ
 // 로건 「마이인 기획표 QA 기준 v1」 3부 (2026-10-27), from the 연봉 video's QA: the OS refuses what any AI keeps getting wrong.
 test("QA: what is lower on the screen never appears before what is above it", () => {
   const hero = (extra) => story([{ type: "opening", at: "오늘은 성격" }, { type: "hero", at: "같은 성격인데", title: [[["자리만", "자리만 바꿨더니"]]], ...extra },
-    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+    { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
   const order = (extra) => checkMyinStoryboard(hero(extra), words).issues.filter((issue) => issue.includes("먼저 떠요"));
   assert.match(order({ sub: { text: "같은 성격", cue: "같은 성격인데" } })[0], /\[장면 2\] 화면 아래 「같은 성격」\(소제목\)가 위 「자리만」\(제목\)보다 먼저 떠요/);
   assert.deepEqual(order({ sub: { text: "약점이 사라짐", cue: "팀 전체" } }), []);
@@ -104,7 +114,7 @@ test("QA: what is lower on the screen never appears before what is above it", ()
 test("QA: every opening sentence has text on screen; a row list with % figures and 「눌러 두」 are refused", () => {
   const speech = "#SECTION 도입\n오늘은 성격 이야기를 해볼게요. 같은 성격인데 자리만 바꿨더니 팀 전체 약점이 사라졌어요.\n#SECTION 끝\n마지막으로 정리해 볼게요. 구독 부탁드려요.";
   const open = (lines) => story([{ type: "opening", at: "오늘은 성격", acts: [{ cue: "오늘은 성격", lines }] }, { type: "outro", at: "마지막으로 정리해" },
-    { type: "statement", at: "구독 부탁드려요" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }]);
+    { type: "statement", at: "구독 부탁드려요" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }]);
   const gaps = (lines) => checkMyinStoryboard(open(lines), words, [], speech).issues.filter((issue) => issue.startsWith("[오프닝]"));
   assert.match(gaps([[{ text: "성격 이야기", cue: "오늘은 성격" }]])[0], /「같은 성격인데 자리만 바꿨더니/);
   assert.deepEqual(gaps([[{ text: "성격 이야기", cue: "오늘은 성격" }], [{ text: "자리만 바꿨더니", cue: "같은 성격인데" }]]), []);
