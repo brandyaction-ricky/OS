@@ -247,5 +247,5 @@ export function nextShortScript(project: YpProject, current: YpShortScript, patc
 export async function fixConfirmedScript(actor: RequestActor, project: YpProject) {
   const service = createServiceSupabase();
   const stages = await readStages(service, project);
-  await writeStage(service, actor.id, actor.team, project, "shortScript", stages.shortScript, { ...stages.shortScript.data, confirmed: { at: new Date().toISOString(), text: stages.shortScript.data.text } });
+  await writeStage(service, actor.id, actor.team, project, "shortScript", stages.shortScript, { ...stages.shortScript.data, confirmed: { at: new Date().toISOString(), text: stages.shortScript.data.text, headCopy: stages.shortScript.data.headCopy } });
 }

@@ -53,28 +53,29 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
 export interface YpFinal { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
 /** Every final in time order: the OS-made 마이인 finals (from their runs), a 숏폼's MP4s from the render PC, and the files uploaded by hand. */
 export async function readFinals(supabase: Supabase, projectId: string, make: YpMake, kind?: YpKind | null): Promise<YpFinal[]> {
+  const { data, error } = await supabase.from("os_records").select("id,stage,metadata").eq("parent_id", projectId).eq("record_type", "ai_job")
+    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).limit(50);
+  if (error) throw readFailed();
+  // 숏폼 too since 2026-10-28: made from its confirmed 대본 by the vertical engine.
+  const runs = (data ?? []).filter(row => row.stage === "final_ready" && row.metadata?.final).map(row => {
+    const final = row.metadata.final as { at: string; bytes: number; durationSeconds: number };
+    return { at: final.at, source: "myin" as const, name: kind === "short" ? "숏폼 MP4" : "final_myin.mp4", bytes: final.bytes, durationSeconds: final.durationSeconds, runId: row.id as string };
+  });
   if (kind === "short") {
     // The 숏폼 card belongs to the project owner; the caller has already been allowed to the project. The video link checks the run's signature.
-    const { data, error } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
+    const { data: renders, error: renderError } = await createServiceSupabase().from("os_records").select("id,updated_at,metadata").eq("record_type", "ai_job").eq("metadata->>kind", SHORT_RENDER_KIND)
       .eq("metadata->>itemId", shortCardId(projectId)).eq("status", "done").is("archived_at", null).limit(50);
-    if (error) throw readFailed();
+    if (renderError) throw readFailed();
     // A 1:1 square or 4:5 portrait ad (2026-10-25) is a final of its own; screens pick the latest 9:16 one for Shorts and show the ad sizes beside it.
     const adName = { "1:1": "숏폼 MP4 · 정사각형", "4:5": "숏폼 MP4 · 4:5 세로" } as const;
-    const made = (data ?? []).map(row => {
+    const made = (renders ?? []).map(row => {
       const aspect = row.metadata?.plan?.aspect as keyof typeof adName | undefined;
       return { at: row.updated_at as string, source: "short" as const, name: aspect && adName[aspect] ? adName[aspect] : "숏폼 MP4", bytes: Number(row.metadata?.bytes ?? 0),
         durationSeconds: Number(row.metadata?.plan?.duration ?? 0) || null, runId: row.id as string, ...(aspect && adName[aspect] ? { aspect } : {}) };
     });
     const uploads = make.finals.map(item => ({ at: item.at, source: "upload" as const, name: item.name, bytes: item.bytes, durationSeconds: null, path: item.path }));
-    return [...made, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
+    return [...runs, ...made, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
   }
-  const { data, error } = await supabase.from("os_records").select("id,stage,metadata").eq("parent_id", projectId).eq("record_type", "ai_job")
-    .eq("metadata->>kind", MYIN_RUN_KIND).is("archived_at", null).limit(50);
-  if (error) throw readFailed();
-  const runs = (data ?? []).filter(row => row.stage === "final_ready" && row.metadata?.final).map(row => {
-    const final = row.metadata.final as { at: string; bytes: number; durationSeconds: number };
-    return { at: final.at, source: "myin" as const, name: "final_myin.mp4", bytes: final.bytes, durationSeconds: final.durationSeconds, runId: row.id as string };
-  });
   const uploads = make.finals.map(item => ({ at: item.at, source: "upload" as const, name: item.name, bytes: item.bytes, durationSeconds: null, path: item.path }));
   return [...runs, ...uploads].sort((a, b) => a.at.localeCompare(b.at)).map((item, index) => ({ ...item, v: index + 1 }));
 }

@@ -12,7 +12,8 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
-import { checkMyinStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
+import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
+import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
@@ -377,8 +378,8 @@ async function currentScriptInput(job: OsRecord) {
 }
 
 /** title → doc_id for the storyboard card's documents; a missing or doubled title just goes without an id. */
-async function myinCardDocIds() {
-  const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", MYIN_CARD_DOCS.map(([title]) => title)).neq("status", "archived");
+async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
+  const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", docs.map(([title]) => title)).neq("status", "archived");
   const rows = data ?? [];
   return Object.fromEntries(rows.filter(row => rows.filter(other => other.title === row.title).length === 1).map(row => [row.title as string, row.id as string]));
 }
@@ -396,6 +397,10 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const lease = await take();
+    const note = myin.run.review?.decision === "revise" ? myin.run.review.note : undefined;
+    if (myin.run.layout === "short") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+      instructions: shortStoryboardCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, markdown: myin.markdown, words: myin.words,
+        durationSeconds: myin.run.words!.durationSeconds, note, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
         note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds() }) };
@@ -554,11 +559,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
-    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
+    const checked = await keepIssues(job, m, () => myin.run.layout === "short"
+      ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
+      : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
+    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: myin.run.layout === "short" ? "로건, 유쓰가 숏폼 제작 화면에서 기획표를 확인합니다." : "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
   }
   const { automation, segments } = await currentInput(job);
   const { plan, pronunciation } = await keepIssues(job, m, () => ({

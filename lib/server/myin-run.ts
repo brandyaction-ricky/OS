@@ -35,6 +35,8 @@ const versionRef = z.object({ id: z.string().uuid(), version: z.number().int().p
 const leaseSchema = z.object({ token: z.string().uuid(), expiresAt: z.string().datetime(), startedAt: z.string().datetime().optional() }).strict();
 const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
+  // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
+  layout: z.literal("short").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional(),
     breath: z.array(z.number().int().min(0)).max(80).optional() }).strict()).min(1).max(150),
@@ -65,7 +67,7 @@ const runSchema = z.object({
   // 사운드 창고 (2026-10-27): Logan's music match report from the ③ preparation, and who last changed the sound at ④.
   sound: z.object({ report: z.string().max(20_000), at: z.string().datetime(),
     edited: z.object({ by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional() }).strict().optional(),
-  final: z.object({ video: z.string(), summary: z.string(), deck: z.string(), srt: z.string(), bytes: z.number().int().positive(),
+  final: z.object({ video: z.string(), summary: z.string().optional(), deck: z.string().optional(), srt: z.string(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive(), lufs: z.number(), peak: z.number(), at: z.string().datetime() }).strict().optional(),
   lease: leaseSchema.optional(), attempts: z.number().int().min(0).max(20),
   lastError: z.object({ code: z.string(), at: z.string().datetime() }).strict().optional(),
@@ -82,14 +84,17 @@ const paragraphPath = (record: OsRecord, run: MyinRun, index: number) => `${reco
 
 /** The approved script as Logan's pipeline reads it, and the paragraphs his stage_voice speaks. */
 async function currentInput(supabase: Service | RequestActor["supabase"], sourceId: string) {
-  const { state, plan, scriptText, title } = await readYoutubeAutomationInput(supabase, sourceId);
+  const input = await readYoutubeAutomationInput(supabase, sourceId);
+  const { state, plan, scriptText, title } = input;
+  // 숏폼: the head copy and the 대본 with its [관계] · [사람] screen hints go to the storyboard card.
+  const { layout, headCopy = "", screenScript = "" } = input as { layout?: "short"; headCopy?: string; screenScript?: string };
   if (!plan.inputKey || !plan.script || !scriptText) throw new ApiError(409, "AUTOMATION_INPUT_CHANGED", "승인된 원고와 패키징을 먼저 확인해 주세요.");
   const script = state.records.find((record) => record.id === plan.script?.id);
   const manuscript = typeof script?.metadata.manuscript === "string" ? script.metadata.manuscript : null;
   const markdown = myinScriptMarkdown(manuscript, scriptText);
   const { spoken } = myinCleanScript(markdown);
   if (!spoken.length) throw new ApiError(409, "MYIN_SCRIPT_EMPTY", "읽을 문단이 없는 원고입니다.");
-  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title };
+  return { state, inputKey: plan.inputKey, script: plan.script, markdown, spoken, title, layout, headCopy, screenScript };
 }
 
 async function save(service: Service, record: OsRecord, status: string, stage: string, run: MyinRun) {
@@ -101,7 +106,7 @@ async function save(service: Service, record: OsRecord, status: string, stage: s
 
 export function presentMyinRun(record: OsRecord) {
   const run = parse(record);
-  return { id: record.id, status: record.status, stage: record.stage, paragraphs: run.paragraphs.length,
+  return { id: record.id, status: record.status, stage: record.stage, layout: run.layout ?? null, paragraphs: run.paragraphs.length,
     paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
@@ -129,7 +134,7 @@ export async function myinRunWithWords(service: Service, sourceId: string) {
   if (!file) throw new ApiError(409, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await file.text()) as { words: [number, number, string][]; speech: string };
   const input = await currentInput(service, sourceId);
-  return { record, run, words: bundle.words, speech: bundle.speech ?? "", markdown: input.markdown, title: input.title };
+  return { record, run, words: bundle.words, speech: bundle.speech ?? "", markdown: input.markdown, title: input.title, headCopy: input.headCopy, screenScript: input.screenScript };
 }
 
 /** A storyboard the OS checked goes to Logan: kept as a file, summarised for the ③ panel. */
@@ -202,7 +207,8 @@ export async function latestMyinRun(actor: RequestActor, sourceId: string) {
 export async function createMyinRun(actor: RequestActor, sourceId: string) {
   const input = await currentInput(actor.supabase, sourceId);
   // A 원고 edited after 제작 started reaches the voice here. ponytail: length is left to the 구성안 → 제작 check (no runtime here).
-  await assertSpokenScript(actor.supabase, input.markdown, null);
+  // A 숏폼's 대본 passed its own check (숏폼 대본 정본 §10) at 대본 확정 and cannot change after it.
+  if (!input.layout) await assertSpokenScript(actor.supabase, input.markdown, null);
   const voiceReference = process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "";
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
@@ -210,10 +216,10 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
   const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING)]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
-    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0,
+    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0, ...(input.layout ? { layout: input.layout } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
-    id, record_type: "ai_job", title: `${input.state.source.title} · v13 음성·받아쓰기`.slice(0, 240),
+    id, record_type: "ai_job", title: `${input.state.source.title} · ${input.layout ? "숏폼 " : ""}v13 음성·받아쓰기`.slice(0, 240),
     description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: "breath_pending",
     priority: "normal", brand: input.state.source.brand, team: input.state.source.team, owner_id: actor.id, parent_id: sourceId,
     created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "마이인v13"], metadata: run,
@@ -341,8 +347,11 @@ async function voiceFiles(service: Service, run: MyinRun) {
   return { scriptMarkdown: input.markdown, paragraphs };
 }
 
-export async function claimMyinWords(service: Service = createServiceSupabase()) {
-  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS);
+/** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
+const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
+
+export async function claimMyinWords(service: Service = createServiceSupabase(), short = false) {
+  const claimed = await claim(service, "words_pending", WORDS_LEASE_MS, fits(short));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -350,9 +359,11 @@ export async function claimMyinWords(service: Service = createServiceSupabase())
     const { data: upload, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(bundlePath(record, run, lease.token), { upsert: true });
     if (error || !upload) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
     const prefix = voicePrefix(record, run, lease.token);
-    const voiceUploadUrls = (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
+    // No voice for staff Macs on a 숏폼: its drafts need the vertical engine, which only the render PC has.
+    const voiceUploadUrls = run.layout ? [] : (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
       service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(voicePartPath(prefix, n), { upsert: true })))).map(({ data }) => data?.signedUrl).filter(Boolean);
-    return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}) };
+    return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
+      ...(run.layout ? { layout: run.layout } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
     throw error;
@@ -545,8 +556,8 @@ const assertLocalReady = (run: MyinRun) => {
 };
 
 /** Render PC (or, with `owner`, that member's own Mac for a ③ draft): storyboard, approved files, CTA voice and where the sheets and report go. */
-export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string) {
-  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)));
+export async function claimMyinPrep(service: Service = createServiceSupabase(), owner?: string, short = false) {
+  const claimed = await claim(service, "prep_pending", WORDS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
@@ -572,7 +583,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");
@@ -603,10 +614,11 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   delete next.lease; delete next.lastError;
   if (draft) { delete next.clips; delete next.clipsReview; delete next.final; }
   if (!next.sound) delete next.sound;
-  // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check.
-  const go = draft && !bundle.misses.length;
-  const stage = go ? "clips_pending" : "prep_ready";
-  await save(service, record, go ? "backlog" : "done", stage, next);
+  // ③ with nothing missing: the drafts are next, without anyone pressing a button. ④ stops here for the sound and photos check;
+  // a 숏폼 has no sound to check (voice only), so its full video starts.
+  const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout ? "final_pending" : "prep_ready";
+  if (stage === "final_pending") delete next.final;
+  await save(service, record, stage === "prep_ready" ? "done" : "backlog", stage, next);
   return { runId: record.id, stage, misses: bundle.misses.length };
 }
 
@@ -634,14 +646,18 @@ const uploadUrl = async (service: Service, bucket: string, path: string) => {
 };
 
 /** Render PC (or that member's own Mac): which clips to cut (the opening with its reel, then each metaphor scene) and where to put them. */
-export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string) {
-  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)));
+/** What the drafts are: the opening with its reel and each metaphor scene, or a 숏폼 whole (it is 30–45 seconds). */
+const clipItems = (run: MyinRun) => run.layout ? [{ name: "clip_short", label: "숏폼 전체", scene: 1 }]
+  : [{ name: "clip_opening", label: "오프닝 + 쇼릴", scene: 1 }, ...(run.storyboard?.metaphors ?? []).map((m) => ({ name: `clip_scene_${m.scene}`, label: `${m.scene}번 장면 · ${m.type}`, scene: m.scene }))];
+
+export async function claimMyinClips(service: Service = createServiceSupabase(), owner?: string, short = false) {
+  const claimed = await claim(service, "clips_pending", CLIPS_LEASE_MS, (run) => draftFilter(owner)(run) && (!owner || Boolean(run.words?.voice)) && fits(short)(run));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
-    const items = [{ name: "clip_opening", label: "오프닝 + 쇼릴", scene: 1 }, ...(run.storyboard?.metaphors ?? []).map((m) => ({ name: `clip_scene_${m.scene}`, label: `${m.scene}번 장면 · ${m.type}`, scene: m.scene }))];
+    const items = clipItems(run);
     const uploads = await Promise.all(items.map((item) => uploadUrl(service, ASSET_VIDEO_BUCKET, outPath(record, run, `${item.name}-${tag(lease.token)}.mp4`))));
-    return { runId: record.id, lease: lease.token, clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}) };
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), clips: items.map((item, i) => ({ ...item, uploadUrl: uploads[i] })), ...(owner ? { seed: await localSeed(service, run) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLIPS_CLAIM_FAILED");
     throw error;
@@ -651,7 +667,7 @@ const ASSET_VIDEO_BUCKET = "os-youtube-video";
 
 export async function completeMyinClips(input: { runId: string; lease: string; names: string[] }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
-  const labels = new Map([["clip_opening", "오프닝 + 쇼릴"], ...(run.storyboard?.metaphors ?? []).map((m) => [`clip_scene_${m.scene}`, `${m.scene}번 장면 · ${m.type}`] as [string, string])]);
+  const labels = new Map(clipItems(run).map((item) => [item.name, item.label]));
   const items = input.names.filter((name) => labels.has(name)).map((name) => ({ name, label: labels.get(name)!, path: outPath(record, run, `${name}-${tag(input.lease)}.mp4`) }));
   if (!items.length) throw new ApiError(409, "MYIN_CLIPS_MISSING", "미리보기 영상이 올라오지 않았습니다.");
   const next: MyinRun = { ...run, attempts: 0, clips: { items, at: new Date().toISOString() } };
@@ -725,20 +741,21 @@ export async function saveMyinSound(actor: RequestActor, runId: string, plan: My
   return presentMyinRun(await save(service, record, "done", "prep_ready", saved));
 }
 
-const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: outPath(record, run, `final_myin-${tag(lease)}.mp4`),
-  summary: outPath(record, run, `summary-${tag(lease)}.png`), deck: outPath(record, run, `deck-${tag(lease)}.pdf`), srt: outPath(record, run, `subs_youtube-${tag(lease)}.srt`) });
+// A 숏폼 has no handouts (한장정리 · 덱): it has no summary scene.
+const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: outPath(record, run, `final_myin-${tag(lease)}.mp4`), srt: outPath(record, run, `subs_youtube-${tag(lease)}.srt`),
+  ...(run.layout ? {} : { summary: outPath(record, run, `summary-${tag(lease)}.png`), deck: outPath(record, run, `deck-${tag(lease)}.pdf`) }) });
 
 /** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
-export async function claimMyinFinal(service: Service = createServiceSupabase()) {
-  const claimed = await claim(service, "final_pending", 60 * 60_000);
+export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false) {
+  const claimed = await claim(service, "final_pending", 60 * 60_000, fits(short));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {
     const files = finalFiles(record, run, lease.token);
     // The storyboard as ④ left it (sound edits made after the preparation), written into the render PC's copy before the render.
-    return { runId: record.id, lease: lease.token, storyboard: myinDriftPairs(await storyboardJson(service, run)),
-      videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary),
-      deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt) };
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), storyboard: myinDriftPairs(await storyboardJson(service, run)),
+      videoUploadUrl: await uploadUrl(service, ASSET_VIDEO_BUCKET, files.video), srtUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.srt),
+      ...(files.summary && files.deck ? { summaryUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.summary), deckUploadUrl: await uploadUrl(service, OUTPUT_BUCKET, files.deck) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_FINAL_CLAIM_FAILED");
     throw error;

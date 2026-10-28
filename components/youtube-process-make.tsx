@@ -13,6 +13,7 @@ import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process
 import { GateBanner, gateSub, md, stepAction, Subject, useYpBundle, YpFrame, YpSection, LockedStep, type YpPage } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { ShortMake } from "./youtube-process-short";
+import { scriptLines } from "@/lib/youtube-process/short-script";
 
 const dayDiff = (date: string) => Math.round((Date.parse(`${date}T00:00:00`) - new Date(new Date().toDateString()).getTime()) / 86_400_000);
 const md2 = (date: string) => { const at = new Date(`${date}T00:00:00`); return `${at.getMonth() + 1}/${at.getDate()} (${"일월화수목금토"[at.getDay()]})`; };
@@ -46,6 +47,9 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const kind = project?.yp.topic.type ?? "anim";
   const anim = kind === "anim";
   const short = kind === "short";
+  // 숏폼 (2026-10-28): one made from a confirmed 대본 is made like a longform, by the vertical engine; older ones keep the scene editor.
+  const shortScript = bundle?.stages.shortScript.data.confirmed;
+  const auto = anim || Boolean(short && shortScript);
 
   const save = async (patch: Record<string, unknown>, label: string) => {
     if (!page.client || !project || !make) return false;
@@ -91,7 +95,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const statusIndex = data ? Math.max(0, steps.findIndex(([key]) => key === (anim && data.status === "shoot" ? "prep" : data.status))) : 0;
   let n = 0;
 
-  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검토 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? "무엇을 만들지 정하고, 장면마다 이미지를 넣어 영상을 만들어요." : anim ? "원고로 영상을 자동으로 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
+  return <YpFrame page={page} view={3} action={action} header={header} title="제작" sub={project?.yp.stage === "review" ? gateSub(project, "review", "최종 검토 중이에요. 새 버전이나 썸네일을 바꿀 때만 여기서 해요.", "제작이 끝났어요.") : short ? auto ? "확정한 대본으로 세로 숏폼을 자동으로 만들어요." : "무엇을 만들지 정하고, 장면마다 이미지를 넣어 영상을 만들어요." : anim ? "원고로 영상을 자동으로 만들어요. 다 되면 최종 썸네일 A · B를 올려요." : "편집이 끝나면 최종본과 최종 썸네일 A · B를 올려요."}
     todo={data && project?.yp.stage === "make" ? short ? [{ label: "최종본", done: finals.length > 0 }] : [{ label: "최종본", done: finals.length > 0 }, { label: "최종 썸네일 A", done: Boolean(data.thumbs.A) }, { label: "최종 썸네일 B", done: Boolean(data.thumbs.B) }] : undefined}>
     {bundle && data && project ? ["topic", "draft", "outline"].includes(project.yp.stage) ? <LockedStep page={page} name="제작" /> : <>
       {project.yp.stage === "review" ? <GateBanner page={page} gate="review" /> : null}
@@ -108,7 +112,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
             {data.log.length ? <><div className="yp-lbl">바꾼 기록</div><ul className="yp-hist">{data.log.slice(0, 5).map(item => <li key={item.at}><time>{md(item.at)}</time><span>편집 완료 {item.from ? md2(item.from) : "없음"} → {md2(item.to)} · {item.by}{item.why ? ` · ${item.why}` : ""}</span></li>)}</ul></> : null}</>}
       </YpSection>
       {/* The OS-made video moves on by itself; the manual 준비 · 편집 · 완료 buttons are for 실사. */}
-      {short ? <ShortMake page={page} editable={canFinal} n0={n} /> : null}
+      {short && !auto ? <ShortMake page={page} editable={canFinal} n0={n} /> : null}
       {anim || short ? null : <>
       <YpSection n={++n} title="진행 상태">
         <div className="yp-pstat2">{steps.map(([key, label], index) => <span key={key} style={{ display: "contents" }}>
@@ -122,26 +126,26 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>원고 (최신)</b><div className="yp-muted" style={{ fontSize: 12 }}>v{bundle.stages.outline.data.versions.at(-1)?.v ?? "—"}{bundle.stages.outline.data.versions.find(item => item.why === "make") ? ` · 제작 시작 원고 v${bundle.stages.outline.data.versions.filter(item => item.why === "make").at(-1)!.v}` : ""}</div></div><Link className="yp-btn yp-sm" href={stepHref(2, project.id)}>열기</Link></div>
         <div className="yp-mat"><FileText size={16} aria-hidden="true" /><div className="yp-grow"><b>컨펌본 (제목 · 썸네일)</b><div className="yp-muted" style={{ fontSize: 12 }}>{SLOTS.filter(slot => confirmed?.[slot]?.title).map(slot => <div key={slot}>{slot}: {confirmed?.[slot]?.title}</div>)}</div></div></div>
       </div></YpSection>}
-      {short ? <details className="yp-more-fields" open={finals.some(final => final.source === "upload")}><summary>직접 편집한 영상이 있으면 올려요 (선택)</summary>
+      {short && !auto ? <details className="yp-more-fields" open={finals.some(final => final.source === "upload")}><summary>직접 편집한 영상이 있으면 올려요 (선택)</summary>
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
           : canFinal ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" onClick={() => finalInput.current?.click()}><Upload size={14} /> 파일 올리기</button><span className="yp-muted" style={{ fontSize: 12 }}>올린 파일이 최종 검토 새 버전이 돼요</span></div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </details> : <>
-      <YpSection n={++n} title={anim ? "최종본 만들기" : "최종본 올리기"} gq={anim ? "원고로 영상을 자동으로 만들어요" : undefined} need>
+      <YpSection n={++n} title={auto ? "최종본 만들기" : "최종본 올리기"} gq={short ? "확정한 대본으로 자동으로 만들어요" : anim ? "원고로 영상을 자동으로 만들어요" : undefined} need>
         {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>
           <span>{final.source === "myin" ? "자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
-        {anim && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
-        {anim && !page.demo ? <MyinV13Panel sourceId={project.id} embedded onFinal={onFinal}
-          voiceText={myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
-          finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. 소리를 확인하고 최종 썸네일 A · B를 올려요.</p>} /> : null}
+        {auto && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
+        {auto && !page.demo ? <MyinV13Panel sourceId={project.id} embedded onFinal={onFinal} short={short}
+          voiceText={shortScript ? scriptLines(shortScript.text).map(line => line.text).join(" ") : myinCleanScript(myinScriptMarkdown(null, narrationFromMarkdown(bundle.stages.outline.data.script))).spoken.join("\n")}
+          finalNote={<p className="yt-note">최종본 v{finals.length || 1} 완성. {short ? "소리를 확인하고 [다음: 최종 검토]를 눌러요." : "소리를 확인하고 최종 썸네일 A · B를 올려요."}</p>} /> : null}
         {progress !== null ? <div className="yp-drop"><Upload size={22} aria-hidden="true" /><b>최종본 v{finals.length + 1} 올리는 중</b><div className="yp-dprog"><i style={{ width: `${progress}%` }} /></div><span style={{ fontSize: 12 }}>{progress}%, 다 올라갈 때까지 화면을 닫지 마세요</span></div>
-          : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={anim ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
-            <b>{finals.length ? `최종본 v${finals.length} 저장됨` : anim ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
+          : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={auto ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
+            <b>{finals.length ? `최종본 v${finals.length} 저장됨` : auto ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
             <span style={{ fontSize: 12 }}>mp4 · mov · m4v · webm</span>
             <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div></div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </YpSection>
-      <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
+      {short ? null : <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
         <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot}
           onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")} />)}</div>
         {fixing && canThumb ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
@@ -149,7 +153,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
         <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
         <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={projectName(project)} />
-      </YpSection></>}
+      </YpSection>}</>}
     </> : null}
   </YpFrame>;
 }

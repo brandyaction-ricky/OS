@@ -31,19 +31,19 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_breath_claim") }).strict(),
   z.object({ action: z.literal("myin_breath_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     breaths: z.array(z.object({ index: z.number().int().min(0).max(149), after: z.array(z.number().int().min(0).max(400)).max(80) }).strict()).max(150) }).strict(),
-  z.object({ action: z.literal("myin_claim") }).strict(),
+  z.object({ action: z.literal("myin_claim"), short: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_complete"), runId: z.string().uuid(), lease: z.string().uuid(),
     voice: z.object({ parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional() }).strict(),
   z.object({ action: z.literal("myin_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 3: approved photos and music, CTA voice, Logan's preview check.
-  z.object({ action: z.literal("myin_prep_claim") }).strict(),
+  z.object({ action: z.literal("myin_prep_claim"), short: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), runId: z.string().uuid(), lease: z.string().uuid() }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
   // Stage 4: Logan's clips, then the full render, mix and handouts.
-  z.object({ action: z.literal("myin_clips_claim") }).strict(),
+  z.object({ action: z.literal("myin_clips_claim"), short: z.literal(true).optional() }).strict(),
   // One clip per metaphor scene plus the opening; a storyboard has at most 200 scenes, and stage diagrams make most of them metaphors.
   z.object({ action: z.literal("myin_clips_complete"), runId: z.string().uuid(), lease: z.string().uuid(), names: z.array(z.string().max(40)).max(201) }).strict(),
-  z.object({ action: z.literal("myin_final_claim") }).strict(),
+  z.object({ action: z.literal("myin_final_claim"), short: z.literal(true).optional() }).strict(),
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
@@ -73,15 +73,15 @@ export async function POST(request: Request) {
       : input.action === "complete" ? await completeYoutubeRender(input)
       : input.action === "myin_breath_claim" ? await claimMyinBreath()
       : input.action === "myin_breath_complete" ? await completeMyinBreath(input)
-      : input.action === "myin_claim" ? await claimMyinWords()
+      : input.action === "myin_claim" ? await claimMyinWords(undefined, Boolean(input.short))
       : input.action === "myin_complete" ? await completeMyinWords(input)
       : input.action === "myin_fail" ? await failMyinWords(input)
-      : input.action === "myin_prep_claim" ? await claimMyinPrep()
+      : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, undefined, Boolean(input.short))
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)
-      : input.action === "myin_clips_claim" ? await claimMyinClips()
+      : input.action === "myin_clips_claim" ? await claimMyinClips(undefined, undefined, Boolean(input.short))
       : input.action === "myin_clips_complete" ? await completeMyinClips(input)
-      : input.action === "myin_final_claim" ? await claimMyinFinal()
+      : input.action === "myin_final_claim" ? await claimMyinFinal(undefined, Boolean(input.short))
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)
       : input.action === "myin_stage_fail" ? await failMyinStage(input)
       : input.action === "short_refs_claim" ? await claimShortRefs()

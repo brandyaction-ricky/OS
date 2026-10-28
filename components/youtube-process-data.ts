@@ -214,9 +214,15 @@ function demoFilledStages(project: YpProject): YpStagesView {
   if (at >= 2 && ["upload", "shorts", "done"].includes(project.yp.stage)) shortTopics.items = [
     { id: "st1", insight: "[예시] 지치는 건 일이 많아서가 아니라 고를 게 많아서", scene: "퇴근 뒤 소파에서 휴대폰만 보는 3년 차 마케터", paragraph: "본론 1 · 결정이 많다", why: "누구나 겪는 저녁 장면" },
     { id: "st2", insight: "[예시] 내 기준이 없으면 남의 순서로 하루를 산다", scene: "메일 순서대로 일하다 중요한 일을 못 한 날", paragraph: "본론 2 · 내 기준", why: "할 일 목록이 길수록 공감" }];
+  // A 숏폼 past its 대본 has a confirmed one, so 제작 shows the automatic making (2026-10-28).
+  const shortScript = emptyStage("shortScript", kind);
+  if (at >= 2 && kind === "short") {
+    const text = "[예시] 친구는 만나고 싶은데 약속은 부담돼요.\n주말을 전부 약속으로 채우면 지치거든요.\n[관계] 만나고 싶은 마음과 쉬고 싶은 마음이 같이 있는 거예요.\n그래서 토요일 오후만 만나고 저녁엔 먼저 들어가요.";
+    Object.assign(shortScript, { headCopy: "[예시] 만나고 싶은데 쉬고 싶다", text, confirmed: { at: daysAgo(1), text, headCopy: "[예시] 만나고 싶은데 쉬고 싶다" } });
+  }
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
-    shortScript: { id: null, version: 0, data: emptyStage("shortScript", kind) } };
+    shortScript: { id: null, version: 0, data: shortScript } };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();

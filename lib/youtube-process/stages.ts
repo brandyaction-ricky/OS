@@ -122,8 +122,8 @@ export interface YpShortScript {
   ai?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; notes: string; text: string };
   /** The AI's script when the PD had already written: shown beside the fields, applied only on [이 초안으로 바꾸기]. */
   aiDraft?: Pick<YpShortScript, "text" | "hooks" | "insight" | "formula" | "headCopy">;
-  /** Copied when the 대본 확정 is made: what 제작 starts from. */
-  confirmed?: { at: string; text: string };
+  /** Copied when the 대본 확정 is made: what 제작 starts from (headCopy since 2026-10-28; older ones read the step's headCopy). */
+  confirmed?: { at: string; text: string; headCopy?: string };
 }
 export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
