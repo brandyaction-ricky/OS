@@ -9,6 +9,7 @@ import { automationExportRange,type AutomationExportPeriod } from "@/lib/content
 import { loginExpiredNearSlot } from "@/lib/content-automation-schedule";
 import { CHANNEL_LABELS,CONTENT_STATUS_LABELS,JOB_STATUS_LABELS,PROC_LABELS } from "@/lib/content-automation-labels";
 import { PAGE_GUIDES } from "@/lib/page-guides";
+import { getTopicBriefDraft } from "@/lib/topic-brief";
 import { getBrowserSupabase } from "@/lib/supabase/client";
 import type { OsRecord } from "@/lib/record-types";
 import { THREADS_POST_MAX,threadsPostLength,threadsPostRole,threadsPostsProblem } from "@/lib/threads-posts";
@@ -42,7 +43,7 @@ const merge=(rows:OsRecord[],more:OsRecord[])=>[...rows.map(row=>({...row,...mor
 const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:string}>={
   dashboard:{title:"자동화 현황",description:"내가 만든 콘텐츠·AI 작업·내 채널 계정만 봅니다.",next:"/automation/topics"},
   references:{title:"레퍼런스",description:"원문의 장면·반응·질문·관점을 비교하고 쓸 주제를 고릅니다.",next:"/automation/topics"},
-  topics:{title:"① 주제 기획",description:"주제 후보를 모으고 브리프와 제작 채널을 정합니다.",next:"/automation/cardnews"},
+  topics:{title:"① 주제 기획",description:"무엇을 누구에게 전할지 확인하고, 선택한 채널에서 집필을 이어갑니다.",next:"/automation/cardnews"},
   cardnews:{title:"② 카드뉴스",description:"템플릿의 칸 이름에 맞춰 글과 이미지를 준비합니다.",next:"/automation/review"},
   shorts:{title:"③ 쇼츠",description:"컷 구성·MP4·커버와 설명을 준비합니다.",next:"/automation/review"},
   threads:{title:"④ 쓰레드",description:"글타래를 다듬고 확인으로 보냅니다.",next:"/automation/review"},
@@ -86,7 +87,7 @@ function PageHead({page,name}:{page:AutomationPage;name:string}){
   const info=PAGE_INFO[page],guide=PAGE_GUIDES[`/automation/${page}`];
   const process=info.title.match(/^([①-⑦])\s/),title=process?info.title.slice(2):info.title;
   return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{info.description}</p></div></header>
-    <div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span><Link href={info.next}>다음 단계 →</Link></div></>;
+    <div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span>{page!=="topics"?<Link href={info.next}>다음 단계 →</Link>:null}</div></>;
 }
 function Tabs({base,tabs,active,param="tab"}:{base:string;tabs:{id:string;label:string}[];active:string;param?:string}){
   return <div className="ca-v07-tabs" role="tablist">{tabs.map(tab=><Link key={tab.id} role="tab" aria-selected={active===tab.id} className={active===tab.id?"active":""} href={`${base}?${param}=${tab.id}`}>{tab.label}</Link>)}</div>;
@@ -147,11 +148,11 @@ const RESOURCES:Record<AutomationPage,string[]>={
 export function ContentAutomationV07({page}:{page:AutomationPage}){
   const {accessToken,demo,profile,loading:sessionLoading}=useSession();
   const [data,setData]=useState<Data>(EMPTY),[loading,setLoading]=useState(true),[error,setError]=useState(""),[notice,setNotice]=useState("");
-  const load=useCallback(async()=>{
+  const load=useCallback(async(showLoading=true)=>{
     if(sessionLoading)return;
     if(demo){setData(EMPTY);setLoading(false);return;}
     if(!accessToken)return;
-    setLoading(true);setError("");
+    if(showLoading)setLoading(true);setError("");
     try{
       const entries=await Promise.all(RESOURCES[page].map(async resource=>{
         const path=resource==="accounts"?"/api/v1/channels?scope=mine":`/api/v1/content/automation/${resource}${resource.includes("?")?"&":"?"}limit=500`;
@@ -177,8 +178,8 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
         else if(resource==="templates")next.templates=response.records as OsRecord[];
         else if(resource==="assets")next.assets=response.records as OsRecord[];
       }
-      setData(next);
-    }catch(issue){setError(issue instanceof Error?issue.message:"화면을 불러오지 못했습니다.");}
+      setData(next);return true;
+    }catch(issue){setError(issue instanceof Error?issue.message:"화면을 불러오지 못했습니다.");return false;}
     finally{setLoading(false);}
   },[accessToken,demo,page,profile?.id,sessionLoading]);
   useEffect(()=>{void load();},[load]);
@@ -186,18 +187,20 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
     if(demo)throw new Error("데모 모드에서는 저장할 수 없습니다.");
     if(!accessToken)throw new Error("로그인이 필요합니다.");
     const response=await apiRequest<Record<string,unknown>>(path,{method,token:accessToken,body:JSON.stringify(body)});
-    await load();setNotice("저장했습니다.");
+    // Keep the topic editor mounted while saving, so its action state and dialogs survive.
+    const refreshed=await load(page!=="topics");
+    setNotice(refreshed?"저장했습니다.":"변경은 저장됐습니다. 최신 화면을 불러오지 못했으니 다시 시도해 주세요.");
     return response;
-  },[accessToken,demo,load]);
+  },[accessToken,demo,load,page]);
   return <section className="ca-v07 ui-v2 screen-automation-v07">
     <PageHead page={page} name={profile?.displayName??"나"} />
     {notice?<p className="ca-v07-notice" role="status">{notice}</p>:null}
     {loading?<div className="ca-v07-loading" role="status">내 콘텐츠를 불러오는 중입니다…</div>
-      :error?<div className="ca-v07-error" role="alert"><strong>—</strong> 불러오지 못했습니다 · 저장된 데이터는 바뀌지 않았습니다. <button type="button" onClick={()=>void load()}>다시 시도</button><p>{error}</p></div>
+      :error?<div className="ca-v07-error" role="alert"><strong>최신 화면을 불러오지 못했습니다.</strong> <button type="button" onClick={()=>void load()}>다시 시도</button><p>{error}</p></div>
       :page==="dashboard"?<DashboardView data={data} />
       :page==="references"?<ThreadsReferenceWorkspace records={data.references} mutate={mutate} collectionContext={data.referenceContext} />
       :page==="topics"?<TopicsView data={data} mutate={mutate} />
-      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={load}/>
+      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={async()=>{await load();}}/>
       :page==="review"?<ReviewView data={data} mutate={mutate} />
       :page==="calendar"?<CalendarView data={data} mutate={mutate} />
       :page==="performance"?<PerformanceView data={data} mutate={mutate} />
@@ -236,16 +239,21 @@ function TopicsView({data,mutate}:ViewProps){
   const [newOpen,setNewOpen]=useState(search.has("new")),[newTitle,setNewTitle]=useState(""),[newSource,setNewSource]=useState("direct"),[newNote,setNewNote]=useState("");
   const selected=data.topics.find(row=>row.id===search.get("sel"))??null;
   const missing=search.has("sel")&&!selected;
+  const draft=selected?getTopicBriefDraft(selected):null;
+  const children=selected?data.items.filter(item=>item.parent_id===selected.id):[];
+  const hasStarted=children.length>0;
   const [brief,setBrief]=useState({one:"",who:"",message:"",sources:"",warn:""}),[channels,setChannels]=useState<string[]>([]);
   const [dues,setDues]=useState<Record<string,string>>({}),[jobOpen,setJobOpen]=useState<string|null>(null),[localError,setLocalError]=useState("");
   // busy blocks a second click; requestId makes a retried create return the same topic.
   const [busy,setBusy]=useState(false),[requestId,setRequestId]=useState(()=>crypto.randomUUID()),[teamThreads,setTeamThreads]=useState<boolean|null>(null);
   const shareThreads=teamThreads??data.team.canReview;
-  useEffect(()=>{const value=selected?.metadata.brief as Record<string,unknown>|undefined;setBrief({
-    one:str(value?.one),who:str(value?.who),message:str(value?.message),sources:str(value?.sources),warn:str(value?.warn)});
-    setChannels(Array.isArray(selected?.metadata.channels)?selected.metadata.channels as string[]:[]);
+  useEffect(()=>{const initial=selected?getTopicBriefDraft(selected):null;
+    setBrief(initial?.brief??{one:"",who:"",message:"",sources:"",warn:""});
+    setChannels(initial?.channels??[]);
     setDues((selected?.metadata.dues as Record<string,string>)??{});
+    setLocalError("");
   },[selected]);
+  useEffect(()=>{setTeamThreads(null);},[selected?.id]);
   const filtered=data.topics.filter(row=>(source==="all"||row.metadata.source===source)&&row.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const column=(topic:OsRecord)=>{
     const count=data.items.filter(item=>item.parent_id===topic.id).length;
@@ -266,17 +274,22 @@ function TopicsView({data,mutate}:ViewProps){
     finally{setBusy(false);}
   };
   const save=async(start:boolean)=>{
-    if(!selected||busy)return;
-    if(start&&!channels.length){setLocalError("만들 채널을 하나 이상 선택해 주세요.");return;}
+    if(!selected||busy)return false;
+    const missingFields=BRIEF_FIELDS.filter(([key])=>key!=="warn"&&!brief[key].trim());
+    if(start&&missingFields.length){setLocalError(`입력이 필요한 항목: ${missingFields.map(([,label])=>label).join(", ")}. 아직 작성 중이면 ‘기획만 저장’할 수 있습니다.`);return false;}
+    if(start&&!channels.length){setLocalError("만들 채널을 하나 이상 선택해 주세요.");return false;}
     setLocalError("");setBusy(true);
     try{
       if(start){
         const channelOptions=Object.fromEntries(channels.map(channel=>[channel,dues[channel]?{due:dues[channel]}:{}]));
-        await mutate(`/api/v1/content/automation/topics/${selected.id}/start`,"POST",{
+        const response=await mutate(`/api/v1/content/automation/topics/${selected.id}/start`,"POST",{
           version:selected.version,brief,channels:channelOptions,...(channels.includes("threads")&&shareThreads?{teamThreads:true}:{})});
+        const items=Array.isArray(response.items)?response.items as OsRecord[]:[];
+        if(items.length===1)router.push(topicItemHref(items[0]));
       }else await mutate(`/api/v1/content/automation/topics/${selected.id}`,"PATCH",{
         expectedVersion:selected.version,stage:"brief",metadata:{brief,channels,dues}});
-    }catch(issue){setLocalError(issue instanceof Error?issue.message:"주제를 저장하지 못했습니다.");}
+      return true;
+    }catch(issue){setLocalError(issue instanceof Error?issue.message:"주제를 저장하지 못했습니다.");return false;}
     finally{setBusy(false);}
   };
   const createJob=async(rush:boolean)=>{
@@ -284,26 +297,59 @@ function TopicsView({data,mutate}:ViewProps){
       setJobOpen(null);if(rush)await navigator.clipboard.writeText(workerInstruction("now"));}
     catch(issue){setLocalError(issue instanceof Error?issue.message:"AI 작업을 만들지 못했습니다.");}
   };
-  return <><div className="ca-v07-toolbar"><input aria-label="주제 검색" placeholder="주제·출처 검색" value={query} onChange={event=>setQuery(event.target.value)}/>
+  const nextLabel=channels.length===1?`기획 확인하고 ${CHANNEL_LABELS[channels[0]]} ${channels[0]==="threads"?"집필":"제작"}로 이동`:"기획 확인하고 제작 항목 만들기";
+  return <>{!selected?<><div className="ca-v07-toolbar"><input aria-label="주제 검색" placeholder="주제·출처 검색" value={query} onChange={event=>setQuery(event.target.value)}/>
     <select aria-label="출처" value={source} onChange={event=>setSource(event.target.value)}><option value="all">전체 출처</option>{Object.entries(SOURCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
     <Link href="/automation/references">내 레퍼런스에서 고르기</Link><button type="button" onClick={()=>setJobOpen("topic")}>AI로 후보 받기</button><CostTag kind="ai"/><button type="button" className="primary" onClick={()=>setNewOpen(true)}>+ 주제 추가</button></div>
     {newOpen?<form className="ca-v07-card ca-v07-form" onSubmit={event=>void create(event)}><h2>주제 추가</h2><label>출처<select value={newSource} onChange={event=>setNewSource(event.target.value)}>{Object.entries(SOURCES).filter(([key])=>key!=="ai").map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>제목<input required value={newTitle} onChange={event=>setNewTitle(event.target.value)}/></label><label>출처·메모<input value={newNote} onChange={event=>setNewNote(event.target.value)}/></label><div className="ca-v07-actions"><button type="button" onClick={()=>setNewOpen(false)}>취소</button><button className="primary" disabled={busy}>{busy?"추가하는 중…":"후보에 추가"}</button></div></form>:null}
     <div className="ca-v07-board">{["후보","브리프 작성","확정 · 제작 대기","제작 중"].map(name=><section className="ca-v07-card" key={name}><h2>{name} <small>{filtered.filter(row=>column(row)===name).length}</small></h2>{filtered.filter(row=>column(row)===name).map(row=><button className="ca-v07-topic" key={row.id} onClick={()=>router.replace(`/automation/topics?sel=${row.id}`)}><small>{SOURCES[str(row.metadata.source)]??"직접"} · {DATE(row.updated_at)}</small><strong>{row.title}</strong><span>{data.items.filter(item=>item.parent_id===row.id).map(item=>CHANNEL_LABELS[str(item.metadata.channel)]).join(" · ")}</span></button>)}</section>)}</div>
     {data.jobs.filter(job=>job.metadata.proc==="topic"&&job.stage==="completed").map(job=><section className="ca-v07-card" key={job.id}><h2>AI 주제 후보 도착</h2>{Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.candidates)?((job.metadata.result as Record<string,unknown>).candidates as {title:string;why:string;source:string}[]).map((candidate,index)=><div className="ca-v07-row" key={index}><span><strong>{candidate.title}</strong><small>{candidate.why} · {candidate.source}</small></span><button disabled={busy} onClick={()=>void addCandidate(job.id,index,candidate)}>후보에 추가</button></div>):null}</section>)}
-    {missing?<div className="ca-v07-note" role="status">찾을 수 없는 주제입니다. <Link href="/automation/dashboard">자동화 현황으로 →</Link></div>:null}
-    {selected?<section className="ca-v07-card ca-v07-detail"><div className="ca-v07-detail-head"><h2>{selected.title}</h2><button onClick={()=>router.replace("/automation/topics")}>닫기</button></div>
-      <p>{SOURCES[str(selected.metadata.source)]??"직접"} · {selected.brand||"브랜드 미선택"} · v{selected.version}</p>
-      {!data.items.some(item=>item.parent_id===selected.id)?<ReferenceEvidencePanel topic={selected}/>:null}
-      {data.items.some(item=>item.parent_id===selected.id)?<><div className="ca-v07-note">제작이 시작된 주제입니다. 브리프는 읽기 전용으로 남기고, 연결된 채널 콘텐츠에서 작업을 이어가세요.</div><BriefPanel topic={selected}/></>:<>
-      <div className="ca-v07-form-grid">{BRIEF_FIELDS.map(([key,label])=><label key={key}>{label}<textarea value={brief[key]} onChange={event=>setBrief({...brief,[key]:event.target.value})}/></label>)}</div>
-      <h3>만들 채널</h3><div className="ca-v07-channel-picks">{CHANNELS.map(channel=><div key={channel}><label><input type="checkbox" checked={channels.includes(channel)} onChange={event=>setChannels(event.target.checked?[...channels,channel]:channels.filter(value=>value!==channel))}/>{CHANNEL_LABELS[channel]}</label>{channels.includes(channel)?<input type="date" aria-label={`${CHANNEL_LABELS[channel]} 마감`} value={dues[channel]??""} onChange={event=>setDues({...dues,[channel]:event.target.value})}/>:null}</div>)}</div>
-      {channels.includes("threads")?<label className="ca-v07-check"><input type="checkbox" checked={shareThreads} onChange={event=>setTeamThreads(event.target.checked)}/>쓰레드 원고를 처음부터 팀 검수함에 올리기 (사내 구성원 열람·의견, 수정·승인은 작성자와 지정 검수자)</label>:null}
-      <div className="ca-v07-actions"><button onClick={()=>setJobOpen("brief")}>내 AI로 브리프 초안</button><CostTag kind="ai"/><Link href="/automation/requests">AI 작업·결과 가져오기 →</Link><button disabled={busy} onClick={()=>void save(false)}>저장</button><button className="primary" disabled={busy} onClick={()=>void save(true)}>{busy?"처리 중…":"확정하고 제작 시작"}</button></div>
-      {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="brief"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 브리프 도착</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>브리프 채택</button><button onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}</>}</section>:null}
-    {localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
+    </>:null}
+    {missing?<div className="ca-v07-note" role="status">찾을 수 없는 주제입니다. <Link href="/automation/topics">주제 목록으로 →</Link></div>:null}
+    {selected?<section className="ca-v07-card ca-v07-detail ca-v07-topic-editor">
+      <div className="ca-v07-detail-head"><span className="ca-v07-status">{hasStarted?"제작 항목 생성 완료":"기획 확인 중"}</span><button disabled={busy} onClick={()=>router.replace("/automation/topics")}>주제 목록으로</button></div>
+      <h2 className="ca-v07-topic-title">{selected.title}</h2>
+      <ol className="ca-v07-topic-steps" aria-label="집필 진행 순서"><li>1. 주제 선택</li><li aria-current={!hasStarted?"step":undefined}>2. 기획 확인</li><li aria-current={hasStarted?"step":undefined}>3. 채널에서 집필</li></ol>
+      {hasStarted?<>
+        <div className="ca-v07-topic-next"><h3>기획이 저장됐습니다. 집필을 이어가세요.</h3><p>아래 항목에서 원고를 작성하거나 AI 초안을 요청할 수 있습니다.</p>
+          <div className="ca-v07-actions">{children.map(item=><Link className="ca-v07-next-link" key={item.id} href={topicItemHref(item)}>{CHANNEL_LABELS[str(item.metadata.channel)]} {item.metadata.channel==="threads"?"집필":"제작"} 계속하기</Link>)}</div>
+        </div><BriefPanel topic={selected}/>
+      </>:<>
+        <div className="ca-v07-topic-intro"><strong>{draft?.seeded?"레퍼런스에서 기획 초안을 채웠습니다.":"이 글에서 다룰 내용을 확인하세요."}</strong>
+          <p>{draft?.seeded?"선택한 주제와 원문에 기록된 내용을 옮겼습니다. 독자·메시지가 의도와 맞는지 수정한 뒤 아래 버튼으로 집필을 이어가세요. 아직 저장 전입니다.":"기획을 확인한 뒤 채널을 선택하면 집필할 항목이 만들어집니다. 원고는 다음 화면에서 작성합니다."}</p>
+        </div>
+        <ReferenceEvidencePanel key={selected.id} topic={selected} collapsed/>
+        <fieldset className="ca-v07-fields" disabled={busy}><legend className="ca-v07-section-title">글의 방향</legend>
+          <div className="ca-v07-form-grid ca-v07-brief-fields">{BRIEF_FIELDS.map(([key,label])=><label key={key}><span>{label} <small>{key==="warn"?"선택":"필수"}</small></span><textarea aria-label={label} rows={key==="sources"?5:3} value={brief[key]} onChange={event=>setBrief({...brief,[key]:event.target.value})} placeholder={BRIEF_HINTS[key]}/><small>{BRIEF_HINTS[key]}</small></label>)}</div>
+          <div className="ca-v07-channel-section"><h3>어디에 쓸까요?</h3><p>마감일은 선택 사항입니다. 원고 작성과 발행은 다음 단계에서 따로 진행합니다.</p>
+            <div className="ca-v07-channel-picks">{CHANNELS.map(channel=><div className={channels.includes(channel)?"selected":""} key={channel}>
+              <label className="ca-v07-channel-choice"><input type="checkbox" checked={channels.includes(channel)} onChange={event=>setChannels(event.target.checked?[...channels,channel]:channels.filter(value=>value!==channel))}/>{CHANNEL_LABELS[channel]}</label>
+              {channels.includes(channel)?<label className="ca-v07-due-label">마감일 <small>선택</small><input type="date" aria-label={`${CHANNEL_LABELS[channel]} 마감`} value={dues[channel]??""} onChange={event=>setDues({...dues,[channel]:event.target.value})}/></label>:null}
+            </div>)}</div>
+          </div>
+          {channels.includes("threads")?<div className="ca-v07-topic-sharing"><label className="ca-v07-check"><input type="checkbox" checked={shareThreads} onChange={event=>setTeamThreads(event.target.checked)}/>쓰레드 원고를 팀 검수함에 공유</label><p>{shareThreads?"사내 구성원이 원고를 보고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검수자가 합니다.":"내 초안에 생성합니다. 나중에 쓰레드 화면에서 팀 검수함에 공유할 수 있습니다."}</p></div>:null}
+        </fieldset>
+        <details className="ca-v07-topic-ai"><summary>AI와 기획을 더 다듬고 싶다면</summary><p>선택 사항입니다. 지금 입력한 기획을 저장한 뒤 AI 브리프 작업을 요청합니다. 결과는 직접 읽고 채택하세요.</p>
+          <div className="ca-v07-actions"><button disabled={busy} onClick={()=>void save(false).then(saved=>{if(saved)setJobOpen("brief");})}>내 AI로 브리프 초안</button><CostTag kind="ai"/><Link href="/automation/requests">AI 작업·결과 가져오기 →</Link></div>
+        </details>
+        {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="brief"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 브리프 도착</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>브리프 채택</button><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}
+        <div className="ca-v07-topic-footer">
+          {localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
+          <p>{channels.length===1&&channels[0]==="threads"?"다음 화면에서 ‘내 AI로 초안 받기’를 눌러 집필을 요청하세요.":"기획을 저장하고 선택한 채널의 작업 항목을 만듭니다."} 자동 승인·예약·발행은 하지 않습니다.</p>
+          <div className="ca-v07-actions"><button disabled={busy} onClick={()=>void save(false)}>기획만 저장</button><button className="primary" disabled={busy} onClick={()=>void save(true)}>{busy?"처리 중…":nextLabel}</button></div>
+        </div>
+      </>}
+      {hasStarted&&localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
+    </section>:null}
+    {!selected&&localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
     {jobOpen?<JobPrompt proc={jobOpen} targetId={selected?.id} onClose={()=>setJobOpen(null)} onSubmit={createJob}/>:null}</>;
 }
 
+function topicItemHref(item:OsRecord){
+  const channel=str(item.metadata.channel);
+  return `/automation/${channel==="card"?"cardnews":channel}?sel=${item.id}`;
+}
+const BRIEF_HINTS={one:"이 글에서 끝까지 답할 질문을 적어주세요. 첫 줄 카피는 집필할 때 만듭니다.",who:"어떤 상황에 놓인 독자가 읽으면 좋을까요?",message:"원문에 더할 우리 관점과 독자가 얻어갈 답을 적어주세요.",sources:"원문 링크, 실제 장면, 확인한 수치·근거를 남겨주세요.",warn:"단정하지 말아야 할 내용이나 집필할 때 주의할 점이 있으면 적어주세요."};
 const BRIEF_FIELDS=[["one","한 줄 주제"],["who","누구에게"],["message","핵심 메시지"],["sources","근거·자료"],["warn","주의할 표현"]] as const;
 // The topic's brief and sources stay readable after production starts, so a reviewer
 // checks the draft against the same evidence.

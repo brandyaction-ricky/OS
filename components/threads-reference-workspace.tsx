@@ -80,10 +80,10 @@ function ReferenceFacts({ item }: { item: ThreadsReferenceItem }) {
   </>;
 }
 
-export function ReferenceEvidencePanel({ topic }: { topic: OsRecord }) {
+export function ReferenceEvidencePanel({ topic, collapsed = false }: { topic: OsRecord; collapsed?: boolean }) {
   const references = referencesOf(topic);
   if (!references.length) return null;
-  return <details className="ca-v07-brief tr-evidence" open><summary>선택한 레퍼런스 {references.length}개</summary>
+  return <details className="ca-v07-brief tr-evidence" open={!collapsed}><summary>선택한 레퍼런스 {references.length}개</summary>
     <p>주제로 가져올 때 확인한 원문과 반응입니다. 현재 수치는 원문에서 다시 확인하세요.</p>
     {references.map((item, index) => <article className="tr-evidence-row" key={`${item.id}:${index}`}><ReferenceFacts item={item} /></article>)}
   </details>;
