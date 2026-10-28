@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
-import { shortScriptMissing } from "@/lib/youtube-process/short-script";
+import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
@@ -77,6 +77,9 @@ export interface YpClient {
   shortVideoUrl(id: string, renderId: string, download?: boolean): Promise<string>;
   /** [숏폼으로 만들기] on a longform's 숏폼 주제 후보: the new 숏폼's id and the candidates with the made one marked. */
   makeShort(id: string, topicId: string): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
+  /** The 대본 step's latest 레퍼런스 받기 (null before the first), and [레퍼런스 받기] itself. */
+  shortRefs(id: string): Promise<YpShortRefFetch | null>;
+  fetchShortRefs(id: string): Promise<YpShortRefFetch>;
   demo: boolean;
 }
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
@@ -147,6 +150,8 @@ function apiClient(token: string): YpClient {
     clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
     makeShort: (id, topicId) => apiRequest(`${base}/${id}/short-topic`, { token, method: "POST", body: json({ topicId }) }),
+    shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
+    fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -452,6 +457,8 @@ function demoClient(): YpClient {
     clipRenders: async () => ({}),
     clips: async () => [],
     shortVideoUrl: async () => "",
+    shortRefs: async () => null,
+    fetchShortRefs: async () => { throw demoError(409, "DEMO", "데모에서는 렌더 PC가 레퍼런스를 받지 않아요."); },
     makeShort: async (id, topicId) => {
       const longform = find(id);
       const stages = stagesOf(longform);

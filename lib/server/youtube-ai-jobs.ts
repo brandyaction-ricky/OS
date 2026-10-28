@@ -25,6 +25,7 @@ import type { PackagingMarket } from "./youtube-process-ai";
 import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCopy, saveShortJob, shortCopyCard, shortCopyInputKey, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
+import { doneShortRefs } from "./youtube-process-short-refs";
 import { assertShortScriptInputs, assertShortTopicsInputs, saveShortScript, saveShortTopics, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 
@@ -190,7 +191,8 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertShortScriptInputs(state);
     source = state.source; title = jobTitle(state); inputKey = shortScriptInputKey(state);
-    marketFor = { query: shortScriptQuery(state), short: true };
+    // References the render PC already fetched replace the title-only search (and its YouTube quota).
+    if (!(await doneShortRefs(service(), state.source.id, 60))) marketFor = { query: shortScriptQuery(state), short: true };
   } else if (input.task === "kit") {
     const state = await readPipeline(actor, input.sourceId);
     assertKitInputs(state);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, scriptLines, shortScriptMissing } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, refHostOk, refTexts, scriptLines, shortScriptMissing } from "../lib/youtube-process/short-script.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
 const good = `퇴근하고 소파에 누워 휴대폰만 봐요
@@ -45,9 +45,19 @@ test("10 letters the same as a 레퍼런스 or the 정본 is copying; a shorter 
   assert.match(checkShortScript(good, { canon: "그래서 몸보다 머리가 먼저 지친" }).problems[0], /정본과 같은 구간/);
 });
 
-test("대본 확정 needs the 통찰 한 줄 and a script that passes, with the PD's references counted", () => {
-  const script = { query: "", refs: [], text: good, hooks: [], insight: "", formula: "" };
+test("대본 확정 needs the 통찰 한 줄, a 헤드 카피 and a script that passes, with the PD's and the fetched references counted", () => {
+  const script = { query: "", refs: [], text: good, hooks: [], insight: "", formula: "", headCopy: "" };
   assert.equal(shortScriptMissing(script), "통찰 한 줄을 써 주세요");
-  assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문" }), "");
-  assert.match(shortScriptMissing({ ...script, insight: "x", refs: [{ url: "https://youtu.be/x", title: "", script: "다들 체력 문제라고 생각하죠 그게 아니에요" }] }), /레퍼런스와 같은 구간/);
+  assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문" }), "첫 화면 헤드 카피를 써 주세요");
+  assert.match(headCopyProblem("저녁마다 지치는 진짜 이유는 일이 아니었어요"), /20자 이하/);
+  assert.equal(shortScriptMissing({ ...script, insight: "지치는 건 결정 횟수 때문", headCopy: "일은 두 개뿐인데 왜 지칠까" }), "");
+  const fetched = { items: [{ title: "퇴사 고민", result: { transcript: "0.0 그래서 몸보다 머리가 먼저 지친 거예요\n2.1 다음 줄" } }] };
+  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드" }, fetched), /레퍼런스와 같은 구간/);
+  assert.ok(refTexts(script, fetched)[0].includes("그래서 몸보다") && !refTexts(script, fetched)[0].includes("0.0"));
+  assert.match(shortScriptMissing({ ...script, insight: "x", headCopy: "헤드", refs: [{ url: "https://youtu.be/x", title: "", script: "다들 체력 문제라고 생각하죠 그게 아니에요" }] }), /레퍼런스와 같은 구간/);
+});
+
+test("the render PC is handed YouTube, Instagram, TikTok and Meta ad links only", () => {
+  for (const ok of ["https://www.youtube.com/shorts/abc", "https://youtu.be/abc", "https://www.instagram.com/reel/abc/", "https://www.facebook.com/ads/library/?id=1", "https://vt.tiktok.com/x"]) assert.equal(refHostOk(ok), true, ok);
+  for (const bad of ["http://youtube.com/x", "https://evil.com/youtube.com", "https://youtube.com.evil.com/x", "file:///etc/passwd", "-o /tmp/x"]) assert.equal(refHostOk(bad), false, bad);
 });

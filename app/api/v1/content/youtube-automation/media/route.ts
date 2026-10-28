@@ -9,6 +9,7 @@ import { renderPcSignalSchema, saveRenderPcSignal } from "@/lib/server/youtube-r
 import { engineReadySchema, engineUploadSchema, engineUploadUrls, saveEngineManifest } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 import { claimShortformRender,shortformVoice,completeShortformRender,failShortformRender } from "@/lib/server/shortform-render";
+import { claimShortRefs, completeShortRefs, failShortRefs, shortRefsCompleteSchema, shortRefsFailSchema } from "@/lib/server/youtube-process-short-refs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,8 @@ const inputSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("myin_final_complete"), runId: z.string().uuid(), lease: z.string().uuid(), bytes: z.number().int().positive(),
     durationSeconds: z.number().positive().max(14_400), lufs: z.number().min(-70).max(0), peak: z.number().min(-70).max(6) }).strict(),
   z.object({ action: z.literal("myin_stage_fail"), runId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict(),
+  // 숏폼 레퍼런스 받기 (2026-10-28): thumbnails, the first three seconds and the words of the 대본 step's references.
+  z.object({ action: z.literal("short_refs_claim") }).strict(), shortRefsCompleteSchema, shortRefsFailSchema,
   renderPcSignalSchema,
 ]);
 
@@ -56,7 +59,8 @@ export async function POST(request: Request) {
     const expected = process.env.YOUTUBE_MEDIA_WORKER_SECRET ?? "";
     const received = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? "";
     if (expected.length < 32 || !safeSecretMatch(received, expected)) throw new ApiError(401, "INVALID_WORKER_SECRET", "미디어 워커 인증에 실패했습니다.");
-    const input = inputSchema.parse(await parseJson(request, 20_000));
+    // A 레퍼런스 받기 result carries up to ten transcripts.
+    const input = inputSchema.parse(await parseJson(request, 120_000));
     const result = input.action === "heartbeat" ? await saveRenderPcSignal(input)
       : input.action === "engine_upload" ? await engineUploadUrls(input)
       : input.action === "engine_ready" ? await saveEngineManifest(input)
@@ -80,6 +84,9 @@ export async function POST(request: Request) {
       : input.action === "myin_final_claim" ? await claimMyinFinal()
       : input.action === "myin_final_complete" ? await completeMyinFinal(input)
       : input.action === "myin_stage_fail" ? await failMyinStage(input)
+      : input.action === "short_refs_claim" ? await claimShortRefs()
+      : input.action === "short_refs_complete" ? await completeShortRefs(input)
+      : input.action === "short_refs_fail" ? await failShortRefs(input)
       : await failYoutubeRender(input);
     return NextResponse.json(result, { headers: { "cache-control": "no-store" } });
   } catch (error) {

@@ -204,6 +204,7 @@ function ShortScriptDetail({ script }: { script: YpShortScript }) {
   return <div style={{ marginBottom: 12 }}>
     <dl className="yp-kv" style={{ gridTemplateColumns: "64px minmax(0,1fr)" }}>
       <dt>통찰</dt><dd>{script.insight || "—"}</dd>
+      <dt>헤드 카피</dt><dd>{script.headCopy || "—"}</dd>
       <dt>쓴 공식</dt><dd>{script.formula || "—"}</dd>
       <dt>길이</dt><dd>{check.chars}자 · 약 {check.seconds}초 · {check.lines}줄</dd></dl>
     <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7, marginTop: 8 }}>{text || "—"}</div>

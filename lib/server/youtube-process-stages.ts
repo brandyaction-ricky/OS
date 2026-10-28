@@ -17,6 +17,7 @@ import type { RequestActor } from "./auth";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
 import { fixConfirmedScript, nextShortScript, readShortFormulas, shortScriptPatchSchema } from "./youtube-process-short-script";
+import { doneShortRefs } from "./youtube-process-short-refs";
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -375,7 +376,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 /** Why a 기획안 or 최종 검수 confirm cannot be requested yet, or "". */
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
-  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data);
+  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }

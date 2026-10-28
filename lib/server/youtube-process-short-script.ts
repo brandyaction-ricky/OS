@@ -5,7 +5,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, type YpProject } from "@/lib/youtube-process/project";
-import { checkShortScript, refTexts, SHORT_SCRIPT } from "@/lib/youtube-process/short-script";
+import { checkShortScript, headCopyProblem, refTexts, SHORT_SCRIPT } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortScript, YpShortTopic, YpShortTopics, YpStoredFormula } from "@/lib/youtube-process/stages";
 import type { PackagingMarket } from "./youtube-process-ai";
 import { v1Stages } from "./youtube-process-ai";
@@ -14,6 +14,7 @@ import type { readPipeline } from "./content-pipeline";
 import { namedProcedures } from "./content-generation";
 import { createYoutubeProject, getYoutubeProject, readFailed, saveProject } from "./youtube-process";
 import { readStages, writeStage, ypUuid } from "./youtube-process-stages";
+import { doneShortRefs } from "./youtube-process-short-refs";
 
 // 숏폼 대본 정본 (03_Content/숏폼, owner direction 2026-10-28): 입구 셋 · 길 하나. 입구 A (롱폼에서) is built first: the staff AI reads
 // a longform's 원고 for 숏폼 주제 후보, the PD makes a 숏폼 from one, and in its 대본 step the staff AI pulls formulas from the
@@ -134,18 +135,23 @@ export const shortScriptInputKey = (state: Pipeline) => {
 };
 export const shortScriptQuery = (state: Pipeline) => { const { project, shortScript } = v1Stages(state); return shortScript.data.query.trim() || projectName(project); };
 
-const SCRIPT_SHAPE = `{ "formulas": [{ "name": "공식 이름(창고에서 찾을 이름)", "hook": "첫 문장 공식 — 빈칸만, 예: [누가] [언제] [무엇을] 했는데, [뜻밖의 결과]", "flow": "흐름 공식 — 박자 순서와 하는 일 · 길이 비율", "why": "멈춘 이유 한 줄", "refs": ["레퍼런스 주소"] }], "use": "쓴 공식 이름", "insight": "통찰 한 줄", "hooks": [{ "kind": "반전형", "text": "첫 문장" }, { "kind": "직격형", "text": "첫 문장" }], "script": "첫 문장\\n둘째 문장\\n[관계] 비교가 있는 문장\\n…", "picked": ["실제로 본 레퍼런스 주소"], "notes": "출처 메모 · PD에게 한 줄" }`;
+const SCRIPT_SHAPE = `{ "formulas": [{ "name": "공식 이름(창고에서 찾을 이름)", "head": "첫 화면 헤드 카피 공식 — 빈칸만, 예: [숫자]인데 [반전]", "cover": "썸네일 카피 공식", "hook": "첫 문장 공식 — 빈칸만, 예: [누가] [언제] [무엇을] 했는데, [뜻밖의 결과]", "flow": "흐름 공식 — 박자 순서와 하는 일 · 길이 비율", "why": "멈춘 이유 한 줄", "refs": ["레퍼런스 주소"] }], "use": "쓴 공식 이름", "insight": "통찰 한 줄", "headCopy": "이 숏폼 첫 화면의 헤드 카피 (20자 이하)", "hooks": [{ "kind": "반전형", "text": "첫 문장" }, { "kind": "직격형", "text": "첫 문장" }], "script": "첫 문장\\n둘째 문장\\n[관계] 비교가 있는 문장\\n…", "picked": ["실제로 본 레퍼런스 주소"], "notes": "출처 메모 · PD에게 한 줄" }`;
 export async function shortScriptCard(service: Service, state: Pipeline, leaseMinutes: number, market?: PackagingMarket) {
   const { project, shortScript } = v1Stages(state);
   const docs = await namedProcedures(service, [SHORT_SCRIPT_CANON, TONE_CANON]);
   const from = project.yp.shortFrom;
   const longform = from ? await longformScript(service, from.projectId) : "";
-  const formulas = (await readShortFormulas(service)).sort((a, b) => b.uses - a.uses).slice(0, 30).map(({ name, hook, flow, why, uses }) => ({ name, hook, flow, why, uses }));
+  const formulas = (await readShortFormulas(service)).sort((a, b) => b.uses - a.uses).slice(0, 30).map(({ name, head, cover, hook, flow, why, uses }) => ({ name, head, cover, hook, flow, why, uses }));
   const draft = shortScript.data;
+  // The render PC's 레퍼런스 받기 (links last three days, the job may wait); without it, the market titles only.
+  const fetched = await doneShortRefs(service, project.id);
+  const kept = (fetched?.items ?? []).filter(item => item.result?.ok).map(item => ({ url: item.url, title: item.title, channel: item.channel, views: item.views, ratio: item.ratio,
+    thumbnail: item.thumbUrl ?? null, firstSeconds: item.sheetUrl ?? null, transcript: item.result?.transcript ?? "" }));
   const inputs = {
     topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note,
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
-    references: draft.refs, market: market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
+    fetched: kept.length ? kept : null,
+    references: draft.refs, market: !kept.length && market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
       rows: market.refs.slice(0, 20).map(ref => ({ title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, url: ref.url })) } : null,
     warehouse: formulas,
     ...(draft.text.trim() ? { pdDraft: { insight: draft.insight, script: draft.text } } : {}),
@@ -155,10 +161,10 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
 
 ## 할 일 — 숏폼 대본 (레퍼런스 → 공식 → 대본)
 「${SHORT_SCRIPT_CANON}」을 처음부터 끝까지 읽고 그대로 따릅니다. 담당 PD가 다듬고 대본을 확정합니다(대표는 알림을 받습니다).
-1. 레퍼런스(§2-2): market.rows는 OS가 market.query로 찾은 쇼츠(1분 미만, 조회수 5만 이상, 구독자 대비 조회수 순)입니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다. 쇼츠 페이지를 열어 볼 수 있으면 직접 봅니다.
+1. 레퍼런스(§2-2): fetched는 렌더 PC가 받아 둔 레퍼런스입니다 — thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.
 2. 창고 먼저: warehouse(회사 공식 창고, 많이 쓴 순)에 이 주제에 맞는 공식이 있으면 그 이름을 use에 쓰고 formulas는 비워도 됩니다.
-3. 공식 뽑기(§2-3): 새 공식은 formulas에 적습니다 — 첫 문장 공식 · 흐름 공식 · 멈춘 이유. 원본의 단어 · 고유명사 · 숫자를 남기지 않고 빈칸으로 씁니다. 제목만 봤다면 흐름 공식에 그렇다고 밝힙니다.
-4. 대본(§3~§9): 고른 공식에 이 주제의 장면을 넣어 우리 말로 새로 씁니다. 한 줄 = 한 문장 = 화면 한 장. 첫 줄은 hooks 중 하나와 같게. 비교 · 순서 · 선택이 있는 줄은 앞에 [관계], 인물이 처음 나오는 줄은 [사람]을 붙입니다.${from ? " 실제 사례 · 숫자는 from.script(롱폼 원고)에 있는 것만 씁니다." : ""}
+3. 공식 뽑기(§2-3): 새 공식은 formulas에 적습니다 — 헤드 카피 공식(head) · 썸네일 카피 공식(cover) · 첫 문장 공식(hook) · 흐름 공식(flow) · 멈춘 이유. 원본의 단어 · 고유명사 · 숫자를 남기지 않고 빈칸으로 씁니다. 대사를 못 봤다면 흐름 공식에 그렇다고 밝힙니다.
+4. 대본(§3~§9): 고른 공식에 이 주제의 장면을 넣어 우리 말로 새로 씁니다. headCopy는 이 숏폼 첫 3초 화면 맨 위 큰 글자(${SHORT_SCRIPT.head}자 이하, 첫 문장과 같지 않아도 됨)입니다. 한 줄 = 한 문장 = 화면 한 장. 첫 줄은 hooks 중 하나와 같게. 비교 · 순서 · 선택이 있는 줄은 앞에 [관계], 인물이 처음 나오는 줄은 [사람]을 붙입니다.${from ? " 실제 사례 · 숫자는 from.script(롱폼 원고)에 있는 것만 씁니다." : ""}
 5. 기계 검사(§10)를 OS가 다시 셉니다: 전체 ${SHORT_SCRIPT.min}~${SHORT_SCRIPT.max}자(60초는 ${SHORT_SCRIPT.max60}자까지), 첫 문장 · 두 훅 ${SHORT_SCRIPT.first}자 이하, ${SHORT_SCRIPT.hard}자 넘는 줄 0개, ${SHORT_SCRIPT.line}자 넘는 줄 ${SHORT_SCRIPT.longLines}개까지, 바깥 지시어 · 「당신 · 여러분」 · 인사 · 예고 0건, 레퍼런스 제목 · 대본과 정본에서 10자 넘게 같은 구간 0건. 걸리면 고칠 점이 돌아옵니다.
 6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.
 
@@ -185,10 +191,11 @@ async function canonText(service: Service) {
   return (data ?? []).map(doc => String(doc.content_md ?? "")).join("\n");
 }
 
-const formulaSchema = z.object({ name: z.string().trim().min(1).max(40), hook: z.string().trim().min(1).max(200), flow: z.string().trim().min(1).max(400),
+const formulaSchema = z.object({ name: z.string().trim().min(1).max(40), head: z.string().trim().min(1).max(200), cover: z.string().trim().max(200).default(""),
+  hook: z.string().trim().min(1).max(200), flow: z.string().trim().min(1).max(400),
   why: z.string().trim().max(300).default(""), refs: z.array(z.string().trim().max(300)).max(5).default([]) }).strict();
 const scriptResultSchema = z.object({
-  formulas: z.array(formulaSchema).max(5).default([]), use: z.string().trim().min(1).max(40), insight: z.string().trim().min(1).max(120),
+  formulas: z.array(formulaSchema).max(5).default([]), use: z.string().trim().min(1).max(40), insight: z.string().trim().min(1).max(120), headCopy: z.string().trim().min(1).max(40),
   hooks: z.array(z.object({ kind: z.enum(["반전형", "직격형"]), text: z.string().trim().min(1).max(60) }).strict()).length(2),
   script: z.string().trim().min(1).max(3000), picked: z.array(z.string().trim().max(300)).max(5).default([]), notes: z.string().trim().max(1000).default(""),
 }).strict();
@@ -199,15 +206,19 @@ export async function saveShortScript(service: Service, ownerId: string, state: 
   const result = parsed.data;
   const stages = v1Stages(state);
   const current = stages.shortScript.data;
-  const picked = (market?.refs ?? []).filter(ref => result.picked.includes(ref.url)).map(ref => ({ title: ref.title, url: ref.url, views: ref.views }));
+  const fetched = await doneShortRefs(service, stages.project.id, 60);
+  const pool = [...(fetched?.items ?? []).map(item => ({ title: item.title, url: item.url, views: item.views ?? 0 })), ...(market?.refs ?? []).map(ref => ({ title: ref.title, url: ref.url, views: ref.views }))];
+  const picked = pool.filter((ref, index) => result.picked.includes(ref.url) && pool.findIndex(other => other.url === ref.url) === index);
   const problems: string[] = [];
+  const head = headCopyProblem(result.headCopy);
+  if (head) problems.push(head);
   if (new Set(result.hooks.map(hook => hook.kind)).size !== 2) problems.push("hooks는 반전형 하나, 직격형 하나예요");
   for (const hook of result.hooks) if (hook.text.length > SHORT_SCRIPT.first) problems.push(`${hook.kind} 첫 문장이 ${hook.text.length}자예요 — ${SHORT_SCRIPT.first}자 이하로`);
   const known = new Set([...result.formulas.map(item => item.name), ...(await readShortFormulas(service)).map(item => item.name)]);
   if (!known.has(result.use)) problems.push(`use 「${result.use}」가 formulas에도 창고에도 없어요`);
-  problems.push(...checkShortScript(result.script, { refs: refTexts({ refs: current.refs, ai: { picked } as YpShortScript["ai"] }), canon: await canonText(service) }).problems);
+  problems.push(...checkShortScript(result.script, { refs: refTexts({ refs: current.refs, ai: { picked } as YpShortScript["ai"] }, fetched), canon: await canonText(service) }).problems);
   if (problems.length) throw new ApiError(422, "SHORT_SCRIPT_CHECK", `대본 검사에서 걸린 곳 ${problems.length}건: ${problems.join(" / ")}`);
-  const draft = { text: result.script, hooks: result.hooks, insight: result.insight, formula: result.use };
+  const draft = { text: result.script, hooks: result.hooks, insight: result.insight, formula: result.use, headCopy: result.headCopy };
   // Untouched = empty, or still the AI's last text; then the new draft goes straight in.
   const untouched = !current.text.trim() || current.text === current.ai?.text;
   const ai = { by: author.by, model: author.model, at: new Date().toISOString(), jobId: author.jobId, ...(market ? { market: { query: market.query, count: market.refs.length } } : {}),
@@ -221,7 +232,7 @@ export async function saveShortScript(service: Service, ownerId: string, state: 
 // ── The PD's edits on the 대본 step ──
 export const shortScriptPatchSchema = z.object({
   query: z.string().max(60), refs: z.array(z.object({ url: z.string().url().max(300), title: z.string().max(200), script: z.string().max(5000) }).strict()).max(8),
-  text: z.string().max(3000), insight: z.string().max(120), formula: z.string().max(40),
+  text: z.string().max(3000), insight: z.string().max(120), formula: z.string().max(40), headCopy: z.string().max(40),
   hooks: z.array(z.object({ kind: z.enum(["반전형", "직격형"]), text: z.string().max(60) }).strict()).max(2), aiDraft: z.null(),
 }).partial().strict();
 export function nextShortScript(project: YpProject, current: YpShortScript, patch: z.infer<typeof shortScriptPatchSchema>): YpShortScript {

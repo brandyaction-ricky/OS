@@ -3,7 +3,7 @@
 import { CHARS_PER_MINUTE, overlapWith } from "../youtube-script-check.ts";
 import type { YpShortScript } from "./stages.ts";
 
-export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3 } as const;
+export const SHORT_SCRIPT = { min: 250, max: 370, max60: 490, first: 25, line: 24, hard: 30, longLines: 3, head: 20 } as const;
 const MARK = /^\s*\[(관계|사람)\]\s*/;
 /** One line = one sentence = one screen (§6 형식); a leading [관계] or [사람] is the screen hint (§7), not spoken. */
 export function scriptLines(text: string) {
@@ -42,10 +42,33 @@ export function checkShortScript(text: string, against: { refs?: string[]; canon
   return result();
 }
 
-/** The texts a 대본 must not copy: the PD's references (title and pasted script) and the titles the AI read. */
-export const refTexts = (script: Pick<YpShortScript, "refs" | "ai">) => [...script.refs.map(ref => `${ref.title}\n${ref.script}`), ...(script.ai?.picked ?? []).map(ref => ref.title)];
-/** The one-line reason the 대본 확정 cannot be made yet, or "" (the canon overlap is counted when the AI submits). */
-export function shortScriptMissing(script: YpShortScript) {
-  if (!script.insight.trim()) return "통찰 한 줄을 써 주세요";
-  return checkShortScript(script.text, { refs: refTexts(script) }).problems[0] ?? "";
+/** The texts a 대본 must not copy: the PD's references (title and pasted script), the titles the AI read and what the fetched references say. */
+export const refTexts = (script: Pick<YpShortScript, "refs" | "ai">, fetched?: Pick<YpShortRefFetch, "items"> | null) => [
+  ...script.refs.map(ref => `${ref.title}\n${ref.script}`), ...(script.ai?.picked ?? []).map(ref => ref.title),
+  ...(fetched?.items ?? []).map(item => `${item.title}\n${(item.result?.transcript ?? "").replace(/^[\d.]+ /gm, "")}`)];
+/** The 헤드 카피 (first screen, §5): set, and short enough for two lines of big type. */
+export function headCopyProblem(head: string) {
+  const text = head.trim();
+  return !text ? "첫 화면 헤드 카피를 써 주세요" : text.length > SHORT_SCRIPT.head ? `헤드 카피가 ${text.length}자예요 — ${SHORT_SCRIPT.head}자 이하로 써요` : "";
 }
+/** The one-line reason the 대본 확정 cannot be made yet, or "" (the canon overlap is counted when the AI submits). */
+export function shortScriptMissing(script: YpShortScript, fetched?: Pick<YpShortRefFetch, "items"> | null) {
+  if (!script.insight.trim()) return "통찰 한 줄을 써 주세요";
+  return headCopyProblem(script.headCopy ?? "") || (checkShortScript(script.text, { refs: refTexts(script, fetched) }).problems[0] ?? "");
+}
+
+// ── 레퍼런스 받기 (§2-2, owner direction 2026-10-28): the render PC keeps each reference's thumbnail, first three seconds and words ──
+/** Where the render PC may fetch from (yt-dlp): YouTube, Instagram, TikTok and the Meta 광고 라이브러리; nothing else is handed to it. */
+export const REF_HOSTS = ["youtube.com", "youtu.be", "instagram.com", "facebook.com", "tiktok.com"] as const;
+export function refHostOk(link: string) {
+  let url: URL;
+  try { url = new URL(link); } catch { return false; }
+  return url.protocol === "https:" && REF_HOSTS.some(host => url.hostname === host || url.hostname.endsWith(`.${host}`));
+}
+export interface YpShortRefResult { ok: boolean; durationSeconds: number | null; transcript: string; thumb: boolean; sheet: boolean; error: string }
+export interface YpShortRefItem {
+  url: string; title: string; channel: string; views: number | null; ratio: number | null; source: "market" | "pd"; result: YpShortRefResult | null;
+  /** Signed links to the thumbnail and the sheet of the first three seconds (헤드 카피), when the render PC kept them. */
+  thumbUrl?: string | null; sheetUrl?: string | null;
+}
+export interface YpShortRefFetch { id: string; status: string; query: string; requestedAt: string; doneAt: string | null; error: string | null; items: YpShortRefItem[] }
