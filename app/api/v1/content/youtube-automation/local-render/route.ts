@@ -3,7 +3,8 @@ import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { claimMyinClips, claimMyinPrep, completeMyinClips, completeMyinPrep, failMyinPrep, failMyinStage } from "@/lib/server/myin-run";
-import { assertLocalEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
+import { assertLocalEngine, renderPcEngine, renderPcSignalSchema, saveLocalRenderSignal } from "@/lib/server/youtube-render-pc";
+import { currentEngineDownload } from "@/lib/server/render-engine";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
@@ -14,6 +15,8 @@ const lease = { runId: z.string().uuid(), lease: z.string().uuid() };
 const engine = z.string().regex(/^[a-f0-9]{16,64}$/);
 const inputSchema = z.discriminatedUnion("action", [
   renderPcSignalSchema,
+  // The installer asks which engine the render PC runs and where its bundle is.
+  z.object({ action: z.literal("engine") }).strict(),
   z.object({ action: z.literal("myin_prep_claim"), engine }).strict(),
   z.object({ action: z.literal("myin_prep_complete"), ...lease }).strict(),
   z.object({ action: z.literal("myin_prep_fail"), ...lease, code: z.string().max(80) }).strict(),
@@ -35,6 +38,7 @@ export async function POST(request: Request) {
     const input = inputSchema.parse(await parseJson(request, 8_000));
     if (input.action === "myin_prep_claim" || input.action === "myin_clips_claim") await assertLocalEngine(input.engine);
     const result = input.action === "heartbeat" ? await saveLocalRenderSignal(actor.ownerId, input)
+      : input.action === "engine" ? await currentEngineDownload(await renderPcEngine())
       : input.action === "myin_prep_claim" ? await claimMyinPrep(undefined, actor.ownerId)
       : input.action === "myin_prep_complete" ? await completeMyinPrep(input)
       : input.action === "myin_prep_fail" ? await failMyinPrep(input)

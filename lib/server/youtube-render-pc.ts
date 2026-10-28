@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
+import { engineBundleSaved } from "./render-engine";
 import { YOUTUBE_RENDER_RUN_KIND } from "./youtube-render-run";
 import { YOUTUBE_VOICE_RUN_KIND, YOUTUBE_VOICE_TIMING_BUCKET } from "./youtube-voice-run";
 
@@ -25,8 +26,11 @@ type Signal = Omit<z.infer<typeof renderPcSignalSchema>, "action"> & { at: strin
 
 export async function saveRenderPcSignal(input: z.infer<typeof renderPcSignalSchema>) {
   await writeSignal(STATUS_PATH, signalOf(input));
-  return { ok: true, acceptsWork: input.diskFreeGb >= RENDER_PC_MIN_DISK_GB };
+  // engineBundle false: the render PC packs and uploads its engine for staff PCs (once per fingerprint, when idle).
+  return { ok: true, acceptsWork: input.diskFreeGb >= RENDER_PC_MIN_DISK_GB, ...(input.engine ? { engineBundle: await engineBundleSaved(input.engine) } : {}) };
 }
+/** The render PC's last reported engine fingerprint, if any. */
+export const renderPcEngine = async () => (await readSignal(STATUS_PATH))?.engine;
 const signalOf = (input: z.infer<typeof renderPcSignalSchema>): Signal => ({ diskFreeGb: input.diskFreeGb, memUsedGb: input.memUsedGb, memTotalGb: input.memTotalGb,
   job: input.job, packageName: input.packageName, ...(input.engine ? { engine: input.engine } : {}), at: new Date().toISOString() });
 async function writeSignal(path: string, signal: Signal) {
