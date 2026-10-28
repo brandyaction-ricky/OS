@@ -1,9 +1,9 @@
 export const CONNECTIONS = [
   { id: "database", label: "데이터베이스", scope: "문서 조회", href: "/settings/monitoring" },
   { id: "auth", label: "로그인 인증", scope: "현재 계정 인증", href: "/settings/access" },
-  { id: "embeddings", label: "지식 검색", scope: "OpenAI 모델 조회(답변 모델 포함) · 색인 작업 이력", href: "/settings/monitoring" },
+  { id: "embeddings", label: "지식 검색", scope: "OpenAI 연결 확인(답변용 AI 포함) · 검색 준비 작업 이력", href: "/settings/monitoring" },
   { id: "telegram", label: "Telegram", scope: "봇 정보 조회", href: "/settings/channels" },
-  { id: "contentAi", label: "콘텐츠 AI", scope: "Claude 모델 조회", href: "/organization/agents" },
+  { id: "contentAi", label: "콘텐츠 AI", scope: "Claude 연결 확인", href: "/organization/agents" },
   { id: "youtube", label: "YouTube Data API", scope: "공개 언어 목록 조회", href: "/content/youtube" },
   { id: "advertising", label: "광고 데이터", scope: "설정된 광고 계정의 전일 성과 조회", href: "/performance/ads" },
   { id: "orders", label: "주문·매출", scope: "주문 자동 수집 미구현 · 수기·CSV 별도", href: "/performance/revenue" },
@@ -31,5 +31,5 @@ export function connectionState(check: Pick<ConnectionCheck, "configured" | "las
   return now - Date.parse(check.lastOkAt) <= 86_400_000 ? "verified" : "stale";
 }
 export const CONNECTION_STATE_LABELS: Record<ConnectionState, string> = {
-  error: "오류", verified: "호출 확인됨", stale: "재확인 필요", unverified: "설정됨(미확인)", missing: "연결 대기",
+  error: "오류", verified: "연결 확인됨", stale: "재확인 필요", unverified: "설정됨(미확인)", missing: "연결 대기",
 };

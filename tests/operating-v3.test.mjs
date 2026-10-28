@@ -11,7 +11,7 @@ test("third handoff adds metadata-first knowledge tree and lazy bodies", async (
   assert.match(route, /view.*summary/);
   assert.match(workspace, /buildFolderTree/);
   assert.match(workspace, /text\/document-id/);
-  assert.match(workspace, /백링크/);
+  assert.match(workspace, /이 문서를 가리키는 문서/);
 });
 
 test("finance records are isolated and private files are signed", async () => {
@@ -39,15 +39,15 @@ test("home and organization expose the third handoff operating flow", async () =
   for (const route of ["/organization/schedule", "/organization/leave"]) assert.match(navigation, new RegExp(route));
   assert.doesNotMatch(navigation, /\/organization\/finance/);
   assert.match(await read("lib/final-routes.ts"), /\/organization\/finance/);
-  assert.match(meeting, /원본 폐기됨/);
+  assert.match(meeting, /녹음 파일 지움/);
   assert.match(tasks, /sourceFilter/);
 });
 
 test("AI job rows open details and route back to their source or connection settings", async () => {
   const workspace = await read("components/organization-v3-workspaces.tsx");
   assert.match(workspace, /className="ai-job-item"/);
-  assert.match(workspace, /aria-label="AI 작업 상세"/);
+  assert.match(workspace, /aria-label="맡긴 일 자세히"/);
   assert.match(workspace, /원본 콘텐츠 열기/);
   assert.match(workspace, /연결 상태 확인/);
-  assert.match(workspace, /기존 막힘 작업은 자동 재실행되지 않으므로/);
+  assert.match(workspace, /막혔던 작업은 자동으로 다시 돌지 않으니/);
 });

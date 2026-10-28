@@ -44,7 +44,7 @@ export function ApprovalSettings({ token, members, actorId, isAdmin, demo }: {
       setAssignments(result.assignments);
       setError("");
       setReady(true);
-    } catch { setReady(false); setError("승인 설정을 확인할 수 없습니다. 개발 DB의 승인 규칙 적용 여부를 확인해 주세요."); }
+    } catch { setReady(false); setError("승인 설정을 확인할 수 없습니다. 관리자에게 승인 규칙 설정을 확인해 달라고 요청해 주세요."); }
   }, [demo, token]);
   useEffect(() => { void load(); }, [load]);
 
@@ -63,7 +63,7 @@ export function ApprovalSettings({ token, members, actorId, isAdmin, demo }: {
   };
 
   return <section className="panel company-block" aria-label="승인자 설정">
-    <div className="panel-header"><div><h2>승인자</h2><p>승인자와 위임자는 자신이 만든 문서와 자기 AI가 올린 제안도 직접 승인합니다. 승인자 부재 기간에는 유효한 위임자가 검토합니다.</p></div></div>
+    <div className="panel-header"><div><h2>승인자</h2><p>승인자와 위임자는 자신이 만든 문서와 자기 AI로 올린 제안도 직접 승인합니다. 승인자 부재 기간에는 유효한 위임자가 검토합니다.</p></div></div>
     {demo ? <p>실제 승인자 지정은 연결된 개발 환경에서 확인합니다.</p> : null}
     {error ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     {message ? <p className="inline-alert" role="status">{message}</p> : null}

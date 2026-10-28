@@ -9,8 +9,8 @@ test("content stages retain existing controls and publishing links retain routes
   await page.goto("/content/packages");
   await expect(page.getByRole("navigation",{name:"제목 썸네일 작업 단계"}).getByRole("button")).toHaveCount(4);
   await page.goto("/content/scripts");
-  await page.getByRole("navigation",{name:"원고 공정 산출물"}).getByRole("button",{name:/^초안/}).click();
-  await expect(page.getByRole("navigation",{name:"원고 공정 산출물"}).getByRole("button",{name:/^초안/})).toHaveAttribute("aria-pressed","true");
+  await page.getByRole("navigation",{name:"원고 단계별 결과물"}).getByRole("button",{name:/^초안/}).click();
+  await expect(page.getByRole("navigation",{name:"원고 단계별 결과물"}).getByRole("button",{name:/^초안/})).toHaveAttribute("aria-pressed","true");
   await page.goto("/content/publishing");
   await expect(page.getByRole("heading",{name:"발행·업로드",level:1})).toBeVisible();
   await expect(page.locator(".publishing-workspace-tabs")).toHaveCount(0);
@@ -18,11 +18,11 @@ test("content stages retain existing controls and publishing links retain routes
 test("comments show real scoped counts and require selection before composing",async({page})=>{
   await page.goto("/content/comments");
   await expect(page.getByRole("heading",{name:"댓글을 선택해 주세요"})).toBeVisible();
-  await page.getByRole("button",{name:"모의 댓글 불러오기 · 외부 저장 없음"}).click();
+  await page.getByRole("button",{name:"연습용 댓글 불러오기 · 외부 저장 없음"}).click();
   await expect(page.getByRole("navigation",{name:"댓글 보기"}).getByRole("button",{name:/답할 것/})).toContainText("3");
   await page.getByRole("button",{name:"답글 · 처리",exact:true}).first().click();
   await expect(page.locator('.comment-row[data-selected="true"]')).toHaveCount(1);
-  await expect(page.getByRole("button",{name:"모의 답글 보내기"})).toBeDisabled();
+  await expect(page.getByRole("button",{name:"연습용 답글 보내기"})).toBeDisabled();
   await page.getByRole("navigation",{name:"댓글 보기"}).getByRole("button",{name:/답함/}).click();
   await expect(page.getByRole("heading",{name:"댓글을 선택해 주세요"})).toBeVisible();
 });

@@ -15,7 +15,7 @@ function ConnectionCard({ check, members, disabled, onTest, onSave }: { check: C
     <header><h2>{definition.label}</h2><span className={`status-pill status-${check.status === "error" ? "blocked" : check.status === "verified" ? "ready" : "waiting"}`}>{CONNECTION_STATE_LABELS[check.status]}</span></header>
     <p>{definition.scope}</p>
     <dl><div><dt>마지막 성공 호출</dt><dd>{time(check.lastOkAt)}</dd></div><div><dt>최근 24시간 실패</dt><dd>{check.failures24h === null ? "— 이력 확인 불가" : `${check.failures24h}건`}</dd></div><div><dt>막힌 작업</dt><dd>{check.blockedJobs === null ? "— 집계 미확인" : `${check.blockedJobs}건`}</dd></div></dl>
-    {!check.historyAvailable ? <p className="field-hint">확인 이력을 불러오지 못했습니다. 저장소 적용·접근 상태를 확인해 주세요.</p> : null}
+    {!check.historyAvailable ? <p className="field-hint">확인 이력을 불러오지 못했습니다. 저장 공간 연결·접근 상태를 확인해 주세요.</p> : null}
     {check.status === "error" ? <p className="field-hint">오류 이력이 있습니다. 재테스트 성공 후에도 최근 24시간 실패와 막힌 작업은 유지됩니다.</p> : null}
     <form onSubmit={event => { event.preventDefault(); onSave(primary || null, backup || null); }}>
       <div className="connection-owners">{(["정", "부"] as const).map((label, index) => <label key={label}>{label} 담당<select aria-label={`${definition.label} ${label} 담당`} disabled={disabled} value={index ? backup : primary} onChange={event => index ? setBackup(event.target.value) : setPrimary(event.target.value)}><option value="">미지정</option>{members.filter(member => member.is_active || member.id === (index ? backup : primary)).map(member => <option key={member.id} value={member.id} disabled={!member.is_active}>{member.display_name || "구성원"}{!member.is_active ? " (비활성)" : ""}</option>)}</select></label>)}</div>
@@ -55,7 +55,7 @@ export function ConnectionEvidence() {
   const visible=displayed.filter(check=>filter==="all"||filter==="error"&&check.status==="error"||filter==="unverified"&&check.status!=="verified");
   const selected=visible.find(check=>check.id===selectedId)??visible[0];
   return <>
-    <div className="p2-toolbar"><p>API 응답 확인 범위만 표시합니다. 최근 24시간 실패 = 연결 테스트 + 기록 시작 이후 색인 시도·광고 수집 실패.</p><button className="secondary-button" disabled={loading || busy || demo} onClick={load}>상태 새로고침</button></div>
+    <div className="p2-toolbar"><p>서버 응답으로 확인한 범위만 표시합니다. 최근 24시간 실패 = 연결 테스트 + 기록 시작 이후 검색 준비·광고 불러오기 실패.</p><button className="secondary-button" disabled={loading || busy || demo} onClick={load}>상태 새로고침</button></div>
     {demo ? <p className="field-hint">데모 모드 · 실제 연결·이력·담당자는 확인하지 않습니다.</p> : null}
     {error && checks.length ? <p className="inline-alert danger" role="alert">{error}</p> : null}
     {notice ? <p role="status" className="inline-alert">{notice}</p> : null}

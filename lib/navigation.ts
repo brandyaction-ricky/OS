@@ -74,7 +74,7 @@ export const NAV_STAGES: NavStage[] = [
   ] },
   { id: "automation", label: "콘텐츠 자동화", icon: Bot, href: "/automation/dashboard", pages: [
     { label: "자동화 현황", href: "/automation/dashboard", icon: LayoutDashboard, ready: true, aliases: ["대시보드"] },
-    { label: "레퍼런스", href: "/automation/references", icon: BookOpen, ready: true },
+    { label: "참고 자료", href: "/automation/references", icon: BookOpen, ready: true },
     { label: "주제 기획", href: "/automation/topics", icon: Lightbulb, processNumber: 1, ready: true },
     { label: "카드뉴스", href: "/automation/cardnews", icon: Image, processNumber: 2, ready: true },
     { label: "쇼츠", href: "/automation/shorts", icon: Smartphone, processNumber: 3, ready: true },
@@ -82,8 +82,8 @@ export const NAV_STAGES: NavStage[] = [
     { label: "최종 확인", href: "/automation/review", icon: ListChecks, processNumber: 5, ready: true, aliases: ["최종 점검"] },
     { label: "발행", href: "/automation/calendar", icon: CalendarRange, processNumber: 6, ready: true, children: [{ label: "발행 일정", href: "/automation/calendar?tab=schedule" }, { label: "발행 기록", href: "/automation/calendar?tab=history" }] },
     { label: "반응·성과", href: "/automation/performance", icon: MessageSquareText, processNumber: 7, ready: true, children: [{ label: "댓글·답글", href: "/automation/performance?tab=comments" }, { label: "성과", href: "/automation/performance?tab=metrics" }] },
-    { label: "AI 작업함", href: "/automation/requests", icon: Bot, ready: true, children: [{ label: "작업 목록", href: "/automation/requests?tab=jobs" }, { label: "내 컴퓨터", href: "/automation/requests?tab=browsers" }, { label: "실행 기록", href: "/automation/requests?tab=runs" }] },
-    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true, children: [{ label: "실행 규칙", href: "/automation/settings?tab=run" }, { label: "스킬", href: "/automation/settings?tab=skills" }, { label: "템플릿·이미지", href: "/automation/settings?tab=templates" }, { label: "기본값", href: "/automation/settings?tab=defaults" }] },
+    { label: "맡긴 일", href: "/automation/requests", icon: Bot, ready: true, children: [{ label: "작업 목록", href: "/automation/requests?tab=jobs" }, { label: "내 컴퓨터", href: "/automation/requests?tab=browsers" }, { label: "실행 기록", href: "/automation/requests?tab=runs" }] },
+    { label: "자동화 설정", href: "/automation/settings", icon: Settings, ready: true, children: [{ label: "실행 규칙", href: "/automation/settings?tab=run" }, { label: "스킬", href: "/automation/settings?tab=skills" }, { label: "양식·이미지", href: "/automation/settings?tab=templates" }, { label: "기본값", href: "/automation/settings?tab=defaults" }] },
   ] },
   { id: "knowledge", label: "회사 문서", icon: BookOpen, href: "/knowledge/vault", pages: [
     { label: "문서 보관함", href: "/knowledge/vault", icon: BookOpen, aliases: ["전체 문서", "문서 작업공간", "개인별 폴더"], ready: true },
@@ -117,11 +117,11 @@ export const NAV_STAGES: NavStage[] = [
   { id: "development", label: "개발", icon: Code2, href: "/knowledge/development", pages: [
     { label: "수정 요청", href: "/knowledge/development", icon: Code2, aliases: ["개발 관리", "개발·배포 기록"], ready: true },
     { label: "업데이트 내역", href: "/knowledge/development?tab=updates", icon: ScrollText, ready: true },
-    { label: "AI 작업", href: "/organization/agents", icon: Bot, ready: true },
+    { label: "맡긴 일 기록", href: "/organization/agents", icon: Bot, ready: true },
   ] },
   { id: "settings", label: "설정", icon: Settings, href: "/settings/connections", pages: [
     { label: "작동 상태", href: "/settings/connections", icon: Link2, aliases: ["연결", "운영 모니터링", "메시지 창구"], ready: true },
-    { label: "권한·접근 키", href: "/settings/access", icon: KeyRound, aliases: ["권한", "AI 접근 키"], ready: true },
+    { label: "권한·연결 키", href: "/settings/access", icon: KeyRound, aliases: ["권한", "AI 접근 키", "접근 키"], ready: true },
     { label: "변경 기록", href: "/settings/audit", icon: ScrollText, aliases: ["감사 로그"], ready: true },
     { label: "회사 설정", href: "/settings/company", icon: Building2, ready: true },
   ] },
@@ -154,7 +154,7 @@ export function findPage(path: string): NavPage {
   if (pathname === "/knowledge") return { label: "문서 보관함", href: pathname, navHref: "/knowledge/vault", icon: BookOpen, ready: true };
   const legacyDocuments: Record<string, string> = {
     "/knowledge/decisions": "결정 모음", "/knowledge/docs": "팀 문서", "/knowledge/graph": "연결",
-    "/knowledge/review": "정본 검토·등록", "/knowledge/templates": "템플릿",
+    "/knowledge/review": "정본 검토·등록", "/knowledge/templates": "양식",
   };
   if (legacyDocuments[pathname]) return { label: legacyDocuments[pathname], href: pathname, navHref: "/knowledge/vault", icon: FileText, ready: true };
   if (pathname === "/knowledge/search") return { label: "문서 찾기", href: "/knowledge/search", navHref: "/knowledge/vault", icon: Search, ready: true };

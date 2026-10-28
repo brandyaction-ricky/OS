@@ -65,7 +65,7 @@ export function pipelineMissing(source: OsRecord, records: OsRecord[], gate: num
   if (!String(source.metadata.evidence ?? "").trim()) missing.push("확인한 자료·출처");
   if (!String(source.metadata.experience ?? "").trim()) missing.push("실제 경험·사례 (해당 없으면 사유)");
   if (!hasApprovedAppeal || !matchesCurrentAppeal || !researchBriefReady(briefRecord)) missing.push("소구점 승인·레퍼런스 검증");
-  if (!artifacts.research) missing.push("기획 브리핑");
+  if (!artifacts.research) missing.push("기획 메모");
   if (artifacts.research && !planningSelectionReady(source, artifacts.research)) missing.push("채택한 기획 방향");
   if (gate >= 2 && !artifacts.packaging) missing.push("제목·썸네일 패키지");
   if (gate >= 2 && artifacts.packaging && !pickedPackaging(artifacts.packaging).ready) missing.push("채택한 제목·썸네일 카피");

@@ -102,7 +102,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
       setError(
         reason instanceof Error
           ? reason.message
-          : "인덱싱 작업을 실행하지 못했습니다.",
+          : "검색 준비 작업을 실행하지 못했습니다.",
       );
       setLoading(false);
     }
@@ -116,7 +116,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
       setError(
         reason instanceof Error
           ? reason.message
-          : "텔레그램 웹훅을 연결하지 못했습니다.",
+          : "텔레그램을 연결하지 못했습니다.",
       );
       setLoading(false);
     }
@@ -158,7 +158,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
       {!embedded ? <header className="page-header">
         <div className="page-title-group">
           <PageTitle />
-          <p>DB·인증·검색·메시지 연결과 내부 데이터 준비 상태를 점검합니다.</p>
+          <p>데이터 저장소·로그인·검색·메시지 연결과 내부 데이터 준비 상태를 점검합니다.</p>
         </div>
         <button className="secondary-button" disabled={loading} onClick={load}>
           <RefreshCw size={15} className={loading ? "spin" : ""} /> 새로 확인
@@ -185,7 +185,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
         </span>
         <div>
           <strong>
-            {health?.ok ? "DB 조회 응답 확인" : "핵심 서버 확인 필요"}
+            {health?.ok ? "서버 연결 정상" : "핵심 서버 확인 필요"}
           </strong>
           <p>
             {health?.checkedAt
@@ -206,16 +206,16 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           health?.database === "ready",
           "운영 데이터 저장소",
           health?.database === "ready"
-            ? "운영 기록·지식 테이블 응답 정상"
-            : "서비스 키 또는 DB 응답 확인 필요",
+            ? "운영 기록·지식 저장소 연결 정상"
+            : "서버 연결 확인 필요",
           <Database size={18} />,
         )}
         {status(
           health?.auth === "ready",
           "로그인 인증",
           health?.auth === "ready"
-            ? "인증 환경 설정 있음 · 로그인 호출 별도 확인"
-            : "공개 인증 설정 누락",
+            ? "로그인 설정 있음 · 실제 로그인은 따로 확인"
+            : "로그인 설정 빠짐",
           <KeyRound size={18} />,
         )}
         {status(
@@ -230,7 +230,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           health?.embeddings === "ready",
           "지식 검색",
           health?.embeddings === "ready"
-            ? "검색 환경 설정 있음 · 아래 색인 작업 결과 확인"
+            ? "검색 설정 있음 · 아래 검색 준비 작업 결과 확인"
             : "키워드 검색만 사용 중",
           <Search size={18} />,
         )}
@@ -238,10 +238,10 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           Boolean(telegramStatus?.webhook?.url),
           "텔레그램",
           telegramStatus?.webhook?.url
-            ? `@${telegramStatus.bot?.username ?? "bot"} 웹훅 설정 확인`
+            ? `@${telegramStatus.bot?.username ?? "bot"} 연결 설정 확인`
             : telegramStatus?.configured
-              ? "토큰 확인됨 · 웹훅 등록 대기"
-              : "봇 토큰 등록 전",
+              ? "연결 키 확인됨 · 연결 등록 대기"
+              : "봇 연결 키 등록 전",
           <MessageSquareText size={18} />,
         )}
       </section>
@@ -254,7 +254,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
                 {indexingConfigured
                   ? cronConfigured
                     ? "매일 자동 실행 · 관리자 수동 실행 가능"
-                    : "관리자 수동 실행 가능 · 예약 보안값 등록 대기"
+                    : "관리자 수동 실행 가능 · 자동 실행 설정 대기"
                   : "OpenAI 키 등록 전에는 키워드 검색 유지"}
               </p>
             </div>
@@ -300,12 +300,12 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
         <article className="panel">
           <div className="panel-header">
             <div>
-              <h2>텔레그램 웹훅</h2>
+              <h2>텔레그램 연결</h2>
               <p>
                 {telegramStatus?.webhook?.lastError ||
                   (telegramStatus?.configured
                     ? "텔레그램 서버 연결 상태를 확인합니다."
-                    : "환경변수 등록 후 보안 웹훅을 연결합니다.")}
+                    : "서버 설정을 마친 뒤 텔레그램을 연결합니다.")}
               </p>
             </div>
             <MessageSquareText size={17} />
@@ -313,11 +313,11 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           <div className="queue-metrics">
             <span>
               <strong>{telegramStatus?.configured ? "등록" : "대기"}</strong>
-              <small>자격 증명</small>
+              <small>연결 정보</small>
             </span>
             <span>
               <strong>{telegramStatus?.webhook?.url ? "연결" : "대기"}</strong>
-              <small>웹훅</small>
+              <small>메시지 받기</small>
             </span>
             <span>
               <strong>{telegramStatus?.pendingUsers?.length ?? "—"}</strong>
@@ -376,7 +376,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
               disabled={loading || !telegramStatus?.configured}
               onClick={() => setConfirmation("webhook")}
             >
-              웹훅 연결·갱신
+              텔레그램 연결·다시 연결
             </button>
           </div>
           {!telegramStatus?.configured ? <p className="field-hint">텔레그램 봇 설정이 준비되지 않아 실행할 수 없습니다. 설정 완료 후 실행 확인창이 열립니다.</p> : null}
@@ -406,10 +406,10 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
               <CheckCircle2 size={14} /> 직원 AI는 회사 정본 읽기만 허용
             </li>
             <li>
-              <CheckCircle2 size={14} /> 수정 이력 자동 감사 로그
+              <CheckCircle2 size={14} /> 수정 이력 자동 기록
             </li>
             <li>
-              <CheckCircle2 size={14} /> 회의 녹음 비공개 저장·서명 URL
+              <CheckCircle2 size={14} /> 회의 녹음 비공개 저장·기간 제한 링크
             </li>
           </ul>
         </article>
@@ -417,7 +417,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
           <div className="panel-header">
             <div>
               <h2>비즈니스 연결 기록</h2>
-              <p>시스템 헬스와 별도로 담당자·설정 위치를 기록하며 자격 증명 원문은 저장하지 않음</p>
+              <p>서버 상태와 별도로 담당자·설정 위치를 기록하며 비밀번호·키 원문은 저장하지 않음</p>
             </div>
             <Bot size={17} />
           </div>
@@ -457,7 +457,7 @@ export function MonitoringWorkspace({ embedded = false }: { embedded?: boolean }
       )}
       <dialog ref={confirmationDialog} className="monitoring-confirmation" aria-labelledby="monitoring-confirm-title" onCancel={() => setConfirmation(null)}>
         <h2 id="monitoring-confirm-title">작업을 실행할까요?</h2>
-        <p>{confirmation === "webhook" ? "텔레그램 웹훅을 운영 주소에 연결하거나 갱신합니다." : confirmation === "process" ? "지식 문서 최대 25건의 검색 준비 작업을 처리합니다." : "실패한 검색 준비 작업을 다시 실행합니다."}</p>
+        <p>{confirmation === "webhook" ? "텔레그램을 운영 주소에 연결하거나 다시 연결합니다." : confirmation === "process" ? "지식 문서 최대 25건의 검색 준비 작업을 처리합니다." : "실패한 검색 준비 작업을 다시 실행합니다."}</p>
         <div className="form-actions">
           <button type="button" className="secondary-button" autoFocus onClick={() => setConfirmation(null)}>취소</button>
           <button type="button" className="primary-button" disabled={loading} onClick={() => { const action = confirmation; setConfirmation(null); if (action === "webhook") void connectTelegram(); else if (action) void run(action); }}>실행</button>

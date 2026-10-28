@@ -6,9 +6,9 @@ import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
 test('all current menus and account have three reviewed steps and a live next route',()=>{
   assert.equal(Object.keys(PAGE_GUIDES).length,57);
   // Reviewed topic planning now ends at the chosen channel, not a fixed card-news route.
-  // Preserve the remaining guide snapshot while checking all new guides below.
+  // Preserve the remaining guide snapshot while checking all new guides below (2026-10-28: 검수 요청 → 검토 요청, plain-words pass).
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).filter(([path])=>!path.startsWith('/finance/')&&!path.startsWith('/hr/')&&!['/automation/references','/content/video','/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/decisions','/knowledge/docs','/knowledge/canon','/knowledge/graph','/knowledge/templates','/knowledge/trash'].includes(path)).sort(([a],[b])=>a.localeCompare(b)));
-  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'2fbce3f00c36e9192b88817ff483a864e229255b8b5e27d451c13851ac74f7a2');
+  assert.equal(createHash('sha256').update(snapshot).digest('hex'),'1a70ac0624024050f5fa72f9e1c6805ec458830e60bcf1546f0f742783dd2389');
   for(const page of [...NAV_STAGES.flatMap(stage=>stage.pages),ACCOUNT_PAGE]){
     const guide=PAGE_GUIDES[page.href];assert.ok(guide,page.href);assert.equal(guide.steps.length,3);
     for(const step of guide.steps)assert.ok(typeof step==='string'&&step.trim().length>0,page.href);

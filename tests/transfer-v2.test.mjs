@@ -10,14 +10,14 @@ test("canonical editing is deliberate, versioned and self-publishable", async ()
   assert.match(sql, /os_restore_document_version/);
   assert.match(sql, /v_from in \('draft', 'team', 'review', 'reviewed'\).*p_to = 'canonical'/s);
   assert.match(workspace, /정본 편집/);
-  assert.match(workspace, /전 직원과 AI/);
+  assert.match(workspace, /전 직원의 검색 결과/);
   assert.match(route, /os_document_versions/);
   assert.match(route, /os_restore_document_version/);
 });
 
 test("meeting workflow includes prep, transcription and structured actions", async () => {
   const [workspace, summary, prep, transcription] = await Promise.all([read("components/meeting-workspace.tsx"), read("lib/server/meeting-summary.ts"), read("lib/server/meeting-prep.ts"), read("app/api/v1/meeting-transcription/route.ts")]);
-  assert.match(workspace, /회의 준비/); assert.match(workspace, /녹음 전사/);
+  assert.match(workspace, /회의 준비/); assert.match(workspace, /녹음 받아쓰기/);
   assert.match(summary, /decisions/); assert.match(summary, /pending/); assert.match(summary, /todos/); assert.match(summary, /추측하지 마세요/);
   assert.match(prep, /record_type.*kpi/s); assert.match(transcription, /audio\/transcriptions/);
 });
