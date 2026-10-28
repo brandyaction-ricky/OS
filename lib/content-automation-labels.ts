@@ -1,5 +1,5 @@
 export const CONTENT_STATUS_LABELS:Record<string,string>={
-  draft:"제작 중",making:"제작 중",ai:"자동 작성 중",arrived:"자동 작성 완료",
+  draft:"제작 중",making:"제작 중",ai:"AI 작업 중",arrived:"AI 결과 도착",
   review:"확인 대기",blocked:"고칠 것",changes:"고칠 것",
   ready:"발행 준비",scheduled:"게시 예정",published:"게시됨",
 };

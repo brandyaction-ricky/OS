@@ -222,7 +222,7 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
   await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
-  await expect(page.getByRole("button", { name: "쓰레드 글 자동으로 쓰기", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "내 AI로 쓰레드 글 쓰기", exact: true })).toBeVisible();
   expect(state.items).toHaveLength(1);
   expect(state.items[0].status).toBe("draft");
   expect(state.items[0].metadata.posts).toEqual([]);
@@ -271,8 +271,8 @@ test("optional AI planning saves the edited brief before confirmation and cancel
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await page.getByLabel("핵심 메시지", { exact: true }).fill("AI에게 전달할 사람이 수정한 관점");
   await page.getByText("기획을 더 다듬고 싶다면", { exact: true }).click();
-  await page.getByRole("button", { name: "기획 메모 자동으로 쓰기", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "작업 맡기기", exact: true });
+  await page.getByRole("button", { name: "내 AI로 기획 메모 쓰기", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "내 AI로 보내기", exact: true });
   await expect(dialog).toBeVisible();
   expect((state.topics[0].metadata.brief as Record<string, string>).message).toBe("AI에게 전달할 사람이 수정한 관점");
   expect(state.writes.map(write => write.path)).toEqual([`topics/${TOPIC}`]);
@@ -282,7 +282,7 @@ test("optional AI planning saves the edited brief before confirmation and cancel
   expect(state.queuedJobs).toHaveLength(0);
 
   await page.getByLabel("핵심 메시지", { exact: true }).fill("취소 후 한 번 더 고친 관점");
-  await page.getByRole("button", { name: "기획 메모 자동으로 쓰기", exact: true }).click();
+  await page.getByRole("button", { name: "내 AI로 기획 메모 쓰기", exact: true }).click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "대기열에 두기", exact: true }).click();
   await expect(dialog).toHaveCount(0);

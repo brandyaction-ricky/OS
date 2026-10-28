@@ -24,7 +24,7 @@ export function MeetingCapture({append}:{append:(text:string)=>boolean}){
     <details><summary>녹음·받아쓰기 보관 기준</summary><p>저장형 녹음 도입 시 원본 {MEETING_RETENTION.audioDays}일, 전사본 {MEETING_RETENTION.transcriptDays}일을 기본 보존 기간으로 적용하고 결정 근거 구간은 별도로 보존합니다.</p><small>현재는 음성 저장·자동 파기를 실행하지 않습니다. 메모에 추가한 받아쓴 글은 회의록과 함께 보관됩니다.</small></details>
     <RecorderProgress recorder={recorder}/>
     {busy&&<p role="status">음성을 받아쓰는 중입니다…</p>}
-    {audio&&!busy&&<div className="kw-actions"><button onClick={()=>void transcribeFile(audio)}>{error?"받아쓰기 다시 시도":"녹음 받아쓰기"}</button><CostTag kind="paid"/></div>}
+    {audio&&!busy&&<div className="kw-actions"><button onClick={()=>void transcribeFile(audio)}>{error?"받아쓰기 다시 시도":"AI로 받아쓰기"}</button><CostTag kind="paid"/></div>}
     {preview&&<><label>가져온 원문 미리보기<textarea rows={6} value={preview} onChange={e=>setPreview(e.target.value)}/></label><button disabled={!preview.trim()} onClick={()=>{if(append(preview))setPreview("");}}>기존 메모 뒤에 추가</button></>}
     {shownError&&<p className="kw-error" role="alert">{shownError}</p>}{cost.element}
   </Card></div>;
