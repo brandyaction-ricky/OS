@@ -31,6 +31,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const [changing, setChanging] = useState(false);
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
+  const [finalError, setFinalError] = useState("");   // shown in the upload box: the page-top error was easy to miss below the fold
   const [moving, setMoving] = useState(false);
   const finalInput = useRef<HTMLInputElement>(null);
   const reload = page.reload;
@@ -58,11 +59,11 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   };
   const uploadFinal = async (file: File) => {
     if (!page.client || !project) return;
-    setProgress(0); page.setError("");
+    setProgress(0); page.setError(""); setFinalError("");
     try {
       const saved = await page.client.uploadAsset(project.id, "final", file, setProgress);
       if (await save({ addFinal: saved }, "final")) await page.reload();
-    } catch (reason) { page.fail(reason); } finally { setProgress(null); }
+    } catch (reason) { setFinalError(reason instanceof Error ? reason.message : "최종본을 올리지 못했어요."); page.fail(reason); } finally { setProgress(null); }
   };
   const uploadThumb = async (slot: YpSlot, file: File) => {
     if (!page.client || !project) return;
@@ -138,7 +139,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           : canFinal ? <div className={`yp-drop${finals.length ? " yp-ok" : ""}`} style={anim ? { marginTop: 10 } : undefined}>{finals.length ? <Check size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
             <b>{finals.length ? `최종본 v${finals.length} 저장됨` : anim ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
             <span style={{ fontSize: 12 }}>mp4 · mov · m4v · webm</span>
-            <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div></div> : null}
+            <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div>
+            {finalError ? <p className="yp-unsaved" role="alert" style={{ fontSize: 12, margin: "8px 0 0" }}>{finalError}</p> : null}</div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </YpSection>
       <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
