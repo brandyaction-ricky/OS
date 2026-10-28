@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, Link2, Plus } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
-import { UTM_BRANDS, UTM_KINDS, UTM_KIND_LABEL, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmConflicts, validUtmCode, type UtmKind } from "@/lib/utm";
+import { UTM_BRANDS, UTM_KINDS, UTM_KIND_LABEL, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmCodeRule, utmConflicts, utmOptionClash, validUtmCode, type UtmKind } from "@/lib/utm";
 import { useSession } from "./session-provider";
 import { errorMessage } from "./youtube-process-data";
 
@@ -41,14 +41,19 @@ function OptionField({ kind, required, options, value, onChange, onAdded }: { ki
   const [error, setError] = useState("");
   const pick = (next: string) => {
     setText(next);
-    const match = active.find(option => optionText(option) === next || option.code === next.trim().toLowerCase() || option.label === next.trim());
+    const match = active.find(option => optionText(option) === next || option.code === normalizeUtmCode(next, kind) || option.label === next.trim());
     onChange(match?.id);
   };
   const add = async () => {
-    const normalized = normalizeUtmCode(code), sameName = label.trim().toLowerCase();
-    const existing = options.find(option => option.kind === kind && (option.code === normalized || option.label.trim().toLowerCase() === sameName));
-    if (existing) { setError(`이미 있어요: ${existing.label} (${existing.code})${existing.active ? " — 그 값을 고르세요." : " — 꺼져 있는 값이에요. 관리자에게 다시 켜 달라고 해 주세요."}`); if (existing.active) { onChange(existing.id); setText(optionText(existing)); setAdding(false); } return; }
-    if (!validUtmCode(normalized)) { setError("URL 코드는 영문 소문자·숫자·밑줄(_)·하이픈(-)만 쓸 수 있어요."); return; }
+    const normalized = normalizeUtmCode(code, kind), sameName = label.trim().toLowerCase(), mine = options.filter(option => option.kind === kind);
+    const existing = mine.find(option => option.code === normalized) ?? mine.find(option => option.label.trim().toLowerCase() === sameName);
+    if (existing) {
+      setError(utmOptionClash(existing, normalized));
+      // Pick it only when it is the very same code; a same-name value with another code (e.g. only the case differs) must not be chosen for them.
+      if (existing.active && existing.code === normalized) { onChange(existing.id); setText(optionText(existing)); setAdding(false); }
+      return;
+    }
+    if (!validUtmCode(normalized, kind)) { setError(utmCodeRule(kind)); return; }
     try {
       const option = await apiRequest<Option>("/api/v1/utm/options", { method: "POST", token: accessToken, body: JSON.stringify({ kind, label: label.trim(), code: normalized }) });
       onAdded(option); onChange(option.id); setText(optionText(option)); setAdding(false); setLabel(""); setCode(""); setError("");
@@ -60,7 +65,7 @@ function OptionField({ kind, required, options, value, onChange, onAdded }: { ki
     {!adding ? <span><button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={12} aria-hidden="true" /> 선택값 추가</button></span>
       : <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         <input className="yp-in" style={{ flex: "1 1 140px" }} value={label} maxLength={80} onChange={event => setLabel(event.target.value)} placeholder="표시 이름 (예: 유튜브)" aria-label={`${UTM_KIND_LABEL[kind]} 표시 이름`} />
-        <input className="yp-in" style={{ flex: "1 1 140px" }} value={code} maxLength={80} onChange={event => setCode(event.target.value)} placeholder="URL 코드 (예: youtube)" aria-label={`${UTM_KIND_LABEL[kind]} URL 코드`} />
+        <input className="yp-in" style={{ flex: "1 1 140px" }} value={code} maxLength={80} onChange={event => setCode(event.target.value)} placeholder={kind === "content" ? "URL 코드 (예: video_001 · 대소문자 그대로)" : "URL 코드 (예: youtube)"} aria-label={`${UTM_KIND_LABEL[kind]} URL 코드`} />
         <button type="button" className="yp-btn yp-sm yp-pri" disabled={!label.trim() || !code.trim()} onClick={() => void add()}>저장</button>
         <button type="button" className="yp-btn yp-sm" onClick={() => { setAdding(false); setError(""); }}>취소</button></span>}
     {error ? <span className="yp-errline" role="alert">{error}</span> : null}

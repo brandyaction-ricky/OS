@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -178,4 +178,18 @@ test("myinOnlySoundChanged keeps Logan's music match, and still tells a rewritte
   assert.equal(myinOnlySoundChanged(rewritten, ours), false);
   rewritten.scenes[1].at = "침대에 누워"; rewritten.scenes[1].type = "photo";
   assert.equal(myinOnlySoundChanged(rewritten, ours), false);
+});
+
+// 우리 이미지 올리기 (2026-10-28 대표 · 로건): Logan's own portrait stopped ④ on the render PC because nothing could send it there.
+test("myinPrepPhotos sends our uploaded image instead of a listed photo of the same name, into every folder the engine reads it from", () => {
+  const folders = myinPhotoFolders({ scenes: [{ type: "photo", photo: { file: "brickman.jpg" } }, { type: "opening", acts: [{ image: "desk.jpg" }] },
+    { type: "photo", photo: { file: "desk.jpg" } }, { type: "photo", photo: { file: "page.jpg" } }] });
+  const listed = [{ kind: "people", file: "brickman.jpg", url: "https://upload.wikimedia.org/a.jpg" }, { kind: "situations", file: "desk.jpg", url: "https://images.unsplash.com/photo-1" },
+    { kind: "people", file: "page.jpg", url: "https://unsplash.com/photos/x" }];
+  const ours = { "brickman.jpg": "https://signed/brickman" };
+  assert.deepEqual(myinPrepPhotos(folders, listed, () => true, ours), [
+    { kind: "situations", file: "desk.jpg", url: "https://images.unsplash.com/photo-1" }, { kind: "people", file: "desk.jpg", url: "https://images.unsplash.com/photo-1" },
+    { kind: "people", file: "brickman.jpg", url: "https://signed/brickman" }]);
+  // ④: only approved listed photos; ours go regardless.
+  assert.deepEqual(myinPrepPhotos(folders, listed, (file) => file === "page.jpg", ours), [{ kind: "people", file: "brickman.jpg", url: "https://signed/brickman" }]);
 });

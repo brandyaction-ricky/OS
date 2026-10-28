@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { draftFilter } from "@/lib/myin-local";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinPrepPhotos, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -56,6 +56,9 @@ const runSchema = z.object({
   // with Logan's preview check. Music comes from the 음악 창고 on the render PC (owner decision 2026-10-19).
   assets: z.record(z.string(), z.object({ decision: z.enum(["approved", "excluded"]), by: z.string().uuid(), at: z.string().datetime(),
     path: z.string().optional(), bytes: z.number().int().positive().optional() }).strict()).optional(),
+  // 우리 이미지 (2026-10-28 대표 · 로건): a photo file the storyboard names, uploaded by staff (a workbook capture, a portrait the person
+  // gave us). It goes to the PC that prepares in place of a listed photo of that name; uploading it is the approval.
+  ours: z.record(z.string(), z.object({ path: z.string(), bytes: z.number().int().positive(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).optional(),
   cta: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional() }).strict()).optional(),
   prepared: z.object({ path: z.string(), misses: z.array(z.string()), sheets: z.array(z.string()), credits: z.array(z.string()), at: z.string().datetime() }).strict().optional(),
   // Stage 4: Logan's 720p clips (opening + reel, each metaphor), his OK, then the full render, mix and handouts.
@@ -464,7 +467,7 @@ export function myinReferencedFiles(storyboard: unknown) {
 function photosInUse(run: MyinRun, story: Awaited<ReturnType<typeof storyboardJson>>) {
   const byFile = new Map((run.storyboard?.assets ?? []).map((a) => [a.file, a]));
   const used = [...myinReferencedFiles(story)].filter((file) => byFile.has(file));
-  const unreachable = used.filter((file) => !myinPhotoFetchUrl(byFile.get(file)!.url));
+  const unreachable = used.filter((file) => !run.ours?.[file] && !myinPhotoFetchUrl(byFile.get(file)!.url));
   if (unreachable.length) throw new ApiError(409, "MYIN_PREP_ASSETS", `자동으로 받을 수 없는 사진입니다(위키미디어, Unsplash 사진 파일 주소만): ${unreachable.join(", ")}. 수정 요청으로 바꿔 주세요.`);
   return used;
 }
@@ -594,14 +597,11 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     // ③ 시안 (no drafts confirmed yet): the storyboard's photos are fetched for the drafts too (대표 2026-10-27: the drafts are for judging
     // quality), not yet approved; no CTA voice (paid). A gray 「사진 자리」 stands in only where a photo cannot be fetched.
     const draft = !run.clipsReview;
-    const assets = [];
     const folders = myinPhotoFolders(story);
     const placeholders = draft ? [...folders].flatMap(([file, kinds]) => kinds.map((kind) => ({ kind, file }))) : [];
-    for (const asset of run.storyboard?.assets ?? []) {
-      const url = draft || run.assets?.[asset.file]?.decision === "approved" ? myinPhotoFetchUrl(asset.url) : null;
-      // The render PC saves each entry under assets/<kind>; a photo used in both places is sent twice.
-      if (url) for (const kind of folders.get(asset.file) ?? [asset.kind]) assets.push({ kind, file: asset.file, url });
-    }
+    const ours = Object.fromEntries(await Promise.all(Object.entries(run.ours ?? {}).filter(([file]) => folders.has(file))
+      .map(async ([file, image]) => [file, await sign(service, OUTPUT_BUCKET, image.path)] as const)));
+    const assets = myinPrepPhotos(folders, run.storyboard?.assets ?? [], (file) => draft || run.assets?.[file]?.decision === "approved", ours);
     const cta = [];
     if (!draft) for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });
     const sheets = Math.ceil(story.scenes.length / 12) + 1;
@@ -664,6 +664,61 @@ export async function myinPreviewSheets(actor: RequestActor, runId: string) {
   const { run } = await visibleRun(actor, runId);
   const service = createServiceSupabase();
   return { sheets: await Promise.all((run.prepared?.sheets ?? []).map((path) => sign(service, SHEET_BUCKET, path))) };
+}
+
+// ── 우리 이미지 올리기 (2026-10-28 대표 · 로건): our own photo for a file name the storyboard uses, until the full video starts ──
+const OUR_IMAGE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const OUR_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const ourImageFolder = (record: OsRecord, run: MyinRun) => `${record.owner_id}/${run.sourceId}/${record.id}/our-images`;
+
+async function ourImageRun(actor: RequestActor, runId: string, file?: string) {
+  const { record, run } = await visibleRun(actor, runId);
+  if (!run.storyboard) throw new ApiError(409, "MYIN_STORYBOARD_MISSING", "기획표가 나온 뒤에 이미지를 올릴 수 있어요.");
+  const service = createServiceSupabase();
+  const folders = myinPhotoFolders(await storyboardJson(service, run));
+  if (file !== undefined && !folders.has(file)) throw new ApiError(400, "MYIN_OUR_IMAGE_FILE", `기획표에 없는 사진 파일이에요: ${file}`);
+  return { service, record, run, folders, open: !["final_pending", "final_ready"].includes(record.stage ?? "") };
+}
+
+/** The photo files the storyboard uses and where each comes from: ours, a listed Unsplash · 위키미디어 photo, or neither. */
+function photoSources(run: MyinRun, folders: Map<string, unknown>) {
+  const listed = new Set((run.storyboard?.assets ?? []).filter((a) => myinPhotoFetchUrl(a.url)).map((a) => a.file));
+  return [...folders.keys()].map((file) => ({ file, from: run.ours?.[file] ? "ours" as const : listed.has(file) ? "list" as const : "none" as const,
+    by: run.ours?.[file]?.name ?? null }));
+}
+
+export async function myinPhotos(actor: RequestActor, runId: string) {
+  const { run, folders, open } = await ourImageRun(actor, runId);
+  return { open, photos: photoSources(run, folders) };
+}
+
+export async function myinOurImageUpload(actor: RequestActor, runId: string, file: string, type: string) {
+  const { service, record, run, open } = await ourImageRun(actor, runId, file);
+  if (!open) throw new ApiError(409, "MYIN_OUR_IMAGE_CLOSED", "전체 영상을 만드는 중이거나 나온 뒤예요. 4단계로 돌아간 뒤 올려 주세요.");
+  const ext = OUR_IMAGE_TYPES[type];
+  if (!ext) throw new ApiError(400, "MYIN_OUR_IMAGE_TYPE", "JPG · PNG · WEBP 이미지만 올릴 수 있어요.");
+  const path = `${ourImageFolder(record, run)}/${md5(file).slice(0, 12)}-${Date.now().toString(36)}.${ext}`;
+  return { path, uploadUrl: await uploadUrl(service, OUTPUT_BUCKET, path) };
+}
+
+/** The upload landed: keep it for that file. At ④ after the preparation (or a stop) it prepares again, as 「자료 준비 다시 하기」 would,
+ * once no photo is left without a source, so the first of several uploads does not start one that stops at the next missing photo. */
+export async function saveMyinOurImage(actor: RequestActor, runId: string, file: string, path: string) {
+  const { service, record, run, folders, open } = await ourImageRun(actor, runId, file);
+  const folder = ourImageFolder(record, run), name = path.slice(folder.length + 1);
+  if (!open || !path.startsWith(`${folder}/`) || name.includes("/")) throw new ApiError(400, "MYIN_OUR_IMAGE_PATH", "이미지를 다시 올려 주세요.");
+  const { data } = await service.storage.from(OUTPUT_BUCKET).list(folder, { search: name });
+  const bytes = Number(data?.find((o) => o.name === name)?.metadata?.size ?? 0);
+  if (!bytes) throw new ApiError(409, "MYIN_OUR_IMAGE_MISSING", "올린 이미지를 찾지 못했어요. 다시 올려 주세요.");
+  if (bytes > OUR_IMAGE_MAX_BYTES) {
+    await service.storage.from(OUTPUT_BUCKET).remove([path]);
+    throw new ApiError(400, "MYIN_OUR_IMAGE_SIZE", "20MB 이하 이미지만 올릴 수 있어요.");
+  }
+  const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString() } } };
+  const saved = await save(service, record, record.status, record.stage ?? "", next);
+  const again = run.clipsReview && photoSources(next, folders).every((photo) => photo.from !== "none")
+    && (record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
+  return again ? startMyinPrep(actor, runId) : presentMyinRun(saved);
 }
 
 // ── Stage 4: clips for Logan, then the full render, mix and handouts ──

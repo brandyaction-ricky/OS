@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmMyinClips, createMyinRun, latestMyinRun, myinDownloads, myinOutputs, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { confirmMyinClips, createMyinRun, latestMyinRun, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -24,6 +24,9 @@ export async function GET(request: Request) {
     // 1단계 파일 내려받기 (2026-10-28): the voice parts and the subtitle bundle.
     const downloads = query.get("downloads");
     if (downloads) return NextResponse.json(await myinDownloads(actor, z.string().uuid().parse(downloads)), { headers });
+    // 우리 이미지 올리기 (2026-10-28): the storyboard's photo files and where each comes from.
+    const photos = query.get("photos");
+    if (photos) return NextResponse.json(await myinPhotos(actor, z.string().uuid().parse(photos)), { headers });
     const outputs = query.get("outputs");
     if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs)), { headers });
     // 내 컴퓨터: whether this member's own Mac is on and has the render PC's engine (?local=1).
@@ -41,6 +44,9 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("review"), runId: z.string().uuid(), decision: z.enum(["confirmed", "revise"]), note: z.string().max(2000).default(""), place: z.enum(["pc", "local"]).default("pc") }),
   z.object({ action: z.literal("place"), runId: z.string().uuid(), place: z.enum(["pc", "local"]) }),
   z.object({ action: z.literal("prepare"), runId: z.string().uuid() }),
+  // 우리 이미지 올리기: an upload address for one storyboard photo file, then the upload kept for it.
+  z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
+  z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
   z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default("") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
@@ -65,6 +71,8 @@ export async function PATCH(request: Request) {
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
+      : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)
+      : input.action === "our_image" ? { run: await saveMyinOurImage(actor, input.runId, input.file, input.path) }
       : { run: await startMyinPrep(actor, input.runId) };
     return NextResponse.json(result, { headers });
   } catch (error) {

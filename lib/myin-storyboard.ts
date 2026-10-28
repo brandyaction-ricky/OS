@@ -326,6 +326,20 @@ export function myinPhotoFolders(storyboard: unknown) {
   return folders;
 }
 
+/** What the PC that prepares downloads, into each folder the engine reads the file from: the listed photos it may use (③ all, ④ the
+ * approved ones) it can fetch, except where staff uploaded our own image of that name (우리 이미지, 2026-10-28), which goes instead. */
+export function myinPrepPhotos(folders: Map<string, string[]>, listed: { kind: string; file: string; url: string }[], usable: (file: string) => boolean,
+  ours: Record<string, string>) {
+  const photos: { kind: string; file: string; url: string }[] = [];
+  for (const asset of listed) {
+    const url = !ours[asset.file] && usable(asset.file) ? myinPhotoFetchUrl(asset.url) : null;
+    // A photo used in both places is sent twice.
+    if (url) for (const kind of folders.get(asset.file) ?? [asset.kind]) photos.push({ kind, file: asset.file, url });
+  }
+  for (const [file, url] of Object.entries(ours)) for (const kind of folders.get(file) ?? []) photos.push({ kind, file, url });
+  return photos;
+}
+
 /** Logan's engine reads an opening act's `cam.drift` as an [x, y] pair; a staff AI wrote a bare number and the opening clip
  * stopped with TypeError (2026-10-27). A number is the horizontal drift (the engine never drifts vertically), so it becomes [n, 0]. */
 export function myinDriftPairs<T extends { scenes: Record<string, unknown>[] }>(story: T) {
