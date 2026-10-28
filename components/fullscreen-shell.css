@@ -12,11 +12,20 @@
 .linear-shell.shell-v2 .nav-process-caption { display: inline; }
 .linear-shell.shell-v2 .nav-section-pages .page-link { margin: 0; min-height: 0; }
 .linear-shell.shell-v2 .nav-section-pages .page-link.nav-home { padding: 8px 10px; }
-.linear-shell.shell-v2 .nav-section-pages .page-link.active { background: var(--surface-selected); color: var(--text); font-weight: 600; }
-.linear-shell.shell-v2 .nav-section + .nav-section { border-top: 1px solid var(--line-soft); padding-top: 7px; margin-top: 7px; }
-.linear-shell.shell-v2 .nav-section-trigger { padding: 9px 10px; font-size: 13px; font-weight: 700; }
-.linear-shell.shell-v2 .nav-section-pages { padding: 3px 0 7px 16px; border-left: 1px solid var(--line-soft); margin-left: 17px; }
-.linear-shell.shell-v2 .nav-section-pages .page-link { padding: 7px 10px; font-size: 12px; font-weight: 450; }
+.linear-shell.shell-v2 .nav-section + .nav-section { margin-top: 14px; }
+/* Menu groups (owner pick A-3, 2026-10-28): a bold head with a tinted icon, its pages hung on one
+   vertical line that turns accent for the group you are in; the open page floats like a card. */
+.linear-shell.shell-v2 .nav-section-trigger { padding: 7px 10px; font-size: 13px; font-weight: 800; color: var(--text); }
+.linear-shell.shell-v2 .nav-section-trigger .nav-icon { color: var(--accent-2); }
+.linear-shell.shell-v2 .nav-section-trigger .nav-chevron { order: 9; width: auto; font-size: 11px; color: var(--muted); }
+.linear-shell.shell-v2 .nav-section-pages { margin: 2px 0 0 17px; padding: 2px 0 2px 8px; border-left: 2px solid var(--line); }
+.linear-shell.shell-v2 .nav-section.active > .nav-section-pages { border-left-color: var(--accent); }
+.linear-shell.shell-v2 .nav-section-pages .page-link { min-height: 32px; padding: 6px 8px; gap: 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: var(--text-2); }
+.linear-shell.shell-v2 .nav-section-pages .page-link svg { color: var(--muted); }
+.linear-shell.shell-v2 .nav-section-pages .page-link.active { background: var(--card); color: var(--text); font-weight: 700; box-shadow: 0 1px 2px color-mix(in srgb, var(--text) 8%, transparent), 0 0 0 1px var(--line-soft); }
+.linear-shell.shell-v2 .nav-section-pages .page-link.active svg { color: var(--text); }
+.linear-shell.shell-v2 .nav-step-no { width: 18px; height: 18px; flex: none; display: grid; place-items: center; border-radius: 5px; background: var(--panel-3); color: var(--muted); font-size: 11px; font-weight: 700; }
+.linear-shell.shell-v2 .page-link.active .nav-step-no { background: var(--accent); color: var(--on-accent); }
 .linear-shell.shell-v2 .page-link-row { display: flex; align-items: center; min-width: 0; }
 .linear-shell.shell-v2 .page-link-row .page-link { flex: 1; min-width: 0; }
 .linear-shell.shell-v2 .page-submenu-toggle { flex: 0 0 28px; display: grid; place-items: center; min-height: 28px; padding: 0; color: var(--muted); background: transparent; border: 0; cursor: pointer; }
@@ -25,7 +34,6 @@
 .linear-shell.shell-v2 .page-submenu[hidden] { display: none; }
 .linear-shell.shell-v2 .page-sublink { padding: 6px 10px; color: var(--muted); font-size: 12px; text-decoration: none; }
 .linear-shell.shell-v2 .page-sublink.active { color: var(--text); background: var(--surface-selected); }
-.linear-shell.shell-v2 .nav-section-pages .page-link.active { border-radius: 0; box-shadow: inset 3px 0 var(--accent); font-weight: 700; }
 .linear-shell.shell-v2 .nav-section:first-child { padding-bottom: 0; margin-bottom: 0; border-bottom: 0; }
 .linear-shell.shell-v2 .nav-section:first-child + .nav-section { border-top: 0; }
 .linear-shell.shell-v2 .nav-section:first-child .nav-section-pages { margin: 0; padding: 0; border: 0; }
