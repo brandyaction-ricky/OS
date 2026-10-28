@@ -12,8 +12,19 @@ export const UTM_BRANDS = [
 export type UtmCodes = { source: string; medium: string; campaign: string; content?: string | null };
 export type UtmConflict = { key: string; before: string; after: string | null };
 
-export const normalizeUtmCode = (value: string) => value.trim().toLowerCase();
-export const validUtmCode = (code: string) => /^[a-z0-9_-]{1,80}$/.test(code);
+// utm_content often carries an ID that is case-sensitive (a YouTube video ID), so it keeps its case; the other three stay lowercase.
+export const normalizeUtmCode = (value: string, kind: UtmKind) => kind === "content" ? value.trim() : value.trim().toLowerCase();
+export const validUtmCode = (code: string, kind: UtmKind) => (kind === "content" ? /^[A-Za-z0-9_-]{1,80}$/ : /^[a-z0-9_-]{1,80}$/).test(code);
+export const utmCodeRule = (kind: UtmKind) => kind === "content"
+  ? "URL 코드는 영문 대·소문자·숫자·밑줄(_)·하이픈(-)만 쓸 수 있어요. 대소문자는 입력한 그대로 저장돼요."
+  : "URL 코드는 영문 소문자·숫자·밑줄(_)·하이픈(-)만 쓸 수 있어요.";
+
+/** Why a new choice can't be saved. Only the exact same code is "the same value" to pick; a name clash with another code is not. */
+export function utmOptionClash(existing: { label: string; code: string; active: boolean }, code: string) {
+  if (existing.code === code) return `이미 있어요: ${existing.label} (${existing.code})${existing.active ? " — 그 값을 고르세요." : " — 꺼져 있는 값이에요. 관리자에게 다시 켜 달라고 해 주세요."}`;
+  const caseOnly = existing.code.toLowerCase() === code.toLowerCase() ? " 코드의 대소문자만 다른 값이에요." : "";
+  return `같은 이름 「${existing.label}」이 다른 코드(${existing.code})로 이미 있어요.${caseOnly} 이름을 다르게 지어 저장해 주세요. 잘못 만든 값이면 관리자에게 이름 바꾸기나 끄기를 부탁해 주세요.`;
+}
 
 /** An address staff may tag: http(s) only, no user:password, no script/data schemes. */
 export function parseOriginUrl(raw: string): { url: URL } | { error: string } {
