@@ -120,8 +120,8 @@ function specLimits(spec: SlotSpec, path = ""): string[] {
   return spec.kind === "text" && spec.max ? [`${path} ≤ ${spec.max}자`] : [];
 }
 /**
- * The diagram list for the card: type, name, the limits the OS checks, then the catalog's own note. The note's numbers were Logan's
- * layout guide and differ from the checked limits in 66 of 70 (2026-10-28: 「각 ≤ 12자」 on a list the OS stopped at 9), so the card
- * leads with the checked ones.
+ * The diagram list for the card: type, name, the limits the OS checks, then the catalog's own note. The note's numbers are Logan's
+ * layout guide and differ from the checked limits in 66 of 70, mostly tighter (steps_h 5 vs 8) but sometimes looser (strike_list 12 vs 9,
+ * 2026-10-28), so the card shows both and the AI keeps to the narrower.
  */
 export const shortDiagramList = (diagrams: ShortDiagram[]) => diagrams.map((d) => `- ${d.type} (${d.name}): ${specLimits(d.spec).join(" · ")} — ${d.slots}`).join("\n");
