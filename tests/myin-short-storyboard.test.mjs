@@ -40,6 +40,10 @@ test("only diagrams with a vertical layout, inside their letter limits", () => {
   const story = good();
   story.scenes[1].mid.text = "둘 다 원함요";
   assert.match(checkShortStoryboard(story, input).issues.join(" "), /mid\.text 「둘 다 원함요」은 4자 이하/);
+  const many = { type: "lib_list", name: "목록", slots: "1~2개", spec: { kind: "object", fields: { items: { kind: "array", min: 1, max: 2, item: { kind: "object", fields: { text: { kind: "text", max: 6 } } } } } } };
+  const listed = good();
+  listed.scenes[1] = { type: "lib_list", at: "가고 싶고", items: [{ text: "하나" }, { text: "둘" }, { text: "셋" }] };
+  assert.match(checkShortStoryboard(listed, { ...input, diagrams: [many] }).issues.join(" "), /items는 1~2개예요\(지금 3개\)/);
   story.scenes[1].type = "iceberg";
   assert.match(checkShortStoryboard(story, input).issues.join(" "), /"iceberg"는 세로로 그릴 수 없어요/);
 });

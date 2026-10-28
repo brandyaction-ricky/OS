@@ -6,7 +6,7 @@ import { myinCueMisses, myinNorm, openingTextIssues, type MyinStoryboard } from 
 
 /** A vertical diagram as the render PC's catalog lists it (lib/shortform-diagram-catalog.json): its slots and their letter limits. */
 export interface ShortDiagram { type: string; name: string; slots: string; spec: SlotSpec }
-interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; max?: number }
+interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; min?: number; max?: number }
 
 // Big type in 1080 px: a slam grows a line ×1.28, so lines stay inside ~0.8 W (A1–A3 pilots: 777–805 px passed at 360 px).
 export const SHORT_LINE_MAX_PX = 860;
@@ -27,11 +27,14 @@ const actLines = (act: Act): Piece[][] => (Array.isArray(act.lines) ? act.lines 
     : Array.isArray(piece) && typeof piece[0] === "string" ? [{ text: piece[0] }] : piece && typeof piece === "object" ? [piece as Piece] : []));
 const lineText = (line: Piece[]) => line.map((piece) => String(piece.text ?? "")).join(" ").replace(/\s+/g, " ").trim();
 
-/** Letter limits of a diagram's slots (catalog spec), at any depth. */
+/** Letter limits and item counts of a diagram's slots (catalog spec), at any depth. */
 function slotIssues(spec: SlotSpec, value: unknown, where: string, path = ""): string[] {
   if (spec.kind === "object" && value && typeof value === "object" && !Array.isArray(value))
     return Object.entries(spec.fields ?? {}).flatMap(([key, child]) => slotIssues(child, (value as Record<string, unknown>)[key], where, path ? `${path}.${key}` : key));
-  if (spec.kind === "array" && Array.isArray(value)) return value.flatMap((item, i) => spec.item ? slotIssues(spec.item, item, where, `${path}.${i}`) : []);
+  if (spec.kind === "array" && Array.isArray(value)) {
+    if (value.length < (spec.min ?? 1) || value.length > (spec.max ?? 6)) return [`${where} ${path}는 ${spec.min ?? 1}~${spec.max ?? 6}개예요(지금 ${value.length}개).`];
+    return value.flatMap((item, i) => spec.item ? slotIssues(spec.item, item, where, `${path}.${i}`) : []);
+  }
   if (spec.kind === "text" && typeof value === "string" && spec.max && value.length > spec.max)
     return [`${where} ${path} 「${value}」은 ${spec.max}자 이하로 줄여 주세요(세로 도식 칸).`];
   return [];
