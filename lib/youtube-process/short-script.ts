@@ -119,6 +119,16 @@ export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
   return checks.includes(false) ? "below" : views === null || (likes === null && !followers) ? "unknown" : "pass";
 }
 /**
+ * Whether a found Short is about the 검색어 (2026-10-28 시안 2: 「일이 안 맞는 신호」 brought 「오줌이 마려울 땐 이 포즈를…」 — 680만 views passed
+ * the bar and YouTube matched it on 신호). Its title must share a two-letter run with a word of the 검색어 (일이 · 맞는 · 신호 here). A
+ * 검색어 of one-letter words cannot be checked and passes; the PD's own links are never checked.
+ */
+export function refMatchesQuery(query: string, title: string) {
+  const pairs = (text: string) => text.toLowerCase().split(/[^0-9a-z가-힣]+/).flatMap(word => { const chars = [...word]; return chars.slice(1).map((ch, i) => chars[i] + ch); });
+  const wanted = new Set(pairs(query));
+  return !wanted.size || pairs(title).some(pair => wanted.has(pair));
+}
+/**
  * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.
  * 천 adds inside a group and 만 · 억 close one (1천만 = 1,000 × 10,000).
  */

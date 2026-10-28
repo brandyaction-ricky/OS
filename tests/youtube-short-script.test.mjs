@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -105,4 +105,14 @@ test("Reels · TikTok counts as pages show them, and where each reference is fro
   assert.deepEqual(["12만회", "10,000회", "1천만", "12만5천", "3억2천만", "1만2345", "2.3K", "12만 명"].map(parseCount), [120_000, 10_000, 10_000_000, 125_000, 320_000_000, 12_345, 2_300, 120_000]);
   assert.deepEqual(["https://www.tiktok.com/@a/video/1", "https://www.instagram.com/reel/x/", "https://www.facebook.com/ads/library/?id=1", "https://youtu.be/a", "https://www.youtube.com/shorts/a"].map(refPlatform),
     ["틱톡", "릴스", "메타 광고", "유튜브", "유튜브"]);
+});
+
+test("a found Short counts only when its title shares a two-letter word run with the 검색어", () => {
+  // 시안 2 (2026-10-28): 「일이 안 맞는 신호」 brought two viral Shorts about something else.
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "오줌이 마려울 땐 이 포즈를 따라해보세요✨#shorts"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "사연) 신입 멘탈 미쳤네.. 존경스럽다.."), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "회사랑 안 맞는 사람 특징 #shorts"), true);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "퇴사해야 한다는 신호 3가지"), true);
+  assert.equal(refMatchesQuery("Career change", "My CAREER pivot"), true);
+  assert.equal(refMatchesQuery("일 돈", "아무 제목"), true);
 });
