@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { packagingPick } from "@/lib/youtube-process/discover";
 import { projectName } from "@/lib/youtube-process/project";
-import { refHostOk, refReaction, SHORT_REF_BAR_TEXT, shortResearchOpen, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { refHostOk, refMatchesQuery, refReaction, SHORT_REF_BAR_TEXT, shortResearchOpen, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { RequestActor } from "./auth";
 import { packagingReferences } from "./youtube-discover";
 import { getYoutubeProject, readFailed } from "./youtube-process";
@@ -48,7 +48,7 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const searches = await Promise.allSettled([packagingReferences(query, true), packagingReferences(query, true, "viewCount")]);
   const found = searches.flatMap(result => result.status === "fulfilled" ? result.value : [])
     .filter((ref, index, list) => list.findIndex(other => other.id === ref.id) === index);
-  const market = packagingPick(found, true).filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass")
+  const market = packagingPick(found, true).filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass" && refMatchesQuery(query, ref.title))
     .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.views - a.views).slice(0, MARKET_TAKE);
   const own = script.refs.filter(ref => refHostOk(ref.url)).map(ref => ({ url: ref.url, title: ref.title, channel: "", views: ref.views ?? null, ratio: null,
     followers: ref.followers ?? null, likes: ref.likes ?? null, source: "pd" as const }));
@@ -57,7 +57,7 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   // Both searches failed (quota, key, timeout) and there is no link of the PD's: say why.
   const failed = searches.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (!items.length && failed && searches.every(result => result.status === "rejected")) throw failed.reason;
-  if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘은 영상이 없어요. 검색어를 넓히거나 링크를 직접 넣어 주세요.`);
+  if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘고 제목이 검색어와 맞는 영상이 없어요. 검색어를 바꾸거나 링크를 직접 넣어 주세요.`);
   const service = createServiceSupabase();
   const before = await latestJob(service, project.id);
   if (before && ["backlog", "in_progress"].includes(before.status)) await service.from("os_records").update({ status: "cancelled", updated_by: actor.id }).eq("id", before.id);
