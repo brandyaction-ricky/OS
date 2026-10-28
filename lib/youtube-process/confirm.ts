@@ -2,8 +2,9 @@
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
 export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검토 컨펌", shorts: "쇼츠 확정" };
-/** A 숏폼's 기획안 place is its 대본 (2026-10-28). */
-export const gateName = (gate: YpGate, kind: YpProject["yp"]["topic"]["type"]) => gate === "draft" && kind === "short" ? "대본 확정" : GATE_NAME[gate];
+/** A 숏폼's 기획안 place is its 대본, and its topic is fixed from the references' formulas (주제 확정, 2026-10-28). */
+export const gateName = (gate: YpGate, kind: YpProject["yp"]["topic"]["type"]) =>
+  kind === "short" && gate === "draft" ? "대본 확정" : kind === "short" && gate === "topic" ? "주제 확정" : GATE_NAME[gate];
 // 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
 // keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
 const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };

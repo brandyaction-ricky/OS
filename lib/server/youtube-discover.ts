@@ -25,7 +25,7 @@ export const discoverSchema = z.object({
 }).refine(input => Boolean(input.category) !== Boolean(input.q), "분류나 검색어 하나를 골라 주세요.");
 
 type Snippet = { title?: string; channelId?: string; channelTitle?: string; publishedAt?: string; liveBroadcastContent?: string; thumbnails?: { medium?: { url?: string }; high?: { url?: string } } };
-type Video = { id?: string; snippet?: Snippet; statistics?: { viewCount?: string }; contentDetails?: { duration?: string }; liveStreamingDetails?: unknown };
+type Video = { id?: string; snippet?: Snippet; statistics?: { viewCount?: string; likeCount?: string }; contentDetails?: { duration?: string }; liveStreamingDetails?: unknown };
 type Channel = { id?: string; snippet?: { title?: string; customUrl?: string }; statistics?: { subscriberCount?: string; hiddenSubscriberCount?: boolean }; contentDetails?: { relatedPlaylists?: { uploads?: string } } };
 const seconds = (value = "") => { const match = value.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/); return match ? Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0) : 0; };
 async function youtube<T>(path: string, params: Record<string, string>, key: string) {
@@ -56,10 +56,11 @@ export async function referenceTitle(videoId: string) {
 }
 
 /** 패키징 레퍼런스 for the 기획안 · 최종 썸네일 jobs: the 기획실's one search (about 102 units), ranked by rankPackagingRefs. */
-export async function packagingReferences(query: string): Promise<PackagingRef[]> {
+/** short: 숏폼 참고 영상 — YouTube's own under-4-minute filter, so more of the 50 results are Shorts; order "viewCount" for the most watched. */
+export async function packagingReferences(query: string, short = false, order: "relevance" | "viewCount" = "relevance"): Promise<PackagingRef[]> {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
-  const found = await youtube<{ items?: { id?: { videoId?: string } }[] }>("search", { part: "snippet", q: query, type: "video", maxResults: "50", order: "relevance", relevanceLanguage: "ko", regionCode: "KR", safeSearch: "none" }, key);
+  const found = await youtube<{ items?: { id?: { videoId?: string } }[] }>("search", { part: "snippet", q: query, type: "video", maxResults: "50", order, relevanceLanguage: "ko", regionCode: "KR", safeSearch: "none", ...(short ? { videoDuration: "short" } : {}) }, key);
   const ids = (found.items ?? []).map(item => item.id?.videoId).filter((id): id is string => Boolean(id));
   if (!ids.length) return [];
   const videos = (await youtube<{ items?: Video[] }>("videos", { part: VIDEO_PARTS, id: ids.join(",") }, key)).items ?? [];
@@ -68,7 +69,7 @@ export async function packagingReferences(query: string): Promise<PackagingRef[]
   const subscribers = new Map(channels.map(row => [row.id, row.statistics?.hiddenSubscriberCount ? null : Number(row.statistics?.subscriberCount ?? 0) || null]));
   return rankPackagingRefs(videos.map(video => ({ id: video.id ?? "", title: decodeHtmlEntities(video.snippet?.title ?? ""), channel: decodeHtmlEntities(video.snippet?.channelTitle ?? ""),
     views: Number(video.statistics?.viewCount ?? 0), subscribers: subscribers.get(video.snippet?.channelId) ?? null, seconds: seconds(video.contentDetails?.duration),
-    live: (video.snippet?.liveBroadcastContent ?? "none") !== "none" })));
+    live: (video.snippet?.liveBroadcastContent ?? "none") !== "none", likes: video.statistics?.likeCount === undefined ? null : Number(video.statistics.likeCount) })));
 }
 
 /** A channel's subscribers, normal views and breakouts from its last 50 uploads (2 quota units). */

@@ -1,5 +1,5 @@
 /* 비용 안내 (owner requests 2026-10-25 · 10-26): one tag and one dialog for every paid button in the OS, on the theme tokens. */
-.cost-tag{display:inline-flex;flex:none;align-self:center;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:1;white-space:nowrap;vertical-align:middle;cursor:help}
+.cost-tag{display:inline-flex;flex:none;align-self:center;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:600;line-height:1;white-space:nowrap;vertical-align:middle;cursor:help}
 .cost-tag-paid{background:var(--warning-soft);color:var(--warning)}
 .cost-tag-ai{background:var(--purple-soft);color:var(--purple)}
 .cost-tag-youtube{background:var(--panel-3);color:var(--text-2)}

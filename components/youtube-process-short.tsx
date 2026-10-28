@@ -304,10 +304,12 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
           <ShortVideo page={page} final={last} />
           <ShortVideo page={page} final={square} />
           <ShortVideo page={page} final={portrait} /></div>
+        {last ? null : <p className="yp-pempty" style={{ padding: "14px 8px" }}>최종본이 아직 없어요. 최종 검토에서 만들거나 올려요.</p>}
         {square || portrait ? <p className="yp-hint">정사각형 · 4:5는 피드 광고용이에요. 내려받아 광고 관리자에 올려요.</p> : null}
       </YpSection>
       <ShortYoutube page={page} last={last} />
-      {view ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
+      {/* Only what was written for it (the older scene editor's brief); a 숏폼 made from its 대본 has none to show. */}
+      {view && (view.brief.purpose === "ad" || view.brief.goal || view.brief.landingUrl) ? <YpSection n={3} title="광고 · 릴스로 올릴 때 같이 쓸 것">
         <dl className="yp-kv">
           <dt>용도</dt><dd>{view.brief.purpose === "ad" ? "광고" : "일반 콘텐츠"} · {view.brief.duration}초</dd>
           <dt>할 행동</dt><dd>{view.brief.goal || "—"}</dd>

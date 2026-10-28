@@ -204,7 +204,7 @@ function screenOrderIssues(story: MyinStoryboard, words: [number, number, string
   return issues;
 }
 /** QA 2: before the reel there are no subtitles, so every spoken sentence of the opening gets text on screen. */
-function openingTextIssues(story: MyinStoryboard, words: [number, number, string][], speech: string) {
+export function openingTextIssues(story: MyinStoryboard, words: [number, number, string][], speech: string) {
   const opening = story.scenes[0];
   if (!speech.trim() || opening?.type !== "opening" || story.scenes.length < 2) return [];
   const find = finder(words);

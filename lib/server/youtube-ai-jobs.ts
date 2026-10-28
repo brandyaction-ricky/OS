@@ -12,7 +12,8 @@ import { checkScenePlan, SCENE_PLAN_JSON_SCHEMA, scenePlanPrompt, youtubeSceneRu
 import { checkPronunciation, pronunciationPrompt, PRONUNCIATION_JSON_SCHEMA } from "./youtube-voice-worker";
 import { YOUTUBE_VISUAL_TEMPLATE_VERSION } from "@/lib/youtube-visual-template";
 import { myinRunWithWords, saveMyinStoryboard } from "./myin-run";
-import { checkMyinStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey } from "./myin-storyboard-job";
+import { checkMyinStoryboardResult, checkShortStoryboardResult, MYIN_CARD_DOCS, myinStoryboardCard, myinStoryboardInputKey, SHORT_CARD_DOCS, shortStoryboardCard } from "./myin-storyboard-job";
+import { DIAGRAM_CATALOG } from "@/lib/shortform-diagram-catalog";
 import { diagramCatalogTypes } from "@/lib/diagram-catalog";
 import { readDiagramCatalog } from "./diagram-catalog";
 import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtube-kit-job";
@@ -26,7 +27,7 @@ import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCop
 import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from "./content-generation";
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
 import { doneShortRefs } from "./youtube-process-short-refs";
-import { assertShortScriptInputs, assertShortTopicsInputs, saveShortScript, saveShortTopics, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
+import { assertShortFormulaInputs, assertShortScriptInputs, assertShortTopicsInputs, saveShortFormula, saveShortScript, saveShortTopics, shortFormulaCard, shortFormulaInputKey, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
@@ -36,15 +37,15 @@ const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV
 // MCP with a personal agent key, takes a job, does the text work on its own plan and submits; the OS only checks and stores.
 export const STAFF_AI_JOB_KIND = "youtube_staff_ai_v1";
 // ③ 화면 설계 is one pass; ② 원고 runs 축 → 설계 → 초안 → 검수 with separate reviews, so it holds the job longer.
-const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-script": 45 } as const;
+const LEASE_MINUTES = { "scene-plan": 30, script: 120, storyboard: 90, kit: 30, plan: 45, shorts: 30, short: 30, niche: 30, column: 90, "short-copy": 20, retitle: 30, "short-topics": 30, "short-formula": 45, "short-script": 45 } as const;
 const TASK_NAME = { "scene-plan": "화면 설계와 발음 검토", script: "원고(축 · 설계 · 초안 · 검수)", storyboard: "마이인 기획표(장면 · 비유 · 자료 후보)",
   kit: "유튜브 발행키트(제목 · 설명 · 태그 · 챕터 · 고정 댓글)", plan: "기획안(제목 · 썸네일 문구 · 영상 흐름)", shorts: "쇼츠 구간 제안", column: "SEO 칼럼(HTML)", short: "숏폼 장면(구매 이유 · 자막 · 내레이션 · 필요한 이미지)", "short-copy": "숏폼 제목 · 설명", niche: "틈새 묶기(같은 제목 공식)", retitle: "최종 썸네일 제목 · 문구 다시 뽑기",
-  "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-script": "숏폼 대본(레퍼런스 · 공식 · 대본)" } as const;
+  "short-topics": "숏폼 주제 후보(롱폼 원고에서)", "short-formula": "숏폼 공식 · 주제 후보(참고 영상에서)", "short-script": "숏폼 대본(확정한 주제 · 공식으로)" } as const;
 const versionRef = z.object({ id: z.string(), version: z.number() });
 // 원고 공정 정본 §2 '역할'. ① 기획 has no such field yet, so the staff member picks it when sending ② to their AI.
 export const SCRIPT_ROLES = ["유입형", "전환형", "판매형"] as const;
 const jobMetaSchema = z.object({
-  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-script"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
+  kind: z.literal(STAFF_AI_JOB_KIND), task: z.enum(["scene-plan", "script", "storyboard", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script"]), sourceId: z.string().uuid(), inputKey: z.string().length(64),
   // ruleVersions only on jobs made before 2026-10-18; a design no longer depends on script rule versions.
   templateVersion: z.string().optional(), ruleVersions: z.array(versionRef).optional(), targetMinutes: z.number().optional(), role: z.enum(SCRIPT_ROLES).optional(), attachments: z.string().optional(), slot: z.enum(SLOTS).optional(), myinRunId: z.string().uuid().optional(), requestedAt: z.string(),
   lease: z.object({ token: z.string().uuid(), expiresAt: z.string() }).optional(), claimedAt: z.string().optional(),
@@ -79,6 +80,8 @@ export const staffJobRequestSchema = z.discriminatedUnion("task", [
   z.object({ task: z.literal("retitle"), sourceId: z.string().uuid(), slot: z.enum(SLOTS), reason: z.string().trim().max(300).default(""), query: z.string().trim().max(60).optional() }).strict(),
   // 숏폼 대본 정본 입구 A (2026-10-28): 숏폼 주제 후보 from a longform's 원고; then a 숏폼's 대본 from the shorts found by query.
   z.object({ task: z.literal("short-topics"), sourceId: z.string().uuid(), count: z.number().int().min(1).max(5).default(3) }).strict(),
+  // 숏폼 주제 (owner 2026-10-28): the references' formulas and three 주제 후보 come before the topic is fixed.
+  z.object({ task: z.literal("short-formula"), sourceId: z.string().uuid() }).strict(),
   z.object({ task: z.literal("short-script"), sourceId: z.string().uuid() }).strict(),
 ]);
 export const staffJobWorkerSchema = z.discriminatedUnion("action", [
@@ -186,6 +189,12 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertShortTopicsInputs(state);
     source = state.source; title = jobTitle(state); inputKey = shortTopicsInputKey(state);
+  } else if (input.task === "short-formula") {
+    const state = await readPipeline(actor, input.sourceId);
+    if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
+    assertShortFormulaInputs(state);
+    source = state.source; title = jobTitle(state); inputKey = shortFormulaInputKey(state);
+    if (!(await doneShortRefs(service(), state.source.id, 60))) marketFor = { query: shortScriptQuery(state), short: true };
   } else if (input.task === "short-script") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -218,7 +227,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   }
   const now = new Date().toISOString();
   // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
-  const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query)
+  const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query, marketFor.short)
     .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short) }))
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
@@ -263,7 +272,7 @@ async function ownJob(agent: RequestActor, jobId: string) {
 }
 
 async function closeStale(job: OsRecord, m: JobMeta): Promise<never> {
-  const where = m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : m.task === "retitle" ? "제작 › 최종 썸네일" : m.task === "short-topics" ? "쇼츠 · 칼럼 › 숏폼 주제" : m.task === "short-script" ? "숏폼 대본" : "③ 영상 제작";
+  const where = m.task === "script" ? "② 원고" : m.task === "kit" ? "⑦ 유튜브 관리" : m.task === "plan" ? "기획안" : m.task === "shorts" ? "쇼츠" : m.task === "column" ? "쇼츠 · 칼럼 › SEO 칼럼" : m.task === "short" ? "숏폼 제작" : m.task === "short-copy" ? "숏폼 내보내기" : m.task === "retitle" ? "제작 › 최종 썸네일" : m.task === "short-topics" ? "쇼츠 · 칼럼 › 숏폼 주제" : m.task === "short-formula" ? "숏폼 주제" : m.task === "short-script" ? "숏폼 대본" : "③ 영상 제작";
   await saveJob(job, { status: "blocked", metadata: { ...m, lease: undefined, failReason: `기획·제목·원고·영상 기준이 바뀌어 이 요청은 닫았어요. ${where} 화면에서 다시 보내 주세요.` } });
   throw new ApiError(409, "STAFF_AI_JOB_STALE", "입력이 바뀌어 이 작업은 닫혔습니다. 다른 작업을 확인하세요.");
 }
@@ -309,6 +318,13 @@ async function currentShortTopicsInput(job: OsRecord) {
   const state = await readPipeline({ supabase: service() }, m.sourceId);
   try { assertShortTopicsInputs(state); } catch { await closeStale(job, m); }
   if (shortTopicsInputKey(state) !== m.inputKey) await closeStale(job, m);
+  return state;
+}
+async function currentShortFormulaInput(job: OsRecord) {
+  const m = meta(job);
+  const state = await readPipeline({ supabase: service() }, m.sourceId);
+  try { assertShortFormulaInputs(state); } catch { await closeStale(job, m); }
+  if (shortFormulaInputKey(state) !== m.inputKey) await closeStale(job, m);
   return state;
 }
 async function currentShortScriptInput(job: OsRecord) {
@@ -377,8 +393,8 @@ async function currentScriptInput(job: OsRecord) {
 }
 
 /** title → doc_id for the storyboard card's documents; a missing or doubled title just goes without an id. */
-async function myinCardDocIds() {
-  const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", MYIN_CARD_DOCS.map(([title]) => title)).neq("status", "archived");
+async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
+  const { data } = await createServiceSupabase().from("os_documents").select("id,title").in("title", docs.map(([title]) => title)).neq("status", "archived");
   const rows = data ?? [];
   return Object.fromEntries(rows.filter(row => rows.filter(other => other.title === row.title).length === 1).map(row => [row.title as string, row.id as string]));
 }
@@ -396,6 +412,10 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const lease = await take();
+    const note = myin.run.review?.decision === "revise" ? myin.run.review.note : undefined;
+    if (myin.run.layout === "short") return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
+      instructions: shortStoryboardCard({ title: myin.title, headCopy: myin.headCopy, screenScript: myin.screenScript, markdown: myin.markdown, words: myin.words,
+        durationSeconds: myin.run.words!.durationSeconds, note, leaseMinutes: minutes, diagrams: DIAGRAM_CATALOG, docIds: await myinCardDocIds(SHORT_CARD_DOCS) }) };
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt,
       instructions: myinStoryboardCard({ title: myin.title, markdown: myin.markdown, words: myin.words, durationSeconds: myin.run.words!.durationSeconds,
         note: myin.run.review?.decision === "revise" ? myin.run.review.note : undefined, leaseMinutes: minutes, catalog: await readDiagramCatalog(), docIds: await myinCardDocIds() }) };
@@ -413,6 +433,11 @@ export async function claimStaffJob(agent: RequestActor, jobId: string) {
     const state = await currentShortTopicsInput(job);
     const lease = await take();
     return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortTopicsCard(service(), state, minutes, m.targetMinutes ?? 3) };
+  }
+  if (m.task === "short-formula") {
+    const state = await currentShortFormulaInput(job);
+    const lease = await take();
+    return { jobId, task: m.task, lease: lease.token, leaseExpiresAt: lease.expiresAt, instructions: await shortFormulaCard(service(), state, minutes, m.market) };
   }
   if (m.task === "short-script") {
     const state = await currentShortScriptInput(job);
@@ -506,6 +531,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
     return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 쇼츠 · 칼럼 › 숏폼 주제에서 후보를 골라 숏폼으로 만듭니다." };
   }
+  if (m.task === "short-formula") {
+    const state = await currentShortFormulaInput(job);
+    const by = await displayName(service(), agent.ownerId, agent.name);
+    const saved = await keepIssues(job, m, () => saveShortFormula(service(), agent.ownerId, state, input.result, { by, model: input.model, jobId: job.id, team: state.source.team ?? "" }, m.market));
+    await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
+    return { done: true, ...saved, next: "담당 PD가 유튜브 공정 › 주제에서 주제 후보 하나를 골라 주제를 확정합니다." };
+  }
   if (m.task === "short-script") {
     const state = await currentShortScriptInput(job);
     const by = await displayName(service(), agent.ownerId, agent.name);
@@ -554,11 +586,13 @@ export async function completeStaffJob(agent: RequestActor, input: Extract<z.inf
   if (m.task === "storyboard") {
     const myin = await currentStoryboardInput(job);
     const catalogTypes = diagramCatalogTypes(await readDiagramCatalog());
-    const checked = await keepIssues(job, m, () => checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
+    const checked = await keepIssues(job, m, () => myin.run.layout === "short"
+      ? checkShortStoryboardResult(input.result, { words: myin.words, speech: myin.speech, headCopy: myin.headCopy, durationSeconds: myin.run.words!.durationSeconds, diagrams: DIAGRAM_CATALOG })
+      : checkMyinStoryboardResult(input.result, myin.words, catalogTypes, myin.speech));
     await saveMyinStoryboard(service(), myin.record, myin.run, { storyboard: checked.storyboard, assets: checked.assets, reasons: checked.reasons,
       fuzzy: checked.fuzzy, notes: checked.notes, model: input.model });
     await saveJob(job, { status: "done", stage: "done", metadata: { ...m, lease: undefined, model: input.model, issues: [], doneAt: new Date().toISOString() } });
-    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
+    return { done: true, scenes: (checked.storyboard.scenes as unknown[]).length, fuzzyCues: checked.fuzzy.length, next: myin.run.layout === "short" ? "로건, 유쓰가 숏폼 제작 화면에서 기획표를 확인합니다." : "로건, 유쓰가 ③ 영상 제작 화면에서 비유 포인트·구독 위치·한 장 정리를 확인합니다." };
   }
   const { automation, segments } = await currentInput(job);
   const { plan, pronunciation } = await keepIssues(job, m, () => ({

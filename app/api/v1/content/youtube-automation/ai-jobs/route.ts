@@ -11,7 +11,7 @@ const headers = { "cache-control": "private, no-store" };
 const disabled = () => new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
 // ② 원고 and ⑦ 발행키트 open on the staff switch; ③ 화면 설계 and 기획표 stay with the DEV-only pilot.
 // 기획안 (유튜브 공정 v1) opens with them.
-const STAFF_TASKS = ["script", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-script"] as const;
+const STAFF_TASKS = ["script", "kit", "plan", "shorts", "short", "niche", "column", "short-copy", "retitle", "short-topics", "short-formula", "short-script"] as const;
 const TASKS = ["scene-plan", "storyboard", ...STAFF_TASKS] as const;
 const open = (task: (typeof TASKS)[number]) => ((STAFF_TASKS as readonly string[]).includes(task) ? canUseYoutubeStaffScript : canUseYoutubeAutomationPilot)(process.env);
 

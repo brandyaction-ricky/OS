@@ -167,7 +167,7 @@ function ThumbCard({ page, thumb, index, can, busy, last, onChange, onMode, onMo
 }) {
   const input = useRef<HTMLInputElement>(null);
   return <div className={`yp-thc${index < 3 ? " yp-on" : ""}`}>
-    <div className="yp-thc-h"><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><SlotTag index={index} /><span className="yp-muted" style={{ fontSize: 11 }}>후보 {index + 1}</span></span>
+    <div className="yp-thc-h"><span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><SlotTag index={index} /><span className="yp-muted" style={{ fontSize: 12 }}>후보 {index + 1}</span></span>
       {can ? <span className="yp-row-btns"><button type="button" className="yp-ib yp-xs" aria-label="앞으로" disabled={!index} onClick={() => onMove(index - 1)}><ArrowUp size={12} /></button>
         <button type="button" className="yp-ib yp-xs" aria-label="뒤로" disabled={last} onClick={() => onMove(index + 1)}><ArrowDown size={12} /></button>
         {onRemove ? <button type="button" className="yp-ib yp-xs" aria-label="후보 빼기" onClick={onRemove}><X size={12} /></button> : null}</span> : null}</div>

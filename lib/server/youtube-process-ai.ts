@@ -12,6 +12,7 @@ import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from
 import { assertColumnOpen, writeStage } from "./youtube-process-stages";
 import { checkColumnHtml, cleanColumnHtml, columnMeta, COLUMN_CONTRACT } from "@/lib/seo-column";
 import { CLIP_MAX_SECONDS, clipSeconds } from "@/lib/youtube-process/short";
+import { scriptLines } from "@/lib/youtube-process/short-script";
 import type { PackagingRef } from "@/lib/youtube-process/discover";
 
 // The automation that already runs (staff AI ② 원고 · ⑦ 발행키트, ③ 마이인 v13) reading a 유튜브 공정 v1 project instead of the
@@ -49,6 +50,7 @@ const v1ThumbCopy = (stages: ReturnType<typeof v1Stages>) => finalPair(stages.pl
 /** The automation input for a v1 project: the current 구성안 원고, once the project is in 제작 (or later). */
 export function v1AutomationInput(state: Pipeline) {
   const stages = v1Stages(state);
+  if (stages.project.yp.topic.type === "short") return v1ShortInput(state, stages);
   const outline = state.records.find(row => row.id === stages.outline.id) ?? null;
   const markdown = stages.outline.data.script;
   const scriptText = narrationFromMarkdown(markdown);
@@ -60,6 +62,25 @@ export function v1AutomationInput(state: Pipeline) {
     plan: { format: "narrated_visual" as const, privacyStatus: "private" as const, judgmentMode: "advisory_only" as const, sourceId: stages.project.id,
       inputKey: ready ? digest(["yp-v1-voice", stages.project.id, digest(markdown)]) : null, currentStage: ready ? "ready_for_voice" as const : "needs_input" as const,
       missing, script: ready && outline ? { id: outline.id, version: outline.version } : null, packaging: null, kit: null },
+  };
+}
+
+/**
+ * A 숏폼 (2026-10-28): its confirmed 대본, spoken as one paragraph (one Fish read keeps the 30–45 s pace; Logan's stage_voice sets the
+ * sentence gaps), into the same v13 run as a longform, drawn by the render PC's vertical engine (layout "short").
+ */
+function v1ShortInput(state: Pipeline, stages: ReturnType<typeof v1Stages>) {
+  const script = stages.shortScript;
+  const confirmed = script.data.confirmed;
+  const scriptText = confirmed ? scriptLines(confirmed.text).map(line => line.text).join(" ") : "";
+  const open = ["make", "review"].includes(stages.project.yp.stage);
+  const ready = Boolean(open && script.id && scriptText);
+  return {
+    state, scriptText: ready ? scriptText : null, title: projectName(stages.project), thumbnailCopy: "", layout: "short" as const,
+    headCopy: confirmed?.headCopy ?? script.data.headCopy, screenScript: confirmed?.text ?? "",
+    plan: { format: "narrated_visual" as const, privacyStatus: "private" as const, judgmentMode: "advisory_only" as const, sourceId: stages.project.id,
+      inputKey: ready ? digest(["yp-v1-short-voice", stages.project.id, digest(confirmed!.text)]) : null, currentStage: ready ? "ready_for_voice" as const : "needs_input" as const,
+      missing: !open ? ["대본을 확정하고 제작 단계로 넘어오기"] : !scriptText ? ["확정한 대본"] : [], script: ready ? { id: script.id!, version: script.version } : null, packaging: null, kit: null },
   };
 }
 
