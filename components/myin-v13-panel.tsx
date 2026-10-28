@@ -7,6 +7,7 @@ import { StaffDesign, Step, type StaffJobStatus, type StepState } from "./youtub
 import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
+import { MyinOurImages } from "./myin-our-images";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
 
@@ -231,6 +232,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <p className="yt-note">{board.reasons.summary}</p></details>
         <details className="yt-details"><summary>사진 후보 {board.assets.filter((a) => a.kind !== "bgm").length}개</summary>
           <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
+        <MyinOurImages key={run.id} runId={run.id} token={accessToken} onSaved={() => void load()} />
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
         {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>
