@@ -34,3 +34,28 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect(page.getByText("주제를 정할 때 고른 공식으로 헤드 카피와 대본을 써 줘요")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("a new 숏폼 starts from a 초안 키워드 and finds its references before the topic is fixed", async ({ page }) => {
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/content/plan?project=new&view=topic");
+  await page.getByLabel("주제", { exact: true }).fill("[시험] 일이 안 맞는 신호");
+  // Choosing 숏폼 saves the new video, so its 참고 영상 open at once.
+  await page.getByLabel("숏폼 (릴스 · 광고)").check();
+  await expect(page.getByLabel("참고 영상 검색어")).toBeVisible();
+  await page.getByLabel("정밀 타겟").fill("일이 안 맞는 것 같은데 이유를 모르는 3~7년 차 직장인");
+  await page.getByLabel("정밀 타겟").blur();
+  await expect(page).toHaveURL(/project=(?!new)[^&]+/);
+  const ai = page.getByRole("button", { name: /내 AI에게 맡기기/ });
+  await expect(ai).toBeDisabled();
+  await expect(ai).toContainText("먼저 4에서 참고 영상을 찾아요");
+  const confirm = page.locator(".yp-foot").getByRole("button", { name: /주제 확정하고 다음으로/ });
+  await expect(page.locator(".yp-foot")).toContainText("○ 참고 영상");
+  await expect(confirm).toBeDisabled();
+  await page.getByRole("button", { name: "찾기", exact: true }).click();
+  await expect(page.getByText("반응 높음").first()).toBeVisible();
+  await expect(ai).toBeEnabled();
+  await expect(page.locator(".yp-foot")).toContainText("✓ 참고 영상");
+  await expect(page.locator(".yp-foot")).toContainText("○ 공식");
+  await expect(confirm).toBeDisabled();
+  expect(errors).toEqual([]);
+});

@@ -333,16 +333,17 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
       const reaction = refReaction(counts);
       // A Short's thumbnail is a vertical frame: shown 9:16 and large enough to read its copy, with the whole title under it.
       return <button key={item.url} type="button" aria-expanded={shown} onClick={() => setOpen(shown ? "" : item.url)}
-          style={{ display: "grid", gap: 4, alignContent: "start", textAlign: "left", background: "none", border: shown ? "2px solid var(--accent)" : "1px solid var(--line)", borderRadius: 8, padding: 6, color: "inherit", cursor: "pointer", opacity: reaction === "below" ? 0.55 : 1 }}>
-          {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 6 }} />
-            : <span style={{ width: "100%", aspectRatio: "9 / 16", borderRadius: 6, background: "var(--panel-2)" }} />}
+          style={{ display: "grid", gap: 4, alignContent: "start", textAlign: "left", background: "none", border: shown ? "2px solid var(--accent)" : "1px solid var(--line)", borderRadius: 8, padding: 6, color: "inherit", cursor: "pointer" }}>
+          {/* Under the bar: only the picture fades; the words stay readable (readability audit 2026-10-28). */}
+          {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 6, opacity: reaction === "below" ? 0.45 : 1 }} />
+            : <span style={{ width: "100%", aspectRatio: "9 / 16", borderRadius: 6, background: "var(--panel-2)", opacity: reaction === "below" ? 0.45 : 1 }} />}
           <span className="yp-muted" style={{ fontSize: 12 }}>{refPlatform(item.url)}{item.source === "pd" ? " · 직접 넣음" : ""}</span>
           <span style={{ fontSize: 13, lineHeight: 1.4 }}>{item.title || item.url}</span>
           {refCountsLine(counts) ? <span className="yp-muted" style={{ fontSize: 12 }}>{refCountsLine(counts)}</span> : null}
           <span>{reaction === "pass" ? <span className="yp-tag yp-ok">반응 높음</span> : reaction === "below" ? <span className="yp-tag yp-warn">기준 아래 · AI에 안 넘김</span>
             : <span className="yp-tag">숫자 없음</span>}{item.result && !item.result.ok ? <span className="yp-muted" style={{ fontSize: 12 }}> · 화면 못 받음</span> : null}</span>
         </button>;
-    })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>검색어로 쇼츠를 찾아요</p> : null}
+    })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>{can ? "키워드로 찾거나 링크를 넣어요" : "찾은 참고 영상이 없어요"}</p> : null}
     {/* The one opened: its first three seconds (the 헤드 카피) and its words, under the cards so the rows keep their places. */}
     {items.filter(item => item.url === open).map(item => <div key={item.url} style={{ display: "grid", gap: 6, fontSize: 12, marginTop: 10 }}>
           <b style={{ fontSize: 13 }}>{item.title || item.url}</b>
