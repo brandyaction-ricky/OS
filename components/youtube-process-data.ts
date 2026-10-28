@@ -185,7 +185,10 @@ const demoProjects = () => demoStore ??= [
   waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
   demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
   demoProject("demo-p10", "[예시] 일이 안 맞을 때 먼저 볼 4칸 (릴스)", "short", "upload", 1),
+  demoProject("demo-p11", "[예시] 만나고 싶은데 쉬고도 싶다면", "short", "make", 0),
 ];
+// 숏폼 made from a confirmed 대본 (2026-10-28) in the demo; demo-p9 keeps the older scene editor (made before the 대본 step).
+const CONFIRMED_SHORT_DEMOS = ["demo-p10", "demo-p11"];
 /** One example 쇼츠 확정 record with a 대표 comment, so 대표 메뉴 › 컨펌 › 쇼츠 확정 has something to show in the demo. */
 function shortsDemo(project: YpProject): YpProject {
   const yp = shortsAction(project.yp, { action: "confirm", note: "[예시] 3편 확정", clips: [1, 2, 3].map(n => ({ id: `demo-clip-${n}`, title: `[예시] 쇼츠 ${n}`,
@@ -219,7 +222,7 @@ function demoFilledStages(project: YpProject): YpStagesView {
     { id: "st2", insight: "[예시] 내 기준이 없으면 남의 순서로 하루를 산다", scene: "메일 순서대로 일하다 중요한 일을 못 한 날", paragraph: "본론 2 · 내 기준", why: "할 일 목록이 길수록 공감" }];
   // A 숏폼 past its 대본 has a confirmed one, so 제작 shows the automatic making (2026-10-28).
   const shortScript = emptyStage("shortScript", kind);
-  if (at >= 2 && kind === "short") {
+  if (at >= 2 && CONFIRMED_SHORT_DEMOS.includes(project.id)) {
     const text = "[예시] 친구는 만나고 싶은데 약속은 부담돼요.\n주말을 전부 약속으로 채우면 지치거든요.\n[관계] 만나고 싶은 마음과 쉬고 싶은 마음이 같이 있는 거예요.\n그래서 토요일 오후만 만나고 저녁엔 먼저 들어가요.";
     Object.assign(shortScript, { headCopy: "[예시] 만나고 싶은데 쉬고 싶다", text, confirmed: { at: daysAgo(1), text, headCopy: "[예시] 만나고 싶은데 쉬고 싶다" } });
   }
