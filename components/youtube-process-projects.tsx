@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { ArrowRight, Copy, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
 import { YoutubeDiscoverScreen } from "./youtube-process-discover";
@@ -34,10 +34,12 @@ export function YoutubeProjectsScreen() {
   const [attempt, setAttempt] = useState(0);
   const [trashed, setTrashed] = useState<(YpTrashed & { canManage: boolean })[]>([]);
   const [trashing, setTrashing] = useState<YpProject | null>(null);
+  const [copying, setCopying] = useState<YpProject | null>(null);
   const [purging, setPurging] = useState<YpTrashed | null>(null);
   const [reason, setReason] = useState("");
   const [sure, setSure] = useState(false);
   const trashDialog = useRef<HTMLDialogElement>(null);
+  const copyDialog = useRef<HTMLDialogElement>(null);
   const purgeDialog = useRef<HTMLDialogElement>(null);
   const admin = profile?.role === "admin";
 
@@ -71,6 +73,7 @@ export function YoutubeProjectsScreen() {
     finally { setBusy(false); }
   };
   const openTrash = (project: YpProject) => { setTrashing(project); setReason(""); trashDialog.current?.showModal(); };
+  const openCopy = (project: YpProject) => { setCopying(project); copyDialog.current?.showModal(); };
   const openPurge = (item: YpTrashed) => { setPurging(item); setReason(""); setSure(false); purgeDialog.current?.showModal(); };
 
   const all = projects ?? [];
@@ -130,6 +133,7 @@ export function YoutubeProjectsScreen() {
               <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} · {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(done * 100)}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>
               <div className="yp-mv-act"><Link className={`yp-btn${next.tone === "todo" || next.tone === "fix" ? " yp-pri" : ""}`} href={next.href}>{next.button}{next.tone === "todo" || next.tone === "fix" ? <ArrowRight size={14} aria-hidden="true" /> : null}</Link>
+                <button type="button" className="yp-ib" aria-label={`${projectName(project)} 복제`} title="복제" onClick={() => openCopy(project)}><Copy size={15} /></button>
                 {mayTrash(project, profile?.id, admin) ? <button type="button" className="yp-ib" aria-label={`${projectName(project)} 삭제`} title="휴지통으로" onClick={() => openTrash(project)}><Trash2 size={15} /></button> : null}</div>
             </div>; })}
           {legacyShown.map(topic => <div key={topic.id} className="yp-mv">
@@ -138,6 +142,15 @@ export function YoutubeProjectsScreen() {
           {!shown.length && !legacyShown.length ? <p className="yp-pempty">{query.trim() ? "찾는 영상이 없어요" : filter === "done" ? "아직 끝난 영상이 없어요" : filter === "mine" ? "내가 담당한 영상이 없어요" : "진행 중인 영상이 없어요"}</p> : null}
         </div>}
       </>}
+
+    <dialog ref={copyDialog} className="yp-modal" aria-labelledby="yp-copy-title" onClose={() => setCopying(null)}>
+      <div className="yp-modal-h"><span id="yp-copy-title">이 영상을 복제할까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => copyDialog.current?.close()}><X size={14} /></button></div>
+      <div className="yp-modal-b"><p style={{ marginTop: 0 }}><b>{copying ? projectName(copying) : ""}</b></p>
+        <ul className="yp-nowsteps"><li>주제 · 기획안 · 구성안 원고와 주제 · 기획안 컨펌을 그대로 가져와 같은 단계에서 이어 가요. 이름 끝에 「(복사본)」이 붙어요.</li>
+          <li>음성 · 영상은 새로 만들어요. 최종 검토나 업로드까지 간 영상은 제작 단계에서 시작해요.</li></ul></div>
+      <div className="yp-modal-f"><button type="button" className="yp-btn" onClick={() => copyDialog.current?.close()}>취소</button>
+        <button type="button" className="yp-btn yp-pri" disabled={busy || !copying} onClick={() => copying && void act(async () => { await client!.copy(copying.id); }, copyDialog.current)}><Copy size={14} aria-hidden="true" /> {busy ? "복제하는 중…" : "복제하기"}</button></div>
+    </dialog>
 
     <dialog ref={trashDialog} className="yp-modal" aria-labelledby="yp-trash-title" onClose={() => setTrashing(null)}>
       <div className="yp-modal-h"><span id="yp-trash-title">이 영상을 휴지통으로 옮길까요?</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={() => trashDialog.current?.close()}><X size={14} /></button></div>
