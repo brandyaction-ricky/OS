@@ -669,11 +669,15 @@ async function ourImageRun(actor: RequestActor, runId: string, file?: string) {
 }
 
 /** The photo files the storyboard uses and where each comes from: ours, a listed Unsplash · 위키미디어 photo, or neither. */
+function photoSources(run: MyinRun, folders: Map<string, unknown>) {
+  const listed = new Set((run.storyboard?.assets ?? []).filter((a) => myinPhotoFetchUrl(a.url)).map((a) => a.file));
+  return [...folders.keys()].map((file) => ({ file, from: run.ours?.[file] ? "ours" as const : listed.has(file) ? "list" as const : "none" as const,
+    by: run.ours?.[file]?.name ?? null }));
+}
+
 export async function myinPhotos(actor: RequestActor, runId: string) {
   const { run, folders, open } = await ourImageRun(actor, runId);
-  const listed = new Set((run.storyboard?.assets ?? []).filter((a) => myinPhotoFetchUrl(a.url)).map((a) => a.file));
-  return { open, photos: [...folders.keys()].map((file) => ({ file, from: run.ours?.[file] ? "ours" as const : listed.has(file) ? "list" as const : "none" as const,
-    by: run.ours?.[file]?.name ?? null })) };
+  return { open, photos: photoSources(run, folders) };
 }
 
 export async function myinOurImageUpload(actor: RequestActor, runId: string, file: string, type: string) {
@@ -685,9 +689,10 @@ export async function myinOurImageUpload(actor: RequestActor, runId: string, fil
   return { path, uploadUrl: await uploadUrl(service, OUTPUT_BUCKET, path) };
 }
 
-/** The upload landed: keep it for that file. At ④ after the preparation (or a stop) it prepares again, as 「자료 준비 다시 하기」 would. */
+/** The upload landed: keep it for that file. At ④ after the preparation (or a stop) it prepares again, as 「자료 준비 다시 하기」 would,
+ * once no photo is left without a source, so the first of several uploads does not start one that stops at the next missing photo. */
 export async function saveMyinOurImage(actor: RequestActor, runId: string, file: string, path: string) {
-  const { service, record, run, open } = await ourImageRun(actor, runId, file);
+  const { service, record, run, folders, open } = await ourImageRun(actor, runId, file);
   const folder = ourImageFolder(record, run), name = path.slice(folder.length + 1);
   if (!open || !path.startsWith(`${folder}/`) || name.includes("/")) throw new ApiError(400, "MYIN_OUR_IMAGE_PATH", "이미지를 다시 올려 주세요.");
   const { data } = await service.storage.from(OUTPUT_BUCKET).list(folder, { search: name });
@@ -699,7 +704,8 @@ export async function saveMyinOurImage(actor: RequestActor, runId: string, file:
   }
   const next: MyinRun = { ...run, ours: { ...run.ours, [file]: { path, bytes, by: actor.id, name: actor.name, at: new Date().toISOString() } } };
   const saved = await save(service, record, record.status, record.stage ?? "", next);
-  const again = run.clipsReview && (record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
+  const again = run.clipsReview && photoSources(next, folders).every((photo) => photo.from !== "none")
+    && (record.stage === "prep_ready" || (record.status === "blocked" && ["cta_pending", "prep_pending"].includes(record.stage ?? "")));
   return again ? startMyinPrep(actor, runId) : presentMyinRun(saved);
 }
 
