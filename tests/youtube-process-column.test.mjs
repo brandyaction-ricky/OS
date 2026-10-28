@@ -12,14 +12,14 @@ import * as stages from "../lib/youtube-process/stages.ts";
 import * as seoColumn from "../lib/seo-column.ts";
 import * as short from "../lib/youtube-process/short.ts";
 
-// SEO 칼럼 by the staff AI (owner request 2026-10-25): opens after the 최종 검수 OK, stores only checked HTML, and never overwrites a column a person edited.
+// SEO 칼럼 by the staff AI (owner request 2026-10-25): opens after the 최종 검토 OK, stores only checked HTML, and never overwrites a column a person edited.
 class ApiError extends Error { constructor(status, code, message) { super(message); this.status = status; this.code = code; } }
 const source = await readFile(new URL("../lib/server/youtube-process-ai.ts", import.meta.url), "utf8");
 const compiled = { exports: {} };
 let written = null;
 const assertColumnOpen = (row) => {
   if (row.yp.topic.type === "short") throw new ApiError(409, "STAGE_LOCKED", "숏폼에는 SEO 칼럼이 없어요.");
-  if (!["upload", "shorts", "done"].includes(row.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검수 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
+  if (!["upload", "shorts", "done"].includes(row.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검토 컨펌 OK 뒤에 SEO 칼럼을 만들 수 있어요.");
 };
 const modules = { "node:crypto": crypto, zod, "@/lib/http": { ApiError }, "@/lib/youtube-script-check": scriptCheck, "@/lib/youtube-narration-document": narration,
   "@/lib/youtube-process/project": project, "@/lib/youtube-process/stages": stages, "@/lib/seo-column": seoColumn, "@/lib/youtube-process/short": short,
@@ -52,7 +52,7 @@ const state = (stage, columnData, kind = "anim") => ({
 const supabase = { from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { display_name: "리키" } }) }) }) }) };
 const author = { model: "claude-opus-5-5", jobId: "job", name: "키 이름" };
 
-test("the column opens after the 최종 검수 OK, for longform only, and needs the 원고", () => {
+test("the column opens after the 최종 검토 OK, for longform only, and needs the 원고", () => {
   assert.throws(() => ai.assertV1ColumnInputs(state("review")), (error) => error.status === 409);
   assert.throws(() => ai.assertV1ColumnInputs(state("upload", null, "short")), (error) => error.status === 409);
   assert.doesNotThrow(() => ai.assertV1ColumnInputs(state("shorts")));

@@ -7,7 +7,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest } from "@/lib/server/auth";
 import { getDefaultOrganization } from "@/lib/server/organization";
 
-const TOOL_LABEL = { claude: "Claude", codex: "Codex", render: "컴퓨터 렌더" } as const;
+const TOOL_LABEL = { claude: "Claude", codex: "Codex", render: "컴퓨터 영상 만들기" } as const;
 const inputSchema = z.object({ tool: z.enum(["claude", "codex", "render"]) }).strict();
 
 /**

@@ -23,7 +23,7 @@ export function renderCanonical(value:unknown):string {
 export const renderDigest=(value:unknown)=>createHash("sha256").update(renderCanonical(value)).digest("hex");
 function secret(){
   const value=process.env.YOUTUBE_MEDIA_WORKER_SECRET??"";
-  if(value.length<32)throw new ApiError(503,"SHORTFORM_WORKER_UNAVAILABLE","렌더 PC 연결 설정이 필요합니다.");
+  if(value.length<32)throw new ApiError(503,"SHORTFORM_WORKER_UNAVAILABLE","영상 만드는 컴퓨터 연결 설정이 필요합니다.");
   return value;
 }
 /** 9:16 for Shorts · Reels; 1:1 square and 4:5 portrait for feed ads (owner requests 2026-10-25). A plan without `aspect` is 9:16, as every plan before it. */
@@ -118,7 +118,7 @@ async function buildPlan(service:Service,item:OsRecord,aspect:ShortformAspect="9
   if(plan.duration>60||plan.duration<1)throw new ApiError(422,"SHORTFORM_DURATION_INVALID","완성 길이는 1~60초여야 합니다.");
   if(brief.mode==="direct"&&plan.cuts.some(cut=>cut.voice.trim())){
     const referenceId=process.env.FISH_VOICE_REFERENCE_ID?.trim(),model=process.env.FISH_TTS_MODEL?.trim()||"s2.1-pro";
-    if(!referenceId||!process.env.FISH_API_KEY?.trim())throw new ApiError(503,"FISH_NOT_CONFIGURED","내레이션 생성 설정이 필요합니다.");
+    if(!referenceId||!process.env.FISH_API_KEY?.trim())throw new ApiError(503,"FISH_NOT_CONFIGURED","내레이션 만들기 설정이 필요합니다.");
     plan.voice={referenceFingerprint:renderDigest(referenceId),model,settings:fishVoiceSettings(process.env)};
   }
   return plan;
@@ -139,7 +139,7 @@ export async function enqueueShortformRenderFor(owner:string,item:OsRecord,versi
   if(item.owner_id!==owner)throw new ApiError(403,"SHORTFORM_OWNER_MISMATCH","제작 카드의 주인을 확인해 주세요.");
   if(item.version!==version)throw new ApiError(409,"SHORTFORM_INPUT_CHANGED","최신 내용을 저장하고 다시 요청해 주세요.");
   const plan=await buildPlan(service,item,aspect),inputKey=renderDigest(plan);
-  if(plan.voice&&!voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","내레이션 생성 비용을 확인해 주세요.");
+  if(plan.voice&&!voiceApproved)throw new ApiError(422,"SHORTFORM_VOICE_APPROVAL","내레이션 만드는 비용을 확인해 주세요.");
   const {data:existing,error}=await service.from("os_records").select("*").eq("record_type","ai_job").eq("owner_id",owner)
     .eq("metadata->>kind",SHORTFORM_RENDER_KIND).eq("metadata->>itemId",itemId).eq("metadata->>inputKey",inputKey)
     .in("status",["backlog","in_progress","done"]).is("archived_at",null).order("created_at",{ascending:false}).limit(1);

@@ -14,7 +14,7 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "기획", href: "/content/plan", navHref: "/content/projects", icon: PenLine, aliases: ["주제", "기획안", "구성안"], ready: true },
   { label: "제작", href: "/content/make", navHref: "/content/projects", icon: Film, aliases: ["최종본 올리기"], ready: true },
-  { label: "최종 검수", href: "/content/final-check", navHref: "/content/projects", icon: Eye, aliases: ["영상 피드백"], ready: true },
+  { label: "최종 검토", href: "/content/final-check", navHref: "/content/projects", icon: Eye, aliases: ["영상 피드백"], ready: true },
   { label: "업로드", href: "/content/upload", navHref: "/content/projects", icon: UploadCloud, aliases: ["유튜브 업로드", "설명란"], ready: true },
   { label: "쇼츠 · 칼럼", href: "/content/shorts", navHref: "/content/projects", icon: Scissors, aliases: ["쇼츠", "SEO 칼럼", "칼럼"], ready: true },
 ];

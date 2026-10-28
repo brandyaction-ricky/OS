@@ -143,10 +143,10 @@ export function YoutubeConfirmScreen() {
           {gate !== "topic" && client ? <StepDetail project={project} gate={gate} client={client} /> : null}
           <dl className="yp-kv"><dt>유형</dt><dd>{project.yp.topic.type ? YP_KIND_LABEL[project.yp.topic.type] : "—"}</dd><dt>담당 PD</dt><dd>{pd(project.assigneeId)}</dd>
             <dt>정밀 타겟</dt><dd>{project.yp.topic.target || "—"}</dd>
-            {project.yp.topic.refs.length ? <><dt>레퍼런스</dt><dd>{project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>)}</dd></> : null}
+            {project.yp.topic.refs.length ? <><dt>참고 영상</dt><dd>{project.yp.topic.refs.map(ref => <div key={ref.url}><a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a></div>)}</dd></> : null}
             <dt>전달 사항</dt><dd>{project.yp.topic.note || "없음"}</dd></dl>
           {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}
-          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : gate === "shorts" ? 6 : 4, project.id)}>{{ topic: "주제", draft: "기획안", review: "최종 검수", shorts: "쇼츠" }[gate]} 화면에서 보기 →</Link></p>
+          <p><Link className="yp-lnk" href={stepHref(gate === "topic" ? 0 : gate === "draft" ? 1 : gate === "shorts" ? 6 : 4, project.id)}>{{ topic: "주제", draft: "기획안", review: "최종 검토", shorts: "쇼츠" }[gate]} 화면에서 보기 →</Link></p>
         </div>
         {tab === "self" && client ? <div style={{ padding: "0 16px 12px" }}><SelfActions project={project} gate={gate} client={client} onDone={next => {
             if (next) setItems(list => list?.map(item => item.project.id === next.id && item.gate === gate ? { project: next, gate } : item) ?? list); else { go({ item: null }); void load(); } }} /></div>
@@ -160,7 +160,7 @@ export function YoutubeConfirmScreen() {
   </>;
 }
 
-/** What the approver decides on for 기획안 (A · B · (C) as they look on YouTube, the 영상 흐름) and 최종 검수 (final, thumbnails, open feedback). */
+/** What the approver decides on for 기획안 (A · B · (C) as they look on YouTube, the 영상 흐름) and 최종 검토 (final, thumbnails, open feedback). */
 function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGate; client: YpClient }) {
   const [bundle, setBundle] = useState<YpBundle | null>(null);
   const [open, setOpen] = useState<number | null>(null);

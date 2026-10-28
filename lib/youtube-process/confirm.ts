@@ -1,15 +1,15 @@
 // 유튜브 공정 v1 confirm rules (지시서 8장): who may move a gate, to where, and what the PD may edit meanwhile.
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
-export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 확정" };
+export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검토 컨펌", shorts: "쇼츠 확정" };
 // 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
 // keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
 const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
 const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
-  topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "레퍼런스", "topic.note": "전달 사항" },
-  draft: { "draft.tt": "제목 · 썸네일", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 레퍼런스" },
+  topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "참고 영상", "topic.note": "전달 사항" },
+  draft: { "draft.tt": "제목 · 썸네일", "draft.opening": "오프닝", "draft.body": "본론", "draft.closing": "클로징 · 다음 행동", "draft.note": "전달 사항 · 참고 영상" },
   review: { "make.final": "최종본", "make.thumbs": "최종 썸네일" },
   shorts: { "shorts.pick": "고른 쇼츠", "shorts.parts": "구간 · 첫 3초", "shorts.copy": "제목 · 설명" },
 };
@@ -112,8 +112,8 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
         reason: input.reason.trim().slice(0, 300), ...(info.revertedFrom ? { revertedFrom: info.revertedFrom } : {}) });
     case "revert": {
       if (info.state !== "ok") throw new GateError("INVALID_TRANSITION", "처리한 OK만 되돌릴 수 있어요.");
-      // D20: 최종 검수 only until the upload starts (T10 adds the upload record).
-      if (gate === "review" && !["upload", "review"].includes(yp.stage)) throw new GateError("INVALID_TRANSITION", "업로드를 시작한 뒤에는 최종 검수를 되돌릴 수 없어요.");
+      // D20: 최종 검토 only until the upload starts (T10 adds the upload record).
+      if (gate === "review" && !["upload", "review"].includes(yp.stage)) throw new GateError("INVALID_TRANSITION", "업로드를 시작한 뒤에는 최종 검토를 되돌릴 수 없어요.");
       // A step the PD confirmed goes back to the PD as a 수정 요청 (with the 대표's memo) to fix and confirm again — no reminders to the 대표.
       if (info.self) return put({ state: "changes", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor,
         fields: [], memo: input.memo?.trim().slice(0, 1000) || "대표가 이 단계로 되돌렸어요.", revertedFrom: yp.stage }, GATE_STAGE[gate]);

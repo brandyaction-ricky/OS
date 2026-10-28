@@ -36,7 +36,7 @@ const signalOf = (input: z.infer<typeof renderPcSignalSchema>): Signal => ({ dis
 async function writeSignal(path: string, signal: Signal) {
   const { error } = await createServiceSupabase().storage.from(YOUTUBE_VOICE_TIMING_BUCKET)
     .upload(path, new Blob([JSON.stringify(signal)], { type: "application/json" }), { upsert: true, contentType: "application/json" });
-  if (error) throw new ApiError(503, "RENDER_PC_SIGNAL_FAILED", "렌더 PC 신호를 저장하지 못했습니다.");
+  if (error) throw new ApiError(503, "RENDER_PC_SIGNAL_FAILED", "영상 만드는 컴퓨터 신호를 저장하지 못했습니다.");
 }
 async function readSignal(path: string) {
   const file = await createServiceSupabase().storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(path);
@@ -64,8 +64,8 @@ export async function readLocalRenderStatus(ownerId: string) {
 /** A staff Mac may take a ③ draft only with the render PC's engine. */
 export async function assertLocalEngine(engine: string) {
   const pc = await readSignal(STATUS_PATH);
-  if (!pc?.engine) throw new ApiError(409, "MYIN_ENGINE_UNKNOWN", "렌더 PC의 엔진 버전을 아직 몰라요. 렌더 PC로 만들어 주세요.");
-  if (pc.engine !== engine) throw new ApiError(409, "MYIN_ENGINE_DIFFERENT", "내 컴퓨터의 엔진이 렌더 PC와 달라요. 새 엔진을 받은 뒤 다시 켜 주세요.");
+  if (!pc?.engine) throw new ApiError(409, "MYIN_ENGINE_UNKNOWN", "영상 만드는 컴퓨터의 엔진 버전을 아직 몰라요. 영상 만드는 컴퓨터로 만들어 주세요.");
+  if (pc.engine !== engine) throw new ApiError(409, "MYIN_ENGINE_DIFFERENT", "내 컴퓨터의 엔진이 영상 만드는 컴퓨터와 달라요. 새 엔진을 받은 뒤 다시 켜 주세요.");
 }
 
 /** What the 영상 제작 screen shows: on or off, last signal, current job, disk, and the queue in front of new work. */

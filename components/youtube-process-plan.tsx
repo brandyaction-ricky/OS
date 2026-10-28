@@ -209,7 +209,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
           <div className="yp-radio-c" role="radiogroup" aria-label="유형">
             {(["live", "anim", "short"] as const).map(kind => <label key={kind} className={`yp-rc${form.kind === kind ? " yp-on" : ""}`}>
               <input type="radio" name="yp-topic-kind" value={kind} checked={form.kind === kind} disabled={!open("kind")} onChange={() => editAndSave({ kind })} />
-              <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : kind === "anim" ? "작화 · 생성 · 편집" : "15 ~ 60초 세로 영상"}</small></span>
+              <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : kind === "anim" ? "작화 · 이미지 만들기 · 편집" : "15 ~ 60초 세로 영상"}</small></span>
             </label>)}
           </div>
         </Field>
@@ -218,9 +218,9 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
             {/* Owner decision 2026-10-26 (기획_절차): a situation-led target pulls the whole script into that situation's scenes. */}
             <p className="yp-hint">처한 상황(이직·퇴사)보다 그 질문을 품은 사람으로 적어요. 주제 자체가 퇴사 같은 상황이면 상황으로 적어도 돼요.</p></div>
         </Field>
-        {/* 레퍼런스 · 전달 사항 are optional: folded until someone wants them (or they already hold something). */}
-        <details className="yp-more-fields" open={Boolean(form.refs.length || form.note || rev("topic.refs") || rev("topic.note"))}><summary>레퍼런스 · 전달 사항 더 쓰기 (선택)</summary>
-        <Field n={4} title="레퍼런스" question="유튜브 링크" need={false} rev={rev("topic.refs")}>
+        {/* 참고 영상 · 전달 사항 are optional: folded until someone wants them (or they already hold something). */}
+        <details className="yp-more-fields" open={Boolean(form.refs.length || form.note || rev("topic.refs") || rev("topic.note"))}><summary>참고 영상 · 전달 사항 더 쓰기 (선택)</summary>
+        <Field n={4} title="참고 영상" question="유튜브 링크" need={false} rev={rev("topic.refs")}>
           <div className="yp-max720">
             {form.refs.length ? <ul className="yp-open-list">{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}>
               <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
@@ -241,7 +241,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
                 .then(info => info.title, () => undefined);
               editAndSave({ refs: [...form.refs, title ? { ...ref, title } : ref] });
             }}>
-              <input className="yp-in" id="yp-topic-ref" placeholder="유튜브 영상 주소 붙여 넣기" aria-label="레퍼런스 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} />
+              <input className="yp-in" id="yp-topic-ref" placeholder="유튜브 영상 주소 붙여 넣기" aria-label="참고 영상 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} />
               <button type="submit" className="yp-btn">추가</button>
             </form> : null}
             {refError ? <div className="yp-errline" role="alert">{refError}</div> : null}

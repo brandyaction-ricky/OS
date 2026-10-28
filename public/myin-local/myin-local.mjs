@@ -64,7 +64,7 @@ export async function installEngine(info, home) {
   const dir = path.join(home, `engine-${info.fingerprint}`);
   const lock = path.join(dir, "requirements.lock");
   if (!existsSync(path.join(dir, ".ready"))) {
-    console.log(`렌더 PC의 엔진을 받는 중이에요 (${info.parts.length}개 묶음)…`);
+    console.log(`영상 만드는 컴퓨터의 엔진을 받는 중이에요 (${info.parts.length}개 묶음)…`);
     const tmp = mkdtempSync(path.join(os.tmpdir(), "myin-engine-")), bundle = path.join(tmp, "bundle.tar.gz"), partial = `${dir}.partial`;
     try {
       writeFileSync(bundle, "");
@@ -79,7 +79,7 @@ export async function installEngine(info, home) {
       // macOS and Windows 10+ both ship tar with gzip.
       if (spawnSync("tar", ["-xzf", bundle, "-C", partial], { stdio: "inherit" }).status !== 0) throw new Error("엔진 묶음을 풀지 못했어요.");
       nfcNames(partial);
-      if (readFileSync(path.join(partial, "FINGERPRINT"), "utf8").trim() !== info.fingerprint) throw new Error("받은 엔진이 렌더 PC 것과 달라요.");
+      if (readFileSync(path.join(partial, "FINGERPRINT"), "utf8").trim() !== info.fingerprint) throw new Error("받은 엔진이 영상 만드는 컴퓨터 것과 달라요.");
       rmSync(dir, { recursive: true, force: true }); renameSync(partial, dir);
     } finally { rmSync(tmp, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true }); }
   }
@@ -130,20 +130,20 @@ async function main() {
   mkdirSync(path.join(home, "work"), { recursive: true });
   const awake = keepAwake();
   process.on("exit", () => awake.kill());
-  console.log("내 컴퓨터 렌더를 켰어요. 이 창을 열어 두면 OS에서 「내 컴퓨터」로 고른 시안을 만들어요. 끝내려면 Ctrl+C.");
+  console.log("내 컴퓨터 영상 만들기를 켰어요. 이 창을 열어 두면 OS에서 「내 컴퓨터」로 고른 미리보기 영상을 만들어요. 끝내려면 Ctrl+C.");
   for (;;) {
     let info;
     try { info = await api(key, { action: "engine" }); }
     catch (error) { console.error(`OS에 연결하지 못했어요: ${error.message} · 1분 뒤 다시 해요.`); await sleep(60_000); continue; }
-    if (!info.available) { console.log("렌더 PC가 새 엔진 묶음을 준비하는 중이에요. 5분 뒤 다시 확인해요."); await sleep(5 * 60_000); continue; }
+    if (!info.available) { console.log("영상 만드는 컴퓨터가 새 엔진 묶음을 준비하는 중이에요. 5분 뒤 다시 확인해요."); await sleep(5 * 60_000); continue; }
     const engine = await installEngine(info, home);
-    console.log(`엔진 ${info.fingerprint.slice(0, 8)} · 시안을 기다리는 중`);
+    console.log(`엔진 ${info.fingerprint.slice(0, 8)} · 미리보기 영상을 기다리는 중`);
     const code = await new Promise((resolve) => {
       const worker = spawn(process.execPath, [path.join(engine.dir, "tools", "youtube-media-worker.mjs"), "--local"], { stdio: "inherit", env: workerEnv(engine, home, key) });
       worker.on("exit", (exitCode) => resolve(exitCode));
     });
     // 3: the render PC moved to a new engine; install it and start again. Anything else: wait a minute and start again.
-    if (code !== 3) { console.error(`렌더 프로그램이 멈췄어요 (코드 ${code}). 1분 뒤 다시 시작해요.`); await sleep(60_000); }
+    if (code !== 3) { console.error(`영상 프로그램이 멈췄어요 (코드 ${code}). 1분 뒤 다시 시작해요.`); await sleep(60_000); }
   }
 }
 

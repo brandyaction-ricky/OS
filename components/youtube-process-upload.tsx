@@ -219,7 +219,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">제목 · 썸네일 테스트</div><div className="yp-card-b">
         {SLOTS.filter(slot => confirmed?.[slot]).map(slot => <div key={slot} className="yp-tst" style={{ marginBottom: 12 }}><div className="yp-abc-h" style={{ marginBottom: 6 }}><span className={`yp-ltag${slot === "C" ? " yp-c" : ""}`}>{slot}</span>{finalPair(plan, make, slot)?.changed ? <span className="yp-tag yp-warn">컨펌본과 다름</span> : null}</div>
           <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></div>)}
-        <p className="yp-hint">A/B 테스트는 올린 뒤 스튜디오(PC)에서 이 시안으로 걸어요. 제목 · 썸네일 문구는 최종 검수 전 <Link className="yp-lnk" href={stepHref(3, project.id)}>제작 › 최종 썸네일</Link>에서 바꿀 수 있어요.</p>
+        <p className="yp-hint">A/B 테스트는 올린 뒤 스튜디오(PC)에서 이 후보로 걸어요. 제목 · 썸네일 문구는 최종 검토 전 <Link className="yp-lnk" href={stepHref(3, project.id)}>제작 › 최종 썸네일</Link>에서 바꿀 수 있어요.</p>
       </div></section></aside></div>
       <SendDialog page={page} task="kit" open={send} onClose={() => setSend(false)} job={job} />
     </div> : null}

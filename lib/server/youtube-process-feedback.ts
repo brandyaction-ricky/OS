@@ -47,7 +47,7 @@ const notReady = () => new ApiError(503, "FEEDBACK_NOT_READY", "피드백 저장
 
 export async function createFeedback(actor: RequestActor, id: string, input: z.infer<typeof feedbackCreateSchema>) {
   const project = await getYoutubeProject(actor, id);
-  if (!["review", "upload"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검수 단계에서 피드백을 남겨요.");
+  if (!["review", "upload"].includes(project.yp.stage)) throw new ApiError(409, "STAGE_LOCKED", "최종 검토 단계에서 피드백을 남겨요.");
   if (input.target === "video") {
     const stages = await readStages(actor.supabase, project);
     const latest = (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).at(-1)?.v ?? 0;
