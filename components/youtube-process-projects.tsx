@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Copy, Plus, Radar, RotateCcw, Search, Trash2, X } from "lucide-react";
 import { mayTrash, projectName, searchProjects, stepHref, TRASH_KEEP_DAYS, trashDaysLeft, type YpProject, type YpTrashed } from "@/lib/youtube-process/project";
 import { nextAction } from "@/lib/youtube-process/next";
-import { YoutubeDiscoverScreen } from "./youtube-process-discover";
+import { TopicHub } from "./topic-hub";
+import { projectPlatform, TOPIC_PLATFORMS } from "@/lib/content-platforms";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpLegacyTopic, type YpMember } from "./youtube-process-data";
@@ -88,7 +89,7 @@ export function YoutubeProjectsScreen() {
   const waitingMine = canConfirm ? all.filter(row => nextAction(row).tone === "wait").length : 0;
   const pdName = (id: string | null) => members.find(member => member.id === id)?.name ?? "";
 
-  if (discover) return <YoutubeDiscoverScreen />;
+  if (discover) return <TopicHub />;
 
   return <>
     <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">내 영상</h1><span style={{ flex: 1 }} />
@@ -125,10 +126,12 @@ export function YoutubeProjectsScreen() {
         </div> : <div className="yp-mv-list">
           {shown.map(project => { const next = nextAction(project); const pd = pdName(project.assigneeId);
             // One grid per row (owner request 2026-10-25): title and next step · progress · PD · button line up down the list.
-            const kind = project.yp.topic.type === "short" ? "숏폼" : project.yp.topic.type ? "롱폼" : null;
+            // The platform as 주제 찾기 names it, in its colour: 롱폼 · 숏폼 · 릴스 · 광고.
+            const platform = project.yp.topic.type ? projectPlatform(project.yp.topic) : null;
+            const kind = platform ? TOPIC_PLATFORMS[platform].label : null;
             const done = Math.min(next.step + (next.tone === "done" ? 0 : 0.5), next.total) / next.total;
             return <div key={project.id} className="yp-mv">
-              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className="yp-tag">{kind}</span> : null}<Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
+              <div className="yp-mv-m"><div className="yp-mv-th">{kind ? <span className={`yp-tag yp-pf-tag yp-pf-${platform}`}>{kind}</span> : null}<Link href={next.href} className="yp-mv-t" title={projectName(project)}>{projectName(project)}</Link></div>
                 <div className={`yp-mv-s yp-${next.tone}`}>{next.text}</div></div>
               <div className="yp-mv-bar"><span>{Math.min(next.step + 1, next.total)}/{next.total} · {next.stepName}</span><span className="yp-mv-track"><i className={`yp-${next.tone}`} style={{ width: `${Math.round(done * 100)}%` }} /></span></div>
               <div className="yp-mv-pd">{pd ? <><span className="yp-mv-av" aria-hidden="true">{pd.slice(0, 1)}</span>{pd}</> : <span className="yp-muted">담당 없음</span>}</div>

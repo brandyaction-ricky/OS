@@ -60,7 +60,8 @@ const TAB_HINT: Record<Tab, string> = {
   niche: "3곳 이상에서 통한 제목 공식이에요.",
 };
 
-export function YoutubeDiscoverScreen() {
+/** bare: inside 주제 찾기 (TopicHub), which shows the page title and the platform switch above. */
+export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
   const { accessToken, demo, profile } = useSession();
   const [tab, setTab] = useState<Tab>("breakouts");
   const [source, setSource] = useState<Source>("found");
@@ -138,7 +139,7 @@ export function YoutubeDiscoverScreen() {
   const searchable = tab !== "niche";
 
   return <>
-    <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">주제 찾기</h1><span style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>
+    {bare ? null : <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">주제 찾기</h1><span style={{ flex: 1 }} /><Link className="yp-btn" href="/content/projects">← 내 영상</Link></div>}
     <div className="yp-seg2 yp-disc-tabs" role="tablist" aria-label="주제 찾기 단계">{([["channels", `① 채널 모으기 ${channels.length}`], ["breakouts", `② 터진 영상 ${busy ? "" : foundBreakouts.length + tracked.length}`], ["niche", `③ 틈새 ${openNiches}`]] as const).map(([key, text]) =>
       <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{text}</button>)}</div>
     <p className="yp-hint" style={{ margin: "8px 0 12px" }}>{TAB_HINT[tab]}</p>
