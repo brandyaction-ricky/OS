@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
+import { applyMyinSoundPlan, checkMyinStoryboard, myinCreditsBlock, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinVisualShare, seqRatio } from "../lib/myin-storyboard.ts";
 
 // The OS check must say what Logan's resolve() says: exact phrase within its window, else a window with difflib ratio ≥ 0.62.
 test("seqRatio equals Python difflib.SequenceMatcher.ratio()", () => {
@@ -164,4 +164,18 @@ test("myinSoundIssues stops keys the render PC lacks and effect lines not heard 
   const issues = myinSoundIssues(bad, words, catalog);
   assert.equal(issues.length, 4);
   assert.ok(issues.some((issue) => issue.includes("music_99")) && issues.some((issue) => issue.includes("amb_moon")) && issues.some((issue) => issue.includes("boom")) && issues.some((issue) => issue.includes("전혀 없는 말")));
+});
+
+// 2026-10-28 유쓰·로건: Logan's music match came back as 「문구 못 찾음」 and stopped ③ on every run with an ambience or a drifting opening.
+test("myinOnlySoundChanged keeps Logan's music match, and still tells a rewritten scene apart", () => {
+  const ours = { music_cues: { C1: {} }, scenes: [{ type: "opening", at: "a", music: "C1", acts: [{ cam: { drift: 0.4 } }] }, { type: "hero", at: "침대에 누워" }] };
+  const matched = { scenes: [{ type: "opening", at: "a", music: { key: "calm_01", start: 2, why: "잔잔" }, acts: [{ cam: { drift: [0.4, 0] } }] },
+    { type: "hero", at: "침대에 누워", amb: "amb_bedroom_night", amb_dur: 7.9, amb_off: 4.26, amb_var: 1, amb_db: -54 }] };
+  assert.equal(myinOnlySoundChanged(matched, ours), true);
+  assert.equal(ours.scenes[0].acts[0].cam.drift, 0.4, "our storyboard is left as it was");
+  const rewritten = JSON.parse(JSON.stringify(matched));
+  rewritten.scenes[1].at = "퇴근길에";
+  assert.equal(myinOnlySoundChanged(rewritten, ours), false);
+  rewritten.scenes[1].at = "침대에 누워"; rewritten.scenes[1].type = "photo";
+  assert.equal(myinOnlySoundChanged(rewritten, ours), false);
 });

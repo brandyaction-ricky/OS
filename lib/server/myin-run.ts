@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { myinBreathText, myinCleanScript, myinRunMatchesScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { draftFilter } from "@/lib/myin-local";
-import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
+import { applyMyinSoundPlan, MYIN_METAPHOR_TYPES, myinDriftPairs, myinOnlySoundChanged, myinPhotoFetchUrl, myinPhotoFolders, myinSoundIssues, myinSoundPlan, myinStoryboardSchema, type MyinSoundPlan } from "@/lib/myin-storyboard";
 import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { RequestActor } from "./auth";
@@ -447,11 +447,6 @@ async function putStoryboard(service: Service, record: OsRecord, run: MyinRun, v
   if (error) throw new ApiError(502, "MYIN_STORYBOARD_UPLOAD_FAILED", "기획표를 저장하지 못했습니다.");
   return { ...run.storyboard!, path };
 }
-/** Everything but the sound fields, to tell a music-matched storyboard from a rewritten one. */
-const withoutSound = (story: { scenes?: unknown; music_cues?: unknown }) =>
-  JSON.stringify((Array.isArray(story.scenes) ? story.scenes as Record<string, unknown>[] : []).map((sc) =>
-    Object.fromEntries(Object.entries(sc).filter(([k]) => !["music", "music_start", "amb", "amb_dur", "cue_amb", "cue_amb_end", "sfx"].includes(k)))));
-
 /** File names the storyboard points at: photo/music "file", opening "image", site_ad "capture" (made by the render PC). */
 export function myinReferencedFiles(storyboard: unknown) {
   const files = new Set<string>();
@@ -636,10 +631,12 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   let { storyboard, sound } = run;
   if (draft && bundle.storyboard) {
     // ③: the render PC wrote Logan's music match (곡·앰비언스 키) into the storyboard; keep it only if nothing else changed.
-    if (withoutSound(bundle.storyboard) === withoutSound(await storyboardJson(service, run))) {
+    // Not kept is no stop: the drafts are made from our storyboard, with the music it has (2026-10-28 유쓰·로건).
+    const at = new Date().toISOString();
+    if (myinOnlySoundChanged(bundle.storyboard, await storyboardJson(service, run))) {
       storyboard = await putStoryboard(service, record, run, bundle.storyboard);
-      sound = { report: (bundle.soundReport ?? "").slice(0, 20_000), at: new Date().toISOString() };
-    } else bundle.misses.push("자동 선곡 결과가 기획표와 달라 쓰지 않았어요(음악은 예전 큐 시트대로)");
+      sound = { report: (bundle.soundReport ?? "").slice(0, 20_000), at };
+    } else sound = { report: "자동 선곡을 쓰지 않았어요. 선곡 결과에서 음악 말고 다른 칸도 바뀌어 있었어요. 음악은 기획표에 적힌 대로 깔립니다.", at };
   }
   const credits = [...(run.storyboard?.assets ?? []).filter((a) => run.assets?.[a.file]?.decision === "approved").map((a) => `${a.file} — ${a.source} · ${a.license} · ${a.url}`),
     ...bundle.musicCredits.slice(0, 30)];

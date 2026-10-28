@@ -226,6 +226,9 @@ const myinPkgShort = local ? "" : process.env.MYIN_PKG_SHORT ?? "";
 const shortClaim = myinPkgShort ? { short: true } : {};
 const layoutEnv = (env, layout) => layout === "short" ? { ...env, NO_HOLD: "1", MYIN_FONT_DIR: env.MYIN_FONT_DIR || path.join(myinPkgShort, "assets", "fonts"),
   ...(process.env.MYIN_PORTRAIT_V_DIR ? { PORTRAIT_V_DIR: process.env.MYIN_PORTRAIT_V_DIR } : {}) } : env;
+// Logan's engine imports his diagrams (myin_dia, lib_*) only through PYTHONPATH: every Python step gets MYIN_DIAGRAM_DIR first, the
+// folder the fingerprint hashes (2026-10-28 로건: a staff PC had it only for the catalog and stopped at the showreel cards).
+if (process.env.MYIN_DIAGRAM_DIR) process.env.PYTHONPATH = [process.env.MYIN_DIAGRAM_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
 // 내 컴퓨터로 시안 runs on staff Macs and on Logan's Windows PC too: Homebrew's folder only on a Mac, and the engine copy is an
 // APFS clone on a Mac (instant, no extra disk) and a plain copy elsewhere.
 const withTools = (env) => process.platform === "darwin" ? { ...env, PATH: `/opt/homebrew/bin${path.delimiter}${env.PATH ?? ""}` } : env;
@@ -287,7 +290,7 @@ export async function reportDiagramCatalog() {
   if (!myinPkg || !existsSync(catalogScript)) return;
   try {
     const result = spawnSync(myinPython, [catalogScript], { cwd: path.join(myinPkg, "tools", "myin_pipeline"), encoding: "utf8", maxBuffer: 8e6, timeout: 120_000,
-      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONPATH: [process.env.MYIN_DIAGRAM_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) } });
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
     if (result.status !== 0) throw new Error(`catalog script exited with ${result.status}: ${String(result.stderr).slice(-300)}`);
     const hash = createHash("sha256").update(result.stdout).digest("hex");
     if (hash === catalogSent) return;

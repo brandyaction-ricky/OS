@@ -1,5 +1,5 @@
-.kw-root { --kw-bg: #f3f3f6; --kw-surface: #fff; --kw-line: #e1e1e8; --kw-muted: #686873; --kw-fg: #16161b; --kw-soft: #f8f8fb; --kw-accent: #4f46e5; --kw-accent-soft: #eeedfc; color: var(--kw-fg); font-size: 14px; line-height: 1.55; min-width: 0; }
-[data-theme="dark"] .kw-root { --kw-bg: #111115; --kw-surface: #1a1a20; --kw-line: #30303a; --kw-muted: #9c9ca8; --kw-fg: #f1f1f5; --kw-soft: #202027; --kw-accent: #aaa5ff; --kw-accent-soft: #25234a; }
+.kw-root { --kw-bg: var(--bg); --kw-surface: var(--card); --kw-line: var(--line); --kw-muted: var(--muted); --kw-fg: var(--text); --kw-soft: var(--panel); --kw-accent: var(--accent); --kw-accent-soft: var(--accent-soft); color: var(--kw-fg); font-size: 14px; line-height: 1.55; min-width: 0; }
+/* The workspace follows the OS theme tokens (Obsidian Plum, 2026-10-28); they already switch for dark mode. */
 .kw-root * { box-sizing: border-box; }
 .kw-root h1,.kw-root h2,.kw-root h3,.kw-root p { margin: 0; }
 .kw-root h1 { font-size: 22px; line-height: 1.4; }
@@ -11,8 +11,8 @@
 .kw-root button,.kw-root .kw-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--kw-line); background: var(--kw-surface); color: var(--kw-fg); border-radius: 8px; min-height: 32px; padding: 6px 11px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; text-decoration: none; }
 .kw-root button:hover,.kw-root .kw-button:hover { background: var(--kw-soft); }
 .kw-root button:disabled { opacity: .48; cursor: not-allowed; }
-.kw-root .kw-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; min-height: 34px; color: #fff; background: #4f46e5; border: 1px solid #4f46e5; border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
-.kw-root .kw-primary:hover { background: #4338ca; }
+.kw-root .kw-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; min-height: 34px; color: #fff; background: var(--kw-accent); border: 1px solid var(--kw-accent); border-radius: 8px; font-size: 13px; font-weight: 600; text-decoration: none; }
+.kw-root .kw-primary:hover { background: var(--accent-hover); }
 .kw-root input:not([type=checkbox]):not([type=radio]),.kw-root select,.kw-root textarea { width: 100%; border: 1px solid var(--kw-line); background: var(--kw-surface); color: var(--kw-fg); border-radius: 7px; padding: 8px 10px; min-height: 34px; font: inherit; font-size: 13px; }
 .kw-root input[type=checkbox],.kw-root input[type=radio] { accent-color: var(--kw-accent); width: 15px; height: 15px; margin: 0; }
 .kw-root textarea { resize: vertical; }
@@ -28,7 +28,7 @@
 .kw-card { background: var(--kw-surface); border: 1px solid var(--kw-line); border-radius: 14px; padding: 16px; min-width: 0; }
 .kw-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .kw-card > header a { display: flex; align-items: center; font-size: 12px; }
-.kw-space-guide { border: 1px solid #c3bfff; border-radius: 14px; background: var(--kw-accent-soft); padding: 12px 16px; margin-bottom: 14px; }
+.kw-space-guide { border: 1px solid var(--kw-line); border-radius: 14px; background: var(--kw-accent-soft); padding: 12px 16px; margin-bottom: 14px; }
 .kw-space-guide strong,.kw-space-guide > div,.kw-space-guide span { display: flex; align-items: center; gap: 8px; }
 .kw-space-guide > div { flex-wrap: wrap; margin-top: 6px; padding-left: 22px; gap: 10px; }
 .kw-space-guide strong { font-size: 13px; }
@@ -134,14 +134,14 @@
 @media (max-width: 860px) { .kw-document-layout > .kw-editor-card { min-height: calc(100dvh - 155px); } .kw-recording-indicator { top: 60px; } }
 .kw-root .kw-minimap { position:absolute; right:12px; bottom:12px; width:160px; height:104px; border:1px solid var(--kw-line); border-radius:8px; background:var(--kw-surface); cursor:crosshair; z-index:1; }
 @media(max-width:860px){.kw-root .kw-minimap{width:120px;height:78px;}}
-.kw-inline-suggestions{position:fixed;z-index:10000;width:min(304px,calc(100vw - 16px));max-height:280px;overflow:auto;display:grid;gap:6px;padding:12px;border:1px solid #e1e1e8;border-radius:10px;background:#fff;color:#16161b;box-shadow:0 12px 30px #0002}
-.kw-inline-suggestions>small,.kw-inline-suggestions button small{font-size:11px;color:#686873}
+.kw-inline-suggestions{position:fixed;z-index:10000;width:min(304px,calc(100vw - 16px));max-height:280px;overflow:auto;display:grid;gap:6px;padding:12px;border:1px solid var(--kw-line);border-radius:10px;background:#fff;color:var(--kw-fg);box-shadow:0 12px 30px #0002}
+.kw-inline-suggestions>small,.kw-inline-suggestions button small{font-size:11px;color:var(--kw-muted)}
 .kw-inline-suggestions button{display:grid;gap:4px;text-align:left;padding:8px;border:0;border-radius:6px;background:transparent;color:inherit;cursor:pointer}
-.kw-inline-suggestions button[aria-selected=true]{background:#eeedfc}
-.kw-inline-suggestions button:focus-visible{outline:2px solid #4f46e5;outline-offset:2px}
-[data-theme=dark] .kw-inline-suggestions{background:#1a1a20;color:#f1f1f5;border-color:#30303a}
-[data-theme=dark] .kw-inline-suggestions small{color:#9c9ca8}
-[data-theme=dark] .kw-inline-suggestions button[aria-selected=true]{background:#25234a}
+.kw-inline-suggestions button[aria-selected=true]{background:var(--kw-accent-soft)}
+.kw-inline-suggestions button:focus-visible{outline:2px solid var(--kw-accent);outline-offset:2px}
+[data-theme=dark] .kw-inline-suggestions{background:var(--kw-surface);color:var(--kw-fg);border-color:var(--kw-line)}
+[data-theme=dark] .kw-inline-suggestions small{color:var(--kw-muted)}
+[data-theme=dark] .kw-inline-suggestions button[aria-selected=true]{background:var(--kw-accent-soft)}
 .kw-inline-suggestions button:disabled{opacity:.5;cursor:not-allowed}
 .kw-properties{grid-template-columns:minmax(0,1fr)}
 .kw-properties > *{min-width:0;max-width:100%}

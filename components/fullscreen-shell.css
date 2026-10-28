@@ -104,3 +104,13 @@
   .linear-shell.shell-v2 .guide-strip-next { margin-left: 0; }
   .linear-shell.shell-v2 .guide-strip-close { margin-left: auto; }
 }
+/* Button text that stays readable (2026-10-28, owner screenshot of 내 AI에 보내기):
+   - On YouTube screens `.yp :is(button,…) { color: inherit }` outranked the filled button's white text, so dark text sat on the dark plum.
+   - A disabled filled button was only faded (opacity .45), which left white text on mid grey; it is now a quiet grey with readable text. */
+.linear-shell .ui-v2.yp .primary-button { color: var(--on-accent); }
+.linear-shell .primary-button:is(:disabled, [aria-disabled="true"]),
+.linear-shell .ui-v2 .primary-button:is(:disabled, [aria-disabled="true"]),
+.linear-shell .ui-v2.yp :is(.primary-button, .yp-btn.yp-pri):is(:disabled, [aria-disabled="true"]),
+:is(.hr-workspace, .hr-drawer) .hr-button.primary:disabled {
+  opacity: 1; background: var(--panel-3); border-color: var(--line); color: var(--muted); box-shadow: none;
+}

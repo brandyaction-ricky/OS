@@ -334,6 +334,15 @@ export function myinDriftPairs<T extends { scenes: Record<string, unknown>[] }>(
   return story;
 }
 
+/** ③: Logan's music match (music_match.py) changed only the sound — its storyboard and ours agree without the sound fields. It got ours
+ * with drift pairs, and it also sets an ambience's offset, variation and level (amb_off · amb_var · amb_db, 2026-10-28 유쓰·로건). */
+export function myinOnlySoundChanged(matched: { scenes?: unknown }, ours: { scenes: Record<string, unknown>[] }) {
+  const skip = [...SOUND_FIELDS, "amb_off", "amb_var", "amb_db"];
+  const bare = (story: { scenes?: unknown }) => JSON.stringify((Array.isArray(story.scenes) ? story.scenes as Record<string, unknown>[] : []).map((sc) =>
+    Object.fromEntries(Object.entries(sc).filter(([k]) => !skip.includes(k)))));
+  return bare(matched) === bare(myinDriftPairs(JSON.parse(JSON.stringify(ours))));
+}
+
 // ── 사운드 창고 (로건 2026-10-27): 장면의 "music" {key, start} · "amb" · "sfx" [{cue, key}]. ③ 시안 준비 때 렌더 PC가 로건님 자동 선곡
 // (music_match.py)으로 적고, ④ 자료 준비에서 사람이 고친다(2026-10-27 대표). 곡은 그 장면부터 다음 "music"까지 깔린다. ──
 export type MyinSoundPlan = {
