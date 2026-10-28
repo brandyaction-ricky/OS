@@ -69,7 +69,7 @@ async function assertAssignee(actor: RequestActor, assigneeId: string | null | u
   if (error || !data?.is_active) throw new ApiError(400, "ASSIGNEE_INVALID", "담당 PD는 활동 중인 구성원에서 골라 주세요.");
 }
 
-async function insertProject(actor: RequestActor, title: string, assigneeId: string | null, meta: ReturnType<typeof newProjectMeta>) {
+export async function insertProject(actor: RequestActor, title: string, assigneeId: string | null, meta: ReturnType<typeof newProjectMeta>) {
   const { data, error } = await actor.supabase.from("os_records").insert({
     record_type: "content_topic", title, description: "", status: "planned", priority: "normal",
     metadata: { ...meta, origin: "own" }, assignee_id: assigneeId,

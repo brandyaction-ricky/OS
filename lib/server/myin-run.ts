@@ -533,11 +533,45 @@ const sign = async (service: Service, bucket: string, path: string) => {
  * What a staff Mac needs to rebuild the run's work folder the render PC made in stage 1: his processed voice.wav byte for byte
  * (its sentence gaps are a seeded random draw, never recomputed) and the frozen transcription and subtitles.
  */
+type MyinVoice = NonNullable<NonNullable<MyinRun["words"]>["voice"]>;
+const voiceDownload = async (service: Service, voice: MyinVoice) => ({
+  urls: await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n)))), bytes: voice.bytes, sha256: voice.sha256 });
 async function localSeed(service: Service, run: MyinRun) {
   const voice = run.words?.voice;
   if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
-  const urls = await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n))));
-  return { voice: { urls, bytes: voice.bytes, sha256: voice.sha256 }, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
+  return { voice: await voiceDownload(service, voice), wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
+}
+
+/** 1단계 파일 내려받기 (owner request 2026-10-28): the processed voice in its parts (when the OS has it) and the bundle the subtitles are in. */
+export async function myinDownloads(actor: RequestActor, runId: string) {
+  const { run } = await visibleRun(actor, runId);
+  if (!run.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
+  const service = createServiceSupabase();
+  return { voice: run.words.voice ? await voiceDownload(service, run.words.voice) : null, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words.path) };
+}
+
+/**
+ * 지난 영상 음성 (owner request 2026-10-28): runs whose stage 1 ran before the render PC left its voice.wav in the OS get it once from
+ * the render PC's work folder (tools/myin-voice-backfill.mjs). Without a run: the runs still missing it; with one: where its parts go.
+ */
+export async function myinVoiceBackfill(input: { runId?: string }, service: Service = createServiceSupabase()) {
+  if (!input.runId) {
+    const { data, error } = await service.from("os_records").select("id").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+      .is("archived_at", null).not("metadata->words", "is", null).is("metadata->words->voice", null).order("created_at", { ascending: false }).limit(100);
+    if (error) throw new ApiError(503, "MYIN_BACKFILL_LIST_FAILED", "음성이 없는 영상 목록을 읽지 못했습니다.");
+    return { runs: (data ?? []).map((row) => row.id as string) };
+  }
+  const { record, run } = await runRecord(service, input.runId);
+  if (!run.words || run.words.voice) return { uploadUrls: [] };
+  const prefix = voicePrefix(record, run, "backfill");
+  return { uploadUrls: await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) => uploadUrl(service, YOUTUBE_VOICE_BUCKET, voicePartPath(prefix, n)))) };
+}
+export async function completeMyinVoiceBackfill(input: { runId: string; parts: number; bytes: number; sha256: string }, service: Service = createServiceSupabase()) {
+  const { runId, ...voice } = input;
+  const { record, run } = await runRecord(service, runId);
+  if (!run.words || run.words.voice) return { runId: record.id, saved: false };
+  await save(service, record, record.status, record.stage, { ...run, words: { ...run.words, voice: { path: voicePrefix(record, run, "backfill"), ...voice } } });
+  return { runId: record.id, saved: true };
 }
 /** Only a run whose stage 1 left its voice for staff Macs can be sent to one. */
 const assertLocalReady = (run: MyinRun) => {
