@@ -151,6 +151,7 @@ ${SHORT_CARD_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` 
 - 위 헤드 카피, 줄 폭, 도식 종류와 칸 글자 수.
 
 ## 세로 도식 목록 (이것만 그립니다)
+줄마다 OS가 검사하는 칸 · 글자 한도가 먼저 나오고, — 뒤는 도식 설명입니다. 두 숫자가 다르면 앞의 한도를 지킵니다.
 ${shortDiagramList(input.diagrams)}
 
 ## 형식 예시 (문구는 예시일 뿐입니다)

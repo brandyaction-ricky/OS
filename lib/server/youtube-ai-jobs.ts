@@ -132,6 +132,7 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
+  let taskName: string = TASK_NAME[input.task];
   let note = "";
   let pool: NicheVideo[] | undefined;
   let marketFor: { query: string; short: boolean } | undefined;
@@ -146,6 +147,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
     const state = await readPipeline(actor, input.sourceId);
     source = state.source; title = jobTitle(state); myinRunId = myin.record.id;
+    if (myin.run.layout === "short") taskName = "숏폼 기획표(세로 큰 글자 · 도식)";
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
   } else if (input.task === "plan") {
     const state = await readPipeline(actor, input.sourceId);
@@ -234,7 +236,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
-    id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
+    id: randomUUID(), record_type: "ai_job", title: `${title} · ${taskName}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
     brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
     tags: ["유튜브", "직원AI"], metadata,
