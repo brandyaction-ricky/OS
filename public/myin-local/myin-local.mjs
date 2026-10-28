@@ -4,7 +4,7 @@
 //   node myin-local.mjs <키>   first time (the OS 「내 컴퓨터 연결」 command does this), then just: node myin-local.mjs
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,6 +44,18 @@ const chrome = () => (windows
   : ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"]).find((file) => existsSync(file));
 const venvPython = (venv) => windows ? path.join(venv, "Scripts", "python.exe") : path.join(venv, "bin", "python");
 
+// A Mac's tar stores Korean names decomposed (NFD) while the render PC's files are NFC: Windows would not find 톤앤매너.json by
+// the name in the code, and names read from folders would differ. Back to NFC, as on the render PC (through a temporary name,
+// since a Mac treats both spellings as the same file).
+export function nfcNames(dir) {
+  for (const name of readdirSync(dir)) {
+    let full = path.join(dir, name);
+    const nfc = name.normalize("NFC");
+    if (nfc !== name) { renameSync(full, `${full}.nfc`); renameSync(`${full}.nfc`, full = path.join(dir, nfc)); }
+    if (lstatSync(full).isDirectory()) nfcNames(full);
+  }
+}
+
 /**
  * The render PC's bundle as this PC's engine folder: every part checked against its hash, unpacked, and a Python environment with
  * exactly the render PC's packages. Returns the folder and its Python. An engine already installed is used as it is.
@@ -66,6 +78,7 @@ export async function installEngine(info, home) {
       rmSync(partial, { recursive: true, force: true }); mkdirSync(partial, { recursive: true });
       // macOS and Windows 10+ both ship tar with gzip.
       if (spawnSync("tar", ["-xzf", bundle, "-C", partial], { stdio: "inherit" }).status !== 0) throw new Error("엔진 묶음을 풀지 못했어요.");
+      nfcNames(partial);
       if (readFileSync(path.join(partial, "FINGERPRINT"), "utf8").trim() !== info.fingerprint) throw new Error("받은 엔진이 렌더 PC 것과 달라요.");
       rmSync(dir, { recursive: true, force: true }); renameSync(partial, dir);
     } finally { rmSync(tmp, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true }); }

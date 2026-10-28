@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -26,13 +26,15 @@ test("내 컴퓨터 can take drafts only while on and on the render PC's engine"
   assert.match(localBlocker({ ...on, engine: "unknown" }), /확인/);
 });
 
-const fakePackage = (code) => {
+const tone = "톤앤매너.json";
+const fakePackage = (code, form = "NFC") => {
   const pkg = mkdtempSync(path.join(os.tmpdir(), "myin-engine-"));
   mkdirSync(path.join(pkg, "tools", "myin_pipeline", "__pycache__"), { recursive: true });
   mkdirSync(path.join(pkg, "assets", "fonts"), { recursive: true });
   writeFileSync(path.join(pkg, "tools", "myin_pipeline", "render_myin.py"), code);
   writeFileSync(path.join(pkg, "tools", "myin_pipeline", "__pycache__", "render_myin.cpython-312.pyc"), String(Math.random()));
   writeFileSync(path.join(pkg, "assets", "fonts", "font.ttf"), "0123456789");
+  writeFileSync(path.join(pkg, "tools", "myin_pipeline", tone.normalize(form)), "{}");
   return pkg;
 };
 const engineOf = async (pkg) => {
@@ -47,6 +49,7 @@ test("the engine fingerprint follows the engine's content, not where it is insta
   assert.match(a, /^[a-f0-9]{32}$/);
   assert.equal(a, b, "the same engine in another folder (a staff Mac) gives the same fingerprint; caches are ignored");
   assert.notEqual(a, c, "a changed engine file changes the fingerprint");
+  assert.equal(await engineOf(fakePackage("print('v1')\n", "NFD")), a, "a Korean name stored decomposed (a Mac's tar) is the same engine");
 });
 
 // A staff Mac never had stage 1's work folder: it is rebuilt from the OS — the render PC's processed voice.wav byte for byte
@@ -104,6 +107,7 @@ test("a staff PC installs the render PC's engine bundle only when every part mat
   const src = mkdtempSync(path.join(os.tmpdir(), "myin-bundle-"));
   mkdirSync(path.join(src, "engine", "pkg", "tools", "myin_pipeline"), { recursive: true }); mkdirSync(path.join(src, "tools"), { recursive: true });
   writeFileSync(path.join(src, "engine", "pkg", "tools", "myin_pipeline", "render_myin.py"), "print(1)\n");
+  writeFileSync(path.join(src, "engine", "pkg", "tools", "myin_pipeline", tone.normalize("NFD")), "{}");
   writeFileSync(path.join(src, "tools", "youtube-media-worker.mjs"), "process.exit(0)\n");
   writeFileSync(path.join(src, "requirements.lock"), ""); writeFileSync(path.join(src, "python-version"), "3.9");
   const fingerprint = "a".repeat(32); writeFileSync(path.join(src, "FINGERPRINT"), `${fingerprint}\n`);
@@ -123,6 +127,8 @@ test("a staff PC installs the render PC's engine bundle only when every part mat
     const engine = await runner.installEngine(info, home);
     assert.ok(existsSync(path.join(engine.dir, "tools", "youtube-media-worker.mjs")) && existsSync(path.join(engine.dir, ".ready")));
     assert.ok(existsSync(engine.python), "a Python environment for the engine's packages");
+    assert.ok(readdirSync(path.join(engine.dir, "engine", "pkg", "tools", "myin_pipeline")).includes(tone.normalize("NFC")),
+      "Korean names come back composed, as on the render PC (Windows finds 톤앤매너.json only by that spelling)");
     const env = runner.workerEnv(engine, home, "bos_pat_x");
     assert.equal(env.MYIN_PKG, path.join(engine.dir, "engine", "pkg"));
     assert.equal("MYIN_DIAGRAM_DIR" in env, false, "a folder the render PC did not have is not set, so both fingerprints agree");
