@@ -51,8 +51,11 @@ test("a new 숏폼 starts from a 초안 키워드 and finds its references befor
   const confirm = page.locator(".yp-foot").getByRole("button", { name: /주제 확정하고 다음으로/ });
   await expect(page.locator(".yp-foot")).toContainText("○ 참고 영상");
   await expect(confirm).toBeDisabled();
+  // Typing the 검색어 and pressing [찾기] right away: the blur save and the button's save must not collide (2026-10-28 production).
+  await page.getByLabel("참고 영상 검색어").fill("일이 안 맞는 신호");
   await page.getByRole("button", { name: "찾기", exact: true }).click();
   await expect(page.getByText("반응 높음").first()).toBeVisible();
+  await expect(page.getByText(/먼저 고쳤어요/)).toHaveCount(0);
   await expect(ai).toBeEnabled();
   await expect(page.locator(".yp-foot")).toContainText("✓ 참고 영상");
   await expect(page.locator(".yp-foot")).toContainText("○ 공식");
