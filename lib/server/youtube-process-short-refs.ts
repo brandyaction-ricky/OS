@@ -41,7 +41,7 @@ async function latestJob(service: Service, projectId: string) {
 export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const project = await getYoutubeProject(actor, projectId);
   if (project.yp.topic.type !== "short" || project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")
-    throw new ApiError(409, "STAGE_LOCKED", "대본 단계에서 레퍼런스를 받을 수 있어요.");
+    throw new ApiError(409, "STAGE_LOCKED", "대본 단계에서 참고 영상을 찾을 수 있어요.");
   const script = (await readStages(actor.supabase, project)).shortScript.data;
   const query = script.query.trim() || projectName(project);
   const market = packagingPick(await packagingReferences(query), true).filter(ref => ref.short).slice(0, MARKET_TAKE);
@@ -53,10 +53,10 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const before = await latestJob(service, project.id);
   if (before && ["backlog", "in_progress"].includes(before.status)) await service.from("os_records").update({ status: "cancelled", updated_by: actor.id }).eq("id", before.id);
   const metadata: RefsJob = { kind: SHORT_REFS_KIND, projectId: project.id, query, items, attempts: 0, requestedAt: new Date().toISOString() };
-  const { data, error } = await service.from("os_records").insert({ id: randomUUID(), record_type: "ai_job", title: `${projectName(project)} · 숏폼 레퍼런스 받기`.slice(0, 240),
-    description: "렌더 PC가 레퍼런스의 썸네일 · 첫 3초 화면 · 대사를 받아 둡니다.", status: "backlog", stage: "queued", priority: "normal", parent_id: project.id,
+  const { data, error } = await service.from("os_records").insert({ id: randomUUID(), record_type: "ai_job", title: `${projectName(project)} · 숏폼 참고 영상 찾기`.slice(0, 240),
+    description: "영상 만드는 컴퓨터가 참고 영상의 썸네일 · 첫 3초 화면 · 대사를 받아 둡니다.", status: "backlog", stage: "queued", priority: "normal", parent_id: project.id,
     owner_id: actor.id, created_by: actor.id, updated_by: actor.id, team: actor.team, tags: ["유튜브", "숏폼", "레퍼런스"], metadata }).select("*").single();
-  if (error || !data) throw new ApiError(400, "SHORT_REFS_CREATE_FAILED", "레퍼런스 받기를 시작하지 못했어요.");
+  if (error || !data) throw new ApiError(400, "SHORT_REFS_CREATE_FAILED", "참고 영상 찾기를 시작하지 못했어요.");
   return shortRefsView(service, data as OsRecord, 3600);
 }
 
@@ -105,7 +105,7 @@ export async function claimShortRefs(service: Service = createServiceSupabase())
     const storage = service.storage.from(BUCKET);
     const uploads = await Promise.all(job.items.map(async (_, index) => Object.fromEntries(await Promise.all((["thumb", "sheet"] as const).map(async kind => {
       const { data: signed, error: signError } = await storage.createSignedUploadUrl(imagePath(job.projectId, row.id, index, kind), { upsert: true });
-      if (signError || !signed) throw new ApiError(503, "SHORT_REFS_SIGN_FAILED", "레퍼런스 이미지 업로드 주소를 만들지 못했어요.");
+      if (signError || !signed) throw new ApiError(503, "SHORT_REFS_SIGN_FAILED", "참고 영상 이미지 업로드 주소를 만들지 못했어요.");
       return [kind, signed.signedUrl];
     })))));
     return { jobId: row.id, lease: lease.token, items: job.items.map((item, index) => ({ index, url: item.url, ...uploads[index] })) };
@@ -122,7 +122,7 @@ async function leased(service: Service, jobId: string, token: string) {
   const { data, error } = await service.from("os_records").select("*").eq("id", jobId).eq("record_type", "ai_job").eq("metadata->>kind", SHORT_REFS_KIND).maybeSingle();
   if (error) throw readFailed();
   const row = data as OsRecord | null;
-  if (!row || row.status !== "in_progress" || jobOf(row).lease?.token !== token) throw new ApiError(409, "SHORT_REFS_LEASE", "이 레퍼런스 작업을 가져간 기록이 없어요.");
+  if (!row || row.status !== "in_progress" || jobOf(row).lease?.token !== token) throw new ApiError(409, "SHORT_REFS_LEASE", "이 참고 영상 작업을 가져간 기록이 없어요.");
   return row;
 }
 export async function completeShortRefs(input: z.infer<typeof shortRefsCompleteSchema>, service: Service = createServiceSupabase()) {

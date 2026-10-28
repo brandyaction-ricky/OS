@@ -15,7 +15,7 @@ type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" 
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
   "short-topics": { name: "숏폼 주제 뽑기", result: "롱폼 원고에서 숏폼 주제 후보 3개(통찰 한 줄 · 장면 · 원고 어디서)를 뽑아 줘요. 하나씩 숏폼으로 만들어요." },
-  "short-script": { name: "숏폼 대본 쓰기", result: "레퍼런스 쇼츠에서 첫 문장 공식 · 흐름 공식을 뽑고, 그 공식으로 대본과 첫 문장 두 안을 써 줘요. PD가 다듬고 확정해요." },
+  "short-script": { name: "숏폼 대본 쓰기", result: "참고 영상에서 헤드 카피 · 첫 문장 · 흐름 공식을 뽑고, 그 공식으로 헤드 카피와 대본을 써 줘요. PD가 다듬고 확정해요." },
   retitle: { name: "제목 · 썸네일 문구 다시 뽑기", result: "시장 영상에서 제목 공식 · 문구 공식을 뽑아 제목 8개 · 문구 8개를 따로 줘요. 하나씩 골라 짝을 만들어요." },
   niche: { name: "틈새 묶기", result: "터진 영상을 같은 제목 공식끼리 묶어 틈새 판에 넣어 줘요." },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", result: "쇼츠 제목과 설명을 써 줘요." },

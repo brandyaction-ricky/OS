@@ -225,6 +225,7 @@ const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();
+const demoRefs = new Map<string, YpShortRefFetch>();
 const demoError = (status: number, code: string, message: string) => new ApiRequestError(message, code, status);
 const gateApply = (...args: Parameters<typeof applyGateAction>) => {
   try { return applyGateAction(...args); } catch (error) { throw error instanceof GateError ? demoError(error.status, error.code, error.message) : error; }
@@ -457,8 +458,18 @@ function demoClient(): YpClient {
     clipRenders: async () => ({}),
     clips: async () => [],
     shortVideoUrl: async () => "",
-    shortRefs: async () => null,
-    fetchShortRefs: async () => { throw demoError(409, "DEMO", "데모에서는 렌더 PC가 레퍼런스를 받지 않아요."); },
+    // The demo has no 영상 만드는 컴퓨터: [찾기] returns two example references at once (no images).
+    shortRefs: async id => structuredClone(demoRefs.get(id) ?? null),
+    fetchShortRefs: async id => {
+      const now = new Date().toISOString();
+      const example = (n: number, title: string, views: number, transcript: string) => ({ url: `https://www.youtube.com/shorts/demo-${n}`, title, channel: "예시 채널", views, ratio: 12, source: "market" as const,
+        result: { ok: true, durationSeconds: 40, transcript, thumb: false, sheet: false, error: "" }, thumbUrl: null, sheetUrl: null });
+      const refs: YpShortRefFetch = { id: `demo-refs-${id}`, status: "done", query: find(id).title, requestedAt: now, doneAt: now, error: null, items: [
+        example(1, "[예시] 연봉 7천인데 그만두고 싶어요", 1_250_000, "0.0 [예시] 연봉 7천인데 그만두고 싶다는 사연이 왔어요\n2.6 조건은 좋은데 매일 지옥 같대요"),
+        example(2, "[예시] 퇴근하면 아무것도 못 하는 이유", 640_000, "0.0 [예시] 퇴근하고 소파에 누우면 끝이죠\n2.1 체력 문제가 아니에요")] };
+      demoRefs.set(id, refs);
+      return structuredClone(refs);
+    },
     makeShort: async (id, topicId) => {
       const longform = find(id);
       const stages = stagesOf(longform);

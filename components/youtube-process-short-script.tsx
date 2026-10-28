@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 import Link from "next/link";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Plus, Sparkles, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { checkShortScript, headCopyProblem, refHostOk, refTexts, SHORT_SCRIPT, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
@@ -15,12 +15,12 @@ const blankRef: YpShortRef = { url: "", title: "", script: "" };
 
 /**
  * 입구 C (owner direction 2026-10-28: "메타 광고는 어사이드 통해서"): Aside, in the PD's own browser, reads the Meta 광고 라이브러리 — the
- * longest-running active video ads and how many versions each runs — and enters each one on this screen as a reference; [레퍼런스 받기]
- * then has the render PC fetch the ad's video like any other. Nothing is run, liked or bought.
+ * longest-running active video ads and how many versions each runs — and enters each one on this screen as a 참고 영상; [찾기] then has
+ * the 영상 만드는 컴퓨터 fetch the ad's video like any other. Nothing is run, liked or bought.
  */
 export function asideAdInstruction(input: { topic: string; audience: string; count: number; page: string }) {
-  return `[Aside 브라우저 조사 · 메타 광고 레퍼런스]
-먼저 OS 문서에서 「숏폼 대본 정본」을 찾아 §2 입구 C와 §2-2 · §2-3을 읽고 따르세요. 열지 못하면 추정하지 말고 막힌 곳을 알려 주세요.
+  return `[Aside 브라우저 조사 · 메타 광고 참고 영상]
+먼저 OS 문서에서 「숏폼 대본 정본」을 찾아 §2-5와 §2-2 · §2-3을 읽고 따르세요. 열지 못하면 추정하지 말고 막힌 곳을 알려 주세요.
 주제: ${input.topic}
 시청자: ${input.audience || "정본의 현재 타겟"}
 
@@ -29,29 +29,31 @@ export function asideAdInstruction(input: { topic: string; audience: string; cou
 3. 같은 광고를 여러 버전으로 돌리는지(「N개 버전」 표시) 확인합니다. 오래 켜져 있고 버전이 많을수록 앞에 둡니다.
 4. 최대 ${input.count}개만 고릅니다. 수를 채우려고 약한 광고를 넣지 않습니다. 0개도 정상입니다.
 5. 광고마다 확인합니다: 광고 라이브러리 주소(https://www.facebook.com/ads/library/?id=숫자), 광고주, 게재 시작일(YYYY-MM-DD), 버전 수, 첫 3초 화면의 헤드 카피(화면의 큰 글자 그대로), 본문 첫 줄, CTA 버튼, 연결 페이지 주소. 보이지 않는 값은 「확인 불가」라고 씁니다.
-6. 아래 OS 화면의 「레퍼런스 › 직접 넣은 레퍼런스」에 광고마다 한 번씩 넣고 [레퍼런스 추가]를 누릅니다.
+6. 아래 OS 화면 오른쪽 「참고 영상」 카드에서 [링크 넣기]를 눌러 광고마다 한 번씩 넣습니다.
    - 영상 주소: 광고 라이브러리 주소
    - 제목: 광고주 · 게재 시작 YYYY-MM-DD · 버전 N개
-   - 그 영상에서 실제로 한 말: 헤드 카피: … / 본문 첫 줄: … / CTA: … / 연결: …
+   - 영상에서 한 말: 헤드 카피: … / 본문 첫 줄: … / CTA: … / 연결: …
    이미 있는 주소는 다시 넣지 않습니다.
-7. 광고를 누르거나 좋아요 · 댓글 · 문의 · 구매 · 결제는 하지 않습니다. [레퍼런스 받기] · 대본 쓰기 · 확정도 누르지 않습니다 — 사람이 합니다.
+7. 광고를 누르거나 좋아요 · 댓글 · 문의 · 구매 · 결제는 하지 않습니다. [찾기] · [내 AI에게 맡기기] · [대본 확정]도 누르지 않습니다 — 사람이 합니다.
 8. 마지막에 넣은 광고 목록(광고주 · 게재 시작일 · 버전 수)과, 기준에 못 미쳐 뺀 이유를 짧게 보고합니다.
 
 등록 화면: ${input.page}`;
 }
 
-/** A 숏폼's 대본 (숏폼 대본 정본 §2~§10, owner direction 2026-10-28): 레퍼런스 → 공식 → 대본, then the PD's 대본 확정. */
+/** A 숏폼's 대본 (숏폼 대본 정본, owner direction 2026-10-28): 첫 화면 · 대본 on the left, 참고 영상 on the right, then the PD's 대본 확정. */
 export function ShortScriptScreen({ page, header }: { page: YpPage; header: ReactNode }) {
   const control = useGate(page, "draft");
   const stage = page.bundle?.stages.shortScript;
   const [form, setForm] = useState<YpShortScript | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   const [send, setSend] = useState(false);
-  const [ref, setRef] = useState<YpShortRef>(blankRef);
+  const [manual, setManual] = useState(false);
   useEffect(() => { if (stage && !dirty) setForm(stage.data); }, [stage, dirty]);
-  // 레퍼런스 받기 (2026-10-28): the render PC keeps each reference's thumbnail, first three seconds and words; polled while it works.
+  const reload = page.reload;
+  const onJobDone = useCallback(() => { setDirty(false); void reload(); }, [reload]);
+  const job = useStaffJob(page, "short-script", onJobDone);
+  // 참고 영상: the 영상 만드는 컴퓨터 keeps each one's thumbnail, first three seconds and words; polled while it works.
   const [refs, setRefs] = useState<YpShortRefFetch | null>(null);
   const [fetching, setFetching] = useState(false);
   const client = page.client, projectId = page.bundle?.project.id, fail = page.fail;
@@ -66,31 +68,30 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
     const timer = window.setInterval(() => void loadRefs(), 15_000);
     return () => window.clearInterval(timer);
   }, [refsWorking, loadRefs]);
-  const fetchRefs = async () => {
-    if (!client || !projectId) return;
-    setFetching(true); page.setError("");
-    try { setRefs(await client.fetchShortRefs(projectId)); } catch (reason) { fail(reason); } finally { setFetching(false); }
-  };
-  const reload = page.reload;
-  const onJobDone = useCallback(() => { setDirty(false); void reload(); }, [reload]);
-  const job = useStaffJob(page, "short-script", onJobDone);
   const project = page.bundle?.project;
   const can = Boolean(project && project.yp.stage === "draft" && editableFields(project, "draft") === "all");
 
   const save = async (next: YpShortScript | null = form) => {
-    if (!page.client || !project || !stage || !next) return;
-    setBusy(true);
+    if (!page.client || !project || !stage || !next) return false;
     try {
       const { query, refs: own, text, hooks, insight, formula, headCopy } = next;
       const result = await page.client.saveStage(project.id, "shortScript", stage.version, { query, refs: own, text, hooks, insight, formula, headCopy });
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, shortScript: result.stage } } : current);
       setDirty(false); setSavedAt(hhmm());
-    } catch (reason) { page.fail(reason); } finally { setBusy(false); }
+      return true;
+    } catch (reason) { page.fail(reason); return false; }
   };
   const edit = (patch: Partial<YpShortScript>, now = false) => {
     const next = { ...form!, ...patch };
     setForm(next); setDirty(true); page.setError("");
     if (now) void save(next);
+  };
+  // What the AI and the 영상 만드는 컴퓨터 read is the saved step: an unsaved edit is saved first instead of disabling the button.
+  const askAi = async () => { if (!dirty || await save()) setSend(true); };
+  const fetchRefs = async () => {
+    if (!client || !projectId || (dirty && !await save())) return;
+    setFetching(true); page.setError("");
+    try { setRefs(await client.fetchShortRefs(projectId)); } catch (reason) { fail(reason); } finally { setFetching(false); }
   };
   const applyDraft = async () => {
     if (!page.client || !project || !stage || !form?.aiDraft) return;
@@ -100,108 +101,145 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
       setDirty(false);
     } catch (reason) { page.fail(reason); }
   };
+  const pickHook = (text: string) => {
+    const lines = form!.text.split(/\r?\n/); const at = lines.findIndex(line => line.trim());
+    edit({ text: at < 0 ? text : [...lines.slice(0, at), text, ...lines.slice(at + 1)].join("\n") }, true);
+  };
 
   const done = refs?.status === "done" ? refs : null;
   const check = form ? checkShortScript(form.text, { refs: refTexts(form, done) }) : null;
   const missing = !form ? "" : dirty ? "저장한 뒤에 확정해요" : shortScriptMissing(form, done);
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;
   const from = project?.yp.shortFrom;
-  const warehouse = [...(page.bundle?.formulas ?? [])].sort((a, b) => b.uses - a.uses);
+  // From what is saved, so the two choice cards do not vanish (and the page jump) on the first key pressed.
+  const saved = stage?.data;
+  const started = Boolean(saved && (saved.text.trim() || saved.headCopy?.trim() || saved.insight.trim() || saved.ai));
   const firstLine = form?.text.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? "";
+  const head = form?.headCopy ?? "";
   return <YpFrame page={page} view={1} action={action} header={header} title="대본"
-    sub={gateSub(project, "draft", "레퍼런스에서 공식을 뽑고, 그 공식으로 대본을 써서 확정해요.", "대본을 확정했어요. 제작으로 넘어가요.")}
-    savedAt={savedAt} onSave={can ? () => void save() : undefined} saveDisabled={!dirty || busy}
-    todo={form && can ? [{ label: "통찰 한 줄", done: Boolean(form.insight.trim()) }, { label: "헤드 카피", done: !headCopyProblem(form.headCopy ?? "") }, { label: "대본", done: Boolean(form.text.trim()) }, { label: "기계 검사", done: Boolean(check && !check.problems.length) }] : undefined}>
+    sub={gateSub(project, "draft", "첫 화면 문구와 대본을 쓰고 확정해요.", "대본을 확정했어요. 제작으로 넘어가요.")}
+    savedAt={savedAt} onSave={can ? () => void save() : undefined} saveDisabled={!dirty}
+    todo={form && can ? [{ label: "헤드 카피", done: !headCopyProblem(head) }, { label: "핵심 한 줄", done: Boolean(form.insight.trim()) }, { label: "대본", done: Boolean(form.text.trim()) }, { label: "검사 통과", done: Boolean(form.text.trim() && check && !check.problems.length) }] : undefined}>
     {page.bundle && form && project ? project.yp.stage === "topic" ? <LockedStep page={page} name="대본" /> : <div onBlur={() => { if (dirty && can) void save(); }}>
       <GateBanner page={page} gate="draft" />
       <Subject page={page} />
-      {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>「{from.title}」</Link><br />
-        <span className="yp-muted" style={{ fontSize: 13 }}>장면: {from.scene}{from.paragraph ? ` · 원고: ${from.paragraph}` : ""}</span></div></div> : null}
+      {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>{from.title}</Link> · {from.scene}</div></div> : null}
 
-      {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || dirty} title={dirty ? "검색어 · 레퍼런스를 저장한 뒤에 보내요" : undefined} onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI로 공식 뽑고 대본 쓰기"}</button>
+      {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => void askAi()} />
+        : !started && !manual ? <div className="yp-ways">
+          <button type="button" className="yp-way yp-rec" onClick={() => void askAi()}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>참고 영상에서 공식을 뽑아 헤드 카피와 대본을 써 줘요</span></button>
+          <button type="button" className="yp-way" onClick={() => { setManual(true); window.setTimeout(() => document.querySelector<HTMLInputElement>("[aria-label='헤드 카피']")?.focus(), 50); }}><b>직접 쓰기</b><span>아래 칸을 바로 채워요</span></button></div>
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => void askAi()}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
           {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span> : null}</div>) : null}
       {form.aiDraft && can ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 대본이 왔어요.</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" onClick={() => void applyDraft()}>이 초안으로 바꾸기</button>
-        <details><summary>초안 보기</summary><p style={{ fontSize: 13 }}><b>통찰</b> {form.aiDraft.insight}<br /><b>헤드 카피</b> {form.aiDraft.headCopy}<br /><b>공식</b> {form.aiDraft.formula}</p><div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{form.aiDraft.text}</div></details></div></div> : null}
+        <details><summary>초안 보기</summary><p style={{ fontSize: 13, margin: "6px 0" }}><b>헤드 카피</b> {form.aiDraft.headCopy}<br /><b>핵심 한 줄</b> {form.aiDraft.insight}</p><div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{form.aiDraft.text}</div></details></div></div> : null}
 
-      <div>
-        <YpSection n={1} title="레퍼런스" gq="같은 시청자 고민을 다룬 쇼츠 3~5개" need={false}>
-          <label className="yp-lbl" style={{ display: "block" }}>검색어 <span className="yp-gq">OS가 이 말로 유튜브 쇼츠를 찾아 내 AI에게 줘요 · 비우면 주제 첫 줄</span>
-            <input className="yp-in" value={form.query} maxLength={60} readOnly={!can} placeholder={projectName(project)} onChange={event => edit({ query: event.target.value })} aria-label="레퍼런스 검색어" /></label>
-          <div className="yp-field"><div className="yp-fld-h"><b>받아 둔 레퍼런스</b><span className="yp-gq">렌더 PC가 썸네일 · 첫 3초 화면(헤드 카피) · 대사를 받아 둬요. 내 AI는 이걸 보고 공식을 뽑아요</span><span className="yp-sp" />
-            {can ? <button type="button" className="yp-btn yp-sm" disabled={fetching || refsWorking || dirty || page.demo} title={dirty ? "검색어 · 레퍼런스를 저장한 뒤에 받아요" : page.demo ? "데모에서는 받지 않아요" : undefined}
-              onClick={() => void fetchRefs()}>{refsWorking ? "받는 중…" : refs ? "다시 받기" : "레퍼런스 받기"}</button> : null}</div>
-            {!refs ? <p className="yp-hint">[레퍼런스 받기]를 누르면 검색어로 찾은 쇼츠 6편과 직접 넣은 링크(유튜브 · 인스타 · 틱톡 · 메타 광고 라이브러리)를 받아요. 1~3분쯤 걸려요.</p>
-              : refsWorking ? <p className="yp-hint">렌더 PC가 받는 중이에요 ({refs.items.length}편 · 「{refs.query}」). 다른 영상을 만드는 중이면 그 뒤에 받아요.</p>
-              : refs.status !== "done" ? <p className="yp-errline">받지 못했어요{refs.error ? ` (${refs.error})` : ""}. [다시 받기]를 눌러 주세요.</p> : null}
-            {refs?.status === "done" ? <ul className="yp-hist">{refs.items.map(item => <li key={item.url} style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-              {item.thumbUrl ? <a href={item.thumbUrl} target="_blank" rel="noreferrer"><img src={item.thumbUrl} alt="썸네일" style={{ width: 120, borderRadius: 6, display: "block" }} /></a> : null}
-              {item.sheetUrl ? <a href={item.sheetUrl} target="_blank" rel="noreferrer"><img src={item.sheetUrl} alt="첫 3초 화면" style={{ width: 180, borderRadius: 6, display: "block" }} /></a> : null}
-              <span style={{ flex: "1 1 200px", minWidth: 0, fontSize: 13 }}><a href={item.url} target="_blank" rel="noreferrer">{item.title || item.url}</a>
-                <span className="yp-tag" style={{ marginLeft: 6 }}>{item.source === "pd" ? "직접 넣음" : "검색"}</span>
-                {item.views ? <span className="yp-muted"> · {compactCount(item.views)}회</span> : null}
-                {item.result?.ok ? item.result.transcript ? <details><summary style={{ cursor: "pointer" }}>대사 보기</summary><div style={{ whiteSpace: "pre-line", fontSize: 12 }}>{item.result.transcript}</div></details>
-                  : <><br /><span className="yp-muted">대사가 없어요 (음악만 있거나 소리를 못 뽑았어요)</span></>
-                  : <><br /><span className="yp-errline" style={{ margin: 0 }}>{item.result?.error || "받지 못했어요"}</span></>}</span></li>)}</ul> : null}
-          </div>
-          {can ? <details style={{ margin: "6px 0 10px" }}><summary style={{ cursor: "pointer", fontSize: 13 }}>메타 광고는 Aside에 맡기기 (오래 켜진 광고 찾기)</summary>
-            <p className="yp-hint" style={{ margin: "6px 0" }}>Aside가 내 브라우저에서 메타 광고 라이브러리를 보고, 오래 켜져 있고 버전이 많은 영상 광고를 아래 「직접 넣은 레퍼런스」에 넣어요. 다 넣으면 [레퍼런스 받기]를 눌러요.</p>
-            <button type="button" className="yp-btn yp-sm" onClick={() => void navigator.clipboard.writeText(asideAdInstruction({ topic: projectName(project), audience: project.yp.topic.target, count: Math.max(1, 8 - form.refs.length),
-              page: `${window.location.origin}/content/plan?project=${project.id}&view=draft` })).then(() => page.setError(""), () => page.setError("복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요."))}>Aside 조사 지침 복사</button></details> : null}
-          {form.ai?.picked.length ? <div className="yp-field"><div className="yp-fld-h"><b>내 AI가 고른 쇼츠</b>{form.ai.market ? <span className="yp-gq">「{form.ai.market.query}」 {form.ai.market.count}편 중</span> : null}</div>
-            <ul className="yp-open-list">{form.ai.picked.map(item => <li key={item.url}><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a><span className="yp-sp" /><span className="yp-muted">{compactCount(item.views)}회</span></li>)}</ul></div> : null}
-          <div className="yp-field"><div className="yp-fld-h"><b>직접 넣은 레퍼런스</b><span className="yp-gq">릴스 · 쇼츠 링크, 할 수 있으면 실제로 한 말도 붙여 넣어요 (흐름 공식이 정확해져요)</span></div>
-            {form.refs.length ? <ul className="yp-open-list">{form.refs.map((item, index) => <li key={`${item.url}-${index}`} style={{ alignItems: "flex-start" }}>
-              <span style={{ flex: 1, minWidth: 0 }}><a href={item.url} target="_blank" rel="noreferrer">{item.title || item.url}</a>{item.script ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>대본 {item.script.length}자</span></> : null}</span>
-              {can ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => edit({ refs: form.refs.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul> : <p className="yp-pempty">아직 없어요</p>}
-            {can && form.refs.length < 8 ? <form style={{ display: "grid", gap: 6 }} onSubmit={event => { event.preventDefault();
-              if (!refHostOk(ref.url.trim())) { page.setError("유튜브 · 인스타그램 · 틱톡 · 페이스북(메타 광고 라이브러리) 영상 주소를 붙여 넣어 주세요."); return; }
-              edit({ refs: [...form.refs, { url: ref.url.trim(), title: ref.title.trim(), script: ref.script.trim() }] }, true); setRef(blankRef); }}>
-              <div className="yp-savebar"><input className="yp-in" style={{ flex: 2 }} placeholder="영상 주소" aria-label="레퍼런스 주소" value={ref.url} onChange={event => setRef({ ...ref, url: event.target.value })} />
-                <input className="yp-in" style={{ flex: 1 }} placeholder="제목 (선택)" aria-label="레퍼런스 제목" maxLength={200} value={ref.title} onChange={event => setRef({ ...ref, title: event.target.value })} /></div>
-              <textarea className="yp-in" rows={2} maxLength={5000} placeholder="그 영상에서 실제로 한 말 (선택)" aria-label="레퍼런스 대본" value={ref.script} onChange={event => setRef({ ...ref, script: event.target.value })} />
-              <div><button type="submit" className="yp-btn yp-sm"><Plus size={14} /> 레퍼런스 추가</button></div></form> : null}
-          </div>
+      <div className="yp-wrap2"><div>
+        <YpSection n={1} title="첫 화면" gq="넘기지 않게 할 첫 3초는?" need>
+          <div className="yp-field"><div className="yp-fld-h"><b>헤드 카피</b><span className="yp-gq">화면 맨 위 큰 글자</span><span className="yp-sp" />
+            <span className={head.trim().length > SHORT_SCRIPT.head ? "yp-errline" : "yp-muted"} style={{ fontSize: 12, margin: 0 }}>{head.trim().length}/{SHORT_SCRIPT.head}</span></div>
+            <input className="yp-in" value={head} maxLength={40} readOnly={!can} placeholder="예) 일은 두 개뿐인데 왜 지칠까" onChange={event => edit({ headCopy: event.target.value })} aria-label="헤드 카피" /></div>
+          {form.hooks.length ? <div className="yp-field"><div className="yp-fld-h"><b>첫 문장</b><span className="yp-gq">골라서 대본 첫 줄로</span></div>
+            <div className="yp-chips">{form.hooks.map(hook => <button key={hook.kind} type="button" className={`yp-chip${firstLine === hook.text ? " yp-on" : ""}`} disabled={!can || firstLine === hook.text} onClick={() => pickHook(hook.text)}>
+              <b>{hook.kind}</b> {hook.text}</button>)}</div></div> : null}
         </YpSection>
 
-        <YpSection n={2} title="공식" gq="헤드 카피 · 썸네일 카피 · 첫 문장 · 흐름 공식 — 구조만 빌리고 문장은 새로" need={false}>
-          {form.ai?.formulas.length ? <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>{form.ai.formulas.map(item => <li key={item.name} style={{ marginBottom: 6 }}>
-            <b>{item.name}</b>{item.name === form.formula ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>이 대본에 씀</span> : null}<br />
-            {item.head ? <>헤드 카피: {item.head}<br /></> : null}{item.cover ? <>썸네일 카피: {item.cover}<br /></> : null}첫 문장: {item.hook}<br />흐름: {item.flow}{item.why ? <><br /><span className="yp-muted">멈춘 이유: {item.why}</span></> : null}</li>)}</ol>
-            : <p className="yp-hint">{form.ai ? `창고의 공식 「${form.formula}」를 썼어요.` : "내 AI가 레퍼런스에서 공식을 뽑아 여기 적어요."}</p>}
-          <label className="yp-lbl" style={{ display: "block", marginTop: 8 }}>쓴 공식 <span className="yp-gq">창고 이름</span>
-            <input className="yp-in" list="yp-formulas" value={form.formula} maxLength={40} readOnly={!can} onChange={event => edit({ formula: event.target.value })} aria-label="쓴 공식" /></label>
-          <datalist id="yp-formulas">{warehouse.map(item => <option key={item.name} value={item.name} />)}</datalist>
-          {warehouse.length ? <details style={{ marginTop: 8 }}><summary style={{ cursor: "pointer", fontSize: 13 }}>공식 창고 {warehouse.length}개 보기 (많이 쓴 순)</summary>
-            <ul className="yp-hist" style={{ maxHeight: 280, overflow: "auto" }}>{warehouse.slice(0, 50).map(item => <li key={item.name} style={{ alignItems: "flex-start" }}><span style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
-              <b>{item.name}</b> <span className="yp-muted">· {item.uses}번 씀 · {item.by}</span><br />{item.head ? <>헤드 카피: {item.head}<br /></> : null}첫 문장: {item.hook}<br /><span className="yp-muted">흐름: {item.flow}</span></span></li>)}</ul></details> : null}
+        <YpSection n={2} title="대본" gq="40초 동안 무슨 말을 하나요?" need>
+          <div className="yp-field"><div className="yp-fld-h"><b>핵심 한 줄</b><span className="yp-gq">다 들은 사람이 기억할 한 문장</span></div>
+            <input className="yp-in" value={form.insight} maxLength={120} readOnly={!can} placeholder="예) 지치는 건 일이 많아서가 아니라 고를 게 많아서예요" onChange={event => edit({ insight: event.target.value })} aria-label="핵심 한 줄" /></div>
+          <div className="yp-field"><div className="yp-fld-h"><b>대본</b><span className="yp-gq">한 줄에 한 문장</span></div>
+            <textarea className="yp-in" rows={16} value={form.text} maxLength={3000} readOnly={!can} aria-label="대본"
+              placeholder={"퇴근하고 소파에 누워 휴대폰만 봐요\n할 일은 두 개뿐이었는데 말이죠\n[사람] 3년 차 마케터 지은 씨도 그랬어요\n[관계] 일한 시간보다 고른 횟수가 문제였어요\n…"} onChange={event => edit({ text: event.target.value })} />
+            {check && form.text.trim() ? <div className={`yp-note ${check.problems.length ? "yp-warn" : "yp-ok"}`} role="status" style={{ marginTop: 8 }}><div style={{ width: "100%" }}>
+              <b>{check.chars}자 · 약 {check.seconds}초{check.problems.length ? ` · 고칠 곳 ${check.problems.length}개` : " · 검사 통과"}</b>
+              {check.problems.length ? <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{check.problems.map(problem => <li key={problem}>{problem}</li>)}</ul> : null}
+              {check.notes.map(note => <div key={note}>{note}</div>)}</div></div> : null}</div>
+          {form.ai?.notes ? <details className="yp-more-fields"><summary>내 AI가 남긴 메모</summary><p style={{ whiteSpace: "pre-line", fontSize: 13 }}>{form.ai.notes}</p></details> : null}
+          {form.confirmed ? <p className="yp-hint">제작은 확정한 대본으로 시작해요. <Link className="yp-lnk" href={stepHref(3, project.id)}>제작으로 →</Link></p> : null}
         </YpSection>
-
-        <YpSection n={3} title="대본" gq="한 줄 = 한 문장 = 화면 한 장 · 비교가 있는 줄은 [관계], 인물이 처음 나오는 줄은 [사람]" need>
-          <label className="yp-lbl" style={{ display: "block" }}>통찰 한 줄 <span className="yp-gq">다 들은 사람이 자기 말로 다시 할 문장</span>
-            <input className="yp-in" value={form.insight} maxLength={120} readOnly={!can} onChange={event => edit({ insight: event.target.value })} aria-label="통찰 한 줄" /></label>
-          <label className="yp-lbl" style={{ display: "block" }}>첫 화면 헤드 카피 <span className="yp-gq">첫 3초 화면 맨 위 큰 글자 · {SHORT_SCRIPT.head}자 이하 · 넘길지 말지가 여기서 정해져요</span>
-            <input className="yp-in" value={form.headCopy ?? ""} maxLength={40} readOnly={!can} onChange={event => edit({ headCopy: event.target.value })} aria-label="첫 화면 헤드 카피" />
-            {form.headCopy && headCopyProblem(form.headCopy) ? <span className="yp-errline">{headCopyProblem(form.headCopy)}</span> : null}</label>
-          {form.hooks.length ? <div className="yp-field"><div className="yp-fld-h"><b>첫 문장 두 안</b><span className="yp-gq">하나를 골라 첫 줄로 써요</span></div>
-            {form.hooks.map(hook => <div key={hook.kind} className="yp-savebar" style={{ marginBottom: 4 }}><span className="yp-tag">{hook.kind}</span><span style={{ flex: 1, minWidth: 0 }}>{hook.text}</span>
-              {firstLine === hook.text ? <span className="yp-tag yp-ok">첫 줄</span> : can ? <button type="button" className="yp-btn yp-sm" onClick={() => {
-                const lines = form.text.split(/\r?\n/); const at = lines.findIndex(line => line.trim());
-                edit({ text: at < 0 ? hook.text : [...lines.slice(0, at), hook.text, ...lines.slice(at + 1)].join("\n") }, true); }}>첫 줄로 쓰기</button> : null}</div>)}</div> : null}
-          <textarea className="yp-in" rows={16} value={form.text} maxLength={3000} readOnly={!can} aria-label="대본"
-            placeholder={"첫 문장 (25자 이하)\n둘째 문장\n[관계] 둘을 비교하는 문장\n…"} onChange={event => edit({ text: event.target.value })} />
-          {check ? <div className={`yp-note ${check.problems.length ? "yp-warn" : "yp-ok"}`} role="status" style={{ marginTop: 8 }}><div style={{ width: "100%" }}>
-            <b>{check.chars}자 · 약 {check.seconds}초 · {check.lines}줄</b> <span className="yp-muted">(기본 250~370자, 1분에 490자)</span>
-            {check.problems.length ? <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{check.problems.map(problem => <li key={problem}>{problem}</li>)}</ul> : <> · 기계 검사 통과</>}
-            {check.notes.map(note => <div key={note} className="yp-muted">{note}</div>)}</div></div> : null}
-          {form.ai?.notes ? <p className="yp-hint" style={{ whiteSpace: "pre-line" }}>내 AI 메모: {form.ai.notes}</p> : null}
-          {form.confirmed ? <p className="yp-hint">확정한 대본 · {form.confirmed.at.slice(0, 10)} — 제작은 이 대본으로 시작해요. <Link className="yp-lnk" href={stepHref(3, project.id)}>제작으로 →</Link></p> : null}
-        </YpSection>
+        <FormulaBox page={page} form={form} can={can} onChange={formula => edit({ formula })} />
+      </div>
+      <ShortRefsCard page={page} form={form} can={can} refs={refs} working={refsWorking || fetching} onFetch={() => void fetchRefs()} onEdit={edit} />
       </div>
       <SendDialog page={page} task="short-script" open={send} onClose={() => setSend(false)} job={job} />
     </div> : null}
   </YpFrame>;
+}
+
+/** Which formula the 대본 follows: the AI's new ones and the company 공식 창고 (most used first), folded away until asked for. */
+function FormulaBox({ page, form, can, onChange }: { page: YpPage; form: YpShortScript; can: boolean; onChange: (formula: string) => void }) {
+  const warehouse = [...(page.bundle?.formulas ?? [])].sort((a, b) => b.uses - a.uses);
+  const lines = (item: { head?: string; cover?: string; hook: string; flow: string }) => <>
+    {item.head ? <>헤드 카피: {item.head}<br /></> : null}{item.cover ? <>썸네일 카피: {item.cover}<br /></> : null}첫 문장: {item.hook}<br /><span className="yp-muted">흐름: {item.flow}</span></>;
+  return <details className="yp-more-fields"><summary>쓴 공식{form.formula ? ` · ${form.formula}` : ""}</summary>
+    {form.ai?.formulas.length ? <ol style={{ margin: "8px 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>{form.ai.formulas.map(item => <li key={item.name} style={{ marginBottom: 6 }}>
+      <b>{item.name}</b>{item.name === form.formula ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>이 대본</span> : null}<br />{lines(item)}</li>)}</ol> : null}
+    <input className="yp-in" list="yp-formulas" value={form.formula} maxLength={40} readOnly={!can} placeholder="공식 창고에서 고르기" onChange={event => onChange(event.target.value)} aria-label="쓴 공식" style={{ marginTop: 8 }} />
+    <datalist id="yp-formulas">{warehouse.map(item => <option key={item.name} value={item.name} />)}</datalist>
+    {warehouse.length ? <ul className="yp-hist" style={{ maxHeight: 280, overflow: "auto", marginTop: 8 }}>{warehouse.slice(0, 50).map(item => <li key={item.name} style={{ alignItems: "flex-start" }}>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}><b>{item.name}</b> <span className="yp-muted">· {item.uses}번 씀</span><br />{lines(item)}</span></li>)}</ul> : null}
+  </details>;
+}
+
+/** 참고 영상 (오른쪽 카드): search words + [찾기], what the 영상 만드는 컴퓨터 kept of each, links put in by hand, and Meta ads via Aside. */
+function ShortRefsCard({ page, form, can, refs, working, onFetch, onEdit }: {
+  page: YpPage; form: YpShortScript; can: boolean; refs: YpShortRefFetch | null; working: boolean; onFetch: () => void; onEdit: (patch: Partial<YpShortScript>, now?: boolean) => void;
+}) {
+  const [open, setOpen] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [link, setLink] = useState<YpShortRef>(blankRef);
+  const [copied, setCopied] = useState(false);
+  const project = page.bundle!.project;
+  const add = () => {
+    if (!refHostOk(link.url.trim())) { page.setError("유튜브 · 인스타그램 · 틱톡 · 메타 광고 라이브러리 주소를 넣어 주세요."); return; }
+    if (form.refs.some(ref => ref.url === link.url.trim())) { page.setError("이미 넣은 영상이에요."); return; }
+    onEdit({ refs: [...form.refs, { url: link.url.trim(), title: link.title.trim(), script: link.script.trim() }] }, true);
+    setLink(blankRef); setAdding(false);
+  };
+  const copyAside = async () => {
+    try {
+      await navigator.clipboard.writeText(asideAdInstruction({ topic: projectName(project), audience: project.yp.topic.target, count: Math.max(1, 8 - form.refs.length),
+        page: `${window.location.origin}/content/plan?project=${project.id}&view=draft` }));
+      setCopied(true); window.setTimeout(() => setCopied(false), 4000);
+    } catch { page.setError("복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요."); }
+  };
+  const items = refs?.status === "done" ? refs.items : [];
+  return <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">참고 영상 <span className="yp-opt">선택</span></div><div className="yp-card-b">
+    {can ? <form className="yp-savebar" style={{ margin: 0 }} onSubmit={event => { event.preventDefault(); onFetch(); }}>
+      <input className="yp-in" style={{ flex: 1, minWidth: 0 }} value={form.query} maxLength={60} placeholder={projectName(project)} onChange={event => onEdit({ query: event.target.value })} aria-label="참고 영상 검색어" />
+      <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button></form> : null}
+    {working ? <p className="yp-hint" role="status">쇼츠를 가져오는 중이에요. 1~3분 걸려요.</p>
+      : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : null}
+    {items.length ? <ul className="yp-open-list" style={{ maxHeight: "none" }}>{items.map(item => {
+      const shown = open === item.url;
+      return <li key={item.url} style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+        <button type="button" style={{ width: "100%", textAlign: "left", display: "flex", gap: 8, alignItems: "center", background: "none", border: 0, padding: 0, color: "inherit", cursor: "pointer" }} aria-expanded={shown} onClick={() => setOpen(shown ? "" : item.url)}>
+          {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: 64, height: 40, objectFit: "cover", borderRadius: 4, flex: "none" }} /> : <span style={{ width: 64, height: 40, borderRadius: 4, background: "var(--panel-2)", flex: "none" }} />}
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title || item.url}</span>
+            <span className="yp-muted" style={{ fontSize: 12 }}>{item.result?.ok ? item.views ? `${compactCount(item.views)}회` : item.source === "pd" ? "직접 넣음" : "" : "가져오지 못함"}</span></span>
+          {shown ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
+        {shown ? <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+          {item.sheetUrl ? <img src={item.sheetUrl} alt="첫 3초 화면" style={{ width: "100%", borderRadius: 6 }} /> : null}
+          {item.result?.transcript ? <div style={{ maxHeight: 200, overflow: "auto", lineHeight: 1.6 }}>{item.result.transcript.split("\n").map((line, at) => {
+            const [, time, said] = line.match(/^(\d+(?:\.\d+)?) (.*)$/) ?? [null, null, line];
+            return <div key={at}>{time !== null ? <span className="yp-muted" style={{ display: "inline-block", width: 38 }}>{`${Math.floor(Number(time) / 60)}:${String(Math.floor(Number(time) % 60)).padStart(2, "0")}`}</span> : null}{said}</div>;
+          })}</div> : <span className="yp-muted">{item.result?.ok ? "대사가 없어요" : item.result?.error || "가져오지 못했어요"}</span>}
+          <a className="yp-lnk" href={item.url} target="_blank" rel="noreferrer">영상 열기 →</a></div> : null}
+      </li>;
+    })}</ul> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>검색어로 쇼츠를 찾아요</p> : null}
+    {form.refs.length ? <><div className="yp-fld-h" style={{ marginTop: 12 }}><b>직접 넣은 링크</b></div>
+      <ul className="yp-open-list" style={{ marginTop: 4 }}>{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}><a href={ref.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ref.title || ref.url}</a>
+        {can ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => onEdit({ refs: form.refs.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul></> : null}
+    {can ? adding ? <form style={{ display: "grid", gap: 6, marginTop: 10 }} onSubmit={event => { event.preventDefault(); add(); }}>
+      <input className="yp-in" placeholder="영상 주소" aria-label="링크 주소" value={link.url} autoFocus onChange={event => setLink({ ...link, url: event.target.value })} />
+      <input className="yp-in" placeholder="제목 (선택)" aria-label="링크 제목" maxLength={200} value={link.title} onChange={event => setLink({ ...link, title: event.target.value })} />
+      <textarea className="yp-in" rows={2} maxLength={5000} placeholder="영상에서 한 말 (선택)" aria-label="영상에서 한 말" value={link.script} onChange={event => setLink({ ...link, script: event.target.value })} />
+      <div className="yp-row-btns"><button type="submit" className="yp-btn yp-sm yp-pri">넣기</button><button type="button" className="yp-btn yp-sm" onClick={() => { setAdding(false); setLink(blankRef); }}>취소</button></div></form>
+      : <div className="yp-row-btns" style={{ marginTop: 10, flexWrap: "wrap" }}>
+        <button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={14} /> 링크 넣기</button>
+        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside()}><Copy size={14} /> {copied ? "복사했어요 · Aside에 붙여 넣기" : "메타 광고 찾기 (Aside)"}</button></div> : null}
+  </div></section></aside>;
 }
 
 /** 쇼츠 · 칼럼 › 숏폼 주제 (입구 A): the staff AI's candidates from this longform's 원고; each becomes its own 숏폼 at 주제. */
@@ -223,18 +261,14 @@ export function ShortTopicsPanel({ page }: { page: YpPage }) {
   if (!project || !topics) return null;
   const items = topics.data.items;
   return <>
-    <YpSection n={1} title="숏폼 주제 후보" gq="롱폼 원고에서 통찰 하나 + 장면 하나 · 숏폼은 새 대본 · 새 음성으로 만들어요" extra={
-      <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> {items.length ? "내 AI로 다시 뽑기" : "내 AI로 주제 뽑기"}</button>}>
+    <YpSection n={1} title="숏폼 주제" gq="이 원고로 만들 숏폼은?" extra={items.length && !job.open ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 다시 뽑기</button> : null}>
       {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-      {topics.data.ai ? <p className="yp-hint" style={{ marginTop: 0 }}><span className="yp-aitag"><Sparkles size={10} aria-hidden="true" /> AI 초안 · {topics.data.ai.by}</span> 다시 뽑으면 아직 숏폼으로 만들지 않은 후보만 바뀌어요.</p> : null}
-      {items.length ? <ul className="yp-hist">{items.map(item => <li key={item.id} style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-        <span style={{ flex: "1 1 260px", minWidth: 0 }}><b>{item.insight}</b><br /><span className="yp-muted" style={{ fontSize: 13 }}>장면: {item.scene}</span>
-          {item.paragraph ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>원고: {item.paragraph}</span></> : null}
-          {item.why ? <><br /><span className="yp-muted" style={{ fontSize: 12 }}>멈출 이유: {item.why}</span></> : null}</span>
-        {item.made ? <Link className="yp-btn yp-sm" href={stepHref(0, item.made.projectId)}>만든 숏폼 열기 →</Link>
-          : <button type="button" className="yp-btn yp-sm yp-pri" disabled={Boolean(making)} onClick={() => void make(item.id)}>{making === item.id ? "만드는 중…" : "숏폼으로 만들기"}</button>}
-      </li>)}</ul> : <p className="yp-pempty">아직 후보가 없어요. [내 AI로 주제 뽑기]를 누르면 원고에서 3개를 뽑아요.</p>}
-      <p className="yp-hint">만든 숏폼은 내 영상 목록에 따로 생겨요. 그 숏폼에서 주제 컨펌 → 대본(레퍼런스 · 공식 · 대본 확정) → 제작으로 이어가요.</p>
+      {items.length ? <ul className="yp-hist">{items.map(item => <li key={item.id} style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <span style={{ flex: "1 1 260px", minWidth: 0 }}><b>{item.insight}</b><br /><span className="yp-muted" style={{ fontSize: 13 }}>{item.scene}</span></span>
+        {item.made ? <Link className="yp-btn yp-sm" href={stepHref(0, item.made.projectId)}>숏폼 열기 →</Link>
+          : <button type="button" className="yp-btn yp-sm yp-pri" disabled={Boolean(making)} onClick={() => void make(item.id)}>{making === item.id ? "만드는 중…" : "숏폼 만들기"}</button>}
+      </li>)}</ul>
+        : job.open ? null : <div className="yp-ways" style={{ marginBottom: 0 }}><button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>원고에서 숏폼 주제 3개를 뽑아요</span></button></div>}
     </YpSection>
     <SendDialog page={page} task="short-topics" open={send} onClose={() => setSend(false)} job={job} />
   </>;
