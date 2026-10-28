@@ -20,11 +20,14 @@ export function shortLineWidth(text: string, size: number) {
 
 type Act = { cue?: unknown; size?: unknown; lines?: unknown; cam?: unknown; text_y?: unknown; [key: string]: unknown };
 type Scene = Record<string, unknown> & { type: string; acts?: Act[] };
-type Piece = { text?: unknown; size?: unknown };
-/** An act's lines: [[{text, cue?, size?}, …], …] or [[text, cue], …] (Logan's two spellings). */
+type Piece = { text?: unknown; size?: unknown; cue?: unknown; t?: unknown; [key: string]: unknown };
+/** An act's lines as Logan's opening drawer reads them, [[{text, cue | t, …}, …], …], from either spelling ([text, cue] pairs too). */
 const actLines = (act: Act): Piece[][] => (Array.isArray(act.lines) ? act.lines : []).map((line) =>
-  (Array.isArray(line) ? line : [line]).flatMap((piece): Piece[] => typeof piece === "string" ? [{ text: piece }]
-    : Array.isArray(piece) && typeof piece[0] === "string" ? [{ text: piece[0] }] : piece && typeof piece === "object" ? [piece as Piece] : []));
+  (Array.isArray(line) && !(typeof line[0] === "string" && typeof line[1] === "string") ? line : [line]).flatMap((piece): Piece[] => typeof piece === "string" ? [{ text: piece }]
+    : Array.isArray(piece) && typeof piece[0] === "string" ? [{ text: piece[0], ...(typeof piece[1] === "string" ? { cue: piece[1] } : {}) }]
+    : piece && typeof piece === "object" ? [piece as Piece] : []));
+/** His drawer reads act.t and every piece's t (from cue): a missing one stops the render with KeyError 't' (2026-10-28 test). */
+const timed = (o: { cue?: unknown; t?: unknown }) => typeof o.cue === "string" || typeof o.t === "number";
 const lineText = (line: Piece[]) => line.map((piece) => String(piece.text ?? "")).join(" ").replace(/\s+/g, " ").trim();
 
 /** Letter limits and item counts of a diagram's slots (catalog spec), at any depth. */
@@ -61,6 +64,7 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
       acts.forEach((act, k) => {
         const lines = actLines(act);
         if (!lines.some((line) => lineText(line))) issues.push(`${where} ${k + 1}번째 막에 글자 줄이 없어요.`);
+        if (k > 0 && !timed(act) && !lines.flat().some(timed)) issues.push(`${where} ${k + 1}번째 막에 cue(그 막이 시작되는 말)가 없어요.`);
         for (const line of lines) {
           const size = Number(line.find((piece) => typeof piece.size === "number")?.size ?? act.size ?? OPENING_SIZE);
           const px = shortLineWidth(lineText(line), size);
@@ -78,13 +82,32 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
   if (issues.length) return { issues: issues.slice(0, 40), story: null, fuzzy: [] as string[] };
 
   const story = { ...raw, end, cta: [] as { after: string; line: string }[],
-    scenes: scenes.map((sc) => sc.type !== "opening" ? { bg: "white", ...sc }
-      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act) => ({ text_y: 720, cam: { push: 0.006, drift: [0, 0], punch: 0 }, ...act })) }) } as unknown as MyinStoryboard;
+    scenes: scenes.map((sc) => sc.type !== "opening" ? { bg: "white", ...timedSlots(sc, sceneStart(sc)) as Scene }
+      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act) => shortAct(act, sc)) }) } as unknown as MyinStoryboard;
   delete (story as Record<string, unknown>).reel;
   delete (story as Record<string, unknown>).music_cues;
   const cues = myinCueMisses(story, input.words);
   issues.push(...cues.misses, ...openingTextIssues(story, input.words, input.speech).map((issue) => issue.replace("쇼릴 전에는 자막이 없으니", "첫 장면에는 자막이 없으니")));
   return { issues: issues.slice(0, 40), story: issues.length ? null : story, fuzzy: cues.fuzzy };
+}
+
+/** An act as his drawer needs it: its own cue (else its first piece's, else the scene start) and every piece timed with the act. */
+function shortAct(act: Act, sc: Scene) {
+  const lines = actLines(act);
+  const first = lines.flat().find(timed);
+  const start = timed(act) ? { cue: act.cue, t: act.t } : first ? { cue: first.cue, t: first.t } : { cue: sc.at, t: sc.at_time };
+  const when = typeof start.cue === "string" ? { cue: start.cue } : { t: start.t };
+  return { text_y: 720, cam: { push: 0.006, drift: [0, 0], punch: 0 }, ...act, ...(timed(act) ? {} : when),
+    lines: lines.map((line) => line.map((piece) => timed(piece) ? piece : { ...piece, ...when })) };
+}
+
+const sceneStart = (sc: Scene) => typeof sc.at === "string" ? { cue: sc.at } : { t: sc.at_time };
+/** A diagram's slots ({ text, … } at any depth) without a cue or t appear with the scene, like A1's items (the V layouts read every t). */
+function timedSlots(value: unknown, when: { cue?: unknown; t?: unknown }, root = true): unknown {
+  if (Array.isArray(value)) return value.map((item) => timedSlots(item, when, false));
+  if (!value || typeof value !== "object") return value;
+  const o = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, timedSlots(item, when, false)]));
+  return !root && typeof o.text === "string" && !timed(o) ? { ...o, ...when } : o;
 }
 
 /** The diagram list for the card: type, name and its slots' letter limits. */

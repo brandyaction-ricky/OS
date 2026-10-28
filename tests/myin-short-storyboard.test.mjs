@@ -26,6 +26,16 @@ test("a short storyboard passes and gets the shared defaults", () => {
   assert.equal(checked.story.scenes[0].bg, "white");
   assert.deepEqual(checked.story.scenes[0].acts[0].cam, { push: 0.006, drift: [0, 0], punch: 0 });
   assert.equal(checked.story.scenes[0].acts[1].size, 100);
+  // Logan's drawer reads act.t and every piece's t: the head-copy act starts with the scene, untimed pieces with their act.
+  assert.equal(checked.story.scenes[0].acts[0].cue, "둘 다 원할 땐");
+  assert.deepEqual(checked.story.scenes[0].acts[0].lines[1][0], { text: "뭘 고르지", accent: true, cue: "둘 다 원할 땐" });
+  const slots = good();
+  delete slots.scenes[1].mid.cue;
+  assert.deepEqual(checkShortStoryboard(slots, input).story.scenes[1].mid, { text: "둘 다", cue: "가고 싶고" });
+  const untimed = good();
+  delete untimed.scenes[0].acts[1].cue;
+  untimed.scenes[0].acts[1].lines = [["이번 주말에도"], ["친구를 만나고 싶어요"]];
+  assert.match(checkShortStoryboard(untimed, input).issues.join(" "), /2번째 막에 cue\(그 막이 시작되는 말\)가 없어요/);
 });
 
 test("the first screen is the confirmed head copy", () => {
