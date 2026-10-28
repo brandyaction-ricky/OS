@@ -344,6 +344,9 @@ test("low-reaction and pending references remain selectable with their status vi
   await expect(weak.locator(".tr-metrics dd").nth(1)).toHaveText("6");
   await expect(weak.locator(".tr-metrics dd").nth(2)).toHaveText("1");
   await page.screenshot({ path: testInfo.outputPath("weak-content-only.png"), fullPage: true });
+  await weak.getByRole("checkbox").check();
+  await expect(page.getByText("1개 선택됨", { exact: true })).toBeVisible();
+  await weak.getByRole("checkbox").uncheck();
   await expect(page.locator(".tr-selection")).toHaveCount(0);
   await page.getByRole("button", { name: "검증 대기 1개", exact: true }).click();
   await expect(page.locator(".tr-reference").getByRole("checkbox")).toBeEnabled();
