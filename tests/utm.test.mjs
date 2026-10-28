@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmConflicts, validUtmCode } from "../lib/utm.ts";
+import { buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmConflicts, utmOptionClash, validUtmCode } from "../lib/utm.ts";
 
 const codes = { source: "youtube", medium: "organic_social", campaign: "myin_free_202610", content: "video_001" };
 
@@ -31,10 +31,29 @@ test("unsafe or credentialed addresses are refused", () => {
   for (const bad of ["javascript:alert(1)", "data:text/html,x", "ftp://example.com", "https://user:pw@example.com", "example.com"]) assert.ok("error" in parseOriginUrl(bad), bad);
 });
 
-test("codes are trimmed and lowercased; only a-z 0-9 _ - pass", () => {
-  assert.equal(normalizeUtmCode("  YouTube "), "youtube");
-  assert.ok(validUtmCode("myin_free_202610") && validUtmCode("organic-social"));
-  assert.ok(!validUtmCode("유튜브") && !validUtmCode("a b") && !validUtmCode(""));
+test("source/medium/campaign codes are trimmed and lowercased; only a-z 0-9 _ - pass", () => {
+  for (const kind of ["source", "medium", "campaign"]) {
+    assert.equal(normalizeUtmCode("  YouTube ", kind), "youtube");
+    assert.ok(validUtmCode("myin_free_202610", kind) && validUtmCode("organic-social", kind));
+    assert.ok(!validUtmCode("YouTube", kind) && !validUtmCode("유튜브", kind) && !validUtmCode("a b", kind) && !validUtmCode("", kind));
+  }
+});
+
+test("utm_content keeps its case (a YouTube video ID) and still refuses other characters", () => {
+  assert.equal(normalizeUtmCode("  sQ2Abm4S8rI ", "content"), "sQ2Abm4S8rI");
+  assert.ok(validUtmCode("sQ2Abm4S8rI", "content") && validUtmCode("A-b_9", "content") && validUtmCode("video_001", "content"));
+  assert.ok(!validUtmCode("유튜브", "content") && !validUtmCode("a b", "content") && !validUtmCode("a.b", "content") && !validUtmCode("", "content") && !validUtmCode("x".repeat(81), "content"));
+  const { url } = parseOriginUrl("https://myin.example/p?ref=yt#cta");
+  assert.equal(new URL(buildUtmUrl(url, { ...codes, content: "sQ2Abm4S8rI" })).searchParams.get("utm_content"), "sQ2Abm4S8rI");
+});
+
+test("a same-name value whose code differs only in case is reported, never treated as the same value", () => {
+  const wrong = { label: "영상 A", code: "sq2abm4s8ri", active: true };
+  assert.match(utmOptionClash(wrong, "sq2abm4s8ri"), /^이미 있어요/);
+  const message = utmOptionClash(wrong, "sQ2Abm4S8rI");
+  assert.match(message, /다른 코드\(sq2abm4s8ri\)/);
+  assert.match(message, /대소문자만 다른/);
+  assert.doesNotMatch(message, /그 값을 고르세요/);
 });
 
 test("the 링크 대장 document is one table built from the rows; memo fields stay out of the URL", async () => {
@@ -56,6 +75,9 @@ test("UTM tables are server-only and every route checks the staff session", asyn
   }
   assert.match(sql, /unique \(kind, code\)/);
   assert.match(sql, /request_id uuid not null unique/);
+  const widen = readFileSync("supabase/migrations/20261028100000_utm_content_case.sql", "utf8");
+  assert.match(widen, /code ~ '\^\[a-z0-9_-\]\{1,80\}\$' or \(kind = 'content' and code ~ '\^\[A-Za-z0-9_-\]\{1,80\}\$'\)/);
+  assert.doesNotMatch(widen, /\bupdate\b|\bdelete\b/i);
   for (const route of ["options/route.ts", "options/[id]/route.ts", "links/route.ts", "links/[id]/short/route.ts", "links/[id]/ledger/route.ts"]) {
     assert.match(readFileSync(`app/api/v1/utm/${route}`, "utf8"), /await utmActor\(request\)/, route);
   }

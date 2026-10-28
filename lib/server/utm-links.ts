@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
-import { UTM_BRANDS, UTM_KINDS, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmConflicts, validUtmCode, type UtmKind } from "@/lib/utm";
+import { UTM_BRANDS, UTM_KINDS, buildUtmUrl, normalizeUtmCode, parseOriginUrl, utmCodeRule, utmConflicts, utmOptionClash, validUtmCode, type UtmKind } from "@/lib/utm";
 import { UTM_LEDGER, utmLedgerMarkdown, type UtmLedgerRow } from "@/lib/utm-ledger";
 import { makeMyinShortLink } from "./myin-short-links";
 import { authenticateRequest } from "./auth";
@@ -29,18 +29,17 @@ export async function listUtmOptions() {
 
 export const utmOptionSchema = z.object({ kind: z.enum(UTM_KINDS), label: z.string().trim().min(1).max(80), code: z.string().max(100) }).strict();
 export async function createUtmOption(input: z.infer<typeof utmOptionSchema>, actor: UtmActor) {
-  const code = normalizeUtmCode(input.code);
-  if (!validUtmCode(code)) throw new ApiError(400, "UTM_CODE_INVALID", "URL 코드는 영문 소문자·숫자·밑줄(_)·하이픈(-)만 쓸 수 있어요.");
+  const code = normalizeUtmCode(input.code, input.kind);
+  if (!validUtmCode(code, input.kind)) throw new ApiError(400, "UTM_CODE_INVALID", utmCodeRule(input.kind));
   const db = createServiceSupabase();
   const { data, error } = await db.from("os_utm_options").insert({ kind: input.kind, label: input.label, code, created_by: actor.id }).select(OPTION_COLUMNS).single();
   if (!error) return data as UtmOption;
   if (!unique(error)) throw new ApiError(503, "UTM_OPTION_SAVE_FAILED", "선택값을 저장하지 못했어요.");
   // Same code or same name in this kind (case, spaces, turned-off ones and a simultaneous add included): point at it.
   const { data: rows } = await db.from("os_utm_options").select(OPTION_COLUMNS).eq("kind", input.kind);
-  const existing = (rows as UtmOption[] | null)?.find(row => row.code === code || row.label.trim().toLowerCase() === input.label.trim().toLowerCase());
-  throw new ApiError(409, "UTM_OPTION_EXISTS", existing
-    ? `이미 있어요: ${existing.label} (${existing.code})${existing.active ? " — 그 값을 고르세요." : " — 꺼져 있는 값이에요. 관리자에게 다시 켜 달라고 해 주세요."}`
-    : "같은 이름이나 코드가 이미 있어요.", existing ? { option: existing } : undefined);
+  const list = (rows as UtmOption[] | null) ?? [];
+  const existing = list.find(row => row.code === code) ?? list.find(row => row.label.trim().toLowerCase() === input.label.trim().toLowerCase());
+  throw new ApiError(409, "UTM_OPTION_EXISTS", existing ? utmOptionClash(existing, code) : "같은 이름이나 코드가 이미 있어요.", existing ? { option: existing } : undefined);
 }
 
 export const utmOptionUpdateSchema = z.object({ label: z.string().trim().min(1).max(80).optional(), active: z.boolean().optional() }).strict();
