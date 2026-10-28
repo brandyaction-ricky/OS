@@ -29,7 +29,7 @@ test("Linear design system changes the full application shell", async () => {
     assert.ok(css.includes(selector), `missing ${selector}`);
   }
 
-  assert.match(await read("app/theme-tokens.css"), /--accent: #5e6ad2/);
+  assert.match(await read("app/theme-tokens.css"), /--accent: #716879/);
   assert.match(css, /box-shadow: none/);
 });
 
@@ -38,8 +38,8 @@ test("Linear light theme uses layered neutral surfaces and repairs legacy dark c
 
   const tokens = await read("app/theme-tokens.css");
   const global = await read("app/globals.css");
-  assert.match(tokens, /--bg: #f7f7f8/);
-  assert.match(tokens, /--panel: #fafafa/);
+  assert.match(tokens, /--bg: #f2f0f4/);
+  assert.match(tokens, /--panel: #f8f7f9/);
   assert.doesNotMatch(css, /data-theme/);
   for (const selector of [".revenue-band", ".channel-dictionary", ".connection-row", ".audit-filters", ".knowledge-search-form"]) assert.ok(global.includes(selector));
 });

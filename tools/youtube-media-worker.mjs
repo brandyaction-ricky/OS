@@ -240,11 +240,13 @@ export function engine() {
   const walk = (root, dir = "") => {
     const here = path.join(root, dir);
     if (!existsSync(here)) return;
-    for (const name of readdirSync(here).sort()) {
+    // Korean names count the same whether a folder stores them composed (NFC) or decomposed (NFD, as a Mac's tar writes them).
+    const names = readdirSync(here).map((name) => [name.normalize("NFC"), name]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    for (const [, name] of names) {
       if (name === "__pycache__" || name.startsWith(".")) continue;
       const rel = path.join(dir, name), full = path.join(root, rel), stat = statSync(full);
       if (stat.isDirectory()) walk(root, rel);
-      else h.update(`${rel.split(path.sep).join("/")}\0${code.test(name) ? createHash("sha256").update(readFileSync(full)).digest("hex") : stat.size}\n`);
+      else h.update(`${rel.split(path.sep).join("/").normalize("NFC")}\0${code.test(name) ? createHash("sha256").update(readFileSync(full)).digest("hex") : stat.size}\n`);
     }
   };
   for (const part of ["tools", "assets"]) { h.update(`#pkg/${part}\n`); walk(path.join(myinPkg, part)); }
