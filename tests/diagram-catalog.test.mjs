@@ -27,7 +27,7 @@ test("the catalog accepts only lib_ types and the four kinds", () => {
 
 const words = "오늘은 성격 이야기를 해볼게요 처음엔 누구나 회사 안에서 길을 걷기 시작해요 마지막으로 정리해 볼게요".split(" ").map((word, i) => [i, i + 0.9, word]);
 const story = (middle) => ({ end: 30, cta: [{ after: "처음엔 누구나", line: "구독 눌러 주세요" }], scenes: [
-  { type: "opening", at: "오늘은 성격" }, middle, { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25 }, { type: "endscreen", at_time: 28 }] });
+  { type: "opening", at: "오늘은 성격" }, middle, { type: "outro", at: "마지막으로 정리해" }, { type: "summary", at_time: 25, title: "정리", points: [{ head: "자리", desc: "바꾸기" }] }, { type: "endscreen", at_time: 28 }] });
 
 test("a reported lib_ type passes and its beats' cues are checked like any cue", () => {
   const ok = checkMyinStoryboard(story({ type: "lib_stage_road", at: "처음엔 누구나", theme: "myin", beats: [{ cue: "회사 안에서", do: "add", id: "a", text: "입사" }] }), words, diagramCatalogTypes(catalog));

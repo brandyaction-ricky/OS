@@ -147,6 +147,18 @@ function puzzleIssues(scenes: { type: string; pieces?: unknown; word?: unknown }
   });
   return issues;
 }
+/**
+ * What Logan's drawers read with no fallback (s_<type> in myin_engine.py · myin_metaphors.py, and render_myin's scale timing):
+ * a scene without one stops 자료 준비 with KeyError. 2026-10-28: a scale scene with a label but no title failed it six times.
+ */
+const SCENE_NEEDS: Record<string, string[]> = {
+  bars: ["title"], bigcircle: ["title"], hero: ["title"], layers: ["title"], list: ["title"], people: ["title"], profiles: ["title"],
+  steps: ["title"], summary: ["title", "points"], versus: ["title", "left", "right"], scale: ["title", "left", "right", "cue_tilt"],
+};
+function sceneFieldIssues(scenes: Record<string, unknown>[]) {
+  return scenes.flatMap((sc, index) => (SCENE_NEEDS[String(sc.type)] ?? []).filter((key) => sc[key] === undefined || sc[key] === null || sc[key] === "")
+    .map((key) => `[장면 ${index + 1}] ${sc.type}: ${key} 칸이 비었어요. 비우면 렌더 PC가 이 장면을 그리지 못하고 멈춰요.`));
+}
 // ── 로건 「마이인 기획표 QA 기준 v1」 3부 (2026-10-27): what any AI's storyboard must pass, from the 연봉 video's QA. ──
 type Piece = { text: string; cue?: string };
 /** Text pieces of a field: [text, cue, style?] arrays and { text, cue } objects, at any depth (title → lines → pieces). */
@@ -274,7 +286,7 @@ export function checkMyinStoryboard(value: unknown, words: [number, number, stri
   const share = myinVisualShare(story.scenes as { type: string; photo?: unknown }[]);
   if (share.body && share.visual / share.body < MYIN_MIN_VISUAL_SHARE)
     issues.push(`도식 · 이미지 장면이 본문 ${share.body}개 중 ${share.visual}개(${Math.round(share.visual / share.body * 100)}%)예요. 절반 이상이 되게 글자 장면을 무대형 도식 · 창고 도식 · 사진 장면으로 바꿔 주세요.`);
-  issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]));
+  issues.push(...stageReuseIssues(types), ...puzzleIssues(story.scenes as { type: string; pieces?: unknown; word?: unknown }[]), ...sceneFieldIssues(story.scenes));
   issues.push(...screenOrderIssues(story, words), ...openingTextIssues(story, words, speech), ...statListIssues(story), ...ctaWordingIssues(story), ...photoFocusIssues(story));
   const notes = unknown.filter((type) => !type.startsWith("lib_"))
     .map((type) => `새 장면 종류 "${type}": 로건님 코드에 그리는 방법을 먼저 추가해야 합니다.`);
