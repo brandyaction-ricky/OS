@@ -12,7 +12,7 @@ import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from
 import { assertColumnOpen, writeStage } from "./youtube-process-stages";
 import { checkColumnHtml, cleanColumnHtml, columnMeta, COLUMN_CONTRACT } from "@/lib/seo-column";
 import { CLIP_MAX_SECONDS, clipSeconds } from "@/lib/youtube-process/short";
-import { scriptLines } from "@/lib/youtube-process/short-script";
+import { spokenScript } from "@/lib/youtube-process/short-script";
 import type { PackagingRef } from "@/lib/youtube-process/discover";
 
 // The automation that already runs (staff AI ② 원고 · ⑦ 발행키트, ③ 마이인 v13) reading a 유튜브 공정 v1 project instead of the
@@ -72,7 +72,7 @@ export function v1AutomationInput(state: Pipeline) {
 function v1ShortInput(state: Pipeline, stages: ReturnType<typeof v1Stages>) {
   const script = stages.shortScript;
   const confirmed = script.data.confirmed;
-  const scriptText = confirmed ? scriptLines(confirmed.text).map(line => line.text).join(" ") : "";
+  const scriptText = confirmed ? spokenScript(confirmed.text) : "";
   const open = ["make", "review"].includes(stages.project.yp.stage);
   const ready = Boolean(open && script.id && scriptText);
   return {

@@ -13,6 +13,13 @@ export function scriptLines(text: string) {
   return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
     .map(line => ({ text: line.replace(MARK, "").trim(), mark: (line.match(MARK)?.[1] ?? "") as "" | "관계" | "사람" })).filter(line => line.text);
 }
+/**
+ * The 대본 as one paragraph for the voice and its subtitles (2026-10-28 시안 1): the lines carry no full stops, so joined with spaces the
+ * voice ran every line into the next and a subtitle took the end of one line and the start of the next ("보낼 내 하루예요 지금 회사에서").
+ * A line without its own mark ends with "." after a sentence ending and "," otherwise: the voice pauses at each line, the subtitles break there.
+ */
+export const spokenScript = (text: string) => scriptLines(text)
+  .map(({ text: line }) => /[.?!…,~]$/.test(line) ? line : `${line}${/(요|죠|다|까|네|래|야|지|군|걸)$/.test(line) ? "." : ","}`).join(" ");
 const BANNED: [RegExp, string][] = [
   [/아까|앞에서|이 영상|지난번|위에서 말한/, "바깥을 가리키는 말"],
   [/당신|여러분/, "부르는 말"],
