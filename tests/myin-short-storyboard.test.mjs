@@ -29,6 +29,9 @@ test("a short storyboard passes and gets the shared defaults", () => {
   // Logan's drawer reads act.t and every piece's t: the head-copy act starts with the scene, untimed pieces with their act.
   assert.equal(checked.story.scenes[0].acts[0].cue, "둘 다 원할 땐");
   assert.deepEqual(checked.story.scenes[0].acts[0].lines[1][0], { text: "뭘 고르지", accent: true, cue: "둘 다 원할 땐" });
+  const later = good();
+  later.scenes[0].acts[0].lines[1][0].cue = "뭘 골라야";
+  assert.equal(checkShortStoryboard(later, input).story.scenes[0].acts[0].cue, "둘 다 원할 땐");
   const slots = good();
   delete slots.scenes[1].mid.cue;
   assert.deepEqual(checkShortStoryboard(slots, input).story.scenes[1].mid, { text: "둘 다", cue: "가고 싶고" });

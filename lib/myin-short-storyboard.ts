@@ -83,7 +83,7 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
 
   const story = { ...raw, end, cta: [] as { after: string; line: string }[],
     scenes: scenes.map((sc) => sc.type !== "opening" ? { bg: "white", ...timedSlots(sc, sceneStart(sc)) as Scene }
-      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act) => shortAct(act, sc)) }) } as unknown as MyinStoryboard;
+      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act, k) => shortAct(act, k, sc)) }) } as unknown as MyinStoryboard;
   delete (story as Record<string, unknown>).reel;
   delete (story as Record<string, unknown>).music_cues;
   const cues = myinCueMisses(story, input.words);
@@ -91,11 +91,14 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
   return { issues: issues.slice(0, 40), story: issues.length ? null : story, fuzzy: cues.fuzzy };
 }
 
-/** An act as his drawer needs it: its own cue (else its first piece's, else the scene start) and every piece timed with the act. */
-function shortAct(act: Act, sc: Scene) {
+/**
+ * An act as his drawer needs it: its own cue — else the scene start for a scene's first act (a later piece's cue left the screen
+ * empty for a second in the 2026-10-28 test), else its first timed piece's — and every untimed piece timed with the act.
+ */
+function shortAct(act: Act, k: number, sc: Scene) {
   const lines = actLines(act);
   const first = lines.flat().find(timed);
-  const start = timed(act) ? { cue: act.cue, t: act.t } : first ? { cue: first.cue, t: first.t } : { cue: sc.at, t: sc.at_time };
+  const start = timed(act) ? { cue: act.cue, t: act.t } : k > 0 && first ? { cue: first.cue, t: first.t } : { cue: sc.at, t: sc.at_time };
   const when = typeof start.cue === "string" ? { cue: start.cue } : { t: start.t };
   return { text_y: 720, cam: { push: 0.006, drift: [0, 0], punch: 0 }, ...act, ...(timed(act) ? {} : when),
     lines: lines.map((line) => line.map((piece) => timed(piece) ? piece : { ...piece, ...when })) };
