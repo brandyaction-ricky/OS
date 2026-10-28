@@ -35,6 +35,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   const [showDone, setShowDone] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [rate, setRate] = useState(1);   // 재생 속도 (2026-10-28 직원 요청: 검토 시간을 줄이게 1 · 1.5 · 2배)
   const video = useRef<HTMLVideoElement>(null);
   const bar = useRef<HTMLDivElement>(null);
   const drag = useRef<number | null>(null);
@@ -114,7 +115,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
           {view === "video" ? <>
             <div className={`yp-frame${short ? " yp-vert" : ""}`} onClick={toggle} role="button" tabIndex={0} aria-label={playing ? "멈추고 쓰기" : "재생"} onKeyDown={event => { if (event.key === " " || event.key.toLowerCase() === "f") { event.preventDefault(); toggle(); } }}>
               {src ? <video ref={video} src={src} preload="metadata" style={{ width: "100%", height: "100%", display: "block" }} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-                onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => setDuration(event.currentTarget.duration)} />
+                onTimeUpdate={event => setTime(event.currentTarget.currentTime)} onLoadedMetadata={event => { setDuration(event.currentTarget.duration); event.currentTarget.playbackRate = rate; }} />
                 : <div className="yp-muted" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", color: "var(--media-muted)" }}>{final ? "영상을 불러오는 중이에요…" : "아직 최종본이 없어요"}</div>}
               <span className={`yp-badge${playing ? "" : " yp-pz"}`}>{playing ? "재생 중" : `멈춤 · ${fmt(time)}`}{old ? ` · v${ver} 이전 버전` : ""}</span>
             </div>
@@ -132,6 +133,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
               <span className="yp-tm">{fmt(time)} / {fmt(duration)}</span></div>
             <div className="yp-ctrl2"><label className="yp-vsel">버전 <select value={ver} onChange={event => { setVerSel(Number(event.target.value)); setRange(null); setTime(0); }} aria-label="영상 버전">
               {[...finals].reverse().map(item => <option key={item.v} value={item.v}>v{item.v}{item.v === latest ? " (최신)" : ""} · {item.source === "myin" || item.source === "short" ? "자동 제작" : item.name}</option>)}</select></label>
+              <label className="yp-vsel">속도 <select value={rate} onChange={event => { const value = Number(event.target.value); setRate(value); if (video.current) video.current.playbackRate = value; }} aria-label="재생 속도">
+                {[1, 1.5, 2].map(value => <option key={value} value={value}>{value}배</option>)}</select></label>
               <span style={{ flex: 1 }} />
               {project.yp.stage === "review" ? <Link className="yp-cb" href={`/content/make?project=${encodeURIComponent(project.id)}`}><Upload size={14} /> 제작에서 새 버전 올리기</Link> : null}
               <button type="button" className="yp-cb" onClick={exportList}><Download size={14} /> 편집용 목록 내려받기</button></div>
