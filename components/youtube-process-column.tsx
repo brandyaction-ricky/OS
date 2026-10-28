@@ -48,16 +48,16 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
 
   return <>
     <YpSection n={1} title="SEO 칼럼" gq={items.length ? `${items.length}편 · 편마다 다른 검색 질문` : "원고로 검색용 칼럼을 써요"} extra={<>
-      <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> {items.length ? "다시 자동으로 쓰기" : "칼럼 자동으로 쓰기"}</button>
+      <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> {items.length ? "내 AI로 다시 쓰기" : "내 AI로 칼럼 쓰기"}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => setPasting(pasting === null ? "" : null)}><Plus size={14} /> HTML 붙여 넣기</button></>}>
       {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [칼럼 자동으로 쓰기]를 눌러 시작해요.</p>
+      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [내 AI로 칼럼 쓰기]를 눌러 시작해요.</p>
         : <div className="yp-ftabs" role="tablist" aria-label="칼럼" style={{ padding: "0 0 10px" }}>{items.map((item, index) =>
           <button key={item.id} type="button" role="tab" aria-selected={current?.id === item.id} className={current?.id === item.id ? "yp-on" : ""} onClick={() => setPick(item.id)}>
             칼럼 {index + 1}{columnMeta(item.html).title ? ` · ${columnMeta(item.html).title.slice(0, 16)}` : ""}</button>)}</div>}
       {items.length ? <p className="yp-hint" style={{ marginTop: 0 }}>다시 쓰면 고친 칼럼은 남고 나머지는 새로 바뀌어요.</p> : null}
       {pasting !== null ? <div style={{ marginTop: 8 }}>
-        <textarea className="yp-in" rows={12} value={pasting} onChange={event => setPasting(event.target.value)} aria-label="새 칼럼 HTML" placeholder="다른 곳에서 쓴 칼럼 HTML을 붙여 넣어요" style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }} />
+        <textarea className="yp-in" rows={12} value={pasting} onChange={event => setPasting(event.target.value)} aria-label="새 칼럼 HTML" placeholder="다른 AI 창에서 쓴 칼럼 HTML을 붙여 넣어요" style={{ width: "100%", fontFamily: "var(--mono, monospace)", fontSize: 12 }} />
         <div className="yp-savebar"><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={() => setPasting(null)}>취소</button>
           <button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === "paste" || !pasting.trim()} onClick={() => void addPasted()}>새 칼럼으로 넣기</button></div>
       </div> : null}
@@ -117,7 +117,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const flagged = [...check.unsafe, ...check.issues];
 
   return <>
-    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `자동 작성본 · ${ai.by} · ${md(ai.at)}${html !== ai.html ? " · 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
+    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `AI 초안 · ${ai.by} · ${md(ai.at)}${html !== ai.html ? " · 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
       <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(editing === null ? html : null)}><Code2 size={14} /> HTML 고치기</button>
       <button type="button" className="yp-ib" aria-label={`칼럼 ${index + 1} 빼기`} disabled={busy === "remove"} onClick={() => { if (window.confirm("이 칼럼을 뺄까요?")) void patch({ remove: true }, "remove"); }}><Trash2 size={14} /></button></>}>
       <dl className="yp-kv">
@@ -136,7 +136,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
       </div> : null}
     </YpSection>
 
-    <YpSection n={3} title="이미지 · 영상 자리" gq="지시 문장을 이미지 만드는 AI에 붙여 넣어 만든 뒤 올려요">
+    <YpSection n={3} title="이미지 · 영상 자리" gq="지시 문장을 이미지 AI에 붙여 넣어 만든 뒤 올려요">
       {slots.length ? <ul className="yp-hist">{slots.map(info => {
         const fill = fills[info.slot];
         const shown = fill?.url ?? (fill?.path ? signed[fill.path] : "");

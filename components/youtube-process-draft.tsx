@@ -90,19 +90,19 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
       {project.yp.stage === "draft" && project.yp.gates.draft.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
         // An empty 기획안 starts with the choice of how to fill it; a started one keeps a small re-run button.
         : !started && !manual ? <div className="yp-ways">
-          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 자동으로 채우기</b><span>제목 · 썸네일 · 영상 흐름 첫 원고를 채워 줘요 (10분쯤)</span></button>
+          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>제목 · 썸네일 · 영상 흐름 초안을 채워 줘요 (10분쯤)</span></button>
           <button type="button" className="yp-way" onClick={() => { setManual(true); window.setTimeout(() => document.querySelector<HTMLInputElement>("[aria-label='제목 A']")?.focus(), 50); }}><b>직접 쓰기</b><span>아래 칸을 바로 채워요</span></button></div>
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "다시 자동으로 쓰기" : "자동으로 채우기"}</button>
-          {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> 자동 작성본 · {form.ai.by}</span> : null}</div>) : null}
-      {form.aiDraft && project.yp.stage === "draft" ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>자동 작성본이 왔어요.</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+          {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span> : null}</div>) : null}
+      {form.aiDraft && project.yp.stage === "draft" ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 기획안이 왔어요.</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" disabled={!can("titles")} onClick={() => { const draft = form.aiDraft!; editRev.current += 1; const next = { ...form, ...draft, aiDraft: undefined }; setForm(next); setDirty(true);
-          if (page.client && project && plan) void page.client.saveStage(project.id, "plan", plan.version, { ...draft, aiDraft: null }).then(result => { page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current); setDirty(false); }, page.fail); }}>이 작성본으로 바꾸기</button>
-        <details><summary>작성본 보기</summary><div style={{ fontSize: 13 }}><b>제목</b><ol>{form.aiDraft.titles.map(title => <li key={title.id}>{title.text}</li>)}</ol>
+          if (page.client && project && plan) void page.client.saveStage(project.id, "plan", plan.version, { ...draft, aiDraft: null }).then(result => { page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, plan: result.stage } } : current); setDirty(false); }, page.fail); }}>이 초안으로 바꾸기</button>
+        <details><summary>초안 보기</summary><div style={{ fontSize: 13 }}><b>제목</b><ol>{form.aiDraft.titles.map(title => <li key={title.id}>{title.text}</li>)}</ol>
           <b>썸네일</b><ol>{form.aiDraft.thumbs.map(thumb => <li key={thumb.id}>{thumb.copy} — {thumb.screen}</li>)}</ol>
           <b>오프닝</b><p>{form.aiDraft.opening}</p><b>본론</b><p style={{ whiteSpace: "pre-wrap" }}>{form.aiDraft.body}</p><b>클로징</b><p>{form.aiDraft.closing}</p></div></details></div></div> : null}
       <div className="yp-wrap2"><div>
         <YpSection n={1} title="제목 · 썸네일" gq="어떻게 클릭하게 만드나요?" need rev={rev("draft.tt")}>
-          {form.ai?.patterns ? <details className="yp-card" style={{ padding: "8px 12px", marginBottom: 10 }}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> 뽑아 둔 제목 · 썸네일 공식 보기 (시장 참고 영상에서 반복된 말)</summary>
+          {form.ai?.patterns ? <details className="yp-card" style={{ padding: "8px 12px", marginBottom: 10 }}><summary style={{ cursor: "pointer", fontSize: 13 }}><Sparkles size={12} aria-hidden="true" /> AI가 뽑은 제목 · 썸네일 공식 보기 (시장 참고 영상에서 반복된 말)</summary>
             <div style={{ marginTop: 6 }}><PatternsBox patterns={form.ai.patterns} /></div></details> : null}
           <div className="yp-field"><div className="yp-fld-h"><b>제목 후보</b></div>
             {form.titles.map((title, index) => <div key={title.id} className={`yp-tr3${index < 3 ? " yp-on" : ""}`}>

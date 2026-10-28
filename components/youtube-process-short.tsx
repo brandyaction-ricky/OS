@@ -216,13 +216,13 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     <YpSection n={n0 + 2} title="장면" gq={`${brief.duration}초 · 장면마다 이미지 한 장`} need>
       {editable && project.yp.gates.review.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
         : !scenes.length ? <div className="yp-ways">
-          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 자동으로 채우기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
+          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
           <button type="button" className="yp-way" onClick={() => editScenes([blank(Math.round(brief.duration / 3)), blank(Math.round(brief.duration / 3)), blank(0)], true)}><b>직접 쓰기</b><span>장면 세 개로 시작해요</span></button></div>
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "다시 자동으로 쓰기" : "자동으로 채우기"}</button>
-          {view.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> 자동 작성본 · {view.ai.by}</span> : null}</div>) : null}
-      {view.aiScenes && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>자동으로 쓴 장면이 왔어요.</b> 이미 쓴 장면이 있어 바로 넣지 않았어요.
-        <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 작성본으로 바꾸기</button>
-        <details><summary>작성본 보기</summary><ol style={{ fontSize: 13 }}>{view.aiScenes.map((scene, index) => <li key={index}>{scene.seconds}초 · {scene.text}{scene.voice ? ` — “${scene.voice}”` : ""}</li>)}</ol></details></div></div> : null}
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
+          {view.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {view.ai.by}</span> : null}</div>) : null}
+      {view.aiScenes && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 장면이 왔어요.</b> 이미 쓴 장면이 있어 바로 넣지 않았어요.
+        <button type="button" className="yp-lnk" onClick={() => void save({ useAiScenes: true })}>이 초안으로 바꾸기</button>
+        <details><summary>초안 보기</summary><ol style={{ fontSize: 13 }}>{view.aiScenes.map((scene, index) => <li key={index}>{scene.seconds}초 · {scene.text}{scene.voice ? ` — “${scene.voice}”` : ""}</li>)}</ol></details></div></div> : null}
       {scenes.map((scene, index) => <SceneRow key={index} index={index} scene={scene} last={index === scenes.length - 1} remain={Math.max(0, brief.duration - before)} count={scenes.length}
         diagramsEnabled={page.demo || process.env.NEXT_PUBLIC_SHORTFORM_DIAGRAMS_ENABLED === "true"} image={scene.assetId ? view.images[scene.assetId] : undefined} editable={editable} busy={busy === `img-${index}`}
         onChange={patch => editScenes(scenes.map((row, at) => at === index ? { ...row, ...patch } : row))} onUpload={file => void upload(index, file)}
@@ -368,12 +368,12 @@ function ShortYoutube({ page, last }: { page: YpPage; last: YpFinalView | null }
   const draftWaiting = Boolean(draft && (form.desc !== draft.draft || (draft.title && form.title !== draft.title)));
   const missing = !last ? "최종본이 없어요" : !form.title.trim() ? "제목을 써 주세요" : !form.desc.trim() ? "설명을 써 주세요" : page.demo ? "데모에서는 올리지 않아요" : !channels.length ? "유튜브 채널을 연결해 주세요" : "";
   return <YpSection n={2} title="유튜브에 올리기" gq={run?.status === "done" ? "올렸어요" : "제목 · 설명을 다듬고 올려요"} extra={run?.status === "done" ? null
-    : <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> 제목 · 설명 자동으로 쓰기</button>}>
+    : <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 제목 · 설명 쓰기</button>}>
     {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
     {run?.status === "done" ? <div className="yp-note yp-ok" role="status"><Youtube size={16} className="yp-i" aria-hidden="true" /><div><b>유튜브에 올렸어요</b> · {form.title}
       {run.videoUrl ? <> · <a className="yp-lnk" href={run.videoUrl} target="_blank" rel="noreferrer">유튜브에서 보기 <ExternalLink size={12} /></a></> : null}</div></div> : <>
-      {draftWaiting && draft ? <div className="yp-note"><div>자동 작성본이 왔어요. 쓴 내용은 그대로 뒀어요.
-        <button type="button" className="yp-lnk" onClick={() => edit({ desc: draft.draft, ...(draft.title ? { title: draft.title } : {}) })}>이 작성본으로 바꾸기</button></div></div> : null}
+      {draftWaiting && draft ? <div className="yp-note"><div>AI 초안이 왔어요. 쓴 내용은 그대로 뒀어요.
+        <button type="button" className="yp-lnk" onClick={() => edit({ desc: draft.draft, ...(draft.title ? { title: draft.title } : {}) })}>이 초안으로 바꾸기</button></div></div> : null}
       <label className="yp-lbl" style={{ display: "block" }}>제목 <span className="yp-gq">쇼츠 제목 · 100자 이내</span>
         <input className="yp-in" value={form.title} maxLength={100} onChange={event => edit({ title: event.target.value })} onBlur={() => { if (dirty) void save(); }} /></label>
       <label className="yp-lbl" style={{ display: "block" }}>설명 <span className="yp-gq">마지막 줄 #해시태그는 태그로도 들어가요</span>

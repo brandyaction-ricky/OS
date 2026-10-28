@@ -127,7 +127,7 @@ export async function saveYoutubeShort(actor: RequestActor, id: string, input: z
   let scenes: YpShortScene[] | undefined = input.scenes;
   if (input.useAiScenes) {
     const ai = Array.isArray(row.metadata.ypAiCuts) ? scenesFromCuts(row.metadata.ypAiCuts as YpShortCut[]) : null;
-    if (!ai) throw new ApiError(409, "SHORT_AI_DRAFT_MISSING", "바꿀 자동 작성본이 없어요.");
+    if (!ai) throw new ApiError(409, "SHORT_AI_DRAFT_MISSING", "바꿀 AI 초안이 없어요.");
     const before = scenesFromCuts((row.metadata.cuts ?? []) as YpShortCut[]);
     scenes = ai.map((scene, index) => ({ ...scene, ...(!scene.diagram&&before[index]?.assetId ? { assetId: before[index].assetId } : {}) }));
   }

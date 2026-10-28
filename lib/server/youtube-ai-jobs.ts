@@ -83,7 +83,7 @@ export const staffJobWorkerSchema = z.discriminatedUnion("action", [
 ]);
 
 const service = () => createServiceSupabase();
-const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "맡긴 일을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+const dbError = () => new ApiError(503, "STAFF_AI_JOB_UNAVAILABLE", "AI 작업을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
 const meta = (job: OsRecord) => jobMetaSchema.parse(job.metadata) as JobMeta;
 /** A 틈새 job carries the videos it was asked to group, frozen when it was requested. */
 const jobPool = (m: JobMeta) => (m.pool ?? []) as NicheVideo[];
@@ -212,7 +212,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
     tags: ["유튜브", "직원AI"], metadata,
   }).select("*").maybeSingle();
-  if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "맡긴 일을 만들지 못했습니다.");
+  if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
   return publicStaffJob(data as OsRecord);
 }
 

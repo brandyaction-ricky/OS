@@ -170,11 +170,11 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
     </Step>
 
     <Step index={1} state={states[1]}>
-      <p>원고를 읽고 단락마다 도식 하나와 화면에 나올 짧은 문구, 위쪽 막대에 보일 섹션을 자동으로 정하고, 목소리로 읽기 어려운 곳이 없는지 봅니다.</p>
-      {outdatedDesign ? <p className="yt-note yt-warn"><strong>다시 설계 필요</strong> 저장된 화면 설계가 지금 도식 규칙(항목 수 · 글자 수)에 맞지 않아 새로 만들 수 없어요. 다시 자동으로 써 주세요. 이미 완성된 영상은 그대로 볼 수 있어요.</p> : null}
+      <p>내 AI(Claude 또는 Codex)가 원고를 읽고 단락마다 도식 하나와 화면에 나올 짧은 문구, 위쪽 막대에 보일 섹션을 정하고, 목소리로 읽기 어려운 곳이 없는지 봅니다.</p>
+      {outdatedDesign ? <p className="yt-note yt-warn"><strong>다시 설계 필요</strong> 저장된 화면 설계가 지금 도식 규칙(항목 수 · 글자 수)에 맞지 않아 새로 만들 수 없어요. 내 AI에 다시 보내 주세요. 이미 완성된 영상은 그대로 볼 수 있어요.</p> : null}
       {!design && scriptReady ? <StaffDesign status={staff} busy={Boolean(busy)} onSend={() => void act("design", () => post("/ai-jobs", "POST", { task: "scene-plan" }))} /> : null}
       {design ? <>
-        {stored?.author?.type === "staff_ai" ? <small>자동 설계 · 사용한 AI {stored.author.model ?? "이름 없음"}</small> : null}
+        {stored?.author?.type === "staff_ai" ? <small>직원 AI가 설계 · {stored.author.model ?? "모델 이름 없음"} (AI가 적은 이름)</small> : null}
         <p className="yt-summary"><strong>{design.scenes?.length ?? 0}단락</strong> · 섹션 {sections.length}개 {sections.map((name, index) => <span key={`${index}-${name}`} className="yt-chip">{name}</span>)}</p>
         <details className="yt-details">
           <summary>단락별 화면 보기</summary>
@@ -187,11 +187,11 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
           </table></div>
         </details>
         {notes.length && notesDone ? <details className="yt-details">
-          <summary>확인할 점 {notes.length}개 · 확인 완료</summary>
+          <summary>AI가 남긴 확인할 점 {notes.length}개 · 확인 완료</summary>
           <ul className="yt-list">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
         </details> : null}
         {notes.length && !notesDone ? <div className="yt-note yt-warn">
-          <strong>확인할 점 {notes.length}개</strong>
+          <strong>AI가 남긴 확인할 점 {notes.length}개</strong>
           <ul className="yt-list">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
           {isAdmin ? <div className="yt-actions">
             <label className="yt-check"><input type="checkbox" checked={notesRead} onChange={(event) => setNotesRead(event.target.checked)} />위 내용을 읽었고, 이대로 제작해도 됩니다.</label>
@@ -245,29 +245,29 @@ export function YoutubeProductionSteps({ sourceId, storedPlan, onChange }: { sou
 }
 
 /** 화면 설계 by the requester's own AI: send, then the job's state in words (대기 · 처리 중 · 확인 필요 · 못 함). */
-/** [자동으로 쓰기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
+/** [내 AI에 보내기] and where the job stands; shared by ② 원고 and ③ 화면 설계. */
 export function StaffDesign({ status, busy, onSend }: { status: StaffJobStatus | null; busy: boolean; onSend: () => void }) {
   const job = status?.job;
   const lastSeen = sinceIso(status?.myAi.lastUsedAt ?? null);
   const connected = (status?.myAi.keys ?? 0) > 0;
   const open = job && ["backlog", "active"].includes(job.status);
   const send = <div className="yt-actions">
-    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "다시 자동으로 쓰기" : "자동으로 쓰기"}</button><CostTag kind="ai" />
+    <button type="button" className="primary-button" disabled={busy} onClick={onSend}>{busy ? "보내는 중…" : job?.status === "blocked" ? "내 AI에 다시 보내기" : "내 AI에 보내기"}</button><CostTag kind="ai" />
   </div>;
   return <>
     {!open ? send : null}
     {job?.status === "backlog" ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="waiting">대기</span>
       <small>{lastSeen === null ? "내 AI가 아직 OS를 확인한 적이 없어요." : `내 AI가 ${ago(lastSeen)} 전에 마지막으로 확인했어요. 다음 확인 때 가져가요.`}</small></div></div> : null}
     {job?.status === "active" && !job.issues.length ? <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status="scheduled">처리 중</span>
-      <small>자동으로 쓰는 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small></div></div> : null}
+      <small>내 AI가 처리 중 · {ago(sinceIso(job.claimedAt) ?? 0)}째</small></div></div> : null}
     {job?.status === "active" && job.issues.length ? <div className="yt-note yt-warn"><strong>확인 필요 · 검사에서 걸린 곳</strong>
-      <ul className="yt-list">{job.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul><p>자동으로 고쳐서 다시 내면 넘어갑니다.</p></div> : null}
+      <ul className="yt-list">{job.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul><p>내 AI가 고쳐서 다시 제출하면 넘어갑니다.</p></div> : null}
     {job?.status === "blocked" ? <div className="yt-note yt-warn"><strong>못 함</strong><p>{job.failReason ?? "이유가 남지 않았어요."}</p></div> : null}
     {!connected || (open && (lastSeen === null || lastSeen > 30 * 60)) ? <details className="yt-details">
       <summary>{connected ? "내 AI가 30분 넘게 확인하지 않았어요 · 확인할 것" : "내 AI가 아직 연결되지 않았어요 · 연결 방법"}</summary>
       <ol className="yt-list">
         <li>아래에서 연결 주소를 만들어 내 AI의 커넥터 추가에 붙여 넣습니다. 처음 한 번만 하면 됩니다.</li>
-        <li>[자동으로 쓰기]를 누른 뒤 내 AI에 아래 문장을 보냅니다. 예약 실행이 되는 AI라면 10분마다 실행하도록 맡겨 두면 알아서 가져가요.</li>
+        <li>[내 AI에 보내기]를 누른 뒤 내 AI에 아래 문장을 보냅니다. 예약 실행이 되는 AI라면 10분마다 실행하도록 맡겨 두면 알아서 가져가요.</li>
         <li>그래도 가져가지 않으면 연결 주소를 다시 만들어 붙여 넣어 주세요.</li>
       </ol>
       <MyAiConnect />

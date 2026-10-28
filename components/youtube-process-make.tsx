@@ -205,7 +205,7 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
       <button type="button" className="yp-btn" onClick={onClose}>닫기</button></div>
     {job.status?.job?.slot === slot ? <div style={{ marginTop: 8 }}><JobLine job={job} onRetry={() => onRedo(reason.trim())} /></div> : null}
     {redo ? <>
-      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> 공식대로 뽑은 후보 · {redo.by}{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
+      <div className="yp-muted" style={{ fontSize: 13, margin: "16px 0 8px" }}><Sparkles size={13} aria-hidden="true" /> {redo.by}의 Claude가 공식대로 뽑은 후보{redo.market ? ` · 참고 영상: 「${redo.market.query}」 시장 영상 ${redo.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)` : ""} · 하나씩 눌러 위 칸에 넣어요</div>
       <div className="yp-g2" style={{ gap: 16, alignItems: "start" }}>
         {([["title", "제목", redo.titles], ["copy", "썸네일 문구", redo.copies]] as const).map(([field, name, list]) => <div key={field}>
           <b style={{ fontSize: 15 }}>{name} 후보 {list.length}개</b>
@@ -218,6 +218,6 @@ function PairPanel({ page, slot, make, job, saving, onClose, onSave, onRedo }: {
               {item.sub ? <span style={{ fontSize: 12 }}>{item.sub}</span> : null}
               <b style={{ fontSize: 15, lineHeight: 1.4 }}>{on ? <Check size={14} aria-hidden="true" /> : null} {field === "copy" ? `「${item.text}」` : item.text}</b>
               <span>{item.pattern ? <span className="yp-tag">공식 {item.pattern}</span> : null} <span className="yp-tag">{item.hook}</span> {item.why}</span></button>; })}</div></div>)}
-      </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 자동으로 받아요. 이유를 적으면 그 점을 고쳐요.</p>}
+      </div></> : <p className="yp-hint" style={{ marginTop: 12 }}>[공식대로 다시 뽑기]를 누르면 내 AI가 시장 영상에서 제목 공식과 문구 공식을 따로 뽑아 제목 8개 · 문구 8개를 보내요. 이유를 적으면 그 점을 고쳐요.</p>}
   </div>;
 }

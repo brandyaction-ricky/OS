@@ -145,7 +145,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     {cost.element}
     {embedded ? null : <section className="panel">
       <header className="panel-header"><div><span className="eyebrow">마이인 형식 · 로건님 v13</span><h2>영상 만들기</h2>
-        <p>승인된 원고로 대표 목소리를 만들고, 영상 만드는 컴퓨터가 받아쓰기·자막을 만듭니다. 장면 기획표를 자동으로 쓰고 로건, 유쓰가 기획표와 미리보기를 확인하면, 구독 대사 · 사운드를 준비한 뒤 영상 만드는 컴퓨터가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
+        <p>승인된 원고로 대표 목소리를 만들고, 영상 만드는 컴퓨터가 받아쓰기·자막을 만듭니다. 내 AI가 장면 기획표를 쓰고 로건, 유쓰가 기획표와 미리보기를 확인하면, 구독 대사 · 사운드를 준비한 뒤 영상 만드는 컴퓨터가 완성 영상과 한 장 정리·덱 PDF·자막 파일을 만들어 올립니다.</p></div></header>
     </section>}
 
     <Step index={0} state={step1} title="음성과 받아쓰기·자막" idBase="myin-step">
@@ -167,16 +167,16 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       </details> : null}
     </Step>
 
-    <Step index={1} state={step2} title="장면 기획표 (자동 작성 → 로건, 유쓰 확인)" idBase="myin-step">
-      {!run?.words ? <p>받아쓰기·자막이 끝나면 자동으로 쓸 수 있습니다.</p> : null}
+    <Step index={1} state={step2} title="장면 기획표 (내 AI → 로건, 유쓰 확인)" idBase="myin-step">
+      {!run?.words ? <p>받아쓰기·자막이 끝나면 내 AI에 보낼 수 있습니다.</p> : null}
       {run?.stage === "words_ready" ? <>
         {run.review?.decision === "revise" ? <div className="yt-note yt-warn"><strong>로건, 유쓰 수정 요청 · {when(run.review.at)}</strong><p>{run.review.note}</p></div> : null}
-        <p>로건님 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 자동으로 만듭니다. OS가 문구 위치와 형식을 검사합니다.</p>
+        <p>내 AI가 로건님 매뉴얼·기획표 문서와 음악 창고 목록을 읽고, 위 받아쓰기의 철자 그대로 장면 기획표와 사진 후보를 만듭니다. OS가 문구 위치와 형식을 검사합니다.</p>
         <StaffDesign status={job} busy={busy === "send"} onSend={() => void act("send", () => post("/ai-jobs", "POST", { task: "storyboard", sourceId }))} />
       </> : null}
       {board && run && run.stage !== "words_ready" ? <>
         <div className="yt-run"><div className="yt-run-head"><span className="status-pill" data-status={run.review?.decision === "confirmed" ? "approved" : "review"}>{run.review?.decision === "confirmed" ? "로건, 유쓰 확인 완료" : "로건, 유쓰 확인 대기"}</span>
-          <small>장면 {board.scenes}개 · 사용한 AI {board.model} · {when(board.at)}</small></div></div>
+          <small>장면 {board.scenes}개 · 직원 AI {board.model} · {when(board.at)}</small></div></div>
         <details className="yt-details" open={run.stage === "storyboard_review"}><summary>비유 포인트 {board.metaphors.length}곳</summary>
           <ul className="yt-list">{board.metaphors.map((m) => <li key={m.scene}>{m.scene}번 장면 · {m.type} · “{m.at}”</li>)}</ul>
           <p className="yt-note">{board.reasons.metaphors}</p></details>
@@ -190,7 +190,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <ul className="yt-list">{board.assets.filter((a) => a.kind !== "bgm").map((a) => <li key={a.file}>{KIND[a.kind] ?? a.kind} · {a.file} · {a.source} · {a.license} — {a.use} <a href={a.url} target="_blank" rel="noreferrer">출처</a></li>)}</ul></details>
         {board.fuzzy.length ? <details className="yt-details"><summary>받아쓰기와 비슷한 구간으로만 찾은 문구 {board.fuzzy.length}개</summary>
           <ul className="yt-list">{board.fuzzy.map((f) => <li key={f}>{f}</li>)}</ul></details> : null}
-        {board.notes.length ? <details className="yt-details"><summary>자동 작성 때 남긴 제안 {board.notes.length}개</summary>
+        {board.notes.length ? <details className="yt-details"><summary>AI가 남긴 제안 {board.notes.length}개</summary>
           <ul className="yt-list">{board.notes.map((n) => <li key={n}>{n}</li>)}</ul></details> : null}
         {/* Every stage the server takes a 수정 요청 in, the preview clips included (로건 피드백 A-7: the button was gone at 시안 확인). */}
         {["storyboard_review", "storyboard_confirmed", "cta_pending", "prep_pending", "prep_ready", "clips_pending", "clips_review"].includes(run.stage) ? <div className="yt-note">
@@ -208,7 +208,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     </Step>
 
     <Step index={2} state={step3} title="미리보기 확인 (도식 · 글자 · 음악 — 로건, 유쓰)" idBase="myin-step">
-      <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 로건님 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 미리보기 영상으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 메모를 반영해 기획표를 다시 자동으로 써요.</p>
+      <p>기획표 확인이 끝나면 자동으로 시작합니다. 고른 곳(영상 만드는 컴퓨터 또는 내 컴퓨터)이 기획표의 사진을 받아 넣고(받지 못한 사진만 회색 「사진 자리」), 로건님 자동 선곡으로 장면마다 곡을 깔고, 문구 위치를 점검한 뒤 오프닝·쇼릴과 비유 장면을 720p 미리보기 영상으로 먼저 만듭니다. 고칠 곳이 있으면 [수정 요청]을 눌러요. 기획표가 메모와 함께 내 AI에게 다시 가요.</p>
       {run && !materials && ["prep_pending", "clips_pending"].includes(run.stage) ? <div className="yt-run"><div className="yt-run-head"><RunState run={run} /></div>
         {draftWaiting ? <div className="yt-actions"><small>만드는 곳 · {maker(run)}</small>
           {run.local ? <button type="button" className="secondary-button compact" disabled={Boolean(busy) || (Boolean(run.workingSince) && localPc?.state === "online")}
