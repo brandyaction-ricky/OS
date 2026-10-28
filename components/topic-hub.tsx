@@ -58,14 +58,17 @@ function ShortStart({ platform }: { platform: "short" | "ad" }) {
   const ad = platform === "ad";
   const start = async () => {
     if (!client) return;
-    if (link.trim() && !refHostOk(link.trim())) { setError("유튜브 · 인스타그램 · 틱톡 · 메타 광고 라이브러리 주소를 넣어 주세요."); return; }
+    if (link.trim() && (!refHostOk(link.trim()) || link.trim().length > 300)) { setError("유튜브 · 인스타그램 · 틱톡 · 메타 광고 라이브러리 주소를 넣어 주세요."); return; }
     setBusy(true); setError("");
+    let made: YpProject;
     try {
-      const made = await client.create({ title: keyword.trim(), kind: "short", target: target.trim(), note: "", refs: [], purpose: ad ? "ad" : null, assigneeId: profile?.id ?? null });
-      // The keyword stays the search words and the link the first 참고 자료, so the 주제 step opens ready to [찾기].
-      await client.saveStage(made.id, "shortScript", 0, { query: keyword.trim().slice(0, 60), ...(link.trim() ? { refs: [{ url: link.trim(), title: "", script: "" }] } : {}) });
-      router.push(stepHref(0, made.id));
-    } catch (reason) { setError(errorMessage(reason)); setBusy(false); }
+      made = await client.create({ title: keyword.trim(), kind: "short", target: target.trim(), note: "", refs: [], purpose: ad ? "ad" : null, assigneeId: profile?.id ?? null });
+    } catch (reason) { setError(errorMessage(reason)); setBusy(false); return; }
+    // The keyword stays the search words and the link the first 참고 자료, so the 주제 step opens ready to [찾기]. The video exists once
+    // made: if this second save fails it still opens there (the keyword is its 주제, the link can be put in again) rather than letting a
+    // retry make a second video.
+    await client.saveStage(made.id, "shortScript", 0, { query: keyword.trim().slice(0, 60), ...(link.trim() ? { refs: [{ url: link.trim(), title: "", script: "" }] } : {}) }).catch(() => undefined);
+    router.push(stepHref(0, made.id));
   };
   const open = (projects ?? []).filter(project => projectPlatform(project.yp.topic) === platform && ["topic", "draft"].includes(project.yp.stage));
   return <>
