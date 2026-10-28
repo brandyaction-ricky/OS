@@ -21,7 +21,7 @@
   --fg: var(--text);
   --fg-2: var(--text-2);
   --line-2: var(--line-soft);
-  --accent-fg: var(--accent);
+  --accent-fg: var(--accent-2); /* accent as text: readable in both themes */
   --good: var(--mint);
   --good-soft: var(--mint-soft);
   --warn: var(--warning);
