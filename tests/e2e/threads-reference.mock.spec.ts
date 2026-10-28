@@ -166,7 +166,7 @@ test("qualified Korean references propose a topic and preserve human edits until
   expect(state.writes[0].body.referenceIds).toEqual([SECOND]);
   expect(state.writes[0].body.title).toBe("한 가지 일을 마치려면 무엇을 줄여야 할까?");
   await expect(page.locator(".tr-evidence")).not.toHaveAttribute("open");
-  await page.getByText("선택한 레퍼런스 1개", { exact: true }).click();
+  await page.getByText("선택한 참고 자료 1개", { exact: true }).click();
   await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await expect(page.locator(".tr-evidence").getByText("The cost of a big plan", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("쓰레드", { exact: true })).toBeChecked();
@@ -177,7 +177,7 @@ test("qualified Korean references propose a topic and preserve human edits until
   await expect(page.locator(".tr-reference")).toHaveCount(1);
   expect(state.writes[1]).toEqual({ path: `topics/${SECOND}/archive-reference`, body: { version: 1 } });
   await page.goto(`/automation/topics?sel=${TOPIC}`);
-  await page.getByText("선택한 레퍼런스 1개", { exact: true }).click();
+  await page.getByText("선택한 참고 자료 1개", { exact: true }).click();
   await expect(page.locator(".tr-evidence").getByRole("heading", { name: "한 가지 일을 마치는 연습", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("topic-evidence-mobile.png"), fullPage: true });
   expect(state.external).toEqual([]);
@@ -222,7 +222,7 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
   await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
-  await expect(page.getByRole("button", { name: "내 AI로 초안 받기", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "내 AI로 쓰레드 글 쓰기", exact: true })).toBeVisible();
   expect(state.items).toHaveLength(1);
   expect(state.items[0].status).toBe("draft");
   expect(state.items[0].metadata.posts).toEqual([]);
@@ -270,8 +270,8 @@ test("optional AI planning saves the edited brief before confirmation and cancel
   state.topics.push(importedTopic());
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await page.getByLabel("핵심 메시지", { exact: true }).fill("AI에게 전달할 사람이 수정한 관점");
-  await page.getByText("AI와 기획을 더 다듬고 싶다면", { exact: true }).click();
-  await page.getByRole("button", { name: "내 AI로 브리프 초안", exact: true }).click();
+  await page.getByText("기획을 더 다듬고 싶다면", { exact: true }).click();
+  await page.getByRole("button", { name: "내 AI로 기획 메모 쓰기", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "내 AI로 보내기", exact: true });
   await expect(dialog).toBeVisible();
   expect((state.topics[0].metadata.brief as Record<string, string>).message).toBe("AI에게 전달할 사람이 수정한 관점");
@@ -282,7 +282,7 @@ test("optional AI planning saves the edited brief before confirmation and cancel
   expect(state.queuedJobs).toHaveLength(0);
 
   await page.getByLabel("핵심 메시지", { exact: true }).fill("취소 후 한 번 더 고친 관점");
-  await page.getByRole("button", { name: "내 AI로 브리프 초안", exact: true }).click();
+  await page.getByRole("button", { name: "내 AI로 기획 메모 쓰기", exact: true }).click();
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "대기열에 두기", exact: true }).click();
   await expect(dialog).toHaveCount(0);
@@ -387,14 +387,14 @@ test("incomplete evidence may be saved and comparison draft input is not discard
   const comparisonUrl = page.getByLabel("비교 글 1 URL", { exact: true });
   await comparisonUrl.fill("https://example.test/comparison-one");
   await page.getByLabel("비교 글 1 좋아요", { exact: true }).fill("작성 중");
-  await page.getByRole("button", { name: "내 레퍼런스에 저장" }).click();
+  await page.getByRole("button", { name: "내 참고 자료에 저장" }).click();
   await expect(page.locator(".tr-workspace").getByRole("alert")).toContainText("작성 중인 내용은 그대로 남아 있습니다");
   await expect(comparisonUrl).toHaveValue("https://example.test/comparison-one");
   await expect(page.getByLabel("비교 글 1 좋아요", { exact: true })).toHaveValue("작성 중");
   expect(state.writes).toEqual([]);
   await page.getByLabel("비교 글 1 좋아요", { exact: true }).fill("24");
   await page.getByLabel("비교 글 1 게시일", { exact: true }).fill("2026-01-10");
-  await page.getByRole("button", { name: "내 레퍼런스에 저장" }).click();
+  await page.getByRole("button", { name: "내 참고 자료에 저장" }).click();
   const savedItem = (state.writes[0].body.reference_items as ThreadsReferenceItem[])[0];
   expect(savedItem.metrics.likes).toEqual({ value: 0, verified: true });
   expect(savedItem.metrics.views).toEqual({ value: null, verified: false });

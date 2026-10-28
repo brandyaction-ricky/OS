@@ -29,15 +29,15 @@ export function TodayContentOperations({ blockedCount = 0 }: { blockedCount?: nu
           setTruncated(posts.records.length === 200 || metrics.records.length === 200 || comments.truncated);
           setError("");
         }
-      } catch { if (active) { setSummary(null); setError("콘텐츠 요약을 불러오지 못했습니다. 채널 저장소·연결 상태를 확인해 주세요."); } }
+      } catch { if (active) { setSummary(null); setError("콘텐츠 현황을 불러오지 못했습니다. 채널 저장소·연결 상태를 확인해 주세요."); } }
       finally { pending = false; }
     }
     void load(); const timer = window.setInterval(load, 60_000);
     return () => { active = false; window.clearInterval(timer); };
   }, [accessToken, demo, profile?.id, revision]);
   return <section className="panel today-content-operations" aria-label="오늘 콘텐츠 운영">
-    <header className="panel-header"><div><h2>오늘 콘텐츠 운영</h2><p>게시 실행은 사람이 확인합니다. 요약은 접속 중 1분마다 갱신됩니다.</p></div></header>
-    {demo ? <div className="today-content-cards"><Link href="/content/publishing?tab=calendar"><span>오늘 올릴 게시물</span><strong>—</strong><small>데모 · 실제 일정 연결 전</small></Link><Link href="/content/comments"><span>답할 댓글·답글</span><strong>—</strong><small>데모 · 실제 댓글 연결 전</small></Link><Link href="/content/performance"><span>새 성과 기록</span><strong>—</strong><small>데모 · 실제 성과 연결 전</small></Link><Link href="/home?tab=received"><span>막힌 일</span><strong>{blockedCount}</strong><small>현재 검수 목록 기준</small></Link></div>
+    <header className="panel-header"><div><h2>오늘 콘텐츠 운영</h2><p>게시 실행은 사람이 확인합니다. 숫자는 접속 중 1분마다 새로 고칩니다.</p></div></header>
+    {demo ? <div className="today-content-cards"><Link href="/content/publishing?tab=calendar"><span>오늘 올릴 게시물</span><strong>—</strong><small>데모 · 실제 일정 연결 전</small></Link><Link href="/content/comments"><span>답할 댓글·답글</span><strong>—</strong><small>데모 · 실제 댓글 연결 전</small></Link><Link href="/content/performance"><span>새 성과 기록</span><strong>—</strong><small>데모 · 실제 성과 연결 전</small></Link><Link href="/home?tab=received"><span>막힌 일</span><strong>{blockedCount}</strong><small>현재 검토 목록 기준</small></Link></div>
       : error ? <p role="alert">{error} <button className="ghost-button" onClick={() => setRevision(value => value + 1)}>다시 불러오기</button></p>
       : !summary ? <p role="status" aria-busy="true">오늘의 운영 정보를 확인하는 중…</p>
       : <><div className="today-content-cards">

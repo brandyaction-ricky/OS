@@ -81,7 +81,7 @@ test("knowledge editing applies Markdown shortcuts in one pane and exposes file 
   await editor.dispatchEvent("dragover", { dataTransfer, ...dropPoint });
   await expect(page.locator(".knowledge-image-drop-indicator")).toBeVisible();
   await editor.dispatchEvent("drop", { dataTransfer, ...dropPoint });
-  await expect(page.getByText("첨부 파일 저장은 연결된 개발 환경에서 검증합니다. 데모에서는 외부 저장소를 호출하지 않습니다.", { exact: true })).toBeVisible();
+  await expect(page.getByText("데모에서는 첨부 파일을 저장하지 않습니다. 실제 서버에 연결한 뒤 확인해 주세요.", { exact: true })).toBeVisible();
   await richEditor.pressSequentially("드롭 위치");
   await expect(richEditor.getByRole("heading", { level: 2 })).not.toContainText("드롭 위치");
   const dropBlocks = await richEditor.locator(":scope > *").evaluateAll((elements) => elements.slice(0, 3).map((element) => ({

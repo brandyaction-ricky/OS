@@ -78,10 +78,10 @@ export function MeetingBoard({ meeting, previous, carried, tasks, members, token
     </div> : null}
     {tab === "notes" ? <div className="tm-board-list">
       {notes.length ? notes.map(item => <div className="tm-board-note" key={item.id}><small className="tm-muted">{name(item.actor_id)} · {clock(item.created_at)}</small><span>{item.note}</span></div>)
-        : <p className="tm-muted">참석자가 남긴 메모가 여기에 모이고, AI 정리 때 함께 읽힙니다.</p>}
+        : <p className="tm-muted">참석자가 남긴 메모가 여기에 모이고, 자동 정리 때 함께 읽힙니다.</p>}
       {canEdit ? <form className="tm-row" onSubmit={event => { event.preventDefault(); if (note.trim()) void run(async () => {
         await apiRequest("/api/v1/team/task-comments", { method: "POST", token, body: JSON.stringify({ id: meeting.id, text: note.trim() }) }); setNote(""); await onNotesChanged(); }); }}>
-        <input aria-label="메모" placeholder="한 줄 메모 (예: 상세페이지 시안 금요일까지)" value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
+        <input aria-label="메모" placeholder="한 줄 메모 (예: 상세페이지 디자인 금요일까지)" value={note} maxLength={2000} onChange={event => setNote(event.target.value)} />
         <button type="submit" className="primary-button compact" disabled={busy || !note.trim()}>추가</button></form> : null}
     </div> : null}
   </section>;

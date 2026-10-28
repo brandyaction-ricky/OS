@@ -46,7 +46,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
     if (!isAdmin || demo) { setLoading(false); return; }
     setLoading(true);
     try { setResult(await listAgentKeys(accessToken)); setError(""); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "AI 접근 키를 불러오지 못했습니다."); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "연결 키를 불러오지 못했습니다."); }
     finally { setLoading(false); }
   }, [accessToken, demo, isAdmin]);
 
@@ -74,14 +74,14 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
       setIssued({ token: response.token, organizationId: response.organization.id });
       setCreateOpen(false);
       await load();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "AI 접근 키를 만들지 못했습니다."); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "연결 키를 만들지 못했습니다."); }
     finally { setBusy(false); }
   };
 
   const revoke = async (key: AgentAccessKey) => {
     setBusy(true); setError("");
     try { await revokeAgentKey(accessToken, key.id); setRevokeId(null); await load(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "AI 접근 키를 폐기하지 못했습니다."); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "연결 키를 폐기하지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -106,8 +106,8 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
     const organizationId = result?.organization.id;
     setBusy(true); setError(""); setTestStatus("");
     try {
-      if (!organizationId) throw new Error("조직 UUID를 불러온 뒤 다시 시도해 주세요.");
-      if (!/^bos_pat_[A-Za-z0-9_-]{20,}$/.test(pat)) throw new Error("복사한 AI 접근 키를 확인해 주세요.");
+      if (!organizationId) throw new Error("회사 고유 번호를 불러온 뒤 다시 시도해 주세요.");
+      if (!/^bos_pat_[A-Za-z0-9_-]{20,}$/.test(pat)) throw new Error("복사한 연결 키를 확인해 주세요.");
       const endpoint = `/api/mcp?organizationId=${encodeURIComponent(organizationId)}`;
       const call = async (id: number, name: string, args: Record<string, unknown>) => {
         const response = await fetch(endpoint, {
@@ -117,7 +117,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
         });
         const payload = await response.json();
         if (!response.ok || payload.error || payload.result?.isError) {
-          throw new Error(payload.error?.message || payload.result?.content?.[0]?.text || "MCP 연결 검증에 실패했습니다.");
+          throw new Error(payload.error?.message || payload.result?.content?.[0]?.text || "연결 확인에 실패했습니다.");
         }
         return JSON.parse(payload.result.content[0].text);
       };
@@ -149,7 +149,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
       setTestStatus(`연결 정상 · 문서 ${documentId.slice(0, 8)}… · 버전 ${readBack.document.current_version} · 휴지통 이동 확인`);
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "MCP 연결 검증에 실패했습니다.");
+      setError(reason instanceof Error ? reason.message : "연결 확인에 실패했습니다.");
     } finally {
       formElement.reset();
       setBusy(false);
@@ -166,29 +166,29 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
   return (
     <section className="panel agent-key-manager">
       <div className="panel-header">
-        <div><h2>AI 접근 키</h2><p>Claude Code·Codex가 OS 지식을 읽고 개인 초안을 관리하는 MCP 권한</p></div>
-        <div className="header-actions"><button className="secondary-button" type="button" onClick={() => { setTestStatus(""); setTestOpen(true); }}><ShieldCheck size={14} />연결 검증</button><button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button></div>
+        <div><h2>연결 키</h2><p>Claude Code·Codex가 OS 문서를 읽고 내 개인 초안을 다루게 하는 연결 권한</p></div>
+        <div className="header-actions"><button className="secondary-button" type="button" onClick={() => { setTestStatus(""); setTestOpen(true); }}><ShieldCheck size={14} />연결 확인</button><button className="primary-button" type="button" onClick={() => setCreateOpen(true)}><Plus size={14} />키 발급</button></div>
       </div>
       <details style={{ margin: "12px 15px" }}><summary>내 AI 연결 (내 이름 · 초안 쓰기 · 주소 한 줄)</summary><div style={{ marginTop: 10 }}><MyAiConnect /></div></details>
       {error ? <div className="inline-alert danger">{error}</div> : null}
       {notice ? <div className="inline-alert success" role="status">{notice}</div> : null}
       {result ? (
         <div className="agent-organization-row">
-          <span><strong>조직 UUID</strong><code>{result.organization.id}</code></span>
-          <button className="icon-button" type="button" aria-label="조직 UUID 복사" onClick={() => copy("organization", result.organization.id)}>{copied === "organization" ? <Check size={14} /> : <Copy size={14} />}</button>
+          <span><strong>회사 고유 번호</strong><code>{result.organization.id}</code></span>
+          <button className="icon-button" type="button" aria-label="회사 고유 번호 복사" onClick={() => copy("organization", result.organization.id)}>{copied === "organization" ? <Check size={14} /> : <Copy size={14} />}</button>
         </div>
       ) : null}
       {issued ? (
         <div className="agent-token-once" role="status">
-          <div><KeyRound size={17} /><span><strong>한 번만 표시되는 PAT</strong><small>지금 복사해 AI 클라이언트의 비밀 환경변수에 저장하세요.</small></span></div>
+          <div><KeyRound size={17} /><span><strong>한 번만 보이는 연결 키</strong><small>지금 복사해 AI 프로그램의 비밀 설정 칸에 저장하세요.</small></span></div>
           <code>{issued.token}</code>
           <div className="agent-token-actions">
-            <button className="secondary-button" type="button" onClick={() => copy("token", issued.token)}>{copied === "token" ? <Check size={14} /> : <Copy size={14} />}{copied === "token" ? "복사됨" : "PAT 복사"}</button>
-            <button className="icon-button" type="button" aria-label="PAT 표시 닫기" onClick={() => setIssued(null)}><X size={14} /></button>
+            <button className="secondary-button" type="button" onClick={() => copy("token", issued.token)}>{copied === "token" ? <Check size={14} /> : <Copy size={14} />}{copied === "token" ? "복사됨" : "키 복사"}</button>
+            <button className="icon-button" type="button" aria-label="키 표시 닫기" onClick={() => setIssued(null)}><X size={14} /></button>
           </div>
         </div>
       ) : null}
-      {loading ? <div className="settings-loading-state"><LoaderCircle className="spin" /><strong>AI 접근 키 확인 중</strong></div> : (
+      {loading ? <div className="settings-loading-state"><LoaderCircle className="spin" /><strong>연결 키 확인 중</strong></div> : (
         <div className="agent-key-list">
           {(result?.keys ?? []).map((key) => (
             <div key={key.id}>
@@ -200,20 +200,20 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
               ) : <button className="icon-button" type="button" aria-label={`${key.name} 키 폐기`} onClick={() => setRevokeId(key.id)}><Trash2 size={14} /></button>) : null}
             </div>
           ))}
-          {!result?.keys.length ? <div className="quiet-state"><Bot /><strong>발급된 AI 접근 키 없음</strong><span>Claude Code 또는 Codex별로 별도 키를 발급하세요.</span></div> : null}
+          {!result?.keys.length ? <div className="quiet-state"><Bot /><strong>발급된 연결 키 없음</strong><span>Claude Code 또는 Codex별로 별도 키를 발급하세요.</span></div> : null}
         </div>
       )}
       {createOpen ? (
         <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCreateOpen(false); }}>
           <form className="side-drawer" onSubmit={submit}>
-            <div className="drawer-header"><div><span className="eyebrow">MCP 권한</span><h2>AI 접근 키 발급</h2></div><button className="icon-button" type="button" aria-label="닫기" onClick={() => setCreateOpen(false)}><X /></button></div>
+            <div className="drawer-header"><div><span className="eyebrow">연결 권한</span><h2>연결 키 발급</h2></div><button className="icon-button" type="button" aria-label="닫기" onClick={() => setCreateOpen(false)}><X /></button></div>
             <label>키 이름<input name="name" required maxLength={80} placeholder="예: 정호 Claude Code" /></label>
             <label>귀속 구성원<select name="ownerUserId" required value={ownerId || members.find((member) => member.is_active)?.id || ""} onChange={(event) => setOwnerId(event.target.value)}>{members.filter((member) => member.is_active).map((member) => <option value={member.id} key={member.id}>{member.display_name || member.email}{member.is_shared_account ? " · 공용 계정" : ""}</option>)}</select></label>
             {members.find((member) => member.id === (ownerId || members.find((item) => item.is_active)?.id))?.is_shared_account ? <><div className="inline-alert danger">공용 계정의 키는 실제 사용자를 식별할 수 없습니다. 개인 계정으로 발급하는 것이 권장됩니다.</div><label>공용 계정 발급 사유<textarea name="reason" required maxLength={500} placeholder="개인 계정 대신 공용 계정에 발급해야 하는 이유" /></label></> : null}
             <label>권한 범위<select name="access" defaultValue="draft"><option value="read">읽기</option><option value="draft">초안 쓰기 (정본 제외)</option><option value="write">정본 쓰기</option></select></label>
             <label>만료일<input type="date" name="expiresAt" required min={new Date().toISOString().slice(0, 10)} defaultValue={defaultAgentExpiry()} /></label>
             <label>팀 범위<input name="team" maxLength={120} placeholder="비워두면 귀속 계정 기준" /></label>
-            <div className="inline-alert"><ShieldCheck size={15} />새 문서는 개인 초안으로만 생성되고, 삭제는 휴지통 이동이며, 모든 쓰기는 감사 로그와 버전으로 남습니다.</div>
+            <div className="inline-alert"><ShieldCheck size={15} />새 문서는 개인 초안으로만 만들어지고, 삭제하면 휴지통으로 가며, 모든 변경은 변경 기록과 버전으로 남습니다.</div>
             <div className="drawer-actions"><button className="secondary-button" type="button" onClick={() => setCreateOpen(false)}>취소</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <KeyRound />}발급</button></div>
           </form>
         </div>
@@ -231,11 +231,11 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
       {testOpen ? (
         <div className="drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setTestOpen(false); }}>
           <form className="side-drawer" onSubmit={testConnection}>
-            <div className="drawer-header"><div><span className="eyebrow">MCP 실제 검증</span><h2>AI 접근 키 연결 검증</h2></div><button className="icon-button" type="button" aria-label="닫기" disabled={busy} onClick={() => setTestOpen(false)}><X /></button></div>
-            <label>AI 접근 키<input name="pat" type="password" autoComplete="off" required placeholder="복사한 bos_pat_… 키 붙여넣기" /></label>
-            <div className="inline-alert"><ShieldCheck size={15} />키는 저장하지 않습니다. 개인 초안 생성 → 수정 → 읽기 → 휴지통 이동을 실행하고 버전·감사 기록을 확인합니다.</div>
+            <div className="drawer-header"><div><span className="eyebrow">실제 연결 확인</span><h2>연결 키 확인</h2></div><button className="icon-button" type="button" aria-label="닫기" disabled={busy} onClick={() => setTestOpen(false)}><X /></button></div>
+            <label>연결 키<input name="pat" type="password" autoComplete="off" required placeholder="복사한 bos_pat_… 키 붙여넣기" /></label>
+            <div className="inline-alert"><ShieldCheck size={15} />키는 저장하지 않습니다. 개인 초안 만들기 → 수정 → 읽기 → 휴지통 이동을 해 보고 버전·변경 기록을 확인합니다.</div>
             {testStatus ? <div className="inline-alert success"><Check size={15} />{testStatus}</div> : null}
-            <div className="drawer-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => setTestOpen(false)}>닫기</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <ShieldCheck />}실제 연결 검증</button></div>
+            <div className="drawer-actions"><button className="secondary-button" type="button" disabled={busy} onClick={() => setTestOpen(false)}>닫기</button><button className="primary-button" disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <ShieldCheck />}실제로 연결해 보기</button></div>
           </form>
         </div>
       ) : null}

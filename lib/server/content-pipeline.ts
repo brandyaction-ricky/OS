@@ -113,7 +113,7 @@ export function scriptReviewWorkflowState(source: OsRecord, script: OsRecord | n
     currentScript,
     steps,
     ready: steps.length > 0 && steps.every((step) => step.approved),
-    nextAction: next ? (!next.content || !currentScript ? `${next.label} 검수 메모 저장` : `${next.label} 검수 승인`) : "콘텐츠 제작·편집 준비",
+    nextAction: next ? (!next.content || !currentScript ? `${next.label} 검토 메모 저장` : `${next.label} 검토 승인`) : "콘텐츠 제작·편집 준비",
     blocker,
   };
 }
@@ -360,7 +360,7 @@ export async function runPipelineGeneration(actor: RequestActor, input: z.infer<
   const neededGate = ({ appeal_candidates: 0, topic_plan: 0, script_draft: 1, title_package: 1, shorts_proposal: 2, youtube_kit: 2, derivatives: 2 })[input.action];
   if (state.approved.slice(0, neededGate).some((approved) => !approved)) throw new ApiError(409, "PIPELINE_APPROVAL_REQUIRED", "이전 단계의 현재 자료를 승인한 뒤 실행해 주세요. 수정된 자료는 재승인이 필요합니다.");
   if (input.action === "topic_plan") {
-    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => !["기획 브리핑", "채택한 기획 방향"].includes(name));
+    const missing = pipelineMissing(state.source, state.records, 1).filter((name) => !["기획 메모", "채택한 기획 방향"].includes(name));
     if (missing.length) throw new ApiError(409, "PIPELINE_NEEDS_INPUT", `자료 보완 필요: ${missing.join(", ")}`);
   }
   const artifacts = pipelineArtifacts(state.records);

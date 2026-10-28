@@ -236,24 +236,24 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
   }, [accessToken, contentOnly, demo]);
   const systems = [
     [
-      "회의 녹음→전사·요약",
+      "회의 녹음→받아쓰기·정리",
       health?.auth === "ready" ? "ready" : "blocked",
       "사람 확인 후 결정·미결·업무 저장",
     ],
     [
       "회사 정본 검색",
       health?.database === "ready" ? "ready" : "blocked",
-      health?.embeddings === "ready" ? "하이브리드 검색" : "키워드 검색",
+      health?.embeddings === "ready" ? "뜻까지 찾는 검색" : "단어 검색",
     ],
     [
       "텔레그램 폰 캡처",
       health?.telegram === "ready" ? "ready" : "blocked",
-      "인박스·raw·후기·썸네일 기록",
+      "아이디어함·원문·후기·썸네일 기록",
     ],
     [
-      "문서 즉시 색인",
+      "저장한 문서 바로 검색 준비",
       health?.embeddings === "ready" ? "ready" : "waiting",
-      health?.embeddings === "ready" ? "저장 이벤트 처리" : "OpenAI 키 대기",
+      health?.embeddings === "ready" ? "저장하면 바로 처리" : "OpenAI 키 대기",
     ],
   ];
   useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
@@ -265,7 +265,7 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
           <PageTitle />
           <p>
             {contentOnly
-              ? "콘텐츠 생성 요청의 대기·진행·검수 상태를 확인합니다."
+              ? "콘텐츠 만들기 요청의 대기·진행·검토 상태를 확인합니다."
               : "AI가 회사 정본을 읽고 반복 작업을 수행하며, 사람은 확인하고 결정합니다."}
           </p>
         </div>
@@ -290,12 +290,12 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
           </article>
         ))}
       </section>
-      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 통로</h2><p>직원별 Claude Code·텔레그램·Agent PAT가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div></> : null}
+      <div className="section-intro"><div><span className="eyebrow">2단계</span><h2>개인 AI 연결</h2><p>직원별 Claude Code·텔레그램·연결 키가 같은 회사 정본과 권한 범위를 사용합니다.</p></div></div></> : null}
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>사람이 요청한 AI 작업</h2>
-            <p>{contentOnly ? "콘텐츠 생성 요청의 진행·검수 상태" : "GPT·Codex·Claude 요청서의 진행·검수 상태"}</p>
+            <h2>사람이 맡긴 일</h2>
+            <p>{contentOnly ? "콘텐츠 만들기 요청의 진행·검토 상태" : "GPT·Codex·Claude 요청서의 진행·검토 상태"}</p>
           </div>
           <span className="count-badge">{jobs.length}</span>
         </div>
@@ -321,19 +321,19 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
           {!jobs.length ? (
             <div className="quiet-state">
               <Bot />
-              <strong>등록된 AI 작업 없음</strong>
-              <span>{contentOnly ? "콘텐츠 화면에서 생성 요청을 보내면 여기에 모입니다." : "AI 작업에서 요청서를 등록하면 여기에 모입니다."}</span>
+              <strong>맡긴 일 없음</strong>
+              <span>{contentOnly ? "콘텐츠 화면에서 만들기 요청을 보내면 여기에 모입니다." : "요청서를 등록하면 여기에 모입니다."}</span>
             </div>
           ) : null}
         </div>
       </section>
       {selectedJob ? <div className="drawer-backdrop" onMouseDown={() => setSelectedJob(null)}>
-        <aside className="record-drawer" role="dialog" aria-label="AI 작업 상세" onMouseDown={(event) => event.stopPropagation()}>
-          <div className="drawer-head"><div><span className="eyebrow">AI 작업 상세</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="AI 작업 상세 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
+        <aside className="record-drawer" role="dialog" aria-label="맡긴 일 자세히" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="drawer-head"><div><span className="eyebrow">맡긴 일 자세히</span><h2>{selectedJob.title}</h2></div><button type="button" className="icon-button" aria-label="맡긴 일 자세히 닫기" onClick={() => setSelectedJob(null)}><X size={18} /></button></div>
           <div className="ai-job-detail">
             <div className="record-meta"><span>{selectedJob.brand || "전체 브랜드"}</span><span>{selectedJob.team || "담당 팀 미지정"}</span><span>{generationJobLabel(selectedJob)}</span></div>
             <section><h3>요청 내용</h3><p>{selectedJob.description || "요청 내용이 없습니다."}</p></section>
-            {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 기존 막힘 작업은 자동 재실행되지 않으므로 원본 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
+            {selectedJob.status === "blocked" ? <section className="inline-alert warning"><CircleAlert size={16} /><span>{health?.contentAi === "ready" ? "AI 연결은 현재 준비됐습니다. 막혔던 작업은 자동으로 다시 돌지 않으니 원래 작업 화면에서 다시 실행하세요." : "AI 연결 설정을 확인한 뒤 원본 작업 화면에서 다시 실행하세요."}</span></section> : null}
             <section><h3>최근 상태</h3><p>{selectedJob.stage || "세부 단계 미입력"} · {new Date(selectedJob.updated_at).toLocaleString("ko-KR")}</p></section>
             <div className="drawer-actions">
               {selectedJobSourceUrl ? <a className="secondary-button" href={selectedJobSourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} /> 결과·원본 링크</a> : null}

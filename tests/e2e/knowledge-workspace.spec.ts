@@ -5,7 +5,7 @@ test.beforeEach(async({page})=>{
 const paths=[
  ["/knowledge","문서 보관함"],["/knowledge/notes","내 노트"],["/knowledge/meetings","회의록"],
  ["/knowledge/decisions","결정 모음"],["/knowledge/docs","팀 문서"],["/knowledge/canon","회사 정본"],
- ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","템플릿"],
+ ["/knowledge/graph","연결"],["/knowledge/review","정본 검토·등록"],["/knowledge/templates","양식"],
  ["/knowledge/trash","휴지통"],["/knowledge/search","문서 찾기"],["/knowledge/activity","문서 활동 기록"],
 ];
 for(const width of [1440,1024,390]) test(`company workspace routes and horizontal bounds at ${width}px`,async({page},info)=>{
@@ -221,14 +221,14 @@ test("export saves pending edits, includes versions and records the export reque
 });
 test("personal template saves body, creates selected-space document, survives reload",async({page})=>{
  await page.goto("/knowledge/templates");
- await page.getByRole("button",{name:"내 템플릿",exact:true}).click();
- await page.getByRole("button",{name:"템플릿 추가"}).click();
+ await page.getByRole("button",{name:"내 양식",exact:true}).click();
+ await page.getByRole("button",{name:"양식 추가"}).click();
  await page.getByRole("textbox",{name:"이름",exact:true}).fill("QA 서식");
  await page.getByRole("textbox",{name:"내용 (Markdown)"}).fill("## 확인 항목");
  await page.getByRole("dialog").getByRole("button",{name:"저장",exact:true}).click();
- await page.reload();await page.getByRole("button",{name:"내 템플릿",exact:true}).click();
+ await page.reload();await page.getByRole("button",{name:"내 양식",exact:true}).click();
  const card=page.getByRole("article").filter({has:page.getByRole("heading",{name:"QA 서식",exact:true})});
- await card.getByRole("button",{name:"이 템플릿 사용"}).click();
+ await card.getByRole("button",{name:"이 양식 사용"}).click();
  await page.getByRole("button",{name:"만들기",exact:true}).click();
  await expect(page.getByRole("textbox",{name:"editable markdown"})).toContainText("확인 항목");
  await expect(page.locator(".kw-editor-card")).toContainText("내 노트");
@@ -246,10 +246,10 @@ test("meeting start, review, confirmation and append-only correction",async({pag
  await page.getByRole("button",{name:"회의 시작",exact:true}).click();
  await page.getByRole("textbox",{name:"결정·할 일 내용"}).fill("검증된 결정을 채택합니다.");
  await page.getByRole("button",{name:"항목 추가"}).click();
- await page.getByRole("button",{name:"회의 종료 · 검수로"}).click();
- await expect(page.getByRole("button",{name:"검수 완료",exact:true})).toBeDisabled();
+ await page.getByRole("button",{name:"회의 종료 · 검토로"}).click();
+ await expect(page.getByRole("button",{name:"검토 완료",exact:true})).toBeDisabled();
  await page.getByRole("button",{name:"채택",exact:true}).click();
- await page.getByRole("button",{name:"검수 완료",exact:true}).click();
+ await page.getByRole("button",{name:"검토 완료",exact:true}).click();
  await expect(page.getByRole("button",{name:"정정 기록 추가"})).toBeVisible();
  await expect(page.getByRole("group",{name:"회의 메모",exact:true})).toHaveCount(0);
  await page.getByRole("button",{name:"정정 기록 추가"}).click();

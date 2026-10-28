@@ -18,7 +18,7 @@ try {
   await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/knowledge$/);
   await expect(page.getByRole('heading', { name: '회사 문서', exact: true })).toBeVisible();
-  await expect(page.getByText('API·DB 응답 확인', { exact: true })).toBeVisible();
+  await expect(page.getByText('서버 연결 정상', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '새 문서', exact: true }).click();
   const modal = page.getByRole('dialog', { name: '새 문서', exact: true });
   await modal.getByRole('radio', { name: /내 노트/ }).check();

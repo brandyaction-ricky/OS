@@ -119,7 +119,7 @@ export function AuditWorkspace() {
       <header className="page-header">
         <div className="page-title-group">
           <PageTitle />
-          <p>운영 기록의 생성·수정·보관 이력을 되돌릴 수 있는 근거로 남깁니다.</p>
+          <p>운영 기록을 만들고·고치고·보관한 이력을 되돌릴 수 있는 근거로 남깁니다.</p>
         </div>
       </header>
       {error ? (
@@ -131,12 +131,12 @@ export function AuditWorkspace() {
           <span className="count-badge">{loading ? "확인 중" : `${visible.length}/${events.length}${nextCursor ? "+" : ""}`}</span>
         </div>
         <div className="audit-filters">
-          <label className="audit-search"><Search size={14} /><input aria-label="감사 로그 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="기록·실행자·변경 내용 검색" /></label>
-          <select aria-label="감사 동작 필터" value={action} onChange={(event) => setAction(event.target.value)}><option value="all">모든 동작</option>{[...new Set(events.map((event) => event.event_type))].map((item) => <option key={item} value={item}>{auditEventLabel(item)}</option>)}</select>
-          <select aria-label="감사 실행자 필터" value={actor} onChange={(event) => setActor(event.target.value)}><option value="all">모든 실행자</option>{actors.map((item) => <option key={item}>{item}</option>)}</select>
-          <select aria-label="감사 기록 유형 필터" value={recordType} onChange={(event) => setRecordType(event.target.value)}><option value="all">모든 기록 유형</option>{recordTypes.map((item) => <option key={item} value={item}>{auditRecordLabel(item)}</option>)}</select>
-          <label><span>시작</span><input aria-label="감사 시작일" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-          <label><span>종료</span><input aria-label="감사 종료일" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+          <label className="audit-search"><Search size={14} /><input aria-label="변경 기록 검색" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="기록·실행자·변경 내용 검색" /></label>
+          <select aria-label="동작 필터" value={action} onChange={(event) => setAction(event.target.value)}><option value="all">모든 동작</option>{[...new Set(events.map((event) => event.event_type))].map((item) => <option key={item} value={item}>{auditEventLabel(item)}</option>)}</select>
+          <select aria-label="실행자 필터" value={actor} onChange={(event) => setActor(event.target.value)}><option value="all">모든 실행자</option>{actors.map((item) => <option key={item}>{item}</option>)}</select>
+          <select aria-label="기록 유형 필터" value={recordType} onChange={(event) => setRecordType(event.target.value)}><option value="all">모든 기록 유형</option>{recordTypes.map((item) => <option key={item} value={item}>{auditRecordLabel(item)}</option>)}</select>
+          <label><span>시작</span><input aria-label="조회 시작일" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
+          <label><span>종료</span><input aria-label="조회 종료일" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
         </div>
         <label className="audit-group-switch"><input type="checkbox" checked={grouped} onChange={event => setGrouped(event.target.checked)} /> 같은 대상의 연속 수정 묶어 보기</label>
         {loading ? (
@@ -185,7 +185,7 @@ export function AuditWorkspace() {
         )}
         {nextCursor && !loading ? <button type="button" className="secondary-button audit-more" onClick={loadMore} disabled={loadingMore}>{loadingMore ? "불러오는 중…" : "이전 기록 더 보기"}</button> : null}
       </section>
-      {selected ? <section className="panel audit-detail" aria-label="변경 기록 상세"><div className="drawer-head"><div><span className="eyebrow">변경 상세</span><h2>{selected.title}</h2></div><button type="button" className="icon-button" aria-label="감사 상세 닫기" onClick={() => setSelected(null)}><X size={18} /></button></div><dl><div><dt>실행자</dt><dd>{selected.actor_name} · {selected.actor_type === "agent" ? "AI 에이전트" : "구성원"}</dd></div><div><dt>동작</dt><dd>{auditEventLabel(selected.event_type)}</dd></div><div><dt>기록 유형</dt><dd>{auditRecordLabel(selected.subject_type)}</dd></div><div><dt>상태 변경</dt><dd>{selected.from_status !== selected.to_status ? `${auditStatusLabel(selected.from_status, selected.subject_type)} → ${auditStatusLabel(selected.to_status, selected.subject_type)}` : "상태 변경 없음"}</dd></div><div><dt>변경 필드</dt><dd>{auditFieldLabels(selected.changed_fields).join(", ") || "세부 필드 기록 없음"}</dd></div><div><dt>변경 사유</dt><dd>{selected.note || "기록된 사유 없음"}</dd></div><div><dt>실행 시각</dt><dd>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "medium" }).format(new Date(selected.created_at))}</dd></div></dl><AuditDiffPanel key={selected.id} eventId={selected.id} token={accessToken} onRestored={() => setReloadKey(value => value + 1)} /></section> : null}</div>
+      {selected ? <section className="panel audit-detail" aria-label="변경 기록 상세"><div className="drawer-head"><div><span className="eyebrow">변경 상세</span><h2>{selected.title}</h2></div><button type="button" className="icon-button" aria-label="변경 상세 닫기" onClick={() => setSelected(null)}><X size={18} /></button></div><dl><div><dt>실행자</dt><dd>{selected.actor_name} · {selected.actor_type === "agent" ? "AI 도우미" : "구성원"}</dd></div><div><dt>동작</dt><dd>{auditEventLabel(selected.event_type)}</dd></div><div><dt>기록 유형</dt><dd>{auditRecordLabel(selected.subject_type)}</dd></div><div><dt>상태 변경</dt><dd>{selected.from_status !== selected.to_status ? `${auditStatusLabel(selected.from_status, selected.subject_type)} → ${auditStatusLabel(selected.to_status, selected.subject_type)}` : "상태 변경 없음"}</dd></div><div><dt>변경 필드</dt><dd>{auditFieldLabels(selected.changed_fields).join(", ") || "세부 필드 기록 없음"}</dd></div><div><dt>변경 사유</dt><dd>{selected.note || "기록된 사유 없음"}</dd></div><div><dt>실행 시각</dt><dd>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long", timeStyle: "medium" }).format(new Date(selected.created_at))}</dd></div></dl><AuditDiffPanel key={selected.id} eventId={selected.id} token={accessToken} onRestored={() => setReloadKey(value => value + 1)} /></section> : null}</div>
     </>
   );
 }

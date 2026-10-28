@@ -62,7 +62,7 @@ test("third-round quick fixes cover performance CRUD, meeting transcript input a
   ]);
   assert.match(performance, /매출 기록을 휴지통으로 이동/);
   assert.match(performance, /주간 KPI 수정/);
-  assert.match(meeting, /회의 원문·전사/);
+  assert.match(meeting, /회의 원문·받아쓴 글/);
   assert.match(meeting, /회의 원문을 20자 이상/);
   assert.doesNotMatch(shorts, /manualUnsaved/);
   const addManual = shorts.slice(shorts.indexOf("const addManualClip"), shorts.indexOf("const requestRender"));

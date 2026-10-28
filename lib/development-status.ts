@@ -1,7 +1,7 @@
 import type { OsRecord } from "./record-types";
 export const DEVELOPMENT_STATUS_LABELS: Record<string, string> = {
-  backlog: "접수", active: "수정 중", review: "검수 요청", done: "해결", blocked: "보류",
-  working: "작업 중", tested: "검증 완료", dev_deployed: "Preview 배포", completed: "완료",
+  backlog: "접수", active: "수정 중", review: "검토 요청", done: "해결", blocked: "보류",
+  working: "작업 중", tested: "검증 완료", dev_deployed: "미리보기 배포", completed: "완료",
   ready: "배포 성공", failed: "배포 실패", deploying: "배포 중", rolled_back: "되돌림",
 };
 export const developmentStatusLabel = (status: string) => DEVELOPMENT_STATUS_LABELS[status] ?? status;

@@ -36,7 +36,7 @@ const DESCRIPTION: Record<Section, string> = {
   people: "구성원별 업무량과 막힌 일을 살펴봅니다.",
 };
 const GUIDE: Record<Section, readonly [string, string, string]> = {
-  meetings: ["다가오는 회의는 ‘다음 회의 준비’에서 안건을 고릅니다", "회의가 끝나면 녹음·메모로 결정·업무 후보를 뽑습니다", "검수에서 담당·기한을 정해 확정합니다"],
+  meetings: ["다가오는 회의는 ‘다음 회의 준비’에서 안건을 고릅니다", "회의가 끝나면 녹음·메모로 결정·업무 후보를 뽑습니다", "검토에서 담당·기한을 정해 확정합니다"],
   tasks: ["분류함의 담당 미정 업무를 확인합니다", "팀 보드에서 상태별 업무를 살펴봅니다", "내 업무에서 기한과 막힘을 확인합니다"],
   schedule: ["이번 주 회의·마감·부재를 살펴봅니다", "일정을 누르면 그 일의 업무로 이동합니다", "휴가 신청·승인은 인사 노무 관리에서 합니다"],
   people: ["구성원별 열린 업무를 확인합니다", "막힘과 기한 지남을 먼저 살펴봅니다", "이름을 누르면 해당 구성원의 팀 보드로 이동합니다"],
@@ -45,7 +45,7 @@ const TASK_COLUMNS = [
   { key: "todo", label: "할 일", statuses: ["backlog", "planned", "todo"] },
   { key: "active", label: "진행 중", statuses: ["active", "doing"] },
   { key: "blocked", label: "막힘", statuses: ["blocked"] },
-  { key: "review", label: "검수", statuses: ["review"] },
+  { key: "review", label: "검토", statuses: ["review"] },
   { key: "done", label: "완료", statuses: ["done"] },
 ] as const;
 const WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"];
@@ -78,7 +78,7 @@ function personName(members: OsMember[], id: string | null | undefined) {
   return members.find(member => member.id === id)?.display_name ?? "구성원";
 }
 function statusLabel(status: string) {
-  return ({ planned: "예정", backlog: "할 일", todo: "할 일", active: "진행 중", doing: "진행 중", blocked: "막힘", review: "검수", done: "완료", decided: "확정" } as Record<string, string>)[status] ?? "상태 확인";
+  return ({ planned: "예정", backlog: "할 일", todo: "할 일", active: "진행 중", doing: "진행 중", blocked: "막힘", review: "검토", done: "완료", decided: "확정" } as Record<string, string>)[status] ?? "상태 확인";
 }
 function statusTone(status: string) {
   if (["done", "decided"].includes(status)) return "approved";
@@ -243,7 +243,7 @@ function MeetingList({ meetings, filter, records, token, userId, admin, onChange
   }
   const filters = [
     { key: "all", label: "전체", matches: () => true },
-    { key: "review", label: "검수 필요", matches: (meeting: Meeting) => meeting.status === "review" },
+    { key: "review", label: "검토 필요", matches: (meeting: Meeting) => meeting.status === "review" },
     { key: "planned", label: "예정·진행", matches: (meeting: Meeting) => ["planned", "active"].includes(meeting.status) },
     { key: "done", label: "확정", matches: (meeting: Meeting) => meeting.status === "done" },
   ];
@@ -268,7 +268,7 @@ function MeetingList({ meetings, filter, records, token, userId, admin, onChange
       const candidateTasks = meeting.metadata.items.filter(item => item.kind === "task" && item.state !== "discarded");
       const decisions = records.filter(record => record.record_type === "decision" && record.status !== "cancelled" && (record.parent_id === meeting.id || record.metadata.meetingId === meeting.id));
       const tasks = records.filter(record => record.record_type === "task" && record.status !== "cancelled" && (record.parent_id === meeting.id || record.metadata.meetingId === meeting.id));
-      return <Link className="tm-meeting-row" key={meeting.id} href={`/organization/meetings?meeting=${encodeURIComponent(meeting.id)}`}><div><div className="tm-meeting-title"><span className="status-pill" data-status={statusTone(meeting.status)}>{meeting.status === "review" ? "검수 필요" : statusLabel(meeting.status)}</span>{meeting.title}{meeting.legacy ? <span className="tm-legacy-tag">이전 기록</span> : null}</div><div className="tm-meeting-meta"><span className="tm-biz" data-biz={businessTone(brand)}>{businessLabel(brand)}</span><span>{dateLabel(meeting.starts_at)}</span><span>참석 {meeting.attendees.length}명</span>{meeting.metadata.visibility === "attendees" ? <span>참석자만</span> : null}</div><p className="tm-meeting-summary">{plainMarkdown(meeting.metadata.summary || meeting.metadata.agenda || "") || "요약이 없습니다."}</p></div><span className="tm-count-pair">{meeting.status === "review" ? <span>후보 <b>{candidateDecisions.length+candidateTasks.length}</b> · 아직 반영 안 됨</span> : meeting.status === "planned" ? <span>안건 <b>{meeting.metadata.agenda.split("\n").filter(Boolean).length}</b></span> : <><span>결정 <b>{decisions.length}</b></span><span>업무 <b>{tasks.length}</b></span></>}</span><span className="tm-row-action">{meeting.status === "review" ? "검수하기" : meeting.status === "planned" ? "안건 준비" : "자세히 보기"} →</span></Link>;
+      return <Link className="tm-meeting-row" key={meeting.id} href={`/organization/meetings?meeting=${encodeURIComponent(meeting.id)}`}><div><div className="tm-meeting-title"><span className="status-pill" data-status={statusTone(meeting.status)}>{meeting.status === "review" ? "검토 필요" : statusLabel(meeting.status)}</span>{meeting.title}{meeting.legacy ? <span className="tm-legacy-tag">이전 기록</span> : null}</div><div className="tm-meeting-meta"><span className="tm-biz" data-biz={businessTone(brand)}>{businessLabel(brand)}</span><span>{dateLabel(meeting.starts_at)}</span><span>참석 {meeting.attendees.length}명</span>{meeting.metadata.visibility === "attendees" ? <span>참석자만</span> : null}</div><p className="tm-meeting-summary">{plainMarkdown(meeting.metadata.summary || meeting.metadata.agenda || "") || "정리가 없습니다."}</p></div><span className="tm-count-pair">{meeting.status === "review" ? <span>후보 <b>{candidateDecisions.length+candidateTasks.length}</b> · 아직 반영 안 됨</span> : meeting.status === "planned" ? <span>안건 <b>{meeting.metadata.agenda.split("\n").filter(Boolean).length}</b></span> : <><span>결정 <b>{decisions.length}</b></span><span>업무 <b>{tasks.length}</b></span></>}</span><span className="tm-row-action">{meeting.status === "review" ? "검토하기" : meeting.status === "planned" ? "안건 준비" : "자세히 보기"} →</span></Link>;
     })}</div></section> : null; }) : empty("조건에 맞는 회의가 없습니다.")}
   </>;
 }

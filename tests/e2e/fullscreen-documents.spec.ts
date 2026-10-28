@@ -56,8 +56,8 @@ for(const width of [1280,390])test(`canonical workflow is bounded and safe in de
   await page.setViewportSize({width,height:840});
   const external:string[]=[];page.on("request",req=>{if(/knowledge\/canonical|api.anthropic.com/.test(req.url()))external.push(req.url());});
   await page.goto("/knowledge/canon/example-canonical");
-  await page.locator("summary").filter({hasText:"원문 연결 · 규칙 추출"}).click();
-  const workflow=page.getByRole("region",{name:"정본 동기화와 규칙 추출"});
+  await page.locator("summary").filter({hasText:"원문 연결 · 규칙 뽑기"}).click();
+  const workflow=page.getByRole("region",{name:"정본 원문 맞추기와 규칙 뽑기"});
   await expect.poll(async()=>((await workflow.locator(":scope > .quiet-state").boundingBox())?.height??Infinity)).toBeLessThanOrEqual(90);
   await workflow.getByText("외부 원문 연결",{exact:true}).click();
   await workflow.getByText("파일로 변경 제안",{exact:true}).click();

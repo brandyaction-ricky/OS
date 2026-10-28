@@ -114,9 +114,9 @@ export function productionWorkflowOf(value: unknown): ProductionWorkflow {
 
 export function productionStepLabel(step: ProductionWorkflowStep) {
   return ({
-    voice: "보이스 MP3",
+    voice: "음성 MP3",
     visuals: "이미지·캐릭터",
-    editSpec: "자막·편집 사양",
-    roughCut: "초벌 렌더",
+    editSpec: "자막·편집 지시",
+    roughCut: "1차 영상",
   } as const)[step];
 }

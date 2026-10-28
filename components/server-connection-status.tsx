@@ -13,8 +13,8 @@ export function ServerConnectionStatus({ demo, onStatusChange }: { demo: boolean
     void check(); const timer = window.setInterval(check, 60_000);
     return () => { active = false; clearInterval(timer); };
   }, [demo, onStatusChange]);
-  return <div className="system-state" title={state ? `API·DB 조회 확인: ${new Date(state.at).toLocaleString("ko-KR")}` : undefined} role="status">
+  return <div className="system-state" title={state ? `서버 연결 확인: ${new Date(state.at).toLocaleString("ko-KR")}` : undefined} role="status">
     <span className={`state-dot ${demo ? "demo" : state?.ok ? "ready" : "waiting"}`} />
-    <span>{demo ? "데모 데이터" : !state ? "서버 확인 중" : state.ok ? "API·DB 응답 확인" : "서버 확인 실패"}</span>
+    <span>{demo ? "데모 데이터" : !state ? "서버 확인 중" : state.ok ? "서버 연결 정상" : "서버 확인 실패"}</span>
   </div>;
 }
