@@ -334,6 +334,70 @@ export async function processMyinBreath() {
   return true;
 }
 
+// 숏폼 레퍼런스 받기 (owner direction 2026-10-28: "썸네일 카피, 화면 첫 부분 헤드 카피가 가장 중요해"): each reference's thumbnail, a sheet
+// of its first three seconds (two frames a second) and its words (faster-whisper small, as stage_words), then the video is deleted.
+// Only the hosts the OS allows reach yt-dlp, after "--" so no link can pass as an option. Render PC only (staff PCs have no yt-dlp).
+const REF_HOSTS = ["youtube.com", "youtu.be", "instagram.com", "facebook.com", "tiktok.com"];
+const refHostOk = (link) => { try { const url = new URL(link); return url.protocol === "https:" && REF_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`)); } catch { return false; } };
+const REF_WORDS_PY = `import json, sys
+from faster_whisper import WhisperModel
+m = WhisperModel("small", device="cpu", compute_type="int8")
+out = {}
+for path in sys.argv[1:]:
+    segs, _ = m.transcribe(path, language="ko", vad_filter=True)
+    out[path] = "\\n".join(f"{s.start:.1f} {s.text.strip()}" for s in segs)
+print(json.dumps(out, ensure_ascii=False))`;
+export async function processShortRefs() {
+  const job = await call({ action: "short_refs_claim" }).catch(() => ({ idle: true }));
+  if (job.idle) return false;
+  const lease = { jobId: job.jobId, lease: job.lease };
+  current = { step: "short_refs" };
+  const dir = mkdtempSync(path.join(os.tmpdir(), "short-refs-"));
+  const env = withTools(process.env);
+  try {
+    const results = [], wavs = new Map();
+    for (const item of job.items) {
+      const result = { index: item.index, ok: false, title: "", durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "" };
+      results.push(result);
+      if (!refHostOk(item.url)) { result.error = "받을 수 없는 주소예요"; continue; }
+      const base = path.join(dir, `r${item.index}`);
+      try {
+        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--print", "after_move:%(title)s\t%(duration)s", "--max-filesize", "150M",
+          "--match-filter", "duration <= 600", "-f", "worst[height>=360]/worst", "--write-thumbnail", "--convert-thumbnails", "jpg", "-o", `${base}.%(ext)s`, "--", item.url], { env });
+        const [title = "", duration = ""] = printed.trim().split("\n").pop().split("\t");
+        Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null });
+        const video = readdirSync(dir).map((name) => path.join(dir, name)).find((file) => path.basename(file).startsWith(`r${item.index}.`) && !file.endsWith(".jpg"));
+        if (!video) throw new Error("no video file");
+        const sheet = `${base}-sheet.jpg`, wav = `${base}.wav`;
+        spawnSync("ffmpeg", ["-v", "error", "-y", "-t", "3", "-i", video, "-vf", "fps=2,scale=360:-2,tile=3x2", "-frames:v", "1", sheet], { env });
+        if (spawnSync("ffmpeg", ["-v", "error", "-y", "-t", "180", "-i", video, "-vn", "-ac", "1", "-ar", "16000", wav], { env }).status === 0) wavs.set(item.index, wav);
+        rmSync(video, { force: true });
+        if (existsSync(`${base}.jpg`)) { await upload(item.thumb, `${base}.jpg`, "image/jpeg"); result.thumb = true; }
+        if (existsSync(sheet)) { await upload(item.sheet, sheet, "image/jpeg"); result.sheet = true; }
+        result.ok = result.thumb || result.sheet;
+        if (!result.ok) result.error = "화면을 뽑지 못했어요";
+      } catch (error) {
+        result.error = `영상을 받지 못했어요 (${String(error.message).slice(0, 120)})`;
+      }
+    }
+    if (wavs.size) {
+      const words = spawnSync(myinPython, ["-c", REF_WORDS_PY, ...wavs.values()], { encoding: "utf8", maxBuffer: 8e6, timeout: 900_000, env: { ...env, PYTHONIOENCODING: "utf-8" } });
+      const said = words.status === 0 ? JSON.parse(words.stdout.trim().split("\n").pop()) : {};
+      if (words.status !== 0) console.error(`short refs words: ${String(words.stderr).slice(-300)}`);
+      for (const [index, wav] of wavs) { const result = results.find((row) => row.index === index); if (result) result.transcript = String(said[wav] ?? "").slice(0, 6000); }
+    }
+    const saved = await call({ action: "short_refs_complete", ...lease, results });
+    console.log(`short refs ready: ${job.jobId} (${saved.ok}/${saved.of})`);
+  } catch (error) {
+    console.error(`short refs failed: ${job.jobId}: ${error.message}`);
+    await call({ action: "short_refs_fail", ...lease, code: String(error.code ?? "WORKER_SHORT_REFS_FAILED") }).catch(() => {});
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    current = null;
+  }
+  return true;
+}
+
 // 내 컴퓨터로 시안: his processed voice leaves the render PC byte for byte in parts under the voice bucket's 12 MB limit.
 const VOICE_PART_BYTES = 10_000_000;
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -749,7 +813,7 @@ else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).h
   setInterval(() => void reportSoundCatalog(), 60 * 60_000).unref();
   do {
     // No render ready? Advance the voice queue one step (review or one paragraph) so no separate scheduler is needed.
-    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
+    const worked = await (shortsOnly?processShortform():processOne().then((rendered) => rendered || processMyinBreath()).then((rendered) => rendered || processShortRefs()).then((rendered) => rendered || processMyinWords()).then((rendered) => rendered || processMyinPrep())
       .then((rendered) => rendered || processMyinClips()).then((rendered) => rendered || processMyinFinal()).then((rendered) => rendered || (current = { step: "voice" }, call(runId ? { runId } : {}, "worker")).then((step) => {
       if (step.processed) console.log(`voice step: ${JSON.stringify(step).slice(0, 300)}`);
       return step.processed;

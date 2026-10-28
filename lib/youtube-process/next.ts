@@ -1,5 +1,5 @@
 // What a video needs next, in one sentence and one button (owner request 2026-10-21: usable without any guide text).
-import { GATE_FIELDS, GATE_NAME } from "./confirm.ts";
+import { GATE_FIELDS, gateName } from "./confirm.ts";
 import { flowOf, projectHref, stepName, YP_STAGE_INDEX, type YpGate, type YpProject } from "./project.ts";
 
 export type YpTone = "todo" | "wait" | "fix" | "hold" | "done";
@@ -16,7 +16,7 @@ const TODO: Record<Exclude<YpProject["yp"]["stage"], "done">, [string, string]> 
   shorts: ["쇼츠 · 칼럼을 만들거나 여기서 끝내요", "쇼츠 · 칼럼"],
 };
 // A 숏폼's 제작 holds what to make, the scenes and the MP4; it is handed out by download, not uploaded to YouTube here.
-const SHORT_TODO: Partial<typeof TODO> = { make: ["무엇을 만들지 정하고 장면 · 영상을 만들어요", "숏폼 만들기"], upload: ["유튜브에 올리거나 MP4를 내려받아 올려요", "내보내기"] };
+const SHORT_TODO: Partial<typeof TODO> = { draft: ["참고 영상으로 공식을 뽑고 대본을 확정해요", "대본 쓰기"], make: ["무엇을 만들지 정하고 장면 · 영상을 만들어요", "숏폼 만들기"], upload: ["유튜브에 올리거나 MP4를 내려받아 올려요", "내보내기"] };
 const GATE_OF: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { topic: "topic", draft: "draft", review: "review" };
 
 export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
@@ -28,7 +28,7 @@ export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   if (stage === "done") return { ...base, tone: "done", text: "끝난 영상이에요", button: "보기" };
   const gate = GATE_OF[stage];
   const info = gate ? gates[gate] : null;
-  if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${GATE_NAME[gate]} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };
+  if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${gateName(gate, project.yp.topic.type)} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };
   if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청${info.fields?.length ? ` · 짚은 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}` : ` · ${info.memo ?? ""}`}`, button: "고치기" };
   if (gate && info?.state === "hold") return { ...base, tone: "hold", text: `보류됨${info.reason ? ` · ${info.reason}` : ""}`, button: "손보기" };
   const [text, button] = (project.yp.topic.type === "short" ? SHORT_TODO[stage] : undefined) ?? TODO[stage];

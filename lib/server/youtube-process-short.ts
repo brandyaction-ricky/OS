@@ -60,7 +60,7 @@ async function shortProject(actor: RequestActor, id: string) {
 /** 제작 is open; during 최종 검수 only after a 수정 요청 that ticked 최종본 (like the longform 제작). */
 function assertShortEditable(project: YpProject) {
   if (project.yp.stage === "make") return;
-  if (project.yp.stage !== "review") throw locked(project.yp.stage === "topic" ? "주제 컨펌 뒤에 제작이 열려요." : "최종 검토 컨펌이 끝나 제작은 고칠 수 없어요.");
+  if (project.yp.stage !== "review") throw locked(project.yp.stage === "topic" ? "주제 컨펌 뒤에 제작이 열려요." : project.yp.stage === "draft" ? "대본 확정 뒤에 제작이 열려요." : "최종 검토 컨펌이 끝나 제작은 고칠 수 없어요.");
   if (project.yp.gates.review.state === "wait") throw new ApiError(409, "GATE_WAITING", "최종 검토 컨펌을 기다리는 중이라 고칠 수 없어요. 요청을 취소하면 고칠 수 있어요.");
   const fields = editableFields(project, "review");
   if (fields !== "all" && !fields.includes("make.final")) throw new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.");

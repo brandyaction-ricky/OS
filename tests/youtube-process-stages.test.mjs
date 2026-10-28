@@ -87,15 +87,19 @@ test("내 영상 says what each video needs next in one sentence and one button"
   assert.equal(nextAction(project("done")).tone, "done");
 });
 
-test("숏폼: 주제 → 제작 → 최종 검토 → 내보내기; the 주제 OK opens 제작 and each step says what to do", async () => {
+test("숏폼: 주제 → 대본 → 제작 → 최종 검토 → 내보내기; the 주제 OK opens 대본, the 대본 확정 opens 제작, and each step says what to do", async () => {
   const { flowOf, stageLabel } = await import("../lib/youtube-process/project.ts");
   const { nextAction } = await import("../lib/youtube-process/next.ts");
-  assert.deepEqual(flowOf("short").map(step => step.name), ["주제", "제작", "최종 검토", "내보내기"]);
+  const { gateName } = await import("../lib/youtube-process/confirm.ts");
+  assert.deepEqual(flowOf("short").map(step => step.name), ["주제", "대본", "제작", "최종 검토", "내보내기"]);
   const meta = newProjectMeta({ type: "short", target: "t", note: "", refs: [] }, "2026-10-21T00:00:00Z");
   let project = { id: "p", yp: applyGateAction({ yp: meta.yp }, "topic", "request", { actor: "pd", now: "2026-10-21T01:00:00Z" }) };
   project = { ...project, yp: applyGateAction(project, "topic", "ok", { actor: "ceo", now: "2026-10-21T02:00:00Z" }) };
+  assert.equal(project.yp.stage, "draft");
+  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project), gateName("draft", "short"), gateName("draft", "anim")], ["대본 쓰기", 1, 5, "대본", "대본 확정", "기획안 컨펌"]);
+  project = { ...project, yp: applyGateAction(project, "draft", "confirm", { actor: "pd", now: "2026-10-21T03:00:00Z" }) };
   assert.equal(project.yp.stage, "make");
-  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project)], ["숏폼 만들기", 1, 4, "제작"]);
+  assert.deepEqual([nextAction(project).button, nextAction(project).step, nextAction(project).total, stageLabel(project)], ["숏폼 만들기", 2, 5, "제작"]);
   assert.equal(nextAction({ ...project, yp: { ...project.yp, stage: "upload" } }).button, "내보내기");
   assert.equal(nextAction({ id: "q", yp: { ...meta.yp, topic: { ...meta.yp.topic, type: "anim" }, stage: "make" } }).total, 7);
 });

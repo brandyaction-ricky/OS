@@ -14,6 +14,7 @@ import type { YpProject } from "@/lib/youtube-process/project";
 import { LockedStep, md, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { RenderTag } from "./youtube-process-short";
 import { YoutubeColumnPanel } from "./youtube-process-column";
+import { ShortTopicsPanel } from "./youtube-process-short-script";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 0);
@@ -21,12 +22,14 @@ const num = (record: OsRecord, key: string) => Number(record.metadata?.[key] ?? 
 /** S8 쇼츠 (owner request 2026-10-21: the earlier 숏폼 편집 in this flow): the uploaded final, its subtitles, and the clips to cut. */
 export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
-  // 쇼츠 · 칼럼 (2026-10-25): the same last step holds the SEO 칼럼 written from the same 원고.
-  const [tab, setTab] = useState<"shorts" | "column">(useSearchParams().get("tab") === "column" ? "column" : "shorts");
-  const pick = (next: "shorts" | "column") => {
+  // 쇼츠 · 칼럼 (2026-10-25): the same last step holds the SEO 칼럼 written from the same 원고. 숏폼 주제 (2026-10-28, 숏폼 대본 정본
+  // 입구 A) comes first: shorts are written anew from the 원고; cutting the longform (구간 자르기) stays beside it.
+  const asked = useSearchParams().get("tab");
+  const [tab, setTab] = useState<"topics" | "shorts" | "column">(asked === "column" ? "column" : asked === "clips" ? "shorts" : "topics");
+  const pick = (next: "topics" | "shorts" | "column") => {
     setTab(next);
     const params = new URLSearchParams(window.location.search);
-    if (next === "column") params.set("tab", "column"); else params.delete("tab");
+    if (next === "topics") params.delete("tab"); else params.set("tab", next === "column" ? "column" : "clips");
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
   };
   const [clips, setClips] = useState<OsRecord[]>([]);
@@ -177,14 +180,15 @@ export function YoutubeShortsScreen({ header }: { header: ReactNode }) {
     : stepAction(page, 6, needConfirm ? { kind: "button", label: `쇼츠 확정 (${adopted.length}편)`, reason: shortsMissing, busy: confirming, onClick: () => void confirmShorts() }
       : { kind: "button", label: "여기서 끝내기", reason: uploaded ? "" : "유튜브에 올린 뒤에 끝낼 수 있어요", busy: moving, onClick: () => void finish() });
 
-  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "column" ? "원고로 SEO 칼럼을 만들어 내보내요." : "쇼츠 대본을 골라 확정하고 영상으로 만들어 올려요."}>
+  return <YpFrame page={page} view={6} action={action} header={header} title="쇼츠 · 칼럼" sub={tab === "column" ? "원고로 SEO 칼럼을 만들어 내보내요." : tab === "topics" ? "원고에서 숏폼 주제를 뽑아 새 숏폼으로 만들어요." : "롱폼 구간을 잘라 쇼츠 대본을 확정하고 영상으로 만들어 올려요."}>
     {page.bundle && project ? !reached ? <LockedStep page={page} name="쇼츠 · 칼럼" /> : <>
       <Subject page={page} />
       <div className="yp-ftabs yp-two" role="tablist" aria-label="쇼츠 · 칼럼" style={{ padding: "0 0 10px" }}>
-        <button type="button" role="tab" aria-selected={tab === "shorts"} className={tab === "shorts" ? "yp-on" : ""} onClick={() => pick("shorts")}>쇼츠 대본 <b>{adopted.length}</b></button>
+        <button type="button" role="tab" aria-selected={tab === "topics"} className={tab === "topics" ? "yp-on" : ""} onClick={() => pick("topics")}>숏폼 주제{page.bundle.stages.shortTopics.data.items.length ? <b>{page.bundle.stages.shortTopics.data.items.length}</b> : null}</button>
+        <button type="button" role="tab" aria-selected={tab === "shorts"} className={tab === "shorts" ? "yp-on" : ""} onClick={() => pick("shorts")}>구간 자르기 <b>{adopted.length}</b></button>
         <button type="button" role="tab" aria-selected={tab === "column"} className={tab === "column" ? "yp-on" : ""} onClick={() => pick("column")}>SEO 칼럼{page.bundle.stages.column.data.items.length ? <b>{page.bundle.stages.column.data.items.length}</b> : null}</button>
       </div>
-      {tab === "column" ? <YoutubeColumnPanel page={page} /> : <>
+      {tab === "topics" ? <ShortTopicsPanel page={page} /> : tab === "column" ? <YoutubeColumnPanel page={page} /> : <>
       {page.demo ? <div className="yp-note yp-gray"><div>데모에서는 쇼츠 대본을 저장하지 않아요.</div></div> : null}
       {project.yp.shortsLog?.length && page.client ? <ShortsLog project={project} client={page.client} onSaved={next => page.setBundle(current => current ? { ...current, project: next } : current)} onError={page.fail} /> : null}
       <div className="yp-wrap2"><div>

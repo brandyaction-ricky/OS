@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Clock, Info, PauseCircle } from "lucide-react";
-import { editedSinceDecision, GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
+import { editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, stepName, YP_FLOW, YP_KIND_LABEL, YP_STAGE_INDEX, type YpGate, type YpProject } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { useYoutubeCanConfirm, YP_CONFIRM_EVENT } from "./use-youtube-confirm";
@@ -77,7 +77,7 @@ export function gateAction(page: YpPage, gate: YpGate, view: number, control: Re
   const current = project.yp.stage === "done" ? YP_FLOW.length : YP_STAGE_INDEX[project.yp.stage];
   if (view !== current && current < YP_FLOW.length) return { kind: "link", label: `이어서 하기 · ${stepName(current, project.yp.topic.type)}`, href: stepHref(current, project.id) };
   // A request still waiting from before 2026-10-26 can be confirmed by the PD as well.
-  return { kind: "button", label: `${GATE_NAME[gate]}하고 다음으로`, reason: missing, busy: control.busy, onClick: () => void control.act("confirm") };
+  return { kind: "button", label: `${gateName(gate, project.yp.topic.type)}하고 다음으로`, reason: missing, busy: control.busy, onClick: () => void control.act("confirm") };
 }
 /** '지금 단계로' when looking at another step, else the step's own action. */
 export function stepAction(page: YpPage, view: number, own: YpAction): YpAction {
@@ -111,7 +111,7 @@ export function YpSection({ n, title, gq, need, rev, extra, id, children, classN
 export function GateBanner({ page, gate, okExtra }: { page: YpPage; gate: YpGate; okExtra?: ReactNode }) {
   const project = page.bundle!.project;
   const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string };
-  const name = GATE_NAME[gate];
+  const name = gateName(gate, project.yp.topic.type);
   if (info.state === "wait") return <div className="yp-cwait" role="status">
     <div className="yp-cwait-h"><Clock size={16} className="yp-i" aria-hidden="true" /><b>{name} 대기</b><span className="yp-hint">{md(info.requestedAt)} 요청{daysSince(info.requestedAt) ? ` · ${daysSince(info.requestedAt)}일째` : ""}</span></div>
     {info.pdReply ? <p className="yp-reply-note"><b>PD 답글</b> · 고친 칸 없이 다시 요청: “{info.pdReply}”</p> : null}

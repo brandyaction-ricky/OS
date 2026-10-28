@@ -38,7 +38,9 @@ test("PD 컨펌 (owner decision 2026-10-26): the PD confirms and the next step o
   assert.equal(act(changes, "confirm").yp.stage, "draft");
   assert.equal(act(act(project(), "request"), "confirm").yp.gates.topic.state, "ok");
   const short = { ...project(), yp: { ...project().yp, topic: { ...project().yp.topic, type: "short" } } };
-  assert.equal(act(short, "confirm").yp.stage, "make");
+  // A 숏폼's 주제 confirm opens its 대본 (2026-10-28), and the 대본 확정 opens 제작.
+  assert.equal(act(short, "confirm").yp.stage, "draft");
+  assert.equal(applyGateAction(act(short, "confirm"), "draft", "confirm", { actor: "pd", now: "2026-10-28T00:00:00Z" }).stage, "make");
   assert.deepEqual(confirmTab([ok, project("p2")], "self", "ceo").map(row => [row.project.id, row.gate]), [["p1", "topic"]]);
   assert.deepEqual(confirmTab([ok], "done", "ceo"), []);
   // 되돌리기 sends it back to the PD as a 수정 요청 (every field open, no reminder to the 대표); the next confirm returns to where it was.
