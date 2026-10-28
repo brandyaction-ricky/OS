@@ -875,8 +875,11 @@
       "sha256": "0743bf8b1c5fb6b9972f65348b28b2a9c39d606fbda387ca6d1becb433c17dc3",
       "purpose": "링크관리: os_utm_options.code check lets utm_content keep upper case; source/medium/campaign stay lowercase",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Staff request 2026-10-28 ([링크관리] utm_content 대소문자). Widens one check constraint; no row changes. Not applied yet."
+      "productionApprovedAt": "2026-10-28",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Staff request 2026-10-28 ([링크관리] utm_content 대소문자). Widens one check constraint; no row changes. A rollback-only run on DEV passed (case-only different content codes stored apart, upper case refused for source/campaign, bad characters refused, name/code duplicates refused). Owner approved Production on 2026-10-28 (\"반영해\"). Applied to Production in one transaction with its schema history row and read back (new check in place, history 1, 9 existing choices unchanged). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
