@@ -10,10 +10,12 @@ import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
 
 // S12 내 AI (지시서 9장): the job goes to the requester's own Claude through the OS connection (owner decision 2026-10-17, already
 // running for ② 원고 · ⑦ 발행키트), so the screen talks to the same staff-AI queue instead of a Chrome extension.
-type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle";
+type Task = "script" | "kit" | "plan" | "shorts" | "short" | "niche" | "column" | "short-copy" | "retitle" | "short-topics" | "short-script";
 /** What the job hooks read from a page; 주제 찾기 › 틈새 passes its shared board as the project. */
 type JobPage = Pick<YpPage, "demo" | "accessToken" | "profile"> & { bundle?: { project: { id: string; version: number } } | null; reload?: () => Promise<unknown> };
 const TASK: Record<Task, { name: string; result: string }> = {
+  "short-topics": { name: "숏폼 주제 뽑기", result: "롱폼 원고에서 숏폼 주제 후보 3개(통찰 한 줄 · 장면 · 원고 어디서)를 뽑아 줘요. 하나씩 숏폼으로 만들어요." },
+  "short-script": { name: "숏폼 대본 쓰기", result: "레퍼런스 쇼츠에서 첫 문장 공식 · 흐름 공식을 뽑고, 그 공식으로 대본과 첫 문장 두 안을 써 줘요. PD가 다듬고 확정해요." },
   retitle: { name: "제목 · 썸네일 문구 다시 뽑기", result: "시장 영상에서 제목 공식 · 문구 공식을 뽑아 제목 8개 · 문구 8개를 따로 줘요. 하나씩 골라 짝을 만들어요." },
   niche: { name: "틈새 묶기", result: "터진 영상을 같은 제목 공식끼리 묶어 틈새 판에 넣어 줘요." },
   "short-copy": { name: "숏폼 제목 · 설명 쓰기", result: "쇼츠 제목과 설명을 써 줘요." },
@@ -89,6 +91,8 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   const [role, setRole] = useState("유입형");
   const [query, setQuery] = useState(queryDefault ?? "");
   const searches = task === "plan" || task === "retitle";
+  // 숏폼 대본: the OS searches the 대본 step's 검색어 for Shorts too; the words are edited on that step, not here.
+  const youtube = searches || task === "short-script";
   const [attachments, setAttachments] = useState("");
   const [paste, setPaste] = useState({ manuscript: "", materials: "", axis: "", design: "", review: "" });
   const [busy, setBusy] = useState(false);
@@ -129,7 +133,7 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
       {waiting ? <div className="yp-note"><div>이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
-        <dt>비용</dt><dd><CostTag kind="ai" />{searches ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{searches ? " · 레퍼런스는 유튜브에서 찾아요" : ""}</dd></dl>
+        <dt>비용</dt><dd><CostTag kind="ai" />{youtube ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{youtube ? " · 레퍼런스는 유튜브에서 찾아요" : ""}</dd></dl>
       {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>레퍼런스 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>

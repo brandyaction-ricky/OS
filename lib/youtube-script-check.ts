@@ -76,6 +76,11 @@ function canonOverlap(paragraph: string, windows: Set<string>) {
   }
   return null;
 }
+/** The same 10-letter count against any other text (숏폼 대본 정본 §10: a 레퍼런스's title or script). */
+export function overlapWith(source: string) {
+  const windows = canonWindows(source);
+  return (line: string) => canonOverlap(line, windows);
+}
 // 원고 공정 정본 §8 (정본 묶음 v2.0, 2026-10-26): 공백 포함 490자 = 1분, measured on the v13 voice (6,669자 → 13분 40초).
 export const CHARS_PER_MINUTE = 490;
 

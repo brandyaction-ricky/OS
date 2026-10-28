@@ -7,6 +7,7 @@ import { draftMissing, PLAN_FIELD_KEY, slotOf, thumbFilled, type YpPlan, type Yp
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { ThumbView } from "./youtube-process-media";
 import { JobLine, PatternsBox, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { ShortScriptScreen } from "./youtube-process-short-script";
 
 const id = () => crypto.randomUUID().slice(0, 12);
 const SlotTag = ({ index }: { index: number }) => {
@@ -77,6 +78,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
     } catch (reason) { page.fail(reason); } finally { setUploading(""); }
   };
 
+  // A 숏폼's 기획안 place is its 대본 (숏폼 대본 정본, 2026-10-28).
+  if (project?.yp.topic.type === "short") return <ShortScriptScreen page={page} header={header} />;
   const missing = form ? draftMissing(form) : "";
   const started = Boolean(form && (form.titles.some(row => row.text.trim()) || form.opening.trim() || form.body.trim() || form.closing.trim()));
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;

@@ -3,9 +3,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
-import { GATE_FIELDS, GATE_NAME } from "@/lib/youtube-process/confirm";
+import { GATE_FIELDS, gateName } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, YP_KIND_LABEL, type YpGate, type YpProject } from "@/lib/youtube-process/project";
-import { finalPair, SLOTS } from "@/lib/youtube-process/stages";
+import { finalPair, SLOTS, type YpShortScript } from "@/lib/youtube-process/stages";
+import { checkShortScript } from "@/lib/youtube-process/short-script";
 import { useSession } from "./session-provider";
 import { YP_CONFIRM_EVENT } from "./use-youtube-confirm";
 import { errorMessage, youtubeProcessClient, type YpBundle, type YpClient, type YpMember } from "./youtube-process-data";
@@ -77,7 +78,7 @@ function SelfActions({ project, gate, client, onDone }: { project: YpProject; ga
     {notes.length ? <ul className="yp-gnotes">{notes.map(note => <li key={note.at}><b>{when(note.at)}</b> “{note.text}”</li>)}</ul> : null}
     <label>대표 노트 (PD에게 알림이 가요)<textarea className="yp-in" id="yp-self-note" rows={2} maxLength={1000} value={text} onChange={event => setText(event.target.value)} placeholder="좋은 점이나 다음에 챙길 점을 남겨요" /></label>
     <div><button type="button" className="yp-btn yp-pri" disabled={busy || !text.trim()} onClick={() => void run("note")}>노트 남기기</button>{" "}
-      <button type="button" className="yp-btn" disabled={busy} onClick={() => { if (window.confirm(`${GATE_NAME[gate]} 단계로 되돌릴까요? 담당 PD가 고치고 다시 컨펌해요.`)) void run("revert"); }}>이 단계로 되돌리기</button></div>
+      <button type="button" className="yp-btn" disabled={busy} onClick={() => { if (window.confirm(`${gateName(gate, project.yp.topic.type)} 단계로 되돌릴까요? 담당 PD가 고치고 다시 컨펌해요.`)) void run("revert"); }}>이 단계로 되돌리기</button></div>
     {error ? <div className="yp-note yp-warn" role="alert"><div>{error}</div></div> : null}
   </div>;
 }
@@ -126,7 +127,7 @@ export function YoutubeConfirmScreen() {
       <div className="yp-cf-list">
         {items === null && !error ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
           : items?.length ? items.map(({ project, gate }) => { const info = project.yp.gates[gate]; return <button key={`${project.id}-${gate}`} type="button" className={`yp-ci${selected?.project.id === project.id ? " yp-on" : ""}`} onClick={() => go({ item: project.id })}>
-            <div className="yp-ci-top"><span className="yp-tag yp-acc">{GATE_NAME[gate].replace(" 컨펌", "")}</span><span className="yp-sp" />
+            <div className="yp-ci-top"><span className="yp-tag yp-acc">{gateName(gate, project.yp.topic.type).replace(" 컨펌", "")}</span><span className="yp-sp" />
               {tab === "self" ? <span className="yp-tag yp-ok">PD 컨펌{project.yp.notes?.some(note => note.gate === gate) ? " · 노트 있음" : ""}</span>
                 : tab === "wait" ? <span className={days(info.requestedAt) >= 2 ? "yp-late" : ""}>{days(info.requestedAt) ? `${days(info.requestedAt)}일째` : "오늘"}</span>
                 : tab === "hold" ? <span className="yp-tag yp-bad">보류</span>
@@ -137,7 +138,7 @@ export function YoutubeConfirmScreen() {
           : <div className="yp-locked"><Check size={18} className="yp-i" aria-hidden="true" /><div><b>비어 있어요</b><p>{tab === "self" ? "PD가 컨펌하면 여기에 쌓이고 알림이 가요." : tab === "wait" ? "남은 요청이 없어요." : "아직 없어요."}</p></div></div>}
       </div>
       <div className="yp-cf-view">{selected ? (() => { const { project, gate } = selected; const info = project.yp.gates[gate] as typeof project.yp.gates[YpGate] & { pdReply?: string }; return <div className="yp-cv">
-        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{GATE_NAME[gate]}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} ${info.self ? "컨펌" : gate === "shorts" ? "확정" : "요청"}` : ""}</span></div>
+        <div className="yp-cv-h"><button type="button" className="yp-ib" aria-label="목록으로" onClick={() => go({ item: null })}><ArrowLeft size={18} /></button><span className="yp-tag yp-acc">{gateName(gate, project.yp.topic.type)}</span><span className="yp-hint">{pd(project.assigneeId)}{info.requestedAt ? ` · ${when(info.requestedAt)} ${info.self ? "컨펌" : gate === "shorts" ? "확정" : "요청"}` : ""}</span></div>
         <div className="yp-cv-b">
           <h2>{projectName(project)}</h2>
           {gate !== "topic" && client ? <StepDetail project={project} gate={gate} client={client} /> : null}
@@ -175,6 +176,7 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
   if (!bundle) return <p className="yp-hint">불러오는 중이에요…</p>;
   const media = { client, bundle };
   if (gate === "shorts") return <ShortsScriptsDetail project={project} client={client} />;
+  if (project.yp.topic.type === "short" && gate === "draft") return <ShortScriptDetail script={bundle.stages.shortScript.data} />;
   if (project.yp.topic.type === "short") return <ShortConfirmDetail client={client} bundle={bundle} open={open} />;
   const plan = bundle.stages.plan.data;
   const make = bundle.stages.make.data;
@@ -192,6 +194,19 @@ function StepDetail({ project, gate, client }: { project: YpProject; gate: YpGat
       {plan.note ? <><div className="yp-fld-h" style={{ marginTop: 8 }}><b>전달 사항</b></div><p style={{ margin: 0 }}>{plan.note}</p></> : null}</div>
       : <dl className="yp-kv" style={{ gridTemplateColumns: "110px minmax(0,1fr)", marginTop: 12 }}><dt>최종본</dt><dd>{final ? `v${final.v} · ${final.source === "myin" ? "자동 제작" : final.name}${final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}` : "—"}</dd>
         <dt>남은 피드백</dt><dd>{open === null ? "—" : `${open}개`}</dd></dl>}
+  </div>;
+}
+
+/** A 숏폼's 대본 확정 (2026-10-28): the 통찰, the formula it used and the script as confirmed, with its length. */
+function ShortScriptDetail({ script }: { script: YpShortScript }) {
+  const text = script.confirmed?.text ?? script.text;
+  const check = checkShortScript(text);
+  return <div style={{ marginBottom: 12 }}>
+    <dl className="yp-kv" style={{ gridTemplateColumns: "64px minmax(0,1fr)" }}>
+      <dt>통찰</dt><dd>{script.insight || "—"}</dd>
+      <dt>쓴 공식</dt><dd>{script.formula || "—"}</dd>
+      <dt>길이</dt><dd>{check.chars}자 · 약 {check.seconds}초 · {check.lines}줄</dd></dl>
+    <div style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.7, marginTop: 8 }}>{text || "—"}</div>
   </div>;
 }
 

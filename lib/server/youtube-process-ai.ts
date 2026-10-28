@@ -37,7 +37,7 @@ export function v1Stages(state: Pick<Pipeline, "source" | "records">) {
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) as YpStageData[K] };
   };
-  return { project, plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column") };
+  return { project, plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript") };
 }
 /** The title the video goes out with: the A the 대표 confirmed, or the A changed on purpose in 제작 (S5). */
 export function v1Title(stages: ReturnType<typeof v1Stages>) {

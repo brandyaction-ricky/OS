@@ -4,7 +4,8 @@ import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMed
 import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
-import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind } from "@/lib/youtube-process/stages";
+import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
+import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
@@ -20,7 +21,8 @@ export interface YpShortView {
   ai: { by: string; model: string; at: string } | null; images: Record<string, { name: string; url: string }>; render: YpRenderView | null; square?: YpRenderView | null; portrait?: YpRenderView | null;
 }
 export type YpShortPatch = { brief?: Partial<YpShortBrief>; scenes?: YpShortScene[]; useAiScenes?: true };
-export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[] }
+/** formulas: the company 숏폼 공식 창고, sent with a 숏폼's bundle (대본 step). */
+export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[]; formulas?: YpStoredFormula[] }
 export interface YpFeedbackView {
   id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: { by: string; text: string; at: string }[];
@@ -73,6 +75,8 @@ export interface YpClient {
   /** The project's 쇼츠 대본 (content_short), for the 쇼츠 컨펌 screen. */
   clips(id: string): Promise<OsRecord[]>;
   shortVideoUrl(id: string, renderId: string, download?: boolean): Promise<string>;
+  /** [숏폼으로 만들기] on a longform's 숏폼 주제 후보: the new 숏폼's id and the candidates with the made one marked. */
+  makeShort(id: string, topicId: string): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
   demo: boolean;
 }
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
@@ -142,6 +146,7 @@ function apiClient(token: string): YpClient {
     clipRenders: async id => (await apiRequest<{ clips: Record<string, YpRenderView> }>(`${base}/${id}/short?clips=1`, { token })).clips,
     clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
+    makeShort: (id, topicId) => apiRequest(`${base}/${id}/short-topic`, { token, method: "POST", body: json({ topicId }) }),
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -200,8 +205,13 @@ function demoFilledStages(project: YpProject): YpStagesView {
   if (at >= 2) plan.confirmed = confirmPlan(plan, daysAgo(2));
   const outline = emptyStage("outline", kind);
   if (at >= 2) Object.assign(outline, withScriptVersion({ ...outline, spec: { ...outline.spec, runtimeMin: 9 } }, scriptFromPlan(plan), "리키", daysAgo(2), "manual"));
-  return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
-    column: { id: null, version: 0, data: emptyStage("column", kind) } };
+  const shortTopics = emptyStage("shortTopics", kind);
+  if (at >= 2 && ["upload", "shorts", "done"].includes(project.yp.stage)) shortTopics.items = [
+    { id: "st1", insight: "[예시] 지치는 건 일이 많아서가 아니라 고를 게 많아서", scene: "퇴근 뒤 소파에서 휴대폰만 보는 3년 차 마케터", paragraph: "본론 1 · 결정이 많다", why: "누구나 겪는 저녁 장면" },
+    { id: "st2", insight: "[예시] 내 기준이 없으면 남의 순서로 하루를 산다", scene: "메일 순서대로 일하다 중요한 일을 못 한 날", paragraph: "본론 2 · 내 기준", why: "할 일 목록이 길수록 공감" }];
+  return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
+    column: { id: null, version: 0, data: emptyStage("column", kind) },
+    shortScript: { id: null, version: 0, data: emptyStage("shortScript", kind) } };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
@@ -240,7 +250,7 @@ function demoClient(): YpClient {
     if (action === "cancel") return { project: bump(project, gateApply(project, name, "cancel", { actor: DEMO_ME, now })), created: [] };
     if (name !== "topic") {
       const stages = stagesOf(project);
-      const missing = name === "draft" ? draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
+      const missing = name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
       const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply });
       if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
@@ -442,6 +452,19 @@ function demoClient(): YpClient {
     clipRenders: async () => ({}),
     clips: async () => [],
     shortVideoUrl: async () => "",
+    makeShort: async (id, topicId) => {
+      const longform = find(id);
+      const stages = stagesOf(longform);
+      const topic = stages.shortTopics.data.items.find(item => item.id === topicId);
+      if (!topic) throw demoError(404, "SHORT_TOPIC_NOT_FOUND", "그 주제 후보를 찾지 못했어요.");
+      if (topic.made) return { projectId: topic.made.projectId, topics: structuredClone(stages.shortTopics) };
+      const made = add(topic.insight, { kind: "short", target: longform.yp.topic.target, note: `롱폼 「${longform.title}」에서\n장면: ${topic.scene}` });
+      put({ ...made, yp: { ...made.yp, shortFrom: { projectId: id, title: longform.title, topicId, scene: topic.scene, paragraph: topic.paragraph } } });
+      const topics = { ...stages.shortTopics, version: stages.shortTopics.version + 1, data: { ...stages.shortTopics.data,
+        items: stages.shortTopics.data.items.map(item => item.id === topicId ? { ...item, made: { projectId: made.id, at: new Date().toISOString(), by: "리키" } } : item) } };
+      demoStages.set(id, { ...stages, shortTopics: topics });
+      return { projectId: made.id, topics: structuredClone(topics) };
+    },
   };
 }
 

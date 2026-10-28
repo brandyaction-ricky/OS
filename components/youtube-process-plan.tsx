@@ -176,7 +176,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   return <>
     {loading ? null : <YoutubeFlow project={shell} view={view} action={action} />}
     <header className="page-header"><div className="page-title-group"><h1 className="page-title" data-ui="page-title">주제</h1>
-      <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `주제 컨펌이 끝났어요. ${shell.yp.topic.type === "short" ? "제작으로" : "기획안으로"} 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
+      <p>{topicGate.state === "wait" ? "대표 컨펌 요청이 남아 있어요. 이제 PD가 직접 컨펌하면 다음으로 넘어가요." : topicGate.state === "changes" ? "대표 수정 요청을 반영하고 컨펌해요. 모든 칸을 고칠 수 있어요." : topicGate.state === "ok" ? `주제 컨펌이 끝났어요. ${shell.yp.topic.type === "short" ? "대본으로" : "기획안으로"} 넘어가요.` : "주제 · 유형 · 정밀 타겟 세 칸을 채우고 컨펌해요."}</p></div>
       <div className="header-actions yp-stool">{unsaved ? <span className="yp-stamp yp-unsaved" role="alert">저장 안 됨 · 위 안내를 봐 주세요</span> : savedAt ? <span className="yp-stamp"><i />저장됨 {savedAt}</span> : null}{editable ? <button type="button" className="yp-btn yp-sm" disabled={!dirty} onClick={() => void save()}>임시 저장</button> : null}</div></header>
     {loading ? <p className="yp-hint" role="status">영상을 불러오는 중이에요…</p> : <>
       {conflict ? <div className="yp-note yp-warn" role="alert"><div>다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => void load(true)}>새로 불러오기</button> (지금 쓴 내용은 사라져요)</div></div> : null}

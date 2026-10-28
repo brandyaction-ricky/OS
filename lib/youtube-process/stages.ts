@@ -3,13 +3,15 @@
 import type { YpKind, YpRef } from "./project";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
 
-export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column";
+export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript";
 export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" | "content_script"; key: "packageKind" | "scriptKind"; value: string; title: string }> = {
   plan: { recordType: "content_package", key: "packageKind", value: "yp_plan", title: "기획안" },
   outline: { recordType: "content_script", key: "scriptKind", value: "yp_outline", title: "구성안" },
   make: { recordType: "content_package", key: "packageKind", value: "yp_make", title: "제작" },
   upload: { recordType: "content_package", key: "packageKind", value: "yp_upload", title: "업로드" },
   column: { recordType: "content_package", key: "packageKind", value: "yp_column", title: "SEO 칼럼" },
+  shortTopics: { recordType: "content_package", key: "packageKind", value: "yp_short_topics", title: "숏폼 주제 후보" },
+  shortScript: { recordType: "content_package", key: "packageKind", value: "yp_short_script", title: "숏폼 대본" },
 };
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
@@ -98,7 +100,27 @@ export function columnSignature(item: Pick<YpColumnItem, "html" | "fills">) {
 }
 /** The columns of one longform: as many as the PD asked for, each aimed at its own search question. */
 export interface YpColumn { items: YpColumnItem[] }
-export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn };
+// 숏폼 대본 정본 (owner direction 2026-10-28): 입구 셋 · 길 하나 — 주제 확정(PD) → 레퍼런스 → 공식 뽑기 → 우리 말로 대본 → 대본 확정(PD).
+/** 입구 A on a longform: the staff AI's 숏폼 주제 후보 from the 원고 (통찰 한 줄 + 장면 하나 + 어느 문단), and the 숏폼 made from each. */
+export interface YpShortTopic { id: string; insight: string; scene: string; paragraph: string; why: string; made?: { projectId: string; at: string; by: string } }
+export interface YpShortTopics { items: YpShortTopic[]; ai?: { by: string; model: string; at: string; jobId: string } }
+/** A 레퍼런스 the PD added by hand; script = what is said in it, pasted (the AI reads titles only otherwise). */
+export interface YpShortRef { url: string; title: string; script: string }
+/** One formula for the company 공식 창고 (§2-3 · §2-4): blanks only, no words of the reference. */
+export interface YpShortFormula { name: string; hook: string; flow: string; why: string; refs: string[] }
+/** A formula as the 공식 창고 keeps it: who added it and how many 대본 used it. */
+export interface YpStoredFormula extends YpShortFormula { at: string; by: string; uses: number }
+export interface YpShortHook { kind: "반전형" | "직격형"; text: string }
+/** A 숏폼's 대본 step: the search and references behind it, the formula used and the script (한 줄 = 한 문장 = 화면 한 장). */
+export interface YpShortScript {
+  query: string; refs: YpShortRef[]; text: string; hooks: YpShortHook[]; insight: string; formula: string;
+  ai?: { by: string; model: string; at: string; jobId: string; market?: { query: string; count: number }; picked: { title: string; url: string; views: number }[]; formulas: YpShortFormula[]; notes: string; text: string };
+  /** The AI's script when the PD had already written: shown beside the fields, applied only on [이 초안으로 바꾸기]. */
+  aiDraft?: Pick<YpShortScript, "text" | "hooks" | "insight" | "formula">;
+  /** Copied when the 대본 확정 is made: what 제작 starts from. */
+  confirmed?: { at: string; text: string };
+}
+export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
@@ -134,6 +156,8 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     make: { editDue: "", status: "prep", statusAt: {}, log: [], finals: [], thumbs: {}, aTitle: "", aReason: "" },
     upload: { utm: { cat: "키", dest: "진단", camp: "jindan_report", next: "", short: "" }, srt: null, desc: "", pinned: "", hiddenTags: [], descBy: null, privacy: "private", run: null },
     column: { items: [] },
+    shortTopics: { items: [] },
+    shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "" },
   };
   return blank[kind] as YpStageData[K];
 }

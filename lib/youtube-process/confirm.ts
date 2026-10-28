@@ -2,10 +2,14 @@
 import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 
 export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검수 컨펌", shorts: "쇼츠 확정" };
+/** A 숏폼's 기획안 place is its 대본 (2026-10-28). */
+export const gateName = (gate: YpGate, kind: YpProject["yp"]["topic"]["type"]) => gate === "draft" && kind === "short" ? "대본 확정" : GATE_NAME[gate];
 // 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
 // keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
 const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
 const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
+/** A 숏폼 has no 구성안: its 대본 확정 opens 제작. */
+const nextStage = (gate: YpGate, yp: YpMeta): YpStage => gate === "draft" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate];
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "레퍼런스", "topic.note": "전달 사항" },
@@ -81,7 +85,7 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
       // The PD's own confirm: from writing, a 수정 요청 or 보류, or a request still waiting from before (or a step the 대표 sent back).
       if (gate === "shorts" || yp.stage !== GATE_STAGE[gate] || info.state === "ok") throw new GateError("INVALID_TRANSITION", "지금은 이 단계를 컨펌할 수 없어요.");
       return put({ state: "ok", round: info.round + 1, requestedAt: input.now, requestedBy: input.actor, decidedAt: input.now, decidedBy: input.actor, self: true },
-        info.revertedFrom ?? (gate === "topic" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate]));
+        info.revertedFrom ?? nextStage(gate, yp));
     }
     case "cancel": {
       waitingNeeded();
@@ -93,9 +97,8 @@ export function applyGateAction(project: Pick<YpProject, "yp">, gate: YpGate, ac
     case "ok":
       waitingNeeded();
       // A decision taken back (revert) and confirmed again returns to the step the project had reached.
-      // A 숏폼 has no 기획안 · 구성안: its 주제 OK opens 제작.
       return put({ state: "ok", round: info.round, requestedAt: info.requestedAt, requestedBy: info.requestedBy, decidedAt: input.now, decidedBy: input.actor },
-        info.revertedFrom ?? (gate === "topic" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate]));
+        info.revertedFrom ?? nextStage(gate, yp));
     case "changes": {
       waitingNeeded();
       const allowed = Object.keys(GATE_FIELDS[gate]);

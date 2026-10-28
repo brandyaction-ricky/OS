@@ -16,6 +16,8 @@ import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
+import { fixConfirmedScript, nextShortScript, readShortFormulas, shortScriptPatchSchema } from "./youtube-process-short-script";
+import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
 // 유튜브 공정 v1 stage records (지시서 6-1): each step keeps its own child record, so a 대표 decision on the project and a PD
@@ -40,7 +42,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
     const record = records.find(row => row.record_type === spec.recordType && row.metadata?.[spec.key] === spec.value);
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) };
   };
-  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), records };
+  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), records };
   // 4-5: the first 원고 starts from the 기획안 영상 흐름.
   if (!stages.outline.id && stages.plan.data.opening) stages.outline.data = { ...stages.outline.data, script: scriptFromPlan(stages.plan.data) };
   return stages;
@@ -77,8 +79,9 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { plan, outline, make, upload, column } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload, column }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type) };
+  const { plan, outline, make, upload, column, shortTopics, shortScript } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
+    ...(project.yp.topic.type === "short" ? { formulas: await readShortFormulas(createServiceSupabase()) } : {}) };
 }
 
 // ── Saving a step ──
@@ -105,7 +108,7 @@ export const stagePatchSchemas = {
     fill: z.object({ slot: z.enum(["hero", "1", "2", "3", "video"]), path: text(300).optional(), url: z.string().url().max(1000).optional(), name: text(240).optional() }).strict() }).partial().strict(),
 } as const;
 export const stageSaveSchema = z.object({ expectedVersion: z.number().int().min(0), patch: z.record(z.unknown()) }).strict();
-type Patch<K extends YpStageKind> = z.infer<(typeof stagePatchSchemas)[K]>;
+type Patch<K extends keyof typeof stagePatchSchemas> = z.infer<(typeof stagePatchSchemas)[K]>;
 
 const locked = (message: string) => new ApiError(409, "STAGE_LOCKED", message);
 function assertPlanEditable(project: YpProject, patch: Patch<"plan">) {
@@ -263,6 +266,10 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     const patch = stagePatchSchemas.column.parse(input.patch);
     assertColumnOpen(project);
     data = nextColumn(stages.column.data, patch, project.id);
+  } else if (kind === "shortScript") {
+    data = nextShortScript(project, stages.shortScript.data, shortScriptPatchSchema.parse(input.patch));
+  } else if (kind === "shortTopics") {
+    throw locked("숏폼 주제 후보는 내 AI가 쓰고, [숏폼으로 만들기]로만 바뀌어요.");
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
     if (stage !== "upload") throw locked("최종 검수 컨펌이 OK가 나야 업로드가 열려요.");
@@ -368,7 +375,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 /** Why a 기획안 or 최종 검수 confirm cannot be requested yet, or "". */
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
-  if (gate === "draft") return draftMissing(stages.plan.data);
+  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }
@@ -381,7 +388,7 @@ async function adoptedClips(supabase: Supabase, projectId: string) {
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
   const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
   // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
-  if (gate === "draft" && input.action === "confirm") await fixConfirmedPlan(actor, result.project);
+  if (gate === "draft" && input.action === "confirm") await (result.project.yp.topic.type === "short" ? fixConfirmedScript : fixConfirmedPlan)(actor, result.project);
   return result;
 }
 async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
@@ -394,7 +401,7 @@ async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
-  if (gate === "draft" && input.action === "ok") await fixConfirmedPlan(actor, project);
+  if (gate === "draft" && input.action === "ok") await (project.yp.topic.type === "short" ? fixConfirmedScript : fixConfirmedPlan)(actor, project);
   return project;
 }
 

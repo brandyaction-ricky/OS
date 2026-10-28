@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
-import { GATE_NAME } from "@/lib/youtube-process/confirm";
+import { gateName } from "@/lib/youtube-process/confirm";
 import { projectHref, projectName, stageLabel, YP_FLOW, YP_STAGE_INDEX } from "@/lib/youtube-process/project";
 import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient, type YpMember, type YpScheduleItem } from "./youtube-process-data";
@@ -47,7 +47,7 @@ export function YoutubeScheduleScreen() {
   const events: Ev[] = shown.flatMap(item => [
     ...(item.uploadPlan ? [{ item, kind: "up" as const, date: item.uploadPlan, label: "업로드 예상일" }] : []),
     ...(item.editDue && ["topic", "draft", "outline", "make"].includes(item.project.yp.stage) ? [{ item, kind: "ed" as const, date: item.editDue, label: "편집 완료일" }] : []),
-    ...(showConfirm && item.waiting?.requestedAt ? [{ item, kind: "cf" as const, date: item.waiting.requestedAt.slice(0, 10), label: `${GATE_NAME[item.waiting.gate]} 대기` }] : []),
+    ...(showConfirm && item.waiting?.requestedAt ? [{ item, kind: "cf" as const, date: item.waiting.requestedAt.slice(0, 10), label: `${gateName(item.waiting.gate, item.project.yp.topic.type)} 대기` }] : []),
   ]);
   const byDay = new Map<string, Ev[]>();
   for (const event of events) byDay.set(event.date, [...(byDay.get(event.date) ?? []), event]);
