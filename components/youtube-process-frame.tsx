@@ -36,7 +36,9 @@ export function useYpBundle() {
     router.replace(last ? `${pathname}?project=${encodeURIComponent(last)}` : "/content/projects");
   }, [id, pathname, router]);
   const reload = useCallback(async () => {
-    if (!client || !id) return;
+    // 「project=new」 is the topic screen before its first save: a new 숏폼's research panel mounts as the project is made, while the
+    // address still says new, and asked for a project "new" (「프로젝트를 찾지 못했습니다」, 시안 2 2026-10-28). The saved id follows.
+    if (!client || !id || id === "new") return;
     setError(""); setConflict(false);
     try {
       const [next, people] = await Promise.all([client.bundle(id), client.members().catch(() => [] as YpMember[])]);
