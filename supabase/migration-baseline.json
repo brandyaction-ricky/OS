@@ -864,8 +864,11 @@
       "sha256": "1316a2c3c8a47275410aee638339489182a92225c93ec83ec623ad62fcf5b887",
       "purpose": "링크관리 UTM: service-role tables os_utm_options (shared utm_source/medium/campaign/content choices) and os_utm_links (company link ledger)",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Owner request 2026-10-28 (OS_링크관리_UTM생성_기능요청서). Additive: two new tables with RLS on and access revoked from anon/authenticated; the API checks staff and admin. Not applied anywhere yet."
+      "productionApprovedAt": "2026-10-28",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner request 2026-10-28 (OS_링크관리_UTM생성_기능요청서). Additive: two new tables with RLS on and access revoked from anon/authenticated; the API checks staff and admin. Owner approved Production on 2026-10-28 (\"반영해\", then \"진행해\"). A rollback-only run on DEV and Production passed 9/9 (code/label/inactive duplicates refused, same code across kinds allowed, one row per requestId, brand check, no authenticated/anon access). Applied to Production in one transaction with its schema history row and read back (RLS on, 3 indexes each, history 1). Not applied to DEV."
     }
   ],
   "legacyMigrations": [
