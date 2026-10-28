@@ -8,7 +8,7 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
   { label: "스케줄", href: "/content/schedule", icon: CalendarDays, aliases: ["업로드 일정", "편집 일정"], ready: true },
   { label: "성과", href: "/content/performance", icon: BarChart3, aliases: ["영상 성과", "조회수", "CTR"], ready: true },
   // Owner decision 2026-10-26: any address shortened on the MYIN site, any time.
-  { label: "단축 링크", href: "/content/links", icon: Link2, aliases: ["단축 URL", "링크 줄이기", "UTM", "마이인 링크"], ready: true },
+  { label: "링크관리", href: "/content/links", icon: Link2, aliases: ["단축 링크", "단축링크", "단축 URL", "링크 줄이기", "UTM", "UTM 링크", "링크 대장", "마이인 링크"], ready: true },
 ];
 /** The steps of one video: found by address (titles, breadcrumbs) and shown under 내 영상, never as their own menu. */
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [

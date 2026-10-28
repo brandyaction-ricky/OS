@@ -858,6 +858,14 @@
         "production"
       ],
       "notes": "Owner decisions 2026-10-27: Logan's engine may be installed on staff PCs (유쓰, 로건) and the bundle should be kept in the OS. Additive: a new private bucket only. Owner approved Production on 2026-10-28 (\"1~3 진행해\"). Production: the bucket was absent and schema history ended at 20261026090000; applied in one SQL Editor transaction with its schema history row, then read back (private, 47185920 bytes, application/octet-stream, 0 objects). Not applied to DEV."
+    },
+    {
+      "file": "20261028090000_link_manager_utm.sql",
+      "sha256": "1316a2c3c8a47275410aee638339489182a92225c93ec83ec623ad62fcf5b887",
+      "purpose": "링크관리 UTM: service-role tables os_utm_options (shared utm_source/medium/campaign/content choices) and os_utm_links (company link ledger)",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Owner request 2026-10-28 (OS_링크관리_UTM생성_기능요청서). Additive: two new tables with RLS on and access revoked from anon/authenticated; the API checks staff and admin. Not applied anywhere yet."
     }
   ],
   "legacyMigrations": [

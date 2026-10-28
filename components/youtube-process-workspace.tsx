@@ -20,10 +20,10 @@ import { YoutubeLinksScreen } from "./youtube-process-links";
 const SUB: Partial<Record<YoutubeV1Screen | "shorts", string>> = {
   schedule: "날짜를 끌어서 옮겨요.",
   confirm: "PD가 컨펌한 것을 보고 노트를 남겨요.",
-  links: "어떤 주소든 마이인 단축 링크로 줄여요.",
+  links: "회사 공용 선택값으로 UTM 링크를 만들어 링크 대장에 남기고, 마이인 단축 링크로 줄여요.",
 };
 
-const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌", links: "단축 링크" };
+const TITLES: Record<YoutubeV1Screen | "shorts", string> = { projects: "내 영상", plan: "기획", make: "제작", "final-check": "최종 검토", upload: "업로드", shorts: "쇼츠 · 칼럼", schedule: "스케줄", confirm: "컨펌", links: "링크관리" };
 
 /** 유튜브 공정 v1 screens behind YOUTUBE_V1_ENABLED. */
 /**
