@@ -28,6 +28,7 @@ import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
 import { doneShortRefs } from "./youtube-process-short-refs";
 import { assertShortFormulaInputs, assertShortScriptInputs, assertShortTopicsInputs, saveShortFormula, saveShortScript, saveShortTopics, shortFormulaCard, shortFormulaInputKey, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
+import { refMatchesQuery } from "@/lib/youtube-process/short-script";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
@@ -230,7 +231,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const now = new Date().toISOString();
   // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
   const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query, marketFor.short)
-    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short) }))
+    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short).filter(ref => !marketFor!.short || refMatchesQuery(marketFor!.query, ref.title)) }))
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
