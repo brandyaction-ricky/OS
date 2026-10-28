@@ -42,7 +42,7 @@ test("scoped agent keys expose audited and reversible knowledge writes", async (
   assert.match(manager, /초안 쓰기/);
   assert.match(manager, /정본 쓰기/);
   assert.match(manager, /만료일/);
-  assert.match(manager, /AI 접근 키 연결 검증/);
+  assert.match(manager, /\[E2E\] 연결 키 확인/);
   assert.match(manager, /type="password"/);
   assert.match(manager, /create_document/);
   assert.match(manager, /edit_document/);

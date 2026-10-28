@@ -16,7 +16,7 @@ const schema=z.discriminatedUnion("action",[
 const failure=(error:unknown)=>apiErrorResponse(error instanceof ZodError?new ApiError(400,"CANON_WORKER_INPUT","작업 입력을 확인해 주세요."):error instanceof ApiError?error:new ApiError(500,"CANON_WORKER_FAILED","추출 작업을 처리하지 못했습니다."));
 async function worker(request:Request){
   const actor=await authenticateRequest(request,{allowAgent:true,requiredAgentScope:"records.write"});
-  if(actor.type!=="agent")throw new ApiError(403,"CANON_WORKER_AGENT_REQUIRED","구독 워커 전용 접근 키가 필요합니다.");
+  if(actor.type!=="agent")throw new ApiError(403,"CANON_WORKER_AGENT_REQUIRED","작업 컴퓨터 전용 연결 키가 필요합니다.");
   requireAgentScope(actor,"knowledge.read");return actor;
 }
 export async function GET(request:Request){
