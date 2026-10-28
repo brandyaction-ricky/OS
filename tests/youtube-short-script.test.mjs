@@ -115,4 +115,11 @@ test("a found Short counts only when its title shares a two-letter word run with
   assert.equal(refMatchesQuery("일이 안 맞는 신호", "퇴사해야 한다는 신호 3가지"), true);
   assert.equal(refMatchesQuery("Career change", "My CAREER pivot"), true);
   assert.equal(refMatchesQuery("일 돈", "아무 제목"), true);
+  // Latin and number words count whole: 「#shorts」 and 「2030」 are not 「MBTI」 or 「30대」.
+  assert.equal(refMatchesQuery("MBTI 유형", "Daily motivation tips #shorts"), false);
+  assert.equal(refMatchesQuery("30대 이직", "2030 공감"), false);
+  assert.equal(refMatchesQuery("30대 이직", "30대 직장인 현실"), true);
+  // Decomposed (NFD) Korean reads like the usual form.
+  assert.equal(refMatchesQuery("퇴사", "퇴사 브이로그".normalize("NFD")), true);
+  assert.equal(refMatchesQuery("퇴사".normalize("NFD"), "점심 메뉴"), false);
 });
