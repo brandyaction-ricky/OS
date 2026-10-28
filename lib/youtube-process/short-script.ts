@@ -2,6 +2,7 @@
 // §6 말투 · §10 기계 검사 on a 숏폼 대본. The OS counts these when the staff AI submits and while the PD edits; its count wins.
 import { CHARS_PER_MINUTE, overlapWith } from "../youtube-script-check.ts";
 import { editableFields } from "./confirm.ts";
+import { compactCount } from "./discover.ts";
 import { topicEditable, type YpProject } from "./project.ts";
 import type { YpShortScript, YpShortTopicPick } from "./stages.ts";
 
@@ -86,10 +87,35 @@ export function refHostOk(link: string) {
   try { url = new URL(link); } catch { return false; }
   return url.protocol === "https:" && REF_HOSTS.some(host => url.hostname === host || url.hostname.endsWith(`.${host}`));
 }
-export interface YpShortRefResult { ok: boolean; durationSeconds: number | null; transcript: string; thumb: boolean; sheet: boolean; error: string }
+/** What the render PC read off the page (yt-dlp): counts a platform hides stay null (Reels often, Meta 광고 always). */
+export interface YpShortRefResult { ok: boolean; durationSeconds: number | null; transcript: string; thumb: boolean; sheet: boolean; error: string; views?: number | null; likes?: number | null; followers?: number | null }
 export interface YpShortRefItem {
   url: string; title: string; channel: string; views: number | null; ratio: number | null; source: "market" | "pd"; result: YpShortRefResult | null;
+  /** The YouTube search's subscriber and like counts (2026-10-28 반응도 기준). */
+  followers?: number | null; likes?: number | null;
   /** Signed links to the thumbnail and the sheet of the first three seconds (헤드 카피), when the render PC kept them. */
   thumbUrl?: string | null; sheetUrl?: string | null;
+}
+// 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): many watched it, more than the channel's own followers, and
+// the people who watched reacted. The YouTube search keeps only those; a link the PD put in is marked and, below the bar, not handed on.
+export const SHORT_REF_BAR = { views: 100_000, ratio: 1, likeRate: 0.02 } as const;
+export const SHORT_REF_BAR_TEXT = "조회 10만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 2% 이상";
+export interface RefCounts { views: number | null; followers: number | null; likes: number | null }
+export const refCounts = (item: Pick<YpShortRefItem, "views" | "followers" | "likes" | "result">): RefCounts => ({
+  views: item.views ?? item.result?.views ?? null, followers: item.followers ?? item.result?.followers ?? null, likes: item.likes ?? item.result?.likes ?? null });
+/** "pass" over all three, "below" when a known count is under the bar, "unknown" when a count is missing. */
+export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
+  const { views, followers, likes } = counts;
+  const checks = [views === null ? null : views >= SHORT_REF_BAR.views,
+    views === null || !followers ? null : views / followers >= SHORT_REF_BAR.ratio,
+    views === null || !views || likes === null ? null : likes / views >= SHORT_REF_BAR.likeRate];
+  return checks.includes(false) ? "below" : checks.includes(null) ? "unknown" : "pass";
+}
+/** 「조회 125만 · 구독자의 8.2배 · 좋아요 3.1%」 — what is known of the three. */
+export function refCountsLine(counts: RefCounts) {
+  const { views, followers, likes } = counts;
+  return [views === null ? "" : `조회 ${compactCount(views)}`,
+    views === null || !followers ? "" : `구독자의 ${Math.round(views / followers * 10) / 10}배`,
+    views === null || !views || likes === null ? "" : `좋아요 ${Math.round(likes / views * 1000) / 10}%`].filter(Boolean).join(" · ");
 }
 export interface YpShortRefFetch { id: string; status: string; query: string; requestedAt: string; doneAt: string | null; error: string | null; items: YpShortRefItem[] }

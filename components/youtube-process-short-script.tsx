@@ -2,12 +2,11 @@
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronUp, Copy, Plus, Search, Sparkles, X } from "lucide-react";
+import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/project";
-import { checkShortScript, headCopyProblem, refHostOk, refTexts, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { checkShortScript, headCopyProblem, refCounts, refCountsLine, refHostOk, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
-import { compactCount } from "@/lib/youtube-process/discover";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 
@@ -200,7 +199,8 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   const job = useStaffJob(page, "short-formula", useCallback(() => { setDirty(false); void reload(); }, [reload, setDirty]));
   const shortRefs = useShortRefs(page);
   const can = shortResearchOpen(project);
-  const found = Boolean(shortRefs.done?.items.some(item => item.result?.ok));
+  // References the AI may use: fetched, and not known to be under the 반응도 기준.
+  const found = Boolean(shortRefs.done?.items.some(item => item.result?.ok && refReaction(refCounts(item)) !== "below"));
   // What 주제 확정 checks is the saved formula, not one still being typed.
   const formula = stage?.data.formula.trim() ?? "";
   useEffect(() => { onState({ refs: found, formula }); }, [found, formula, onState]);
@@ -290,23 +290,31 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
       <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button></form> : null}
     {working ? <p className="yp-hint" role="status">쇼츠를 가져오는 중이에요. 1~3분 걸려요.</p>
       : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : null}
-    {items.length ? <ul className="yp-open-list" style={{ maxHeight: "none" }}>{items.map(item => {
+    <p className="yp-hint" style={{ margin: "6px 0 0" }}>반응도 기준: {SHORT_REF_BAR_TEXT}</p>
+    {items.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 }}>{items.map(item => {
       const shown = open === item.url;
-      return <li key={item.url} style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
-        <button type="button" style={{ width: "100%", textAlign: "left", display: "flex", gap: 8, alignItems: "center", background: "none", border: 0, padding: 0, color: "inherit", cursor: "pointer" }} aria-expanded={shown} onClick={() => setOpen(shown ? "" : item.url)}>
-          {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: 64, height: 40, objectFit: "cover", borderRadius: 4, flex: "none" }} /> : <span style={{ width: 64, height: 40, borderRadius: 4, background: "var(--panel-2)", flex: "none" }} />}
-          <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}><span style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{item.title || item.url}</span>
-            <span className="yp-muted" style={{ fontSize: 12 }}>{item.result?.ok ? item.views ? `${compactCount(item.views)}회` : item.source === "pd" ? "직접 넣음" : "" : "가져오지 못함"}</span></span>
-          {shown ? <ChevronUp size={14} /> : <ChevronDown size={14} />}</button>
-        {shown ? <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-          {item.sheetUrl ? <img src={item.sheetUrl} alt="첫 3초 화면" style={{ width: "100%", borderRadius: 6 }} /> : null}
+      const counts = refCounts(item);
+      const reaction = item.result?.ok ? refReaction(counts) : null;
+      // A Short's thumbnail is a vertical frame: shown 9:16 and large enough to read its copy, with the whole title under it.
+      return <button key={item.url} type="button" aria-expanded={shown} onClick={() => setOpen(shown ? "" : item.url)}
+          style={{ display: "grid", gap: 4, alignContent: "start", textAlign: "left", background: "none", border: shown ? "2px solid var(--accent)" : "1px solid var(--line)", borderRadius: 8, padding: 6, color: "inherit", cursor: "pointer", opacity: reaction === "below" ? 0.55 : 1 }}>
+          {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 6 }} />
+            : <span style={{ width: "100%", aspectRatio: "9 / 16", borderRadius: 6, background: "var(--panel-2)" }} />}
+          <span style={{ fontSize: 13, lineHeight: 1.4 }}>{item.title || item.url}</span>
+          {refCountsLine(counts) ? <span className="yp-muted" style={{ fontSize: 12 }}>{refCountsLine(counts)}</span> : null}
+          <span>{reaction === "pass" ? <span className="yp-tag yp-ok">반응 높음</span> : reaction === "below" ? <span className="yp-tag yp-warn">기준 아래 · AI에 안 넘김</span>
+            : reaction === "unknown" ? <span className="yp-tag">숫자 없음{item.source === "pd" ? " · 직접 넣음" : ""}</span> : <span className="yp-tag yp-bad">가져오지 못함</span>}</span>
+        </button>;
+    })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>검색어로 쇼츠를 찾아요</p> : null}
+    {/* The one opened: its first three seconds (the 헤드 카피) and its words, under the cards so the rows keep their places. */}
+    {items.filter(item => item.url === open).map(item => <div key={item.url} style={{ display: "grid", gap: 6, fontSize: 12, marginTop: 10 }}>
+          <b style={{ fontSize: 13 }}>{item.title || item.url}</b>
+          {item.sheetUrl ? <><b>첫 3초 화면 (헤드 카피)</b><img src={item.sheetUrl} alt="첫 3초 화면" style={{ width: "100%", borderRadius: 6 }} /></> : null}
           {item.result?.transcript ? <div style={{ maxHeight: 200, overflow: "auto", lineHeight: 1.6 }}>{item.result.transcript.split("\n").map((line, at) => {
             const [, time, said] = line.match(/^(\d+(?:\.\d+)?) (.*)$/) ?? [null, null, line];
             return <div key={at}>{time !== null ? <span className="yp-muted" style={{ display: "inline-block", width: 38 }}>{`${Math.floor(Number(time) / 60)}:${String(Math.floor(Number(time) % 60)).padStart(2, "0")}`}</span> : null}{said}</div>;
           })}</div> : <span className="yp-muted">{item.result?.ok ? "대사가 없어요" : item.result?.error || "가져오지 못했어요"}</span>}
-          <a className="yp-lnk" href={item.url} target="_blank" rel="noreferrer">영상 열기 →</a></div> : null}
-      </li>;
-    })}</ul> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>검색어로 쇼츠를 찾아요</p> : null}
+          <a className="yp-lnk" href={item.url} target="_blank" rel="noreferrer">영상 열기 →</a></div>)}
     {form.refs.length ? <><div className="yp-fld-h" style={{ marginTop: 12 }}><b>직접 넣은 링크</b></div>
       <ul className="yp-open-list" style={{ marginTop: 4 }}>{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}><a href={ref.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ref.title || ref.url}</a>
         {can ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => onEdit({ refs: form.refs.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul></> : null}

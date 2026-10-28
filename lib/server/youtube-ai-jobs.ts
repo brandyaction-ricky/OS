@@ -227,7 +227,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   }
   const now = new Date().toISOString();
   // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
-  const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query)
+  const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query, marketFor.short)
     .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short) }))
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),

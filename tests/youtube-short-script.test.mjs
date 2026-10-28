@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, refHostOk, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, refCounts, refCountsLine, refHostOk, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -76,4 +76,20 @@ test("three 주제 후보, one line each, on a formula drawn now or kept in the 
   assert.match(shortTopicPickProblems([topic("하나"), topic("둘")], ["숫자 반전"]).join(" "), /3개예요 — 지금 2개/);
   assert.match(shortTopicPickProblems([topic("하나"), topic("둘"), topic("셋", "없는 공식")], ["숫자 반전"]).join(" "), /「없는 공식」가 formulas에도 창고에도 없어요/);
   assert.match(shortTopicPickProblems([topic("하나"), topic("하나"), topic("가".repeat(41))], ["숫자 반전"]).join(" "), /한 줄 40자 이하.*같아요/);
+});
+
+// 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): 조회 10만+, 구독자 수보다 많이, 좋아요 2%+.
+test("a reference passes the 반응도 기준 only over all three; a known low count is below, a hidden one unknown", () => {
+  assert.equal(refReaction({ views: 1_250_000, followers: 92_000, likes: 41_000 }), "pass");
+  assert.equal(refReaction({ views: 90_000, followers: 10_000, likes: 5_000 }), "below");
+  assert.equal(refReaction({ views: 500_000, followers: 900_000, likes: 20_000 }), "below");
+  assert.equal(refReaction({ views: 500_000, followers: 100_000, likes: 5_000 }), "below");
+  assert.equal(refReaction({ views: 500_000, followers: null, likes: 20_000 }), "unknown");
+  assert.equal(refReaction({ views: null, followers: null, likes: null }), "unknown");
+  assert.equal(refReaction({ views: 32_000, followers: null, likes: null }), "below");
+  // The YouTube search's counts come first, then what the render PC read off the page.
+  const pd = { views: null, followers: null, likes: null, result: { views: 300_000, likes: 9_000, followers: 50_000 } };
+  assert.deepEqual(refCounts(pd), { views: 300_000, followers: 50_000, likes: 9_000 });
+  assert.equal(refCountsLine(refCounts(pd)), "조회 30만 · 구독자의 6배 · 좋아요 3%");
+  assert.equal(refCountsLine({ views: 1_250_000, followers: null, likes: null }), "조회 125만");
 });

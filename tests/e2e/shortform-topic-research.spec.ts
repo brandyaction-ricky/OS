@@ -12,6 +12,11 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect(page.locator(".yp-foot")).toContainText("○ 공식");
   await expect(confirm).toBeDisabled();
   await expect(page.getByText("[예시] 연봉 7천인데 그만두고 싶어요")).toBeVisible();
+  // 반응도 기준: the bar is on screen, each reference shows its counts, and one under it is marked as not handed to the AI.
+  await expect(page.getByText(/반응도 기준: 조회 10만 이상/)).toBeVisible();
+  await expect(page.getByText("조회 125만 · 구독자의 13.6배 · 좋아요 3.3%")).toBeVisible();
+  await expect(page.getByText("반응 높음")).toHaveCount(2);
+  await expect(page.getByText("기준 아래 · AI에 안 넘김")).toHaveCount(1);
   await page.getByRole("button", { name: "이 주제로" }).first().click();
   await expect(page.getByLabel("주제", { exact: true })).toHaveValue("[예시] 약속은 잡았는데 가기 싫을 때");
   await expect(page.getByText("고른 주제")).toBeVisible();

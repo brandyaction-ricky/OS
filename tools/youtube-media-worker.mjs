@@ -367,15 +367,17 @@ export async function processShortRefs() {
   try {
     const results = [], wavs = new Map();
     for (const item of job.items) {
-      const result = { index: item.index, ok: false, title: "", durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "" };
+      const result = { index: item.index, ok: false, title: "", durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "", views: null, likes: null, followers: null };
       results.push(result);
       if (!refHostOk(item.url)) { result.error = "받을 수 없는 주소예요"; continue; }
       const base = path.join(dir, `r${item.index}`);
       try {
-        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--print", "after_move:%(title)s\t%(duration)s", "--max-filesize", "150M",
+        // The page's counts too (반응도 기준, 2026-10-28): yt-dlp prints NA for what a platform hides.
+        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--print", "after_move:%(title)s\t%(duration)s\t%(view_count)s\t%(like_count)s\t%(channel_follower_count)s", "--max-filesize", "150M",
           "--match-filter", "duration <= 600", "-f", "worst[height>=360]/worst", "--write-thumbnail", "--convert-thumbnails", "jpg", "-o", `${base}.%(ext)s`, "--", item.url], { env });
-        const [title = "", duration = ""] = printed.trim().split("\n").pop().split("\t");
-        Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null });
+        const [title = "", duration = "", views = "", likes = "", followers = ""] = printed.trim().split("\n").pop().split("\t");
+        const count = (value) => /^\d+$/.test(value) ? Number(value) : null;
+        Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null, views: count(views), likes: count(likes), followers: count(followers) });
         const video = readdirSync(dir).map((name) => path.join(dir, name)).find((file) => path.basename(file).startsWith(`r${item.index}.`) && !file.endsWith(".jpg"));
         if (!video) throw new Error("no video file");
         const sheet = `${base}-sheet.jpg`, wav = `${base}.wav`;

@@ -5,7 +5,7 @@ import type { OsRecord } from "@/lib/record-types";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { packagingPick } from "@/lib/youtube-process/discover";
 import { projectName } from "@/lib/youtube-process/project";
-import { refHostOk, shortResearchOpen, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { refHostOk, refReaction, SHORT_REF_BAR_TEXT, shortResearchOpen, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { RequestActor } from "./auth";
 import { packagingReferences } from "./youtube-discover";
 import { getYoutubeProject, readFailed } from "./youtube-process";
@@ -42,11 +42,13 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   if (!shortResearchOpen(project)) throw new ApiError(409, "STAGE_LOCKED", "숏폼의 주제 · 대본 단계에서 참고 영상을 찾을 수 있어요.");
   const script = (await readStages(actor.supabase, project)).shortScript.data;
   const query = script.query.trim() || projectName(project);
-  const market = packagingPick(await packagingReferences(query), true).filter(ref => ref.short).slice(0, MARKET_TAKE);
+  // 반응도 기준 (owner 2026-10-28): only the Shorts over the bar, the most watched for their channel's size first.
+  const market = packagingPick(await packagingReferences(query, true), true)
+    .filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass").slice(0, MARKET_TAKE);
   const own = script.refs.filter(ref => refHostOk(ref.url)).map(ref => ({ url: ref.url, title: ref.title, channel: "", views: null, ratio: null, source: "pd" as const }));
-  const items = [...own, ...market.map(ref => ({ url: ref.url, title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, source: "market" as const }))]
+  const items = [...own, ...market.map(ref => ({ url: ref.url, title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, followers: ref.subscribers, likes: ref.likes ?? null, source: "market" as const }))]
     .filter((item, index, list) => list.findIndex(other => other.url === item.url) === index).slice(0, MAX_REFS).map(item => ({ ...item, result: null }));
-  if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠가 없어요. 검색어를 바꾸거나 링크를 직접 넣어 주세요.`);
+  if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘은 영상이 없어요. 검색어를 넓히거나 링크를 직접 넣어 주세요.`);
   const service = createServiceSupabase();
   const before = await latestJob(service, project.id);
   if (before && ["backlog", "in_progress"].includes(before.status)) await service.from("os_records").update({ status: "cancelled", updated_by: actor.id }).eq("id", before.id);
@@ -113,7 +115,9 @@ export async function claimShortRefs(service: Service = createServiceSupabase())
 
 const resultSchema = z.object({ index: z.number().int().min(0).max(MAX_REFS - 1), ok: z.boolean(), title: z.string().max(300).default(""),
   durationSeconds: z.number().min(0).max(36_000).nullable().default(null), transcript: z.string().max(6000).default(""),
-  thumb: z.boolean().default(false), sheet: z.boolean().default(false), error: z.string().max(200).default("") }).strict();
+  thumb: z.boolean().default(false), sheet: z.boolean().default(false), error: z.string().max(200).default(""),
+  // The page's counts (yt-dlp), when the platform shows them; a worker before 2026-10-28 sends none.
+  views: z.number().int().min(0).nullable().default(null), likes: z.number().int().min(0).nullable().default(null), followers: z.number().int().min(0).nullable().default(null) }).strict();
 export const shortRefsCompleteSchema = z.object({ action: z.literal("short_refs_complete"), jobId: z.string().uuid(), lease: z.string().uuid(), results: z.array(resultSchema).max(MAX_REFS) }).strict();
 export const shortRefsFailSchema = z.object({ action: z.literal("short_refs_fail"), jobId: z.string().uuid(), lease: z.string().uuid(), code: z.string().max(80) }).strict();
 async function leased(service: Service, jobId: string, token: string) {
@@ -129,7 +133,8 @@ export async function completeShortRefs(input: z.infer<typeof shortRefsCompleteS
   const byIndex = new Map(input.results.map(result => [result.index, result]));
   const items = job.items.map((item, index) => {
     const result = byIndex.get(index);
-    return { ...item, title: item.title || result?.title || "", result: result ? { ok: result.ok, durationSeconds: result.durationSeconds, transcript: result.transcript, thumb: result.thumb, sheet: result.sheet, error: result.error } : { ok: false, durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "결과 없음" } };
+    return { ...item, title: item.title || result?.title || "", result: result ? { ok: result.ok, durationSeconds: result.durationSeconds, transcript: result.transcript, thumb: result.thumb, sheet: result.sheet, error: result.error,
+      views: result.views, likes: result.likes, followers: result.followers } : { ok: false, durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "결과 없음" } };
   });
   await save(service, row, "done", { ...job, items, lease: undefined, doneAt: new Date().toISOString() });
   return { jobId: row.id, ok: items.filter(item => item.result?.ok).length, of: items.length };

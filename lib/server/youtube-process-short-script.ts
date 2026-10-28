@@ -4,7 +4,7 @@ import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { projectName, topicEditable, type YpProject } from "@/lib/youtube-process/project";
-import { checkShortScript, headCopyProblem, refTexts, SHORT_SCRIPT, SHORT_TOPIC_MAX, shortResearchOpen, shortTopicPickProblems } from "@/lib/youtube-process/short-script";
+import { checkShortScript, headCopyProblem, refCounts, refCountsLine, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, SHORT_TOPIC_MAX, shortResearchOpen, shortTopicPickProblems } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortScript, YpShortTopic, YpShortTopics, YpStoredFormula } from "@/lib/youtube-process/stages";
 import type { PackagingMarket } from "./youtube-process-ai";
 import { v1Stages } from "./youtube-process-ai";
@@ -62,17 +62,19 @@ const formulaSchema = z.object({ name: z.string().trim().min(1).max(40), head: z
 const FORMULA_SHAPE = `{ "name": "공식 이름(창고에서 찾을 이름)", "head": "첫 화면 헤드 카피 공식 — 빈칸만, 예: [숫자]인데 [반전]", "cover": "썸네일 카피 공식", "hook": "첫 문장 공식 — 빈칸만, 예: [누가] [언제] [무엇을] 했는데, [뜻밖의 결과]", "flow": "흐름 공식 — 박자 순서와 하는 일 · 길이 비율", "why": "멈춘 이유 한 줄", "refs": ["레퍼런스 주소"] }`;
 
 // ── 레퍼런스 (§2-2): what both cards read — the render PC's fetched references (else the market titles), the PD's links, the 공식 창고 ──
-const READ_REFERENCES = "fetched는 렌더 PC가 받아 둔 레퍼런스입니다 — thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.";
+const READ_REFERENCES = `fetched는 렌더 PC가 받아 둔 레퍼런스이고, 반응도 기준(${SHORT_REF_BAR_TEXT})을 넘은 것과 숫자를 볼 수 없는 것(PD가 넣은 릴스 · 메타 광고, reaction="unknown")만 들어 있습니다. counts는 그 숫자입니다. unknown인 메타 광고는 게재 기간 · 버전 수(제목)를 보고 판단합니다. thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.`;
 const DRAW_FORMULAS = "새 공식은 formulas에 적습니다 — 헤드 카피 공식(head) · 썸네일 카피 공식(cover) · 첫 문장 공식(hook) · 흐름 공식(flow) · 멈춘 이유. 원본의 단어 · 고유명사 · 숫자를 남기지 않고 빈칸으로 씁니다. 대사를 못 봤다면 흐름 공식에 그렇다고 밝힙니다. warehouse(회사 공식 창고, 많이 쓴 순)에 같은 공식이 있으면 새로 적지 않고 그 이름을 씁니다.";
 async function referenceInputs(service: Service, projectId: string, draft: YpShortScript, market?: PackagingMarket) {
   const warehouse = (await readShortFormulas(service)).sort((a, b) => b.uses - a.uses).slice(0, 30).map(({ name, head, cover, hook, flow, why, uses }) => ({ name, head, cover, hook, flow, why, uses }));
   // The render PC's 참고 영상 (links last three days, the job may wait); without it, the market titles only.
   const fetched = await doneShortRefs(service, projectId);
-  const kept = (fetched?.items ?? []).filter(item => item.result?.ok).map(item => ({ url: item.url, title: item.title, channel: item.channel, views: item.views, ratio: item.ratio,
-    thumbnail: item.thumbUrl ?? null, firstSeconds: item.sheetUrl ?? null, transcript: item.result?.transcript ?? "" }));
+  // 반응도 기준 (owner 2026-10-28): a reference known to be under the bar is not handed on.
+  const kept = (fetched?.items ?? []).filter(item => item.result?.ok && refReaction(refCounts(item)) !== "below").map(item => ({ url: item.url, title: item.title, channel: item.channel,
+    reaction: refReaction(refCounts(item)), counts: refCountsLine(refCounts(item)), thumbnail: item.thumbUrl ?? null, firstSeconds: item.sheetUrl ?? null, transcript: item.result?.transcript ?? "" }));
   return { fetched: kept.length ? kept : null, references: draft.refs,
     market: !kept.length && market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
-      rows: market.refs.slice(0, 20).map(ref => ({ title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, url: ref.url })) } : null, warehouse };
+      rows: market.refs.filter(ref => refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass").slice(0, 20)
+        .map(ref => ({ title: ref.title, channel: ref.channel, counts: refCountsLine({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }), url: ref.url })) } : null, warehouse };
 }
 /** The references the AI says it read, among those it was given; and what they say, which a 대본 must not copy. */
 async function pickedRefs(service: Service, projectId: string, urls: string[], market?: PackagingMarket) {
