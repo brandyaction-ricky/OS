@@ -219,6 +219,13 @@ export async function drawMindmap(brief, parts, name) {
 // clone (his scripts write inside the package, and SRC defaults to an old video). The OS made each paragraph's wav exactly as his
 // stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
 const myinPkg = process.env.MYIN_PKG ?? "";
+// 숏폼 (2026-10-28): a 9:16 copy of the same engine (Logan's code with the portrait patches, render PC only). With it set, this worker
+// tells the OS it can take 숏폼 runs; their clone comes from it, and its V diagrams from MYIN_PORTRAIT_V_DIR (whose code finds the
+// fonts only through MYIN_FONT_DIR: without it a diagram scene stopped the 2026-10-28 test with "cannot open resource").
+const myinPkgShort = local ? "" : process.env.MYIN_PKG_SHORT ?? "";
+const shortClaim = myinPkgShort ? { short: true } : {};
+const layoutEnv = (env, layout) => layout === "short" ? { ...env, NO_HOLD: "1", MYIN_FONT_DIR: env.MYIN_FONT_DIR || path.join(myinPkgShort, "assets", "fonts"),
+  ...(process.env.MYIN_PORTRAIT_V_DIR ? { PORTRAIT_V_DIR: process.env.MYIN_PORTRAIT_V_DIR } : {}) } : env;
 // Logan's engine imports his diagrams (myin_dia, lib_*) only through PYTHONPATH: every Python step gets MYIN_DIAGRAM_DIR first, the
 // folder the fingerprint hashes (2026-10-28 로건: a staff PC had it only for the catalog and stopped at the showreel cards).
 if (process.env.MYIN_DIAGRAM_DIR) process.env.PYTHONPATH = [process.env.MYIN_DIAGRAM_DIR, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter);
@@ -360,15 +367,21 @@ export async function processShortRefs() {
   try {
     const results = [], wavs = new Map();
     for (const item of job.items) {
-      const result = { index: item.index, ok: false, title: "", durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "" };
+      const result = { index: item.index, ok: false, title: "", durationSeconds: null, transcript: "", thumb: false, sheet: false, error: "", views: null, likes: null, followers: null };
       results.push(result);
       if (!refHostOk(item.url)) { result.error = "받을 수 없는 주소예요"; continue; }
       const base = path.join(dir, `r${item.index}`);
       try {
-        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--print", "after_move:%(title)s\t%(duration)s", "--max-filesize", "150M",
+        // The page's counts too (반응도 기준, 2026-10-28): yt-dlp prints NA for what a platform hides.
+        // Only the allowed sites' own extractors (no generic or redirect pages), 2026-10-28 review.
+        const printed = await runCapture("yt-dlp", ["--no-warnings", "--no-playlist", "--quiet", "--use-extractors", "youtube.*,instagram.*,tiktok.*,facebook.*", "--print", "after_move:%(title)s\t%(duration)s\t%(view_count)s\t%(like_count)s\t%(channel_follower_count)s", "--max-filesize", "150M",
           "--match-filter", "duration <= 600", "-f", "worst[height>=360]/worst", "--write-thumbnail", "--convert-thumbnails", "jpg", "-o", `${base}.%(ext)s`, "--", item.url], { env });
-        const [title = "", duration = ""] = printed.trim().split("\n").pop().split("\t");
-        Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null });
+        // From the right: a tab inside a title must not shift the counts.
+        const fields = printed.trim().split("\n").pop().split("\t");
+        const [duration = "", views = "", likes = "", followers = ""] = fields.splice(-4);
+        const title = fields.join(" ");
+        const count = (value) => /^\d+$/.test(value) ? Number(value) : null;
+        Object.assign(result, { title: title.slice(0, 300), durationSeconds: Number(duration) || null, views: count(views), likes: count(likes), followers: count(followers) });
         const video = readdirSync(dir).map((name) => path.join(dir, name)).find((file) => path.basename(file).startsWith(`r${item.index}.`) && !file.endsWith(".jpg"));
         if (!video) throw new Error("no video file");
         const sheet = `${base}-sheet.jpg`, wav = `${base}.wav`;
@@ -451,13 +464,13 @@ export async function myinRebuild(runId, seed) {
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_claim" });
+  const job = await call({ action: "myin_claim", ...shortClaim });
   if (job.idle) return false;
   current = { step: "download" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     const work = path.join(myinWork, job.runId);
-    if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", myinPkg, work]); }
+    if (!existsSync(work)) { mkdirSync(myinWork, { recursive: true }); execFileSync("cp", ["-c", "-R", job.layout === "short" ? myinPkgShort : myinPkg, work]); }
     const voiceJob = "os_voice", videoJob = "os_myin"; // fixed names: the clone belongs to this one video
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
@@ -574,7 +587,7 @@ export async function reportSoundCatalog() {
  */
 export async function processMyinPrep() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : {}) });
+  const job = await call({ action: "myin_prep_claim", ...(local ? { engine: engine() } : shortClaim) });
   if (job.idle) return false;
   current = { step: "download" };
   const lease = { runId: job.runId, lease: job.lease };
@@ -584,7 +597,7 @@ export async function processMyinPrep() {
     if (!existsSync(work)) throw Object.assign(new Error("no work folder for this run on this PC"), { code: "MYIN_WORK_MISSING" });
     const videoDir = path.join(work, "voice", "os_myin");
     const myinDir = path.join(work, "tools", "myin_pipeline");
-    const env = withTools({ ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1", SRC: "os_voice", STORY: "myin_storyboard.json" });
+    const env = layoutEnv(myinEnv(), job.layout);
     const storyFile = path.join(videoDir, "myin_storyboard.json");
     writeFileSync(storyFile, JSON.stringify(job.storyboard, null, 1));
     for (const spot of job.placeholders ?? []) {
@@ -594,9 +607,9 @@ export async function processMyinPrep() {
       execFileSync(myinPython, ["-c", PLACEHOLDER_PY, file, spot.file, path.join(work, "assets", "fonts")], { env });
     }
     // ③: Logan's music match writes 곡·앰비언스 keys into the storyboard; it and his report go back for the ④ editor. A package without
-    // it (older run copies) or a failed match keeps the storyboard's own music.
+    // it (older run copies) or a failed match keeps the storyboard's own music. A 숏폼 has no music (pilots A1–A3: the voice alone).
     let soundReport;
-    if (job.draft && existsSync(path.join(myinDir, "music_match.py"))) {
+    if (job.draft && job.layout !== "short" && existsSync(path.join(myinDir, "music_match.py"))) {
       try {
         await runAsync(myinPython, ["music_match.py", "os_myin", "--write"], { cwd: myinDir, env });
         soundReport = existsSync(path.join(videoDir, "음악매칭.md")) ? readFileSync(path.join(videoDir, "음악매칭.md"), "utf8") : "";
@@ -668,20 +681,20 @@ print("TIMES " + json.dumps([[s["t0"], s["t1"]] for s in M.resolve(st, w)]))`;
 /** v13 stage 4a: his 720p clips of the opening with its reel and of each metaphor scene, for Logan to check before the full render. */
 export async function processMyinClips() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : {}) });
+  const job = await call({ action: "myin_clips_claim", ...(local ? { engine: engine() } : shortClaim) });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
     if (job.seed) await myinRebuild(job.runId, job.seed);
     const { videoDir, myinDir } = myinDirs(job.runId);
-    const env = myinEnv();
+    const env = layoutEnv(myinEnv(), job.layout);
     const out = await runCapture(myinPython, ["-c", RESOLVE_PY], { cwd: myinDir, env });
     const times = JSON.parse(out.split("\n").find((line) => line.startsWith("TIMES ")).slice(6));
     const names = [];
     for (const clip of job.clips) {
       const [t0, t1] = times[clip.scene - 1];
-      const [a, b] = clip.name === "clip_opening" ? [0, times[1][0] + 0.3] : [Math.max(0, t0 - 0.5), t1 + 0.3];
+      const [a, b] = clip.name === "clip_short" ? [0, times.at(-1)[1] + 0.3] : clip.name === "clip_opening" ? [0, times[1][0] + 0.3] : [Math.max(0, t0 - 0.5), t1 + 0.3];
       await runAsync(myinPython, ["render_myin.py", "os_myin", "clip", a.toFixed(2), b.toFixed(2), clip.name, "4"], { cwd: myinDir, env });
       current.step = "upload";
       await upload(clip.uploadUrl, path.join(videoDir, `${clip.name}.mp4`), "video/mp4");
@@ -702,19 +715,27 @@ export async function processMyinClips() {
 /** v13 stage 4b: his full render, mix and handouts; the OS gets the video, 한장정리.png, 덱_전체.pdf, subs_youtube.srt and a loudness check. */
 export async function processMyinFinal() {
   if (!myinPkg) return false;
-  const job = await call({ action: "myin_final_claim" });
+  const job = await call({ action: "myin_final_claim", ...shortClaim });
   if (job.idle) return false;
   current = { step: "drawing" };
   const lease = { runId: job.runId, lease: job.lease };
   try {
-    const { videoDir, myinDir } = myinDirs(job.runId);
-    const env = myinEnv();
+    const { work, videoDir, myinDir } = myinDirs(job.runId);
+    const env = layoutEnv(myinEnv(), job.layout);
     // ④ sound edits made after the preparation reach the render in the storyboard the OS hands out with the job.
     if (job.storyboard) writeFileSync(path.join(videoDir, "myin_storyboard.json"), JSON.stringify(job.storyboard, null, 1));
     await runAsync(myinPython, ["render_myin.py", "os_myin", "render", "4"], { cwd: myinDir, env: { ...env, OUTNAME: "final_myin_v1_raw.mp4" } });
-    await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env });
-    await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env });
     const video = path.join(videoDir, "final_myin_v1.mp4");
+    if (job.layout === "short") {
+      // 숏폼: his picture with the voice alone, as the pilots A1–A3 (no music, no effects), brought to the longform's −14 LUFS
+      // (the A1 pilot measured −16 LUFS, peak −0.5 dB); no handouts.
+      const end = Number(job.storyboard?.end);
+      execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(videoDir, "myin_video_final_myin_v1_raw.mp4"), "-i", path.join(work, "voice", "os_voice", "voice.wav"),
+        "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-af", "pan=stereo|c0=c0|c1=c0,loudnorm=I=-14:TP=-1.5:LRA=11", "-ar", "48000", "-c:a", "aac", "-b:a", "192k", ...(end > 0 ? ["-t", String(end)] : []), video], { env });
+    } else {
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "remix", "../../voice/os_myin/myin_video_final_myin_v1_raw.mp4", "final_myin_v1.mp4"], { cwd: myinDir, env });
+      await runAsync(myinPython, ["render_myin.py", "os_myin", "handouts"], { cwd: myinDir, env });
+    }
     // Per-frame lines go to the verbose log: a 12-minute video printed 1.2 MB of them and overflowed spawnSync's buffer before the summary.
     const report = spawnSync("ffmpeg", ["-hide_banner", "-nostats", "-i", video, "-vn", "-af", "ebur128=peak=true:framelog=verbose", "-f", "null", "-"], { encoding: "utf8", env, maxBuffer: 16 * 1024 * 1024 }).stderr ?? "";
     const last = (pattern) => Number([...report.matchAll(pattern)].at(-1)?.[1]);
@@ -722,8 +743,8 @@ export async function processMyinFinal() {
     if (!Number.isFinite(lufs) || !Number.isFinite(peak)) throw Object.assign(new Error("loudness check did not run"), { code: "MYIN_LOUDNESS_UNKNOWN" });
     current.step = "upload";
     await upload(job.videoUploadUrl, video, "video/mp4");
-    await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");
-    await upload(job.deckUploadUrl, path.join(videoDir, "handouts", "덱_전체.pdf"), "application/pdf");
+    if (job.summaryUploadUrl) await upload(job.summaryUploadUrl, path.join(videoDir, "handouts", "한장정리.png"), "image/png");
+    if (job.deckUploadUrl) await upload(job.deckUploadUrl, path.join(videoDir, "handouts", "덱_전체.pdf"), "application/pdf");
     await upload(job.srtUploadUrl, path.join(videoDir, "subs_youtube.srt"), "application/x-subrip");
     await call({ action: "myin_final_complete", ...lease, bytes: readFileSync(video).length, durationSeconds: seconds(video), lufs, peak });
     console.log(`myin final ready: ${job.runId} (${lufs} LUFS, peak ${peak})`);

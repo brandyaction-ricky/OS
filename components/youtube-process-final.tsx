@@ -156,11 +156,11 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
           : project.yp.stage === "review" || project.yp.stage === "upload" ? <div className="yp-comp">
             <div className="yp-comp-h">{view === "video" && playing ? <span className="yp-muted">재생 중. 영상을 누르면 멈추고 시간이 붙어요</span> : <>지금 쓰기 <span className="yp-at">{stamp}</span></>}<span style={{ flex: 1 }} />
               {view === "thumb" ? <div className="yp-kseg" role="group" aria-label="어느 썸네일">{SLOTS.filter(slot => confirmed?.[slot]).map(slot => <button key={slot} type="button" className={thumbTarget === slot ? "yp-on" : ""} onClick={() => setThumbTarget(slot)}>{slot}</button>)}</div> : null}</div>
-            {view === "thumb" ? <><div className="yp-chips" style={{ marginBottom: 6 }}>{KINDS.map(item => <button key={item} type="button" className={`yp-chip${kind === item ? " yp-on" : ""}`} onClick={() => setKind(kind === item ? "" : item)}>{item}</button>)}<span className="yp-muted" style={{ fontSize: 11, alignSelf: "center" }}>안 골라도 돼요</span></div>
+            {view === "thumb" ? <><div className="yp-chips" style={{ marginBottom: 6 }}>{KINDS.map(item => <button key={item} type="button" className={`yp-chip${kind === item ? " yp-on" : ""}`} onClick={() => setKind(kind === item ? "" : item)}>{item}</button>)}<span className="yp-muted" style={{ fontSize: 12, alignSelf: "center" }}>안 골라도 돼요</span></div>
               {kind === "제목" || kind === "썸네일 문구" ? <input className="yp-in" style={{ marginBottom: 6 }} value={sug} onChange={event => setSug(event.target.value)} placeholder={kind === "제목" ? "바꿀 제목을 직접 써요" : "바꿀 큰 글자를 직접 써요"} aria-label="직접 제안" /> : null}</> : null}
             <textarea className="yp-in" value={text} onChange={event => setText(event.target.value)} placeholder="빈칸에 그냥 쓰면 돼요" aria-label="피드백" onKeyDown={event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") void add(); }} />
             <div className="yp-comp-f"><button type="button" className="yp-btn yp-sm" title="좋아요만 남기기" aria-label="좋아요" disabled={busy} onClick={() => void add(true)}><ThumbsUp size={14} /></button><span className="yp-sp" />
-              <span className="yp-muted" style={{ fontSize: 11 }}>Ctrl+Enter</span><button type="button" className="yp-btn yp-pri" disabled={busy || !text.trim()} onClick={() => void add()}>남기기</button></div>
+              <span className="yp-muted" style={{ fontSize: 12 }}>Ctrl+Enter</span><button type="button" className="yp-btn yp-pri" disabled={busy || !text.trim()} onClick={() => void add()}>남기기</button></div>
           </div> : null}
       </aside></div>
     </> : null}

@@ -112,7 +112,7 @@ export function YoutubeScheduleScreen() {
       <div className="yp-scards">{shown.map(item => { const [cls, text] = state(item); return <Link key={item.project.id} className="yp-scard" href={projectHref(item.project)}>
         <b className="yp-sc-t">{projectName(item.project)}</b><span className="yp-sc-p">담당 PD {pdName(item.project.assigneeId)}</span>
         <span className="yp-sc-s"><i className={`yp-sdot ${cls}`} />{stageLabel(item.project)}{text !== "여유" ? <span className={`yp-tag ${cls}`}>{text}</span> : null}</span>
-        <span className="yp-muted" style={{ fontSize: 11 }}>{item.editDue ? `편집 완료일 ${md2(item.editDue)}` : "편집 완료일 —"} · {item.uploadPlan ? `업로드 예상일 ${md2(item.uploadPlan)}` : "업로드 예상일 —"}</span></Link>; })}
+        <span className="yp-muted" style={{ fontSize: 12 }}>{item.editDue ? `편집 완료일 ${md2(item.editDue)}` : "편집 완료일 —"} · {item.uploadPlan ? `업로드 예상일 ${md2(item.uploadPlan)}` : "업로드 예상일 —"}</span></Link>; })}
         {!shown.length ? <p className="yp-hint">진행 중인 영상이 없어요.</p> : null}</div>
     </>}
     <dialog ref={dialog} className="yp-modal" aria-labelledby="yp-dates-title" onClose={() => setEditing(null)}>

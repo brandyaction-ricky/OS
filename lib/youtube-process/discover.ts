@@ -82,11 +82,11 @@ export function ageLabel(iso: string | null, now = Date.now()) {
  * views ÷ subscribers (hidden subscribers last), then views; 40 kept. Under a minute counts as shorts, as in the 기획실.
  */
 export const PACKAGING_MIN_VIEWS = 50_000;
-export interface PackagingRef { id: string; title: string; channel: string; views: number; subscribers: number | null; ratio: number | null; short: boolean; thumbnail: string; url: string }
-export function rankPackagingRefs(videos: { id: string; title: string; channel: string; views: number; subscribers: number | null; seconds: number; live: boolean }[]): PackagingRef[] {
+export interface PackagingRef { id: string; title: string; channel: string; views: number; subscribers: number | null; ratio: number | null; short: boolean; thumbnail: string; url: string; likes?: number | null }
+export function rankPackagingRefs(videos: { id: string; title: string; channel: string; views: number; subscribers: number | null; seconds: number; live: boolean; likes?: number | null }[]): PackagingRef[] {
   return videos.filter(video => video.id && !video.live && video.views >= PACKAGING_MIN_VIEWS)
     .map(video => ({ id: video.id, title: video.title, channel: video.channel, views: video.views, subscribers: video.subscribers,
-      ratio: video.subscribers ? Math.round(video.views / video.subscribers * 10) / 10 : null, short: video.seconds < 60,
+      ratio: video.subscribers ? Math.round(video.views / video.subscribers * 10) / 10 : null, short: video.seconds < 60, likes: video.likes ?? null,
       thumbnail: `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`, url: `https://www.youtube.com/watch?v=${video.id}` }))
     .sort((a, b) => Number(a.ratio === null) - Number(b.ratio === null) || (b.ratio ?? 0) - (a.ratio ?? 0) || b.views - a.views)
     .slice(0, 40);
