@@ -31,7 +31,7 @@ test('application text is at least 11px except exact approved design-kit labels'
 });
 test('card is the only palette addition and font is self-hosted', () => {
   const tokens=readFileSync('app/theme-tokens.css','utf8');
-  assert.match(tokens,/--card: #141516/);
+  assert.match(tokens,/--card: #17151c/);
   assert.match(tokens,/--card: #ffffff/);
   assert.match(readFileSync('app/final-uiux.css','utf8'),/fonts\/pretendard\/PretendardVariable.woff2/);
   assert.ok(readFileSync('public/fonts/pretendard/PretendardVariable.woff2').length>100000);

@@ -41,7 +41,7 @@ test("light theme and guidance-off rules cover global workspaces", async () => {
 
   const palette = await read("app/theme-tokens.css");
   assert.match(palette, /html\[data-theme="light"\]/);
-  assert.match(palette, /--bg: #f7f7f8/);
+  assert.match(palette, /--bg: #f2f0f4/);
   assert.match(css, /\.stage-rail/);
   assert.match(css, /\.record-drawer/);
   assert.match(css, /\.knowledge-graph-main/);
