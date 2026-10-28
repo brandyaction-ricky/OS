@@ -54,7 +54,7 @@ function OptionField({ kind, required, options, value, onChange, onAdded }: { ki
       onAdded(option); onChange(option.id); setText(optionText(option)); setAdding(false); setLabel(""); setCode(""); setError("");
     } catch (reason) { setError(errorMessage(reason)); }
   };
-  return <label>{UTM_KIND_LABEL[kind]} <span className="yp-hint">utm_{kind}{required ? " · 필수" : " · 선택"}</span>
+  return <label><span>{UTM_KIND_LABEL[kind]} <span className="yp-hint">utm_{kind}{required ? " · 필수" : " · 선택"}</span></span>
     <input className="yp-in" list={`utm-${kind}`} value={text} onChange={event => pick(event.target.value)} placeholder={active.length ? "이름이나 코드로 찾기" : "아직 선택값이 없어요 · 아래에서 추가"} aria-label={UTM_KIND_LABEL[kind]} />
     <datalist id={`utm-${kind}`}>{active.map(option => <option key={option.id} value={optionText(option)} />)}</datalist>
     {!adding ? <span><button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={12} aria-hidden="true" /> 선택값 추가</button></span>
@@ -124,13 +124,13 @@ export function UtmLinkBuilder({ options, setOptions, prefill, onSaved }: { opti
   };
   const added = (option: Option) => setOptions([...options, option]);
   return <form className="yp-card yp-confirm-form" onSubmit={event => { event.preventDefault(); void save(); }}>
-    <label>브랜드 <span className="yp-hint">필수</span><select className="yp-in" value={form.brand} onChange={event => set({ brand: event.target.value })} aria-label="브랜드">
+    <label><span>브랜드 <span className="yp-hint">필수</span></span><select className="yp-in" value={form.brand} onChange={event => set({ brand: event.target.value })} aria-label="브랜드">
       <option value="">고르세요</option>{UTM_BRANDS.map(row => <option key={row.brand} value={row.brand}>{row.label}</option>)}</select></label>
-    <label>원본 URL <span className="yp-hint">필수 · UTM을 붙일 실제 목적지. 주소에 개인정보·비밀번호를 넣지 마세요.</span>
+    <label><span>원본 URL <span className="yp-hint">필수 · UTM을 붙일 실제 목적지. 주소에 개인정보·비밀번호를 넣지 마세요.</span></span>
       <input className="yp-in" type="url" value={form.origin} maxLength={2000} onChange={event => set({ origin: event.target.value })} placeholder="https://www.myinlab.co.kr/…" aria-label="원본 URL" />
       {parsed && "error" in parsed ? <span className="yp-errline">{parsed.error}</span> : null}</label>
     {UTM_KINDS.map(kind => <OptionField key={`${kind}-${generation}`} kind={kind} required={kind !== "content"} options={options} value={form.picks[kind]} onChange={id => set({ picks: { ...form.picks, [kind]: id } })} onAdded={added} />)}
-    <label>링크 사용처 <span className="yp-hint">필수 · 사람이 읽는 설명 (URL에는 안 붙어요)</span>
+    <label><span>링크 사용처 <span className="yp-hint">필수 · 사람이 읽는 설명 (URL에는 안 붙어요)</span></span>
       <input className="yp-in" value={form.usage} maxLength={200} onChange={event => set({ usage: event.target.value })} placeholder="예: 10월 28일 유튜브 영상 고정댓글" aria-label="링크 사용처" /></label>
     <details><summary className="yp-hint">관리 메모 더 쓰기 (선택 · URL에는 안 붙어요)</summary><div style={{ display: "grid", gap: 8, marginTop: 8 }}>
       <label>target · 대상 고객<input className="yp-in" value={form.target} maxLength={200} onChange={event => set({ target: event.target.value })} aria-label="target 대상 고객" /></label>
