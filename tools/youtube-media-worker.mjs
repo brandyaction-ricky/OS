@@ -220,11 +220,12 @@ export async function drawMindmap(brief, parts, name) {
 // stage_voice would; placed as pNN.wav they make stage_voice skip Fish and only tighten and join, then words.json and subtitles.
 const myinPkg = process.env.MYIN_PKG ?? "";
 // 숏폼 (2026-10-28): a 9:16 copy of the same engine (Logan's code with the portrait patches, render PC only). With it set, this worker
-// tells the OS it can take 숏폼 runs; their clone comes from it, and its V diagrams from MYIN_PORTRAIT_V_DIR.
+// tells the OS it can take 숏폼 runs; their clone comes from it, and its V diagrams from MYIN_PORTRAIT_V_DIR (whose code finds the
+// fonts only through MYIN_FONT_DIR: without it a diagram scene stopped the 2026-10-28 test with "cannot open resource").
 const myinPkgShort = local ? "" : process.env.MYIN_PKG_SHORT ?? "";
 const shortClaim = myinPkgShort ? { short: true } : {};
-const layoutEnv = (env, layout) => layout === "short"
-  ? { ...env, NO_HOLD: "1", ...(process.env.MYIN_PORTRAIT_V_DIR ? { PORTRAIT_V_DIR: process.env.MYIN_PORTRAIT_V_DIR } : {}) } : env;
+const layoutEnv = (env, layout) => layout === "short" ? { ...env, NO_HOLD: "1", MYIN_FONT_DIR: env.MYIN_FONT_DIR || path.join(myinPkgShort, "assets", "fonts"),
+  ...(process.env.MYIN_PORTRAIT_V_DIR ? { PORTRAIT_V_DIR: process.env.MYIN_PORTRAIT_V_DIR } : {}) } : env;
 // 내 컴퓨터로 시안 runs on staff Macs and on Logan's Windows PC too: Homebrew's folder only on a Mac, and the engine copy is an
 // APFS clone on a Mac (instant, no extra disk) and a plain copy elsewhere.
 const withTools = (env) => process.platform === "darwin" ? { ...env, PATH: `/opt/homebrew/bin${path.delimiter}${env.PATH ?? ""}` } : env;
