@@ -8,6 +8,7 @@ import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
+import { assToSrt } from "@/lib/subtitle-files";
 
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
@@ -69,7 +70,8 @@ const when = (iso: string) => new Intl.DateTimeFormat("ko-KR", { month: "numeric
  * storyboard and its confirmation, the drafts (2026-10-27: before the paid CTA voice and the sound pass), then the finished video and handouts. Where the pilot is closed
  * (production today) it says so instead.
  */
-export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, short = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, voiceText, title = "", short = false }: { sourceId: string; finalNote?: ReactNode; embedded?: boolean; onFinal?: () => void;
+  /** The video name, for downloaded file names. */ title?: string;
   /** The spoken paragraphs, for the company-money estimate shown before the voice is made (owner request 2026-10-25). */ voiceText?: string;
   /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean }) {
   const cost = useCostConfirm(), { myinVoice } = useCostModels();
@@ -84,6 +86,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [job, setJob] = useState<StaffJobStatus | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
+  const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
   const [qc, setQc] = useState("");
   const [note, setNote] = useState("");
@@ -123,6 +126,40 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   };
   const post = (path: string, method: "POST" | "PATCH", body: Record<string, unknown>) =>
     apiRequest(`/api/v1/content/youtube-automation${path}`, { method, token: accessToken, body: JSON.stringify(body) });
+  // 1단계 파일 내려받기 (owner request 2026-10-28): the processed voice joined from its parts, and the subtitles as SRT or as Logan's ASS.
+  const download = async (kind: "voice" | "srt" | "ass") => {
+    if (!run) return;
+    setSaving(kind); setError("");
+    try {
+      const files = await apiRequest<{ voice: { urls: string[]; bytes: number } | null; wordsUrl: string }>(`/api/v1/content/youtube-automation/myin?downloads=${run.id}`, { token: accessToken });
+      const name = (title.replace(/[\\/:*?"<>|]/g, " ").trim() || "영상").slice(0, 60);
+      let file: Blob;
+      if (kind === "voice") {
+        if (!files.voice) throw new Error("이 영상은 음성 파일이 아직 OS에 없어요.");
+        const parts: ArrayBuffer[] = [];
+        for (const [n, url] of files.voice.urls.entries()) {
+          setSaving(`voice ${n + 1}/${files.voice.urls.length}`);
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("음성 파일을 받지 못했어요. 다시 눌러 주세요.");
+          parts.push(await response.arrayBuffer());
+        }
+        file = new Blob(parts, { type: "audio/wav" });
+        if (file.size !== files.voice.bytes) throw new Error("음성 파일이 다 받아지지 않았어요. 다시 눌러 주세요.");
+      } else {
+        const response = await fetch(files.wordsUrl);
+        if (!response.ok) throw new Error("자막 파일을 받지 못했어요. 다시 눌러 주세요.");
+        const ass = String(((await response.json()) as { subtitlesAss?: string }).subtitlesAss ?? "");
+        file = new Blob([kind === "srt" ? assToSrt(ass) : ass], { type: "text/plain;charset=utf-8" });
+      }
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(file);
+      link.download = `${name} ${kind === "voice" ? "음성.wav" : kind === "srt" ? "자막.srt" : "방송 자막.ass"}`;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "파일을 내려받지 못했어요."); }
+    finally { setSaving(""); }
+  };
+
   const showQc = async () => {
     if (!run) return;
     try { setQc((await apiRequest<{ subtitleQc: string }>(`/api/v1/content/youtube-automation/myin?report=${run.id}`, { token: accessToken })).subtitleQc); }
@@ -163,6 +200,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small></div>
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
+      </div> : null}
+      {run?.words ? <div className="yt-actions">
+        <button type="button" className="secondary-button compact" disabled={Boolean(saving) || !run.localReady} onClick={() => void download("voice")}>{saving.startsWith("voice") ? `음성 받는 중 ${saving.slice(6)}` : "음성 내려받기 (WAV)"}</button>
+        <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => void download("srt")}>{saving === "srt" ? "받는 중…" : "자막 내려받기 (SRT)"}</button>
+        <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => void download("ass")}>{saving === "ass" ? "받는 중…" : "방송 자막 내려받기 (ASS)"}</button>
+        {!run.localReady ? <small>이 영상의 음성은 영상 만드는 컴퓨터가 OS에 올린 뒤 받을 수 있어요.</small> : null}
       </div> : null}
       {run?.words ? <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !qc) void showQc(); }}>
         <summary>자막 검사표 보기</summary>

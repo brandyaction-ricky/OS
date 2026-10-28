@@ -114,7 +114,7 @@ export function presentMyinRun(record: OsRecord) {
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
-    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice),
+    lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
 }
@@ -359,8 +359,7 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const { data: upload, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(bundlePath(record, run, lease.token), { upsert: true });
     if (error || !upload) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
     const prefix = voicePrefix(record, run, lease.token);
-    // No voice for staff Macs on a 숏폼: its drafts need the vertical engine, which only the render PC has.
-    const voiceUploadUrls = run.layout ? [] : (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
+    const voiceUploadUrls = (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
       service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(voicePartPath(prefix, n), { upsert: true })))).map(({ data }) => data?.signedUrl).filter(Boolean);
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
       ...(run.layout ? { layout: run.layout } : {}) };
@@ -544,14 +543,49 @@ const sign = async (service: Service, bucket: string, path: string) => {
  * What a staff Mac needs to rebuild the run's work folder the render PC made in stage 1: his processed voice.wav byte for byte
  * (its sentence gaps are a seeded random draw, never recomputed) and the frozen transcription and subtitles.
  */
+type MyinVoice = NonNullable<NonNullable<MyinRun["words"]>["voice"]>;
+const voiceDownload = async (service: Service, voice: MyinVoice) => ({
+  urls: await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n)))), bytes: voice.bytes, sha256: voice.sha256 });
 async function localSeed(service: Service, run: MyinRun) {
   const voice = run.words?.voice;
   if (!voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
-  const urls = await Promise.all(Array.from({ length: voice.parts }, (_, n) => sign(service, YOUTUBE_VOICE_BUCKET, voicePartPath(voice.path, n))));
-  return { voice: { urls, bytes: voice.bytes, sha256: voice.sha256 }, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
+  return { voice: await voiceDownload(service, voice), wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words?.path ?? "") };
+}
+
+/** 1단계 파일 내려받기 (owner request 2026-10-28): the processed voice in its parts (when the OS has it) and the bundle the subtitles are in. */
+export async function myinDownloads(actor: RequestActor, runId: string) {
+  const { run } = await visibleRun(actor, runId);
+  if (!run.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
+  const service = createServiceSupabase();
+  return { voice: run.words.voice ? await voiceDownload(service, run.words.voice) : null, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words.path) };
+}
+
+/**
+ * 지난 영상 음성 (owner request 2026-10-28): runs whose stage 1 ran before the render PC left its voice.wav in the OS get it once from
+ * the render PC's work folder (tools/myin-voice-backfill.mjs). Without a run: the runs still missing it; with one: where its parts go.
+ */
+export async function myinVoiceBackfill(input: { runId?: string }, service: Service = createServiceSupabase()) {
+  if (!input.runId) {
+    const { data, error } = await service.from("os_records").select("id").eq("record_type", "ai_job").eq("metadata->>kind", MYIN_RUN_KIND)
+      .is("archived_at", null).not("metadata->words", "is", null).is("metadata->words->voice", null).order("created_at", { ascending: false }).limit(100);
+    if (error) throw new ApiError(503, "MYIN_BACKFILL_LIST_FAILED", "음성이 없는 영상 목록을 읽지 못했습니다.");
+    return { runs: (data ?? []).map((row) => row.id as string) };
+  }
+  const { record, run } = await runRecord(service, input.runId);
+  if (!run.words || run.words.voice) return { uploadUrls: [] };
+  const prefix = voicePrefix(record, run, "backfill");
+  return { uploadUrls: await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) => uploadUrl(service, YOUTUBE_VOICE_BUCKET, voicePartPath(prefix, n)))) };
+}
+export async function completeMyinVoiceBackfill(input: { runId: string; parts: number; bytes: number; sha256: string }, service: Service = createServiceSupabase()) {
+  const { runId, ...voice } = input;
+  const { record, run } = await runRecord(service, runId);
+  if (!run.words || run.words.voice) return { runId: record.id, saved: false };
+  await save(service, record, record.status, record.stage, { ...run, words: { ...run.words, voice: { path: voicePrefix(record, run, "backfill"), ...voice } } });
+  return { runId: record.id, saved: true };
 }
 /** Only a run whose stage 1 left its voice for staff Macs can be sent to one. */
 const assertLocalReady = (run: MyinRun) => {
+  if (run.layout) throw new ApiError(409, "MYIN_LOCAL_SHORT", "숏폼은 세로 엔진이 있는 영상 만드는 컴퓨터로만 만들어요.");
   if (!run.words?.voice) throw new ApiError(409, "MYIN_LOCAL_VOICE_MISSING", "이 영상은 내 컴퓨터로 만들 음성 파일이 없어요. 영상 만드는 컴퓨터로 만들어 주세요.");
 };
 

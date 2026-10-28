@@ -61,6 +61,8 @@ export interface YpClient {
   schedule(): Promise<YpScheduleItem[]>;
   moveDates(id: string, makeVersion: number, patch: { editDue?: string; uploadPlan?: string; why?: string }): Promise<void>;
   adopt(id: string): Promise<YpProject>;
+  /** 영상 복제 (owner decision 2026-10-28): the same step (제작 at most), voice and video made again. */
+  copy(id: string): Promise<YpProject>;
   /** 내 영상 휴지통 (staff request 2026-10-26): trash · restore by the maker, PD or an admin; 영구 삭제 by an admin after 30 days. */
   trashList(): Promise<(YpTrashed & { canManage: boolean })[]>;
   trash(id: string, expectedVersion: number, reason: string): Promise<void>;
@@ -124,6 +126,7 @@ function apiClient(token: string): YpClient {
     schedule: async () => (await apiRequest<{ items: YpScheduleItem[] }>("/api/v1/content/youtube/schedule", { token })).items,
     moveDates: async (id, makeVersion, patch) => { await apiRequest(`${base}/${id}/dates`, { token, method: "PATCH", body: json({ expectedVersion: makeVersion, ...patch }) }); },
     adopt: async id => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/legacy", { token, method: "POST", body: json({ id }) })).project,
+    copy: async id => (await apiRequest<{ project: YpProject }>(`${base}/${id}/copy`, { token, method: "POST", body: json({}) })).project,
     trashList: async () => (await apiRequest<{ items: (YpTrashed & { canManage: boolean })[] }>(`${base}/trash`, { token })).items,
     trash: async (id, expectedVersion, reason) => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "trash", expectedVersion, reason }) }); },
     restore: async id => { await apiRequest(`${base}/${id}/trash`, { token, method: "POST", body: json({ action: "restore" }) }); },
@@ -423,6 +426,7 @@ function demoClient(): YpClient {
       demoStages.set(id, { ...stages, make: { ...make, version: make.version + 1, data: { ...make.data, editDue, uploadPlan, log } } });
     },
     adopt: async () => { throw demoError(409, "DEMO", "데모에는 이전 화면 영상이 없어요."); },
+    copy: async () => { throw demoError(409, "DEMO", "데모에서는 영상을 복제하지 않아요."); },
     trashList: async () => structuredClone(demoTrash.map(item => ({ ...item, canManage: true }))),
     trash: async (id, expectedVersion, reason) => {
       const project = find(id);

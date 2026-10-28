@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmMyinClips, createMyinRun, latestMyinRun, myinOutputs, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { confirmMyinClips, createMyinRun, latestMyinRun, myinDownloads, myinOutputs, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -21,6 +21,9 @@ export async function GET(request: Request) {
     if (report) return NextResponse.json(await myinWordsReport(actor, z.string().uuid().parse(report)), { headers });
     const sheets = query.get("sheets");
     if (sheets) return NextResponse.json(await myinPreviewSheets(actor, z.string().uuid().parse(sheets)), { headers });
+    // 1단계 파일 내려받기 (2026-10-28): the voice parts and the subtitle bundle.
+    const downloads = query.get("downloads");
+    if (downloads) return NextResponse.json(await myinDownloads(actor, z.string().uuid().parse(downloads)), { headers });
     const outputs = query.get("outputs");
     if (outputs) return NextResponse.json(await myinOutputs(actor, z.string().uuid().parse(outputs)), { headers });
     // 내 컴퓨터: whether this member's own Mac is on and has the render PC's engine (?local=1).
