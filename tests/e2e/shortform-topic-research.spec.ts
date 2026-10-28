@@ -13,7 +13,7 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect(confirm).toBeDisabled();
   await expect(page.getByText("[예시] 연봉 7천인데 그만두고 싶어요")).toBeVisible();
   // 반응도 기준: the bar is on screen, each reference shows its counts, and one under it is marked as not handed to the AI.
-  await expect(page.getByText(/반응도 기준: 조회 10만 이상/)).toBeVisible();
+  await expect(page.getByText(/반응도 기준: 조회 5만 이상/)).toBeVisible();
   await expect(page.getByText("조회 125만 · 구독자의 13.6배 · 좋아요 3.3%")).toBeVisible();
   await expect(page.getByText("반응 높음")).toHaveCount(3);
   await expect(page.getByText("틱톡 · 직접 넣음")).toBeVisible();

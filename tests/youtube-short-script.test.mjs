@@ -79,13 +79,16 @@ test("three 주제 후보, one line each, on a formula drawn now or kept in the 
 });
 
 // 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): 조회 10만+, 구독자 수보다 많이, 좋아요 2%+.
-test("a reference passes the 반응도 기준 only over all three; a known low count is below, a hidden one unknown", () => {
+test("a reference passes the 반응도 기준 only over all it shows; a known low count is below, too little shown is unknown", () => {
   assert.equal(refReaction({ views: 1_250_000, followers: 92_000, likes: 41_000 }), "pass");
-  assert.equal(refReaction({ views: 90_000, followers: 10_000, likes: 5_000 }), "below");
+  // 2026-10-28 sample of Korean 이직 · 퇴사 Shorts: 「퇴사 시그널」 154만 · 1.0% · 5.6배 passes, 「신박한 연봉협상」 0.4% does not.
+  assert.equal(refReaction({ views: 1_538_769, followers: 274_000, likes: 15_400 }), "pass");
+  assert.equal(refReaction({ views: 845_371, followers: 76_000, likes: 3_400 }), "below");
+  assert.equal(refReaction({ views: 30_000, followers: 1_000, likes: 3_000 }), "below");
   assert.equal(refReaction({ views: 500_000, followers: 900_000, likes: 20_000 }), "below");
-  assert.equal(refReaction({ views: 500_000, followers: 100_000, likes: 5_000 }), "below");
-  // No follower count (TikTok, a hidden YouTube count): views and likes decide.
+  // No follower count (TikTok, a hidden YouTube count): views and likes decide; hidden likes: views and followers decide.
   assert.equal(refReaction({ views: 500_000, followers: null, likes: 20_000 }), "pass");
+  assert.equal(refReaction({ views: 4_122_579, followers: 97_000, likes: null }), "pass");
   assert.equal(refReaction({ views: 500_000, followers: null, likes: null }), "unknown");
   assert.equal(refReaction({ views: null, followers: null, likes: null }), "unknown");
   assert.equal(refReaction({ views: 32_000, followers: null, likes: null }), "below");
