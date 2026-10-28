@@ -123,7 +123,7 @@ export function AgentKeyManager({ accessToken, demo, isAdmin, members, defaultOw
       };
       const stamp = new Date().toISOString();
       const created = await call(1, "create_document", {
-        title: "[E2E] AI 접근 키 연결 검증",
+        title: "[E2E] 연결 키 확인",
         content_md: `# MCP 연결 검증\n\n생성 단계 ${stamp}`,
         folder: "AI 저장/연결 검증",
         tags: ["mcp-e2e"],

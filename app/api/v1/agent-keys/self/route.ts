@@ -14,7 +14,7 @@ const inputSchema = z.object({ tool: z.enum(["claude", "codex", "render"]) }).st
  * [내 AI 연결]: a signed-in member issues a key for their own AI, without an admin. It is always theirs, 초안 쓰기 (no canonical
  * writes) and 90 days; pressing again for the same AI revokes the previous one, so a lost key is replaced, not piled up.
  * The answer is a connector address with the key inside, shown once, so no terminal or config file is needed.
- * Admins still issue other access levels and keys for other people in 설정 › 권한·접근 키.
+ * Admins still issue other access levels and keys for other people in 설정 › 권한·연결 키.
  */
 export async function POST(request: Request) {
   try {

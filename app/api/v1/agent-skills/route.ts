@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     const offset = Math.max(Number(url.searchParams.get("offset") ?? 0), 0);
     const q = (url.searchParams.get("q") ?? "").replace(/[^\p{L}\p{N} _-]/gu, " ").trim().slice(0, 200);
     let query = service.from("os_records").select("*", { count: "exact" }).eq("record_type", "skill").is("archived_at", null);
-    if (actor.type !== "agent") throw new ApiError(403, "AGENT_REQUIRED", "AI 접근 키로 요청해 주세요.");
+    if (actor.type !== "agent") throw new ApiError(403, "AGENT_REQUIRED", "연결 키로 요청해 주세요.");
     if (scope === "company") query = query.eq("metadata->>scope", "company").eq("status", "ready")
       .or(`metadata->>space.is.null,metadata->>space.neq.personal,owner_id.eq.${actor.ownerId}`);
     else if (scope === "personal") query = query.eq("owner_id", actor.ownerId);

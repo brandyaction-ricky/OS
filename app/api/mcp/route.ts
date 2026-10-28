@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     // ponytail: the key then sits in request logs; it is a 초안 쓰기, 90-day, self-revocable key. Move to OAuth if that matters.
     const urlKey = query.get("key");
     const authorization = request.headers.get("authorization") ?? (urlKey ? `Bearer ${urlKey}` : "");
-    if (!authorization.startsWith("Bearer bos_pat_")) return jsonRpcError(body.id, -32001, "유효한 AI 접근 키가 필요합니다.", 401);
+    if (!authorization.startsWith("Bearer bos_pat_")) return jsonRpcError(body.id, -32001, "유효한 연결 키가 필요합니다.", 401);
     const params = z.object({ name: z.string().min(1), arguments: z.unknown().optional() }).parse(body.params);
     const fetchApi = async (path: string, init: RequestInit = {}) => {
       const response = await fetch(new URL(path, request.url), {

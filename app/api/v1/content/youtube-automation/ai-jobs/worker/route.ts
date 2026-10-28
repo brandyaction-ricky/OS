@@ -16,7 +16,7 @@ const headers = { "cache-control": "no-store" };
 async function staffAi(request: Request) {
   if (!canUseYoutubeStaffScript(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다.");
   const actor = await authenticateRequest(request, { allowAgent: true, requiredAgentScope: "records.write" });
-  if (actor.type !== "agent") throw new ApiError(403, "STAFF_AI_KEY_REQUIRED", "직원 AI 접근 키로 연결해 주세요.");
+  if (actor.type !== "agent") throw new ApiError(403, "STAFF_AI_KEY_REQUIRED", "직원 연결 키로 연결해 주세요.");
   requireAgentScope(actor, "knowledge.read");
   return actor;
 }
