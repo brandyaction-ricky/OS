@@ -101,15 +101,33 @@ export interface YpShortRefItem {
 export const SHORT_REF_BAR = { views: 100_000, ratio: 1, likeRate: 0.02 } as const;
 export const SHORT_REF_BAR_TEXT = "조회 10만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 2% 이상";
 export interface RefCounts { views: number | null; followers: number | null; likes: number | null }
+/** What the render PC read off the page first, then the YouTube search's or the PD's own numbers. */
 export const refCounts = (item: Pick<YpShortRefItem, "views" | "followers" | "likes" | "result">): RefCounts => ({
-  views: item.views ?? item.result?.views ?? null, followers: item.followers ?? item.result?.followers ?? null, likes: item.likes ?? item.result?.likes ?? null });
-/** "pass" over all three, "below" when a known count is under the bar, "unknown" when a count is missing. */
+  views: item.result?.views ?? item.views ?? null, followers: item.result?.followers ?? item.followers ?? null, likes: item.result?.likes ?? item.likes ?? null });
+/**
+ * "below" when a known count is under the bar, "pass" when views and likes are over it, "unknown" when one of them is missing. The
+ * followers check counts only where a platform shows followers (TikTok's page and a hidden YouTube count do not): it is a proxy for
+ * "spread beyond the channel", the views and likes are the reaction itself.
+ */
 export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
   const { views, followers, likes } = counts;
   const checks = [views === null ? null : views >= SHORT_REF_BAR.views,
     views === null || !followers ? null : views / followers >= SHORT_REF_BAR.ratio,
     views === null || !views || likes === null ? null : likes / views >= SHORT_REF_BAR.likeRate];
-  return checks.includes(false) ? "below" : checks.includes(null) ? "unknown" : "pass";
+  return checks.includes(false) ? "below" : views === null || likes === null ? "unknown" : "pass";
+}
+/** A count as a page shows it — 「12.5만」, 「3,400」, 「1.2M」 — as a number; "" or anything else is null. */
+export function parseCount(text: string) {
+  const match = text.replace(/[,\s]/g, "").match(/^(\d+(?:\.\d+)?)(만|천|억|[kKmM])?$/);
+  if (!match) return null;
+  const unit = { 만: 1e4, 천: 1e3, 억: 1e8, k: 1e3, K: 1e3, m: 1e6, M: 1e6 }[match[2] ?? ""] ?? 1;
+  return Math.round(Number(match[1]) * unit);
+}
+/** Where a reference is from, for its card. */
+export function refPlatform(url: string) {
+  const host = (() => { try { return new URL(url).hostname; } catch { return ""; } })();
+  return /(^|\.)tiktok\.com$/.test(host) ? "틱톡" : /(^|\.)instagram\.com$/.test(host) ? "릴스" : /(^|\.)facebook\.com$/.test(host) ? "메타 광고"
+    : /(^|\.)(youtube\.com|youtu\.be)$/.test(host) ? "유튜브" : "링크";
 }
 /** 「조회 125만 · 구독자의 8.2배 · 좋아요 3.1%」 — what is known of the three. */
 export function refCountsLine(counts: RefCounts) {

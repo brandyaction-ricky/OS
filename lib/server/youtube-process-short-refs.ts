@@ -18,9 +18,10 @@ import { readStages } from "./youtube-process-stages";
 type Service = ReturnType<typeof createServiceSupabase>;
 export const SHORT_REFS_KIND = "short_refs_v1";
 const BUCKET = "os-content-media";
-const MARKET_TAKE = 6;
-const MAX_REFS = 10;
-const LEASE_MS = 15 * 60_000;
+// Owner 2026-10-28: "기준이 충족된 레퍼런스가 최대한 많을수록 좋아" — up to 12 Shorts over the bar beside the PD's links.
+const MARKET_TAKE = 12;
+const MAX_REFS = 20;
+const LEASE_MS = 30 * 60_000;
 const imagePath = (projectId: string, jobId: string, index: number, kind: "thumb" | "sheet") => `youtube/${projectId}/refs/${jobId}/${index}-${kind}.jpg`;
 
 interface RefsJob {
@@ -42,10 +43,14 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   if (!shortResearchOpen(project)) throw new ApiError(409, "STAGE_LOCKED", "숏폼의 주제 · 대본 단계에서 참고 영상을 찾을 수 있어요.");
   const script = (await readStages(actor.supabase, project)).shortScript.data;
   const query = script.query.trim() || projectName(project);
-  // 반응도 기준 (owner 2026-10-28): only the Shorts over the bar, the most watched for their channel's size first.
-  const market = packagingPick(await packagingReferences(query, true), true)
-    .filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass").slice(0, MARKET_TAKE);
-  const own = script.refs.filter(ref => refHostOk(ref.url)).map(ref => ({ url: ref.url, title: ref.title, channel: "", views: null, ratio: null, source: "pd" as const }));
+  // 반응도 기준 (owner 2026-10-28): only the Shorts over the bar, the most watched for their channel's size first. Two searches (the most
+  // relevant and the most watched, ~204 quota units) find more of them than one.
+  const found = (await Promise.all([packagingReferences(query, true), packagingReferences(query, true, "viewCount")])).flat()
+    .filter((ref, index, list) => list.findIndex(other => other.id === ref.id) === index);
+  const market = packagingPick(found, true).filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass")
+    .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0) || b.views - a.views).slice(0, MARKET_TAKE);
+  const own = script.refs.filter(ref => refHostOk(ref.url)).map(ref => ({ url: ref.url, title: ref.title, channel: "", views: ref.views ?? null, ratio: null,
+    followers: ref.followers ?? null, likes: ref.likes ?? null, source: "pd" as const }));
   const items = [...own, ...market.map(ref => ({ url: ref.url, title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, followers: ref.subscribers, likes: ref.likes ?? null, source: "market" as const }))]
     .filter((item, index, list) => list.findIndex(other => other.url === item.url) === index).slice(0, MAX_REFS).map(item => ({ ...item, result: null }));
   if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘은 영상이 없어요. 검색어를 넓히거나 링크를 직접 넣어 주세요.`);

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/project";
-import { checkShortScript, headCopyProblem, refCounts, refCountsLine, refHostOk, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
+import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -91,6 +91,37 @@ function useShortRefs(page: YpPage) {
     try { setRefs(await client.fetchShortRefs(projectId)); } catch (reason) { fail(reason); } finally { setFetching(false); }
   };
   return { refs, working: busy || fetching, fetch, done: refs?.status === "done" ? refs : null };
+}
+
+/**
+ * 릴스 · 틱톡 (owner 2026-10-28: "기준이 충족된 레퍼런스가 최대한 많을수록 … 틱톡, 인스타릴스도"): neither has a search the OS or the
+ * render PC may use, so Aside searches them in the PD's own browser and enters the ones over the 반응도 기준 with their counts. The render
+ * PC then fetches each TikTok like a Short; a Reel it cannot open without a login keeps the counts and the words Aside wrote.
+ */
+export function asideSocialInstruction(input: { topic: string; query: string; links: string[]; audience: string; count: number; page: string }) {
+  const q = encodeURIComponent(input.query || input.topic);
+  return `[Aside 브라우저 조사 · 릴스 · 틱톡 참고 영상]
+먼저 OS 문서에서 「숏폼 대본 정본」을 찾아 §2-2 · §2-3을 읽고 따르세요. 열지 못하면 추정하지 말고 막힌 곳을 알려 주세요.
+초안 주제: ${input.topic}
+검색 키워드: ${input.query || input.topic}
+시청자: ${input.audience || "정본의 현재 타겟"}${input.links.length ? `\n이미 넣은 링크: ${input.links.join(" · ")}` : ""}
+
+반응도 기준(셋 다 넘은 것만 넣습니다): ${SHORT_REF_BAR_TEXT}. 팔로워 수가 안 보이면 조회와 좋아요만 봅니다.
+
+1. 틱톡: https://www.tiktok.com/search/video?q=${q} 를 엽니다. 검색 키워드와 비슷한 말 2~3개로도 찾습니다.
+2. 인스타그램 릴스: https://www.instagram.com/explore/search/keyword/?q=${q} 에서 릴스만 봅니다. 키워드 해시태그(https://www.instagram.com/explore/tags/키워드/)도 봅니다.
+3. 영상 페이지를 하나씩 열어 조회수(재생 수) · 좋아요 수 · 계정 팔로워 수(보이면)를 확인하고, 기준을 넘고 같은 시청자 고민을 다룬 것만 고릅니다. 최대 ${input.count}개입니다. 수를 채우려고 약한 영상을 넣지 않습니다. 0개도 정상입니다.
+4. 고른 영상마다 첫 화면의 큰 글자(헤드 카피)를 그대로, 그리고 첫 문장(말이나 자막)을 적어 둡니다.
+5. 아래 OS 화면의 「참고 영상」에서 [링크 넣기]를 눌러 영상마다 한 번씩 넣습니다.
+   - 영상 주소: 영상 하나의 주소(https://www.tiktok.com/@계정/video/숫자 또는 https://www.instagram.com/reel/코드/)
+   - 제목: 틱톡 · @계정 (릴스면 릴스 · @계정)
+   - 영상에서 한 말: 헤드 카피: … / 첫 문장: …
+   - 조회수 · 좋아요 · 팔로워: 화면의 숫자 그대로(12.5만처럼 적어도 됩니다). 안 보이는 칸은 비웁니다.
+   이미 있는 주소는 다시 넣지 않습니다.
+6. 좋아요 · 팔로우 · 댓글 · 저장 · 공유 · 메시지는 하지 않습니다. [다시 찾기] · [내 AI에게 맡기기] · [주제 확정] · [대본 확정]도 누르지 않습니다 — 사람이 합니다.
+7. 마지막에 넣은 영상 목록(플랫폼 · 계정 · 조회수 · 좋아요)과 기준에 못 미쳐 뺀 개수를 짧게 보고합니다.
+
+등록 화면: ${input.page}`;
 }
 
 /** A 숏폼's 대본 (숏폼 대본 정본, owner direction 2026-10-28): 첫 화면 · 대본 on the left, 참고 영상 on the right, then the PD's 대본 확정. */
@@ -200,7 +231,7 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   const shortRefs = useShortRefs(page);
   const can = shortResearchOpen(project);
   // References the AI may use: fetched, and not known to be under the 반응도 기준.
-  const found = Boolean(shortRefs.done?.items.some(item => item.result?.ok && refReaction(refCounts(item)) !== "below"));
+  const found = Boolean(shortRefs.done?.items.some(item => (item.result?.ok || item.source === "pd") && refReaction(refCounts(item)) !== "below"));
   // What 주제 확정 checks is the saved formula, not one still being typed.
   const formula = stage?.data.formula.trim() ?? "";
   useEffect(() => { onState({ refs: found, formula }); }, [found, formula, onState]);
@@ -268,19 +299,24 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
   const [open, setOpen] = useState("");
   const [adding, setAdding] = useState(false);
   const [link, setLink] = useState<YpShortRef>(blankRef);
-  const [copied, setCopied] = useState(false);
+  const [nums, setNums] = useState({ views: "", likes: "", followers: "" });
+  const [copied, setCopied] = useState("");
   const project = page.bundle!.project;
   const add = () => {
     if (!refHostOk(link.url.trim())) { page.setError("유튜브 · 인스타그램 · 틱톡 · 메타 광고 라이브러리 주소를 넣어 주세요."); return; }
     if (form.refs.some(ref => ref.url === link.url.trim())) { page.setError("이미 넣은 영상이에요."); return; }
-    onEdit({ refs: [...form.refs, { url: link.url.trim(), title: link.title.trim(), script: link.script.trim() }] }, true);
-    setLink(blankRef); setAdding(false);
+    if (form.refs.length >= 12) { page.setError("직접 넣는 링크는 12개까지예요."); return; }
+    const counts = { views: parseCount(nums.views), likes: parseCount(nums.likes), followers: parseCount(nums.followers) };
+    onEdit({ refs: [...form.refs, { url: link.url.trim(), title: link.title.trim(), script: link.script.trim(), ...counts }] }, true);
+    setLink(blankRef); setNums({ views: "", likes: "", followers: "" }); setAdding(false);
   };
-  const copyAside = async () => {
+  // Aside in the PD's own browser: Meta ads, and Reels · TikTok (neither has a search the OS may use).
+  const copyAside = async (kind: "ad" | "social") => {
     try {
-      await navigator.clipboard.writeText(asideAdInstruction({ topic: projectName(project), query: form.query.trim(), links: form.refs.map(ref => ref.url), audience: project.yp.topic.target,
-        count: Math.max(1, 8 - form.refs.length), page: `${window.location.origin}/content/plan?project=${project.id}${project.yp.stage === "draft" ? "&view=draft" : ""}` }));
-      setCopied(true); window.setTimeout(() => setCopied(false), 4000);
+      const input = { topic: projectName(project), query: form.query.trim(), links: form.refs.map(ref => ref.url), audience: project.yp.topic.target,
+        count: Math.max(1, 12 - form.refs.length), page: `${window.location.origin}/content/plan?project=${project.id}${project.yp.stage === "draft" ? "&view=draft" : ""}` };
+      await navigator.clipboard.writeText(kind === "ad" ? asideAdInstruction(input) : asideSocialInstruction(input));
+      setCopied(kind); window.setTimeout(() => setCopied(""), 4000);
     } catch { page.setError("복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요."); }
   };
   const items = refs?.status === "done" ? refs.items : [];
@@ -288,22 +324,23 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
     {can ? <form className="yp-savebar" style={{ margin: 0 }} onSubmit={event => { event.preventDefault(); onFetch(); }}>
       <input className="yp-in" style={{ flex: 1, minWidth: 0 }} value={form.query} maxLength={60} placeholder={projectName(project)} onChange={event => onEdit({ query: event.target.value })} aria-label="참고 영상 검색어" />
       <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button></form> : null}
-    {working ? <p className="yp-hint" role="status">쇼츠를 가져오는 중이에요. 1~3분 걸려요.</p>
+    {working ? <p className="yp-hint" role="status">참고 영상을 가져오는 중이에요. 영상이 많으면 5~10분 걸려요.</p>
       : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : null}
     <p className="yp-hint" style={{ margin: "6px 0 0" }}>반응도 기준: {SHORT_REF_BAR_TEXT}</p>
     {items.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 }}>{items.map(item => {
       const shown = open === item.url;
       const counts = refCounts(item);
-      const reaction = item.result?.ok ? refReaction(counts) : null;
+      const reaction = refReaction(counts);
       // A Short's thumbnail is a vertical frame: shown 9:16 and large enough to read its copy, with the whole title under it.
       return <button key={item.url} type="button" aria-expanded={shown} onClick={() => setOpen(shown ? "" : item.url)}
           style={{ display: "grid", gap: 4, alignContent: "start", textAlign: "left", background: "none", border: shown ? "2px solid var(--accent)" : "1px solid var(--line)", borderRadius: 8, padding: 6, color: "inherit", cursor: "pointer", opacity: reaction === "below" ? 0.55 : 1 }}>
           {item.thumbUrl ? <img src={item.thumbUrl} alt="" style={{ width: "100%", aspectRatio: "9 / 16", objectFit: "cover", borderRadius: 6 }} />
             : <span style={{ width: "100%", aspectRatio: "9 / 16", borderRadius: 6, background: "var(--panel-2)" }} />}
+          <span className="yp-muted" style={{ fontSize: 12 }}>{refPlatform(item.url)}{item.source === "pd" ? " · 직접 넣음" : ""}</span>
           <span style={{ fontSize: 13, lineHeight: 1.4 }}>{item.title || item.url}</span>
           {refCountsLine(counts) ? <span className="yp-muted" style={{ fontSize: 12 }}>{refCountsLine(counts)}</span> : null}
           <span>{reaction === "pass" ? <span className="yp-tag yp-ok">반응 높음</span> : reaction === "below" ? <span className="yp-tag yp-warn">기준 아래 · AI에 안 넘김</span>
-            : reaction === "unknown" ? <span className="yp-tag">숫자 없음{item.source === "pd" ? " · 직접 넣음" : ""}</span> : <span className="yp-tag yp-bad">가져오지 못함</span>}</span>
+            : <span className="yp-tag">숫자 없음</span>}{item.result && !item.result.ok ? <span className="yp-muted" style={{ fontSize: 12 }}> · 화면 못 받음</span> : null}</span>
         </button>;
     })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>검색어로 쇼츠를 찾아요</p> : null}
     {/* The one opened: its first three seconds (the 헤드 카피) and its words, under the cards so the rows keep their places. */}
@@ -316,16 +353,23 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
           })}</div> : <span className="yp-muted">{item.result?.ok ? "대사가 없어요" : item.result?.error || "가져오지 못했어요"}</span>}
           <a className="yp-lnk" href={item.url} target="_blank" rel="noreferrer">영상 열기 →</a></div>)}
     {form.refs.length ? <><div className="yp-fld-h" style={{ marginTop: 12 }}><b>직접 넣은 링크</b></div>
-      <ul className="yp-open-list" style={{ marginTop: 4 }}>{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}><a href={ref.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ref.title || ref.url}</a>
+      <ul className="yp-open-list" style={{ marginTop: 4 }}>{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}><a href={ref.url} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{refPlatform(ref.url)} · {ref.title || ref.url}</a>
+        {refCountsLine({ views: ref.views ?? null, followers: ref.followers ?? null, likes: ref.likes ?? null }) ? <span className="yp-muted" style={{ fontSize: 12, flex: "none" }}>{refCountsLine({ views: ref.views ?? null, followers: ref.followers ?? null, likes: ref.likes ?? null })}</span> : null}
         {can ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => onEdit({ refs: form.refs.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul></> : null}
     {can ? adding ? <form style={{ display: "grid", gap: 6, marginTop: 10 }} onSubmit={event => { event.preventDefault(); add(); }}>
       <input className="yp-in" placeholder="영상 주소" aria-label="링크 주소" value={link.url} autoFocus onChange={event => setLink({ ...link, url: event.target.value })} />
       <input className="yp-in" placeholder="제목 (선택)" aria-label="링크 제목" maxLength={200} value={link.title} onChange={event => setLink({ ...link, title: event.target.value })} />
-      <textarea className="yp-in" rows={2} maxLength={5000} placeholder="영상에서 한 말 (선택)" aria-label="영상에서 한 말" value={link.script} onChange={event => setLink({ ...link, script: event.target.value })} />
+      <textarea className="yp-in" rows={2} maxLength={5000} placeholder="영상에서 한 말 (선택) — 헤드 카피 · 첫 문장" aria-label="영상에서 한 말" value={link.script} onChange={event => setLink({ ...link, script: event.target.value })} />
+      {/* A Reel the 영상 만드는 컴퓨터 cannot open is judged by the numbers on its page. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+        {([["views", "조회수"], ["likes", "좋아요"], ["followers", "팔로워"]] as const).map(([key, label]) => <input key={key} className="yp-in" inputMode="decimal" placeholder={`${label} (선택)`} aria-label={label}
+          value={nums[key]} onChange={event => setNums({ ...nums, [key]: event.target.value })} />)}</div>
+      <span className="yp-hint" style={{ margin: 0 }}>숫자는 화면 그대로 적어도 돼요(예: 12.5만). 영상 만드는 컴퓨터가 읽은 숫자가 있으면 그걸 써요.</span>
       <div className="yp-row-btns"><button type="submit" className="yp-btn yp-sm yp-pri">넣기</button><button type="button" className="yp-btn yp-sm" onClick={() => { setAdding(false); setLink(blankRef); }}>취소</button></div></form>
       : <div className="yp-row-btns" style={{ marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={14} /> 링크 넣기</button>
-        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside()}><Copy size={14} /> {copied ? "복사했어요 · Aside에 붙여 넣기" : "메타 광고 찾기 (Aside)"}</button></div> : null}
+        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside("social")}><Copy size={14} /> {copied === "social" ? "복사했어요 · Aside에 붙여 넣기" : "릴스 · 틱톡 찾기 (Aside)"}</button>
+        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside("ad")}><Copy size={14} /> {copied === "ad" ? "복사했어요 · Aside에 붙여 넣기" : "메타 광고 찾기 (Aside)"}</button></div> : null}
   </>;
 }
 

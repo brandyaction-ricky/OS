@@ -258,7 +258,11 @@ function exampleRefs(id: string, query: string): YpShortRefFetch {
     result: { ok: true, durationSeconds: 30, transcript: "", thumb: false, sheet: false, error: "", views: 32_000, likes: 400, followers: null }, thumbUrl: null, sheetUrl: null };
   return { id: `demo-refs-${id}`, status: "done", query, requestedAt: now, doneAt: now, error: null, items: [
     example(1, "[예시] 연봉 7천인데 그만두고 싶어요", 1_250_000, 92_000, 41_000, "0.0 [예시] 연봉 7천인데 그만두고 싶다는 사연이 왔어요\n2.6 조건은 좋은데 매일 지옥 같대요"),
-    example(2, "[예시] 퇴근하면 아무것도 못 하는 이유", 640_000, 120_000, 19_000, "0.0 [예시] 퇴근하고 소파에 누우면 끝이죠\n2.1 체력 문제가 아니에요"), below] };
+    example(2, "[예시] 퇴근하면 아무것도 못 하는 이유", 640_000, 120_000, 19_000, "0.0 [예시] 퇴근하고 소파에 누우면 끝이죠\n2.1 체력 문제가 아니에요"),
+    // A TikTok shows no follower count: views and likes decide.
+    { url: "https://www.tiktok.com/@demo/video/1", title: "[예시] 틱톡 · @demo", channel: "", views: null, ratio: null, source: "pd" as const,
+      result: { ok: true, durationSeconds: 28, transcript: "0.0 [예시] 약속 잡아 놓고 취소하고 싶은 사람?", thumb: false, sheet: false, error: "", views: 480_000, likes: 31_000, followers: null }, thumbUrl: null, sheetUrl: null },
+    below] };
 }
 const demoRefs = new Map<string, YpShortRefFetch>([["demo-p12", exampleRefs("demo-p12", "주말 약속 피곤함")]]);
 const demoError = (status: number, code: string, message: string) => new ApiRequestError(message, code, status);

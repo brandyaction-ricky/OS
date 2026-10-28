@@ -56,11 +56,11 @@ export async function referenceTitle(videoId: string) {
 }
 
 /** 패키징 레퍼런스 for the 기획안 · 최종 썸네일 jobs: the 기획실's one search (about 102 units), ranked by rankPackagingRefs. */
-/** short: 숏폼 참고 영상 — YouTube's own under-4-minute filter, so more of the 50 results are Shorts. */
-export async function packagingReferences(query: string, short = false): Promise<PackagingRef[]> {
+/** short: 숏폼 참고 영상 — YouTube's own under-4-minute filter, so more of the 50 results are Shorts; order "viewCount" for the most watched. */
+export async function packagingReferences(query: string, short = false, order: "relevance" | "viewCount" = "relevance"): Promise<PackagingRef[]> {
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw new ApiError(503, "YOUTUBE_NOT_CONFIGURED", "YouTube Data API 키가 아직 연결되지 않았습니다.");
-  const found = await youtube<{ items?: { id?: { videoId?: string } }[] }>("search", { part: "snippet", q: query, type: "video", maxResults: "50", order: "relevance", relevanceLanguage: "ko", regionCode: "KR", safeSearch: "none", ...(short ? { videoDuration: "short" } : {}) }, key);
+  const found = await youtube<{ items?: { id?: { videoId?: string } }[] }>("search", { part: "snippet", q: query, type: "video", maxResults: "50", order, relevanceLanguage: "ko", regionCode: "KR", safeSearch: "none", ...(short ? { videoDuration: "short" } : {}) }, key);
   const ids = (found.items ?? []).map(item => item.id?.videoId).filter((id): id is string => Boolean(id));
   if (!ids.length) return [];
   const videos = (await youtube<{ items?: Video[] }>("videos", { part: VIDEO_PARTS, id: ids.join(",") }, key)).items ?? [];

@@ -105,7 +105,8 @@ export interface YpColumn { items: YpColumnItem[] }
 export interface YpShortTopic { id: string; insight: string; scene: string; paragraph: string; why: string; made?: { projectId: string; at: string; by: string } }
 export interface YpShortTopics { items: YpShortTopic[]; ai?: { by: string; model: string; at: string; jobId: string } }
 /** A 레퍼런스 the PD added by hand; script = what is said in it, pasted (the AI reads titles only otherwise). */
-export interface YpShortRef { url: string; title: string; script: string }
+/** Counts the PD (or Aside) read off the page, for a link the render PC cannot open (Reels without a login): 반응도 기준 from them. */
+export interface YpShortRef { url: string; title: string; script: string; views?: number | null; likes?: number | null; followers?: number | null }
 /**
  * One formula for the company 공식 창고 (§2-3 · §2-4): blanks only, no words of the reference. head = the first screen's 헤드 카피
  * (owner 2026-10-28: the most important), cover = the thumbnail copy, hook = the first spoken sentence, flow = the beats.

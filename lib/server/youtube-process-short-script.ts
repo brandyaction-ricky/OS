@@ -62,7 +62,7 @@ const formulaSchema = z.object({ name: z.string().trim().min(1).max(40), head: z
 const FORMULA_SHAPE = `{ "name": "공식 이름(창고에서 찾을 이름)", "head": "첫 화면 헤드 카피 공식 — 빈칸만, 예: [숫자]인데 [반전]", "cover": "썸네일 카피 공식", "hook": "첫 문장 공식 — 빈칸만, 예: [누가] [언제] [무엇을] 했는데, [뜻밖의 결과]", "flow": "흐름 공식 — 박자 순서와 하는 일 · 길이 비율", "why": "멈춘 이유 한 줄", "refs": ["레퍼런스 주소"] }`;
 
 // ── 레퍼런스 (§2-2): what both cards read — the render PC's fetched references (else the market titles), the PD's links, the 공식 창고 ──
-const READ_REFERENCES = `fetched는 렌더 PC가 받아 둔 레퍼런스이고, 반응도 기준(${SHORT_REF_BAR_TEXT})을 넘은 것과 숫자를 볼 수 없는 것(PD가 넣은 릴스 · 메타 광고, reaction="unknown")만 들어 있습니다. counts는 그 숫자입니다. unknown인 메타 광고는 게재 기간 · 버전 수(제목)를 보고 판단합니다. thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.`;
+const READ_REFERENCES = `fetched는 렌더 PC가 받아 둔 레퍼런스이고, 반응도 기준(${SHORT_REF_BAR_TEXT})을 넘은 것과 숫자를 볼 수 없는 것(PD가 넣은 릴스 · 메타 광고, reaction="unknown")만 들어 있습니다. counts는 그 숫자입니다. 유튜브 쇼츠 · 틱톡 · 릴스 · 메타 광고가 섞여 있을 수 있고, 플랫폼이 달라도 같은 기준으로 고른 것입니다. unknown인 메타 광고는 게재 기간 · 버전 수(제목)를 보고 판단합니다. references(PD · Aside가 넣은 링크)의 script에는 화면을 못 받은 릴스의 헤드 카피 · 첫 문장이 적혀 있을 수 있습니다. thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.`;
 const DRAW_FORMULAS = "새 공식은 formulas에 적습니다 — 헤드 카피 공식(head) · 썸네일 카피 공식(cover) · 첫 문장 공식(hook) · 흐름 공식(flow) · 멈춘 이유. 원본의 단어 · 고유명사 · 숫자를 남기지 않고 빈칸으로 씁니다. 대사를 못 봤다면 흐름 공식에 그렇다고 밝힙니다. warehouse(회사 공식 창고, 많이 쓴 순)에 같은 공식이 있으면 새로 적지 않고 그 이름을 씁니다.";
 async function referenceInputs(service: Service, projectId: string, draft: YpShortScript, market?: PackagingMarket) {
   const warehouse = (await readShortFormulas(service)).sort((a, b) => b.uses - a.uses).slice(0, 30).map(({ name, head, cover, hook, flow, why, uses }) => ({ name, head, cover, hook, flow, why, uses }));
@@ -313,7 +313,8 @@ export async function saveShortScript(service: Service, ownerId: string, state: 
 
 // ── The PD's edits on the 주제 (참고 영상 · 공식) and 대본 steps ──
 export const shortScriptPatchSchema = z.object({
-  query: z.string().max(60), refs: z.array(z.object({ url: z.string().url().max(300), title: z.string().max(200), script: z.string().max(5000) }).strict()).max(8),
+  query: z.string().max(60), refs: z.array(z.object({ url: z.string().url().max(300), title: z.string().max(200), script: z.string().max(5000),
+    views: z.number().int().min(0).nullable().optional(), likes: z.number().int().min(0).nullable().optional(), followers: z.number().int().min(0).nullable().optional() }).strict()).max(12),
   text: z.string().max(3000), insight: z.string().max(120), formula: z.string().max(40), headCopy: z.string().max(40),
   hooks: z.array(z.object({ kind: z.enum(["반전형", "직격형"]), text: z.string().max(60) }).strict()).max(2), aiDraft: z.null(),
 }).partial().strict();
