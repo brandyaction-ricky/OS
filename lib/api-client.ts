@@ -522,6 +522,8 @@ export async function createContentMediaUpload(token: string | null, input: { so
   });
 }
 
+// Storage refuses a file over the project's upload limit with 413 (2026-10-28: a 최종본 v3 over 50MB failed with storage's English text at the page top).
+const TOO_LARGE = "파일이 저장소가 받는 크기보다 커요. 대표나 관리자에게 「저장소 업로드 한도」를 올려 달라고 해 주세요.";
 export async function uploadContentMedia(path: string, signedToken: string, file: File, contentType = file.type || "video/mp4", onProgress?: (percent: number) => void) {
   const { getBrowserSupabase } = await import("@/lib/supabase/client");
   const client = getBrowserSupabase();
@@ -542,7 +544,7 @@ export async function uploadContentMedia(path: string, signedToken: string, file
         removeFingerprintOnSuccess: true,
         headers: { "x-signature": signedToken },
         metadata: { bucketName: "os-content-media", objectName: path, contentType, cacheControl: "3600" },
-        onError: reject,
+        onError: (error) => reject((error as { originalResponse?: { getStatus(): number } | null }).originalResponse?.getStatus() === 413 ? new Error(TOO_LARGE) : error),
         onProgress: (uploaded, total) => onProgress?.(total ? Math.round(uploaded / total * 100) : 0),
         onSuccess: () => resolve(),
       });
@@ -554,7 +556,7 @@ export async function uploadContentMedia(path: string, signedToken: string, file
     contentType,
     cacheControl: "3600",
   });
-  if (error) throw new Error(error.message || "영상 원본을 저장하지 못했습니다.");
+  if (error) throw new Error(/exceeded the maximum allowed size|payload too large/i.test(error.message) ? TOO_LARGE : error.message || "영상 원본을 저장하지 못했습니다.");
   onProgress?.(100);
   return { path };
 }
