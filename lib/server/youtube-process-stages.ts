@@ -16,8 +16,9 @@ import { GateError } from "@/lib/youtube-process/confirm";
 import type { RequestActor } from "./auth";
 import { assertSpokenScript } from "./youtube-script-canon";
 import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } from "./myin-articles";
-import { fixConfirmedScript, nextShortScript, readShortFormulas, shortScriptPatchSchema } from "./youtube-process-short-script";
-import { doneShortRefs } from "./youtube-process-short-refs";
+// The 숏폼 대본 modules import this one (and, through the YouTube search, the 틈새 board's ypUuid at load time), so they are loaded on use.
+const shortScriptModule = () => import("./youtube-process-short-script");
+const shortRefsModule = () => import("./youtube-process-short-refs");
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -82,7 +83,7 @@ export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
   const { plan, outline, make, upload, column, shortTopics, shortScript } = await readStages(actor.supabase, project);
   return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
-    ...(project.yp.topic.type === "short" ? { formulas: await readShortFormulas(createServiceSupabase()) } : {}) };
+    ...(project.yp.topic.type === "short" ? { formulas: await (await shortScriptModule()).readShortFormulas(createServiceSupabase()) } : {}) };
 }
 
 // ── Saving a step ──
@@ -268,6 +269,7 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     assertColumnOpen(project);
     data = nextColumn(stages.column.data, patch, project.id);
   } else if (kind === "shortScript") {
+    const { nextShortScript, shortScriptPatchSchema } = await shortScriptModule();
     data = nextShortScript(project, stages.shortScript.data, shortScriptPatchSchema.parse(input.patch));
   } else if (kind === "shortTopics") {
     throw locked("숏폼 주제 후보는 내 AI가 쓰고, [숏폼으로 만들기]로만 바뀌어요.");
@@ -376,7 +378,7 @@ export async function moveYoutubeStage(actor: RequestActor, id: string, input: z
 /** Why a 기획안 or 최종 검수 confirm cannot be requested yet, or "". */
 async function gateMissing(actor: RequestActor, project: YpProject, gate: YpGate) {
   const stages = await readStages(actor.supabase, project);
-  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data);
+  if (gate === "draft") return project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data, await (await shortRefsModule()).doneShortRefs(createServiceSupabase(), project.id, 60)) : draftMissing(stages.plan.data);
   if (gate === "review") return (await readFinals(actor.supabase, project.id, stages.make.data, project.yp.topic.type)).length ? "" : "최종본을 올려 주세요";
   return "";
 }
@@ -389,7 +391,7 @@ async function adoptedClips(supabase: Supabase, projectId: string) {
 export async function requestYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof gateActionSchema>) {
   const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
   // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
-  if (gate === "draft" && input.action === "confirm") await (result.project.yp.topic.type === "short" ? fixConfirmedScript : fixConfirmedPlan)(actor, result.project);
+  if (gate === "draft" && input.action === "confirm") await (result.project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, result.project);
   return result;
 }
 async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
@@ -402,7 +404,7 @@ async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
 /** The approver's decision; an OK on the 기획안 also fixes the A · B · (C) pairs later steps compare with (4-4). */
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
-  if (gate === "draft" && input.action === "ok") await (project.yp.topic.type === "short" ? fixConfirmedScript : fixConfirmedPlan)(actor, project);
+  if (gate === "draft" && input.action === "ok") await (project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, project);
   return project;
 }
 

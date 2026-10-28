@@ -31,15 +31,16 @@ const docLines = (docs: { id: string; title: string }[], titles: string[]) => ti
 }).join("\n");
 
 // ── 공식 창고 (§2-4): one shared record; the newest formulas first, each with how often a 대본 used it ──
-const FORMULAS_ID = ypUuid("yp-short-formulas");
+// A function, not a constant: this module and youtube-process-stages import each other, so ypUuid may not exist yet at load time.
+const formulasId = () => ypUuid("yp-short-formulas");
 const FORMULAS_MAX = 300;
 export async function readShortFormulas(service: Service): Promise<YpStoredFormula[]> {
-  const { data, error } = await service.from("os_records").select("metadata").eq("id", FORMULAS_ID).maybeSingle();
+  const { data, error } = await service.from("os_records").select("metadata").eq("id", formulasId()).maybeSingle();
   if (error) throw readFailed();
   return (data?.metadata?.formulas ?? []) as YpStoredFormula[];
 }
 async function keepFormulas(service: Service, actor: { ownerId: string; team: string; name: string }, fresh: YpShortFormula[], used: string) {
-  const { data } = await service.from("os_records").select("id,version,metadata").eq("id", FORMULAS_ID).maybeSingle();
+  const { data } = await service.from("os_records").select("id,version,metadata").eq("id", formulasId()).maybeSingle();
   const now = new Date().toISOString();
   const list = new Map(((data?.metadata?.formulas ?? []) as YpStoredFormula[]).map(item => [item.name, item]));
   for (const item of fresh) list.set(item.name, { ...item, at: now, by: actor.name, uses: list.get(item.name)?.uses ?? 0 });
@@ -48,8 +49,8 @@ async function keepFormulas(service: Service, actor: { ownerId: string; team: st
   const formulas = [...list.values()].sort((a, b) => b.at.localeCompare(a.at)).slice(0, FORMULAS_MAX);
   // ponytail: last write wins — two 대본 saved in the same second can drop one's new formulas; they come back on its next run.
   const { error } = data
-    ? await service.from("os_records").update({ metadata: { ...data.metadata, formulas }, updated_by: actor.ownerId }).eq("id", FORMULAS_ID)
-    : await service.from("os_records").insert({ id: FORMULAS_ID, record_type: "content_package", title: "숏폼 공식 창고", description: "", status: "active", priority: "normal",
+    ? await service.from("os_records").update({ metadata: { ...data.metadata, formulas }, updated_by: actor.ownerId }).eq("id", formulasId())
+    : await service.from("os_records").insert({ id: formulasId(), record_type: "content_package", title: "숏폼 공식 창고", description: "", status: "active", priority: "normal",
       brand: "브랜디액션", team: actor.team || "콘텐츠", owner_id: actor.ownerId, created_by: actor.ownerId, updated_by: actor.ownerId, tags: ["숏폼", "공식창고"],
       metadata: { packageKind: "yp_short_formulas", formulas } });
   if (error) console.error(JSON.stringify({ event: "short_formulas_save_failed", code: error.code }));
