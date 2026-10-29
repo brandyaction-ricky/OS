@@ -14,7 +14,7 @@ import { assToSrt } from "@/lib/subtitle-files";
 interface Storyboard { scenes: number; model: string; at: string; metaphors: { scene: number; type: string; at: string }[]; cta: { after: string; line: string }[];
   summary: { title: string; points: string[] } | null; reasons: { metaphors: string; cta: string; summary: string };
   assets: { kind: string; file: string; url: string; source: string; license: string; use: string }[]; fuzzy: string[]; notes: string[] }
-interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; lastErrorCode: string | null;
+interface MyinRun { id: string; status: string; stage: string; layout?: "short" | null; paragraphs: number; paragraphsReady: number; voiceOnPc?: boolean; lastErrorCode: string | null;
   words: { words: number; subtitleLines: number; durationSeconds: number } | null; storyboard: Storyboard | null;
   review: { decision: "confirmed" | "revise"; name: string; note: string; at: string } | null;
   assetDecisions: Record<string, { decision: "approved" | "excluded" }>; ctaReady: string | null;
@@ -37,7 +37,8 @@ const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5
 const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
-const typicalMinutes = (run: MyinRun) => run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
+const typicalMinutes = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? (run.layout === "short" ? 8 : 10 + Math.ceil(run.paragraphs / 4))
+  : run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
   : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means, so a staff member knows whether pressing again can help (2026-10-26: three presses hit the same stop).
 const STOP: Record<string, string> = {
@@ -49,7 +50,9 @@ const STOP: Record<string, string> = {
 // confirmed (clipsReview empty) the preparation is the ③ draft one, after it the ④ one.
 // 내 컴퓨터로 시안 (2026-10-27): the ③ drafts of a run sent to a member's own Mac name that computer instead of the render PC.
 const maker = (run: MyinRun) => run.local && !run.clipsReview ? `${run.local.name}님 컴퓨터` : "영상 만드는 컴퓨터";
-const phaseLabel = (run: MyinRun) => run.stage === "prep_pending" ? run.clipsReview ? "영상 만드는 컴퓨터가 자료 준비 · 다시 점검 중" : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
+// 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice too — about 13 seconds a paragraph before the transcription.
+const phaseLabel = (run: MyinRun) => run.voiceOnPc && run.stage === "words_pending" ? "영상 만드는 컴퓨터가 음성 · 받아쓰기 · 자막 만드는 중"
+  : run.stage === "prep_pending" ? run.clipsReview ? "영상 만드는 컴퓨터가 자료 준비 · 다시 점검 중" : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
   : run.stage === "clips_pending" ? `${maker(run)}가 미리보기 영상 만드는 중`
   : run.stage === "prep_ready" ? run.clipsReview ? "자료 준비 끝 · 사운드 확인 대기" : "미리보기 점검 끝" : PHASE[run.stage] ?? run.stage;
 
@@ -80,15 +83,17 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   /** 숏폼 (2026-10-28): drawn 9:16 by the render PC — no music, 구독 대사 or handouts, and its ④ goes straight on to the full video. */ short?: boolean }) {
   const cost = useCostConfirm(), { myinVoice } = useCostModels();
   // Fish drama-3 bills by the bytes it reads; ask before a new script is voiced, and before the storyboard's 구독 요청 lines are.
-  const askVoice = async (text: string, again: string) => {
+  const askVoice = async (text: string, again: string, takes = false) => {
     if (!text.trim()) return true;
     const estimate = voiceEstimate(text, myinVoice);
-    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${again}`, ok: "확인하고 만들기" });
+    // 영상 만드는 컴퓨터가 음성을 만들면 끊긴 문장을 한 번 더 만들어 고른다(로건 2026-10-29): 많게는 두 배.
+    return cost.confirm({ model: myinVoice, amount: estimate.krw, detail: `${estimate.chars.toLocaleString("ko-KR")}자 · ${takes ? "끊긴 문장은 한 번 더 만들어 많게는 2배 · " : ""}${again}`, ok: "확인하고 만들기" });
   };
   const { accessToken } = useSession();
   const [run, setRun] = useState<MyinRun | null>(null);
   const [job, setJob] = useState<StaffJobStatus | null>(null);
   const [available, setAvailable] = useState<boolean | null>(null);
+  const [voiceOnPc, setVoiceOnPc] = useState(false);
   const [busy, setBusy] = useState("");
   const [saving, setSaving] = useState("");
   const [error, setError] = useState("");
@@ -106,8 +111,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const load = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const next = (await apiRequest<{ run: MyinRun | null }>(`/api/v1/content/youtube-automation/myin?sourceId=${sourceId}`, { token: accessToken })).run;
-      setRun(next); setAvailable(true);
+      const loaded = await apiRequest<{ run: MyinRun | null; voiceOnPc?: boolean }>(`/api/v1/content/youtube-automation/myin?sourceId=${sourceId}`, { token: accessToken });
+      const next = loaded.run;
+      setRun(next); setAvailable(true); setVoiceOnPc(Boolean(loaded.voiceOnPc));
       // A final that appears while the screen is open tells the page (제작 counts it as a new version).
       if (next?.stage === "final_ready" && lastStage.current && lastStage.current !== "final_ready") onFinal?.();
       lastStage.current = next?.stage ?? null;
@@ -203,12 +209,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       <p>{short ? "확정한 대본을 대표 목소리로 읽고, 영상 만드는 컴퓨터가 받아쓰기와 자막을 만들어요." : "승인된 원고를 대표 목소리(drama-3)로 만들고, 영상 만드는 컴퓨터가 로건님 방식대로 다듬어 받아쓰기와 방송 자막을 만듭니다."}</p>
       {run?.scriptChanged ? <p className="yt-note yt-warn">{short ? "확정한 대본이 바뀌었어요. 아래 작업은 옛 대본으로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요." : "구성안 원고가 바뀌었어요. 아래 작업은 옛 원고로 만든 것이라 더 진행되지 않아요. 새로 만들면 기획표와 미리보기 확인도 다시 거쳐요."}</p> : null}
       {!run || (run.status === "blocked" && !run.words) || run.scriptChanged ? <div className="yt-actions">
-        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요")) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
+        <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => { if (run && !run.scriptChanged || await askVoice(voiceText ?? "", "같은 원고로 다시 누르면 들지 않아요", voiceOnPc)) await act("start", () => post("/myin", "POST", { sourceId })); })()}>{busy === "start" ? "시작하는 중…" : run?.scriptChanged ? short ? "바뀐 대본으로 음성 다시 만들기" : "바뀐 원고로 v13 음성 다시 만들기" : run ? short ? "음성 다시 시작" : "v13 음성 다시 시작" : short ? "음성 만들기" : "v13 음성 만들기"}</button>
         <small><CostTag kind="paid" /> 같은 {short ? "대본" : "원고"}으로 다시 누르면 만든 음성을 이어 써요.</small>
       </div> : null}
       {run ? <div className="yt-run">
         <div className="yt-run-head"><span className="status-pill" data-status={run.status === "blocked" && !run.words ? "failed" : run.words ? "approved" : "scheduled"}>{run.words ? "받아쓰기·자막 완료" : phase}</span>
-          <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small></div>
+          {run.voiceOnPc ? <small>음성 {run.paragraphs}문단 · 영상 만드는 컴퓨터가 문장마다 만들어 고름</small> : <small>음성 {run.paragraphsReady}/{run.paragraphs}문단</small>}</div>
         {run.stage === "voice_pending" ? <progress max={run.paragraphs} value={run.paragraphsReady} aria-label="음성 진행" /> : null}
         {run.words ? <small>낭독 {Math.floor(run.words.durationSeconds / 60)}분 {Math.round(run.words.durationSeconds % 60)}초 · 받아쓴 단어 {run.words.words.toLocaleString()}개 · 자막 {run.words.subtitleLines}줄</small> : null}
       </div> : null}

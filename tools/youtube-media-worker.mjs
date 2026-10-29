@@ -461,6 +461,21 @@ export async function myinRebuild(runId, seed) {
   console.log(`myin work folder rebuilt from the OS: ${runId}`);
 }
 
+/**
+ * 로건 사람 말투 음성 (2026-10-29, OS 문서 A안): a run started with the OS's 「맥미니가 음성 만들기」 brings no voice files, and his patched
+ * stage_voice asks Fish here sentence by sentence (two takes where the first breaks) with this PC's key (worker env FISH_API_KEY) and
+ * the voice the OS sends. It no longer reuses the OS's paragraph files either, so an older run is voiced again the same way. Its
+ * pause check needs torch · librosa · transformers, kept out of the render venv in MYIN_VOICE_PYTHON.
+ */
+export function myinVoiceEnv(job, base = process.env) {
+  const onPc = job.paragraphs.every((paragraph) => !paragraph.url);
+  const key = base.FISH_API_KEY?.trim() ?? "", voice = job.fishVoice?.referenceId?.trim() || base.FISH_VOICE_ID?.trim() || "";
+  if (onPc && (!key || !voice)) throw Object.assign(new Error("this render PC has no Fish key or voice to make the voice"), { code: "MYIN_VOICE_KEY_MISSING" });
+  // Without a key, his older stage_voice still only joins the OS files: placeholder keys pass its "keys present" check.
+  return { onPc, python: base.MYIN_VOICE_PYTHON || myinPython,
+    env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused" } };
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -474,7 +489,8 @@ export async function processMyinWords() {
     const voiceJob = "os_voice", videoJob = "os_myin"; // fixed names: the clone belongs to this one video
     const voiceDir = path.join(work, "voice", voiceJob);
     mkdirSync(voiceDir, { recursive: true });
-    for (const paragraph of job.paragraphs) {
+    const speaker = myinVoiceEnv(job);
+    for (const paragraph of speaker.onPc ? [] : job.paragraphs) {
       const n = String(paragraph.index).padStart(2, "0");
       const raw = path.join(voiceDir, `p${n}_raw.wav`), pcm = path.join(voiceDir, `p${n}.wav`);
       if (existsSync(pcm)) continue;
@@ -483,10 +499,9 @@ export async function processMyinWords() {
     }
     const script = path.join(voiceDir, "script.md");
     writeFileSync(script, job.scriptMarkdown);
-    // Dummy keys only pass his "keys present" check; every pNN.wav exists, so no Fish call is made.
-    const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: "unused", FISH_VOICE_ID: "unused" };
+    const { env } = speaker;
     current.step = "narration";
-    await runAsync(myinPython, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+    await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
