@@ -12,8 +12,14 @@ export async function readOpenAiCredit(now = new Date()) {
   for (let i = 0; i < 5; i++) {   // a cycle is at most 31 daily buckets: one page
     const url = new URL("https://api.openai.com/v1/organization/costs");
     url.search = new URLSearchParams({ start_time: String(Math.floor(start.getTime() / 1000)), bucket_width: "1d", limit: "31", ...(page ? { page } : {}) }).toString();
-    const response = await fetch(url, { headers: { authorization: `Bearer ${key}` }, cache: "no-store", signal: AbortSignal.timeout(20_000) });
-    if (!response.ok) throw new ApiError(502, "OPENAI_COSTS_FAILED", "OpenAI 사용 금액을 불러오지 못했어요. 관리자 키를 확인해 주세요.");
+    const response = await fetch(url, { headers: { authorization: `Bearer ${key}` }, cache: "no-store", signal: AbortSignal.timeout(20_000) })
+      .catch(() => { throw new ApiError(502, "OPENAI_COSTS_UNREACHABLE", "OpenAI에 연결하지 못했어요. 잠시 뒤 다시 열어 주세요."); });
+    if (!response.ok) {
+      // OpenAI's error code (e.g. invalid_api_key) says what to fix; its message is not shown, it can quote part of the key.
+      const code = await response.json().then((body: { error?: { code?: unknown; type?: unknown } }) => String(body.error?.code || body.error?.type || "").replace(/[^\w.-]/g, "").slice(0, 60), () => "");
+      console.error(`openai costs ${response.status} ${code}`);
+      throw new ApiError(502, "OPENAI_COSTS_FAILED", `OpenAI 사용 금액을 불러오지 못했어요(${[response.status, code].filter(Boolean).join(" · ")}). 관리자 키를 확인해 주세요.`);
+    }
     const body = await response.json() as { next_page?: string | null };
     spent += sumCosts(body);
     if (!body.next_page) break;
