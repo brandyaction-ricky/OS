@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/api-client";
 import { modelName } from "@/lib/cost";
 import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import type { YpScreenCheck } from "@/lib/youtube-process/stages";
+import { groupScreenIssues } from "@/lib/youtube-screen-check";
 import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 
 /** Scenes per 점검 시트 (Logan's preview(): 3 × 4). */
@@ -38,17 +39,22 @@ export function MyinScreenCheck({ runId, preparedAt, token, onScene }: { runId: 
     } catch (reason) { setError(reason instanceof Error ? reason.message : "화면 검사를 하지 못했어요."); } finally { setBusy(false); }
   };
   const scenes = current?.state === "done" ? current.scenes : [];
+  const groups = groupScreenIssues(scenes), count = new Set(scenes.map((item) => item.scene)).size;
   const pill = waiting ? <span className="status-pill" data-status="waiting">GPT가 보는 중 · 1~3분</span>
-    : current?.state === "done" ? <span className="status-pill" data-status={scenes.length ? "failed" : "approved"}>{scenes.length ? `확인할 장면 ${scenes.length}곳` : "✓ 문제 없음"}</span>
+    : current?.state === "done" ? <span className="status-pill" data-status={scenes.length ? "failed" : "approved"}>{count ? `확인할 장면 ${count}곳` : "✓ 문제 없음"}</span>
     : current?.state === "failed" ? <span className="status-pill" data-status="failed">⚠ 끝내지 못했어요</span>
     : <span className="status-pill" data-status="draft">아직 검사하지 않았어요</span>;
   const blocked = waiting ? "검사하는 중이에요" : current?.state === "done" ? "점검 시트가 그대로예요" : "";
   return <div className="yt-run" aria-label="화면 자동 검사">
     <div className="yt-run-head"><b>화면 자동 검사</b>{pill}{current?.state === "done" ? <small>{modelName(current.model)}</small> : null}</div>
     {current?.state === "failed" && !waiting ? <p className="yt-note">{current.error}</p> : null}
-    {scenes.length ? <ul className="yt-list">{scenes.map((item, index) => <li key={index}>
-      <button type="button" className="secondary-button compact" onClick={() => onScene(Math.ceil(item.scene / PER_SHEET))}>장면 #{item.scene}</button> <b>{item.kind}</b> · {item.issue}
-      {item.fix ? <div className="yt-note" style={{ margin: "2px 0 0" }}>→ {item.fix}</div> : null}</li>)}</ul> : null}
+    {/* Fewest scenes first: a one-off problem is easy to miss under one that repeats on every scene. */}
+    {groups.length ? <ul className="yt-list">{groups.map((group, index) => <li key={index}>
+      <b>{group.kind}</b> · {group.issue}{group.scenes.length > 1 ? ` (${group.scenes.length}곳)` : ""}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "4px 0 0" }}>{group.scenes.slice(0, 6).map((scene) =>
+        <button key={scene} type="button" className="secondary-button compact" onClick={() => onScene(Math.ceil(scene / PER_SHEET))}>장면 #{scene}</button>)}
+        {group.scenes.length > 6 ? <small style={{ alignSelf: "center" }}>외 {group.scenes.length - 6}곳</small> : null}</div>
+      {group.fix ? <div className="yt-note" style={{ margin: "2px 0 0" }}>→ {group.fix}</div> : null}</li>)}</ul> : null}
     {current?.state === "done" && current.note ? <p className="yt-note">{current.note}</p> : null}
     <div className="yt-actions">
       <select aria-label="검사 모델" value={tier} disabled={Boolean(blocked)} onChange={(event) => setTier(event.target.value as GptTier)}>

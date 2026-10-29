@@ -43,12 +43,25 @@ export const SCREEN_SCHEMA = { type: "object", additionalProperties: false, requ
 const resultSchema = z.object({ scenes: z.array(z.object({ scene: z.number().int(), kind: z.string(), issue: z.string(), fix: z.string() })), note: z.string() });
 const cut = (text: string, size = 300) => text.trim().slice(0, size);
 
-/** GPT's answer as the stored check: scenes that exist, one line each, in scene order, at most 40; null when it is not that. */
+/** GPT's answer as the stored check: scenes that exist, one line each, in scene order, at most 120 (a problem on every scene of a
+ * 60-scene video, plus others); null when it is not that. */
 export function parseScreen(text: string, sceneCount: number): Pick<YpScreenCheck, "scenes" | "note"> | null {
   let parsed: z.infer<typeof resultSchema>;
   try { parsed = resultSchema.parse(JSON.parse(text)); } catch { return null; }
   const scenes = parsed.scenes.filter((item) => item.scene >= 1 && (!sceneCount || item.scene <= sceneCount + 2) && item.issue.trim())
     .map((item) => ({ scene: item.scene, kind: (SCREEN_KINDS as readonly string[]).includes(item.kind) ? item.kind : "기타", issue: cut(item.issue), fix: cut(item.fix) }))
-    .sort((a, b) => a.scene - b.scene).slice(0, 40);
+    .sort((a, b) => a.scene - b.scene).slice(0, 120);
   return { scenes, note: cut(parsed.note, 400) };
+}
+
+/** The card's lines: the same problem on many scenes (a logo on every scene) is one line with its scenes, not one line each. */
+export function groupScreenIssues(scenes: YpScreenCheck["scenes"]) {
+  const groups = new Map<string, { kind: string; issue: string; fix: string; scenes: number[] }>();
+  for (const item of scenes) {
+    const key = `${item.kind}\u0000${item.issue}\u0000${item.fix}`;
+    const group = groups.get(key) ?? { kind: item.kind, issue: item.issue, fix: item.fix, scenes: [] };
+    if (!group.scenes.includes(item.scene)) group.scenes.push(item.scene);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => a.scenes.length - b.scenes.length || a.scenes[0] - b.scenes[0]);
 }

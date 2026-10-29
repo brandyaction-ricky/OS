@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseScreen, sceneHints, SCREEN_KINDS, SCREEN_SCHEMA, screenPrompt } from "../lib/youtube-screen-check.ts";
+import { groupScreenIssues, parseScreen, sceneHints, SCREEN_KINDS, SCREEN_SCHEMA, screenPrompt } from "../lib/youtube-screen-check.ts";
 
 // 화면 자동 검사 (owner 2026-10-29, ④): GPT looks at the 점검 시트 for what went wrong before — a checklist's fourth line past its
 // card (C01), a cut face, a logo left on — and names the scene and the storyboard change.
@@ -35,4 +35,12 @@ test("the stored check keeps real scenes in order, one line each, and an unknown
   assert.deepEqual(parseScreen(JSON.stringify({ scenes: [], note: "" }), 20).scenes, [], "nothing wrong is an empty list");
   assert.equal(parseScreen("not json", 20), null);
   assert.equal(parseScreen(JSON.stringify({ scenes: "x", note: "" }), 20), null);
+});
+
+// First production check (2026-10-29): sheets from before the logo was turned off showed it on 38 scenes, which buried the two
+// scenes with an empty body. The same problem is one line with its scenes, the rarer problems first.
+test("the same problem on many scenes is one line, listed after the one-off problems", () => {
+  const logo = (scene) => ({ scene, kind: "로고", issue: "오른쪽 위에 MYIN 로고가 보여요.", fix: "로고를 빼요." });
+  const groups = groupScreenIssues([logo(1), logo(2), { scene: 6, kind: "빈 화면", issue: "인용할 말이 없어요", fix: "말을 넣어요" }, logo(3), logo(3)]);
+  assert.deepEqual(groups.map((group) => [group.kind, group.scenes]), [["빈 화면", [6]], ["로고", [1, 2, 3]]]);
 });
