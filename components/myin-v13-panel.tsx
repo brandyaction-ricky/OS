@@ -292,8 +292,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <div className="yt-run-head"><span className="status-pill" data-status={run.prepared.misses.length ? "failed" : "approved"}>문구 못 찾음 {run.prepared.misses.length}개</span><small>{when(run.prepared.at)}</small></div>
         {run.prepared.misses.length ? <ul className="yt-list">{run.prepared.misses.map((m) => <li key={m}>{m}</li>)}</ul> : null}
       </div> : null}
-      {run?.prepared && !materials ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)} /> : null}
-      {run?.prepared && !materials ? <details className="yt-details" open={sheetsOpen} onToggle={(event) => { const open = (event.target as HTMLDetailsElement).open; setSheetsOpen(open); if (open && !sheets.length) void showSheets(); }}>
+      {/* ③ and ④ both prepare new sheets; the screen check reads each set, the last chance being before the full video. */}
+      {run?.prepared ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)} /> : null}
+      {run?.prepared ? <details className="yt-details" open={sheetsOpen} onToggle={(event) => { const open = (event.target as HTMLDetailsElement).open; setSheetsOpen(open); if (open && !sheets.length) void showSheets(); }}>
         <summary>점검 시트 {run.prepared.sheets}장 보기</summary>
         <p className="yt-note">장면마다 한 컷씩입니다. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(로건님 점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
         {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
