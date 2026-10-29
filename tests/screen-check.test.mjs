@@ -17,6 +17,9 @@ test("the request names the grid, the problems to look for and the 진단 광고
   assert.ok(prompt.includes("(세로 숏폼)") && prompt.includes("3열 × 4행") && prompt.includes("#번호"));
   for (const kind of ["넘침", "겹침", "잘림", "빈 화면", "깨진 글자", "로고", "글자 많음"]) assert.ok(prompt.includes(`- ${kind}:`), kind);
   assert.ok(prompt.includes("진단 광고"), "the MYIN site ad scenes keep their brand");
+  // First production check (2026-10-29): Logan's preview takes scenes after the reel a little early, so a title with its body still
+  // to come read as a blank screen.
+  assert.ok(prompt.includes("따옴표만 있는 칸은 글자가 나오는 중이라 적지 않음"));
   assert.ok(prompt.endsWith("#1 opening: 제목"));
   assert.deepEqual(SCREEN_SCHEMA.properties.scenes.items.properties.kind.enum, [...SCREEN_KINDS]);
 });
