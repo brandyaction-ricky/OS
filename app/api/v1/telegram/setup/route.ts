@@ -29,6 +29,18 @@ async function telegram(method: string, body: Record<string, unknown> = {}) {
   return result.result ?? {};
 }
 
+// The status screen asked Telegram for getMe and getWebhookInfo on every open (~0.5-1 s of the 회사 설정 page).
+// Successful answers are kept for a minute per server instance; changing the webhook clears them.
+const STATUS_CACHE_MS = 60_000;
+const statusCache = new Map<string, { at: number; value: Record<string, unknown> }>();
+async function telegramStatus(method: "getMe" | "getWebhookInfo") {
+  const hit = statusCache.get(method);
+  if (hit && Date.now() - hit.at < STATUS_CACHE_MS) return hit.value;
+  const value = await telegram(method);
+  statusCache.set(method, { at: Date.now(), value });
+  return value;
+}
+
 function publicUrl() {
   return (process.env.OS_PUBLIC_URL ?? "https://brandyaction-os.vercel.app").replace(/\/$/, "");
 }
@@ -45,8 +57,8 @@ export async function GET(request: Request) {
       supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "approved").order("decided_at", { ascending: false }).limit(100),
       supabase.from("os_channel_turns").select("external_user_id,created_at").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1000),
       supabase.from("os_channel_turns").select("created_at,answer").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1),
-      configured ? telegram("getMe").catch(() => null) : Promise.resolve(null),
-      configured ? telegram("getWebhookInfo").catch(() => null) : Promise.resolve(null),
+      configured ? telegramStatus("getMe").catch(() => null) : Promise.resolve(null),
+      configured ? telegramStatus("getWebhookInfo").catch(() => null) : Promise.resolve(null),
     ]);
     if (pending.error || approved.error || turns.error || latest.error) throw new ApiError(500, "TELEGRAM_STATUS_READ_FAILED", "텔레그램 사용자·수신 이력을 읽지 못했습니다. 다시 확인해 주세요.");
     const bot = botResult ?? {}; const webhook = webhookResult ?? {};
@@ -100,12 +112,14 @@ export async function POST(request: Request) {
     await requireAdmin(request);
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
     if (!process.env.TELEGRAM_BOT_TOKEN || !secret) throw new ApiError(503, "TELEGRAM_NOT_CONFIGURED", "텔레그램 봇 토큰과 웹훅 보안값을 먼저 등록해 주세요.");
+    statusCache.clear();
     await telegram("setWebhook", {
       url: `${publicUrl()}/api/v1/telegram/webhook`,
       secret_token: secret,
       allowed_updates: ["message", "callback_query"],
       drop_pending_updates: false,
     });
+    statusCache.clear();
     return NextResponse.json({ connected: true, url: `${publicUrl()}/api/v1/telegram/webhook` });
   } catch (error) { return apiErrorResponse(error); }
 }

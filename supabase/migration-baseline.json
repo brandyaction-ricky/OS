@@ -921,6 +921,17 @@
         "production"
       ],
       "notes": "Speed request 2026-10-29. Additive: one security-invoker function and one partial index. Rollback-only run on DEV with sample rows: window picks the latest cumulative row per video, keeps daily rows and channel snapshots, drops rows outside the window. Read-only timing on Production of the same query for 30 days: ~0.32 s warm, 104 rows instead of 33,500. Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (function security invoker, index present, history 1); the function took ~0.36 s for 30 days under the owner's row policies. Not applied to DEV."
+    },
+    {
+      "file": "20261029110000_audit_time_indexes.sql",
+      "sha256": "d57d7875e96c69ae85dfe4ad8841fa361b9f2066d15b5c8588d379acbbca4064",
+      "purpose": "변경 기록 speed: created_at indexes on os_record_events, os_document_events and os_agent_audit_logs",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-29",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Speed request 2026-10-29. Additive indexes only. Production read-only EXPLAIN: newest 300 rows scanned whole tables (record events ~38,000 rows, ~0.74 s cold; agent logs 0.28 s; document events 0.15 s). Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (3 indexes, history 1); newest-300 reads now ~2 ms. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
