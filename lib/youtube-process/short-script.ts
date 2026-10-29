@@ -98,23 +98,40 @@ export interface YpShortRefItem {
 }
 // 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): many watched it, more than the channel's own followers, and
 // the people who watched reacted. The YouTube search keeps only those; a link the PD put in is marked and, below the bar, not handed on.
-export const SHORT_REF_BAR = { views: 100_000, ratio: 1, likeRate: 0.02 } as const;
-export const SHORT_REF_BAR_TEXT = "조회 10만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 2% 이상";
+// Set from 61 Korean 이직 · 퇴사 · 연봉 Shorts (2026-10-28 night): their likes are a median 0.64% of views, so the first bar (10만 · 2%)
+// let none through; 5만 · 0.5% keeps 21 of them, the ones that spread past their channel (the owner: "기준이 충족된 레퍼런스가 최대한 많을수록").
+export const SHORT_REF_BAR = { views: 50_000, ratio: 1, likeRate: 0.005 } as const;
+export const SHORT_REF_BAR_TEXT = "조회 5만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 0.5% 이상";
 export interface RefCounts { views: number | null; followers: number | null; likes: number | null }
 /** What the render PC read off the page first, then the YouTube search's or the PD's own numbers. */
 export const refCounts = (item: Pick<YpShortRefItem, "views" | "followers" | "likes" | "result">): RefCounts => ({
   views: item.result?.views ?? item.views ?? null, followers: item.result?.followers ?? item.followers ?? null, likes: item.result?.likes ?? item.likes ?? null });
 /**
- * "below" when a known count is under the bar, "pass" when views and likes are over it, "unknown" when one of them is missing. The
- * followers check counts only where a platform shows followers (TikTok's page and a hidden YouTube count do not): it is a proxy for
- * "spread beyond the channel", the views and likes are the reaction itself.
+ * "below" when a known count is under the bar; "pass" when the views are over it and so is the reaction we can see — the likes, or
+ * where a channel hides them the views against its followers; "unknown" without views or without both. Each check counts only where
+ * the platform shows that number (TikTok shows no followers, some YouTube channels hide likes or subscribers).
  */
 export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
   const { views, followers, likes } = counts;
   const checks = [views === null ? null : views >= SHORT_REF_BAR.views,
     views === null || !followers ? null : views / followers >= SHORT_REF_BAR.ratio,
     views === null || !views || likes === null ? null : likes / views >= SHORT_REF_BAR.likeRate];
-  return checks.includes(false) ? "below" : views === null || likes === null ? "unknown" : "pass";
+  return checks.includes(false) ? "below" : views === null || (likes === null && !followers) ? "unknown" : "pass";
+}
+/**
+ * Whether a found Short is about the 검색어 (2026-10-28 시안 2: 「일이 안 맞는 신호」 brought 「오줌이 마려울 땐 이 포즈를…」 — 680만 views passed
+ * the bar and YouTube matched it on 신호). Its title must share a two-letter run with a Korean word of the 검색어 (일이 · 맞는 · 신호 here)
+ * or a whole Latin or number word. A 검색어 of one-letter words cannot be checked and passes; the PD's own links are never checked.
+ */
+export function refMatchesQuery(query: string, title: string) {
+  // Korean words by their two-letter runs; Latin and number words whole (two-letter Latin runs met every 「#shorts」); NFC first, as a
+  // title may come in decomposed jamo.
+  const keys = (text: string) => text.normalize("NFC").toLowerCase().split(/[^0-9a-z가-힣]+/).flatMap(word => {
+    if (!/[가-힣]/.test(word)) return word.length > 1 ? [word] : [];
+    const chars = [...word]; return chars.slice(1).map((ch, i) => chars[i] + ch);
+  });
+  const wanted = new Set(keys(query));
+  return !wanted.size || keys(title).some(key => wanted.has(key));
 }
 /**
  * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.

@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- private signed previews do not have stable optimizer URLs */
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Copy, Plus, Search, Sparkles, X } from "lucide-react";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/youtube-process/project";
@@ -48,16 +48,26 @@ function useShortForm(page: YpPage, onProject?: (project: YpProject) => void) {
   const [savedAt, setSavedAt] = useState("");
   useEffect(() => { if (stage && !dirty) setForm(stage.data); }, [stage, dirty]);
   const project = page.bundle?.project;
-  const save = async (next: YpShortScript | null = form) => {
-    if (!page.client || !project || !stage || !next) return false;
-    try {
-      const { query, refs: own, text, hooks, insight, formula, headCopy } = next;
-      const result = await page.client.saveStage(project.id, "shortScript", stage.version, { query, refs: own, text, hooks, insight, formula, headCopy });
-      page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, shortScript: result.stage } } : current);
-      onProject?.(result.project);
-      setDirty(false); setSavedAt(hhmm());
-      return true;
-    } catch (reason) { page.fail(reason); return false; }
+  // One save at a time, each from the version the last one returned: typing the 검색어 and pressing [찾기] fired the blur save and
+  // the button's save together on the same version, and the second came back as 「다른 사람이 먼저 고쳤어요」 (2026-10-28 night, production).
+  const version = useRef<number | null>(null);
+  useEffect(() => { if (stage) version.current = stage.version; }, [stage]);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const save = (next: YpShortScript | null = form) => {
+    const run = queue.current.then(async () => {
+      if (!page.client || !project || version.current === null || !next) return false;
+      try {
+        const { query, refs: own, text, hooks, insight, formula, headCopy } = next;
+        const result = await page.client.saveStage(project.id, "shortScript", version.current, { query, refs: own, text, hooks, insight, formula, headCopy });
+        version.current = result.stage.version;
+        page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, shortScript: result.stage } } : current);
+        onProject?.(result.project);
+        setDirty(false); setSavedAt(hhmm());
+        return true;
+      } catch (reason) { page.fail(reason); return false; }
+    });
+    queue.current = run;
+    return run;
   };
   const edit = (patch: Partial<YpShortScript>, now = false) => {
     const next = { ...form!, ...patch };

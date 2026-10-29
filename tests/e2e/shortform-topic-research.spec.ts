@@ -13,7 +13,7 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await expect(confirm).toBeDisabled();
   await expect(page.getByText("[예시] 연봉 7천인데 그만두고 싶어요")).toBeVisible();
   // 반응도 기준: the bar is on screen, each reference shows its counts, and one under it is marked as not handed to the AI.
-  await expect(page.getByText(/반응도 기준: 조회 10만 이상/)).toBeVisible();
+  await expect(page.getByText(/반응도 기준: 조회 5만 이상/)).toBeVisible();
   await expect(page.getByText("조회 125만 · 구독자의 13.6배 · 좋아요 3.3%")).toBeVisible();
   await expect(page.getByText("반응 높음")).toHaveCount(3);
   await expect(page.getByText("틱톡 · 직접 넣음")).toBeVisible();
@@ -51,8 +51,11 @@ test("a new 숏폼 starts from a 초안 키워드 and finds its references befor
   const confirm = page.locator(".yp-foot").getByRole("button", { name: /주제 확정하고 다음으로/ });
   await expect(page.locator(".yp-foot")).toContainText("○ 참고 영상");
   await expect(confirm).toBeDisabled();
+  // Typing the 검색어 and pressing [찾기] right away: the blur save and the button's save must not collide (2026-10-28 production).
+  await page.getByLabel("참고 영상 검색어").fill("일이 안 맞는 신호");
   await page.getByRole("button", { name: "찾기", exact: true }).click();
   await expect(page.getByText("반응 높음").first()).toBeVisible();
+  await expect(page.getByText(/먼저 고쳤어요/)).toHaveCount(0);
   await expect(ai).toBeEnabled();
   await expect(page.locator(".yp-foot")).toContainText("✓ 참고 영상");
   await expect(page.locator(".yp-foot")).toContainText("○ 공식");
