@@ -14,6 +14,7 @@ import { checkColumnHtml, cleanColumnHtml, columnMeta, COLUMN_CONTRACT } from "@
 import { CLIP_MAX_SECONDS, clipSeconds } from "@/lib/youtube-process/short";
 import { spokenScript } from "@/lib/youtube-process/short-script";
 import type { PackagingRef } from "@/lib/youtube-process/discover";
+import { scheduleScriptReview } from "./youtube-script-review2";
 
 // The automation that already runs (staff AI ② 원고 · ⑦ 발행키트, ③ 마이인 v13) reading a 유튜브 공정 v1 project instead of the
 // old pipeline approvals: the confirmed 기획안 stands in for gate 1, the 구성안 원고 for the approved script.
@@ -127,6 +128,7 @@ export async function saveV1Script(client: { supabase: RequestActor["supabase"];
     ai: { jobId: author.jobId ?? "", model: author.model, at: now, by, materials: bundle.materials, axis: bundle.axis, design: bundle.design,
       review: bundle.review, canonBundle: bundle.canonBundle, suggestions: bundle.suggestions, head: bundle.manuscript.split("\n").filter(line => line.trim().startsWith("<!--")).join("\n") } };
   await writeStage(client.supabase, client.id, state.source.team ?? "", stages.project, "outline", stages.outline, outline);
+  scheduleScriptReview({ supabase: client.supabase, id: client.id, team: state.source.team ?? "" }, stages.project);
   return { chars: check.chars, paragraphs: check.paragraphs.length, sections: check.sections, notes: check.notes };
 }
 

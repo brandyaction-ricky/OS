@@ -10,6 +10,7 @@ import { KnowledgeRichEditor } from "./knowledge-rich-editor";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection } from "./youtube-process-frame";
 import { YtCard } from "./youtube-process-media";
+import { ScriptReview2 } from "./youtube-process-review2";
 
 const WHY: Record<string, string> = { manual: "", ai: " · 내 AI", make: " · 제작 시작", restore: " · 되돌림" };
 
@@ -147,6 +148,7 @@ export function YoutubeOutlineScreen({ header }: { header: ReactNode }) {
           <p className="yp-hint"><Info size={12} aria-hidden="true" /> 마지막 20초는 최종 화면 자리로 비워 둬요.</p>
           {checked.length && editable && !viewing ? <details className="yp-note yp-warn" role="status" style={{ display: "block" }}><summary style={{ cursor: "pointer" }}>원고 형식 검사에서 걸린 곳 {checked.length}건 — 고쳐야 제작·음성으로 넘어가요</summary>
             <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13 }}>{checked.map(issue => <li key={issue}>{issue}</li>)}</ul></details> : null}
+          {!viewing ? <ScriptReview2 page={page} outline={form} editable={editable} dirty={dirty} /> : null}
           {form.ai ? <details className="yp-card" open={notesOpen} onToggle={event => setNotesOpen((event.target as HTMLDetailsElement).open)} style={{ marginTop: 8 }}>
             <summary style={{ padding: "8px 10px", cursor: "pointer", fontSize: 13 }}>AI 작업 기록 보기</summary>
             {notesOpen ? <div style={{ padding: "0 12px 12px", fontSize: 13 }}>{([["자료", form.ai.materials], ["축", form.ai.axis], ["설계", form.ai.design], ["검토 기록", form.ai.review]] as const).map(([label, value]) =>

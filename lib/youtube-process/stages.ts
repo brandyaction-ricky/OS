@@ -3,7 +3,7 @@
 import type { YpKind, YpRef } from "./project";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
 
-export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript";
+export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2";
 export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" | "content_script"; key: "packageKind" | "scriptKind"; value: string; title: string }> = {
   plan: { recordType: "content_package", key: "packageKind", value: "yp_plan", title: "기획안" },
   outline: { recordType: "content_script", key: "scriptKind", value: "yp_outline", title: "구성안" },
@@ -12,6 +12,7 @@ export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" |
   column: { recordType: "content_package", key: "packageKind", value: "yp_column", title: "SEO 칼럼" },
   shortTopics: { recordType: "content_package", key: "packageKind", value: "yp_short_topics", title: "숏폼 주제 후보" },
   shortScript: { recordType: "content_package", key: "packageKind", value: "yp_short_script", title: "숏폼 대본" },
+  review2: { recordType: "content_package", key: "packageKind", value: "yp_review2", title: "두 번째 검수" },
 };
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
@@ -130,7 +131,21 @@ export interface YpShortScript {
   /** Copied when the 대본 확정 is made: what 제작 starts from (headCopy since 2026-10-28; older ones read the step's headCopy). */
   confirmed?: { at: string; text: string; headCopy?: string };
 }
-export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript };
+/** 원고 검수 정본 관문 2~6 as GPT judged them (owner 2026-10-29: the 별도 판정 of 공정 정본 §12-3 by another company's model). Its own
+ * record beside the 구성안, so a judgement landing while the PD types never bumps the 구성안 version. */
+export interface YpReview2Item { paragraph: number; quote: string; grade: "상" | "중" | "하"; reason: string; fix: string }
+export interface YpReview2 {
+  state: "none" | "running" | "done" | "failed"; at: string; model: string;
+  /** scriptKey() of the 원고 judged: when the 구성안 changes, the screen says the judgement is for an older 원고. */
+  key: string; pass?: boolean; gates: { gate: 2 | 3 | 4 | 5 | 6; pass: boolean; items: YpReview2Item[] }[]; doubts: string[]; error?: string;
+}
+/** A short fingerprint of a 원고 (FNV-1a over the trimmed text), the same on the server and in the browser. */
+export function scriptKey(md: string) {
+  let hash = 0x811c9dc5;
+  for (const char of md.replace(/\r/g, "").trim()) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2 };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
@@ -168,6 +183,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     column: { items: [] },
     shortTopics: { items: [] },
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },
+    review2: { state: "none", at: "", model: "", key: "", gates: [], doubts: [] },
   };
   return blank[kind] as YpStageData[K];
 }

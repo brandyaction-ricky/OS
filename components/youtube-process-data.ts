@@ -4,7 +4,7 @@ import { apiRequest, ApiRequestError, listMembers, listRecords, uploadContentMed
 import type { OsRecord } from "@/lib/record-types";
 import { newProjectMeta, TOPIC_FIELD_OF, topicFieldEditable, topicLines, topicMissing, trashDaysLeft, YP_MAX_LINES, type YpGate, type YpKind, type YpProject, type YpRef, type YpTrashed } from "@/lib/youtube-process/project";
 import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@/lib/youtube-process/confirm";
-import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
+import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
@@ -79,6 +79,8 @@ export interface YpClient {
   shortVideoUrl(id: string, renderId: string, download?: boolean): Promise<string>;
   /** [숏폼으로 만들기] on a longform's 숏폼 주제 후보: the new 숏폼's id and the candidates with the made one marked. */
   makeShort(id: string, topicId: string): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
+  /** 원고 두 번째 검수 (GPT, 관문 2~6) of the 구성안 as saved. */
+  review2(id: string): Promise<YpStageView<"review2">>;
   /** The 대본 step's latest 레퍼런스 받기 (null before the first), and [레퍼런스 받기] itself. */
   shortRefs(id: string): Promise<YpShortRefFetch | null>;
   fetchShortRefs(id: string): Promise<YpShortRefFetch>;
@@ -153,6 +155,7 @@ function apiClient(token: string): YpClient {
     clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
     makeShort: (id, topicId) => apiRequest(`${base}/${id}/short-topic`, { token, method: "POST", body: json({ topicId }) }),
+    review2: (id) => apiRequest(`${base}/${id}/review2`, { token, method: "POST", body: json({}) }),
     shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
     fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,
     members: async () => (await listMembers(token)).members
@@ -240,7 +243,7 @@ function demoFilledStages(project: YpProject): YpStagesView {
       { title: "[예시] 친구는 좋은데 약속은 부담될 때", insight: "부담은 친구가 아니라 약속의 개수에서 와요", formula: "[예시] 좋은 조건, 반대 감정", why: "좋은 사람과의 약속도 부담스러운 마음" }] };
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
-    shortScript: { id: null, version: 0, data: shortScript } };
+    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) } };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
@@ -506,6 +509,14 @@ function demoClient(): YpClient {
       const refs = exampleRefs(id, find(id).title);
       demoRefs.set(id, refs);
       return structuredClone(refs);
+    },
+    review2: async (id) => {
+      const stages = stagesOf(find(id));
+      const review2 = { ...stages.review2, version: stages.review2.version + 1, data: { state: "done" as const, at: new Date().toISOString(), model: "gpt-6-astra", key: scriptKey(stages.outline.data.script), pass: false,
+        gates: ([2, 3, 4, 5, 6] as const).map(gate => ({ gate, pass: gate !== 6, items: gate === 6 ? [{ paragraph: 2, quote: "[예시] 크기가 아니라 출처예요.", grade: "상" as const, reason: "[예시] 한 번 더 생각해야 그려지는 압축 표현이에요.", fix: "[예시] 얼마나 큰지가 아니라 어디서 왔는지가 중요해요." }] : [] })),
+        doubts: ["[예시] 3번 문단의 연구는 원문 링크로 확인이 필요해요."] } };
+      demoStages.set(id, { ...stages, review2 });
+      return structuredClone(review2);
     },
     makeShort: async (id, topicId) => {
       const longform = find(id);

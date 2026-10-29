@@ -25,6 +25,8 @@ const TOKEN_USD: [prefix: string, name: string, input: number, output: number, l
   ["claude-opus-5-5", "Claude Opus 5.5", 4, 20],
   ["claude-sonnet-4-5", "Claude Sonnet 4.5", 3, 15],
   ["claude-haiku-4-5", "Claude Haiku 4.5", 1, 5],
+  // developers.openai.com/api/docs/models/gpt-6-astra, checked 2026-10-29 (over 272K prompt tokens bills more; a 원고 review is far under)
+  ["gpt-6-astra", "GPT-6 Astra", 10, 50],
 ];
 /** USD per audio minute (developers.openai.com pricing, checked 2026-10-26). */
 const MINUTE_USD: Record<string, number> = { "gpt-4o-mini-transcribe": 0.003 };
@@ -58,8 +60,8 @@ export type GenerationAction = keyof typeof GENERATION;
 export const GENERATION_INPUT = 85_000;
 
 /** The models each paid button uses on the server; the defaults are lib/config.ts's (CLAUDE_FAST_MODEL · CLAUDE_SMART_MODEL). */
-export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string }
+export interface CostModels { voice: string; myinVoice: string; haiku: string; sonnet: string; transcribe: string; review: string }
 export const DEFAULT_COST_MODELS: CostModels = {
   voice: "s2.1-pro", myinVoice: "drama-3", haiku: "claude-haiku-5-5", sonnet: "claude-sonnet-5-5",
-  transcribe: "gpt-4o-mini-transcribe",
+  transcribe: "gpt-4o-mini-transcribe", review: "gpt-6-astra",
 };
