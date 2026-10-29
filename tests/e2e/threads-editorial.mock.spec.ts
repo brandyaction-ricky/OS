@@ -22,7 +22,7 @@ function record(id: string, title: string, metadata: Record<string, unknown>): O
     assignee_id: null, parent_id: null, due_date: null, starts_at: null, ends_at: null, progress: 0, metric_target: null, metric_current: null, metric_unit: "", amount: null, currency: "KRW",
     source_url: null, tags: [], version: 1, created_by: OWNER, updated_by: OWNER, created_at: AT, updated_at: AT, archived_at: null };
 }
-async function mockWorkspace(page: Page, canonicalVersion = 16) {
+async function mockWorkspace(page: Page, editorialReady = true) {
   const state = { topics: [] as OsRecord[], items: [] as OsRecord[], writes: [] as { path: string; body: Record<string, unknown> }[], external: [] as string[], failTitle: "", failOnce: false };
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const jwt = `${Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url")}.${Buffer.from(JSON.stringify({ sub: OWNER, role: "authenticated", exp: expiresAt })).toString("base64url")}.fixture`;
@@ -59,7 +59,7 @@ async function mockWorkspace(page: Page, canonicalVersion = 16) {
       }
       return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: { message: "예상하지 않은 변경 요청" } }) });
     }
-    if (path === "topics") return json({ topics: state.topics, collectionContext: { canonicalUrl: "https://example.test/canonical", canonicalTitle: "합성 쓰레드 정본", canonicalVersion } });
+    if (path === "topics") return json({ topics: state.topics, collectionContext: { canonicalUrl: "https://example.test/canonical", canonicalTitle: "합성 쓰레드 정본", canonicalVersion: 11, editorialReady } });
     if (path === "items") return json({ items: state.items });
     if (path === "reviewers") return json({ reviewers: [], canReview: true, canManage: true });
     if (path === "jobs") return json({ jobs: [] });
@@ -85,7 +85,7 @@ test("route instructions and candidate preview keep human selection before produ
   await expect(page.getByLabel("Aside 후보 결과")).not.toBeVisible();
   await page.getByRole("button", { name: "Aside 후보 요청 복사" }).click();
   const copied = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
-  expect(copied).toContain("v16"); expect(copied).toContain("firstParagraph"); expect(copied).toContain("최소 1개의 접근 가능한 OS 문서");
+  expect(copied).toContain("v11"); expect(copied).toContain("firstParagraph"); expect(copied).toContain("최소 1개의 접근 가능한 OS 문서");
   expect(copied).toContain("후보 자동 선택"); expect(copied).toContain("승인, 예약·발행");
   await page.getByText("Aside가 준비한 후보 등록", { exact: true }).click();
   await page.getByLabel("Aside 후보 결과").fill(JSON.stringify({ candidates: [candidate("insight")] }));
@@ -157,8 +157,8 @@ test("zero candidates are a valid result and do not create records", async ({ pa
   expect(state.writes).toHaveLength(0);
 });
 
-test("old canonical blocks new route request copy and candidate registration", async ({ page }) => {
-  const state = await mockWorkspace(page, 15);
+test("unsupported canonical blocks new route request copy and candidate registration", async ({ page }) => {
+  const state = await mockWorkspace(page, false);
   await page.goto("/automation/topics"); await prepare(page, "insight", [candidate("insight")]);
   await expect(page.getByRole("button", { name: "Aside 후보 요청 복사" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "후보 1개 저장", exact: true })).toBeDisabled();

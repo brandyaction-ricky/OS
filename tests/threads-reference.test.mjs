@@ -100,14 +100,18 @@ test("source URLs, observation times, counts and field names are bounded without
   }
   assert.throws(() => contract.parseThreadsReferences([reference(), reference()]), code("THREADS_REFERENCES_INVALID"));
 });
-test("partial/unread/preview references can be collected but cannot enter drafting", () => {
+test("partial, unread and incomplete references remain selectable with their status visible", () => {
   for (const readScope of ["partial", "preview", "unavailable"]) {
     const refs = contract.parseThreadsReferences([reference({ readScope })]);
-    assert.throws(() => contract.assertThreadsReferencesReady(refs), code("THREADS_REFERENCE_QUALITY_REQUIRED"));
+    assert.notEqual(contract.evaluateThreadsReference(refs[0]).status, "recommended");
+    contract.assertThreadsReferencesSelected(refs);
   }
-  contract.assertThreadsReferencesReady([reference()]);
-  for (const field of ["scene", "readerQuestion", "addedPerspective"])
-    assert.throws(() => contract.assertThreadsReferencesReady([reference({ [field]: "" })]), code("THREADS_REFERENCE_QUALITY_REQUIRED"));
+  for (const field of ["scene", "readerQuestion", "addedPerspective"]) {
+    const refs = contract.parseThreadsReferences([reference({ [field]: "" })]);
+    assert.notEqual(contract.evaluateThreadsReference(refs[0]).status, "recommended");
+    contract.assertThreadsReferencesSelected(refs);
+  }
+  assert.throws(() => contract.assertThreadsReferencesSelected([]), code("THREADS_REFERENCE_REQUIRED"));
 });
 const comparison = (likes = 50) => ({ basis: "동일 저자의 유사한 에세이 형식이며 모두 발행 후 7일이 지난 글을 비교했다.",
   posts: Array.from({ length: 5 }, (_, index) => ({ url: `https://example.substack.com/p/comparison-${index}`,
@@ -120,7 +124,7 @@ test("small verified counts are facts, never a recommendation or a popularity cl
     assert.equal(result.status, "reference_only");
     assert.equal(result.evidenceLabel, "수치 확인됨 · 추천 여부 별도");
     assert.equal(contract.hasVerifiedThreadsReaction(ref), true);
-    assert.throws(() => contract.assertThreadsReferencesReady([ref]), code("THREADS_REFERENCE_QUALITY_REQUIRED"));
+    contract.assertThreadsReferencesSelected([ref]);
   }
 });
 test("Threads needs observed 100k views plus full Korean context and observed audience evidence", () => {
@@ -208,12 +212,13 @@ test("a Threads job pins parent brief, selected observations, existing posts and
   assert.ok(store.queries.some(query => query.table === "os_records" && query.filters.some(([key, value]) => key === "owner_id" && value === owner)));
   assert.ok(store.queries.some(query => query.table === "os_documents" && query.filters.some(([key, value]) => key === "title" && value === server.THREADS_CANON_TITLE)));
 });
-test("new reference-based drafting rejects weak evidence while preparation and review remain available", async () => {
+test("human-selected weak evidence remains available for drafting without inventing verification", async () => {
   const parent = topic(); parent.metadata.reference_items = [substack(6)];
   const { server, accessChecks } = await serverHarness({ topics: [parent] });
-  await assert.rejects(server.createThreadsJobInput(actor, item(), "threads"),
-    error => error.status === 422 && error.code === "THREADS_REFERENCE_QUALITY_REQUIRED");
-  assert.equal(accessChecks(), 0);
+  const input = await server.createThreadsJobInput(actor, item(), "threads");
+  assert.equal(input.topic.reference_items[0].metrics.likes.value, 6);
+  assert.equal(contract.evaluateThreadsReference(input.topic.reference_items[0]).status, "reference_only");
+  assert.equal(accessChecks(), 1);
   for (const proc of ["topic", "brief", "review"])
     assert.equal((await server.createThreadsJobInput(actor, proc === "review" ? item() : parent, proc)).proc, proc);
 });
@@ -252,14 +257,14 @@ async function weakHistoricalWork() {
     threadsInput: input, threadsInputKey: server.threadsInputKey(input) }), record_type: "ai_job", status: "backlog", stage: "queued" };
   return { server, draft, job };
 }
-test("historical queued and blocked snapshots recheck quality while running and completed snapshots remain usable", async () => {
+test("historical jobs remain usable for manually selected evidence at every status", async () => {
   const { server, draft, job } = await weakHistoricalWork();
   for (const status of ["backlog", "blocked"])
-    await assert.rejects(server.assertThreadsJobCurrent(draft, { ...job, status }), code("THREADS_REFERENCE_QUALITY_REQUIRED"));
+    await server.assertThreadsJobCurrent(draft, { ...job, status });
   for (const [status, stage] of [["active", "running"], ["done", "completed"]])
     await server.assertThreadsJobCurrent(draft, { ...job, status, stage });
 });
-test("createJob cannot reuse a weak queued snapshot but preserves an already running job", async () => {
+test("createJob reuses the selected evidence for queued and running jobs", async () => {
   const { server, draft, job } = await weakHistoricalWork();
   const db = { from() { const filters = []; return { select() { return this; }, is() { return this; }, in() { return this; }, limit() { return this; },
     eq(key, value) { filters.push([key, value]); return this; },
@@ -269,11 +274,11 @@ test("createJob cannot reuse a weak queued snapshot but preserves an already run
     "./shortform-production": { shortformJobInput: () => null, assertShortformJobCurrent: () => {} }, "./threads-reference": server,
     "node:crypto": crypto, "@/lib/http": { ApiError }, "@/lib/supabase/server": { createServiceSupabase: () => db },
   });
-  await assert.rejects(api.createJob(actor, { proc: "threads", targetId: draft.id }), code("THREADS_REFERENCE_QUALITY_REQUIRED"));
+  assert.equal((await api.createJob(actor, { proc: "threads", targetId: draft.id })).reused, true);
   job.status = "active"; job.stage = "running";
   assert.equal((await api.createJob(actor, { proc: "threads", targetId: draft.id })).reused, true);
 });
-test("worker dispatch blocks weak queued evidence before claiming while completed instructions and running results remain available", async () => {
+test("worker dispatch accepts manually selected evidence and keeps its pinned input", async () => {
   const { server, draft, job } = await weakHistoricalWork(), claimed = [], blocked = [];
   const run = { id: "run", owner_id: owner, browser_id: "browser", status: "running", via: "now", job_ids: [] };
   const jobs = [job, { ...record("good"), record_type: "ai_job", status: "backlog", stage: "queued", metadata: { space: "personal", proc: "card-fill" } }];
@@ -290,14 +295,14 @@ test("worker dispatch blocks weak queued evidence before claiming while complete
       updatePersonalRecord: async (_actor, row, changes) => { blocked.push({ ...row, ...changes }); return { ...row, ...changes }; } },
   });
   const result = await api.workerNext(actor, new Request("https://os.test"), { via: "now", runId: run.id });
-  assert.equal(result.job.id, "good"); assert.deepEqual(claimed.map(value => value.id), ["good"]);
-  assert.equal(blocked[0].metadata.failureCode, "THREADS_REFERENCE_QUALITY_REQUIRED");
+  assert.equal(result.job.id, job.id); assert.deepEqual(claimed.map(value => value.id), [job.id]);
+  assert.equal(blocked.length, 0);
   assert.equal((await api.jobInstructions(actor, { ...job, status: "done", stage: "completed" })).target, job.metadata.threadsInput);
   job.status = "active"; job.stage = "running"; job.metadata.runId = run.id; job.metadata.browserId = "browser"; run.job_ids = [job.id];
   await api.workerCompleteJob(actor, new Request("https://os.test"), { runId: run.id, jobId: job.id, failed: false, result: { posts: ["Completed draft"] } });
   assert.equal(claimed.at(-1).name, "os_ai_complete_job");
 });
-test("retry and queued paste reject weak historical evidence while running paste and completed adoption preserve results", async () => {
+test("retry, paste and adoption work with manually selected evidence", async () => {
   const { server, draft, job } = await weakHistoricalWork(), writes = [];
   const api = await load("app/api/v1/content/automation/[resource]/[id]/[action]/route.ts", {
     "next/server": { NextResponse: Response }, zod,
@@ -315,9 +320,9 @@ test("retry and queued paste reject weak historical evidence while running paste
   const send = (action, body = {}, resource = "jobs") => api.POST(new Request("https://os.test", { method: "POST", body: JSON.stringify(body) }),
     { params: Promise.resolve({ resource, id: resource === "jobs" ? job.id : draft.id, action }) });
   job.status = "blocked"; job.stage = "failed";
-  assert.equal((await send("requeue")).status, 422); assert.equal(writes.length, 0);
+  assert.equal((await send("requeue")).status, 200);
   job.status = "backlog"; job.stage = "queued";
-  assert.equal((await send("paste", { result: { posts: ["Weak draft"] } })).status, 422); assert.equal(writes.length, 0);
+  assert.equal((await send("paste", { result: { posts: ["Weak draft"] } })).status, 200);
   job.status = "active"; job.stage = "running"; job.metadata.via = "copy";
   assert.equal((await send("paste", { result: { posts: ["Started before policy update"] } })).status, 200);
   job.status = "done"; job.stage = "completed"; job.metadata.result = { posts: ["Completed before policy update"] };
@@ -427,7 +432,7 @@ test("promotion refuses another owner's record, non-reference records and client
   assert.equal((await post({ title: "No", referenceIds: [topicId] })).status, 422);
   assert.equal((await post({ title: "No", referenceIds: [secondRefId], reference_items: [reference()] })).status, 422);
 });
-test("weak evidence stays savable but direct, selected and AI-derived topic promotion fail before insert", async () => {
+test("weak evidence can be selected while empty reference workflows remain invalid", async () => {
   const { post, rows, created } = await routeHarness(), weak = substack(6);
   const saved = await post({ title: "Weak source", kind: contract.THREADS_REFERENCE_KIND,
     editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW, reference_items: [weak] });
@@ -436,24 +441,25 @@ test("weak evidence stays savable but direct, selected and AI-derived topic prom
   const jobId = "99999999-9999-4999-8999-999999999999";
   rows.push({ ...record(jobId), record_type: "ai_job", stage: "completed", metadata: { space: "personal", proc: "topic",
     result: { candidates: [{ title: "Weak AI topic", source: "Observed source" }] }, threadsInput: { topic: { reference_items: [weak] } } } });
-  for (const body of [{ title: "No", referenceIds: [refId] }, { title: "No", reference_items: [weak] },
-    { title: "No", sourceJobId: jobId, candidateIndex: 0 }, { title: "No", editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW }]) {
-    const response = await post(body), error = (await response.json()).error;
-    assert.equal(response.status, 422); assert.equal(error.code, "THREADS_REFERENCE_QUALITY_REQUIRED");
-    assert.match(error.message, /추천 기준/); assert.equal(created.length, 1);
+  for (const body of [{ title: "Selected", referenceIds: [refId] }, { title: "Direct", reference_items: [weak] },
+    { title: "AI", sourceJobId: jobId, candidateIndex: 0 }]) {
+    const response = await post(body); assert.equal(response.status, 201);
+    const result = await response.json(); assert.equal(result.topic.metadata.reference_items[0].metrics.likes.value, 6);
   }
+  const empty = await post({ title: "No", editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW });
+  assert.equal(empty.status, 422); assert.equal((await empty.json()).error.code, "THREADS_REFERENCE_REQUIRED");
 });
-test("new reference-based production blocks weak evidence while unrelated and ordinary direct paths remain available", async () => {
+test("new reference-based production permits manually selected weak evidence", async () => {
   const { post, rows, created } = await routeHarness();
   rows[2].metadata.reference_items = [substack(6)];
-  assert.equal((await post({ title: "Draft", topicId, channel: "threads" }, "items")).status, 422);
-  assert.equal(created.length, 0);
+  assert.equal((await post({ title: "Draft", topicId, channel: "threads" }, "items")).status, 201);
+  assert.equal(created.length, 1);
   assert.equal((await post({ title: "Card", topicId, channel: "card" }, "items")).status, 201);
   delete rows[2].metadata.editorial_workflow; delete rows[2].metadata.reference_items;
   assert.equal((await post({ title: "Direct draft", topicId, channel: "threads" }, "items")).status, 201);
   assert.equal((await post({ title: "Direct topic" })).status, 201);
 });
-test("topic start checks reference quality before its production RPC without changing other channel paths", async () => {
+test("topic start accepts selected sources without changing other channel paths", async () => {
   const parent = topic(), writes = [];
   const api = await load("app/api/v1/content/automation/[resource]/[id]/[action]/route.ts", {
     "next/server": { NextResponse: Response }, zod,
@@ -469,12 +475,12 @@ test("topic start checks reference quality before its production RPC without cha
   const start = channels => api.POST(new Request("https://os.test", { method: "POST", body: JSON.stringify({ version: 1, brief: parent.metadata.brief, channels }) }),
     { params: Promise.resolve({ resource: "topics", id: topicId, action: "start" }) });
   parent.metadata.reference_items = [substack(6)];
-  assert.equal((await start({ threads: {} })).status, 422); assert.equal(writes.length, 0);
-  assert.equal((await start({ card: {} })).status, 200); assert.equal(writes.length, 1);
+  assert.equal((await start({ threads: {} })).status, 200); assert.equal(writes.length, 1);
+  assert.equal((await start({ card: {} })).status, 200); assert.equal(writes.length, 2);
   parent.metadata.reference_items = [reference()];
-  assert.equal((await start({ threads: {} })).status, 200); assert.equal(writes.length, 2);
-  delete parent.metadata.editorial_workflow; delete parent.metadata.reference_items;
   assert.equal((await start({ threads: {} })).status, 200); assert.equal(writes.length, 3);
+  delete parent.metadata.editorial_workflow; delete parent.metadata.reference_items;
+  assert.equal((await start({ threads: {} })).status, 200); assert.equal(writes.length, 4);
 });
 test("selecting an AI candidate copies the owned job's chosen evidence and derives its title from the server result",async()=>{
   const {post,rows}=await routeHarness();
@@ -651,9 +657,37 @@ const material = (route = "insight") => ({
 const editorialMetadata = (route = "insight") => ({ editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW, editorial_route: route, editorial_material: material(route) });
 const editorialTopic = (route = "insight") => ({ ...record(topicId, editorialMetadata(route)), stage: "confirmed" });
 const editorialDocs = () => [
-  { id: "77777777-7777-4777-8777-777777777777", title: "쓰레드 자동화 운영 정본 — 안저 · Aside × OS", status: "canonical", reader_scope: "all", current_version: 16, content_md: "Editorial procedure" },
+  { id: "77777777-7777-4777-8777-777777777777", title: "쓰레드 자동화 운영 정본 — 안저 · Aside × OS", status: "canonical", reader_scope: "all", current_version: 11, content_md: editorial.THREADS_EDITORIAL_CANON_DECLARATION + "\nEditorial procedure" },
   { id: "88888888-8888-4888-8888-888888888888", title: "wiki 업무 조건", status: "canonical", reader_scope: "all", current_version: 3, content_md: "Original source with internal-only details" },
 ];
+test("editorial capability requires a top-level opening declaration, not an incidental mention", () => {
+  const marker = editorial.THREADS_EDITORIAL_CANON_DECLARATION;
+  for (const prefix of ["", "\n", "\uFEFF\r\n"])
+    assert.equal(editorial.supportsThreadsEditorialContract(prefix + marker + "\r\n# Procedure"), true);
+  for (const body of ["# Procedure\nExample:\n" + marker, "```\n" + marker + "\n```", "~~~\n" + marker + "\n~~~",
+    "> " + marker, "    " + marker, "- " + marker, "<!--\n" + marker + "\n-->", marker + " (example)"])
+    assert.equal(editorial.supportsThreadsEditorialContract(body), false, body);
+});
+test("new route gates check the approved contract and ACL, never the document edit count alone", async () => {
+  for (const version of [10, 99]) {
+    const docs = editorialDocs(); docs[0].current_version = version; docs[0].content_md = "Old procedure";
+    const { server } = await serverHarness({ topics: [editorialTopic()], docs });
+    assert.equal((await server.threadsCollectionContext(actor)).editorialReady, false);
+    await assert.rejects(server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+    await assert.rejects(server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_CANON_UNAVAILABLE"));
+    assert.equal((await server.threadsCanonicalSnapshot(actor)).version, version);
+  }
+  const docs = editorialDocs(), { server } = await serverHarness({ docs });
+  assert.equal((await server.threadsCollectionContext(actor)).editorialReady, true);
+  assert.equal((await server.assertThreadsEditorialReady(actor, editorialMetadata())).editorial_route, "insight");
+  for (const patch of [{ current_version: 9 }, { status: "draft" }, { reader_scope: "restricted" }]) {
+    const invalid = editorialDocs(); Object.assign(invalid[0], patch);
+    await assert.rejects((await serverHarness({ docs: invalid })).server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+  }
+  const inaccessible = await serverHarness({ docs, readable: false });
+  await assert.rejects(inaccessible.server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+  assert.equal((await inaccessible.server.threadsCollectionContext(actor)).editorialReady, undefined);
+});
 test("insight and person candidates require a first paragraph, a direct answer and route-appropriate sources", () => {
   for (const route of ["insight", "person"]) {
     const candidate = { title: "흥미로운 내부 주제명", editorial_route: route, editorial_material: material(route) };
@@ -679,11 +713,11 @@ test("reference metadata cannot be relabeled or combined with an insight route t
   assert.throws(() => editorial.assertThreadsEditorialWorkflowUnchanged(editorialMetadata(), { editorial_route: "person" }), code("THREADS_WORKFLOW_IMMUTABLE"));
   assert.throws(() => editorial.parseThreadsEditorialMetadata({ ...editorialMetadata(), editorial_material: null }), code("THREADS_EDITORIAL_INPUT_INVALID"));
 });
-test("new route jobs pin accessible OS source body and version with canonical v16 and preserve the original question", async () => {
+test("new route jobs pin accessible OS source body and version with the supported canonical contract and preserve the original question", async () => {
   const parent = editorialTopic(), docs = editorialDocs(), { server } = await serverHarness({ topics: [parent], docs });
   const input = await server.createThreadsJobInput(actor, item(), "threads");
   assert.equal(input.workflow, editorial.THREADS_EDITORIAL_WORKFLOW);
-  assert.equal(input.canonical.version, 16);
+  assert.equal(input.canonical.version, 11);
   assert.equal(input.topic.editorial_material.readerQuestion, material().readerQuestion);
   assert.equal(input.topic.source_documents[0].version, 3);
   assert.equal(input.topic.source_documents[0].body, docs[1].content_md);
@@ -693,12 +727,15 @@ test("new route jobs pin accessible OS source body and version with canonical v1
   assert.match(server.threadsInputInstructions(input), /500자/);
   const missing = structuredClone(job); missing.metadata.threadsInput.topic.source_documents = [];
   assert.throws(() => server.getThreadsJobInput(missing), code("THREADS_JOB_INPUT_REQUIRED"));
+  const unsupported = structuredClone(job); unsupported.metadata.threadsInput.canonical.body = "Old procedure";
+  unsupported.metadata.threadsInput.canonical.version = 99;
+  assert.throws(() => server.getThreadsJobInput(unsupported), code("THREADS_JOB_INPUT_REQUIRED"));
   docs[1].current_version = 4;
   await assert.rejects(server.assertThreadsJobCurrent(item(), job, actor), code("THREADS_INPUT_CHANGED"));
 });
 test("source read failure, missing source, revoked ACL and stale canonical block new editorial work", async () => {
   const parent = editorialTopic();
-  const stale = editorialDocs(); stale[0].current_version = 15;
+  const stale = editorialDocs(); stale[0].content_md = "Old procedure";
   await assert.rejects((await serverHarness({ topics: [parent], docs: stale })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_CANON_UNAVAILABLE"));
   await assert.rejects((await serverHarness({ topics: [parent], docs: editorialDocs().slice(0, 1) })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_SOURCE_UNAVAILABLE"));
   await assert.rejects((await serverHarness({ topics: [parent], docs: editorialDocs(), readable: false })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_SOURCE_UNAVAILABLE"));
@@ -755,7 +792,6 @@ async function editorialActionHarness({ route = "insight", own = true, sourceAva
     "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial,
     "@/lib/server/threads-reference": {
       assertThreadsEditorialReady: async (_actor, metadata) => { if (!sourceAvailable) throw new ApiError(409, "THREADS_SOURCE_UNAVAILABLE", "Missing"); return editorial.parseThreadsEditorialMetadata(metadata); },
-      threadsCanonicalSnapshot: async (_actor, minimumVersion) => { assert.equal(minimumVersion, 16); return { version: 16 }; },
     },
     "@/lib/server/shortform-production": {}, "@/lib/content-automation-results": {}, "@/lib/server/content-automation-validators": {},
     "@/lib/threads-posts": {}, "@/lib/content-comments": {}, "@/lib/server/channel-comments": {}, "@/lib/server/content-automation-worker": {},
@@ -765,7 +801,7 @@ async function editorialActionHarness({ route = "insight", own = true, sourceAva
     { params: Promise.resolve({ resource, id: resource === "items" ? draft.id : topicId, action }) });
   return { post, writes, parent, job };
 }
-test("new route production permits only Threads after accessible sources and v16, with no publication call", async () => {
+test("new route production permits only Threads after accessible sources and a supported canonical, with no publication call", async () => {
   for (const route of ["insight", "person"]) {
     const { post, writes } = await editorialActionHarness({ route });
     const start = channels => post("topics", "start", { version: 1, brief: { one: "질문", who: "독자", message: "관점", sources: "자료", warn: "주의" }, channels });

@@ -106,7 +106,7 @@ export function evaluateThreadsReference(item: ThreadsReferenceItem): {
   if (item.platform === "threads") {
     if (!known("views")) reasons.push("Threads 조회수를 원문에서 확인해 주세요.");
     else if (item.metrics.views.value! < REFERENCE_POLICY.threadsMinViews) {
-      referenceOnly = true; reasons.push("Threads 조회수 10만 이상인 원문을 추천 후보로 사용합니다.");
+      referenceOnly = true; reasons.push("Threads 조회수가 추천 기준인 10만에 미치지 않습니다.");
     }
   } else if (item.platform === "substack") {
     if (!known("likes")) reasons.push("Substack 좋아요 수를 원문에서 확인해 주세요.");
@@ -134,23 +134,18 @@ export function evaluateThreadsReference(item: ThreadsReferenceItem): {
       comparisonMedian = likes.length % 2 ? likes[middle] : (likes[middle - 1] + likes[middle]) / 2;
       if (comparisonMedian === 0) reasons.push("비교 글 중앙값이 0이라 상대 반응을 판단할 수 없습니다. 비교 표본을 재검토해 주세요.");
       else if (known("likes") && item.metrics.likes.value! < comparisonMedian * REFERENCE_POLICY.substackMinLift) {
-        referenceOnly = true; reasons.push("좋아요가 비교 글 중앙값의 2배에 미치지 않아 참고용으로 보관합니다.");
+        referenceOnly = true; reasons.push("좋아요가 비교 글 중앙값의 2배에 미치지 않아 추천 기준을 충족하지 않습니다.");
       }
     }
   } else {
-    referenceOnly = true; reasons.push("현재 추천 기준은 Threads와 Substack에 적용합니다. 이 원문은 참고용으로 보관합니다.");
+    referenceOnly = true; reasons.push("현재 추천 반응 기준은 Threads와 Substack에만 적용합니다.");
   }
   const status = referenceOnly ? "reference_only" : reasons.length ? "pending" : "recommended";
   return { status, label: status === "recommended" ? "추천 후보" : status === "pending" ? "검증 대기" : "내용 참고",
     reasons, evidenceLabel, comparisonMedian };
 }
-export function assertThreadsReferencesReady(items: ThreadsReferenceItem[]) {
-  const failures = items.map(item => ({ id: item.id, ...evaluateThreadsReference(item) })).filter(result => result.status !== "recommended");
-  if (!items.length || failures.length) {
-    const reasons = [...new Set(failures.flatMap(result => result.reasons))];
-    throw new ApiError(422, "THREADS_REFERENCE_QUALITY_REQUIRED", `추천 기준을 충족한 원문만 주제와 새 제작에 사용할 수 있습니다. ${reasons.join(" ") || "검증한 원문을 먼저 선택해 주세요."}`,
-      { policyVersion: REFERENCE_POLICY.version, references: failures });
-  }
+export function assertThreadsReferencesSelected(items: ThreadsReferenceItem[]) {
+  if (!items.length) throw new ApiError(422, "THREADS_REFERENCE_REQUIRED", "주제에 사용할 원문을 하나 이상 선택해 주세요.");
 }
 export function validateThreadsTopicMetadata(metadata: Record<string, unknown>) {
   const editorial = parseThreadsEditorialMetadata(metadata);

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import type { OsRecord } from "@/lib/record-types";
 import {
-  THREADS_EDITORIAL_CANON_MIN_VERSION,
   THREADS_EDITORIAL_WORKFLOW,
   parseThreadsEditorialMetadata,
   threadsEditorialCandidatesSchema,
@@ -112,7 +111,7 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
   // Retain each candidate's id even when a response is lost or a later save fails.
   const requests = useRef(new Map<string, Prepared>());
   const canonicalReady = Boolean(collectionContext?.canonicalUrl && !collectionContext.error
-    && (collectionContext.canonicalVersion ?? 0) >= THREADS_EDITORIAL_CANON_MIN_VERSION);
+    && collectionContext.editorialReady === true);
   const savedCount = prepared?.filter(item => item.savedId).length ?? 0;
   function chooseRoute(value: ThreadsEditorialRoute) {
     if (busy || value === route) return;
@@ -182,7 +181,7 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
   return <section className="ca-v07-card te-workspace" aria-label="쓰레드 주제 발굴">
     <header><h2>어디서 주제를 찾을까요?</h2><p>자료를 바탕으로 후보를 비교한 뒤, 쓸 주제 1개를 고릅니다.</p></header>
     <div className="te-route-cards">
-      <Link href="/automation/references"><strong>레퍼런스형</strong><span>반응이 좋은 원문에서 장면과 질문을 찾습니다.</span><small>참고 자료로 이동 →</small></Link>
+      <Link href="/automation/references"><strong>레퍼런스형</strong><span>반응이 좋은 원문에서 장면과 질문을 찾습니다.</span><small>레퍼런스 수집으로 이동 →</small></Link>
       {Object.entries(ROUTES).map(([key, value]) => <button type="button" key={key} aria-pressed={route === key} disabled={busy}
         onClick={() => chooseRoute(key as ThreadsEditorialRoute)}><strong>{value.label}</strong><span>{value.description}</span><small>{route === key ? "선택한 방식" : "후보 조사 시작 →"}</small></button>)}
     </div>
@@ -193,7 +192,7 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
         <label>더 살펴볼 범위 <small>선택</small><input value={scope} maxLength={2000} disabled={busy} onChange={event => setScope(event.target.value)} placeholder={ROUTES[route].placeholder} /></label>
         <p>비워두면 정본의 타겟에 맞춰 조사합니다. 정본을 읽고 근거를 찾은 후보를 최대 3개 가져옵니다.</p>
         {canonicalReady ? <small className="te-canonical">기준: <a href={safeHref(collectionContext!.canonicalUrl!)} target="_blank" rel="noopener noreferrer">{collectionContext!.canonicalTitle} · v{collectionContext!.canonicalVersion} ↗</a></small>
-          : <p className="ca-v07-error" role="status">{collectionContext?.error || `이 유형의 현행 정본(v${THREADS_EDITORIAL_CANON_MIN_VERSION} 이상)을 확인하지 못했습니다. 새로고침해 다시 확인해 주세요.`}</p>}
+          : <p className="ca-v07-error" role="status">{collectionContext?.error || "인사이트·인물 분석형 집필 기준이 포함된 승인 정본을 확인하지 못했습니다. 회사 정본을 갱신한 뒤 새로고침해 주세요."}</p>}
         <button type="button" className="primary" disabled={!canonicalReady || busy} onClick={() => void copyRequest()}>Aside 후보 요청 복사</button>
       </div>
       <details className="te-import" ref={importPanel}><summary>Aside가 준비한 후보 등록</summary>

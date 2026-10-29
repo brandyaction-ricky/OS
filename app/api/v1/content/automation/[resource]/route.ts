@@ -6,7 +6,7 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
 import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
-import { assertThreadsReferencesReady,parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
+import { assertThreadsReferencesSelected,parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
 import { getThreadsJobInput,threadsCollectionContext,threadsReferenceRequestId,assertThreadsEditorialReady } from "@/lib/server/threads-reference";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
@@ -14,7 +14,7 @@ import {
   listTeamItems,memberNames,orderedJobs,validateRunRules,
 } from "@/lib/server/content-automation-v07";
 
-import { THREADS_EDITORIAL_WORKFLOW, THREADS_EDITORIAL_CANON_MIN_VERSION, threadsEditorialRouteSchema, threadsEditorialMaterialSchema, parseThreadsEditorialMetadata } from "@/lib/threads-editorial";
+import { THREADS_EDITORIAL_WORKFLOW, threadsEditorialRouteSchema, threadsEditorialMaterialSchema, parseThreadsEditorialMetadata } from "@/lib/threads-editorial";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -211,7 +211,7 @@ export async function GET(request:Request,{params}:Params) {
     }
     if(resource==="topics"||resource==="references"){
       const rows=await listPersonalRecords(actor,"content_topic",limit,resource);
-      return NextResponse.json(resource==="references"?{references:rows,collectionContext:await threadsCollectionContext(actor)}:{topics:rows,collectionContext:await threadsCollectionContext(actor,THREADS_EDITORIAL_CANON_MIN_VERSION)});
+      return NextResponse.json(resource==="references"?{references:rows,collectionContext:await threadsCollectionContext(actor)}:{topics:rows,collectionContext:await threadsCollectionContext(actor)});
     }
     if(resource==="items"){
       const channel=url.searchParams.get("channel");
@@ -344,7 +344,7 @@ export async function POST(request:Request,{params}:Params) {
         sourceRef=referenceItems.map(item=>item.url).join("\n").slice(0,2000);
       }
       const workflow=sourceWorkflow||input.editorial_workflow||input.kind||input.referenceIds||input.reference_items?THREADS_REFERENCE_WORKFLOW:undefined;
-      if(workflow&&input.kind!==THREADS_REFERENCE_KIND)assertThreadsReferencesReady(referenceItems??[]);
+      if(workflow&&input.kind!==THREADS_REFERENCE_KIND)assertThreadsReferencesSelected(referenceItems??[]);
       const metadata=validateThreadsTopicMetadata({source:input.referenceIds?"reference":source,sourceRef,brief:{},channels:[],
         ...(workflow?{editorial_workflow:workflow,reference_items:referenceItems??[]}:{ }),
         ...(input.kind?{kind:input.kind}:{}),...(input.referenceIds?{sourceReferenceIds:[...new Set(input.referenceIds)]}:{}),
@@ -393,7 +393,7 @@ export async function POST(request:Request,{params}:Params) {
       if(existing.error)throw new ApiError(503,"ITEM_CHECK_FAILED","기존 채널 콘텐츠를 확인하지 못했습니다.");
       if(existing.data)return NextResponse.json({item:existing.data,reused:true});
       if(input.channel==="threads"&&topic.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW)
-        assertThreadsReferencesReady(parseThreadsReferences(topic.metadata.reference_items??[]));
+        assertThreadsReferencesSelected(parseThreadsReferences(topic.metadata.reference_items??[]));
       const item=await createPersonalRecord(actor,"content_publish",{
         title:input.title,brand:input.brand,parentId:input.topicId,dueDate:input.dueDate,
         status:"draft",stage:"making",metadata:{channel:input.channel,step:0,pages:[],cuts:[],posts:[]},

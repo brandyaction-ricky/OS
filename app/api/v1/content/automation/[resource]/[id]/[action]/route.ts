@@ -11,11 +11,10 @@ import type { OsRecord } from "@/lib/record-types";
 import { mayHideComment } from "@/lib/content-comments";
 import { moderateChannelComment } from "@/lib/server/channel-comments";
 import { assertCanEdit,assertHumanOwner,assertSameOrigin,AUTOMATION_PROCS,browserCookieKey,hashBrowserKey,createJob,createPersonalRecord,getContentRecord,getItemJob,getPersonalRecord,memberNames,updatePersonalRecord } from "@/lib/server/content-automation-v07";
-import { assertThreadsJobCurrent,getThreadsJobInput,assertThreadsEditorialReady,threadsCanonicalSnapshot } from "@/lib/server/threads-reference";
+import { assertThreadsJobCurrent,getThreadsJobInput,assertThreadsEditorialReady } from "@/lib/server/threads-reference";
 import { jobInstructions } from "@/lib/server/content-automation-worker";
-import { assertThreadsReferencesReady,parseThreadsReferences,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
+import { assertThreadsReferencesSelected,parseThreadsReferences,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
 
-import { THREADS_EDITORIAL_CANON_MIN_VERSION } from "@/lib/threads-editorial";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -99,12 +98,11 @@ export async function POST(request:Request,{params}:Params){
       if(topic.metadata.kind===THREADS_REFERENCE_KIND)
         throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","원문은 레퍼런스 화면에서 주제로 선택한 뒤 제작해 주세요.");
       if(topic.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW&&input.channels.threads)
-        assertThreadsReferencesReady(parseThreadsReferences(topic.metadata.reference_items??[]));
+        assertThreadsReferencesSelected(parseThreadsReferences(topic.metadata.reference_items??[]));
       const editorial=await assertThreadsEditorialReady(actor,topic.metadata);
       if(editorial){
         if(!input.channels.threads||Object.keys(input.channels).some(channel=>channel!=="threads"))
           throw new ApiError(422,"THREADS_CHANNEL_REQUIRED","인사이트·인물 분석형은 쓰레드 채널로 제작해 주세요.");
-        await threadsCanonicalSnapshot(actor,THREADS_EDITORIAL_CANON_MIN_VERSION);
       }
       const selected=Object.entries(input.channels).map(([channel,options])=>({channel,...options}));
       const {data,error}=await db.rpc("os_start_personal_content_topic",{

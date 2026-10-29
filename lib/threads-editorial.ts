@@ -2,7 +2,13 @@ import { z } from "zod";
 import { ApiError } from "./http";
 
 export const THREADS_EDITORIAL_WORKFLOW = "threads_editorial_v1";
-export const THREADS_EDITORIAL_CANON_MIN_VERSION = 16;
+export const THREADS_EDITORIAL_CANON_DECLARATION = `집필 입력 계약: ${THREADS_EDITORIAL_WORKFLOW}`;
+// A document's edit counter differs between DEV and production. Only an explicit
+// declaration at the start of the approved canonical opts into this contract.
+// A mention inside prose, an example, a quote, or a code block is not enough.
+export function supportsThreadsEditorialContract(body: string) {
+  return body.replace(/^\uFEFF/, "").split(/\r?\n/).find(line => line.trim().length > 0) === THREADS_EDITORIAL_CANON_DECLARATION;
+}
 export const threadsEditorialRouteSchema = z.enum(["insight", "person"]);
 export type ThreadsEditorialRoute = z.infer<typeof threadsEditorialRouteSchema>;
 const text = (max: number) => z.string().trim().min(1).max(max);

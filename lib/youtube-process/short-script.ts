@@ -127,18 +127,17 @@ export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
 }
 /**
  * Whether a found Short is about the 검색어 (2026-10-28 시안 2: 「일이 안 맞는 신호」 brought 「오줌이 마려울 땐 이 포즈를…」 — 680만 views passed
- * the bar and YouTube matched it on 신호). Its title must share a two-letter run with a Korean word of the 검색어 (일이 · 맞는 · 신호 here)
- * or a whole Latin or number word. A 검색어 of one-letter words cannot be checked and passes; the PD's own links are never checked.
+ * the bar and YouTube matched it on 신호). A 검색어 word is met when the title shares a two-letter run with it (Korean) or has it whole
+ * (Latin, numbers). With two or more words, two must be met: one alone let in every 「…라는 신호」 about love or coffee (10-29 re-search).
+ * A 검색어 of one-letter words cannot be checked and passes; the PD's own links are never checked.
  */
 export function refMatchesQuery(query: string, title: string) {
-  // Korean words by their two-letter runs; Latin and number words whole (two-letter Latin runs met every 「#shorts」); NFC first, as a
-  // title may come in decomposed jamo.
-  const keys = (text: string) => text.normalize("NFC").toLowerCase().split(/[^0-9a-z가-힣]+/).flatMap(word => {
-    if (!/[가-힣]/.test(word)) return word.length > 1 ? [word] : [];
-    const chars = [...word]; return chars.slice(1).map((ch, i) => chars[i] + ch);
-  });
-  const wanted = new Set(keys(query));
-  return !wanted.size || keys(title).some(key => wanted.has(key));
+  // NFC first: a title may come in decomposed jamo. Two-letter Latin runs met every 「#shorts」, so Latin and number words count whole.
+  const words = (text: string) => text.normalize("NFC").toLowerCase().split(/[^0-9a-z가-힣]+/).filter(word => [...word].length > 1);
+  const keys = (word: string) => { const chars = [...word]; return /[가-힣]/.test(word) ? chars.slice(1).map((ch, i) => chars[i] + ch) : [word]; };
+  const asked = words(query).map(keys);
+  const seen = new Set(words(title).flatMap(keys));
+  return asked.filter(wordKeys => wordKeys.some(key => seen.has(key))).length >= Math.min(2, asked.length);
 }
 /**
  * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.
