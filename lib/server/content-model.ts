@@ -23,7 +23,8 @@ function outputText(body: Record<string, unknown>) {
 }
 
 export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000, cachedPrefix }: ContentModelRequest) {
-  if (model.startsWith("gpt-6-")) return generateOpenAiContentText({ prompt: cachedPrefix ? `${cachedPrefix}\n\n${prompt}` : prompt, model, jsonSchema, maxTokens, effort, timeoutMs });
+  if (model.startsWith("gpt-6")) return generateOpenAiContentText(   // gpt-6-astra · gpt-6-luna · gpt-6.1-sol · gpt-6.1-terra
+    { prompt: cachedPrefix ? `${cachedPrefix}\n\n${prompt}` : prompt, model, jsonSchema, maxTokens, effort, timeoutMs });
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
