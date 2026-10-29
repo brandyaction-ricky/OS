@@ -15,5 +15,7 @@ test("myinVoiceEnv voices on the render PC when the OS sends no files, and keeps
   const older = { paragraphs: [{ index: 0, text: "가", url: "https://x/p00.wav" }] };
   const joined = worker.myinVoiceEnv(older, { PATH: "/usr/bin" });
   assert.equal(joined.onPc, false);
-  assert.deepEqual([joined.env.FISH_API_KEY, joined.env.FISH_VOICE_ID], ["unused", "unused"]);
+  assert.deepEqual([joined.env.FISH_API_KEY, joined.env.FISH_VOICE_ID], ["unused", "unused"]);  // 구독 멘트 (2026-10-29 로건 stage_cta): the ④ CTA lines come without files and are voiced the same way, on top of the render env.
+  const cta = worker.myinVoiceEnv({ paragraphs: [], fishVoice: { referenceId: "voice-2" } }, { PATH: "/usr/bin", FISH_API_KEY: "k", STORY: "myin_storyboard.json" });
+  assert.deepEqual([cta.onPc, cta.env.FISH_VOICE_ID, cta.env.STORY], [true, "voice-2", "myin_storyboard.json"]);
 });

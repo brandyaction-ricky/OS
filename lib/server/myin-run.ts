@@ -362,8 +362,9 @@ async function voiceFiles(service: Service, run: MyinRun) {
     paragraphs.push({ index: p.index, text: input.spoken[p.index], url: data.signedUrl });
   }
   // The voice his stage_voice asks Fish for: the patched one makes every sentence itself, also for an older run that brings files.
-  return { scriptMarkdown: input.markdown, paragraphs, fishVoice: { referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL } };
+  return { scriptMarkdown: input.markdown, paragraphs, fishVoice: fishVoice() };
 }
+const fishVoice = () => ({ referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL });
 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */
 const fits = (short: boolean) => (run: MyinRun) => short || !run.layout;
@@ -502,8 +503,10 @@ async function beginPrep(service: Service, record: OsRecord, run: MyinRun, by: s
   const used = photosInUse(run, story);
   const at = new Date().toISOString();
   const assets = Object.fromEntries(used.map((file) => [file, { decision: "approved" as const, by, at }]));
+  // 2026-10-29 로건: the CTA lines are made like the narration (his stage_cta: same way, EQ and level), so a render-PC voice run hands them
+  // to the render PC as text instead of queueing the server's Fish request.
   const cta: NonNullable<MyinRun["cta"]> = story.cta.map((c, index) =>
-    run.cta?.find((p) => p.index === index && p.textHash === sha(c.line)) ?? { index, textHash: sha(c.line), status: "pending" as const });
+    run.cta?.find((p) => p.index === index && p.textHash === sha(c.line)) ?? { index, textHash: sha(c.line), status: run.voiceOn ? "ready" as const : "pending" as const });
   const next: MyinRun = { ...run, assets, cta, attempts: 0 }; delete next.prepared; delete next.lastError;
   return save(service, record, "backlog", cta.every((c) => c.status === "ready") ? "prep_pending" : "cta_pending", next);
 }
@@ -619,7 +622,8 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
       .map(async ([file, image]) => [file, await sign(service, OUTPUT_BUCKET, image.path)] as const)));
     const assets = myinPrepPhotos(folders, run.storyboard?.assets ?? [], (file) => draft || run.assets?.[file]?.decision === "approved", ours);
     const cta = [];
-    if (!draft) for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line, tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path ?? "") });
+    if (!draft) for (const c of run.cta ?? []) cta.push({ index: c.index, line: story.cta[c.index].line,
+      ...(c.path ? { tag: md5(story.cta[c.index].line).slice(0, 8), url: await sign(service, YOUTUBE_VOICE_BUCKET, c.path) } : {}) });
     const sheets = Math.ceil(story.scenes.length / 12) + 1;
     const sheetUploads = [];
     for (let n = 1; n <= sheets; n++) {
@@ -628,7 +632,7 @@ export async function claimMyinPrep(service: Service = createServiceSupabase(), 
     }
     const { data: bundle } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).createSignedUploadUrl(prepBundlePath(record, run, lease.token), { upsert: true });
     if (!bundle) throw new ApiError(503, "MYIN_SIGN_FAILED", "결과 업로드 주소를 만들지 못했습니다.");
-    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
+    return { runId: record.id, lease: lease.token, ...(run.layout ? { layout: run.layout } : {}), draft, placeholders, storyboard: myinDriftPairs(story), assets, cta, ...(cta.some((c) => !c.url) ? { fishVoice: fishVoice() } : {}), siteCapture: story.scenes.some((sc) => sc.type === "site_ad"),
       sheetUploadUrls: sheetUploads, bundleUploadUrl: bundle.signedUrl, ...(owner ? { seed: await localSeed(service, run) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_PREP_CLAIM_FAILED");

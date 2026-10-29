@@ -300,7 +300,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {/* 시안 확인 = 사진 허락: the photos and the 구독 대사 voice (paid) start at once, so ask once and offer 수정 요청 beside it. */}
         <div className="yt-actions"><button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => void (async () => {
           if (!window.confirm(short ? "이 미리보기로 확정하고 숏폼 전체 영상을 만들어요. 시작할까요?" : "이 미리보기로 확정하고 4단계 자료 준비를 시작해요. 미리보기의 사진을 확정하고 구독 대사 음성을 만들어요. 시작할까요?")) return;
-          if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요")) return;
+          if (board && !await askVoice(board.cta.map((c) => c.line).join("\n"), "이미 만든 문장은 다시 들지 않아요", Boolean(run.voiceOnPc))) return;
           await act("clips", () => post("/myin", "PATCH", { action: "clips_ok", runId: run.id, note }));
         })()}>{busy === "clips" ? "저장 중…" : short ? "미리보기 확인 완료 · 전체 영상 만들기" : "미리보기 확인 완료 · 자료 준비 시작"}</button>
           {board?.cta.length ? <CostTag kind="paid" /> : null}
