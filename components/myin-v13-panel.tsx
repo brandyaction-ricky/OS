@@ -46,7 +46,7 @@ const STOP: Record<string, string> = {
 // confirmed (clipsReview empty) the preparation is the ③ draft one, after it the ④ one.
 // 내 컴퓨터로 시안 (2026-10-27): the ③ drafts of a run sent to a member's own Mac name that computer instead of the render PC.
 const maker = (run: MyinRun) => run.local && !run.clipsReview ? `${run.local.name}님 컴퓨터` : "영상 만드는 컴퓨터";
-const phaseLabel = (run: MyinRun) => run.stage === "prep_pending" ? run.clipsReview ? "영상 만드는 컴퓨터가 자료 준비 · 다시 점검 중" : `${maker(run)}가 미리보기 준비 · 자동 선곡 · 점검 중`
+const phaseLabel = (run: MyinRun) => run.stage === "prep_pending" ? run.clipsReview ? "영상 만드는 컴퓨터가 자료 준비 · 다시 점검 중" : `${maker(run)}가 미리보기 준비 · ${run.layout === "short" ? "" : "자동 선곡 · "}점검 중`
   : run.stage === "clips_pending" ? `${maker(run)}가 미리보기 영상 만드는 중`
   : run.stage === "prep_ready" ? run.clipsReview ? "자료 준비 끝 · 사운드 확인 대기" : "미리보기 점검 끝" : PHASE[run.stage] ?? run.stage;
 

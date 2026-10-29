@@ -44,8 +44,11 @@ export function myinBreathText(text: string, after: readonly number[] = []) {
 }
 
 /** A v13 run belongs to the current 원고 only while its input key, script and spoken paragraphs (hashes) are all unchanged. */
-export function myinRunMatchesScript(run: { inputKey: string; scriptMarkdownHash: string; paragraphs: { textHash: string }[] },
+export function myinRunMatchesScript(run: { inputKey: string; scriptMarkdownHash: string; paragraphs: { textHash: string }[]; layout?: "short" | null },
   now: { inputKey: string; markdownHash: string; spokenHashes: string[] }) {
+  // A 숏폼's inputKey is the confirmed 대본 itself, which cannot change after 대본 확정. Its spoken copy is derived (how the lines are
+  // joined for the voice changed on 2026-10-28) and must not stop a run made before such a change.
+  if (run.layout === "short") return run.inputKey === now.inputKey;
   return run.inputKey === now.inputKey && run.scriptMarkdownHash === now.markdownHash && run.paragraphs.length === now.spokenHashes.length
     && run.paragraphs.every((p, i) => p.textHash === now.spokenHashes[i]);
 }

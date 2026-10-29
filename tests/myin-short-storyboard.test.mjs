@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortStoryboard, shortLineWidth } from "../lib/myin-short-storyboard.ts";
+import { checkShortStoryboard, shortDiagramList, shortLineWidth } from "../lib/myin-short-storyboard.ts";
 
 // 숏폼 기획표 (2026-10-28): opening (big type) and vertical lib_ diagrams only, the confirmed 헤드 카피 on the first screen, lines inside
 // the 1080 px frame and diagram slots inside their letter limits.
@@ -75,4 +75,11 @@ test("a big line wider than the frame, a missing cue and a sentence with no text
   const late = good();
   late.end = duration + 9;
   assert.match(checkShortStoryboard(late, input).issues.join(" "), /end는 마지막 말이 끝난 뒤 0~3초/);
+});
+
+test("the card lists the letter limits the OS checks before the catalog's note", () => {
+  const list = shortDiagramList([...diagrams, { type: "lib_strike_list", name: "취소선목록", slots: "항목 2~4개, 각 ≤ 12자, 마지막 keep", spec: { kind: "object", fields: {
+    items: { kind: "array", min: 1, max: 4, item: { kind: "object", fields: { text: { kind: "text", max: 9 }, keep: { kind: "boolean" } } } } } } }]);
+  assert.equal(list, "- lib_venn2 (두 원): a.text ≤ 6자 · b.text ≤ 6자 · mid.text ≤ 4자 — a · b ≤ 6자, mid ≤ 4자\n"
+    + "- lib_strike_list (취소선목록): items 1~4개 · items.text ≤ 9자 — 항목 2~4개, 각 ≤ 12자, 마지막 keep");
 });

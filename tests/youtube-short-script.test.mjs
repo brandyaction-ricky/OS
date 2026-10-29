@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -105,6 +105,13 @@ test("Reels · TikTok counts as pages show them, and where each reference is fro
   assert.deepEqual(["12만회", "10,000회", "1천만", "12만5천", "3억2천만", "1만2345", "2.3K", "12만 명"].map(parseCount), [120_000, 10_000, 10_000_000, 125_000, 320_000_000, 12_345, 2_300, 120_000]);
   assert.deepEqual(["https://www.tiktok.com/@a/video/1", "https://www.instagram.com/reel/x/", "https://www.facebook.com/ads/library/?id=1", "https://youtu.be/a", "https://www.youtube.com/shorts/a"].map(refPlatform),
     ["틱톡", "릴스", "메타 광고", "유튜브", "유튜브"]);
+});
+
+test("the voice gets the 대본 with each line closed, so it pauses there and no subtitle runs across two lines", () => {
+  const text = "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면\n일요일 밤에 채용공고 앱을 또 열고 있다면\n[관계] 근데 연봉이 막아 주는 건 딱 하나예요\n돈이 적어서 생기는 불만,\n그거 하나요\n지금 회사에서 내 하루, 몇 점이에요?";
+  assert.equal(spokenScript(text), "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면, 일요일 밤에 채용공고 앱을 또 열고 있다면, 근데 연봉이 막아 주는 건 딱 하나예요. 돈이 적어서 생기는 불만, 그거 하나요. 지금 회사에서 내 하루, 몇 점이에요?");
+  // The checks still count the 대본 as written.
+  assert.equal(checkShortScript(text).chars, scriptLines(text).map(line => line.text).join(" ").length);
 });
 
 test("a found Short counts only when its title shares a two-letter word run with the 검색어", () => {
