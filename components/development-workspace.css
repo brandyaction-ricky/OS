@@ -141,6 +141,12 @@
 .dev-comment>p, .dev-comment-reply>p { margin: 7px 0 3px; color: var(--text-2); font-size: 11px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dev-comment>.dev-text-button { font-size: 11px; }
 .dev-comment-reply { margin: 9px 0 0 18px; padding: 10px 0 2px 12px; border-left: 2px solid var(--line); }
+.dev-comment>.dev-text-button+.dev-text-button, .dev-comment-reply>.dev-text-button+.dev-text-button { margin-left: 10px; }
+.dev-comment-reply>.dev-text-button { font-size: 11px; }
+.dev-comment-deleted { color: var(--muted)!important; font-style: italic; }
+.dev-comment-edit { margin: 7px 0 3px; }
+.dev-comment-edit textarea { width: 100%; min-width: 0; resize: vertical; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); font-size: 11px; line-height: 1.7; }
+.dev-comment-edit>div { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .dev-comment-form { margin-top: 14px; }
 .dev-comment-form label { display: flex; flex-direction: column; gap: 7px; color: var(--text-2); font-size: 11px; }
 .dev-comment-form textarea { width: 100%; min-width: 0; resize: vertical; padding: 9px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--text); font-size: 11px; line-height: 1.7; }

@@ -880,6 +880,17 @@
         "production"
       ],
       "notes": "Staff request 2026-10-28 ([링크관리] utm_content 대소문자). Widens one check constraint; no row changes. A rollback-only run on DEV passed (case-only different content codes stored apart, upper case refused for source/campaign, bad characters refused, name/code duplicates refused). Owner approved Production on 2026-10-28 (\"반영해\"). Applied to Production in one transaction with its schema history row and read back (new check in place, history 1, 9 existing choices unchanged). Not applied to DEV."
+    },
+    {
+      "file": "20261028190000_development_comment_edit.sql",
+      "sha256": "d3b50b77b609ce8d349cbbbf115b20caf67939b6837c9d060d7744d49aceccc1",
+      "purpose": "수정 요청 대화: a development comment's author may change its text (earlier text kept in metadata.history) or mark it deleted (metadata.deletedAt); still never deleted, nothing else changes",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-29",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Staff request b7a80741 (2026-10-28). Replaces os_development_comment_guard only; insert checks unchanged, a reply to a deleted comment is refused. Checked on an in-memory Postgres (PGlite) with a stub auth.uid(): author edit keeps history the client cannot rewrite, other keys/columns refused, other users and no-session refused, delete keeps text, deleted stays deleted, no hard delete. Owner approved Production on 2026-10-28/29 (\"추천대로 해\", \"307도 진행해\"). Applied to Production in one transaction with its schema history row (statements = pg_get_functiondef) and read back: function body equals this file, history 1, trigger in place, 94 existing comments untouched. Not applied to DEV."
     }
   ],
   "legacyMigrations": [

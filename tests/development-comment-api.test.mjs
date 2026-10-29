@@ -32,6 +32,7 @@ function createDatabase(rows, profiles) {
           const row = { ...structuredClone(input), id: `00000000-0000-4000-8000-${String(insertSequence).padStart(12, "0")}`, version: 1, archived_at: null, created_at: `2026-09-21T06:00:0${insertSequence}Z`, updated_at: `2026-09-21T06:00:0${insertSequence}Z` };
           records.push(row); matches = [row];
         }
+        if (action === "update") { for (const row of matches) Object.assign(row, structuredClone(input), { version: row.version + 1 }); }
         matches.sort((left, right) => {
           for (const [key, ascending] of ordering) {
             const compared = String(value(left, key) ?? "").localeCompare(String(value(right, key) ?? ""));
@@ -50,6 +51,7 @@ function createDatabase(rows, profiles) {
         order(key, { ascending = true } = {}) { ordering.push([key, ascending]); return builder; },
         range(from, to) { range = [from, to]; return builder; },
         insert(fields) { action = "insert"; input = fields; return builder; },
+        update(fields) { action = "update"; input = fields; return builder; },
         maybeSingle() { const result = execute(); return Promise.resolve({ ...result, data: result.data[0] ?? null }); },
         single() { return builder.maybeSingle(); },
         then(resolve, reject) { return Promise.resolve().then(execute).then(resolve, reject); },
@@ -149,4 +151,32 @@ test("comment list is chronological and private no-store", async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "private, no-store");
   assert.deepEqual(body.comments.map((comment) => comment.id), ["00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000102"]);
+});
+
+// 내 댓글 고치기 · 지우기 (staff request 2026-10-28). The DB trigger keeps the earlier text and refuses non-authors too; this is the API side.
+test("authors edit or delete their own comment; others cannot, and readers never see deleted or earlier text", async () => {
+  const otherAuthor = "5c1f7d1e-2a4b-4c6d-8e9f-0a1b2c3d4e5f";
+  const othersId = "6d2e8f2f-3b5c-4d7e-9fa0-1b2c3d4e5f60";
+  const { routes, rows } = setup([
+    { id: othersId, record_type: "development_comment", parent_id: requestId, created_by: otherAuthor, version: 1, description: "다른 사람 글", metadata: { kind: "development_comment", requestId, replyTo: "" }, archived_at: null, created_at: "2026-09-21T05:00:00Z" },
+  ]);
+  await routes.POST(request("POST", { requestId, body: "처음 쓴 글" }));
+  const mine = rows.at(-1);
+  const edited = await routes.PATCH(request("PATCH", { commentId: mine.id, body: "  고친 글  " }));
+  assert.equal(edited.status, 200);
+  assert.equal(mine.description, "고친 글");
+  assert.equal((await routes.PATCH(request("PATCH", { commentId: othersId, body: "남의 글 고치기" }))).status, 403);
+  assert.equal((await routes.PATCH(request("PATCH", { commentId: mine.id }))).status, 400, "either new text or delete");
+  assert.equal((await routes.PATCH(request("PATCH", { commentId: mine.id, body: "x", delete: true }))).status, 400);
+
+  // As the DB leaves it after an edit and a delete: earlier text in history, deletedAt set, text kept.
+  Object.assign(mine.metadata, { history: [{ body: "처음 쓴 글", at: "2026-09-21T06:00:01Z" }] });
+  assert.equal((await routes.PATCH(request("PATCH", { commentId: mine.id, delete: true }))).status, 200);
+  assert.ok(mine.metadata.deletedAt);
+  const list = await (await routes.GET(request("GET", null, `?requestId=${requestId}`))).json();
+  const shown = list.comments.find((comment) => comment.id === mine.id);
+  assert.equal(shown.description, "");
+  assert.equal("history" in shown.metadata, false);
+  assert.equal((await routes.PATCH(request("PATCH", { commentId: mine.id, body: "되살리기" }))).status, 409);
+  assert.equal((await routes.POST(request("POST", { requestId, body: "지운 글에 답글", replyTo: mine.id }))).status, 400);
 });

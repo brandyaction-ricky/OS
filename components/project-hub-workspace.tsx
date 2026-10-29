@@ -50,9 +50,9 @@ async function requestApi<T>(token: string | null, query = "", body?: Record<str
   if (!response.ok) throw new Error(data.error?.message || "수정요청을 처리하지 못했습니다.");
   return data;
 }
-async function commentApi<T>(token: string | null, requestId: string, body?: Record<string, unknown>): Promise<T> {
+async function commentApi<T>(token: string | null, requestId: string, body?: Record<string, unknown>, method: "POST" | "PATCH" = "POST"): Promise<T> {
   const response = await fetch(`/api/v1/development-request-comments${body ? "" : `?requestId=${encodeURIComponent(requestId)}`}`, {
-    method: body ? "POST" : "GET", cache: "no-store",
+    method: body ? method : "GET", cache: "no-store",
     headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
     ...(body ? { body: JSON.stringify({ requestId, ...body }) } : {}),
   });
@@ -103,6 +103,7 @@ function ProjectHubContent() {
   const [commentSaving, setCommentSaving] = useState(false);
   const [commentRevision, setCommentRevision] = useState(0);
   const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);   // 내 댓글 고치기 (2026-10-28)
   const [mentionIds, setMentionIds] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
   const [copyFallback, setCopyFallback] = useState("");
@@ -126,7 +127,8 @@ function ProjectHubContent() {
   const commentMentionNames = (comment: OsRecord) => Array.isArray(comment.metadata.mentionNames) ? comment.metadata.mentionNames.filter((name): name is string => typeof name === "string") : [];
   const commentIds = useMemo(() => new Set(comments.map(comment => comment.id)), [comments]);
   const rootComments = comments.filter(comment => !meta(comment, "replyTo") || !commentIds.has(meta(comment, "replyTo")));
-  const replies = (commentId: string) => comments.filter(comment => meta(comment, "replyTo") === commentId);
+  const replies = (commentId: string) => comments.filter(comment => meta(comment, "replyTo") === commentId && !meta(comment, "deletedAt"));
+  const shownComments = rootComments.filter(comment => !meta(comment, "deletedAt") || replies(comment.id).length);
   const chooseProject = (id: string, nextStatus = "") => { setProjectId(id); setSelected(null); setStatus(nextStatus); setScope(""); setSearch(""); setQuery(""); setOffset(0); setTab("requests");
     if (["history", "updates"].includes(new URLSearchParams(navigationQuery).get("tab") ?? "")) {
       const next = new URLSearchParams(); if (id) next.set("project",id); if (nextStatus) next.set("status",nextStatus);
@@ -391,6 +393,24 @@ function ProjectHubContent() {
     finally { setSaving(false); }
   };
 
+  // 내 댓글 고치기 · 지우기: only the author's own, not in the demo. The server keeps the earlier text and shows a deleted one as such.
+  const changeComment = async (comment: OsRecord, remove: boolean) => {
+    if (!selected || commentSaving || (remove && !window.confirm("이 댓글을 지울까요? 지운 댓글은 되살릴 수 없어요."))) return;
+    setCommentSaving(true); setCommentsError("");
+    try {
+      const saved = (await commentApi<{ comment: OsRecord }>(accessToken, selected.id, remove ? { commentId: comment.id, delete: true } : { commentId: comment.id, body: editing?.text.trim() }, "PATCH")).comment;
+      setComments(previous => previous.map(row => row.id === saved.id ? saved : row)); setEditing(null);
+    } catch (reason) { setCommentsError(reason instanceof Error ? reason.message : "댓글을 저장하지 못했습니다."); }
+    finally { setCommentSaving(false); }
+  };
+  const commentHeader = (comment: OsRecord) => <header><strong>{commentName(comment)}</strong>{meta(comment, "authorType") === "agent" && <span>AI가 대신 작성</span>}<time dateTime={comment.created_at}>{dateTime(comment.created_at)}{meta(comment, "editedAt") && !meta(comment, "deletedAt") ? ` · 고침 ${dateTime(meta(comment, "editedAt"))}` : ""}</time></header>;
+  const commentBody = (comment: OsRecord) => meta(comment, "deletedAt") ? <p className="dev-comment-deleted">지운 댓글이에요</p>
+    : editing?.id === comment.id ? <div className="dev-comment-edit"><textarea aria-label="댓글 고치기" rows={3} maxLength={5000} value={editing.text} onChange={event => setEditing({ id: comment.id, text: event.target.value })} />
+      <div><button type="button" className="dev-button primary" disabled={commentSaving || !editing.text.trim()} onClick={() => void changeComment(comment, false)}>{commentSaving ? "저장 중…" : "저장"}</button><button type="button" className="dev-text-button" disabled={commentSaving} onClick={() => setEditing(null)}>취소</button></div></div>
+    : <p>{comment.description}</p>;
+  const commentTools = (comment: OsRecord) => !demo && comment.created_by === profile?.id && !meta(comment, "deletedAt") && editing?.id !== comment.id ? <>
+    <button type="button" className="dev-text-button" disabled={commentSaving} onClick={() => setEditing({ id: comment.id, text: comment.description ?? "" })}>고치기</button>
+    <button type="button" className="dev-text-button danger" disabled={commentSaving} onClick={() => void changeComment(comment, true)}>지우기</button></> : null;
   const submitComment = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); if (!selected || commentSaving) return;
     const formElement = event.currentTarget;
@@ -471,14 +491,15 @@ function ProjectHubContent() {
       <section className="dev-resolution"><h3><GitCommitHorizontal size={14} /> 처리 결과</h3><p>{meta(selected, "resolution") || "아직 처리 결과가 등록되지 않았습니다."}</p><div className="dev-detail-links"><SafeLink url={meta(selected, "prUrl")}>GitHub 변경 내역</SafeLink><SafeLink url={meta(selected, "deploymentUrl")}>반영 화면 확인</SafeLink></div>{meta(selected, "commitSha") && <small>커밋 {meta(selected, "commitSha").slice(0, 12)}</small>}</section>
       <section className="dev-linked-history"><h3><GitBranch size={14} /> 자동 연결된 개발 이력 <span>{selectedHistory.length}</span></h3>{historyLoading ? <p>연결 기록을 확인하는 중입니다.</p> : selectedHistory.length ? selectedHistory.slice(0, 5).map(item => <article key={item.id}><div><strong>{item.title}</strong><Status value={item.status} /></div><p className="dev-history-desc" tabIndex={0} title="눌러서 전체 보기">{item.description}</p><small>{date(item.created_at)}{meta(item, "branch") && ` · ${meta(item, "branch")}`}{meta(item, "commitSha") && ` · ${meta(item, "commitSha").slice(0, 12)}`}</small><SafeLink url={item.source_url}>결과 확인</SafeLink></article>) : <p>이 요청 ID로 저장된 개발·배포 기록이 아직 없습니다. Work에서 로그를 남길 때 요청 ID를 함께 보내면 여기에 자동으로 표시됩니다.</p>}</section>
       <section className="dev-comments" aria-label="요청 대화">
-        <h3><MessageCircle size={14} /> 요청 대화 <span>{comments.length}</span>{!demo && <button type="button" aria-label="요청 대화 새로고침" disabled={commentsLoading} onClick={() => setCommentRevision(value => value + 1)}><RefreshCw className={commentsLoading ? "dev-spin" : ""} size={13} /></button>}</h3>
+        <h3><MessageCircle size={14} /> 요청 대화 <span>{comments.filter(comment => !meta(comment, "deletedAt")).length}</span>{!demo && <button type="button" aria-label="요청 대화 새로고침" disabled={commentsLoading} onClick={() => setCommentRevision(value => value + 1)}><RefreshCw className={commentsLoading ? "dev-spin" : ""} size={13} /></button>}</h3>
         {commentsError && <div className="dev-error" role="alert">{commentsError}</div>}
-        {commentsLoading ? <p className="dev-comment-empty">대화를 불러오는 중입니다.</p> : rootComments.length ? <div className="dev-comment-list">{rootComments.map(comment => <article className="dev-comment" key={comment.id}>
-          <header><strong>{commentName(comment)}</strong>{meta(comment, "authorType") === "agent" && <span>AI가 대신 작성</span>}<time dateTime={comment.created_at}>{dateTime(comment.created_at)}</time></header>
-          {commentMentionNames(comment).length > 0 && <div className="dev-comment-mentions">{commentMentionNames(comment).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}
-          <p>{comment.description}</p>
-          <button type="button" className="dev-text-button" onClick={() => { setReplyTo(comment.id); setMentionIds(comment.created_by && comment.created_by !== profile?.id && members.some(member => member.id === comment.created_by) ? [comment.created_by] : []); }}><CornerDownRight size={13} /> 답글</button>
-          {replies(comment.id).map(reply => <div className="dev-comment-reply" key={reply.id}><header><strong>{commentName(reply)}</strong>{meta(reply, "authorType") === "agent" && <span>AI가 대신 작성</span>}<time dateTime={reply.created_at}>{dateTime(reply.created_at)}</time></header>{commentMentionNames(reply).length > 0 && <div className="dev-comment-mentions">{commentMentionNames(reply).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}<p>{reply.description}</p></div>)}
+        {commentsLoading ? <p className="dev-comment-empty">대화를 불러오는 중입니다.</p> : shownComments.length ? <div className="dev-comment-list">{shownComments.map(comment => <article className="dev-comment" key={comment.id}>
+          {commentHeader(comment)}
+          {commentMentionNames(comment).length > 0 && !meta(comment, "deletedAt") && <div className="dev-comment-mentions">{commentMentionNames(comment).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}
+          {commentBody(comment)}
+          {!meta(comment, "deletedAt") && <button type="button" className="dev-text-button" onClick={() => { setReplyTo(comment.id); setMentionIds(comment.created_by && comment.created_by !== profile?.id && members.some(member => member.id === comment.created_by) ? [comment.created_by] : []); }}><CornerDownRight size={13} /> 답글</button>}
+          {commentTools(comment)}
+          {replies(comment.id).map(reply => <div className="dev-comment-reply" key={reply.id}>{commentHeader(reply)}{commentMentionNames(reply).length > 0 && <div className="dev-comment-mentions">{commentMentionNames(reply).map((name, index) => <span key={`${name}-${index}`}>@{name}</span>)}</div>}{commentBody(reply)}{commentTools(reply)}</div>)}
         </article>)}</div> : <p className="dev-comment-empty">아직 대화가 없습니다. 진행 상황이나 확인할 내용을 남겨 보세요.</p>}
         <form className="dev-comment-form" onSubmit={submitComment}>
           {replyTo && <div className="dev-reply-target"><span><CornerDownRight size={13} /> {commentName(comments.find(comment => comment.id === replyTo) || selected)}님의 댓글에 답글</span><button type="button" onClick={() => { setReplyTo(null); setMentionIds([]); }}>취소</button></div>}
