@@ -109,7 +109,12 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
             <button type="button" className="primary" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>{busy ? "처리 중…" : "Aside에 보낼 요청문 복사"}</button>
             {open ? <p className="ca-v07-aside-hint">준비된 요청이 있습니다. 다시 복사해도 같은 요청을 사용합니다.</p> : null}</>}
     {completed && !open ? <details className="ca-v07-aside-more"><summary>다른 초안을 다시 요청하려면</summary><p>새 결과도 미승인으로 저장합니다. 현재 원고는 유지됩니다.</p><button type="button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>Aside에 보낼 요청문 복사</button></details> : null}
-    {manualCopy && requestText ? <label>복사할 집필 요청문<textarea aria-label="복사할 집필 요청문" readOnly rows={8} value={requestText} onFocus={event => event.target.select()} /><small>전체 선택한 뒤 복사하세요.</small></label> : null}
+    {open ? <details className="ca-v07-aside-more" open={manualCopy || undefined}>
+      <summary>집필 요청 확인</summary>
+      <p>현재 작업 ID: <code>{open.id}</code></p>
+      <p>Aside는 전달받은 요청과 이 번호가 같은지 확인합니다. 다른 요청의 결과는 이곳에 저장하지 않습니다.</p>
+      {requestText ? <label>복사할 집필 요청문<textarea aria-label="복사할 집필 요청문" readOnly rows={8} value={requestText} onFocus={event => event.target.select()} /><small>복사한 내용을 확인하거나, 전체 선택한 뒤 직접 복사할 수 있습니다.</small></label> : null}
+    </details> : null}
     {notice ? <p role="status" className="ca-v07-notice">{notice}</p> : null}
     {error ? <p role="alert" className="ca-v07-error">{error}</p> : null}
     {dirty ? <p className="ca-v07-note">편집한 내용이 있습니다. 먼저 아래 ‘저장’을 눌러 주세요.</p> : null}

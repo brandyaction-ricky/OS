@@ -117,6 +117,9 @@ test("an employee can copy, paste and save an unapproved draft on the same scree
   await expect.poll(() => page.evaluate(() => (window as unknown as { copiedText: string }).copiedText ?? "")).toContain("합성 정본 마지막 문장");
   const copied = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
   expect(copied).toContain("합성 정본 마지막 문장"); expect(copied).toContain("합성 개인 스킬"); expect(copied).toContain(ITEM);
+  await writing(page).getByText("집필 요청 확인", { exact: true }).click();
+  await expect(writing(page).getByText(JOB, { exact: true })).toBeVisible();
+  await expect(page.getByLabel("복사할 집필 요청문", { exact: true })).toHaveValue(copied);
   await result(page).fill(`\`\`\`json\n${JSON.stringify({ posts: POSTS })}\n\`\`\``);
   await save(page).click();
   await expect(page.getByText(POSTS[0], { exact: true }).last()).toBeVisible();
@@ -157,6 +160,8 @@ test("an existing queued task survives refresh and can continue without duplicat
   await copy(page).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { copiedText: string }).copiedText ?? "")).toContain("합성 정본 마지막 문장");
   await page.reload(); await expect(writing(page)).toBeVisible();
+  await writing(page).getByText("집필 요청 확인", { exact: true }).click();
+  await expect(writing(page).getByText(JOB, { exact: true })).toBeVisible();
   await copy(page).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { copiedText: string }).copiedText ?? "")).toContain("합성 정본 마지막 문장");
   await result(page).fill(JSON.stringify({ posts: POSTS })); await save(page).click();

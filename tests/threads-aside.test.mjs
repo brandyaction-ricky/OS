@@ -29,6 +29,8 @@ test("handoff ties writing and unapproved save to one item and its frozen instru
   const request = threadsAsideRequest(instructions, "https://example.test/automation/threads?sel=item", "job");
   assert.ok(request.includes(JSON.stringify(instructions, null, 2)));
   assert.match(request, /대상 작업 ID: job/);
+  assert.match(request, /‘집필 요청 확인’을 펼쳐 현재 작업 ID/);
+  assert.match(request, /다르면 저장하지 말고/);
   assert.match(request, /미승인 초안 저장/);
   assert.match(request, /OS를 조작할 수 없으면/);
   assert.match(request, /결과 채택·팀 공유·최종 확인·승인·예약·발행은 하지/);
