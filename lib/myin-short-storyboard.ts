@@ -1,8 +1,8 @@
 // 숏폼 기획표 (2026-10-28): the same myin_storyboard.json as a longform, drawn 9:16 by the render PC's vertical copy of Logan's engine
 // (owner 2026-10-27: shorts are the longform engine in portrait). Opening scenes of big type (acts) on the first and the last screen
-// only, and between them lib_ scenes from the diagrams that have a vertical layout and Logan's persona card (owner 2026-10-29: text-only
-// screens lose viewers, at least 8 in 10 seconds are diagrams). No reel, music or CTA voice. The OS checks what would break the render,
-// the first screen and the diagram share.
+// and at most one emphasis line between, the rest lib_ scenes from the diagrams that have a vertical layout and Logan's persona card
+// (owner 2026-10-29: text-only screens lose viewers, at least 8 in 10 seconds are diagrams; big type that stays still loses them too).
+// No reel, music or CTA voice. The OS checks what would break the render, the first screen and the diagram share.
 import { myinCueMisses, myinNorm, myinSceneStarts, openingTextIssues, type MyinStoryboard } from "./myin-storyboard.ts";
 
 /** A vertical diagram as the render PC's catalog lists it (lib/shortform-diagram-catalog.json): its slots and their letter limits. */
@@ -15,6 +15,12 @@ export const SHORT_PERSONA: ShortDiagram = { type: "persona", name: "인물 카�
 /** Diagram screen time in a short (owner 2026-10-29: 8할 이상). A clip under 20 s is exempt: its first sentence alone passes 20 %. */
 export const SHORT_DIAGRAM_SHARE = 0.8;
 const SHARE_FROM_SECONDS = 20;
+/** Big type always moves (owner 2026-10-29 「글자만 딱 나오기보다는 효과가 들어가야」): each piece slams in and the camera punches in at
+ *  every act. No slow push — 「아주 살짝씩 움직이는 부분은 어색해」; the render PC cuts the zoom every 1.7 s instead (viral shorts change the
+ *  picture every 1.3–1.8 s, 2026-10-29 reference count). */
+const SHORT_PUNCH = 0.07;
+/** A photo cut inside a diagram scene (owner 2026-10-29 「사진도 넣어보자」): the render PC fills the diagram area with it for 1.4 s. */
+const BROLL_MAX = 2;
 
 // Big type in 1080 px: a slam grows a line ×1.28, so lines stay inside ~0.8 W (A1–A3 pilots: 777–805 px passed at 360 px).
 export const SHORT_LINE_MAX_PX = 860;
@@ -53,7 +59,7 @@ function slotIssues(spec: SlotSpec, value: unknown, where: string, path = ""): s
 
 /**
  * The 숏폼 storyboard as the render PC will draw it, or the problems the staff AI must fix. The OS fills what every short shares
- * (white background, a still camera like A1 — pushes add up over many acts) and removes what a short has none of.
+ * (white background, the big-type motion) and removes what a short has none of.
  */
 export function checkShortStoryboard(value: unknown, input: { words: [number, number, string][]; speech: string; headCopy: string; durationSeconds: number; diagrams: ShortDiagram[] }) {
   const issues: string[] = [];
@@ -63,10 +69,15 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
   const end = Number(raw.end);
   if (!Number.isFinite(end) || end < input.durationSeconds || end > input.durationSeconds + 3) issues.push(`end는 마지막 말이 끝난 뒤 0~3초 안의 초예요(낭독 ${input.durationSeconds.toFixed(1)}초).`);
   const diagrams = new Map([...input.diagrams, SHORT_PERSONA].map((d) => [d.type, d]));
+  const emphasis = scenes.findIndex((sc, n) => sc.type === "opening" && n > 0 && n < scenes.length - 1);
   scenes.forEach((sc, n) => {
     const where = `[장면 ${n + 1}]`;
     if (sc.at === undefined && sc.at_time === undefined) issues.push(`${where} at(시작 문구)이 없어요.`);
-    if (sc.type === "opening" && n > 0 && n < scenes.length - 1) issues.push(`${where} 큰 글자(opening)는 첫 장면과 마지막 장면에만 써요. 이 구간은 세로 도식이나 인물 카드로 그려요.`);
+    if (sc.type === "opening" && n > 0 && n < scenes.length - 1 && (n !== emphasis || (Array.isArray(sc.acts) && sc.acts.length > 1)))
+      issues.push(`${where} 가운데 큰 글자(opening)는 꼭 강조할 한 문장에 한 번(막 하나)만 써요. 이 구간은 세로 도식이나 인물 카드로 그려요.`);
+    if (sc.broll !== undefined && (sc.type === "opening" || !Array.isArray(sc.broll) || !sc.broll.length || sc.broll.length > BROLL_MAX
+      || !sc.broll.every((b) => b && typeof b === "object" && typeof (b as Piece).file === "string" && typeof (b as Piece).cue === "string")))
+      issues.push(`${where} broll(사진 컷)은 도식 · 인물 장면에 [{ "file", "cue" }] ${BROLL_MAX}개까지예요.`);
     if (sc.type === "persona" && !(Array.isArray(sc.people) && sc.people.length && sc.people.every((p) => typeof p?.name === "string" && typeof p?.desc === "string")))
       issues.push(`${where} persona는 people(사람마다 name · desc)이 있어야 해요.`);
     if (sc.type === "opening") {
@@ -127,7 +138,7 @@ function shortAct(act: Act, k: number, sc: Scene) {
   const first = lines.flat().find(timed);
   const start = timed(act) ? { cue: act.cue, t: act.t } : k > 0 && first ? { cue: first.cue, t: first.t } : { cue: sc.at, t: sc.at_time };
   const when = typeof start.cue === "string" ? { cue: start.cue } : { t: start.t };
-  return { text_y: 720, cam: { push: 0.006, drift: [0, 0], punch: 0 }, ...act, ...(timed(act) ? {} : when),
+  return { text_y: 720, ...act, slam: true, cam: { push: 0, drift: [0, 0], punch: SHORT_PUNCH }, ...(timed(act) ? {} : when),
     lines: lines.map((line) => line.map((piece) => timed(piece) ? piece : { ...piece, ...when })) };
 }
 

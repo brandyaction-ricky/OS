@@ -24,7 +24,10 @@ test("a short storyboard passes and gets the shared defaults", () => {
   assert.deepEqual(checked.story.cta, []);
   assert.equal("reel" in checked.story, false);
   assert.equal(checked.story.scenes[0].bg, "white");
-  assert.deepEqual(checked.story.scenes[0].acts[0].cam, { push: 0.006, drift: [0, 0], punch: 0 });
+  // owner 2026-10-29: big type that sits still loses viewers — every act slams in and the camera punches in; no slow push (「아주 살짝씩
+  // 움직이는 부분은 어색해」), the render PC cuts the zoom instead.
+  assert.deepEqual(checked.story.scenes[0].acts[0].cam, { push: 0, drift: [0, 0], punch: 0.07 });
+  assert.equal(checked.story.scenes[0].acts[1].slam, true);
   assert.equal(checked.story.scenes[0].acts[1].size, 100);
   // Logan's drawer reads act.t and every piece's t: the head-copy act starts with the scene, untimed pieces with their act.
   assert.equal(checked.story.scenes[0].acts[0].cue, "둘 다 원할 땐");
@@ -84,11 +87,20 @@ test("the card lists the letter limits the OS checks before the catalog's note",
     + "- lib_strike_list (취소선목록): items 1~4개 · items.text ≤ 9자 — 항목 2~4개, 각 ≤ 12자, 마지막 keep");
 });
 
-// owner 2026-10-29: text-only screens lose viewers — big type on the first and the last screen only, at least 80 % diagrams.
-test("big type sits on the first and the last screen only, and a person can come in as a persona card", () => {
+// owner 2026-10-29: text-only screens lose viewers — big type on the first and the last screen and one emphasis line between, at least
+// 80 % diagrams.
+test("big type sits on the first and the last screen and one emphasis line, and a person can come in as a persona card", () => {
+  const line = (text) => ({ panel: "none", size: 100, lines: [[{ text }]] });
   const middle = good();
-  middle.scenes.splice(1, 0, { type: "opening", at: "이번 주말에도", acts: [{ panel: "none", size: 100, lines: [[{ text: "이번 주말에도" }]] }] });
-  assert.match(checkShortStoryboard(middle, input).issues.join(" "), /\[장면 2\] 큰 글자\(opening\)는 첫 장면과 마지막 장면에만/);
+  middle.scenes[0].acts.pop();
+  middle.scenes.splice(1, 0, { type: "opening", at: "이번 주말에도", acts: [line("이번 주말에도")] });
+  assert.deepEqual(checkShortStoryboard(middle, input).issues, []);
+  middle.scenes[1].acts.push({ ...line("친구를 만나고 싶어요"), cue: "친구를" });
+  assert.match(checkShortStoryboard(middle, input).issues.join(" "), /\[장면 2\] 가운데 큰 글자\(opening\)는 꼭 강조할 한 문장에 한 번\(막 하나\)만/);
+  middle.scenes[1].acts.pop();
+  middle.scenes.splice(2, 0, { type: "opening", at: "친구를", acts: [line("친구를 만나고 싶어요")] });
+  assert.match(checkShortStoryboard(middle, input).issues.join(" "), /\[장면 3\] 가운데 큰 글자/);
+  assert.doesNotMatch(checkShortStoryboard(middle, input).issues.join(" "), /\[장면 2\] 가운데 큰 글자/);
   const last = good();
   last.scenes.push({ type: "opening", at: "같이 있는", acts: [{ panel: "none", size: 100, lines: [[{ text: "같이 있는 거죠" }]] }] });
   assert.doesNotMatch(checkShortStoryboard(last, input).issues.join(" "), /큰 글자\(opening\)는/);
@@ -115,4 +127,19 @@ test("a short of 20 s or more keeps diagrams on at least 80 % of the narration",
   assert.ok(checkShortStoryboard(quick, longInput).share > 0.85);
   const slow = { ...quick, scenes: [opening([head, { cue: "이번 주말에도", panel: "none", size: 100, lines: [[{ text: "이번 주말에도", cue: "이번 주말에도" }], [{ text: "친구를 만나고 싶어요", cue: "친구를" }]] }]), venn("가고 싶고")] };
   assert.match(checkShortStoryboard(slow, longInput).issues.join(" "), /도식 화면이 7\d%예요\. 80% 이상이 되게/);
+});
+
+// owner 2026-10-29 「사진도 넣어보자」: a diagram or persona scene can cut to a photo; its file goes to the folder the engine reads.
+test("a diagram scene can cut to a photo, and the photo goes with the opening photos", async () => {
+  const { myinPhotoFolders } = await import("../lib/myin-storyboard.ts");
+  const story = good();
+  story.scenes[1].broll = [{ file: "sofa.jpg", cue: "같이 있는" }];
+  const checked = checkShortStoryboard(story, input);
+  assert.deepEqual(checked.issues, []);
+  assert.equal(typeof checked.story.scenes[1].broll[0].cue, "string");
+  assert.deepEqual([...myinPhotoFolders(checked.story)], [["sofa.jpg", ["situations"]]]);
+  story.scenes[1].broll = [{ file: "sofa.jpg" }];
+  assert.match(checkShortStoryboard(story, input).issues.join(" "), /broll\(사진 컷\)은 도식 · 인물 장면에/);
+  story.scenes[1].broll = [{ file: "a.jpg", cue: "같이" }, { file: "b.jpg", cue: "같이" }, { file: "c.jpg", cue: "같이" }];
+  assert.match(checkShortStoryboard(story, input).issues.join(" "), /2개까지/);
 });
