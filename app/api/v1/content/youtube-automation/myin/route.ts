@@ -4,10 +4,13 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceOnRenderPc, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
+import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// [다시 검사] waits for GPT to look at the 점검 시트 (a few minutes).
+export const maxDuration = 800;
 const headers = { "cache-control": "private, no-store" };
 const pilot = () => { if (!canUseYoutubeAutomationPilot(process.env)) throw new ApiError(404, "AUTOMATION_PILOT_DISABLED", "영상 자동화 파일럿이 아직 연결되지 않았습니다."); };
 
@@ -21,6 +24,9 @@ export async function GET(request: Request) {
     if (report) return NextResponse.json(await myinWordsReport(actor, z.string().uuid().parse(report)), { headers });
     const sheets = query.get("sheets");
     if (sheets) return NextResponse.json(await myinPreviewSheets(actor, z.string().uuid().parse(sheets)), { headers });
+    // 화면 자동 검사 (2026-10-29): GPT's look at this run's 점검 시트.
+    const screen = query.get("screen");
+    if (screen) return NextResponse.json(await myinScreenCheck(actor, z.string().uuid().parse(screen)), { headers });
     // 1단계 파일 내려받기 (2026-10-28): the voice parts and the subtitle bundle.
     const downloads = query.get("downloads");
     if (downloads) return NextResponse.json(await myinDownloads(actor, z.string().uuid().parse(downloads)), { headers });
@@ -48,6 +54,7 @@ const patchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("our_image_url"), runId: z.string().uuid(), file: z.string().min(1).max(200), type: z.string().max(40) }),
   z.object({ action: z.literal("our_image"), runId: z.string().uuid(), file: z.string().min(1).max(200), path: z.string().min(1).max(400) }),
   z.object({ action: z.literal("clips_ok"), runId: z.string().uuid(), note: z.string().max(2000).default("") }),
+  z.object({ action: z.literal("screen_check"), runId: z.string().uuid(), tier: z.enum(["precise", "saving"]).default("precise") }),
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
   z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
@@ -68,6 +75,8 @@ export async function PATCH(request: Request) {
     const result = input.action === "review" ? { run: await reviewMyinStoryboard(actor, input.runId, input.decision, input.note, input.place) }
       : input.action === "place" ? { run: await setMyinDraftPlace(actor, input.runId, input.place) }
       : input.action === "clips_ok" ? { run: await confirmMyinClips(actor, input.runId, input.note) }
+      // [다시 검사]: only someone who can read the run (myinScreenCheck checks it) asks GPT again.
+      : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }

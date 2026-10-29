@@ -8,6 +8,8 @@ export interface ContentModelRequest {
   maxTokens: number;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   timeoutMs?: number;
+  /** GPT only: images shown with the prompt (the 화면 자동 검사's 점검 시트), by URL the provider can fetch. */
+  images?: string[];
   /** Stable leading text reused across calls; sent with a cache breakpoint so repeats bill at the cache-read rate. */
   cachedPrefix?: string;
 }
@@ -23,9 +25,9 @@ function outputText(body: Record<string, unknown>) {
     .map((item) => String((item as { text?: string }).text ?? "")).join("\n").trim();
 }
 
-export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000, cachedPrefix }: ContentModelRequest) {
+export async function generateContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 170_000, cachedPrefix, images }: ContentModelRequest) {
   if (model.startsWith("gpt-6")) return generateOpenAiContentText(   // gpt-6-astra · gpt-6-luna · gpt-6.1-sol · gpt-6.1-terra
-    { prompt: cachedPrefix ? `${cachedPrefix}\n\n${prompt}` : prompt, model, jsonSchema, maxTokens, effort, timeoutMs });
+    { prompt: cachedPrefix ? `${cachedPrefix}\n\n${prompt}` : prompt, model, jsonSchema, maxTokens, effort, timeoutMs, images });
   const key = process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
   if (!key) throw new ApiError(503, "CLAUDE_NOT_CONFIGURED", "Claude API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -43,14 +45,14 @@ export async function generateContentText({ prompt, model, jsonSchema, maxTokens
   return outputText(body);
 }
 
-async function generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 120_000 }: ContentModelRequest) {
+async function generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens, effort, timeoutMs = 120_000, images }: ContentModelRequest) {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI API 키가 아직 연결되지 않았습니다.");
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST", cache: "no-store", signal: AbortSignal.timeout(timeoutMs),
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
     // GPT-6 takes the same effort names (low · medium · high · xhigh · max; developers.openai.com, checked 2026-10-29).
-    body: JSON.stringify({ model, input: [{ role: "user", content: prompt }], max_output_tokens: maxTokens, ...(effort ? { reasoning: { effort } } : {}),
+    body: JSON.stringify({ model, input: [{ role: "user", content: images?.length ? [{ type: "input_text", text: prompt }, ...images.map((url) => ({ type: "input_image", image_url: url, detail: "high" }))] : prompt }], max_output_tokens: maxTokens, ...(effort ? { reasoning: { effort } } : {}),
       text: { format: jsonSchema ? { type: "json_schema", name: "content_result", strict: true, schema: jsonSchema } : { type: "json_object" } }, store: false }),
   });
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;

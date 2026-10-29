@@ -3,7 +3,7 @@
 import type { YpKind, YpRef } from "./project";
 import { narrationFromMarkdown } from "../youtube-narration-document.ts";
 
-export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2";
+export type YpStageKind = "plan" | "outline" | "make" | "upload" | "column" | "shortTopics" | "shortScript" | "review2" | "screenCheck";
 export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" | "content_script"; key: "packageKind" | "scriptKind"; value: string; title: string }> = {
   plan: { recordType: "content_package", key: "packageKind", value: "yp_plan", title: "기획안" },
   outline: { recordType: "content_script", key: "scriptKind", value: "yp_outline", title: "구성안" },
@@ -13,6 +13,7 @@ export const STAGE_RECORD: Record<YpStageKind, { recordType: "content_package" |
   shortTopics: { recordType: "content_package", key: "packageKind", value: "yp_short_topics", title: "숏폼 주제 후보" },
   shortScript: { recordType: "content_package", key: "packageKind", value: "yp_short_script", title: "숏폼 대본" },
   review2: { recordType: "content_package", key: "packageKind", value: "yp_review2", title: "두 번째 검수" },
+  screenCheck: { recordType: "content_package", key: "packageKind", value: "yp_screen_check", title: "화면 자동 검사" },
 };
 export const SLOTS = ["A", "B", "C"] as const;
 export type YpSlot = (typeof SLOTS)[number];
@@ -139,13 +140,21 @@ export interface YpReview2 {
   /** scriptKey() of the 원고 judged: when the 구성안 changes, the screen says the judgement is for an older 원고. */
   key: string; pass?: boolean; gates: { gate: 2 | 3 | 4 | 5 | 6; pass: boolean; items: YpReview2Item[] }[]; doubts: string[]; error?: string;
 }
+/** 화면 자동 검사 (owner 2026-10-29, ④): GPT looks at the render PC's 점검 시트 (one frame per scene) for text past its box,
+ * overlaps, cut faces, blanks, broken letters, a logo or a crowded scene. Its own record, so the run's record never conflicts. */
+export interface YpScreenIssue { scene: number; kind: string; issue: string; fix: string }
+export interface YpScreenCheck {
+  state: "none" | "running" | "done" | "failed"; at: string; model: string;
+  /** The run and the preparation (its prepared.at) whose sheets were judged: a newer preparation means an older check. */
+  runId: string; sheetsAt: string; scenes: YpScreenIssue[]; note: string; error?: string;
+}
 /** A short fingerprint of a 원고 (FNV-1a over the trimmed text), the same on the server and in the browser. */
 export function scriptKey(md: string) {
   let hash = 0x811c9dc5;
   for (const char of md.replace(/\r/g, "").trim()) hash = Math.imul(hash ^ char.codePointAt(0)!, 0x01000193) >>> 0;
   return hash.toString(16).padStart(8, "0");
 }
-export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2 };
+export type YpStageData = { plan: YpPlan; outline: YpOutline; make: YpMake; upload: YpUpload; column: YpColumn; shortTopics: YpShortTopics; shortScript: YpShortScript; review2: YpReview2; screenCheck: YpScreenCheck };
 export interface YpStageRecord<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStages = { [K in YpStageKind]: YpStageRecord<K> };
 
@@ -184,6 +193,7 @@ export function emptyStage<K extends YpStageKind>(kind: K, projectKind: YpKind |
     shortTopics: { items: [] },
     shortScript: { query: "", refs: [], text: "", hooks: [], insight: "", formula: "", headCopy: "" },
     review2: { state: "none", at: "", model: "", key: "", gates: [], doubts: [] },
+    screenCheck: { state: "none", at: "", model: "", runId: "", sheetsAt: "", scenes: [], note: "" },
   };
   return blank[kind] as YpStageData[K];
 }

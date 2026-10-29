@@ -8,6 +8,7 @@ import "./youtube-production-steps.css";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import { MyinSoundEditor } from "./myin-sound-editor";
 import { MyinOurImages } from "./myin-our-images";
+import { MyinScreenCheck } from "./myin-screen-check";
 import { DraftPlacePicker, localBlocker, useLocalRender, type DraftPlace } from "./myin-local-render";
 import { assToSrt } from "@/lib/subtitle-files";
 
@@ -100,6 +101,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [qc, setQc] = useState("");
   const [note, setNote] = useState("");
   const [sheets, setSheets] = useState<string[]>([]);
+  const [sheetsOpen, setSheetsOpen] = useState(false);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
   const lastStage = useRef<string | null>(null);
   // The clips' and video's signed addresses are asked for again only when they change or near their 30 minutes: a new address on every
@@ -186,6 +188,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
     if (!run) return;
     try { setSheets((await apiRequest<{ sheets: string[] }>(`/api/v1/content/youtube-automation/myin?sheets=${run.id}`, { token: accessToken })).sheets); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "점검 시트를 열지 못했습니다."); }
+  };
+  // 화면 자동 검사 › 장면 #n: open the sheets and go to the one that holds the scene.
+  const showSheet = async (n: number) => {
+    setSheetsOpen(true);
+    if (!sheets.length) await showSheets();
+    window.setTimeout(() => document.getElementById(`yt-sheet-${n}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
   };
   const phase = run ? run.status === "blocked" ? `멈춤 · 오류 코드 ${run.lastErrorCode ?? "없음"}` : phaseLabel(run) : null;
   const board = run?.storyboard;
@@ -284,11 +292,12 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <div className="yt-run-head"><span className="status-pill" data-status={run.prepared.misses.length ? "failed" : "approved"}>문구 못 찾음 {run.prepared.misses.length}개</span><small>{when(run.prepared.at)}</small></div>
         {run.prepared.misses.length ? <ul className="yt-list">{run.prepared.misses.map((m) => <li key={m}>{m}</li>)}</ul> : null}
       </div> : null}
-      {run?.prepared && !materials ? <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !sheets.length) void showSheets(); }}>
+      {run?.prepared && !materials ? <MyinScreenCheck runId={run.id} preparedAt={run.prepared.at} token={accessToken} onScene={(sheet) => void showSheet(sheet)} /> : null}
+      {run?.prepared && !materials ? <details className="yt-details" open={sheetsOpen} onToggle={(event) => { const open = (event.target as HTMLDetailsElement).open; setSheetsOpen(open); if (open && !sheets.length) void showSheets(); }}>
         <summary>점검 시트 {run.prepared.sheets}장 보기</summary>
         <p className="yt-note">장면마다 한 컷씩입니다. 쇼릴 뒤부터는 컷 시각이 조금 앞당겨져 보이니(로건님 점검 기능의 특성), 문구 확인은 위 개수로 합니다.</p>
         {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URLs from private storage */}
-        {sheets.map((url) => <img key={url} src={url} alt="미리보기 점검 시트" style={{ width: "100%", borderRadius: 8 }} />)}
+        {sheets.map((url, index) => <img key={url} id={`yt-sheet-${index + 1}`} src={url} alt={`미리보기 점검 시트 ${index + 1}`} style={{ width: "100%", borderRadius: 8 }} />)}
       </details> : null}
       {run?.sound?.report ? <details className="yt-details"><summary>자동 선곡표 (로건님 음악 매칭)</summary>
         <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 360, overflow: "auto", margin: 0 }}>{run.sound.report}</pre></details> : null}

@@ -13,7 +13,8 @@ import { claimShortRefs, completeShortRefs, failShortRefs, shortRefsCompleteSche
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+// 180 s for the render PC's own calls; 800 so the 화면 자동 검사 that a finished preparation starts (after the response) can finish.
+export const maxDuration = 800;
 
 const lease = { renderId: z.string().uuid(), lease: z.string().uuid() };
 const inputSchema = z.discriminatedUnion("action", [
