@@ -15,9 +15,12 @@ export const SHORT_PERSONA: ShortDiagram = { type: "persona", name: "인물 카�
 /** Diagram screen time in a short (owner 2026-10-29: 8할 이상). A clip under 20 s is exempt: its first sentence alone passes 20 %. */
 export const SHORT_DIAGRAM_SHARE = 0.8;
 const SHARE_FROM_SECONDS = 20;
-/** Big type always moves (owner 2026-10-29 「글자만 딱 나오기보다는 효과가 들어가야」): each piece slams in, the camera punches in at every
- *  act and pushes through the scene. Pushes add up over acts in Logan's camera, so a scene's push is shared among its acts. */
-const SHORT_PUSH = 0.06, SHORT_PUNCH = 0.07;
+/** Big type always moves (owner 2026-10-29 「글자만 딱 나오기보다는 효과가 들어가야」): each piece slams in and the camera punches in at
+ *  every act. No slow push — 「아주 살짝씩 움직이는 부분은 어색해」; the render PC cuts the zoom every 1.7 s instead (viral shorts change the
+ *  picture every 1.3–1.8 s, 2026-10-29 reference count). */
+const SHORT_PUNCH = 0.07;
+/** A photo cut inside a diagram scene (owner 2026-10-29 「사진도 넣어보자」): the render PC fills the diagram area with it for 1.4 s. */
+const BROLL_MAX = 2;
 
 // Big type in 1080 px: a slam grows a line ×1.28, so lines stay inside ~0.8 W (A1–A3 pilots: 777–805 px passed at 360 px).
 export const SHORT_LINE_MAX_PX = 860;
@@ -72,6 +75,9 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
     if (sc.at === undefined && sc.at_time === undefined) issues.push(`${where} at(시작 문구)이 없어요.`);
     if (sc.type === "opening" && n > 0 && n < scenes.length - 1 && (n !== emphasis || (Array.isArray(sc.acts) && sc.acts.length > 1)))
       issues.push(`${where} 가운데 큰 글자(opening)는 꼭 강조할 한 문장에 한 번(막 하나)만 써요. 이 구간은 세로 도식이나 인물 카드로 그려요.`);
+    if (sc.broll !== undefined && (sc.type === "opening" || !Array.isArray(sc.broll) || !sc.broll.length || sc.broll.length > BROLL_MAX
+      || !sc.broll.every((b) => b && typeof b === "object" && typeof (b as Piece).file === "string" && typeof (b as Piece).cue === "string")))
+      issues.push(`${where} broll(사진 컷)은 도식 · 인물 장면에 [{ "file", "cue" }] ${BROLL_MAX}개까지예요.`);
     if (sc.type === "persona" && !(Array.isArray(sc.people) && sc.people.length && sc.people.every((p) => typeof p?.name === "string" && typeof p?.desc === "string")))
       issues.push(`${where} persona는 people(사람마다 name · desc)이 있어야 해요.`);
     if (sc.type === "opening") {
@@ -99,7 +105,7 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
 
   const story = { ...raw, end, cta: [] as { after: string; line: string }[],
     scenes: scenes.map((sc) => sc.type !== "opening" ? { bg: "white", ...timedSlots(sc, sceneStart(sc)) as Scene }
-      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act, k, acts) => shortAct(act, k, sc, acts.length)) }) } as unknown as MyinStoryboard;
+      : { bg: "white", ...sc, acts: (sc.acts ?? []).map((act, k) => shortAct(act, k, sc)) }) } as unknown as MyinStoryboard;
   delete (story as Record<string, unknown>).reel;
   delete (story as Record<string, unknown>).music_cues;
   const cues = myinCueMisses(story, input.words);
@@ -127,12 +133,12 @@ function diagramShare(scenes: { type: string; at?: unknown; at_time?: unknown }[
  * An act as his drawer needs it: its own cue — else the scene start for a scene's first act (a later piece's cue left the screen
  * empty for a second in the 2026-10-28 test), else its first timed piece's — and every untimed piece timed with the act.
  */
-function shortAct(act: Act, k: number, sc: Scene, count: number) {
+function shortAct(act: Act, k: number, sc: Scene) {
   const lines = actLines(act);
   const first = lines.flat().find(timed);
   const start = timed(act) ? { cue: act.cue, t: act.t } : k > 0 && first ? { cue: first.cue, t: first.t } : { cue: sc.at, t: sc.at_time };
   const when = typeof start.cue === "string" ? { cue: start.cue } : { t: start.t };
-  return { text_y: 720, ...act, slam: true, cam: { push: SHORT_PUSH / count, drift: [0, 0], punch: SHORT_PUNCH }, ...(timed(act) ? {} : when),
+  return { text_y: 720, ...act, slam: true, cam: { push: 0, drift: [0, 0], punch: SHORT_PUNCH }, ...(timed(act) ? {} : when),
     lines: lines.map((line) => line.map((piece) => timed(piece) ? piece : { ...piece, ...when })) };
 }
 

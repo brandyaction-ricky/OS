@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { diagramCatalogCardSection, type DiagramCatalog } from "@/lib/diagram-catalog";
-import { checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl } from "@/lib/myin-storyboard";
+import { checkMyinStoryboard, MYIN_SCENE_TYPES, myinPhotoFetchUrl, myinPhotoFolders } from "@/lib/myin-storyboard";
 import { checkShortStoryboard, SHORT_DIAGRAM_SHARE, SHORT_LINE_MAX_PX, SHORT_PERSONA, shortDiagramList, type ShortDiagram } from "@/lib/myin-short-storyboard";
 
 // 마이인 v13 stage 2: the storyboard as a staff-AI job (method B). The card points at Logan's manual and spec documents in the
@@ -119,7 +119,7 @@ const SHORT_EXAMPLE = `{ "title": "만나고 싶은데, 쉬고도 싶다면", "e
     { "panel": "none", "size": 120, "lines": [[{ "text": "헤드 카피" }], [{ "text": "그대로", "accent": true }]] },
     { "cue": "이번 주말에도", "panel": "none", "size": 100, "lines": [[{ "text": "이번 주말에도", "cue": "이번 주말에도" }], [{ "text": "친구를 만나고 싶어요", "cue": "친구를 만나고", "accent": true }]] } ] },
   { "type": "persona", "at": "민지 씨는", "people": [{ "name": "민지 씨", "desc": "3년 차 마케터", "prop": "hair", "cue": "민지 씨는" }] },
-  { "type": "lib_venn2", "at": "가고 싶고 쉬고 싶은", "a": { "text": "만나고 싶다", "cue": "가고 싶고" }, "b": { "text": "쉬고 싶다", "cue": "쉬고 싶은" }, "mid": { "text": "둘 다", "cue": "같이 있는" } },
+  { "type": "lib_venn2", "at": "가고 싶고 쉬고 싶은", "a": { "text": "만나고 싶다", "cue": "가고 싶고" }, "b": { "text": "쉬고 싶다", "cue": "쉬고 싶은" }, "mid": { "text": "둘 다", "cue": "같이 있는" }, "broll": [{ "file": "sofa_phone.jpg", "cue": "있는 거죠" }] },
   { "type": "lib_checklist", "at": "첫 번째는", "items": [{ "text": "약속 전날 피곤함", "cue": "첫 번째는" }] },
   { "type": "lib_checklist", "at": "두 번째는", "items": [{ "text": "약속 전날 피곤함", "cue": "두 번째는" }, { "text": "다녀오면 텅 빔", "cue": "다녀오면" }] },
   { "type": "opening", "at": "이번 토요일엔", "acts": [ … ] } ] }`;
@@ -147,8 +147,8 @@ ${SHORT_CARD_DOCS.map(([title, note]) => `- ${title}${input.docIds?.[title] ? ` 
 - 큰 글자 막은 그 구간에서 실제로 한 말을 그대로 크게 씁니다. 그러면 아래 자막이 저절로 빠집니다(첫 장면에는 자막이 없습니다). 요약 글자를 쓰면 그 아래에 말 자막이 함께 나옵니다.
 - 막마다 줄 1~2개, size 90~122. 한 줄 폭은 ${SHORT_LINE_MAX_PX}px 이내입니다(한글 한 자 ≈ size × 0.8 — OS가 셉니다). 길면 줄을 나눕니다. 핵심 단어 한두 개에만 "accent": true.
 - 도식은 말한 대상이 그 말에 맞춰 나타나고, 말한 관계가 변해야 합니다. 이름표만 바뀌는 도식은 쓰지 않습니다. 정답 하나를 고르는 말이 아니면 "pick": -1. 칸 글자 수는 목록의 한도 안에서(OS가 셉니다). 도식 장면에서는 말 자막이 아래에 나옵니다.
-- 사진은 실제 장면 · 증거가 필요할 때만 opening 막의 "image"(파일 이름)로 쓰고 assets에 출처를 적습니다(롱폼 규칙과 같음: Unsplash 사진 파일 주소 · 위키미디어). 분위기용 사진은 쓰지 않습니다.
-- 쓰지 않는 것: reel, music_cues, cta, outro · summary · endscreen, 목록에 없는 장면 종류. 배경(흰색) · 카메라(고정) · 글자 높이는 OS가 채웁니다.
+- 사진(대표 2026-10-29 「사진도 넣어보자」 — 숏폼은 그 문장의 상황 사진도 씁니다): 첫 장면 opening 막은 "panel": "full", "image"로 화면 가득 사진 위에 헤드 카피를, 가운데 강조 큰 글자는 "panel": "card", "image"로 사진 카드 아래 글자를, 마지막 장면도 "panel": "full", "image"를 쓸 수 있습니다. 도식 · 인물 장면에는 "broll": [{ "file": "파일 이름", "cue": "그 사진을 띄울 말" }]로 사진 컷(1.4초, 도식 자리를 꽉 채움)을 넣습니다 — 도식 장면 두 개에 하나꼴, 같은 사진은 한 번만. cue는 새 항목이 나오는 말이 아니라 그 문장의 뒷부분으로 고릅니다(새 항목이 나오면 사진 컷이 먼저 끝납니다). 사진은 그 줄의 장면과 맞는 실제 상황(피곤한 직원, 밤 지하철, 알람시계처럼)으로 고르고, 영상 만드는 컴퓨터가 마이인 톤(잉크 흑백)으로 바꿉니다. Unsplash 무료 사진 파일 주소(images.unsplash.com/photo-…)나 위키미디어만 쓰고(Unsplash+ 유료 사진은 받지 못합니다), 쓰는 사진마다 assets에 kind "situations"로 출처를 적습니다.
+- 쓰지 않는 것: reel, music_cues, cta, outro · summary · endscreen, 목록에 없는 장면 종류. 배경(흰색) · 글자 높이 · 큰 글자 효과는 OS가, 카메라 컷 · 위 제목 띠(헤드 카피)는 영상 만드는 컴퓨터가 넣습니다.
 - 원고에 없는 경력 · 통계 · 성과 · 사례를 화면에 더하지 않습니다.
 
 ## OS가 검사하는 것 (걸리면 돌려받아 고칩니다)
@@ -186,7 +186,10 @@ export function checkShortStoryboardResult(value: unknown, input: Parameters<typ
   if (!parsed.success) throw new ApiError(422, "MYIN_STORYBOARD_INVALID", `제출 형식을 확인해 주세요: ${parsed.error.issues.slice(0, 8).map((issue) => `${issue.path.join(".")} ${issue.message}`).join(" / ")}`);
   const checked = checkShortStoryboard(parsed.data.storyboard, input);
   if (checked.issues.length || !checked.story) throw new ApiError(422, "MYIN_STORYBOARD_ISSUES", `기획표 검사에서 걸린 곳 ${checked.issues.length}개: ${checked.issues.join(" / ")}`);
+  // A photo not in assets is a 우리 이미지 to upload (or a forgotten source): the drafts show a gray 「사진 자리」 there, so say which.
+  const unlisted = [...myinPhotoFolders(checked.story).keys()].filter((file) => !parsed.data.assets.some((a) => a.file === file));
   return { storyboard: checked.story as unknown as Record<string, unknown>, assets: parsed.data.assets, fuzzy: checked.fuzzy,
     reasons: { metaphors: parsed.data.reasons.metaphors, cta: "숏폼은 구독 대사가 없어요.", summary: "숏폼은 한 장 정리가 없어요." },
-    notes: [`도식 화면 ${Math.round(checked.share * 100)}%`, ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
+    notes: [`도식 화면 ${Math.round(checked.share * 100)}%`, ...unlisted.map((file) => `사진 자리: ${file} — assets에 없어 회색 칸으로 나와요. 「우리 이미지 올리기」로 올리거나 기획표를 다시 받아요.`),
+      ...(parsed.data.suggestions ?? []).map((s) => `제안: ${s}`)] };
 }
