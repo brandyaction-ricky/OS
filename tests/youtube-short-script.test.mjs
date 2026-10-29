@@ -114,19 +114,24 @@ test("the voice gets the 대본 with each line closed, so it pauses there and no
   assert.equal(checkShortScript(text).chars, scriptLines(text).map(line => line.text).join(" ").length);
 });
 
-test("a found Short counts only when its title shares a two-letter word run with the 검색어", () => {
+test("a found Short counts only when its title meets two words of the 검색어 (one when it has one)", () => {
   // 시안 2 (2026-10-28): 「일이 안 맞는 신호」 brought two viral Shorts about something else.
   assert.equal(refMatchesQuery("일이 안 맞는 신호", "오줌이 마려울 땐 이 포즈를 따라해보세요✨#shorts"), false);
   assert.equal(refMatchesQuery("일이 안 맞는 신호", "사연) 신입 멘탈 미쳤네.. 존경스럽다.."), false);
-  assert.equal(refMatchesQuery("일이 안 맞는 신호", "회사랑 안 맞는 사람 특징 #shorts"), true);
-  assert.equal(refMatchesQuery("일이 안 맞는 신호", "퇴사해야 한다는 신호 3가지"), true);
-  assert.equal(refMatchesQuery("Career change", "My CAREER pivot"), true);
+  // The re-search (10-29): one shared word let in every 「…라는 신호」 and 「안 맞는 궁합」.
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "남자/여자가 당신에게 관심이 없다는 신호 #짝사랑"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "커피 먹지말라는 7가지 몸의 신호"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "남ㅈㅏ에게 안 맞는 궁합은??"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "일이 나랑 안 맞을 때 오는 신호"), true);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "하는 일이 적성에 안 맞는 사람 특징"), true);
+  assert.equal(refMatchesQuery("Career change", "Career change at 35"), true);
+  assert.equal(refMatchesQuery("Career change", "My CAREER pivot"), false);
   assert.equal(refMatchesQuery("일 돈", "아무 제목"), true);
   // Latin and number words count whole: 「#shorts」 and 「2030」 are not 「MBTI」 or 「30대」.
   assert.equal(refMatchesQuery("MBTI 유형", "Daily motivation tips #shorts"), false);
   assert.equal(refMatchesQuery("30대 이직", "2030 공감"), false);
-  assert.equal(refMatchesQuery("30대 이직", "30대 직장인 현실"), true);
-  // Decomposed (NFD) Korean reads like the usual form.
+  assert.equal(refMatchesQuery("30대 이직", "30대 이직 현실"), true);
+  // One word asked, one word met; decomposed (NFD) Korean reads like the usual form.
   assert.equal(refMatchesQuery("퇴사", "퇴사 브이로그".normalize("NFD")), true);
   assert.equal(refMatchesQuery("퇴사".normalize("NFD"), "점심 메뉴"), false);
 });
