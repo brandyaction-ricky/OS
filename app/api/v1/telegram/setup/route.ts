@@ -39,14 +39,16 @@ export async function GET(request: Request) {
     const configured = Boolean(process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_WEBHOOK_SECRET);
     const supabase = createServiceSupabase();
     const fields = "external_user_id,external_chat_id,display_name,username,status,requested_at,decided_at,profile_id";
-    const [pending, approved, turns, botResult, webhookResult] = await Promise.all([
+    // Last-seen times need only who and when; the full answer text is read for the newest turn alone.
+    const [pending, approved, turns, latest, botResult, webhookResult] = await Promise.all([
       supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "pending").order("requested_at", { ascending: false }).limit(100),
       supabase.from("os_telegram_users").select(fields, { count: "exact" }).eq("status", "approved").order("decided_at", { ascending: false }).limit(100),
-      supabase.from("os_channel_turns").select("external_user_id,created_at,answer").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("os_channel_turns").select("external_user_id,created_at").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1000),
+      supabase.from("os_channel_turns").select("created_at,answer").eq("channel", "telegram").order("created_at", { ascending: false }).limit(1),
       configured ? telegram("getMe").catch(() => null) : Promise.resolve(null),
       configured ? telegram("getWebhookInfo").catch(() => null) : Promise.resolve(null),
     ]);
-    if (pending.error || approved.error || turns.error) throw new ApiError(500, "TELEGRAM_STATUS_READ_FAILED", "텔레그램 사용자·수신 이력을 읽지 못했습니다. 다시 확인해 주세요.");
+    if (pending.error || approved.error || turns.error || latest.error) throw new ApiError(500, "TELEGRAM_STATUS_READ_FAILED", "텔레그램 사용자·수신 이력을 읽지 못했습니다. 다시 확인해 주세요.");
     const bot = botResult ?? {}; const webhook = webhookResult ?? {};
     const withLastSeen = (users: NonNullable<typeof pending.data>) => users.map((user) => ({ ...user, last_received_at: turns.data?.find((turn) => turn.external_user_id === user.external_user_id)?.created_at ?? null }));
     return NextResponse.json({
@@ -54,7 +56,7 @@ export async function GET(request: Request) {
       diagnosticError: configured && (!botResult || !webhookResult) ? "Telegram 연결 상태를 확인하지 못했습니다. 저장된 사용자·수신 이력만 표시합니다." : null,
       lastReceivedAt: turns.data?.[0]?.created_at ?? null,
       // An error stays on screen only until a later answer goes through.
-      lastProcessingError: turns.data?.slice(0, 1).filter((turn) => turn.answer?.startsWith("TELEGRAM_ERROR:")).map((turn) => ({ at: turn.created_at, message: turn.answer.slice("TELEGRAM_ERROR:".length) }))[0] ?? null,
+      lastProcessingError: latest.data?.filter((turn) => turn.answer?.startsWith("TELEGRAM_ERROR:")).map((turn) => ({ at: turn.created_at, message: turn.answer.slice("TELEGRAM_ERROR:".length) }))[0] ?? null,
       pendingCount: pending.count ?? 0,
       approvedCount: approved.count ?? 0,
       approvedUsers: withLastSeen(approved.data ?? []),
