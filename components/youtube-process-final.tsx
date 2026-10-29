@@ -176,7 +176,7 @@ function FeedbackItem({ item, open, latest, onOpen, onSeek, onAct, reply, setRep
   onAct: (action: "resolve" | "reopen" | "decline" | "reply", value?: string) => void; reply: string; setReply: (value: string) => void }) {
   const [mode, setMode] = useState<"reply" | "decline" | null>(null);
   const done = closed(item);
-  return <div className={`yp-fi${done ? " yp-done" : ""}`}>
+  return <div className={`yp-fi${done ? " yp-done" : ""}${open ? " yp-open" : ""}`}>
     <div className="yp-f1">{item.reaction ? <span className="yp-tag">👍</span> : <input type="checkbox" checked={item.status === "done"} disabled={item.status === "declined"} title="반영" aria-label="반영" onChange={event => onAct(event.target.checked ? "resolve" : "reopen")} />}
       <button type="button" className="yp-lnk yp-tlink" onClick={onSeek}>{label(item)}</button><span className="yp-tx" onClick={onOpen}>{item.text || (item.reaction ? "좋아요" : "")}</span><span className="yp-who">{item.who}</span>
       {item.status === "declined" ? <span className="yp-tag">반영 안 함</span> : item.target === "video" && item.ver < latest && !done ? <span className="yp-tag yp-warn">v{item.ver}에서</span> : null}

@@ -702,6 +702,9 @@
 .linear-shell .ui-v2.yp .yp-ftabs button.yp-on{background:var(--text);border-color:var(--text);color:var(--bg)}
 .linear-shell .ui-v2.yp .yp-f1{display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer}
 .linear-shell .ui-v2.yp .yp-f1 .yp-tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+/* Opened feedback shows its whole text (a long note was cut to one line with … even when opened). */
+.linear-shell .ui-v2.yp .yp-fi.yp-open .yp-f1{align-items:flex-start}
+.linear-shell .ui-v2.yp .yp-fi.yp-open .yp-f1 .yp-tx{overflow:visible;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}
 .linear-shell .ui-v2.yp .yp-f1 .yp-who{font-size:12px;color:var(--muted);white-space:nowrap}
 .linear-shell .ui-v2.yp .yp-fi.yp-live{box-shadow:inset 3px 0 0 var(--accent);background:var(--accent-soft)}
 .linear-shell .ui-v2.yp .yp-fi .yp-more2{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line-soft)}
