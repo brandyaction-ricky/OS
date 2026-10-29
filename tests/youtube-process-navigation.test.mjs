@@ -43,3 +43,31 @@ test("each v1 screen has a three-step guide whose next page exists", () => {
     assert.notEqual(findPage(guide.next).label, "홈", `${href} → ${guide.next}`);
   }
 });
+
+test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏폼 · 광고 + 스레드 + 자동화 관리, same addresses", async () => {
+  const { NAV_STAGES } = await import("../lib/navigation.ts");
+  const { youtubeV1Stages, youtubeV1StageId, youtubeV1EntrySelected } = await import("../lib/youtube-process/navigation.ts");
+  const stages = youtubeV1Stages(NAV_STAGES);
+  const ids = stages.map(stage => stage.id);
+  assert.deepEqual(ids.slice(0, 6), ["content", "yt-longform", "yt-short", "yt-ad", "threads", "automation"]);
+  assert.deepEqual(stages.map(stage => stage.label).slice(0, 6), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "스레드", "자동화 관리"]);
+  assert.deepEqual(stages[0].pages.map(page => page.label), ["주제 찾기", "스케줄", "성과", "링크관리"]);
+  const threads = stages.find(stage => stage.id === "threads");
+  assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");
+  assert.equal(threads.pages[0].href, "/automation/references");
+  // Every old address is still in the menu exactly once (bookmarks, guides and per-address menu permissions keep working).
+  const before = NAV_STAGES.filter(stage => stage.id === "automation").flatMap(stage => stage.pages.map(page => page.href)).sort();
+  const after = stages.filter(stage => ["threads", "automation"].includes(stage.id)).flatMap(stage => stage.pages.map(page => page.href)).sort();
+  assert.deepEqual(after, before);
+  for (const stage of stages.slice(0, 4)) for (const page of stage.pages) assert.ok(!page.href.includes("?") || page.href.startsWith("/content/projects?"), page.href);
+  const p = query => new URLSearchParams(query);
+  assert.equal(youtubeV1StageId(stages, "/content/projects", p("platform=short"), "content"), "yt-short");
+  assert.equal(youtubeV1StageId(stages, "/content/projects", p("view=discover&platform=short"), "content"), "content");
+  assert.equal(youtubeV1StageId(stages, "/automation/threads", p(""), "automation"), "threads");
+  assert.equal(youtubeV1StageId(stages, "/automation/requests", p(""), "automation"), "automation");
+  assert.equal(youtubeV1StageId(stages, "/content/plan", p("id=x"), "content"), "content");
+  assert.equal(youtubeV1StageId(stages, "/content/automation", p(""), "automation", "/automation/topics"), "threads", "an old alias address opens the group of the page it shows");
+  assert.ok(youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=ad")));
+  assert.ok(!youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=short")));
+  assert.ok(youtubeV1EntrySelected("/content/projects?view=discover", "/content/projects", p("view=discover&platform=threads")));
+});

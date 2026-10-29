@@ -337,6 +337,7 @@ export function myinPhotoFolders(storyboard: unknown) {
     else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
       if (k === "photo" && v && typeof v === "object") add((v as { file?: unknown }).file, "people");
       else if (k === "image") add(v, "situations");
+      else if (k === "broll" && Array.isArray(v)) for (const cut of v) add((cut as { file?: unknown })?.file, "situations");   // 숏폼 사진 컷: 오프닝 사진과 같은 폴더
       walk(v);
     }
   };
