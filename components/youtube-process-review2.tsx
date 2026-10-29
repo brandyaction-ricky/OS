@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { scriptKey, type YpOutline } from "@/lib/youtube-process/stages";
-import { REVIEW2_GATE_NAME } from "@/lib/youtube-script-review2";
-import { CostTag, tokenEstimate, useCostConfirm, useCostModels } from "./cost-notice";
+import { modelName } from "@/lib/cost";
+import { REVIEW2_GATE_NAME, REVIEW2_MODELS, type Review2Tier } from "@/lib/youtube-script-review2";
+import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import type { useYpBundle } from "./youtube-process-frame";
 
 const WAIT_MS = 6 * 60_000;
@@ -10,8 +11,9 @@ const WAIT_MS = 6 * 60_000;
 /** 구성안 원고 칸: GPT's 두 번째 검수 (관문 2~6). It only informs; 다음: 제작 is not blocked by it. */
 export function ScriptReview2({ page, outline, editable, dirty }: { page: ReturnType<typeof useYpBundle>; outline: YpOutline; editable: boolean; dirty: boolean }) {
   const review = page.bundle?.stages.review2;
-  const cost = useCostConfirm(), { review: model } = useCostModels();
+  const cost = useCostConfirm();
   const [busy, setBusy] = useState(false);
+  const [tier, setTier] = useState<Review2Tier>("precise");
   const data = review?.data;
   // A staff AI's 원고 starts the judgement on the server; until it lands the card waits for it (it takes a few minutes).
   const fresh = Boolean(outline.ai && Date.parse(outline.ai.at) > Date.now() - WAIT_MS && (!data?.at || data.at < outline.ai.at));
@@ -33,12 +35,13 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
   const run = async () => {
     if (!projectId || !page.client) return;
     const client = page.client;
+    const model = REVIEW2_MODELS[tier].model;
     const ok = await cost.confirm({ model, amount: tokenEstimate(model, 40_000 + outline.script.length, 20_000), upTo: true, detail: "원고와 정본 두 편(검수 · 말투)을 함께 보내요",
       note: "GPT 크레딧(매달 500달러)에서 나가요.", ok: "검수하기" });
     if (!ok) return;
     setBusy(true);
     try {
-      const next = await client.review2(projectId);
+      const next = await client.review2(projectId, tier);
       page.setBundle(bundle => bundle ? { ...bundle, stages: { ...bundle.stages, review2: next } } : bundle);
     } catch (reason) { page.fail(reason); } finally { setBusy(false); }
   };
@@ -50,8 +53,10 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
       {waiting ? <span className="yp-tag">GPT가 읽는 중 · 3~4분</span>
         : data.state === "done" ? <span className={`yp-tag ${data.pass ? "yp-ok" : "yp-bad"}`}>{data.pass ? "✓ 통과" : `고칠 곳 ${issues}곳`}</span>
         : data.state === "failed" ? <span className="yp-tag yp-bad">⚠ 끝내지 못했어요</span> : <span className="yp-muted" style={{ fontSize: 12 }}>아직 받지 않았어요</span>}
-      {stale && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>원고가 바뀌었어요</span> : null}
+      {data.state === "done" && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>{modelName(data.model)}{stale ? " · 원고가 바뀌었어요" : ""}</span> : null}
       <span className="yp-sp" />
+      {editable ? <select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as Review2Tier)}>
+        {(Object.keys(REVIEW2_MODELS) as Review2Tier[]).map(key => <option key={key} value={key}>{REVIEW2_MODELS[key].label} · {modelName(REVIEW2_MODELS[key].model)}</option>)}</select> : null}
       {editable ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void run()}>{label} <CostTag kind="paid" /></button> : null}
     </div>
     {data.state === "failed" && !waiting ? <div className="yp-card-b" style={{ fontSize: 13 }}>{data.error}</div> : null}

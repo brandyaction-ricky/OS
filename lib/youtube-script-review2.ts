@@ -5,6 +5,11 @@ import { myinCleanScript } from "./myin-script.ts";
 import type { YpReview2 } from "./youtube-process/stages.ts";
 
 export const REVIEW2_GATES = [2, 3, 4, 5, 6] as const;
+/** 정밀 = OpenAI's top model; 절약 = near it at about a fifth of the price (owner 2026-10-29: pick by how much credit is left). */
+export const REVIEW2_MODELS = { precise: { model: "gpt-6-astra", label: "정밀" }, saving: { model: "gpt-6.1-sol", label: "절약" } } as const;
+export type Review2Tier = keyof typeof REVIEW2_MODELS;
+/** The automatic review switches to 절약 when this month's GPT credit left is under this (USD). */
+export const REVIEW2_SAVING_BELOW_USD = 50;
 export const REVIEW2_GATE_NAME: Record<(typeof REVIEW2_GATES)[number], string> = { 2: "약속", 3: "전진", 4: "장면과 도구", 5: "사실과 재료", 6: "청각 이해" };
 
 /** The spoken 원고 with its paragraphs numbered from 1 (the numbers the judgement points at) and its section headings kept. */

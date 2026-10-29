@@ -49,4 +49,7 @@ test("the [다시 검수] popup prices GPT-6 Astra", () => {
   assert.equal(tokenEstimate("gpt-6-astra", 1_000_000, 0), 10 * 1400);
   assert.equal(tokenEstimate("gpt-6-astra", 0, 1_000_000), 50 * 1400);
   assert.equal(modelName("gpt-6-astra"), "GPT-6 Astra");
+  // developers.openai.com/api/docs/models/gpt-6.1-sol (checked 2026-10-29): $2 / $10 — the 절약 choice.
+  assert.equal(tokenEstimate("gpt-6.1-sol", 1_000_000, 1_000_000), 12 * 1400);
+  assert.equal(modelName("gpt-6.1-sol"), "GPT-6.1 Sol");
 });

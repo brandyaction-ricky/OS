@@ -80,7 +80,7 @@ export interface YpClient {
   /** [숏폼으로 만들기] on a longform's 숏폼 주제 후보: the new 숏폼's id and the candidates with the made one marked. */
   makeShort(id: string, topicId: string): Promise<{ projectId: string; topics: YpStageView<"shortTopics"> }>;
   /** 원고 두 번째 검수 (GPT, 관문 2~6) of the 구성안 as saved. */
-  review2(id: string): Promise<YpStageView<"review2">>;
+  review2(id: string, tier: "precise" | "saving"): Promise<YpStageView<"review2">>;
   /** The 대본 step's latest 레퍼런스 받기 (null before the first), and [레퍼런스 받기] itself. */
   shortRefs(id: string): Promise<YpShortRefFetch | null>;
   fetchShortRefs(id: string): Promise<YpShortRefFetch>;
@@ -155,7 +155,7 @@ function apiClient(token: string): YpClient {
     clips: async id => (await listRecords(token, "content_short", `parentId=${id}&limit=200`)).records.filter(row => !row.archived_at),
     shortVideoUrl,
     makeShort: (id, topicId) => apiRequest(`${base}/${id}/short-topic`, { token, method: "POST", body: json({ topicId }) }),
-    review2: (id) => apiRequest(`${base}/${id}/review2`, { token, method: "POST", body: json({}) }),
+    review2: (id, tier) => apiRequest(`${base}/${id}/review2`, { token, method: "POST", body: json({ tier }) }),
     shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
     fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,
     members: async () => (await listMembers(token)).members
@@ -510,9 +510,9 @@ function demoClient(): YpClient {
       demoRefs.set(id, refs);
       return structuredClone(refs);
     },
-    review2: async (id) => {
+    review2: async (id, tier) => {
       const stages = stagesOf(find(id));
-      const review2 = { ...stages.review2, version: stages.review2.version + 1, data: { state: "done" as const, at: new Date().toISOString(), model: "gpt-6-astra", key: scriptKey(stages.outline.data.script), pass: false,
+      const review2 = { ...stages.review2, version: stages.review2.version + 1, data: { state: "done" as const, at: new Date().toISOString(), model: tier === "saving" ? "gpt-6.1-sol" : "gpt-6-astra", key: scriptKey(stages.outline.data.script), pass: false,
         gates: ([2, 3, 4, 5, 6] as const).map(gate => ({ gate, pass: gate !== 6, items: gate === 6 ? [{ paragraph: 2, quote: "[예시] 크기가 아니라 출처예요.", grade: "상" as const, reason: "[예시] 한 번 더 생각해야 그려지는 압축 표현이에요.", fix: "[예시] 얼마나 큰지가 아니라 어디서 왔는지가 중요해요." }] : [] })),
         doubts: ["[예시] 3번 문단의 연구는 원문 링크로 확인이 필요해요."] } };
       demoStages.set(id, { ...stages, review2 });
