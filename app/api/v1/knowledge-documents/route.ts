@@ -5,7 +5,6 @@ import { createServiceSupabase } from "@/lib/supabase/server";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
 import { canReadKnowledgeDocument, canAgentWriteDocument, canAgentEditDraft } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
-import { indexDocument } from "@/lib/server/indexing";
 import { assertOrganization } from "@/lib/server/organization";
 import { createCanonicalProposal, isDesignatedApprover } from "@/lib/server/document-proposals";
 import type { KnowledgeDocument } from "@/lib/types";
@@ -95,14 +94,8 @@ function writeError(error: { message?: string } | null, fallbackCode: string, fa
   return new ApiError(400, fallbackCode, fallbackMessage, detail || undefined);
 }
 
-async function enqueueIndex(documentId: string) {
-  try {
-    return await indexDocument(documentId);
-  } catch (error) {
-    console.error("agent knowledge indexing failed", error);
-    return "queued" as const;
-  }
-}
+// The document trigger queued the index job; the night runner (/api/v1/indexing/night) indexes it.
+const INDEXING = "queued" as const;
 
 export async function GET(request: Request) {
   try {
@@ -162,7 +155,7 @@ export async function POST(request: Request) {
       if (error || !data) throw new ApiError(400, "DOCUMENT_CREATE_FAILED", "문서를 저장하지 못했습니다.", error?.message);
       document = data as KnowledgeDocument;
     }
-    const indexing = await enqueueIndex(document.id);
+    const indexing = INDEXING;
     return NextResponse.json({ documentId: document.id, document, indexing }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT", "문서 내용을 확인해 주세요.", error.flatten()));
@@ -214,7 +207,7 @@ export async function PATCH(request: Request) {
         });
         const applied = rpcRow(data) as KnowledgeDocument | null;
         if (!error && applied) {
-          return NextResponse.json({ documentId: applied.id, document: applied, proposalId: proposal.id, applied: true, indexing: await enqueueIndex(applied.id) });
+          return NextResponse.json({ documentId: applied.id, document: applied, proposalId: proposal.id, applied: true, indexing: INDEXING });
         }
         console.error("owner-key canonical apply failed; proposal left open", error?.message);
       }
@@ -260,7 +253,7 @@ export async function PATCH(request: Request) {
       }
       if (error || !document) throw writeError(error, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.");
     }
-    const indexing = input.contentMd === undefined ? "queued" : await enqueueIndex(document.id);
+    const indexing = INDEXING;
     return NextResponse.json({ documentId: document.id, document, indexing });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT", "수정 내용을 확인해 주세요.", error.flatten()));

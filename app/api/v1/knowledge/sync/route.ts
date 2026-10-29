@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest, requireAgentScope } from "@/lib/server/auth";
-import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { createCanonicalProposal } from "@/lib/server/document-proposals";
 
@@ -77,11 +76,8 @@ export async function POST(request: Request) {
         documentId = data.id; counts.created += 1;
       }
       if (documentId) {
-        try {
-          if ((await indexDocument(documentId)) === "ready") counts.indexed += 1;
-          else counts.queued += 1;
-        }
-        catch { counts.queued += 1; }
+        // Indexed by the night runner (/api/v1/indexing/night); a bulk sync no longer embeds documents in the request.
+        counts.queued += 1;
       }
     }
     return NextResponse.json({ ok: true, counts });
