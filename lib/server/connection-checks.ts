@@ -16,7 +16,8 @@ export async function readConnectionChecks() {
   const db = createServiceSupabase();
   const since = new Date(Date.now() - 86_400_000).toISOString();
   const configured = connectionConfiguration();
-  const owners = await db.from("os_connection_owners").select("service,primary_owner,backup_owner,version");
+  // Owners are read alongside the checks instead of before them.
+  const ownersRead = db.from("os_connection_owners").select("service,primary_owner,backup_owner,version");
   return Promise.all(CONNECTIONS.map(async ({ id }): Promise<ConnectionCheck> => {
     const [lastOk, latest, failures] = await Promise.all([
       db.from("os_connection_checks").select("checked_at").eq("service", id).eq("ok", true).order("checked_at", { ascending: false }).limit(1).maybeSingle(),
@@ -46,6 +47,7 @@ export async function readConnectionChecks() {
       if (success.data?.finished_at && (!lastOkAt || success.data.finished_at > lastOkAt)) lastOkAt = success.data.finished_at;
       evidenceAvailable &&= !failed.error && !success.error;
     }
+    const owners = await ownersRead;
     const owner = owners.data?.find(row => row.service === id);
     const check = { id, configured: configured[id], lastOkAt, lastCheckedAt: latest.data?.checked_at ?? null, failures24h, blockedJobs,
       latestFailed: latest.data?.ok === false, historyAvailable: evidenceAvailable, primaryOwner: owner?.primary_owner ?? null,

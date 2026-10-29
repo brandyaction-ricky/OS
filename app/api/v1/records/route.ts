@@ -82,6 +82,9 @@ export async function GET(request: Request) {
       builder = builder.or("metadata->>kind.is.null,metadata->>kind.neq.development_request");
     }
     const id = url.searchParams.get("id");
+    // YouTube discover results are a server-side cache (lib/server/youtube-discover.ts reads them with the service
+    // client). They were ~80% of every content_package list screens loaded (2.1 of 2.7 MB) and no screen shows them.
+    if (recordType === "content_package" && !id) builder = builder.not("metadata", "cs", JSON.stringify({ packageKind: "youtube_discover_cache" }));
     if (id) {
       if (!z.string().uuid().safeParse(id).success) throw new ApiError(400,"INVALID_RECORD_ID","항목 주소를 확인해 주세요.");
       builder = builder.eq("id",id);

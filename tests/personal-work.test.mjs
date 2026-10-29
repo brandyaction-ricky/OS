@@ -24,3 +24,12 @@ test("derivative review work links open content automation instead of YouTube up
  assert.equal(recordWorkHref(row("package-1",{record_type:"content_package",metadata:{packageKind:"youtube_kit",contentId:"topic-1"}})),"/content/publishing?sourceId=topic-1");
  assert.equal(recordWorkHref(row("kit-1",{record_type:"content_kit",metadata:{sourceId:"topic-1"}})),"/content/publishing?sourceId=topic-1");
 });
+
+test("my-work reads only the columns and metadata keys the home page uses, not whole AI-job rows", async () => {
+  const { readFileSync } = await import("node:fs");
+  const route = readFileSync("app/api/v1/my-work/route.ts", "utf8");
+  assert.doesNotMatch(route, /from\("os_records"\)\.select\("\*"/);
+  const used = new Set([...readFileSync("lib/personal-work.ts", "utf8").matchAll(/metadata\.(\w+)/g), ...readFileSync("lib/content-origin.ts", "utf8").matchAll(/metadata\?\.(\w+)/g)].map(match => match[1]));
+  for (const key of ["kind", "nextAction", "doneCriteria", "origin", "studioKind", "packageKind", "sourceId", "contentId"]) assert.match(route, new RegExp(`"${key}"`), key);
+  for (const key of used) if (!["workflow", "yp", "projectId", "scriptKind"].includes(key)) assert.match(route, new RegExp(`"${key}"`), `buildPersonalWork reads metadata.${key}`);
+});

@@ -22,7 +22,7 @@ import {
   Target,
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { apiRequest, createRecord, listAllRecordsOfType, generateContent, listRecords, searchYoutubeMarket, updateRecord, type YoutubeMarketItem } from "@/lib/api-client";
+import { apiRequest, createRecord, generateContent, listAllRecordsOfType, listMetricWindow, listRecords, searchYoutubeMarket, type YoutubeMarketItem, updateRecord } from "@/lib/api-client";
 import { pickedPlanningCandidate, planningSelectionReady } from "@/lib/content-pipeline";
 import type { OsRecord } from "@/lib/record-types";
 import { filterContentOrigin, sourceSelection, type ContentOriginFilter as OriginFilter } from "@/lib/content-origin";
@@ -96,7 +96,7 @@ export function ContentPackagingWorkspace({ showJevAssist = false, lockedSource,
       const [sourceResult, packageResult, metrics] = await Promise.all([
         listAllRecordsOfType(accessToken, "content_topic").then(records => ({ records })),
         listRecords(accessToken, "content_package", "limit=200"),
-        listAllRecordsOfType(accessToken, "content_metric"),
+        listMetricWindow(accessToken),
       ]);
       setSources(sourceResult.records);
       setPackages(packageResult.records); setOwnMetrics(metrics);
