@@ -14,7 +14,8 @@ type Totals = { toss: number; invoices: number; external: number; linkedExcluded
 type Listing = { invoices: Invoice[]; totals: Totals; lastImport: Partial<Record<Biz, string>> };
 
 const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
-const won = (value: number) => `${value.toLocaleString("ko-KR")}원`;
+// `|| 0` turns -0 (nothing excluded) into 0, so the total line never reads "-0원".
+const won = (value: number) => `${(value || 0).toLocaleString("ko-KR")}원`;
 const BIZ_KEYS = Object.keys(TAX_BIZ) as Biz[];
 const STATE_LABEL: Record<MatchState["state"], string> = { linked: "같은 매출 확인됨", suspect: "같은 매출 의심", review: "검토 필요", single: "계산서로만 잡힌 매출" };
 const DEPOSIT_LABEL: Record<Deposit["state"], string> = { confirmed: "입금 확인", likely: "입금 추정", unclear: "같은 금액 입금 여럿", none: "입금 못 찾음" };
