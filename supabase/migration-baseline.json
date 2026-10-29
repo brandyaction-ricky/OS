@@ -897,8 +897,11 @@
       "sha256": "544776fcf44e083d8feed28bbc4f1b619815f5525bfe863bd9fb36bde801a0f0",
       "purpose": "Document read policies: same rules written inline (no per-row function call) and the caller's reader list read once per query",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Speed request 2026-10-29. Rewrites workspace_documents_read and os_documents_select with identical logic; adds os_my_reader_documents(). Rollback-only run on DEV: all 11 users see exactly the same documents before and after. Read-only check on Production: old vs new rule identical for all 10 users over 60,950 user-document pairs. Not applied yet."
+      "productionApprovedAt": "2026-10-29",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Speed request 2026-10-29. Rewrites workspace_documents_read and os_documents_select with identical logic; adds os_my_reader_documents(). Rollback-only run on DEV: all 11 users see exactly the same documents before and after. Read-only check on Production: old vs new rule identical for all 10 users over 60,950 user-document pairs. Owner approved Production on 2026-10-29 (\"DB 반영해\"). Applied to Production in one transaction with its schema history row and read back (both policies use the reader array, no policy calls os_workspace_document_row_read, history 1). Owner-scoped scans of every document went from ~0.76-1.16 s to ~25 ms. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
