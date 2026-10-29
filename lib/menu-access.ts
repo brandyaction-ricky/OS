@@ -23,6 +23,8 @@ const AUTOMATION_PERMISSION_ALIASES: Record<string, string[]> = {
   "/automation/threads": ["/automation/review"],
   "/automation/settings": ["/automation/templates"],
   "/automation/performance": ["/content/comments"],
+  // 부가세 신고 참고 자료 (2026-10-29) opens for anyone already allowed 매출내역.
+  "/finance/vat": ["/finance/sales"],
 };
 // 유튜브 공정 v1 screens open for anyone allowed any existing YouTube process screen (지시서 5-3).
 const YOUTUBE_PROCESS_HREFS = NAV_STAGES.find(stage => stage.id === "content")!.pages.map(page => page.href);

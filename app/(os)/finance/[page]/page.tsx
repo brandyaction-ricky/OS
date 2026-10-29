@@ -9,6 +9,7 @@ const names: Record<string, string> = {
   cards: "카드지출",
   recurring: "정기 결제",
   budget: "예산 관리",
+  vat: "부가세 신고 참고 자료",
 };
 type Props = { params: Promise<{ page: string }> };
 

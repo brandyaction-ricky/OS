@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {PAGE_GUIDES,guideClosedKey} from '../lib/page-guides.ts';
 import {NAV_STAGES,ACCOUNT_PAGE,findPage} from '../lib/navigation.ts';
 test('all current menus and account have three reviewed steps and a live next route',()=>{
-  assert.equal(Object.keys(PAGE_GUIDES).length,57);
+  assert.equal(Object.keys(PAGE_GUIDES).length,58);
   // Reviewed topic planning now ends at the chosen channel, not a fixed card-news route.
   // Preserve the remaining guide snapshot while checking all new guides below (2026-10-28: 검수 요청 → 검토 요청, AI 키 → 연결 키, plain-words pass).
   const snapshot=JSON.stringify(Object.entries(PAGE_GUIDES).filter(([path])=>!path.startsWith('/finance/')&&!path.startsWith('/hr/')&&!['/automation/references','/content/video','/knowledge/vault','/knowledge/notes','/knowledge/meetings','/knowledge/decisions','/knowledge/docs','/knowledge/canon','/knowledge/graph','/knowledge/templates','/knowledge/trash'].includes(path)).sort(([a],[b])=>a.localeCompare(b)));

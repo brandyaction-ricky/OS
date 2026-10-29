@@ -52,7 +52,7 @@ async function handle(request:Request,context:Context){
     if(request.method==="POST"&&action==="batch")return json(await commitFinance(actor,body));
     if(request.method==="POST"&&action==="imports/commit")return json(await importFinance(actor,body));
     if(request.method==="POST"&&action==="events"){
-      const action=z.object({kind:z.enum(["csv_export","memo_request"]),view:z.enum(["overview","sales","settlements","bank","cards","recurring","budget"]),ids:z.array(z.string().uuid()).max(1000).default([])}).strict().parse(body);
+      const action=z.object({kind:z.enum(["csv_export","memo_request"]),view:z.enum(["overview","sales","settlements","bank","cards","recurring","budget","tax_invoices","vat"]),ids:z.array(z.string().uuid()).max(1000).default([])}).strict().parse(body);
       const {error}=await actor.supabase.rpc("os_fin_log_action",{p_kind:action.kind,p_view:action.view,p_ids:action.ids});if(error)financeDbError(error);return json({recorded:true,mock:action.kind==="memo_request"});
     }
     if(request.method==="POST"&&action==="receipts/upload")return json(await receiptUpload(actor,body));
