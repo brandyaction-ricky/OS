@@ -58,7 +58,7 @@ ${route === "insight" ? "wiki와 마이인 보고서의 원문에서 근거가 �
 아래 구조로 JSON을 반환한다. 후보 이름은 한국어로 쓰고 editorial_route는 모든 후보에 "${route}"를 쓴다. 자리표시자가 아닌 실제 조사 결과로 채운다. public 출처는 공개 HTTPS URL, os_document 출처는 https://brandyaction-os.vercel.app/knowledge/doc/{문서ID} 형식이다.
 {"candidates":[{"title":"독자가 바로 알아들을 주제와 질문","editorial_route":"${route}","editorial_material":{"firstParagraph":"주제가 바로 보이며 다음 문장이 궁금한 첫 줄과 이어지는 문장","readerQuestion":"끝까지 답할 질문","readerContext":"이 고민을 하는 독자의 상황","scene":"원문에서 확인한 장면 또는 명시한 가상 장면","sceneKind":"${route === "person" ? "documented" : "hypothetical"}","directAnswer":"질문에 대한 직접적인 답","perspective":"우리가 더할 관점과 그 이유","application":"현실에서 해볼 행동·질문","reasonToRead":"왜 대중적으로 궁금한가","sources":[{"kind":"${route === "insight" ? "os_document" : "public"}","title":"원문 한국어 설명","url":"실제로 읽은 URL","locator":"절·문단 또는 영상 시각","evidenceNote":"확인한 내용·읽은 범위·공개 사용 범위"}]${route === "person" ? ',"personName":"실제 인물 이름","eventDate":"사건 날짜 또는 확인된 시기"' : ""}}]}
 
-종료점: 조사 결과와 후보 JSON 제출. 전체 원고 작성, 후보 자동 선택, 제작 시작, 결과 채택, 승인, 예약·발행, 정본 수정은 하지 않는다. 사용자가 OS에서 후보를 읽고 1개를 선택한다.`;
+기본 종료점은 조사 결과와 후보 JSON 제출이다. 직원의 이번 실행 요청에 OS 후보 등록까지 명시되어 있고 해당 OS 브라우저 실행이 허용된 경우에는 같은 후보를 'Aside가 준비한 후보 등록 → 내용 확인 → 후보 N개 저장'으로 등록하고 후보 링크를 보고한다. JSON 형식은 그대로 유지한다. 후보 저장 권한이 불명확하거나 브라우저를 쓸 수 없으면 JSON만 반환한다. 전체 원고 작성, 후보 자동 선택, 제작 시작, 결과 채택, 팀 공유, 승인, 예약·발행, 정본 수정은 하지 않는다. 사용자가 OS에서 후보를 읽고 1개를 선택한다.`;
 }
 
 function MaterialFacts({ material }: { material: ThreadsEditorialMaterial }) {
