@@ -25,6 +25,9 @@ const TOKEN_USD: [prefix: string, name: string, input: number, output: number, l
   ["claude-opus-5-5", "Claude Opus 5.5", 4, 20],
   ["claude-sonnet-4-5", "Claude Sonnet 4.5", 3, 15],
   ["claude-haiku-4-5", "Claude Haiku 4.5", 1, 5],
+  // developers.openai.com/api/docs/models/gpt-6-astra, checked 2026-10-29 (over 272K prompt tokens bills more; a 원고 review is far under)
+  ["gpt-6-astra", "GPT-6 Astra", 10, 50],
+  ["gpt-6.1-sol", "GPT-6.1 Sol", 2, 10],
 ];
 /** USD per audio minute (developers.openai.com pricing, checked 2026-10-26). */
 const MINUTE_USD: Record<string, number> = { "gpt-4o-mini-transcribe": 0.003 };

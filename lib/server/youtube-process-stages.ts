@@ -44,7 +44,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
     const record = records.find(row => row.record_type === spec.recordType && row.metadata?.[spec.key] === spec.value);
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) };
   };
-  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), records };
+  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), review2: pick("review2"), records };
   // 4-5: the first 원고 starts from the 기획안 영상 흐름.
   if (!stages.outline.id && stages.plan.data.opening) stages.outline.data = { ...stages.outline.data, script: scriptFromPlan(stages.plan.data) };
   return stages;
@@ -82,8 +82,8 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { plan, outline, make, upload, column, shortTopics, shortScript } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
+  const { plan, outline, make, upload, column, shortTopics, shortScript, review2 } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript, review2 }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
     ...(project.yp.topic.type === "short" ? { formulas: await (await shortScriptModule()).readShortFormulas(createServiceSupabase()) } : {}) };
 }
 
