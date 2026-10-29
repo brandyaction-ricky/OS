@@ -16,10 +16,11 @@ async function load(file, modules, globals = {}) {
     { module: compiled, exports: compiled.exports, URL, Date, crypto: crypto.webcrypto, ...globals, require: name => { assert.ok(name in modules, name); return modules[name]; } });
   return compiled.exports;
 }
+const editorial = await load("lib/threads-editorial.ts", { zod, "./http": { ApiError } });
 const schedule = await load("lib/content-automation-schedule.ts", {});
-const contractModules = { zod, "./http": { ApiError }, "./content-automation-schedule": schedule };
+const contractModules = { zod, "./http": { ApiError }, "./content-automation-schedule": schedule, "./threads-editorial": editorial };
 const contract = await load("lib/threads-reference.ts", contractModules);
-const referenceRecordGuard = await load("lib/threads-reference-record-guard.ts", { "./threads-reference": contract });
+const referenceRecordGuard = await load("lib/threads-reference-record-guard.ts", { "./threads-reference": contract, "./threads-editorial": editorial });
 const contractAt = now => load("lib/threads-reference.ts", contractModules, { Date: class extends Date { static now() { return Date.parse(now); } } });
 const owner = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
 const refId = "33333333-3333-4333-8333-333333333333", topicId = "44444444-4444-4444-8444-444444444444";
@@ -68,7 +69,7 @@ async function serverHarness({ docs, topics = [topic()], readable = true, topicR
     status: "canonical", reader_scope: "all", current_version: 10, content_md: "Approved procedure and examples" }], os_records: topics }, { os_records: topicReadError });
   let accessChecks = 0;
   const server = await load("lib/server/threads-reference.ts", {
-    "node:crypto": crypto, "@/lib/http": { ApiError }, "@/lib/threads-reference": contract,
+    "node:crypto": crypto, "@/lib/http": { ApiError }, "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial,
     "@/lib/supabase/server": { createServiceSupabase: () => store },
     "./knowledge-page-access": { POLICY_FIELDS: "id,status,reader_scope", readableKnowledgePages: async (_actor, rows) => {
       accessChecks++; return new Set(readable ? rows.map(row => row.id) : []);
@@ -311,7 +312,7 @@ test("retry, paste and adoption work with manually selected evidence", async () 
       AUTOMATION_PROCS: ["topic", "brief", "threads", "review"], getPersonalRecord: async (_actor, id) => id === draft.id ? draft : job,
       getContentRecord: async () => ({ record: draft, own: true }), getItemJob: async () => job,
       updatePersonalRecord: async (_actor, row, changes) => { const saved = { ...row, ...changes }; writes.push(saved); return saved; } },
-    "@/lib/threads-reference": contract, "@/lib/server/threads-reference": server,
+    "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial, "@/lib/server/threads-reference": server,
     "@/lib/server/shortform-production": { validateShortformJobResult: (_job, result) => result, assertShortformJobCurrent: () => {}, invalidateShortformVideo: (_row, metadata) => metadata },
     "@/lib/content-automation-results": { parseAutomationResult: (_proc, result) => result }, "@/lib/server/content-automation-validators": {},
     "@/lib/threads-posts": {}, "@/lib/content-comments": {}, "@/lib/server/channel-comments": {}, "@/lib/server/content-automation-worker": {},
@@ -383,7 +384,7 @@ test("human selection, same-owner parent and current source facts are required; 
   assert.throws(() => server.getThreadsJobInput({ metadata: { proc: "threads" } }), code("THREADS_JOB_INPUT_REQUIRED"));
 });
 
-async function routeHarness() {
+async function routeHarness({ sharedItems = [], teamJobs = [] } = {}) {
   const rows = [source(), { ...source(), id: secondRefId, metadata: { ...source().metadata, reference_items: [reference({ id: "unselected", title: "Do not copy" })] } }, topic()];
   const created = [];
   const personal = async (who, id, type) => {
@@ -394,13 +395,14 @@ async function routeHarness() {
     "next/server": { NextResponse: Response }, zod,
     "@/lib/http": { ApiError, parseJson: request => request.json(), apiErrorResponse: error => Response.json({ error: { code: error.code, message: error.message } }, { status: error.status ?? 500 }) },
     "@/lib/server/auth": { authenticateRequest: async () => actor },
-    "@/lib/supabase/server": { createServiceSupabase: () => ({ from: () => ({ select() { return this; }, eq() { return this; }, is() { return this; }, limit() { return this; }, async maybeSingle() { return { data: null, error: null }; } }) }) },
+    "@/lib/supabase/server": { createServiceSupabase: () => ({ from: () => ({ select() { return this; }, eq() { return this; }, is() { return this; }, in() { return this; }, order() { return this; }, limit() { return this; }, then(resolve) { return Promise.resolve({ data: teamJobs, error: null }).then(resolve); }, async maybeSingle() { return { data: null, error: null }; } }) }) },
     "@/lib/server/content-automation-validators": {}, "@/lib/content-automation-schedule": {}, "@/lib/content-automation-csv": {},
-    "@/lib/threads-reference": contract,
-    "@/lib/server/threads-reference": { getThreadsJobInput: job=>job.metadata.threadsInput??null, threadsReferenceRequestId: url => "reference:" + url, threadsCollectionContext: async () => ({ canonicalTitle: "Procedure", canonicalUrl: "https://os.test/knowledge" }) },
+    "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial,
+    "@/lib/server/threads-reference": { assertThreadsEditorialReady: async (_actor,metadata)=>editorial.parseThreadsEditorialMetadata(metadata), getThreadsJobInput: job=>job.metadata.threadsInput??null, threadsReferenceRequestId: url => "reference:" + url, threadsCollectionContext: async () => ({ canonicalTitle: "Procedure", canonicalUrl: "https://os.test/knowledge" }) },
     "@/lib/server/content-automation-v07": {
       assertHumanOwner: value => value.ownerId, assertSameOrigin: () => {}, AUTOMATION_CHANNELS: ["card", "shorts", "threads"],
       AUTOMATION_PROCS: ["topic", "brief", "threads", "review"], getPersonalRecord: personal,
+      listTeamItems: async () => sharedItems,
       listPersonalRecords: async (_actor, type, limit, scope) => rows.filter(row=>row.record_type===type).filter(row => scope === "references" ? row.metadata.kind === contract.THREADS_REFERENCE_KIND : row.metadata.kind !== contract.THREADS_REFERENCE_KIND).slice(0, limit),
       createPersonalRecord: async (_actor, type, input) => { const row = { ...record(crypto.randomUUID()), ...input, record_type: type }; created.push(row); return row; },
     },
@@ -466,7 +468,7 @@ test("topic start accepts selected sources without changing other channel paths"
     "@/lib/supabase/server": { createServiceSupabase: () => ({ rpc: async (name, input) => { writes.push({ name, input }); return { data: { started: true }, error: null }; } }) },
     "@/lib/server/content-automation-v07": { assertHumanOwner: value => value.ownerId, assertSameOrigin: () => {},
       AUTOMATION_PROCS: ["topic", "brief", "threads", "review"], getPersonalRecord: async () => parent },
-    "@/lib/threads-reference": contract, "@/lib/server/threads-reference": {},
+    "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial, "@/lib/server/threads-reference": {assertThreadsEditorialReady:async(_actor,metadata)=>editorial.parseThreadsEditorialMetadata(metadata)},
     "@/lib/server/shortform-production": {}, "@/lib/content-automation-results": {}, "@/lib/server/content-automation-validators": {},
     "@/lib/threads-posts": {}, "@/lib/content-comments": {}, "@/lib/server/channel-comments": {}, "@/lib/server/content-automation-worker": {},
   });
@@ -505,6 +507,23 @@ test("reference and topic lists are separate and cannot request a shared referen
   assert.equal((await (await get("topics")).json()).topics.length, 1);
   const shared = await api.GET(new Request("https://os.test/api/v1/content/automation/references?scope=team"), { params: Promise.resolve({ resource: "references" }) });
   assert.equal(shared.status, 400);
+});
+test("team job lists preserve review results without revealing the owner's pinned source documents", async () => {
+  const sharedItem = { ...item(), owner_id: other, metadata: { ...item().metadata, shared: "team" } };
+  const job = { ...record("88888888-8888-4888-8888-888888888888"), record_type: "ai_job", owner_id: other,
+    status: "done", stage: "completed", metadata: { space: "personal", targetId: sharedItem.id, proc: "threads",
+      result: { posts: ["Reviewable draft"] }, threadsInput: { topic: { source_documents: [{ body: "private source body" }] } } } };
+  const wrongOwnerJob = { ...job, id: "99999999-9999-4999-8999-999999999999", owner_id: owner };
+  const { api } = await routeHarness({ sharedItems: [sharedItem], teamJobs: [job, wrongOwnerJob] });
+  const response = await api.GET(new Request("https://os.test/api/v1/content/automation/jobs?scope=team"),
+    { params: Promise.resolve({ resource: "jobs" }) });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.jobs.length, 1);
+  assert.equal(data.jobs[0].metadata.threadsInput, undefined);
+  assert.deepEqual(data.jobs[0].metadata.result, { posts: ["Reviewable draft"] });
+  assert.equal(data.jobs[0].stage, "completed");
+  assert.equal(job.metadata.threadsInput.topic.source_documents[0].body, "private source body");
 });
 test("a large reference library cannot consume the ordinary-topic list limit",async()=>{
   const rows=[...Array.from({length:501},(_,index)=>({...source(),id:`ref-${index}`})),topic()];
@@ -622,4 +641,192 @@ test("the narrow general-record guard preserves unrelated personal AI jobs",asyn
     assert.equal((await api.send("PATCH",{id:refId,expectedVersion:1,title:"Edited ordinary card"})).status,200,path);
     assert.equal(api.writes.filter(write=>write.table==="os_records").length,2);
   }
+});
+
+const material = (route = "insight") => ({
+  firstParagraph: "같은 일을 잘하는데 왜 한 사람만 지칠까? 둘이 맡은 일의 조건을 함께 봐야 한다.",
+  readerQuestion: "잘하는 일인데 왜 지칠까?", readerContext: "직무를 바꿀지 고민하는 직장인",
+  scene: "같은 일을 해도 한 사람은 일정을 정하고 다른 사람은 수시로 들어오는 요청부터 처리한다.",
+  sceneKind: route === "person" ? "documented" : "hypothetical", directAnswer: "잘하는 일인지와 그 일을 어떤 조건에서 하는지는 다르다.",
+  perspective: "일을 버리기 전에 반복해서 나를 지치게 하는 조건을 본다.", application: "최근 힘들었던 업무에서 일을 바꿨는지 일정을 바꿨는지 적는다.",
+  reasonToRead: "직무 자체를 잘못 골랐다고 생각한 독자가 다른 선택지를 비교할 수 있다.",
+  sources: route === "person" ? [{ kind: "public", title: "본인의 인터뷰", url: "https://example.com/interview", locator: "중간 문단", evidenceNote: "해당 장면과 앞뒤 문단을 읽었다. 속마음은 추정하지 않는다." }]
+    : [{ kind: "os_document", title: "wiki 업무 조건", url: "https://brandyaction-os.vercel.app/knowledge/doc/88888888-8888-4888-8888-888888888888", locator: "업무 조건 절", evidenceNote: "업무 조건을 구분한 절 전체를 확인했다." }],
+  ...(route === "person" ? { personName: "공개 인터뷰 인물", eventDate: "2026년 인터뷰" } : {}),
+});
+const editorialMetadata = (route = "insight") => ({ editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW, editorial_route: route, editorial_material: material(route) });
+const editorialTopic = (route = "insight") => ({ ...record(topicId, editorialMetadata(route)), stage: "confirmed" });
+const editorialDocs = () => [
+  { id: "77777777-7777-4777-8777-777777777777", title: "쓰레드 자동화 운영 정본 — 안저 · Aside × OS", status: "canonical", reader_scope: "all", current_version: 11, content_md: editorial.THREADS_EDITORIAL_CANON_DECLARATION + "\nEditorial procedure" },
+  { id: "88888888-8888-4888-8888-888888888888", title: "wiki 업무 조건", status: "canonical", reader_scope: "all", current_version: 3, content_md: "Original source with internal-only details" },
+];
+test("editorial capability requires a top-level opening declaration, not an incidental mention", () => {
+  const marker = editorial.THREADS_EDITORIAL_CANON_DECLARATION;
+  for (const prefix of ["", "\n", "\uFEFF\r\n"])
+    assert.equal(editorial.supportsThreadsEditorialContract(prefix + marker + "\r\n# Procedure"), true);
+  for (const body of ["# Procedure\nExample:\n" + marker, "```\n" + marker + "\n```", "~~~\n" + marker + "\n~~~",
+    "> " + marker, "    " + marker, "- " + marker, "<!--\n" + marker + "\n-->", marker + " (example)"])
+    assert.equal(editorial.supportsThreadsEditorialContract(body), false, body);
+});
+test("new route gates check the approved contract and ACL, never the document edit count alone", async () => {
+  for (const version of [10, 99]) {
+    const docs = editorialDocs(); docs[0].current_version = version; docs[0].content_md = "Old procedure";
+    const { server } = await serverHarness({ topics: [editorialTopic()], docs });
+    assert.equal((await server.threadsCollectionContext(actor)).editorialReady, false);
+    await assert.rejects(server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+    await assert.rejects(server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_CANON_UNAVAILABLE"));
+    assert.equal((await server.threadsCanonicalSnapshot(actor)).version, version);
+  }
+  const docs = editorialDocs(), { server } = await serverHarness({ docs });
+  assert.equal((await server.threadsCollectionContext(actor)).editorialReady, true);
+  assert.equal((await server.assertThreadsEditorialReady(actor, editorialMetadata())).editorial_route, "insight");
+  for (const patch of [{ current_version: 9 }, { status: "draft" }, { reader_scope: "restricted" }]) {
+    const invalid = editorialDocs(); Object.assign(invalid[0], patch);
+    await assert.rejects((await serverHarness({ docs: invalid })).server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+  }
+  const inaccessible = await serverHarness({ docs, readable: false });
+  await assert.rejects(inaccessible.server.assertThreadsEditorialReady(actor, editorialMetadata()), code("THREADS_CANON_UNAVAILABLE"));
+  assert.equal((await inaccessible.server.threadsCollectionContext(actor)).editorialReady, undefined);
+});
+test("insight and person candidates require a first paragraph, a direct answer and route-appropriate sources", () => {
+  for (const route of ["insight", "person"]) {
+    const candidate = { title: "흥미로운 내부 주제명", editorial_route: route, editorial_material: material(route) };
+    assert.equal(editorial.threadsEditorialCandidateSchema.safeParse(candidate).success, true);
+    for (const key of ["firstParagraph", "readerQuestion", "readerContext", "scene", "directAnswer", "perspective", "application", "reasonToRead"])
+      assert.equal(editorial.threadsEditorialCandidateSchema.safeParse({ ...candidate, editorial_material: { ...candidate.editorial_material, [key]: "" } }).success, false, key);
+  }
+  for (const changed of [
+    { ...material(), sources: material("person").sources },
+    { ...material(), sources: [{ ...material().sources[0], url: "https://other.test/knowledge/doc/88888888-8888-4888-8888-888888888888" }] },
+    { ...material(), sources: [{ ...material().sources[0], url: "javascript:alert(1)" }] },
+  ]) assert.throws(() => editorial.parseThreadsEditorialMetadata({ ...editorialMetadata(), editorial_material: changed }), code("THREADS_EDITORIAL_INPUT_INVALID"));
+  for (const patch of [{ personName: undefined }, { eventDate: undefined }, { sceneKind: "hypothetical" }, { sources: material().sources }])
+    assert.throws(() => editorial.parseThreadsEditorialMetadata({ ...editorialMetadata("person"), editorial_material: { ...material("person"), ...patch } }), code("THREADS_EDITORIAL_INPUT_INVALID"));
+  assert.equal(editorial.threadsEditorialCandidatesSchema.safeParse({ candidates: [] }).success, true);
+  assert.equal(editorial.threadsEditorialCandidatesSchema.safeParse({ candidates: Array(4).fill({ title: "후보", editorial_route: "insight", editorial_material: material() }) }).success, false);
+});
+test("reference metadata cannot be relabeled or combined with an insight route to bypass the response floor", () => {
+  for (const patch of [{ reference_items: [] }, { kind: contract.THREADS_REFERENCE_KIND }, { sourceReferenceIds: [refId] }, { sourceJobId: refId }])
+    assert.throws(() => contract.validateThreadsTopicMetadata({ ...editorialMetadata(), ...patch }), code("THREADS_EDITORIAL_INPUT_INVALID"));
+  for (const patch of [{ editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW }, { editorial_route: "insight" }, { editorial_workflow: null }])
+    assert.throws(() => editorial.assertThreadsEditorialWorkflowUnchanged(source().metadata, patch), code("THREADS_WORKFLOW_IMMUTABLE"));
+  assert.throws(() => editorial.assertThreadsEditorialWorkflowUnchanged(editorialMetadata(), { editorial_route: "person" }), code("THREADS_WORKFLOW_IMMUTABLE"));
+  assert.throws(() => editorial.parseThreadsEditorialMetadata({ ...editorialMetadata(), editorial_material: null }), code("THREADS_EDITORIAL_INPUT_INVALID"));
+});
+test("new route jobs pin accessible OS source body and version with the supported canonical contract and preserve the original question", async () => {
+  const parent = editorialTopic(), docs = editorialDocs(), { server } = await serverHarness({ topics: [parent], docs });
+  const input = await server.createThreadsJobInput(actor, item(), "threads");
+  assert.equal(input.workflow, editorial.THREADS_EDITORIAL_WORKFLOW);
+  assert.equal(input.canonical.version, 11);
+  assert.equal(input.topic.editorial_material.readerQuestion, material().readerQuestion);
+  assert.equal(input.topic.source_documents[0].version, 3);
+  assert.equal(input.topic.source_documents[0].body, docs[1].content_md);
+  const job = { status: "active", metadata: { proc: "threads", threadsInput: input, threadsInputKey: server.threadsInputKey(input) } };
+  await server.assertThreadsJobCurrent(item(), job, actor);
+  assert.match(server.threadsInputInstructions(input), /인사이트형/);
+  assert.match(server.threadsInputInstructions(input), /500자/);
+  const missing = structuredClone(job); missing.metadata.threadsInput.topic.source_documents = [];
+  assert.throws(() => server.getThreadsJobInput(missing), code("THREADS_JOB_INPUT_REQUIRED"));
+  const unsupported = structuredClone(job); unsupported.metadata.threadsInput.canonical.body = "Old procedure";
+  unsupported.metadata.threadsInput.canonical.version = 99;
+  assert.throws(() => server.getThreadsJobInput(unsupported), code("THREADS_JOB_INPUT_REQUIRED"));
+  docs[1].current_version = 4;
+  await assert.rejects(server.assertThreadsJobCurrent(item(), job, actor), code("THREADS_INPUT_CHANGED"));
+});
+test("source read failure, missing source, revoked ACL and stale canonical block new editorial work", async () => {
+  const parent = editorialTopic();
+  const stale = editorialDocs(); stale[0].content_md = "Old procedure";
+  await assert.rejects((await serverHarness({ topics: [parent], docs: stale })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_CANON_UNAVAILABLE"));
+  await assert.rejects((await serverHarness({ topics: [parent], docs: editorialDocs().slice(0, 1) })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_SOURCE_UNAVAILABLE"));
+  await assert.rejects((await serverHarness({ topics: [parent], docs: editorialDocs(), readable: false })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_SOURCE_UNAVAILABLE"));
+  const hidden = editorialDocs(); hidden[1].status = "archived";
+  await assert.rejects((await serverHarness({ topics: [parent], docs: hidden })).server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_SOURCE_UNAVAILABLE"));
+  const valid = await serverHarness({ topics: [parent], docs: editorialDocs() });
+  const input = await valid.server.createThreadsJobInput(actor, item(), "threads");
+  const job = { status: "active", metadata: { proc: "threads", threadsInput: input, threadsInputKey: valid.server.threadsInputKey(input) } };
+  const revoked = await serverHarness({ topics: [parent], docs: editorialDocs(), readable: false });
+  await assert.rejects(revoked.server.assertThreadsJobCurrent(item(), job, actor), code("THREADS_SOURCE_UNAVAILABLE"));
+});
+test("person route pins a documented scene without fetching or inventing public source verification", async () => {
+  const parent = editorialTopic("person"), { server, store } = await serverHarness({ topics: [parent], docs: editorialDocs() });
+  const input = await server.createThreadsJobInput(actor, item(), "threads");
+  assert.equal(input.topic.editorial_route, "person");
+  assert.equal(input.topic.source_documents.length, 0);
+  assert.equal(store.queries.filter(query => query.table === "os_documents").length, 1);
+  assert.equal(input.topic.editorial_material.sources[0].evidenceNote, material("person").sources[0].evidenceNote);
+  parent.stage = "candidate";
+  await assert.rejects(server.createThreadsJobInput(actor, item(), "threads"), code("THREADS_HUMAN_SELECTION_REQUIRED"));
+});
+test("candidate registration preserves the separate route and rejects reference linkage before writing", async () => {
+  const { post, created } = await routeHarness();
+  const response = await post({ title: "잘하는 일인데 왜 지칠까", ...editorialMetadata(), requestId: "editorial-test-1" });
+  assert.equal(response.status, 201);
+  const data = await response.json();
+  assert.equal(data.topic.metadata.editorial_route, "insight");
+  assert.equal(data.topic.stage, "candidate");
+  assert.equal(data.topic.metadata.reference_items, undefined);
+  for (const patch of [{ referenceIds: [refId] }, { reference_items: [substack(6)] }, { sourceJobId: refId, candidateIndex: 0 }])
+    assert.equal((await post({ title: "후보", ...editorialMetadata(), ...patch })).status, 422);
+  assert.equal(created.length, 1);
+});
+
+async function editorialActionHarness({ route = "insight", own = true, sourceAvailable = true } = {}) {
+  const parent = editorialTopic(route); parent.stage = "candidate";
+  const draft = item();
+  const job = { ...record(secondRefId), record_type: "ai_job", stage: "completed", metadata: {
+    targetId: draft.id, proc: "threads", result: { posts: ["미승인 원고"] },
+    threadsInput: { topic: { source_documents: [{ body: "private source body" }] } },
+  } };
+  const writes = [];
+  const modules = {
+    "next/server": { NextResponse: Response }, zod,
+    "@/lib/http": { ApiError, parseJson: request => request.json(), apiErrorResponse: error => Response.json({ error: { code: error.code } }, { status: error.status ?? 500 }) },
+    "@/lib/server/auth": { authenticateRequest: async () => actor },
+    "@/lib/supabase/server": { createServiceSupabase: () => ({ rpc: async (name, input) => { writes.push({ name, input }); return { data: { started: true }, error: null }; } }) },
+    "@/lib/server/content-automation-v07": {
+      assertHumanOwner: value => value.ownerId, assertSameOrigin: () => {}, assertCanEdit: access => access.record,
+      AUTOMATION_PROCS: ["topic", "brief", "threads", "review"], getPersonalRecord: async () => parent,
+      getContentRecord: async () => ({ record: draft, own, canEdit: true }), getItemJob: async () => job,
+      updatePersonalRecord: async (_actor, row, changes) => { writes.push({ row, changes }); return { ...row, ...changes }; },
+    },
+    "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial,
+    "@/lib/server/threads-reference": {
+      assertThreadsEditorialReady: async (_actor, metadata) => { if (!sourceAvailable) throw new ApiError(409, "THREADS_SOURCE_UNAVAILABLE", "Missing"); return editorial.parseThreadsEditorialMetadata(metadata); },
+    },
+    "@/lib/server/shortform-production": {}, "@/lib/content-automation-results": {}, "@/lib/server/content-automation-validators": {},
+    "@/lib/threads-posts": {}, "@/lib/content-comments": {}, "@/lib/server/channel-comments": {}, "@/lib/server/content-automation-worker": {},
+  };
+  const api = await load("app/api/v1/content/automation/[resource]/[id]/[action]/route.ts", modules);
+  const post = (resource, action, body) => api.POST(new Request("https://os.test", { method: "POST", body: JSON.stringify(body) }),
+    { params: Promise.resolve({ resource, id: resource === "items" ? draft.id : topicId, action }) });
+  return { post, writes, parent, job };
+}
+test("new route production permits only Threads after accessible sources and a supported canonical, with no publication call", async () => {
+  for (const route of ["insight", "person"]) {
+    const { post, writes } = await editorialActionHarness({ route });
+    const start = channels => post("topics", "start", { version: 1, brief: { one: "질문", who: "독자", message: "관점", sources: "자료", warn: "주의" }, channels });
+    for (const channels of [{ card: {} }, { threads: {}, shorts: {} }]) assert.equal((await start(channels)).status, 422);
+    assert.equal(writes.length, 0);
+    assert.equal((await start({ threads: {} })).status, 200);
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].name, "os_start_personal_content_topic");
+    assert.equal(writes[0].input.p_channels.map(channel => channel.channel).join(","), "threads");
+  }
+  const unavailable = await editorialActionHarness({ sourceAvailable: false });
+  const response = await unavailable.post("topics", "start", { version: 1, brief: { one: "질문", who: "독자", message: "관점", sources: "자료", warn: "주의" }, channels: { threads: {} } });
+  assert.equal(response.status, 409);
+  assert.equal(unavailable.writes.length, 0);
+});
+test("a shared draft rejection does not disclose the owner's pinned source documents", async () => {
+  const shared = await editorialActionHarness({ own: false });
+  const response = await shared.post("items", "reject", { version: 1, jobId: shared.job.id });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.job.metadata.threadsInput, undefined);
+  assert.deepEqual(body.job.metadata.result.posts, ["미승인 원고"]);
+  assert.equal(shared.job.metadata.threadsInput.topic.source_documents[0].body, "private source body");
+});
+test("public-source labeling rejects normalized internal OS URLs and malformed URLs safely", () => {
+  for (const url of ["https://BRANDYACTION-OS.vercel.app", "https://brandyaction-os.vercel.app:443?document=example", "not-a-url"])
+    assert.equal(editorial.threadsEditorialMaterialSchema.safeParse({ ...material("person"), sources: [{ ...material("person").sources[0], url }] }).success, false);
 });

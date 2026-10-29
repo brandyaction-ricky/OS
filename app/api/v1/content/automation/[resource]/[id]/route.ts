@@ -6,8 +6,10 @@ import { authenticateRequest } from "@/lib/server/auth";
 import { assertCanEdit,assertHumanOwner,assertSameOrigin,getContentRecord,TEAM_FIELDS,updatePersonalRecord } from "@/lib/server/content-automation-v07";
 import { validatePersonalAsset,validatePersonalItem,validatePersonalTemplate } from "@/lib/server/content-automation-validators";
 import { AUTOMATION_PROCS } from "@/lib/server/content-automation-v07";
-import { validateThreadsTopicMetadata,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
-import { threadsReferenceRequestId } from "@/lib/server/threads-reference";
+import { validateThreadsTopicMetadata,THREADS_REFERENCE_KIND } from "@/lib/threads-reference";
+import { threadsReferenceRequestId,assertThreadsEditorialReady } from "@/lib/server/threads-reference";
+
+import { assertThreadsEditorialWorkflowUnchanged } from "@/lib/threads-editorial";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -62,12 +64,10 @@ export async function PATCH(request:Request,{params}:Params){
       // File paths belong to the draft's owner, also when a reviewer edits a shared draft.
       if(resource==="items")validatePersonalItem(metadata,String(current.metadata.channel),String(current.owner_id));
       if(resource==="topics"){
-        if(input.metadata.kind!==undefined&&input.metadata.kind!==current.metadata.kind
-          ||current.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW&&input.metadata.editorial_workflow!==undefined
-            &&input.metadata.editorial_workflow!==THREADS_REFERENCE_WORKFLOW)
-          throw new ApiError(422,"THREADS_WORKFLOW_IMMUTABLE","원문은 레퍼런스 화면에서 별도 주제로 선택해 주세요.");
+        assertThreadsEditorialWorkflowUnchanged(current.metadata,input.metadata);
         if(current.metadata.kind===THREADS_REFERENCE_KIND)metadata.kind=THREADS_REFERENCE_KIND;
         Object.assign(metadata,validateThreadsTopicMetadata(metadata));
+        await assertThreadsEditorialReady(actor,metadata);
         if(current.metadata.kind===THREADS_REFERENCE_KIND){
           const reference=(metadata.reference_items as {url:string}[])[0];
           metadata.sourceRef=reference.url;

@@ -15,7 +15,7 @@ const QUALITY_LABELS = { recommended: "추천 후보", pending: "검증 대기",
 type QualityFilter = keyof typeof QUALITY_LABELS;
 type Mutate = (path: string, method: "POST" | "PATCH" | "PUT", body: unknown) => Promise<Record<string, unknown>>;
 type ComparisonDraft = { url: string; likes: string; publishedAt: string };
-export type ReferenceCollectionContext = { canonicalUrl?: string; canonicalTitle: string; canonicalVersion?: number; error?: string };
+export type ReferenceCollectionContext = { canonicalUrl?: string; canonicalTitle: string; canonicalVersion?: number; editorialReady?: boolean; error?: string };
 
 function emptyReference(): ThreadsReferenceItem {
   return { id: crypto.randomUUID(), url: "", title: "", koreanTitle: "", summary: "", suggestedTopic: "", relevanceNote: "", audienceNote: "", platform: "threads", author: "", publishedAt: null,

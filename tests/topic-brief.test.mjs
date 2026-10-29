@@ -15,10 +15,11 @@ async function load(file, modules = {}) {
   return compiled.exports;
 }
 const schedule = await load("lib/content-automation-schedule.ts");
+const editorial = await load("lib/threads-editorial.ts", { zod, "./http": { ApiError: Error } });
 const references = await load("lib/threads-reference.ts", {
-  zod, "./http": { ApiError: Error }, "./content-automation-schedule": schedule,
+  zod, "./http": { ApiError: Error }, "./content-automation-schedule": schedule, "./threads-editorial": editorial,
 });
-const { getTopicBriefDraft } = await load("lib/topic-brief.ts", { "./threads-reference": references });
+const { getTopicBriefDraft } = await load("lib/topic-brief.ts", { "./threads-reference": references, "./threads-editorial": editorial });
 const plain = value => JSON.parse(JSON.stringify(value));
 const reference = (changes = {}) => ({
   id: "one", url: "https://example.substack.com/p/work", title: "A work story", koreanTitle: "일이 맞아도 지칠 때",
@@ -105,4 +106,39 @@ test("oversize notes use an explicit source pointer instead of truncating an ass
   assert.ok(!result.brief.message.includes(long.slice(0, 10)));
   for (const value of Object.values(result.brief)) assert.ok(value.length <= 5000);
   assert.ok(Buffer.byteLength(JSON.stringify({ version: 1, brief: result.brief, channels: { threads: {} }, teamThreads: true })) < 30_000);
+});
+
+const editorialTopic = (route = "insight", changes = {}) => ({ title: "예시 주제: 역할이 달라지면 잘하는 일도 달라질까?", stage: "candidate", metadata: {
+  editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW, editorial_route: route,
+  editorial_material: {
+    firstParagraph: "같은 업무인데 팀을 옮기고 나서 갑자기 못하는 사람이 됐다. 무엇이 달라진 걸까?",
+    readerQuestion: "역할이 달라지면 잘하는 일도 달라질까?", readerContext: "같은 일을 다른 팀에서 해보려는 사람",
+    scene: "가상 예시: 작업자는 팀이 바뀐 뒤 같은 일을 다른 순서로 했다.", sceneKind: route === "person" ? "documented" : "hypothetical",
+    directAnswer: "일의 이름보다 실제로 맡은 행동을 함께 비교한다.", perspective: "같은 이름의 업무라도 역할의 범위는 다를 수 있다.",
+    application: "최근 완료한 일의 실제 작업 순서를 적어본다.", reasonToRead: "같은 일을 옮기면 무엇이 달라지는지 궁금하다.",
+    sources: [{ kind: route === "person" ? "public" : "os_document", title: "테스트 원문", url: route === "person" ? "https://example.test/interview" : "https://brandyaction-os.vercel.app/knowledge/doc/00000000-0000-4000-8000-000000000001", locator: "첫 번째 절", evidenceNote: "테스트용 합성 자료. 외부 원문이 아님." }],
+    ...(route === "person" ? { personName: "합성 예시 인물", eventDate: "2026-01-01" } : {}),
+  }, brief: {}, channels: [], ...changes,
+} });
+
+test("insight and person candidates seed their own material and preserve the scene evidence", () => {
+  for (const route of ["insight", "person"]) {
+    const source = editorialTopic(route), before = JSON.stringify(source), result = getTopicBriefDraft(source);
+    assert.equal(result.seeded, true);
+    assert.equal(result.brief.one, source.title);
+    assert.equal(result.brief.who, source.metadata.editorial_material.readerContext);
+    assert.match(result.brief.message, /질문에 대한 답:/);
+    assert.match(result.brief.message, /더할 관점:/);
+    assert.match(result.brief.sources, route === "person" ? /원문에서 확인한 장면/ : /가상 예시/);
+    assert.match(result.brief.sources, /위치: 첫 번째 절/);
+    assert.match(result.brief.warn, route === "person" ? /욕구 유형/ : /개인 진단 결과/);
+    assert.deepEqual(plain(result.channels), ["threads"]);
+    assert.equal(JSON.stringify(source), before);
+  }
+});
+
+test("new route never replaces a saved edit, nor guesses at malformed or mixed materials", () => {
+  assert.equal(getTopicBriefDraft(editorialTopic("insight", { brief: { one: "" } })).seeded, false);
+  assert.equal(getTopicBriefDraft(editorialTopic("person", { editorial_material: {} })).seeded, false);
+  assert.equal(getTopicBriefDraft(editorialTopic("insight", { reference_items: [reference()] })).seeded, false);
 });

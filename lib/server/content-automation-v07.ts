@@ -250,7 +250,7 @@ export async function createJob(actor:RequestActor,input:{
   open=input.targetId?open.eq("metadata->>targetId",input.targetId):open.is("metadata->>targetId",null);
   const {data:existing,error:readError}=await open.limit(1).maybeSingle();
   if(readError)throw new ApiError(503,"JOB_CHECK_FAILED","기존 작업을 확인하지 못했습니다.");
-  if(existing){if(target){assertShortformJobCurrent(target,existing as OsRecord);await assertThreadsJobCurrent(target,existing as OsRecord);}return {job:existing as OsRecord,reused:true};}
+  if(existing){if(target){assertShortformJobCurrent(target,existing as OsRecord);await assertThreadsJobCurrent(target,existing as OsRecord,actor);}return {job:existing as OsRecord,reused:true};}
   const threadsInput=await createThreadsJobInput(actor,target,input.proc);
   const {data:skill,error:skillError}=await db.from("os_records").select("id,version")
     .eq("record_type","skill").eq("owner_id",ownerId).eq("metadata->>space","personal")
@@ -275,7 +275,7 @@ export async function createJob(actor:RequestActor,input:{
       .eq("metadata->>sub",sub).in("status",["backlog","active"]).is("archived_at",null);
     retryQuery=input.targetId?retryQuery.eq("metadata->>targetId",input.targetId):retryQuery.is("metadata->>targetId",null);
     const retry=await retryQuery.limit(1).maybeSingle();
-    if(retry.data){if(target){assertShortformJobCurrent(target,retry.data as OsRecord);await assertThreadsJobCurrent(target,retry.data as OsRecord);}return {job:retry.data as OsRecord,reused:true};}
+    if(retry.data){if(target){assertShortformJobCurrent(target,retry.data as OsRecord);await assertThreadsJobCurrent(target,retry.data as OsRecord,actor);}return {job:retry.data as OsRecord,reused:true};}
   }
   if(error||!data)throw new ApiError(503,"JOB_CREATE_FAILED","AI 작업을 대기열에 넣지 못했습니다.");
   return {job:data as OsRecord,reused:false};

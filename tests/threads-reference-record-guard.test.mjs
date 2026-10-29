@@ -15,9 +15,10 @@ async function load(file, modules) {
     { module: compiled, exports: compiled.exports, URL, Date, require: name => { assert.ok(name in modules, name); return modules[name]; } });
   return compiled.exports;
 }
+const editorial = await load("lib/threads-editorial.ts", { zod, "./http": { ApiError } });
 const schedule = await load("lib/content-automation-schedule.ts", {});
-const contract = await load("lib/threads-reference.ts", { zod, "./http": { ApiError }, "./content-automation-schedule": schedule });
-const guard = await load("lib/threads-reference-record-guard.ts", { "./threads-reference": contract });
+const contract = await load("lib/threads-reference.ts", { zod, "./http": { ApiError }, "./content-automation-schedule": schedule, "./threads-editorial": editorial });
+const guard = await load("lib/threads-reference-record-guard.ts", { "./threads-reference": contract, "./threads-editorial": editorial });
 const owner = "11111111-1111-4111-8111-111111111111";
 const organization = "22222222-2222-4222-8222-222222222222";
 const id = "33333333-3333-4333-8333-333333333333";
@@ -51,7 +52,7 @@ async function harness(path, metadata = referenceMetadata) {
     "@/lib/server/auth": { authenticateRequest: async () => ({ id: owner, ownerId: owner, type: path.includes("agent-records") ? "agent" : "user", supabase: db }), requireAgentScope: () => {} },
     "@/lib/supabase/server": { createServiceSupabase: () => db }, "@/lib/server/organization": { assertOrganization: noOp },
     "@/lib/record-types": types, "@/lib/record-validation": validation,
-    "@/lib/threads-reference": contract, "@/lib/threads-reference-record-guard": guard,
+    "@/lib/threads-reference": contract, "@/lib/threads-editorial": editorial, "@/lib/threads-reference-record-guard": guard,
     "@/lib/content-comments": { isCommentDraftPatch: () => false }, "@/lib/server/meeting-review": { assertReviewedMeetingTask: noOp },
     "@/lib/html-entities": { decodeHtmlEntities: value => value }, "@/lib/content-origin": { contentOrigin: () => "own" },
     "@/lib/server/skill-source": { assertSkillSource: noOp }, "@/lib/content-pipeline": { protectedPipelineChange: () => false },
@@ -87,6 +88,9 @@ for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/rou
       { space: "personal", editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW, reference_items: weakEvidence },
       { space: "personal", kind: contract.THREADS_REFERENCE_KIND },
       { space: "personal", reference_items: weakEvidence },
+      { space: "personal", editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW },
+      { space: "personal", editorial_route: "insight" },
+      { space: "personal", editorial_material: {} },
     ]) {
       const api = await harness(path, metadata);
       assert.equal((await api.send("PATCH", { id, expectedVersion: 1, metadata: { space: "personal" } })).status, 403);
@@ -98,7 +102,8 @@ for (const path of ["app/api/v1/records/route.ts", "app/api/v1/agent-records/rou
     const api = await harness(path, { space: "personal", source: "direct" });
     for (const marker of [
       { kind: contract.THREADS_REFERENCE_KIND }, { editorial_workflow: contract.THREADS_REFERENCE_WORKFLOW },
-      { reference_items: weakEvidence },
+      { reference_items: weakEvidence }, { editorial_workflow: editorial.THREADS_EDITORIAL_WORKFLOW },
+      { editorial_route: "person" }, { editorial_material: {} },
     ]) {
       const metadata = { space: "personal", ...marker };
       assert.equal((await api.send("POST", { recordType: "content_topic", title: "Injected source", metadata })).status, 403);
