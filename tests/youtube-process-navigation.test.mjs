@@ -66,6 +66,7 @@ test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏
   assert.equal(youtubeV1StageId(stages, "/automation/threads", p(""), "automation"), "threads");
   assert.equal(youtubeV1StageId(stages, "/automation/requests", p(""), "automation"), "automation");
   assert.equal(youtubeV1StageId(stages, "/content/plan", p("id=x"), "content"), "content");
+  assert.equal(youtubeV1StageId(stages, "/content/automation", p(""), "automation", "/automation/topics"), "threads", "an old alias address opens the group of the page it shows");
   assert.ok(youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=ad")));
   assert.ok(!youtubeV1EntrySelected("/content/projects?platform=ad", "/content/projects", p("platform=short")));
   assert.ok(youtubeV1EntrySelected("/content/projects?view=discover", "/content/projects", p("view=discover&platform=threads")));

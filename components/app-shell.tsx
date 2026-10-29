@@ -76,7 +76,9 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const confirmWaiting = useYoutubeConfirmWaiting(Boolean(youtubeV1Enabled && canConfirm), pathname);
   // 유튜브 공정 v1: 대표 메뉴 on top, then the menu by what is made (owner 2026-10-29, A안); old screens stay reachable by address.
   const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...youtubeV1Stages(NAV_STAGES)] : NAV_STAGES;
-  const activeStageId = youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id) : stage.id;
+  const activeStageId = youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id, (page.navHref ?? page.href).split("?")[0]) : stage.id;
+  // Without 유튜브 공정 v1 the content group keeps the name it always showed.
+  const groupLabel = (item: { id: string; label: string }) => !youtubeV1Enabled && item.id === "content" ? "유튜브 공정" : item.label;
   const activeStage = navStages.find(item => item.id === activeStageId) ?? stage;
   const entrySelected = (href: string) => href.includes("?") ? youtubeV1EntrySelected(href, pathname, params) : href === (page.navHref ?? page.href);
   const visibleStages = navStages.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
@@ -291,8 +293,8 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
             const active = pathname !== "/settings/account" && item.id === activeStageId;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
                   : <span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !groupOpen(item.id)}>

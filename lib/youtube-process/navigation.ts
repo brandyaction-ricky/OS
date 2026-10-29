@@ -51,14 +51,14 @@ export function youtubeV1Stages(stages: NavStage[]): NavStage[] {
   });
 }
 /** Which v1 group a screen belongs to: a platform list by its ?platform=, 주제 찾기 and every step of a video under 공통. */
-export function youtubeV1StageId(stages: NavStage[], pathname: string, params: URLSearchParams, fallback: string) {
+export function youtubeV1StageId(stages: NavStage[], pathname: string, params: URLSearchParams, fallback: string, canonical = pathname) {
   if (pathname === "/content/projects" && params.get("view") !== "discover") {
     const platform = params.get("platform");
     const match = YOUTUBE_V1_PLATFORM_STAGES.find(stage => stage.href.endsWith(`=${platform}`));
     if (match) return match.id;
   }
   const platformIds = new Set(YOUTUBE_V1_PLATFORM_STAGES.map(stage => stage.id));
-  return stages.find(stage => stage.id !== "content" && !platformIds.has(stage.id) && stage.pages.some(page => page.href.split("?")[0] === pathname))?.id ?? fallback;
+  return stages.find(stage => stage.id !== "content" && !platformIds.has(stage.id) && stage.pages.some(page => [pathname, canonical].includes(page.href.split("?")[0])))?.id ?? fallback;
 }
 /** A menu entry with a query (주제 찾기, 내 숏폼 영상 …) is selected only when the address carries the same values. */
 export function youtubeV1EntrySelected(href: string, pathname: string, params: URLSearchParams) {
