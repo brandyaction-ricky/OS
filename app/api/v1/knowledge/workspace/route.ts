@@ -104,7 +104,9 @@ export async function GET(request: Request) {
     access.actor.canApprove=me?.can_approve===true;
     for(const page of await proposalsRead){
       if(page.error) throw readError(page.error,"proposals");
-      state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)));
+      // Decided proposals keep their row but not their full text (135 approved bodies were ~2 MB of every
+      // knowledge page load); the review screen reads one body by id when it is opened.
+      state.proposals.push(...(page.data ?? []).filter(row=>ids.has(row.document_id)).map(row=>["open","returned"].includes(row.status)?row:{...row,content_md:"",content_omitted:true}));
     }
     // Keys are never returned; only their owner identity is needed for the self-approval guard.
     const keyIds=[...new Set(state.proposals.map(p=>p.agent_key_id).filter(Boolean))];
