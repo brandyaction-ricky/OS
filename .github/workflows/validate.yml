@@ -41,3 +41,10 @@ jobs:
           PLAYWRIGHT_SERVER_MODE: production
           YOUTUBE_V1_ENABLED: "true"
           NEXT_PUBLIC_DEMO_MODE: "true"
+      - name: Verify Threads reference, planning and Aside handoff with isolated API fixtures
+        run: npm run test:e2e -- tests/e2e/threads-reference.mock.spec.ts tests/e2e/threads-editorial.mock.spec.ts tests/e2e/threads-aside-handoff.mock.spec.ts
+        env:
+          REFERENCE_MOCK_E2E: "true"
+          NEXT_PUBLIC_DEMO_MODE: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://reference-ui-test.supabase.co"
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: "fixture-public-key"

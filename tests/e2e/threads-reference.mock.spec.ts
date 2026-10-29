@@ -223,7 +223,7 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
   await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
-  await expect(page.getByRole("button", { name: "내 AI로 쓰레드 글 쓰기", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aside에 보낼 요청문 복사", exact: true })).toBeVisible();
   expect(state.items).toHaveLength(1);
   expect(state.items[0].status).toBe("draft");
   expect(state.items[0].metadata.posts).toEqual([]);

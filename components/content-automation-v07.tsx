@@ -19,6 +19,7 @@ import { ShortformRenderPanel } from "./shortform-render-panel";
 import { CostTag } from "./cost-notice";
 import { ReferenceEvidencePanel, ThreadsReferenceWorkspace, type ReferenceCollectionContext } from "./threads-reference-workspace";
 import { EditorialEvidencePanel, ThreadsEditorialWorkspace, editorialRouteLabel } from "./threads-editorial-workspace";
+import { ThreadsAsideHandoff } from "./threads-aside-handoff";
 import "./content-automation-v07.css";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
@@ -84,11 +85,12 @@ function workerInstruction(via:"sched"|"now",name="내 컴퓨터"){
 }
 
 function PageHead({page,name}:{page:AutomationPage;name:string}){
+  const search=useSearchParams(),selectedThread=page==="threads"&&Boolean(search.get("sel"));
   const scope=page==="threads"||page==="review"?"내 글은 나만 보임 · 팀 검토함은 사내 구성원 열람":"나만 보임";
   const info=PAGE_INFO[page],guide=PAGE_GUIDES[`/automation/${page}`];
   const process=info.title.match(/^([①-⑦])\s/),title=process?info.title.slice(2):info.title;
-  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{info.description}</p></div></header>
-    <div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span>{page!=="topics"?<Link href={info.next}>다음 단계 →</Link>:null}</div></>;
+  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{selectedThread?"Aside에 집필을 요청하고, 완성된 원고를 이 화면에서 확인합니다.":info.description}</p></div></header>
+    {selectedThread?null:<div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span>{page!=="topics"?<Link href={info.next}>다음 단계 →</Link>:null}</div>}</>;
 }
 function Tabs({base,tabs,active,param="tab"}:{base:string;tabs:{id:string;label:string}[];active:string;param?:string}){
   return <div className="ca-v07-tabs" role="tablist">{tabs.map(tab=><Link key={tab.id} role="tab" aria-selected={active===tab.id} className={active===tab.id?"active":""} href={`${base}?${param}=${tab.id}`}>{tab.label}</Link>)}</div>;
@@ -181,7 +183,7 @@ export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;
         else if(resource==="assets")next.assets=response.records as OsRecord[];
       }
       setData(next);return true;
-    }catch(issue){setError(issue instanceof Error?issue.message:"화면을 불러오지 못했습니다.");return false;}
+    }catch(issue){const message=issue instanceof Error?issue.message:"화면을 불러오지 못했습니다.";if(showLoading)setError(message);else setNotice(`최신 상태를 불러오지 못했습니다. 입력한 내용은 유지됩니다. ${message}`);return false;}
     finally{setLoading(false);}
   },[accessToken,demo,page,profile?.id,sessionLoading]);
   useEffect(()=>{void load();},[load]);
@@ -189,8 +191,8 @@ export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;
     if(demo)throw new Error("데모 모드에서는 저장할 수 없습니다.");
     if(!accessToken)throw new Error("로그인이 필요합니다.");
     const response=await apiRequest<Record<string,unknown>>(path,{method,token:accessToken,body:JSON.stringify(body)});
-    // Keep the topic editor mounted while saving, so its action state and dialogs survive.
-    const refreshed=await load(page!=="topics");
+    // Keep planning and Threads handoff mounted so pasted text and focus survive refreshes.
+    const refreshed=await load(page!=="topics"&&page!=="threads");
     setNotice(refreshed?"저장했습니다.":"변경은 저장됐습니다. 최신 화면을 불러오지 못했으니 다시 시도해 주세요.");
     return response;
   },[accessToken,demo,load,page]);
@@ -202,7 +204,7 @@ export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;
       :page==="dashboard"?<DashboardView data={data} />
       :page==="references"?<ThreadsReferenceWorkspace records={data.references} mutate={mutate} collectionContext={data.referenceContext} />
       :page==="topics"?<TopicsView data={data} mutate={mutate} />
-      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={async()=>{await load();}}/>
+      :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={async()=>{await load(page!=="threads");}}/>
       :page==="review"?<ReviewView data={data} mutate={mutate} />
       :page==="calendar"?<CalendarView data={data} mutate={mutate} />
       :page==="performance"?<PerformanceView data={data} mutate={mutate} />
@@ -339,7 +341,7 @@ function TopicsView({data,mutate}:ViewProps){
         {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="brief"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>기획 메모 도착</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>기획 메모 채택</button><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}
         <div className="ca-v07-topic-footer">
           {localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
-          <p>{channels.length===1&&channels[0]==="threads"?"다음 화면에서 ‘내 AI로 쓰레드 글 쓰기’를 눌러 집필을 맡기세요.":"기획을 저장하고 선택한 채널의 작업 항목을 만듭니다."} 자동 승인·예약·발행은 하지 않습니다.</p>
+          <p>{channels.length===1&&channels[0]==="threads"?"다음 화면에서 ‘Aside에 보낼 요청문 복사’를 누르고 Aside에 붙여 넣어 실행하세요. 완성된 원고도 같은 화면에서 확인합니다.":"기획을 저장하고 선택한 채널의 작업 항목을 만듭니다."} 자동 승인·예약·발행은 하지 않습니다.</p>
           <div className="ca-v07-actions"><button disabled={busy} onClick={()=>void save(false)}>기획만 저장</button><button className="primary" disabled={busy} onClick={()=>void save(true)}>{busy?"처리 중…":nextLabel}</button></div>
         </div>
       </>}
@@ -357,10 +359,10 @@ const BRIEF_HINTS={one:"이 글에서 끝까지 답할 질문을 적어주세요
 const BRIEF_FIELDS=[["one","한 줄 주제"],["who","누구에게"],["message","핵심 메시지"],["sources","근거·자료"],["warn","주의할 표현"]] as const;
 // The topic's brief and sources stay readable after production starts, so a reviewer
 // checks the draft against the same evidence.
-function BriefPanel({topic}:{topic:OsRecord|undefined}){
+function BriefPanel({topic,expanded=true}:{topic:OsRecord|undefined;expanded?:boolean}){
   if(!topic)return <div className="ca-v07-note">연결된 주제 기획 메모를 볼 수 없습니다.</div>;
   const brief=(topic.metadata.brief??{}) as Record<string,unknown>;
-  return <details className="ca-v07-brief" open><summary>근거·기획 메모 · {topic.title} · v{topic.version}</summary>
+  return <details className="ca-v07-brief" open={expanded}><summary>근거·기획 메모 · {topic.title} · v{topic.version}</summary>
     <dl>{BRIEF_FIELDS.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{str(brief[key])||"—"}</dd></div>)}</dl>
     {str(topic.metadata.sourceRef)?<p><small>출처 메모 · {str(topic.metadata.sourceRef)}</small></p>:null}<ReferenceEvidencePanel topic={topic}/><EditorialEvidencePanel topic={topic}/></details>;
 }
@@ -450,8 +452,12 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
   const [tab,setTab]=useState("all"),[title,setTitle]=useState(""),[body,setBody]=useState(""),[busy,setBusy]=useState(false);
   const [meta,setMeta]=useState<Record<string,unknown>>({}),[cutsText,setCutsText]=useState("[]");
   const [jobSub,setJobSub]=useState("");
+  const [threadJobs,setThreadJobs]=useState<OsRecord[]>([]);
   const [jobOpen,setJobOpen]=useState<string|null>(null),[error,setError]=useState(""),[videoFile,setVideoFile]=useState<File|null>(null),[uploading,setUploading]=useState(false);
-  useEffect(()=>{setTitle(selected?.title??"");setBody(selected?.description??"");setMeta(selected?.metadata??{});
+  const editorSnapshot=useRef("");
+  useEffect(()=>{const snapshot=selected?`${selected.id}:${selected.version}`:"none";
+    if(editorSnapshot.current===snapshot)return;
+    editorSnapshot.current=snapshot;setTitle(selected?.title??"");setBody(selected?.description??"");setMeta(selected?.metadata??{});
     setCutsText(JSON.stringify(selected?.metadata.cuts??[],null,2));},[selected]);
   const filtered=items.filter(row=>tab==="all"||tab==="making"&&["draft","blocked"].includes(row.status)
     ||tab==="review"&&row.status==="review"||tab==="ready"&&["ready","scheduled"].includes(row.status)
@@ -460,7 +466,14 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
   const shortformDirty=channel==="shorts"&&Boolean(selected)&&(title!==selected?.title||body!==(selected?.description??"")
     ||JSON.stringify(meta)!==JSON.stringify(selected?.metadata)
     ||cutsText!==JSON.stringify(selected?.metadata.cuts??[],null,2));
+  const threadsDirty=channel==="threads"&&Boolean(selected)&&(title!==selected?.title||body!==(selected?.description??"")
+    ||JSON.stringify(meta)!==JSON.stringify(selected?.metadata));
   const postsProblem=channel==="threads"?threadsPostsProblem(posts):null;
+  const latestJobs=new Map<string,OsRecord>();
+  for(const job of [...data.jobs,...threadJobs]){const previous=latestJobs.get(job.id);
+    if(!previous||job.version>previous.version||job.version===previous.version&&job.updated_at>previous.updated_at)latestJobs.set(job.id,job);}
+  const completedJobs=selected?[...latestJobs.values()].filter(job=>job.metadata.targetId===selected.id&&job.owner_id===selected.owner_id&&job.stage==="completed").sort((a,b)=>b.updated_at.localeCompare(a.updated_at)):[];
+  const threadJobRevision=data.jobs.filter(job=>job.metadata.targetId===selected?.id).map(job=>`${job.id}:${job.version}:${job.stage}`).join("|");
   // One click at a time: a slow response must not send the same request twice.
   const once=async(work:()=>Promise<unknown>)=>{if(busy)return;setBusy(true);try{await work();}finally{setBusy(false);}};
   const act=(action:string,body:Record<string,unknown>={})=>once(async()=>{
@@ -507,11 +520,11 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
   const tabs=[["all","전체"],["making","만드는 중"],["review","확인 대기"],["ready","발행 준비"],["published","게시됨"]];
   const topic=selected?data.topics.find(row=>row.id===selected.parent_id&&row.owner_id===selected.owner_id):undefined;
   const ownerName=(row:OsRecord)=>str((row as OsRecord&{owner_name?:string}).owner_name)||"작성자";
-  return <><div className="ca-v07-toolbar"><span>확정한 주제에서 채널별 콘텐츠를 만듭니다.</span><Link href="/automation/topics">+ 확정한 주제에서 만들기</Link></div>
+  return <>{channel==="threads"&&selected?null:<><div className="ca-v07-toolbar"><span>확정한 주제에서 채널별 콘텐츠를 만듭니다.</span><Link href="/automation/topics">+ 확정한 주제에서 만들기</Link></div>
     {channel==="threads"?<><Tabs base="/automation/threads" active={scope} tabs={[{id:"mine",label:"내 글 "+all.filter(row=>row.owner_id===data.me).length},{id:"team",label:"팀 검토함 "+all.filter(isTeam).length}]} param="scope"/>
       {scope==="team"?<ReviewerRoster team={data.team} mutate={mutate}/>:null}</>:null}
-    <div className="ca-v07-tabs">{tabs.map(([key,label])=><button type="button" role="tab" aria-selected={tab===key} className={tab===key?"active":""} key={key} onClick={()=>setTab(key)}>{label} {items.filter(row=>key==="all"||key==="making"&&["draft","blocked"].includes(row.status)||key===row.status||key==="ready"&&row.status==="scheduled").length}</button>)}</div>
-    <div className="ca-v07-split"><section className="ca-v07-card"><h2>{scope==="team"?"팀 검토함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검토함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검토함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>
+    <div className="ca-v07-tabs">{tabs.map(([key,label])=><button type="button" role="tab" aria-selected={tab===key} className={tab===key?"active":""} key={key} onClick={()=>setTab(key)}>{label} {items.filter(row=>key==="all"||key==="making"&&["draft","blocked"].includes(row.status)||key===row.status||key==="ready"&&row.status==="scheduled").length}</button>)}</div></>}
+    <div className={channel==="threads"&&selected?"ca-v07-threads-workspace":"ca-v07-split"}>{channel==="threads"&&selected?<button type="button" className="ca-v07-back-to-list" onClick={()=>router.replace("/automation/threads"+(scope==="team"?"?scope=team":""))}>← 쓰레드 목록</button>:<section className="ca-v07-card ca-v07-item-list"><h2>{scope==="team"?"팀 검토함":PAGE_INFO[page].title+" 목록"}</h2>{filtered.length?filtered.map(row=><button key={row.id} className="ca-v07-row" onClick={()=>router.replace("/automation/"+page+"?"+(scope==="team"?"scope=team&":"")+"sel="+row.id)}><span><strong>{row.title}</strong><small>v{row.version} · 마감 {row.due_date??"없음"}{scope==="team"?" · 작성 "+ownerName(row):isTeam(row)?" · 팀 검토함에 공유됨":""}</small></span><Status value={row.status}/></button>):<Empty text={scope==="team"?"팀 검토함에 올라온 원고가 없습니다.":"이 상태의 내 콘텐츠가 없습니다."}/>}</section>}
       {selected?<section className="ca-v07-card ca-v07-edit"><div className="ca-v07-detail-head"><h2>{CHANNEL_LABELS[channel]} · v{selected.version}</h2><button onClick={()=>router.replace("/automation/"+page+(scope==="team"?"?scope=team":""))}>닫기</button></div>
         <p><Status value={selected.status}/> · {topic?.title??(selected.metadata.originalSourceId?"롱폼에서 가져온 숏폼":"주제 없음")}{isTeam(selected)?` · 팀 검토함 · 작성 ${own?"나":ownerName(selected)}`:" · 나만 보임"}</p>
         {channel==="threads"?<div className="ca-v07-actions">
@@ -520,7 +533,17 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
           {selected.status==="review"?<Link href={"/automation/review?sel="+selected.id}>검토 화면 →</Link>:null}</div>:null}
         {!canEdit?<div className="ca-v07-note">팀 원고는 읽고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검토자만 합니다.</div>
           :statusLocked?<div className="ca-v07-note">확인 중이거나 확인된 버전입니다. 내용을 바꾸면 다시 최종 확인을 거쳐야 합니다. {selected.status!=="published"?<button disabled={busy} onClick={()=>void act("reopen")}>다시 고치기</button>:null}</div>:null}
-        {channel==="threads"?<BriefPanel topic={topic}/>:null}
+        {channel==="threads"?<>
+          {own&&!statusLocked?<ThreadsAsideHandoff key={selected.id} item={selected} dirty={threadsDirty} onRefresh={refresh} onJobsLoaded={setThreadJobs} jobRevision={threadJobRevision}/>:null}
+          {completedJobs.map(job=><div className="ca-v07-note ca-v07-arrived-draft" id={`threads-result-${job.id}`} key={job.id}><h2>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]} · 미승인</h2>
+            {Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.posts)?<ThreadsPreview posts={((job.metadata.result as {posts:unknown[]}).posts).map(String)}/>:<pre>{JSON.stringify(job.metadata.result,null,2)}</pre>}
+            {canEdit&&!statusLocked?<><p>첫 실행은 여기까지입니다. 원고를 읽고 검수해 주세요. 아래 채택은 별도의 사람 판단입니다.</p>
+              {threadsDirty?<p>편집한 내용을 먼저 저장한 뒤 결과를 채택해 주세요.</p>:null}
+              <details><summary>검수 후 결과 채택·제외</summary><button disabled={busy||threadsDirty} onClick={()=>void act("adopt",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button disabled={busy} onClick={()=>void act("reject",{jobId:job.id,version:selected.version})}>채택 안 함</button></details></>:null}</div>)}
+          <BriefPanel topic={topic} expanded={false}/>
+        </>:null}
+        <details className="ca-v07-manual-editor" open={channel!=="threads"||posts.length>0}>
+          <summary>{channel==="threads"?"직접 원고 입력·수정":"콘텐츠 편집"}</summary>
         <fieldset disabled={locked} className="ca-v07-fields"><label>제목<input value={title} onChange={event=>setTitle(event.target.value)}/></label>
         {channel==="card"?<><CardDetail meta={meta} setMeta={setMeta} templates={data.templates} assets={data.assets}/>
           <label>캡션<textarea rows={4} value={str(meta.caption)} onChange={event=>setMeta({...meta,caption:event.target.value})}/></label>
@@ -538,14 +561,14 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
             <label>커버 문구<input value={str(meta.coverText)} onChange={event=>setMeta({...meta,coverText:event.target.value})}/></label>
             <label>게시 설명<textarea rows={3} value={str(meta.description)} onChange={event=>setMeta({...meta,description:event.target.value})}/></label>
             <div className="ca-v07-actions"><button onClick={()=>{setJobSub("");setJobOpen("shorts-cut");}}>내 AI로 대본·장면 구성 짜기</button><button onClick={()=>{setJobSub("");setJobOpen("shorts-desc");}}>내 AI로 설명 쓰기</button><CostTag kind="ai"/></div></>
-          :<><ThreadPostsEditor posts={posts} setPosts={next=>setMeta({...meta,posts:next})} disabled={locked}/>
-            {own?<div className="ca-v07-actions"><button onClick={()=>setJobOpen("threads")}>내 AI로 쓰레드 글 쓰기</button><CostTag kind="ai"/><Link href="/automation/requests">맡긴 일·결과 보기 →</Link><Link href="/automation/settings?tab=skills&proc=threads">내 쓰레드 스킬</Link></div>:null}</>}</fieldset>
-        {channel==="threads"?<><h3>모바일 미리보기</h3><ThreadsPreview posts={posts}/></>:null}
-        {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.owner_id===selected.owner_id&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]} · 미승인</strong>
+          :<ThreadPostsEditor posts={posts} setPosts={next=>setMeta({...meta,posts:next})} disabled={locked}/>}</fieldset>
+        {channel==="threads"&&posts.length>0?<><h3>편집 원고 미리보기</h3><ThreadsPreview posts={posts}/></>:null}
+        {(channel==="threads"?[]:completedJobs).map(job=><div className="ca-v07-note" key={job.id}><strong>AI 결과 도착 · {PROC_LABELS[str(job.metadata.proc)]} · 미승인</strong>
           {job.metadata.proc==="threads"&&Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.posts)?<ThreadsPreview posts={((job.metadata.result as {posts:unknown[]}).posts).map(post=>String(post))}/>:<pre>{JSON.stringify(job.metadata.result,null,2)}</pre>}
           {canEdit?<>{shortformDirty?<p>수정한 내용을 먼저 저장한 뒤 결과를 채택해 주세요.</p>:null}<button disabled={busy||shortformDirty} onClick={()=>void act("adopt",{jobId:job.id,version:selected.version})}>이 결과 채택</button><button disabled={busy} onClick={()=>void act("reject",{jobId:job.id,version:selected.version})}>채택 안 함</button></>:null}</div>)}
         {canEdit?<div className="ca-v07-actions"><button onClick={()=>void once(save)} disabled={locked||busy||Boolean(postsProblem)}>저장</button>
-          <button className="primary" onClick={()=>void send()} disabled={locked||busy||Boolean(postsProblem)}>최종 확인으로 보내기</button></div>:null}
+          <button className="primary" onClick={()=>void send()} disabled={locked||busy||Boolean(postsProblem)||channel==="threads"&&!posts.length}>최종 확인으로 보내기</button></div>:null}
+        </details>
         {channel==="threads"?<ReviewHistory rows={data.reviews.filter(row=>row.publish_record_id===selected.id)}/>:null}
         {isTeam(selected)?<ReviewComments item={selected}/>:null}</section>
       :missing?<div className="ca-v07-note" role="status">찾을 수 없는 콘텐츠입니다. <Link href="/automation/dashboard">자동화 현황으로 →</Link></div>:<Empty text="목록에서 콘텐츠를 선택해 주세요."/>}</div>
