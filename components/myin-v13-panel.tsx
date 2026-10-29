@@ -94,6 +94,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
   const [sheets, setSheets] = useState<string[]>([]);
   const [outputs, setOutputs] = useState<Outputs | null>(null);
   const lastStage = useRef<string | null>(null);
+  // The clips' and video's signed addresses are asked for again only when they change or near their 30 minutes: a new address on every
+  // 20-second poll made the browser download every clip again (2026-10-29: about 970 times a clip a day, most of the OS's egress).
+  const outputsFor = useRef({ key: "", at: 0 });
   const [place, setPlace] = useState<DraftPlace>("pc");
   const draftWaiting = Boolean(run && !run.clipsReview && ["prep_pending", "clips_pending"].includes(run.stage));
   const { status: localPc, reload: reloadLocal } = useLocalRender(accessToken, run?.stage === "storyboard_review" || draftWaiting);
@@ -105,7 +108,11 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
       // A final that appears while the screen is open tells the page (제작 counts it as a new version).
       if (next?.stage === "final_ready" && lastStage.current && lastStage.current !== "final_ready") onFinal?.();
       lastStage.current = next?.stage ?? null;
-      if (next?.clips || next?.final) setOutputs(await apiRequest<Outputs>(`/api/v1/content/youtube-automation/myin?outputs=${next.id}`, { token: accessToken }));
+      const key = next?.clips || next?.final ? `${next.id}:${(next.clips ?? []).map((clip) => clip.name).join(",")}:${next.final?.at ?? ""}` : "";
+      if (key && (key !== outputsFor.current.key || Date.now() - outputsFor.current.at > 20 * 60_000)) {
+        setOutputs(await apiRequest<Outputs>(`/api/v1/content/youtube-automation/myin?outputs=${next!.id}`, { token: accessToken }));
+        outputsFor.current = { key, at: Date.now() };
+      }
       if (next?.words) setJob(await apiRequest<StaffJobStatus>(`/api/v1/content/youtube-automation/ai-jobs?sourceId=${sourceId}&task=storyboard`, { token: accessToken }));
     } catch (reason) { if (reason instanceof ApiRequestError && reason.status === 404) setAvailable(false); }
   }, [accessToken, sourceId, onFinal]);
