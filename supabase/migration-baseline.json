@@ -891,6 +891,14 @@
         "production"
       ],
       "notes": "Staff request b7a80741 (2026-10-28). Replaces os_development_comment_guard only; insert checks unchanged, a reply to a deleted comment is refused. Checked on an in-memory Postgres (PGlite) with a stub auth.uid(): author edit keeps history the client cannot rewrite, other keys/columns refused, other users and no-session refused, delete keeps text, deleted stays deleted, no hard delete. Owner approved Production on 2026-10-28/29 (\"추천대로 해\", \"307도 진행해\"). Applied to Production in one transaction with its schema history row (statements = pg_get_functiondef) and read back: function body equals this file, history 1, trigger in place, 94 existing comments untouched. Not applied to DEV."
+    },
+    {
+      "file": "20261029052357_threads_personal_api_publication.sql",
+      "sha256": "c566aca36b04e2da57027753632cb46b86d1efedfbc7bb6cecbfcf7f20617899",
+      "purpose": "Official Threads API dispatch for reviewed personal text chains: server-only run/checkpoint records, atomic claim/completion RPCs, and source edit guard. No live activation.",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Not applied to DEV or Production. Local in-memory PostgreSQL fixture checked separately; real DEV RLS and Meta connection still require verification. No existing data moved or external post made."
     }
   ],
   "legacyMigrations": [

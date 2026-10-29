@@ -20,6 +20,7 @@ import { CostTag } from "./cost-notice";
 import { ReferenceEvidencePanel, ThreadsReferenceWorkspace, type ReferenceCollectionContext } from "./threads-reference-workspace";
 import { EditorialEvidencePanel, ThreadsEditorialWorkspace, editorialRouteLabel } from "./threads-editorial-workspace";
 import { ThreadsAsideHandoff } from "./threads-aside-handoff";
+import { ThreadsApiPublication } from "./threads-api-publication";
 import "./content-automation-v07.css";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
@@ -50,7 +51,7 @@ const PAGE_INFO:Record<AutomationPage,{title:string;description:string;next:stri
   shorts:{title:"③ 쇼츠",description:"컷 구성·MP4·커버와 설명을 준비합니다.",next:"/automation/review"},
   threads:{title:"④ 쓰레드",description:"글타래를 다듬고 확인으로 보냅니다.",next:"/automation/review"},
   review:{title:"⑤ 최종 확인",description:"게시 전에 직접 확인하고 기록을 남깁니다.",next:"/automation/calendar"},
-  calendar:{title:"⑥ 발행",description:"일정을 정하고 사람이 게시한 결과를 기록합니다.",next:"/automation/performance"},
+  calendar:{title:"⑥ 발행",description:"승인한 쓰레드는 공식 API로 발행하고, 게시 결과를 확인합니다.",next:"/automation/performance"},
   performance:{title:"⑦ 반응·성과",description:"댓글과 같은 기간의 성과를 확인합니다.",next:"/automation/dashboard"},
   requests:{title:"맡긴 일",description:"내 Chrome의 Claude in Chrome이 처리할 작업을 관리합니다.",next:"/automation/settings"},
   settings:{title:"자동화 설정",description:"내 실행 규칙·스킬·양식·이미지를 관리합니다.",next:"/automation/dashboard"},
@@ -206,7 +207,7 @@ export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;
       :page==="topics"?<TopicsView data={data} mutate={mutate} />
       :["cardnews","shorts","threads"].includes(page)?<ItemsView page={page} data={data} mutate={mutate} refresh={async()=>{await load(page!=="threads");}}/>
       :page==="review"?<ReviewView data={data} mutate={mutate} />
-      :page==="calendar"?<CalendarView data={data} mutate={mutate} />
+      :page==="calendar"?<CalendarView data={data} mutate={mutate} refresh={async()=>{await load(false);}} />
       :page==="performance"?<PerformanceView data={data} mutate={mutate} />
       :page==="requests"?<RequestsView data={data} mutate={mutate} />
       :<SettingsView data={data} mutate={mutate} />}
@@ -700,7 +701,7 @@ function ReviewView({data,mutate}:ViewProps){
     {error?<p role="alert" className="ca-v07-error">{error}</p>:null}</>;
 }
 
-function CalendarView({data,mutate}:ViewProps){
+function CalendarView({data,mutate,refresh}:ViewProps&{refresh:()=>Promise<void>}){
   const search=useSearchParams(),router=useRouter(),tab=search.get("tab")==="history"?"history":"schedule";
   const {accessToken}=useSession();
   const selected=data.items.find(row=>row.id===search.get("pub"))??null;
@@ -747,10 +748,16 @@ function CalendarView({data,mutate}:ViewProps){
       setError("");router.replace("/automation/calendar?tab=history");}
     catch(issue){setError(issue instanceof Error?issue.message:"발행 기록을 남기지 못했습니다.");}
   };
+  const reminderFields=selected&&selected.status!=="published"?<><label>게시 날짜<input type="date" value={date} onChange={event=>setDate(event.target.value)}/></label><label>시각<input type="time" value={time} onChange={event=>setTime(event.target.value)}/></label><button onClick={()=>void reserve()} disabled={!date}>알림 예약</button></>:null;
+  const manualFields=selected?<><h3>앱에서 직접 게시했나요?</h3><p>실제로 게시한 뒤 기록해 주세요. URL이 없으면 성과 수집에 필요한 게시물 식별자를 확인할 수 없습니다. 연결된 계정과 게시물 식별자까지 확인되어야 자동 수집됩니다.</p><label>플랫폼<select value={platform} onChange={event=>setPlatform(event.target.value)}>{availablePlatforms(selected).map(value=><option key={value} value={value}>{value==="instagram"?"인스타그램":value==="youtube"?"YouTube":"Threads"}</option>)}</select></label><label>게시물 URL<input type="url" value={url} onChange={event=>setUrl(event.target.value)} placeholder="선택 입력"/></label><div className="ca-v07-actions"><button onClick={()=>router.replace("/automation/calendar?tab=schedule")}>닫기</button><button disabled={!availablePlatforms(selected).length} onClick={()=>{if(window.confirm("앱에 실제로 게시했습니까? 해당 플랫폼의 게시 기록을 남깁니다."))void manualDone();}}>앱에서 직접 게시함</button></div></>:null;
   return <><Tabs base="/automation/calendar" active={tab} tabs={[{id:"schedule",label:"발행 일정 "+schedule.length},{id:"history",label:"발행 기록 "+data.publications.length}]}/>
-    {tab==="schedule"?<><div className="ca-v07-card"><h2>발행 준비</h2><p>게시 시각에 알림을 받고 직접 게시합니다. 자동 게시는 없습니다.</p>{schedule.length?schedule.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/calendar?tab=schedule&pub="+row.id)}><strong>{row.title}</strong><span>{row.due_date??"날짜 미정"} · <Status value={row.status}/></span></button>):<Empty text="발행을 기다리는 내 콘텐츠가 없습니다."/>}</div>
-      {selected?<section className="ca-v07-card ca-v07-detail"><h2>{selected.title}</h2><p>확인된 버전 v{selected.version} · 게시하는 사람: 나</p>{selected.status!=="published"?<><label>게시 날짜<input type="date" value={date} onChange={event=>setDate(event.target.value)}/></label><label>시각<input type="time" value={time} onChange={event=>setTime(event.target.value)}/></label><button onClick={()=>void reserve()} disabled={!date}>알림 예약</button></>:null}
-        <h3>앱에서 직접 게시했나요?</h3><p>실제로 게시한 뒤 기록해 주세요. URL이 없으면 성과 수집에 필요한 게시물 식별자를 확인할 수 없습니다. 연결된 계정과 게시물 식별자까지 확인되어야 자동 수집됩니다.</p><label>플랫폼<select value={platform} onChange={event=>setPlatform(event.target.value)}>{availablePlatforms(selected).map(value=><option key={value} value={value}>{value==="instagram"?"인스타그램":value==="youtube"?"YouTube":"Threads"}</option>)}</select></label><label>게시물 URL<input type="url" value={url} onChange={event=>setUrl(event.target.value)} placeholder="선택 입력"/></label><div className="ca-v07-actions"><button onClick={()=>router.replace("/automation/calendar?tab=schedule")}>닫기</button><button className="primary" disabled={!availablePlatforms(selected).length} onClick={()=>{if(window.confirm("앱에 실제로 게시했습니까? 해당 플랫폼의 게시 기록을 남깁니다."))void manualDone();}}>앱에서 직접 게시함</button></div></section>:null}</>
+    {tab==="schedule"?<><div className="ca-v07-card"><h2>발행 준비</h2><p>승인한 콘텐츠를 선택하세요. 쓰레드는 계정과 원고를 확인한 뒤 공식 API로 발행합니다.</p>{schedule.length?schedule.map(row=><button className="ca-v07-row" key={row.id} onClick={()=>router.replace("/automation/calendar?tab=schedule&pub="+row.id)}><strong>{row.title}</strong><span>{row.due_date??"날짜 미정"} · <Status value={row.status}/></span></button>):<Empty text="발행을 기다리는 내 콘텐츠가 없습니다."/>}</div>
+      {selected?<section className="ca-v07-card ca-v07-detail"><h2>{selected.title}</h2><p>원고 버전 v{selected.version} · 게시하는 사람: 나</p>
+        {selected.metadata.channel==="threads"?<><ThreadsApiPublication key={selected.id} item={selected} onRefresh={refresh}/>
+          {reminderFields?<details className="ca-v07-api-secondary"><summary>나중에 게시할 알림 받기</summary><p>게시 시각에 알림만 받습니다. 예약 시각에 자동으로 게시하지 않습니다.</p>{reminderFields}</details>:null}
+          <details className="ca-v07-api-secondary"><summary>직접 게시한 기존 글 기록</summary><p>사람이 앱에서 직접 올린 글의 기록만 남깁니다. Aside에 게시를 맡기지 않습니다.</p>{manualFields}</details>
+        </>:<>{reminderFields}{manualFields}</>}
+      </section>:null}</>
     :<><div className="ca-v07-toolbar"><select value={period} onChange={event=>setPeriod(event.target.value)} aria-label="기간"><option value="month">이번 달</option><option value="week">이번 주</option><option value="last">지난달</option><option value="all">전체</option></select><select value={channelFilter} onChange={event=>setChannelFilter(event.target.value)} aria-label="채널"><option value="all">전체 채널</option>{CHANNELS.map(value=><option key={value} value={value}>{CHANNEL_LABELS[value]}</option>)}</select><select value={platformFilter} onChange={event=>setPlatformFilter(event.target.value)} aria-label="플랫폼"><option value="all">전체 플랫폼</option><option value="instagram">인스타그램</option><option value="threads">Threads</option><option value="youtube">YouTube</option></select><select value={status} onChange={event=>setStatus(event.target.value)} aria-label="상태"><option value="all">전체 상태</option><option value="published">게시됨</option><option value="nourl">URL 없음</option><option value="failed">게시 실패</option><option value="deleted">삭제됨</option></select><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="제목 찾기" aria-label="발행 제목 찾기"/><button onClick={()=>void exportCsv()}>CSV 내려받기</button></div>
       <div className="ca-v07-stat-grid"><div className="ca-v07-stat">게시 <strong>{history.filter(row=>["published","nourl"].includes(row.status)).length}</strong></div><div className="ca-v07-stat">URL 없음 <strong>{history.filter(row=>row.status==="nourl").length}</strong></div><div className="ca-v07-stat">게시 실패 <strong>{history.filter(row=>row.status==="failed").length}</strong></div></div>
       <section className="ca-v07-card"><h2>발행 기록</h2>{history.length?history.map(row=><div className="ca-v07-row" key={row.publish_record_id+row.platform+row.at}><span><strong>{row.content_title}</strong><small>{DATE(row.at)} · {row.platform}</small></span><Status value={row.status}/>{row.permalink?<a href={row.permalink} target="_blank" rel="noopener noreferrer">게시물 ↗</a>:null}

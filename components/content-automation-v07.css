@@ -165,3 +165,20 @@
 .linear-shell .ui-v2.ca-v07 .ca-v07-brief dt{font-size:11px;color:var(--text-2)}
 .linear-shell .ui-v2.ca-v07 .ca-v07-brief dd{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .linear-shell .ui-v2.ca-v07 .ca-v07-comments p{margin:4px 0 0;white-space:pre-wrap}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish{display:grid;gap:14px;max-width:760px;margin:16px 0;padding:20px;border:1px solid var(--accent);border-radius:10px;background:var(--card)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish>header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish h3,.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish p{margin:0}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish h3{font-size:18px;margin-top:4px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-progress{display:grid;gap:5px;padding:12px;border:1px solid var(--line);border-radius:7px;background:var(--panel-2)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview{border-top:1px solid var(--line);padding-top:12px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview summary,.linear-shell .ui-v2.ca-v07 .ca-v07-api-secondary summary{font-weight:600;cursor:pointer}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview>p{margin-top:8px;font-size:12px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview ol{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:0;max-width:440px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li{border-left:2px solid var(--line);padding:10px 14px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li:first-child{border-color:var(--accent)}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li>div{display:flex;gap:10px;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li>p{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);font-size:14px;line-height:1.7}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-submit{justify-self:start;min-height:42px;padding:10px 16px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-secondary{border-top:1px solid var(--line-soft);padding:14px 0;margin-top:12px;max-width:760px}
+.linear-shell .ui-v2.ca-v07 .ca-v07-api-secondary>p{margin:10px 0}
+@media(max-width:600px){.linear-shell .ui-v2.ca-v07 .ca-v07-api-publish{padding:14px}.linear-shell .ui-v2.ca-v07 .ca-v07-api-submit{width:100%}.linear-shell .ui-v2.ca-v07 .ca-v07-api-preview li{padding:10px}}
