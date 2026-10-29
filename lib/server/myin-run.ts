@@ -25,6 +25,10 @@ const WORDS_LEASE_MS = 30 * 60_000;
 // One clip per metaphor scene takes about two minutes on the render PC; a stage-diagram video has 20+ (2026-10-25: 21 clips, 38 minutes).
 // ponytail: fixed two hours covers ~50 clips; scale with the clip count if storyboards grow past that.
 const CLIPS_LEASE_MS = 120 * 60_000;
+// The full video: 52 minutes for a 13-minute longform at 30 fps (2026-10-28); Logan's engine renders it at 60 fps from 2026-10-29, about
+// twice that. A result that lands after its lease is thrown away and rendered again, so the lease must outlast the render.
+// ponytail: fixed four hours covers ~25-minute longforms; renew the lease from the render PC if they grow past that.
+const FINAL_LEASE_MS = 240 * 60_000;
 // 10 MB parts of 48 kHz mono 16-bit voice (≈96 KB/s): 18 hold about 31 minutes; longforms run 11–14. A longer voice is logged by the
 // render PC and its drafts stay there.
 export const MYIN_VOICE_PARTS = 18;
@@ -834,7 +838,7 @@ const finalFiles = (record: OsRecord, run: MyinRun, lease: string) => ({ video: 
 
 /** Render PC: where the finished video, the handouts, the YouTube subtitles and the check report go. */
 export async function claimMyinFinal(service: Service = createServiceSupabase(), short = false) {
-  const claimed = await claim(service, "final_pending", 60 * 60_000, fits(short));
+  const claimed = await claim(service, "final_pending", FINAL_LEASE_MS, fits(short));
   if (!claimed) return { idle: true as const };
   const { record, run, lease } = claimed;
   try {

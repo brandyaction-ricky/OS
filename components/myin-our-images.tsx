@@ -35,7 +35,7 @@ export function MyinOurImages({ runId, token, onSaved }: { runId: string; token:
 
   return <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !state) void load(); }}>
     <summary>우리 이미지 올리기</summary>
-    <p className="yt-note">기획표의 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)로 바꿔 넣어요. 직접 찍었거나 쓸 권리를 받은 이미지만 올려 주세요. 4단계에서는 「받을 곳 없음」 사진을 모두 올리면 자료 준비를 바로 다시 해요.</p>
+    <p className="yt-note">기획표의 사진을 우리가 가진 이미지(워크북 캡처, 직접 받은 인물 사진 등)로 바꿔 넣어요. 직접 찍었거나 쓸 권리를 받은 이미지만 올려 주세요. 워크북 같은 자사 자료는 MYIN 표기를 뺀 영상용 이미지로 올려요(진단 광고 장면만 예외). 4단계에서는 「받을 곳 없음」 사진을 모두 올리면 자료 준비를 바로 다시 해요.</p>
     {state ? <ul className="yt-list">{state.photos.map((photo) => <li key={photo.file}>
       {photo.file} · {photo.from === "ours" ? `우리 이미지 (${photo.by} 올림)` : photo.from === "list" ? "사진 후보" : "받을 곳 없음"}{" "}
       {state.open ? <button type="button" className="secondary-button compact" disabled={Boolean(busy)} onClick={() => { target.current = photo.file; picker.current?.click(); }}>
