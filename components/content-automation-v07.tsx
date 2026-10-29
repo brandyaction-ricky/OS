@@ -90,7 +90,7 @@ function PageHead({page,name}:{page:AutomationPage;name:string}){
   const scope=page==="threads"||page==="review"?"내 글은 나만 보임 · 팀 검토함은 사내 구성원 열람":"나만 보임";
   const info=PAGE_INFO[page],guide=PAGE_GUIDES[`/automation/${page}`];
   const process=info.title.match(/^([①-⑦])\s/),title=process?info.title.slice(2):info.title;
-  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title">{process?<span className="ca-v07-process" aria-hidden="true">{process[1]}</span>:null}<h1>{title}</h1></div><p>{selectedThread?"Aside에 집필을 요청하고, 완성된 원고를 이 화면에서 확인합니다.":info.description}</p></div></header>
+  return <><header className="ca-v07-head"><div><span className="ca-v07-eyebrow">콘텐츠 자동화 · {name}의 작업 공간 · {scope}</span><div className="ca-v07-title"><h1>{title}</h1></div><p>{selectedThread?"Aside에 집필을 요청하고, 완성된 원고를 이 화면에서 확인합니다.":info.description}</p></div></header>
     {selectedThread?null:<div className="ca-v07-guide"><strong>이 화면에서 할 일</strong><span>{guide.steps.map((step,i)=><span key={step}>{i+1}. {step}</span>)}</span>{page!=="topics"?<Link href={info.next}>다음 단계 →</Link>:null}</div>}</>;
 }
 function Tabs({base,tabs,active,param="tab"}:{base:string;tabs:{id:string;label:string}[];active:string;param?:string}){
@@ -342,7 +342,7 @@ function TopicsView({data,mutate}:ViewProps){
         {data.jobs.filter(job=>job.metadata.targetId===selected.id&&job.metadata.proc==="brief"&&job.stage==="completed").map(job=><div className="ca-v07-note" key={job.id}><strong>기획 메모 도착</strong><pre>{JSON.stringify(job.metadata.result,null,2)}</pre><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/adopt","POST",{jobId:job.id,version:selected.version})}>기획 메모 채택</button><button disabled={busy} onClick={()=>void mutate("/api/v1/content/automation/topics/"+selected.id+"/reject","POST",{jobId:job.id,version:selected.version})}>채택 안 함</button></div>)}
         <div className="ca-v07-topic-footer">
           {localError?<p role="alert" className="ca-v07-error">{localError}</p>:null}
-          <p>{channels.length===1&&channels[0]==="threads"?"다음 화면에서 ‘Aside에 보낼 요청문 복사’를 누르고 Aside에 붙여 넣어 실행하세요. 완성된 원고도 같은 화면에서 확인합니다.":"기획을 저장하고 선택한 채널의 작업 항목을 만듭니다."} 자동 승인·예약·발행은 하지 않습니다.</p>
+          <p>{channels.length===1&&channels[0]==="threads"?"다음 화면에서 ‘내 AI에 보낼 요청문 복사’를 누르고 Aside에 붙여 넣어 실행하세요. 완성된 원고도 같은 화면에서 확인합니다.":"기획을 저장하고 선택한 채널의 작업 항목을 만듭니다."} 자동 승인·예약·발행은 하지 않습니다.</p>
           <div className="ca-v07-actions"><button disabled={busy} onClick={()=>void save(false)}>기획만 저장</button><button className="primary" disabled={busy} onClick={()=>void save(true)}>{busy?"처리 중…":nextLabel}</button></div>
         </div>
       </>}

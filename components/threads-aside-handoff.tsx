@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { parseThreadsAsideResult, threadsAsideRequest } from "@/lib/threads-aside";
 import { useSession } from "./session-provider";
+import { CostTag } from "./cost-notice";
 
 type Props = { item: OsRecord; dirty: boolean; onRefresh: () => Promise<void>; onJobsLoaded: (jobs: OsRecord[]) => void; jobRevision: string };
 const problemText = (issue: unknown) => issue instanceof Error ? issue.message : "요청을 처리하지 못했습니다. 다시 시도해 주세요.";
@@ -94,8 +95,8 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
     setNotice("이전 요청을 닫았습니다. 요청문을 새로 복사해 Aside에 보내 주세요. 이전 요청의 결과를 다시 붙여 넣지 마세요.");
   });
 
-  return <section className="ca-v07-aside" aria-label="Aside로 쓰레드 집필" aria-busy={busy || loading}>
-    <h2>Aside로 쓰레드 집필</h2>
+  return <section className="ca-v07-aside" aria-label="내 AI로 쓰레드 집필" aria-busy={busy || loading}>
+    <h2>내 AI로 쓰레드 집필</h2>
     <ol className="ca-v07-aside-steps" aria-label="집필 진행 순서">
       <li aria-current={step === 1 ? "step" : undefined}>1. 요청문 복사</li>
       <li aria-current={step === 2 ? "step" : undefined}>2. Aside에서 실행</li>
@@ -106,9 +107,9 @@ export function ThreadsAsideHandoff({ item, dirty, onRefresh, onJobsLoaded, jobR
       : blocked ? <div className="ca-v07-note"><strong>이전 집필 요청이 멈췄습니다.</strong><p>{String(open?.metadata.failureReason || "이전 요청을 닫고 최신 기획으로 다시 요청해 주세요.")}</p></div>
         : completed && !open ? <div className="ca-v07-note"><strong>미승인 원고가 도착했습니다.</strong><p>아래 원고를 확인해 주세요. 확인 전에는 기존 편집 원고에 자동으로 덮어쓰지 않습니다.</p><a href={`#threads-result-${completed.id}`}>도착한 원고 읽기 ↓</a></div>
           : <><p>OS가 준비한 정본·기획·근거를 Aside에 보내면 글을 씁니다. 요청문을 복사한 다음 <strong>Aside 대화창에 붙여 넣고 실행</strong>해 주세요.</p>
-            <button type="button" className="primary" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>{busy ? "처리 중…" : "Aside에 보낼 요청문 복사"}</button>
+            <div className="ca-v07-actions"><button type="button" className="primary" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>{busy ? "처리 중…" : "내 AI에 보낼 요청문 복사"}</button><CostTag kind="ai"/></div>
             {open ? <p className="ca-v07-aside-hint">준비된 요청이 있습니다. 다시 복사해도 같은 요청을 사용합니다.</p> : null}</>}
-    {completed && !open ? <details className="ca-v07-aside-more"><summary>다른 초안을 다시 요청하려면</summary><p>새 결과도 미승인으로 저장합니다. 현재 원고는 유지됩니다.</p><button type="button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>Aside에 보낼 요청문 복사</button></details> : null}
+    {completed && !open ? <details className="ca-v07-aside-more"><summary>다른 초안을 다시 요청하려면</summary><p>새 결과도 미승인으로 저장합니다. 현재 원고는 유지됩니다.</p><div className="ca-v07-actions"><button type="button" disabled={busy || loading || !loaded || dirty} onClick={() => void copyRequest()}>내 AI에 보낼 요청문 복사</button><CostTag kind="ai"/></div></details> : null}
     {open ? <details className="ca-v07-aside-more" open={manualCopy || undefined}>
       <summary>집필 요청 확인</summary>
       <p>현재 작업 ID: <code>{open.id}</code></p>

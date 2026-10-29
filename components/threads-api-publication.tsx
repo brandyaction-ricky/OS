@@ -19,6 +19,7 @@ type Readiness = {
   connections: (ChannelConnection & { publicationAccountKey?: string })[]; publication: Publication | null;
 };
 type Props = { item: OsRecord; onRefresh: () => Promise<void> };
+const locksAccount = (publication: Publication | null | undefined) => Boolean(publication && !(publication.state === "retryable" && publication.publishedCount === 0));
 const safePermalink = (value: string) => {
   try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && ["threads.com", "www.threads.com", "threads.net", "www.threads.net"].includes(url.hostname) ? url.href : null; }
   catch { return null; }
@@ -36,7 +37,13 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
   const endpoint = `/api/v1/content/automation/threads-publication/${item.id}`;
   const applyStatus = useCallback((next: Readiness) => {
     setStatus(next); setVerified(true);
-    setAccountOwnerId(previous => next.publication?.accountOwnerId || (next.connections.some(row => row.ownerId === previous) ? previous : next.connections.find(row => row.platform === "threads" && row.status === "connected" && row.mock === (next.mode === "mock"))?.ownerId ?? ""));
+    setAccountOwnerId(previous => {
+      if (locksAccount(next.publication)) return next.publication!.accountOwnerId;
+      const available = next.connections.filter(row => row.platform === "threads" && row.status === "connected" && row.mock === (next.mode === "mock"));
+      return available.find(row => row.ownerId === previous)?.ownerId
+        ?? available.find(row => row.ownerId === next.publication?.accountOwnerId)?.ownerId
+        ?? available[0]?.ownerId ?? "";
+    });
   }, []);
   const read = useCallback(async (manual = false) => {
     const request = ++sequence.current;
@@ -58,6 +65,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
   const terminal = publication?.state === "published" || publication?.state === "mock_complete";
   const uncertain = publication?.state === "uncertain", running = publication?.state === "running";
   const retry = publication?.state === "retryable";
+  const accountLocked = locksAccount(publication), partialRetry = retry && publication.publishedCount > 0;
   const approved = ["ready", "scheduled"].includes(item.status);
   const canPublish = Boolean(status?.ready && status.enabled && verified && approved && account && /^[0-9a-f]{64}$/.test(account.publicationAccountKey ?? "") && !threadsPostsProblem(posts, 1)
     && !loading && !busy && !terminal && !uncertain && !running && !needsCheck);
@@ -91,11 +99,12 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
     </div> : null}
     {uncertain ? <p className="ca-v07-note">직전 요청이 실제로 게시됐는지 확인해야 합니다. 중복 게시를 막기 위해 다시 발행할 수 없습니다. 게시 계정의 결과를 확인한 뒤 관리자에게 알려주세요.</p>
       : running ? <p className="ca-v07-note">이 창을 닫아도 발행 요청이 취소되지는 않습니다. 잠시 후 ‘발행 상태 확인’을 눌러주세요.</p>
-      : retry ? <p className="ca-v07-note">이미 게시된 글은 다시 올리지 않습니다. 같은 계정·원고로 남은 {Math.max(0, publication!.total - publication!.publishedCount)}개를 이어 올립니다.</p> : null}
+      : partialRetry ? <p className="ca-v07-note">이미 게시된 글은 다시 올리지 않습니다. 같은 계정·원고로 남은 {Math.max(0, publication!.total - publication!.publishedCount)}개를 이어 올립니다.</p>
+        : retry ? <p className="ca-v07-note">아직 게시된 글이 없습니다. 게시할 계정을 다시 선택하고 원고를 확인해 주세요.</p> : null}
     {!terminal && !loading && !status?.ready && !uncertain && !running ? <div className="ca-v07-note">{status?.reason || "발행 준비를 확인해 주세요."}</div> : null}
     {!approved && !terminal ? <p><Link href={`/automation/review?sel=${item.id}`}>원고 최종 확인으로 이동 →</Link></p> : null}
     {!terminal ? <label>게시할 Threads 계정
-      <select value={accountOwnerId} disabled={busy || loading || Boolean(publication)} onChange={event => { setAccountOwnerId(event.target.value); setConfirmed(false); }}>
+      <select value={accountOwnerId} disabled={busy || loading || accountLocked} onChange={event => { setAccountOwnerId(event.target.value); setConfirmed(false); }}>
         <option value="">계정을 선택해 주세요</option>
         {connected.map(row => <option key={row.ownerId} value={row.ownerId}>@{row.accountName.replace(/^@/, "")}{row.teamShared ? " · 팀 공유" : " · 내 계정"}</option>)}
         {publication && !connected.some(row => row.ownerId === publication.accountOwnerId) ? <option value={publication.accountOwnerId}>@{publication.accountName.replace(/^@/, "")} · 연결 확인 필요</option> : null}
@@ -114,7 +123,7 @@ export function ThreadsApiPublication({ item, onRefresh }: Props) {
       <label className="ca-v07-check"><input type="checkbox" checked={confirmed} disabled={!canPublish} onChange={event => setConfirmed(event.target.checked)} />
         <span>{account ? `@${account.accountName.replace(/^@/, "")} 계정과` : "게시 계정과"} 위 원고를 직접 확인했습니다.</span></label>
       <button type="button" className="primary ca-v07-api-submit" disabled={!canPublish || !confirmed} onClick={() => void submit()}>
-        {busy ? "발행 결과 확인 중…" : status?.mode === "mock" ? (retry ? "남은 글 모의 발행" : "모의 API 발행 확인") : retry ? "확인하고 남은 글 발행" : "확인하고 Threads에 발행"}
+        {busy ? "발행 결과 확인 중…" : status?.mode === "mock" ? (partialRetry ? "남은 글 모의 발행" : "모의 API 발행 확인") : partialRetry ? "확인하고 남은 글 발행" : "확인하고 Threads에 발행"}
       </button>
     </> : null}
   </section>;

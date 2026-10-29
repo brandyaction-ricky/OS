@@ -101,8 +101,8 @@ async function mockWorkspace(page: Page, options: { existing?: "backlog" | "acti
   });
   return state;
 }
-const writing = (page: Page) => page.getByRole("region", { name: "Aside로 쓰레드 집필" });
-const copy = (page: Page) => writing(page).getByRole("button", { name: "Aside에 보낼 요청문 복사", exact: true });
+const writing = (page: Page) => page.getByRole("region", { name: "내 AI로 쓰레드 집필" });
+const copy = (page: Page) => writing(page).getByRole("button", { name: "내 AI에 보낼 요청문 복사", exact: true });
 const result = (page: Page) => page.getByLabel("Aside가 작성한 결과", { exact: true });
 const save = (page: Page) => writing(page).getByRole("button", { name: "미승인 초안 저장", exact: true });
 async function openDraft(page: Page) { await page.goto(`/automation/threads?sel=${ITEM}`); await expect(writing(page)).toBeVisible(); }
@@ -111,6 +111,8 @@ test("an employee can copy, paste and save an unapproved draft on the same scree
   const state = await mockWorkspace(page); await openDraft(page);
   await expect(page.getByRole("dialog", { name: "내 AI로 보내기" })).toHaveCount(0);
   await expect(copy(page)).toBeEnabled();
+  await expect(writing(page).getByText("내 AI 사용량", { exact: true })).toBeVisible();
+  await expect(page.locator(".ca-v07-process")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("aside-first-action-desktop.png"), fullPage: true });
   await copy(page).click();
   await expect(result(page)).toBeVisible();

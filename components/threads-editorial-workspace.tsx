@@ -11,6 +11,7 @@ import {
   type ThreadsEditorialRoute,
 } from "@/lib/threads-editorial";
 import type { ReferenceCollectionContext } from "./threads-reference-workspace";
+import { CostTag } from "./cost-notice";
 import "./threads-editorial-workspace.css";
 
 type Mutate = (path: string, method: "POST" | "PATCH" | "PUT", body: unknown) => Promise<Record<string, unknown>>;
@@ -186,14 +187,15 @@ export function ThreadsEditorialWorkspace({ collectionContext, mutate, onRouteCh
         onClick={() => chooseRoute(key as ThreadsEditorialRoute)}><strong>{value.label}</strong><span>{value.description}</span><small>{route === key ? "선택한 방식" : "후보 조사 시작 →"}</small></button>)}
     </div>
     {route ? <div className="te-collection">
-      <ol className="te-steps"><li>1. Aside에 후보 조사 맡기기</li><li>2. 후보를 읽고 저장</li><li>3. 목록에서 1개 선택</li></ol>
+      <ol className="te-steps"><li>1. 내 AI에 후보 조사 맡기기</li><li>2. 후보를 읽고 저장</li><li>3. 목록에서 1개 선택</li></ol>
       <button type="button" className="te-close" disabled={busy} onClick={() => { setRoute(null); onRouteChange?.(null); }}>후보 조사 접기</button>
       <div className="te-request"><h3>{ROUTES[route].label} 후보 조사</h3>
         <label>더 살펴볼 범위 <small>선택</small><input value={scope} maxLength={2000} disabled={busy} onChange={event => setScope(event.target.value)} placeholder={ROUTES[route].placeholder} /></label>
         <p>비워두면 정본의 타겟에 맞춰 조사합니다. 정본을 읽고 근거를 찾은 후보를 최대 3개 가져옵니다.</p>
         {canonicalReady ? <small className="te-canonical">기준: <a href={safeHref(collectionContext!.canonicalUrl!)} target="_blank" rel="noopener noreferrer">{collectionContext!.canonicalTitle} · v{collectionContext!.canonicalVersion} ↗</a></small>
           : <p className="ca-v07-error" role="status">{collectionContext?.error || "인사이트·인물 분석형 집필 기준이 포함된 승인 정본을 확인하지 못했습니다. 회사 정본을 갱신한 뒤 새로고침해 주세요."}</p>}
-        <button type="button" className="primary" disabled={!canonicalReady || busy} onClick={() => void copyRequest()}>Aside 후보 요청 복사</button>
+        <p>복사한 요청문은 Aside에 붙여 넣어 실행하세요.</p>
+        <div className="ca-v07-actions"><button type="button" className="primary" disabled={!canonicalReady || busy} onClick={() => void copyRequest()}>내 AI에 보낼 후보 요청 복사</button><CostTag kind="ai"/></div>
       </div>
       <details className="te-import" ref={importPanel}><summary>Aside가 준비한 후보 등록</summary>
         <p>Aside가 반환한 후보 JSON을 붙여넣고 내용을 확인하세요. 지금은 후보만 저장하며 원고를 쓰거나 승인하지 않습니다.</p>

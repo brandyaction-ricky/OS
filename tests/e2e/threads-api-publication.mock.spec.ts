@@ -99,6 +99,27 @@ test("partial result fixes the account and resumes only on a new human confirmat
   await expect(panel(page).getByText("발행 완료", { exact: true })).toBeVisible(); expect(state.writes[0].body.accountOwnerId).toBe(OWNER); expect(state.writes).toHaveLength(1);
 });
 
+test("a retry with no published posts can replace a withdrawn shared account only after new confirmation", async ({ page }) => {
+  const state = await workspace(page);
+  state.readiness.publication = { ...publication("retryable", 0), accountOwnerId: SHARED, accountName: "fixture_team" };
+  await open(page);
+  const account = panel(page).getByLabel("게시할 Threads 계정");
+  await expect(account).toBeEnabled(); await expect(account).toHaveValue(SHARED);
+  await expect(panel(page).getByText(/아직 게시된 글이 없습니다/)).toBeVisible();
+  await confirm(page).check(); await expect(publish(page)).toBeEnabled();
+  await account.selectOption(OWNER);
+  await expect(confirm(page)).not.toBeChecked(); await expect(publish(page)).toBeDisabled();
+  state.readiness.connections = state.readiness.connections.filter(row => row.ownerId !== SHARED);
+  await panel(page).getByRole("button", { name: "발행 상태 확인" }).click();
+  await expect(account).toBeEnabled(); await expect(account).toHaveValue(OWNER);
+  await expect(confirm(page)).not.toBeChecked(); await expect(publish(page)).toBeDisabled();
+  expect(state.writes).toEqual([]);
+  await confirm(page).check(); await publish(page).click();
+  await expect(panel(page).getByText("발행 완료", { exact: true })).toBeVisible();
+  expect(state.writes).toEqual([{ path: `threads-publication/${ITEM}`, body: { expectedVersion: 3, accountOwnerId: OWNER, expectedAccountKey: "a".repeat(64), confirm: true } }]);
+  expect(state.external).toEqual([]);
+});
+
 test("uncertain publication blocks any repeat even after reload", async ({ page }) => {
   const state = await workspace(page); state.failure = { nextState: "uncertain", status: 409, message: "직전 게시 결과 확인이 필요합니다." };
   await open(page); await confirm(page).check(); await publish(page).click();
