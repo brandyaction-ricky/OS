@@ -19,7 +19,7 @@ import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMIN
 // keeps the wav (voice_pending); the render PC then runs his pipeline unchanged on those files — voice post-processing, words.json
 // and subtitles — and sends back one JSON bundle (words_pending → words_ready). The voice is frozen from here: Fish never reads a
 // line the same way twice, and every later cue is matched against this transcription.
-// 로건 사람 말투 음성 (2026-10-29, 회사 청취 비교 2번, OS 문서 「AI 베이직 목소리 — 사람 말투로 교체」 A안): with MYIN_VOICE_ON_RENDER_PC=1 a
+// 로건 사람 말투 음성 (2026-10-29, 회사 청취 비교 2번, OS 문서 「AI 베이직 목소리 — 사람 말투로 교체」 A안): unless MYIN_VOICE_ON_RENDER_PC=0 a
 // new run skips both steps above and goes straight to words_pending; his stage_voice on the render PC asks Fish sentence by sentence
 // (two takes where the first one breaks, pitch and loudness matched) with the render PC's own key and the voice the OS sends.
 export const MYIN_RUN_KIND = "youtube_myin_v13";
@@ -35,7 +35,8 @@ const FINAL_LEASE_MS = 240 * 60_000;
 // 10 MB parts of 48 kHz mono 16-bit voice (≈96 KB/s): 18 hold about 31 minutes; longforms run 11–14. A longer voice is logged by the
 // render PC and its drafts stay there.
 export const MYIN_VOICE_PARTS = 18;
-export const myinVoiceOnRenderPc = () => process.env.MYIN_VOICE_ON_RENDER_PC === "1";
+// On by default once merged (the render PC is switched first: patched packages, its Fish key, the new worker); "0" turns it off.
+export const myinVoiceOnRenderPc = () => process.env.MYIN_VOICE_ON_RENDER_PC !== "0";
 type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
