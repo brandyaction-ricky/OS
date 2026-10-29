@@ -201,6 +201,25 @@ export async function GET(request:Request,{params}:Params) {
     const {resource}=await params,url=new URL(request.url),limit=limitFrom(request),db=createServiceSupabase();
     if(resource==="runs.csv")return exportRuns(ownerId,url);
     if(resource==="publications.csv")return exportPublications(ownerId,url);
+    if(resource==="jobs"&&url.searchParams.has("targetId")){
+      // The editor needs this draft's jobs even when they have fallen out of
+      // the global recent-job list. Pinned source bodies stay owner-only.
+      if(url.searchParams.get("scope")==="team")
+        throw new ApiError(400,"INVALID_SCOPE","집필 요청은 내 원고에서 확인해 주세요.");
+      const targetId=uuid.safeParse(url.searchParams.get("targetId"));
+      if(!targetId.success)throw new ApiError(400,"INVALID_TARGET","원고 주소를 확인해 주세요.");
+      const target=await getPersonalRecord(actor,targetId.data,"content_publish");
+      if(target.metadata.channel!=="threads")
+        throw new ApiError(422,"THREADS_TARGET_INVALID","쓰레드 원고에서 집필 요청을 확인해 주세요.");
+      const {data,error}=await db.from("os_records").select("*").eq("record_type","ai_job")
+        .eq("owner_id",ownerId).eq("metadata->>space","personal").eq("metadata->>proc","threads")
+        .eq("metadata->>targetId",targetId.data).is("archived_at",null)
+        .order("updated_at",{ascending:false}).order("id",{ascending:false}).limit(limit);
+      if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","이 원고의 집필 요청을 불러오지 못했습니다.");
+      const status=url.searchParams.get("status");
+      const jobs=(data??[]).filter(job=>!status||job.status===status||job.stage===status);
+      return NextResponse.json({jobs:jobs.map(job=>({...job,queueInfo:null}))},{headers:{"Cache-Control":"private, no-store"}});
+    }
     if(url.searchParams.get("scope")==="team")return await teamList(resource,limit);
     if(resource==="reviewers"){
       const {data,error}=await db.from("os_content_reviewers").select("user_id,created_at").order("created_at");

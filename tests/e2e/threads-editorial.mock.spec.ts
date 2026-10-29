@@ -83,7 +83,8 @@ test("route instructions and candidate preview keep human selection before produ
   await expect(workspace.getByRole("link", { name: /레퍼런스형/ })).toHaveAttribute("href", "/automation/references");
   await workspace.getByRole("button", { name: /인사이트형/ }).click();
   await expect(page.getByLabel("Aside 후보 결과")).not.toBeVisible();
-  await page.getByRole("button", { name: "Aside 후보 요청 복사" }).click();
+  await expect(page.locator(".te-request").getByText("내 AI 사용량", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "내 AI에 보낼 후보 요청 복사" }).click();
   const copied = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
   expect(copied).toContain("v11"); expect(copied).toContain("firstParagraph"); expect(copied).toContain("최소 1개의 접근 가능한 OS 문서");
   expect(copied).toContain("후보 자동 선택"); expect(copied).toContain("승인, 예약·발행");
@@ -160,7 +161,7 @@ test("zero candidates are a valid result and do not create records", async ({ pa
 test("unsupported canonical blocks new route request copy and candidate registration", async ({ page }) => {
   const state = await mockWorkspace(page, false);
   await page.goto("/automation/topics"); await prepare(page, "insight", [candidate("insight")]);
-  await expect(page.getByRole("button", { name: "Aside 후보 요청 복사" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "내 AI에 보낼 후보 요청 복사" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "후보 1개 저장", exact: true })).toBeDisabled();
   expect(state.writes).toHaveLength(0);
 });

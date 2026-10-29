@@ -223,7 +223,7 @@ test("confirming a Threads plan opens its draft and a started topic resumes the 
   await page.getByLabel("쓰레드 마감", { exact: true }).fill("2026-12-01");
   await page.getByRole("button", { name: "기획 확인하고 쓰레드 집필로 이동", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/automation/threads\\?sel=${ITEM_IDS.threads}`));
-  await expect(page.getByRole("button", { name: "내 AI로 쓰레드 글 쓰기", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "내 AI에 보낼 요청문 복사", exact: true })).toBeVisible();
   expect(state.items).toHaveLength(1);
   expect(state.items[0].status).toBe("draft");
   expect(state.items[0].metadata.posts).toEqual([]);
@@ -374,10 +374,11 @@ test("zero recommendations is an honest empty state and collection instructions 
   await expect(page.locator(".ca-v07-empty")).toContainText("추천 후보 0개");
   await expect(page.locator(".ca-v07-empty")).toContainText("수를 채울 필요는 없습니다");
   await expect(page.locator(".tr-workspace").getByRole("alert")).toHaveCount(0);
-  await page.getByText("Aside에 원문 조사 맡기기", { exact: true }).click();
+  await page.getByText("내 AI에 원문 조사 맡기기", { exact: true }).click();
   await page.getByLabel("이번에 살펴볼 주제·범위", { exact: true }).fill("작은 계획의 실제 장면");
   await expect(page.getByRole("combobox", { name: "추천 후보 수", exact: true })).toHaveValue("3");
-  await page.getByRole("button", { name: "Aside 조사 지침 복사" }).click();
+  await expect(page.getByText("내 AI 사용량", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "내 AI에 보낼 조사 지침 복사" }).click();
   const collection = await page.evaluate(() => (window as unknown as { copiedText: string }).copiedText);
   for (const text of ["https://example.test/canonical", "작은 계획의 실제 장면", "최대 3개", "100,000", "100개 이상", "5개 이상", "중앙값의 2배", "후보 0개도 정상", "한국어 내용 제목", "suggestedTopic", "의미 있는 댓글을 직접 읽어", "수를 채우기 위해 약한 글을 추천하지", "자동으로 주제를 선택·승격", "수집함에 등록"]) expect(collection).toContain(text);
   await page.screenshot({ path: testInfo.outputPath("zero-recommendations.png"), fullPage: true });
