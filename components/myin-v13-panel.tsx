@@ -34,7 +34,7 @@ const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨
 // words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
 // final: about 8 minutes per minute of video at 60 fps (2026-10-28: 52 minutes for 13 minutes at 30 fps; 60 fps from 2026-10-29).
 const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5 };
-const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 8);
+const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 5);   // 60fps, 5-second pieces: a 13-minute video ≈ 1 hour on the Mac mini (2026-10-29 test)
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
 const typicalMinutes = (run: MyinRun) => run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
