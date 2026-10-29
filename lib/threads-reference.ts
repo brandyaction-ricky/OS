@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError } from "./http";
 import { kstScheduleDate } from "./content-automation-schedule";
+import { hasThreadsEditorialMetadata, parseThreadsEditorialMetadata } from "./threads-editorial";
 
 export const THREADS_REFERENCE_WORKFLOW = "threads_reference_v1";
 export const THREADS_REFERENCE_KIND = "threads_reference";
@@ -11,7 +12,8 @@ export const REFERENCE_POLICY = { version: "2026-10-27.1", threadsMinViews: 100_
   substackMinLikes: 100, substackMinComparisonPosts: 5, substackMinLift: 2 } as const;
 export function protectedThreadsAutomationJob(recordType: string, metadata: Record<string, unknown> = {}) {
   return recordType === "ai_job" && metadata.space === "personal"
-    && (metadata.proc === "threads" || metadata.editorial_workflow === THREADS_REFERENCE_WORKFLOW || Object.hasOwn(metadata, "threadsInput"));
+    && (metadata.proc === "threads" || metadata.editorial_workflow === THREADS_REFERENCE_WORKFLOW
+      || hasThreadsEditorialMetadata(metadata) || Object.hasOwn(metadata, "threadsInput"));
 }
 const httpsUrl = z.string().trim().max(2000).url().refine(value => {
   try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password; }
@@ -151,6 +153,8 @@ export function assertThreadsReferencesReady(items: ThreadsReferenceItem[]) {
   }
 }
 export function validateThreadsTopicMetadata(metadata: Record<string, unknown>) {
+  const editorial = parseThreadsEditorialMetadata(metadata);
+  if (editorial) return { ...metadata, ...editorial };
   if (!("reference_items" in metadata) && metadata.editorial_workflow !== THREADS_REFERENCE_WORKFLOW
     && metadata.kind !== THREADS_REFERENCE_KIND) return metadata;
   if (metadata.editorial_workflow !== THREADS_REFERENCE_WORKFLOW)

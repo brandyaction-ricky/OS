@@ -3,6 +3,7 @@ import {
   THREADS_REFERENCE_WORKFLOW,
   threadsReferenceItemsSchema,
 } from "./threads-reference";
+import { parseThreadsEditorialMetadata } from "./threads-editorial";
 
 export type TopicBrief = {
   one: string;
@@ -38,7 +39,7 @@ function notesWithinLimit(notes: string[], limit: number, more: string) {
 
 /**
  * An unsaved planning aid, not an approved brief or a reference-quality verdict.
- * Only untouched reference candidates are seeded. A saved empty string is an edit,
+ * Only untouched evidence-backed candidates are seeded. A saved empty string is an edit,
  * so the presence of even one brief field disables seeding for the whole brief.
  */
 export function getTopicBriefDraft(topic: Topic | null | undefined): {
@@ -60,7 +61,35 @@ export function getTopicBriefDraft(topic: Topic | null | undefined): {
   const untouched = topic?.stage === "candidate"
     && !BRIEF_KEYS.some(key => Object.hasOwn(saved, key))
     && (raw === undefined || raw !== null && typeof raw === "object" && !Array.isArray(raw));
-  if (!untouched || metadata.editorial_workflow !== THREADS_REFERENCE_WORKFLOW
+  if (!untouched) return { brief, channels, seeded: false };
+  // Invalid or older material must not crash the whole topic list or manufacture a brief.
+  let editorial;
+  try { editorial = parseThreadsEditorialMetadata(metadata); }
+  catch { return { brief, channels, seeded: false }; }
+  if (editorial) {
+    const material = editorial.editorial_material;
+    return {
+      brief: {
+        one: topic!.title,
+        who: material.readerContext,
+        message: notesWithinLimit([`질문에 대한 답: ${material.directAnswer}`, `더할 관점: ${material.perspective}`], 4000,
+          "전체 관점은 선택한 주제와 근거에서 확인해 주세요."),
+        sources: notesWithinLimit([
+          `${material.sceneKind === "hypothetical" ? "가상 예시" : "원문에서 확인한 장면"}: ${material.scene}`,
+          ...material.sources.map(source => [
+            `${source.kind === "os_document" ? "내부 검수용 OS 문서" : "공개 원문"}: ${source.title}`,
+            source.url, `위치: ${source.locator}`, source.evidenceNote,
+          ].join("\n")),
+        ], 4000, "나머지 원문·위치·확인 기록은 선택한 주제와 근거에서 확인해 주세요."),
+        warn: editorial.editorial_route === "person"
+          ? "실제 행동과 작성자의 해석을 구분한다. 인물의 성격·욕구 유형이나 속마음을 단정하지 않는다. 확인하지 않은 인용을 만들지 않는다. 내부 OS 링크·개인 정보는 공개 글에 넣지 않는다."
+          : "자료에 적힌 내용과 우리가 더할 해석을 구분한다. 가상 장면을 실제 사연처럼 쓰지 않는다. 내부 OS 링크·고객 정보·개인 진단 결과는 공개 글에 넣지 않는다.",
+      },
+      channels: channels.length ? channels : ["threads"],
+      seeded: true,
+    };
+  }
+  if (metadata.editorial_workflow !== THREADS_REFERENCE_WORKFLOW
     || metadata.kind === THREADS_REFERENCE_KIND) return { brief, channels, seeded: false };
 
   const parsed = threadsReferenceItemsSchema.safeParse(metadata.reference_items);

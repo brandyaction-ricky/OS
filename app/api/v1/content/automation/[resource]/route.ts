@@ -7,12 +7,14 @@ import { validatePersonalAsset,validatePersonalTemplate } from "@/lib/server/con
 import { kstScheduleDate,missedScheduleSlots,silentScheduleSlot,upcomingScheduleSlots } from "@/lib/content-automation-schedule";
 import { automationCsv,automationExportRange,formatKstCsvDate,type AutomationExportPeriod } from "@/lib/content-automation-csv";
 import { assertThreadsReferencesReady,parseThreadsReferences,threadsReferenceItemsSchema,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW,validateThreadsTopicMetadata } from "@/lib/threads-reference";
-import { getThreadsJobInput,threadsCollectionContext,threadsReferenceRequestId } from "@/lib/server/threads-reference";
+import { getThreadsJobInput,threadsCollectionContext,threadsReferenceRequestId,assertThreadsEditorialReady } from "@/lib/server/threads-reference";
 import {
   assertHumanOwner,assertSameOrigin,AUTOMATION_CHANNELS,AUTOMATION_PROCS,
   createJob,createPersonalRecord,getPersonalRecord,getRunRules,isContentReviewer,listPersonalRecords,
   listTeamItems,memberNames,orderedJobs,validateRunRules,
 } from "@/lib/server/content-automation-v07";
+
+import { THREADS_EDITORIAL_WORKFLOW, THREADS_EDITORIAL_CANON_MIN_VERSION, threadsEditorialRouteSchema, threadsEditorialMaterialSchema, parseThreadsEditorialMetadata } from "@/lib/threads-editorial";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -23,7 +25,8 @@ const topicSchema=z.object({
   source:z.enum(["longform","comment","reference","ai","direct"]).default("direct"),
   sourceRef:z.string().max(2000).optional(),
   kind:z.literal(THREADS_REFERENCE_KIND).optional(),
-  editorial_workflow:z.literal(THREADS_REFERENCE_WORKFLOW).optional(),
+  editorial_workflow:z.enum([THREADS_REFERENCE_WORKFLOW,THREADS_EDITORIAL_WORKFLOW]).optional(),
+  editorial_route:threadsEditorialRouteSchema.optional(),editorial_material:threadsEditorialMaterialSchema.optional(),
   reference_items:threadsReferenceItemsSchema.optional(),
   referenceIds:z.array(uuid).min(1).max(20).optional(),
   sourceJobId:uuid.optional(),candidateIndex:z.number().int().min(0).max(9).optional(),
@@ -180,7 +183,12 @@ async function teamList(resource:string,limit:number){
     const {data,error}=await db.from("os_records").select("*").eq("record_type","ai_job").eq("metadata->>space","personal")
       .in("metadata->>targetId",ids).is("archived_at",null).order("updated_at",{ascending:false}).limit(500);
     if(error)throw new ApiError(503,"AUTOMATION_LIST_FAILED","팀 원고의 AI 작업을 불러오지 못했습니다.");
-    return NextResponse.json({jobs:(data??[]).filter(job=>owners.get(String(job.metadata?.targetId))===job.owner_id)});
+    return NextResponse.json({jobs:(data??[]).filter(job=>owners.get(String(job.metadata?.targetId))===job.owner_id).map(job=>{
+      // Sharing a draft grants review access, not access to its source documents.
+      const {threadsInput:privateInput,...metadata}=job.metadata;
+      void privateInput;
+      return {...job,metadata};
+    })});
   }
   const {data,error}=await db.from("os_content_review_log").select("*").in("publish_record_id",ids)
     .order("created_at",{ascending:false}).limit(500);
@@ -203,7 +211,7 @@ export async function GET(request:Request,{params}:Params) {
     }
     if(resource==="topics"||resource==="references"){
       const rows=await listPersonalRecords(actor,"content_topic",limit,resource);
-      return NextResponse.json(resource==="references"?{references:rows,collectionContext:await threadsCollectionContext(actor)}:{topics:rows});
+      return NextResponse.json(resource==="references"?{references:rows,collectionContext:await threadsCollectionContext(actor)}:{topics:rows,collectionContext:await threadsCollectionContext(actor,THREADS_EDITORIAL_CANON_MIN_VERSION)});
     }
     if(resource==="items"){
       const channel=url.searchParams.get("channel");
@@ -296,6 +304,17 @@ export async function POST(request:Request,{params}:Params) {
     const raw=await parseJson(request,250_000);
     if(resource==="topics"){
       const input=topicSchema.parse(raw);
+      const editorial=parseThreadsEditorialMetadata(Object.fromEntries(Object.entries(input).filter(([,value])=>value!==undefined)));
+      if(editorial){
+        if(input.sourceJobId||input.candidateIndex!==undefined||input.referenceIds||input.reference_items||input.kind)
+          throw new ApiError(422,"THREADS_EDITORIAL_INPUT_INVALID","레퍼런스 선택과 인사이트·인물 후보 등록을 따로 진행해 주세요.");
+        await assertThreadsEditorialReady(actor,editorial);
+        const topic=await createPersonalRecord(actor,"content_topic",{title:input.title,brand:input.brand,status:"draft",stage:"candidate",
+          metadata:{source:"direct",sourceRef:editorial.editorial_material.sources.map(source=>source.url).join("\n"),brief:{},channels:[],
+            ...editorial,...(input.requestId?{requestId:input.requestId}:{})}});
+        const {_reused,...responseTopic}=topic as typeof topic&{_reused?:boolean};
+        return NextResponse.json({topic:responseTopic,reused:_reused===true},{status:201});
+      }
       if(input.kind&&input.referenceIds)throw new ApiError(422,"THREADS_REFERENCE_INPUT_INVALID","원문 저장과 주제 선택을 따로 진행해 주세요.");
       if(Boolean(input.sourceJobId)!==(input.candidateIndex!==undefined)
         ||input.sourceJobId&&(input.referenceIds||input.reference_items||input.kind))
@@ -312,6 +331,7 @@ export async function POST(request:Request,{params}:Params) {
           throw new ApiError(409,"JOB_RESULT_UNAVAILABLE","내가 받은 주제 후보를 다시 확인해 주세요.");
         title=candidate.title.trim().slice(0,240);source="ai";sourceRef=candidate.source.slice(0,2000);
         const snapshot=getThreadsJobInput(job);
+        if(snapshot?.workflow===THREADS_EDITORIAL_WORKFLOW)throw new ApiError(422,"THREADS_EDITORIAL_INPUT_INVALID","인사이트·인물 후보는 해당 경로의 후보 등록을 사용해 주세요.");
         if(snapshot){referenceItems=parseThreadsReferences(snapshot.topic.reference_items);sourceWorkflow=true;}
       }
       if(input.referenceIds){
@@ -362,6 +382,9 @@ export async function POST(request:Request,{params}:Params) {
       const topic=await getPersonalRecord(actor,input.topicId,"content_topic");
       if(topic.metadata.kind===THREADS_REFERENCE_KIND)
         throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","원문은 레퍼런스 화면에서 주제로 선택한 뒤 제작해 주세요.");
+      const editorial=await assertThreadsEditorialReady(actor,topic.metadata);
+      if(editorial&&(input.channel!=="threads"||topic.stage!=="confirmed"))
+        throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","주제 화면에서 사람이 후보를 선택한 뒤 쓰레드 제작을 시작해 주세요.");
       const ownerId=assertHumanOwner(actor);
       const db=createServiceSupabase();
       const existing=await db.from("os_records").select("*").eq("record_type","content_publish")

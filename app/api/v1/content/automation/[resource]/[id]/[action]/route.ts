@@ -11,9 +11,11 @@ import type { OsRecord } from "@/lib/record-types";
 import { mayHideComment } from "@/lib/content-comments";
 import { moderateChannelComment } from "@/lib/server/channel-comments";
 import { assertCanEdit,assertHumanOwner,assertSameOrigin,AUTOMATION_PROCS,browserCookieKey,hashBrowserKey,createJob,createPersonalRecord,getContentRecord,getItemJob,getPersonalRecord,memberNames,updatePersonalRecord } from "@/lib/server/content-automation-v07";
-import { assertThreadsJobCurrent,getThreadsJobInput } from "@/lib/server/threads-reference";
+import { assertThreadsJobCurrent,getThreadsJobInput,assertThreadsEditorialReady,threadsCanonicalSnapshot } from "@/lib/server/threads-reference";
 import { jobInstructions } from "@/lib/server/content-automation-worker";
 import { assertThreadsReferencesReady,parseThreadsReferences,THREADS_REFERENCE_KIND,THREADS_REFERENCE_WORKFLOW } from "@/lib/threads-reference";
+
+import { THREADS_EDITORIAL_CANON_MIN_VERSION } from "@/lib/threads-editorial";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -98,6 +100,12 @@ export async function POST(request:Request,{params}:Params){
         throw new ApiError(409,"THREADS_HUMAN_SELECTION_REQUIRED","원문은 레퍼런스 화면에서 주제로 선택한 뒤 제작해 주세요.");
       if(topic.metadata.editorial_workflow===THREADS_REFERENCE_WORKFLOW&&input.channels.threads)
         assertThreadsReferencesReady(parseThreadsReferences(topic.metadata.reference_items??[]));
+      const editorial=await assertThreadsEditorialReady(actor,topic.metadata);
+      if(editorial){
+        if(!input.channels.threads||Object.keys(input.channels).some(channel=>channel!=="threads"))
+          throw new ApiError(422,"THREADS_CHANNEL_REQUIRED","인사이트·인물 분석형은 쓰레드 채널로 제작해 주세요.");
+        await threadsCanonicalSnapshot(actor,THREADS_EDITORIAL_CANON_MIN_VERSION);
+      }
       const selected=Object.entries(input.channels).map(([channel,options])=>({channel,...options}));
       const {data,error}=await db.rpc("os_start_personal_content_topic",{
         p_owner:ownerId,p_topic:id,p_expected_version:input.version,
@@ -156,7 +164,7 @@ export async function POST(request:Request,{params}:Params){
       if(current.version!==input.version)throw new ApiError(409,"AUTOMATION_CHANGED","최신 주제를 다시 불러와 주세요.");
       let topic=current;
       if(action==="adopt"){
-        await assertThreadsJobCurrent(current,job);
+        await assertThreadsJobCurrent(current,job,actor);
         const candidate=job.metadata.result as Record<string,unknown>|undefined;
         if(!candidate||typeof candidate.one!=="string")throw new ApiError(422,"JOB_RESULT_INVALID","브리프 결과를 확인해 주세요.");
         topic=await updatePersonalRecord(actor,current,{stage:"brief",metadata:{...current.metadata,
@@ -266,7 +274,7 @@ export async function POST(request:Request,{params}:Params){
           if(!["draft","blocked"].includes(current.status))
             throw new ApiError(409,"ITEM_STATUS_CHANGED","제작 중 콘텐츠에만 AI 결과를 반영할 수 있습니다.");
           assertShortformJobCurrent(current,job);
-          await assertThreadsJobCurrent(current,job);
+          await assertThreadsJobCurrent(current,job,actor);
           const candidate=validateShortformJobResult(job,job.metadata.result);
           if(typeof candidate!=="object"||candidate===null)throw new ApiError(422,"JOB_RESULT_INVALID","AI 결과 형식을 확인해 주세요.");
           const result=candidate as Record<string,unknown>;
@@ -284,7 +292,10 @@ export async function POST(request:Request,{params}:Params){
         }
         const savedJob=await updatePersonalRecord(actor,job,{stage:action==="adopt"?"adopted":"rejected",
           metadata:{...job.metadata,closedReason:action==="adopt"?"adopted":"rejected",closedBy:ownerId,space:"personal"}},{team});
-        return NextResponse.json({item,job:savedJob});
+        // Shared draft access does not grant access to the owner's source documents.
+        const {threadsInput:privateInput,...publicMetadata}=savedJob.metadata;
+        void privateInput;
+        return NextResponse.json({item,job:team?{...savedJob,metadata:publicMetadata}:savedJob});
       }
     }
     if(resource==="jobs"){
@@ -304,7 +315,7 @@ export async function POST(request:Request,{params}:Params){
         if(job.status!=="blocked")throw new ApiError(409,"JOB_NOT_BLOCKED","막힌 작업만 다시 대기열에 넣을 수 있습니다.");
         if(getThreadsJobInput(job)){
           const target=await getPersonalRecord(actor,String(job.metadata.targetId));
-          await assertThreadsJobCurrent(target,job);
+          await assertThreadsJobCurrent(target,job,actor);
         }
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"backlog",stage:"queued",
           metadata:{...job.metadata,prevReason:job.metadata.failureReason??job.metadata.failureCode??"",
@@ -320,7 +331,7 @@ export async function POST(request:Request,{params}:Params){
           throw new ApiError(422,"JOB_PROCESS_INVALID","작업 공정을 확인해 주세요.");
         if(getThreadsJobInput(job)){
           const target=await getPersonalRecord(actor,String(job.metadata.targetId));
-          await assertThreadsJobCurrent(target,job);
+          await assertThreadsJobCurrent(target,job,actor);
         }
         const result=validateShortformJobResult(job,parseAutomationResult(proc as typeof AUTOMATION_PROCS[number],input.result));
         return NextResponse.json({job:await updatePersonalRecord(actor,job,{status:"done",stage:"completed",

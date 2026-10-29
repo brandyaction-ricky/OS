@@ -18,6 +18,7 @@ import { ShortformProductionFields,ShortformCutEditor } from "./shortform-produc
 import { ShortformRenderPanel } from "./shortform-render-panel";
 import { CostTag } from "./cost-notice";
 import { ReferenceEvidencePanel, ThreadsReferenceWorkspace, type ReferenceCollectionContext } from "./threads-reference-workspace";
+import { EditorialEvidencePanel, ThreadsEditorialWorkspace, editorialRouteLabel } from "./threads-editorial-workspace";
 import "./content-automation-v07.css";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
@@ -31,10 +32,10 @@ type TeamInfo={reviewers:{id:string;name:string}[];canReview:boolean;canManage:b
 type RunRules={enabled:boolean;days:string;times:string[];per_run:number;daily_max:number;order_by:string;long_only_now:boolean;grace_minutes:number;lease_minutes:number;notify:boolean;defaults?:Record<string,unknown>};
 type Data={topics:OsRecord[];references:OsRecord[];items:OsRecord[];jobs:OsRecord[];browsers:BrowserRow[];runs:RunRow[];publications:PublicationRow[];reviews:ReviewRow[];
   skills:OsRecord[];templates:OsRecord[];assets:OsRecord[];comments:OsRecord[];metrics:OsRecord[];rules:RunRules|null;accounts:Record<string,unknown>[];silent:boolean;
-  team:TeamInfo;me:string;referenceContext:ReferenceCollectionContext|null};
+  team:TeamInfo;me:string;referenceContext:ReferenceCollectionContext|null;topicContext:ReferenceCollectionContext|null};
 const EMPTY:Data={topics:[],references:[],items:[],jobs:[],browsers:[],runs:[],publications:[],reviews:[],
   skills:[],templates:[],assets:[],comments:[],metrics:[],rules:null,accounts:[],silent:false,
-  team:{reviewers:[],canReview:false,canManage:false},me:"",referenceContext:null};
+  team:{reviewers:[],canReview:false,canManage:false},me:"",referenceContext:null,topicContext:null};
 // A shared Threads draft in the team inbox (any owner's). Other drafts stay owner-only.
 const isTeam=(row:OsRecord)=>row.metadata.shared==="team";
 // The team list adds owner names to rows I already loaded as my own, so a repeat row is combined.
@@ -166,7 +167,7 @@ export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;
         else if(resource==="review-log")next.reviews=[...next.reviews,...(response.reviews as ReviewRow[]).filter(row=>!next.reviews.some(existing=>existing.id===row.id))];
         else if(resource==="reviewers")next.team=response as unknown as TeamInfo;
         else if(resource==="accounts")next.accounts=response.connections as Record<string,unknown>[];
-        else if(resource==="topics")next.topics=merge(next.topics,response.topics as OsRecord[]);
+        else if(resource==="topics"){next.topics=merge(next.topics,response.topics as OsRecord[]);if(!key.includes("scope=team"))next.topicContext=(response.collectionContext as ReferenceCollectionContext|undefined)??null;}
         else if(resource==="references"){next.references=response.references as OsRecord[];next.referenceContext=(response.collectionContext as ReferenceCollectionContext|undefined)??null;}
         else if(resource==="items")next.items=merge(next.items,response.items as OsRecord[]);
         else if(resource==="jobs")next.jobs=merge(next.jobs,response.jobs as OsRecord[]);
@@ -237,6 +238,7 @@ function DashboardView({data}:Pick<ViewProps,"data">){
 }
 function TopicsView({data,mutate}:ViewProps){
   const search=useSearchParams(),router=useRouter(),[query,setQuery]=useState(""),[source,setSource]=useState("all");
+  const [editorialCollecting,setEditorialCollecting]=useState(false);
   const [newOpen,setNewOpen]=useState(search.has("new")),[newTitle,setNewTitle]=useState(""),[newSource,setNewSource]=useState("direct"),[newNote,setNewNote]=useState("");
   const selected=data.topics.find(row=>row.id===search.get("sel"))??null;
   const missing=search.has("sel")&&!selected;
@@ -247,14 +249,15 @@ function TopicsView({data,mutate}:ViewProps){
   const [dues,setDues]=useState<Record<string,string>>({}),[jobOpen,setJobOpen]=useState<string|null>(null),[localError,setLocalError]=useState("");
   // busy blocks a second click; requestId makes a retried create return the same topic.
   const [busy,setBusy]=useState(false),[requestId,setRequestId]=useState(()=>crypto.randomUUID()),[teamThreads,setTeamThreads]=useState<boolean|null>(null);
-  const shareThreads=teamThreads??data.team.canReview;
+  const editorialRoute=selected?editorialRouteLabel(selected.metadata):null;
+  const shareThreads=teamThreads??(editorialRoute?false:data.team.canReview);
   useEffect(()=>{const initial=selected?getTopicBriefDraft(selected):null;
     setBrief(initial?.brief??{one:"",who:"",message:"",sources:"",warn:""});
     setChannels(initial?.channels??[]);
     setDues((selected?.metadata.dues as Record<string,string>)??{});
     setLocalError("");
   },[selected]);
-  useEffect(()=>{setTeamThreads(null);},[selected?.id]);
+  useEffect(()=>{setTeamThreads(null);setEditorialCollecting(false);},[selected?.id]);
   const filtered=data.topics.filter(row=>(source==="all"||row.metadata.source===source)&&row.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const column=(topic:OsRecord)=>{
     const count=data.items.filter(item=>item.parent_id===topic.id).length;
@@ -299,31 +302,31 @@ function TopicsView({data,mutate}:ViewProps){
     catch(issue){setLocalError(issue instanceof Error?issue.message:"작업을 맡기지 못했습니다.");}
   };
   const nextLabel=channels.length===1?`기획 확인하고 ${CHANNEL_LABELS[channels[0]]} ${channels[0]==="threads"?"집필":"제작"}로 이동`:"기획 확인하고 제작 항목 만들기";
-  return <>{!selected?<><div className="ca-v07-toolbar"><input aria-label="주제 검색" placeholder="주제·출처 검색" value={query} onChange={event=>setQuery(event.target.value)}/>
+  return <>{!selected?<><ThreadsEditorialWorkspace collectionContext={data.topicContext} mutate={mutate} onRouteChange={route=>{setEditorialCollecting(Boolean(route));if(route)setNewOpen(false);}}/><div className="ca-v07-toolbar"><input aria-label="주제 검색" placeholder="주제·출처 검색" value={query} onChange={event=>setQuery(event.target.value)}/>
     <select aria-label="출처" value={source} onChange={event=>setSource(event.target.value)}><option value="all">전체 출처</option>{Object.entries(SOURCES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select>
-    <Link href="/automation/references">내 참고 자료에서 고르기</Link><button type="button" onClick={()=>setJobOpen("topic")}>AI로 주제 후보 받기</button><CostTag kind="ai"/><button type="button" className="primary" onClick={()=>setNewOpen(true)}>+ 주제 추가</button></div>
+    <Link href="/automation/references">내 참고 자료에서 고르기</Link>{!editorialCollecting?<><button type="button" onClick={()=>setJobOpen("topic")}>AI로 주제 후보 받기</button><CostTag kind="ai"/><button type="button" className="primary" onClick={()=>setNewOpen(true)}>+ 주제 추가</button></>:null}</div>
     {newOpen?<form className="ca-v07-card ca-v07-form" onSubmit={event=>void create(event)}><h2>주제 추가</h2><label>출처<select value={newSource} onChange={event=>setNewSource(event.target.value)}>{Object.entries(SOURCES).filter(([key])=>key!=="ai").map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>제목<input required value={newTitle} onChange={event=>setNewTitle(event.target.value)}/></label><label>출처·메모<input value={newNote} onChange={event=>setNewNote(event.target.value)}/></label><div className="ca-v07-actions"><button type="button" onClick={()=>setNewOpen(false)}>취소</button><button className="primary" disabled={busy}>{busy?"추가하는 중…":"후보에 추가"}</button></div></form>:null}
-    <div className="ca-v07-board">{["후보","기획 메모 작성","확정 · 제작 대기","제작 중"].map(name=><section className="ca-v07-card" key={name}><h2>{name} <small>{filtered.filter(row=>column(row)===name).length}</small></h2>{filtered.filter(row=>column(row)===name).map(row=><button className="ca-v07-topic" key={row.id} onClick={()=>router.replace(`/automation/topics?sel=${row.id}`)}><small>{SOURCES[str(row.metadata.source)]??"직접"} · {DATE(row.updated_at)}</small><strong>{row.title}</strong><span>{data.items.filter(item=>item.parent_id===row.id).map(item=>CHANNEL_LABELS[str(item.metadata.channel)]).join(" · ")}</span></button>)}</section>)}</div>
+    <div className="ca-v07-board" id="topic-candidates">{["후보","기획 메모 작성","확정 · 제작 대기","제작 중"].map(name=><section className="ca-v07-card" key={name}><h2>{name} <small>{filtered.filter(row=>column(row)===name).length}</small></h2>{filtered.filter(row=>column(row)===name).map(row=><button className="ca-v07-topic" key={row.id} onClick={()=>router.replace(`/automation/topics?sel=${row.id}`)}><small>{editorialRouteLabel(row.metadata)??SOURCES[str(row.metadata.source)]??"직접"} · {DATE(row.updated_at)}</small><strong>{row.title}</strong><span>{data.items.filter(item=>item.parent_id===row.id).map(item=>CHANNEL_LABELS[str(item.metadata.channel)]).join(" · ")}</span></button>)}</section>)}</div>
     {data.jobs.filter(job=>job.metadata.proc==="topic"&&job.stage==="completed").map(job=><section className="ca-v07-card" key={job.id}><h2>주제 후보 도착</h2>{Array.isArray((job.metadata.result as Record<string,unknown>|undefined)?.candidates)?((job.metadata.result as Record<string,unknown>).candidates as {title:string;why:string;source:string}[]).map((candidate,index)=><div className="ca-v07-row" key={index}><span><strong>{candidate.title}</strong><small>{candidate.why} · {candidate.source}</small></span><button disabled={busy} onClick={()=>void addCandidate(job.id,index,candidate)}>후보에 추가</button></div>):null}</section>)}
     </>:null}
     {missing?<div className="ca-v07-note" role="status">찾을 수 없는 주제입니다. <Link href="/automation/topics">주제 목록으로 →</Link></div>:null}
     {selected?<section className="ca-v07-card ca-v07-detail ca-v07-topic-editor">
       <div className="ca-v07-detail-head"><span className="ca-v07-status">{hasStarted?"제작 항목 만듦":"기획 확인 중"}</span><button disabled={busy} onClick={()=>router.replace("/automation/topics")}>주제 목록으로</button></div>
-      <h2 className="ca-v07-topic-title">{selected.title}</h2>
+      {editorialRoute?<span className="te-route-badge">{editorialRoute}</span>:null}<h2 className="ca-v07-topic-title">{selected.title}</h2>
       <ol className="ca-v07-topic-steps" aria-label="집필 진행 순서"><li>1. 주제 선택</li><li aria-current={!hasStarted?"step":undefined}>2. 기획 확인</li><li aria-current={hasStarted?"step":undefined}>3. 채널에서 집필</li></ol>
       {hasStarted?<>
         <div className="ca-v07-topic-next"><h3>기획이 저장됐습니다. 집필을 이어가세요.</h3><p>아래 항목에서 원고를 직접 쓰거나 AI 초안을 요청할 수 있습니다.</p>
           <div className="ca-v07-actions">{children.map(item=><Link className="ca-v07-next-link" key={item.id} href={topicItemHref(item)}>{CHANNEL_LABELS[str(item.metadata.channel)]} {item.metadata.channel==="threads"?"집필":"제작"} 계속하기</Link>)}</div>
         </div><BriefPanel topic={selected}/>
       </>:<>
-        <div className="ca-v07-topic-intro"><strong>{draft?.seeded?"참고 자료에서 기획 내용을 채웠습니다.":"이 글에서 다룰 내용을 확인하세요."}</strong>
+        <div className="ca-v07-topic-intro"><strong>{draft?.seeded?(editorialRoute?"선택한 후보에서 기획 내용을 채웠습니다.":"참고 자료에서 기획 내용을 채웠습니다."):"이 글에서 다룰 내용을 확인하세요."}</strong>
           <p>{draft?.seeded?"선택한 주제와 원문에 기록된 내용을 옮겼습니다. 독자·메시지가 의도와 맞는지 수정한 뒤 아래 버튼으로 집필을 이어가세요. 아직 저장 전입니다.":"기획을 확인한 뒤 채널을 선택하면 집필할 항목이 만들어집니다. 원고는 다음 화면에서 작성합니다."}</p>
         </div>
-        <ReferenceEvidencePanel key={selected.id} topic={selected} collapsed/>
+        <ReferenceEvidencePanel key={selected.id} topic={selected} collapsed/><EditorialEvidencePanel key={`editorial-${selected.id}`} topic={selected} collapsed/>
         <fieldset className="ca-v07-fields" disabled={busy}><legend className="ca-v07-section-title">글의 방향</legend>
           <div className="ca-v07-form-grid ca-v07-brief-fields">{BRIEF_FIELDS.map(([key,label])=><label key={key}><span>{label} <small>{key==="warn"?"선택":"필수"}</small></span><textarea aria-label={label} rows={key==="sources"?5:3} value={brief[key]} onChange={event=>setBrief({...brief,[key]:event.target.value})} placeholder={BRIEF_HINTS[key]}/><small>{BRIEF_HINTS[key]}</small></label>)}</div>
           <div className="ca-v07-channel-section"><h3>어디에 쓸까요?</h3><p>마감일은 선택 사항입니다. 원고 작성과 발행은 다음 단계에서 따로 진행합니다.</p>
-            <div className="ca-v07-channel-picks">{CHANNELS.map(channel=><div className={channels.includes(channel)?"selected":""} key={channel}>
+            <div className="ca-v07-channel-picks">{CHANNELS.filter(channel=>!editorialRoute||channel==="threads").map(channel=><div className={channels.includes(channel)?"selected":""} key={channel}>
               <label className="ca-v07-channel-choice"><input type="checkbox" checked={channels.includes(channel)} onChange={event=>setChannels(event.target.checked?[...channels,channel]:channels.filter(value=>value!==channel))}/>{CHANNEL_LABELS[channel]}</label>
               {channels.includes(channel)?<label className="ca-v07-due-label">마감일 <small>선택</small><input type="date" aria-label={`${CHANNEL_LABELS[channel]} 마감`} value={dues[channel]??""} onChange={event=>setDues({...dues,[channel]:event.target.value})}/></label>:null}
             </div>)}</div>
@@ -359,7 +362,7 @@ function BriefPanel({topic}:{topic:OsRecord|undefined}){
   const brief=(topic.metadata.brief??{}) as Record<string,unknown>;
   return <details className="ca-v07-brief" open><summary>근거·기획 메모 · {topic.title} · v{topic.version}</summary>
     <dl>{BRIEF_FIELDS.map(([key,label])=><div key={key}><dt>{label}</dt><dd>{str(brief[key])||"—"}</dd></div>)}</dl>
-    {str(topic.metadata.sourceRef)?<p><small>출처 메모 · {str(topic.metadata.sourceRef)}</small></p>:null}<ReferenceEvidencePanel topic={topic}/></details>;
+    {str(topic.metadata.sourceRef)?<p><small>출처 메모 · {str(topic.metadata.sourceRef)}</small></p>:null}<ReferenceEvidencePanel topic={topic}/><EditorialEvidencePanel topic={topic}/></details>;
 }
 // One box per post. A line break inside a post is a paragraph; a new post comes only from "+ 글 추가".
 function ThreadPostsEditor({posts,setPosts,disabled}:{posts:string[];setPosts:(posts:string[])=>void;disabled:boolean}){

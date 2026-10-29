@@ -92,7 +92,7 @@ export async function jobInstructions(actor:RequestActor,job:OsRecord){
   }
   if(threadsInput){
     if(!target)throw new ApiError(409,"THREADS_TARGET_UNAVAILABLE","작업에 연결된 현재 주제를 읽지 못했습니다. 작업 대상을 확인해 주세요.");
-    await assertThreadsJobCurrent(target,job);
+    await assertThreadsJobCurrent(target,job,actor);
   }
   let skill:{id:string;version:number;title:string;slug:string;body:string}|null=null;
   const skillId=typeof job.metadata.skillId==="string"?job.metadata.skillId:null;
@@ -177,7 +177,7 @@ export async function workerCompleteJob(actor:RequestActor,request:Request,input
   if(input.failed&&!String(input.reason??"").trim())throw new ApiError(422,"JOB_REASON_REQUIRED","못 한 이유를 입력해 주세요.");
   if(!input.failed&&getThreadsJobInput(job)){
     const target=await getPersonalRecord(actor,String(job.metadata.targetId));
-    await assertThreadsJobCurrent(target,job);
+    await assertThreadsJobCurrent(target,job,actor);
   }
   const result=input.failed?null:validateShortformJobResult(job,parseAutomationResult(proc as typeof AUTOMATION_PROCS[number],input.result));
   const {data,error}=await db().rpc("os_ai_complete_job",{
