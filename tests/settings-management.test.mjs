@@ -143,7 +143,7 @@ test("mobile navigation includes settings and company settings link to canonical
     read("app/globals.css"),
     read("components/settings-workspaces.tsx"),
   ]);
-  assert.match(shell, /NAV_STAGES\.map/);
+  assert.match(shell, /NAV_STAGES\.map|youtubeV1Stages\(NAV_STAGES\)/);
   assert.doesNotMatch(shell, /NAV_STAGES\.slice\(0, 5\)/);
   assert.match(css, /mobile-stage-bar[^}]*grid-template-columns: repeat\(6,1fr\)/);
   assert.match(settings, /href="\/organization\/members"/);
