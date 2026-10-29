@@ -256,7 +256,7 @@ function demoFilledStages(project: YpProject): YpStagesView {
       { title: "[예시] 친구는 좋은데 약속은 부담될 때", insight: "부담은 친구가 아니라 약속의 개수에서 와요", formula: "[예시] 좋은 조건, 반대 감정", why: "좋은 사람과의 약속도 부담스러운 마음" }] };
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
-    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) } };
+    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) }, screenCheck: { id: null, version: 0, data: emptyStage("screenCheck", kind) } };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();

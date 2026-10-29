@@ -670,6 +670,8 @@ export async function completeMyinPrep(input: { runId: string; lease: string }, 
   const stage = bundle.misses.length ? "prep_ready" : draft ? "clips_pending" : run.layout ? "final_pending" : "prep_ready";
   if (stage === "final_pending") delete next.final;
   await save(service, record, stage === "prep_ready" ? "done" : "backlog", stage, next);
+  // 화면 자동 검사 (2026-10-29): GPT reads the new sheets after this response, while the drafts are being made.
+  if (bundle.sheets) await import("./myin-screen-check").then((module) => module.scheduleScreenCheck(record.id)).catch(() => undefined);
   return { runId: record.id, stage, misses: bundle.misses.length };
 }
 
@@ -677,6 +679,15 @@ export async function failMyinPrep(input: { runId: string; lease: string; code: 
   const { record, run } = await leased(service, input.runId, input.lease);
   await failed(service, record, run, input.code);
   return { runId: record.id, retry: run.attempts < 3 };
+}
+
+/** 화면 자동 검사: a run's 점검 시트 as addresses GPT can fetch (30 minutes), with the storyboard scenes they show. */
+export async function myinSheetSources(service: Service, runId: string) {
+  const { record, run } = await runRecord(service, runId);
+  const paths = run.prepared?.sheets ?? [];
+  const story = paths.length && run.storyboard ? await storyboardJson(service, run).catch(() => null) : null;
+  return { record, run, sheetsAt: run.prepared?.at ?? "", urls: await Promise.all(paths.map((path) => sign(service, SHEET_BUCKET, path))),
+    scenes: story?.scenes ?? [], short: run.layout === "short" };
 }
 
 /** Logan's preview sheets for the ③ panel (10 minutes). */

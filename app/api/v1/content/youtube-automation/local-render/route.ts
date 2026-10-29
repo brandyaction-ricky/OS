@@ -9,7 +9,8 @@ import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// A staff PC's calls are short; 800 so the 화면 자동 검사 that a finished preparation starts (after the response) can finish.
+export const maxDuration = 800;
 
 const lease = { runId: z.string().uuid(), lease: z.string().uuid() };
 const engine = z.string().regex(/^[a-f0-9]{16,64}$/);
