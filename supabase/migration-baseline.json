@@ -902,6 +902,14 @@
         "production"
       ],
       "notes": "Speed request 2026-10-29. Rewrites workspace_documents_read and os_documents_select with identical logic; adds os_my_reader_documents(). Rollback-only run on DEV: all 11 users see exactly the same documents before and after. Read-only check on Production: old vs new rule identical for all 10 users over 60,950 user-document pairs. Owner approved Production on 2026-10-29 (\"DB 반영해\"). Applied to Production in one transaction with its schema history row and read back (both policies use the reader array, no policy calls os_workspace_document_row_read, history 1). Owner-scoped scans of every document went from ~0.76-1.16 s to ~25 ms. Not applied to DEV."
+    },
+    {
+      "file": "20261029100000_content_metric_window.sql",
+      "sha256": "c142007effe5b1f71aa11d6c0d147113908d8b82f88559a170169441c3e27fbd",
+      "purpose": "영상 성과: os_content_metric_window(from,to) returns the latest cumulative snapshot per video plus daily rows for a date window; window index on content_metric",
+      "requiresApproval": true,
+      "appliedEnvironments": [],
+      "notes": "Speed request 2026-10-29. Additive: one security-invoker function and one partial index. Rollback-only run on DEV with sample rows: window picks the latest cumulative row per video, keeps daily rows and channel snapshots, drops rows outside the window. Read-only timing on Production of the same query for 30 days: ~0.32 s warm, 104 rows instead of 33,500. Not applied yet."
     }
   ],
   "legacyMigrations": [
