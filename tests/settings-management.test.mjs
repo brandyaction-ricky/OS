@@ -103,7 +103,8 @@ test("audit events and statuses are rendered in plain Korean", async () => {
   assert.equal(labels.auditStatusLabel("review", "development_request"), "검토 요청");
   assert.equal(labels.auditStatusLabel("done", "development_request"), "해결");
   assert.equal(labels.auditStatusLabel("unknown", "task"), "기타 상태");
-  assert.match(route, /record\.metadata\?\.kind === "development_request"/);
+  assert.match(route, /record\.kind === "development_request"/);
+  assert.match(route, /os_records\(title,record_type,kind:metadata->>kind\)/, "audit reads only metadata.kind, not whole AI-job metadata");
   assert.match(route, /subject_type: auditSubjectType\(record\)/);
 });
 

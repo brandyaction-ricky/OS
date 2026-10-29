@@ -59,10 +59,10 @@ async function loadModule(relative,modules,globals={}){
 }
 test("coverage paginates only user-visible document IDs and fails closed on query errors",async()=>{
  const visible=Array.from({length:501},(_,index)=>doc(`visible-${index}`)),queried=[],ranges=[];
- const documentClient={from(table){assert.equal(table,"os_documents");let range;const chain={select(){return chain;},neq(){return chain;},order(){return chain;},range(a,b){range=[a,b];ranges.push(range);return chain;},async abortSignal(){return {data:visible.slice(range[0],range[1]+1),error:null};}};return chain;}};
+ const documentClient={from(table){assert.equal(table,"os_documents");let range,head=false;const chain={select(_fields,options){head=!!options?.head;return chain;},neq(){return chain;},order(){return chain;},range(a,b){range=[a,b];ranges.push(range);return chain;},async abortSignal(){return head?{count:visible.length,error:null}:{data:visible.slice(range[0],range[1]+1),error:null};}};return chain;}};
  const jobClient={from(table){assert.equal(table,"os_embedding_jobs");let ids;const chain={select(){return chain;},in(key,value){assert.equal(key,"document_id");ids=value;queried.push(...ids);return chain;},order(){return chain;},range(){return chain;},async abortSignal(){return {data:ids.map((id,index)=>job(index,"current","done",id)),error:null};}};return chain;}};
  const loaded=await loadModule("../lib/server/indexing-diagnostics.ts",{"@/lib/http":{ApiError},"@/lib/supabase/server":{createServiceSupabase:()=>jobClient},"@/lib/indexing-diagnostics":diagnostics});
- const coverage=await loaded.getIndexCoverage(documentClient);assert.equal(coverage.done,501);assert.equal(coverage.truncated,false);assert.deepEqual(ranges,[[0,499],[500,999]]);assert.deepEqual(new Set(queried),new Set(visible.map(row=>row.id)));assert.ok(!queried.includes("forbidden"));
+ const coverage=await loaded.getIndexCoverage(documentClient);assert.equal(coverage.done,501);assert.equal(coverage.truncated,false);assert.deepEqual(ranges,[[0,999]]);assert.deepEqual(new Set(queried),new Set(visible.map(row=>row.id)));assert.ok(!queried.includes("forbidden"));
  const badClient={from(){const chain={select(){return chain;},neq(){return chain;},order(){return chain;},range(){return chain;},async abortSignal(){return {data:null,error:{message:"private database"}};}};return chain;}};
  await assert.rejects(loaded.getIndexCoverage(badClient),{code:"INDEX_PROGRESS_UNAVAILABLE"});
 });
