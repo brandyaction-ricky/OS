@@ -251,9 +251,9 @@ export function AiOperationsWorkspace({ contentOnly = false }: { contentOnly?: b
       "아이디어함·원문·후기·썸네일 기록",
     ],
     [
-      "저장한 문서 바로 검색 준비",
+      "저장한 문서 검색 준비",
       health?.embeddings === "ready" ? "ready" : "waiting",
-      health?.embeddings === "ready" ? "저장하면 바로 처리" : "OpenAI 키 대기",
+      health?.embeddings === "ready" ? "새벽 1~6시에 차례로 처리 (그 전엔 단어 검색)" : "OpenAI 키 대기",
     ],
   ];
   useRecordDeepLink("job", "ai_job", setSelectedJob, setError);
