@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { youtubeActor } from "@/lib/server/youtube-process";
-import { actOnFeedback, createFeedback, feedbackActionSchema, feedbackCreateSchema, listFeedback } from "@/lib/server/youtube-process-feedback";
+import { actOnFeedback, createFeedback, feedbackActionSchema, feedbackCreateSchema, feedbackFileSchema, feedbackFileUrl, listFeedback, signFeedbackFile } from "@/lib/server/youtube-process-feedback";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +13,8 @@ const invalid = (error: unknown) => error instanceof ZodError ? apiErrorResponse
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await youtubeActor(request);
+    const file = new URL(request.url).searchParams.get("file");
+    if (file) return NextResponse.json({ url: await feedbackFileUrl(actor, projectId.parse((await params).id), file) }, { headers });
     return NextResponse.json({ items: await listFeedback(actor, projectId.parse((await params).id)) }, { headers });
   } catch (error) { return invalid(error); }
 }
@@ -20,7 +22,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const actor = await youtubeActor(request);
-    const input = feedbackCreateSchema.parse(await parseJson(request, 8_000));
+    if (new URL(request.url).searchParams.get("attach") === "1") return NextResponse.json(await signFeedbackFile(actor, projectId.parse((await params).id), feedbackFileSchema.parse(await parseJson(request, 2_000))), { headers });
+    const input = feedbackCreateSchema.parse(await parseJson(request, 64_000));
     return NextResponse.json({ item: await createFeedback(actor, projectId.parse((await params).id), input) }, { status: 201, headers });
   } catch (error) { return invalid(error); }
 }

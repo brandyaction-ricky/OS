@@ -65,3 +65,50 @@ test("old replies without ids stay readable; replies, confirmations and own edit
   assert.match(screen, /if \(await run\(mode\.kind, draft\.trim\(\), mode\.replyId\)\) \{ setMode\(null\); setDraft\(""\); \}/, "the reply box closes only after a successful save");
   assert.match(screen, /window\.setInterval\(refresh, 30_000\)/);
 });
+
+test("N01·N02: search covers text, replies and who; filters by status; a deleted item shows only under 전체", async () => {
+  const { feedbackMatches } = await import("../lib/youtube-process/feedback.ts");
+  const item = { text: "자막을 한 줄로", who: "안저", status: "open", replies: [{ text: "장면 전환 늦춰요", by: "로건" }] };
+  assert.ok(feedbackMatches(item, "", "all"));
+  assert.ok(feedbackMatches(item, "장면 로건", "open"), "every word must match somewhere in the thread");
+  assert.ok(!feedbackMatches(item, "썸네일", "all"));
+  assert.ok(!feedbackMatches(item, "", "done"));
+  assert.ok(feedbackMatches({ ...item, status: "declined" }, "", "declined"));
+  assert.ok(!feedbackMatches({ ...item, deleted: true }, "", "open"));
+  assert.ok(feedbackMatches({ ...item, deleted: true }, "", "all"));
+});
+
+test("N03: @mentions and reply recipients — author, earlier repliers and mentioned people, never the writer", async () => {
+  const { mentionedIds, replyRecipients } = await import("../lib/youtube-process/feedback.ts");
+  const members = [{ id: "a", name: "안저" }, { id: "l", name: "로건" }, { id: "p", name: "예시 PD" }];
+  assert.deepEqual(mentionedIds("@로건 확인해 주세요, @예시PD도요", members).sort(), ["l", "p"]);
+  assert.deepEqual(mentionedIds("메일 a@b.c 은 사람이 아니에요", members), []);
+  assert.deepEqual(replyRecipients({ whoId: "a", replies: [{ byId: "l" }, { byId: "a" }] }, "@예시PD 봐 주세요", members, "l").sort(), ["a", "p"]);
+  const notice = readFileSync("lib/personal-work.ts", "utf8");
+  assert.match(notice, /return `\$\{stepHref\(4, record\.metadata\.projectId\)\}&feedback=\$\{id\}`;/, "a notice opens that feedback");
+});
+
+test("N04·N05: marks stay inside the frame, small and well formed", async () => {
+  const { cleanMarks } = await import("../lib/youtube-process/feedback.ts");
+  assert.deepEqual(cleanMarks([{ type: "pin", points: [[1.4, -0.2], [0.5, 0.5]] }]), [{ type: "pin", points: [[1, 0]] }]);
+  assert.deepEqual(cleanMarks([{ type: "rect", points: [[0.1, 0.2]] }, { type: "circle", points: [[0, 0], [1, 1]] }, "x"]), []);
+  assert.deepEqual(cleanMarks([{ type: "arrow", points: [[0.12345, 0.5], [0.9, 0.9], [0.1, 0.1]] }])[0].points, [[0.123, 0.5], [0.9, 0.9]]);
+  assert.equal(cleanMarks(Array.from({ length: 30 }, () => ({ type: "pin", points: [[0.5, 0.5]] }))).length, 20);
+  assert.equal(cleanMarks([{ type: "free", points: Array.from({ length: 500 }, (_, i) => [i / 500, 0.5]) }])[0].points.length, 200);
+});
+
+test("N06·N07: attachments stay under the project as images or PDFs; any existing version takes feedback; B follows A with an offset", async () => {
+  const { compareTime, feedbackFilePath, FEEDBACK_FILE_TYPES } = await import("../lib/youtube-process/feedback.ts");
+  const project = "11111111-2222-3333-4444-555555555555";
+  assert.ok(feedbackFilePath(project).test(`feedback/${project}/1793260000000-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.png`));
+  assert.ok(!feedbackFilePath(project).test(`feedback/99999999-2222-3333-4444-555555555555/1793260000000-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.png`), "another project's file is refused");
+  assert.ok(!feedbackFilePath(project).test(`feedback/${project}/1793260000000-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.exe`));
+  assert.deepEqual(Object.keys(FEEDBACK_FILE_TYPES).sort(), ["application/pdf", "image/gif", "image/jpeg", "image/png", "image/webp"]);
+  assert.equal(compareTime(10, 2.5, 60), 12.5);
+  assert.equal(compareTime(1, -3, 60), 0);
+  assert.equal(compareTime(59, 5, 60), 60);
+  const server = readFileSync("lib/server/youtube-process-feedback.ts", "utf8");
+  assert.match(server, /if \(input\.ver < 1 \|\| input\.ver > latest\) throw new ApiError\(409, "NO_SUCH_VERSION"/);
+  assert.match(server, /files\.length !== input\.files\.length\) throw new ApiError\(400, "FEEDBACK_FILE_INVALID"/);
+  assert.match(server, /if \(!feedbackFilePath\(project\.id\)\.test\(path\)\) throw new ApiError\(400, "FEEDBACK_FILE_INVALID"/);
+});

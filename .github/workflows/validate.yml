@@ -35,8 +35,8 @@ jobs:
           HR_WORKSPACE_ENABLED: "true"
           HR_E2E_DEMO: "true"
           NEXT_PUBLIC_DEMO_MODE: "true"
-      - name: Verify portrait diagram editing, the 숏폼 topic research and 주제 찾기
-        run: npm run test:e2e -- tests/e2e/shortform-diagrams.spec.ts tests/e2e/shortform-topic-research.spec.ts tests/e2e/topic-hub.spec.ts
+      - name: Verify portrait diagram editing, the 숏폼 topic research, 주제 찾기 and video feedback
+        run: npm run test:e2e -- tests/e2e/shortform-diagrams.spec.ts tests/e2e/shortform-topic-research.spec.ts tests/e2e/topic-hub.spec.ts tests/e2e/video-feedback.spec.ts
         env:
           PLAYWRIGHT_SERVER_MODE: production
           YOUTUBE_V1_ENABLED: "true"

@@ -31,5 +31,5 @@ test("my-work reads only the columns and metadata keys the home page uses, not w
   assert.doesNotMatch(route, /from\("os_records"\)\.select\("\*"/);
   const used = new Set([...readFileSync("lib/personal-work.ts", "utf8").matchAll(/metadata\.(\w+)/g), ...readFileSync("lib/content-origin.ts", "utf8").matchAll(/metadata\?\.(\w+)/g)].map(match => match[1]));
   for (const key of ["kind", "nextAction", "doneCriteria", "origin", "studioKind", "packageKind", "sourceId", "contentId"]) assert.match(route, new RegExp(`"${key}"`), key);
-  for (const key of used) if (!["workflow", "yp", "projectId", "scriptKind"].includes(key)) assert.match(route, new RegExp(`"${key}"`), `buildPersonalWork reads metadata.${key}`);
+  for (const key of used) if (!["workflow", "yp", "projectId", "scriptKind", "feedbackKind"].includes(key)) assert.match(route, new RegExp(`"${key}"`), `buildPersonalWork reads metadata.${key}`);
 });
