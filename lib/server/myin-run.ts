@@ -394,7 +394,8 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
   const bundle = bundleSchema.safeParse(JSON.parse(await data.text()));
   if (!bundle.success) throw new ApiError(422, "MYIN_BUNDLE_INVALID", "받아쓰기 결과 형식이 맞지 않습니다.");
   const spoken = bundle.data.speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
-  if (spoken.length !== run.paragraphs.length || spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash))
+  // A 숏폼 is matched by its confirmed 대본 (myinRunMatchesScript), not by the spoken copy, whose punctuation may differ from the run's.
+  if (spoken.length !== run.paragraphs.length || (run.layout !== "short" && spoken.some((text, i) => sha(text) !== run.paragraphs[i].textHash)))
     throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "영상 만드는 컴퓨터가 읽은 문단이 OS 원고와 다릅니다.");
   const next: MyinRun = { ...run, attempts: 0, words: { path, words: bundle.data.words.length,
     subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),

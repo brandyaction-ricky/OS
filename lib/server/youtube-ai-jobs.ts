@@ -28,6 +28,7 @@ import { namedProcedures, procedureRefs, SHORTFORM_CANON_TITLE, withNamed } from
 import { checkNicheResult, NICHE_BOARD_ID, nicheBoardRecord, nicheInputKey, nicheJobCard, nichePool, saveNicheBoard } from "./youtube-niche";
 import { doneShortRefs } from "./youtube-process-short-refs";
 import { assertShortFormulaInputs, assertShortScriptInputs, assertShortTopicsInputs, saveShortFormula, saveShortScript, saveShortTopics, shortFormulaCard, shortFormulaInputKey, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
+import { refMatchesQuery } from "@/lib/youtube-process/short-script";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
@@ -132,6 +133,7 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
 export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
+  let taskName: string = TASK_NAME[input.task];
   let note = "";
   let pool: NicheVideo[] | undefined;
   let marketFor: { query: string; short: boolean } | undefined;
@@ -146,6 +148,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     note = myin.run.review?.decision === "revise" ? myin.run.review.note : "";
     const state = await readPipeline(actor, input.sourceId);
     source = state.source; title = jobTitle(state); myinRunId = myin.record.id;
+    if (myin.run.layout === "short") taskName = "숏폼 기획표(세로 큰 글자 · 도식)";
     inputKey = myinStoryboardInputKey(myin.record.id, myin.run.words!.at, note);
   } else if (input.task === "plan") {
     const state = await readPipeline(actor, input.sourceId);
@@ -228,13 +231,13 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const now = new Date().toISOString();
   // ponytail: one search (~102 units) per new job; cache by query like the 주제 찾기 search if the daily quota gets tight.
   const market: PackagingMarket | undefined = marketFor ? await packagingReferences(marketFor.query, marketFor.short)
-    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short) }))
+    .then(refs => ({ query: marketFor!.query, at: now, refs: packagingPick(refs, marketFor!.short).filter(ref => !marketFor!.short || refMatchesQuery(marketFor!.query, ref.title)) }))
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
       : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
-    id: randomUUID(), record_type: "ai_job", title: `${title} · ${TASK_NAME[input.task]}`.slice(0, 240),
+    id: randomUUID(), record_type: "ai_job", title: `${title} · ${taskName}`.slice(0, 240),
     description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
     brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
     tags: ["유튜브", "직원AI"], metadata,

@@ -113,5 +113,15 @@ function timedSlots(value: unknown, when: { cue?: unknown; t?: unknown }, root =
   return !root && typeof o.text === "string" && !timed(o) ? { ...o, ...when } : o;
 }
 
-/** The diagram list for the card: type, name and its slots' letter limits. */
-export const shortDiagramList = (diagrams: ShortDiagram[]) => diagrams.map((d) => `- ${d.type} (${d.name}): ${d.slots}`).join("\n");
+/** A diagram's limits as the OS checks them (slotIssues): "a.text ≤ 8자 · items 1~4개 · items.text ≤ 9자". */
+function specLimits(spec: SlotSpec, path = ""): string[] {
+  if (spec.kind === "object") return Object.entries(spec.fields ?? {}).flatMap(([key, child]) => specLimits(child, path ? `${path}.${key}` : key));
+  if (spec.kind === "array") return [`${path} ${spec.min ?? 1}~${spec.max ?? 6}개`, ...(spec.item ? specLimits(spec.item, path) : [])];
+  return spec.kind === "text" && spec.max ? [`${path} ≤ ${spec.max}자`] : [];
+}
+/**
+ * The diagram list for the card: type, name, the limits the OS checks, then the catalog's own note. The note's numbers are Logan's
+ * layout guide and differ from the checked limits in 66 of 70, mostly tighter (steps_h 5 vs 8) but sometimes looser (strike_list 12 vs 9,
+ * 2026-10-28), so the card shows both and the AI keeps to the narrower.
+ */
+export const shortDiagramList = (diagrams: ShortDiagram[]) => diagrams.map((d) => `- ${d.type} (${d.name}): ${specLimits(d.spec).join(" · ")} — ${d.slots}`).join("\n");

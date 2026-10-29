@@ -145,7 +145,8 @@ const RESOURCES:Record<AutomationPage,string[]>={
   performance:["comments","metrics","publications"],requests:["jobs","browsers","runs"],
   settings:["run-rules","skills","templates","assets"],
 };
-export function ContentAutomationV07({page}:{page:AutomationPage}){
+/** embedded: inside 유튜브 공정 › 주제 찾기 › 스레드 (2026-10-28), which shows its own title above. */
+export function ContentAutomationV07({page,embedded=false}:{page:AutomationPage;embedded?:boolean}){
   const {accessToken,demo,profile,loading:sessionLoading}=useSession();
   const [data,setData]=useState<Data>(EMPTY),[loading,setLoading]=useState(true),[error,setError]=useState(""),[notice,setNotice]=useState("");
   const load=useCallback(async(showLoading=true)=>{
@@ -193,7 +194,7 @@ export function ContentAutomationV07({page}:{page:AutomationPage}){
     return response;
   },[accessToken,demo,load,page]);
   return <section className="ca-v07 ui-v2 screen-automation-v07">
-    <PageHead page={page} name={profile?.displayName??"나"} />
+    {embedded?null:<PageHead page={page} name={profile?.displayName??"나"} />}
     {notice?<p className="ca-v07-notice" role="status">{notice}</p>:null}
     {loading?<div className="ca-v07-loading" role="status">내 콘텐츠를 불러오는 중입니다…</div>
       :error?<div className="ca-v07-error" role="alert"><strong>최신 화면을 불러오지 못했습니다.</strong> <button type="button" onClick={()=>void load()}>다시 시도</button><p>{error}</p></div>

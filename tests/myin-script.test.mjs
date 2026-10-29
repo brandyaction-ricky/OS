@@ -30,6 +30,12 @@ test("a v13 run stops matching once the 원고 changes: key, markdown, or any sp
   assert.equal(myinRunMatchesScript(run, { ...now, spokenHashes: ["a", "b", "c"] }), false);
 });
 
+test("a 숏폼 run keeps matching while its confirmed 대본 is the same, even when the spoken copy is joined differently", () => {
+  const run = { inputKey: "k1", scriptMarkdownHash: "m1", paragraphs: [{ textHash: "a" }], layout: "short" };
+  assert.equal(myinRunMatchesScript(run, { inputKey: "k1", markdownHash: "m2", spokenHashes: ["b"] }), true);
+  assert.equal(myinRunMatchesScript(run, { inputKey: "k2", markdownHash: "m1", spokenHashes: ["a"] }), false);
+});
+
 // 로건 호흡·타이밍 (2026-10-27): Fish reads a copy with commas after the render PC's word positions; the 원고 stays as it is.
 test("myinBreathText puts a comma after the picked words only, never twice", () => {
   assert.equal(myinBreathText("자 그래서 저는 오늘 이 얘기를, 해볼게요.", [0, 2, 4, 9]), "자, 그래서 저는, 오늘 이, 얘기를, 해볼게요.");

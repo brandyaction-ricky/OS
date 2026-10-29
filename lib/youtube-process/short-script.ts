@@ -13,6 +13,13 @@ export function scriptLines(text: string) {
   return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
     .map(line => ({ text: line.replace(MARK, "").trim(), mark: (line.match(MARK)?.[1] ?? "") as "" | "관계" | "사람" })).filter(line => line.text);
 }
+/**
+ * The 대본 as one paragraph for the voice and its subtitles (2026-10-28 시안 1): the lines carry no full stops, so joined with spaces the
+ * voice ran every line into the next and a subtitle took the end of one line and the start of the next ("보낼 내 하루예요 지금 회사에서").
+ * A line without its own mark ends with "." after a sentence ending and "," otherwise: the voice pauses at each line, the subtitles break there.
+ */
+export const spokenScript = (text: string) => scriptLines(text)
+  .map(({ text: line }) => /[.?!…,~]$/.test(line) ? line : `${line}${/(요|죠|다|까|네|래|야|지|군|걸)$/.test(line) ? "." : ","}`).join(" ");
 const BANNED: [RegExp, string][] = [
   [/아까|앞에서|이 영상|지난번|위에서 말한/, "바깥을 가리키는 말"],
   [/당신|여러분/, "부르는 말"],
@@ -98,23 +105,39 @@ export interface YpShortRefItem {
 }
 // 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): many watched it, more than the channel's own followers, and
 // the people who watched reacted. The YouTube search keeps only those; a link the PD put in is marked and, below the bar, not handed on.
-export const SHORT_REF_BAR = { views: 100_000, ratio: 1, likeRate: 0.02 } as const;
-export const SHORT_REF_BAR_TEXT = "조회 10만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 2% 이상";
+// Set from 61 Korean 이직 · 퇴사 · 연봉 Shorts (2026-10-28 night): their likes are a median 0.64% of views, so the first bar (10만 · 2%)
+// let none through; 5만 · 0.5% keeps 21 of them, the ones that spread past their channel (the owner: "기준이 충족된 레퍼런스가 최대한 많을수록").
+export const SHORT_REF_BAR = { views: 50_000, ratio: 1, likeRate: 0.005 } as const;
+export const SHORT_REF_BAR_TEXT = "조회 5만 이상 · 구독자 수보다 많이 봄 · 좋아요가 조회의 0.5% 이상";
 export interface RefCounts { views: number | null; followers: number | null; likes: number | null }
 /** What the render PC read off the page first, then the YouTube search's or the PD's own numbers. */
 export const refCounts = (item: Pick<YpShortRefItem, "views" | "followers" | "likes" | "result">): RefCounts => ({
   views: item.result?.views ?? item.views ?? null, followers: item.result?.followers ?? item.followers ?? null, likes: item.result?.likes ?? item.likes ?? null });
 /**
- * "below" when a known count is under the bar, "pass" when views and likes are over it, "unknown" when one of them is missing. The
- * followers check counts only where a platform shows followers (TikTok's page and a hidden YouTube count do not): it is a proxy for
- * "spread beyond the channel", the views and likes are the reaction itself.
+ * "below" when a known count is under the bar; "pass" when the views are over it and so is the reaction we can see — the likes, or
+ * where a channel hides them the views against its followers; "unknown" without views or without both. Each check counts only where
+ * the platform shows that number (TikTok shows no followers, some YouTube channels hide likes or subscribers).
  */
 export function refReaction(counts: RefCounts): "pass" | "below" | "unknown" {
   const { views, followers, likes } = counts;
   const checks = [views === null ? null : views >= SHORT_REF_BAR.views,
     views === null || !followers ? null : views / followers >= SHORT_REF_BAR.ratio,
     views === null || !views || likes === null ? null : likes / views >= SHORT_REF_BAR.likeRate];
-  return checks.includes(false) ? "below" : views === null || likes === null ? "unknown" : "pass";
+  return checks.includes(false) ? "below" : views === null || (likes === null && !followers) ? "unknown" : "pass";
+}
+/**
+ * Whether a found Short is about the 검색어 (2026-10-28 시안 2: 「일이 안 맞는 신호」 brought 「오줌이 마려울 땐 이 포즈를…」 — 680만 views passed
+ * the bar and YouTube matched it on 신호). A 검색어 word is met when the title shares a two-letter run with it (Korean) or has it whole
+ * (Latin, numbers). With two or more words, two must be met: one alone let in every 「…라는 신호」 about love or coffee (10-29 re-search).
+ * A 검색어 of one-letter words cannot be checked and passes; the PD's own links are never checked.
+ */
+export function refMatchesQuery(query: string, title: string) {
+  // NFC first: a title may come in decomposed jamo. Two-letter Latin runs met every 「#shorts」, so Latin and number words count whole.
+  const words = (text: string) => text.normalize("NFC").toLowerCase().split(/[^0-9a-z가-힣]+/).filter(word => [...word].length > 1);
+  const keys = (word: string) => { const chars = [...word]; return /[가-힣]/.test(word) ? chars.slice(1).map((ch, i) => chars[i] + ch) : [word]; };
+  const asked = words(query).map(keys);
+  const seen = new Set(words(title).flatMap(keys));
+  return asked.filter(wordKeys => wordKeys.some(key => seen.has(key))).length >= Math.min(2, asked.length);
 }
 /**
  * A count as a page shows it — 「12.5만」, 「12만5천」, 「1천만」, 「10,000회」, 「1.2M」 — as a number; anything it cannot read is null.

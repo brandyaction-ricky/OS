@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems } from "../lib/youtube-process/short-script.ts";
+import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -79,13 +79,16 @@ test("three 주제 후보, one line each, on a formula drawn now or kept in the 
 });
 
 // 반응도 기준 (owner 2026-10-28: "반응도가 높은 콘텐츠 레퍼런스만 취합"): 조회 10만+, 구독자 수보다 많이, 좋아요 2%+.
-test("a reference passes the 반응도 기준 only over all three; a known low count is below, a hidden one unknown", () => {
+test("a reference passes the 반응도 기준 only over all it shows; a known low count is below, too little shown is unknown", () => {
   assert.equal(refReaction({ views: 1_250_000, followers: 92_000, likes: 41_000 }), "pass");
-  assert.equal(refReaction({ views: 90_000, followers: 10_000, likes: 5_000 }), "below");
+  // 2026-10-28 sample of Korean 이직 · 퇴사 Shorts: 「퇴사 시그널」 154만 · 1.0% · 5.6배 passes, 「신박한 연봉협상」 0.4% does not.
+  assert.equal(refReaction({ views: 1_538_769, followers: 274_000, likes: 15_400 }), "pass");
+  assert.equal(refReaction({ views: 845_371, followers: 76_000, likes: 3_400 }), "below");
+  assert.equal(refReaction({ views: 30_000, followers: 1_000, likes: 3_000 }), "below");
   assert.equal(refReaction({ views: 500_000, followers: 900_000, likes: 20_000 }), "below");
-  assert.equal(refReaction({ views: 500_000, followers: 100_000, likes: 5_000 }), "below");
-  // No follower count (TikTok, a hidden YouTube count): views and likes decide.
+  // No follower count (TikTok, a hidden YouTube count): views and likes decide; hidden likes: views and followers decide.
   assert.equal(refReaction({ views: 500_000, followers: null, likes: 20_000 }), "pass");
+  assert.equal(refReaction({ views: 4_122_579, followers: 97_000, likes: null }), "pass");
   assert.equal(refReaction({ views: 500_000, followers: null, likes: null }), "unknown");
   assert.equal(refReaction({ views: null, followers: null, likes: null }), "unknown");
   assert.equal(refReaction({ views: 32_000, followers: null, likes: null }), "below");
@@ -102,4 +105,33 @@ test("Reels · TikTok counts as pages show them, and where each reference is fro
   assert.deepEqual(["12만회", "10,000회", "1천만", "12만5천", "3억2천만", "1만2345", "2.3K", "12만 명"].map(parseCount), [120_000, 10_000, 10_000_000, 125_000, 320_000_000, 12_345, 2_300, 120_000]);
   assert.deepEqual(["https://www.tiktok.com/@a/video/1", "https://www.instagram.com/reel/x/", "https://www.facebook.com/ads/library/?id=1", "https://youtu.be/a", "https://www.youtube.com/shorts/a"].map(refPlatform),
     ["틱톡", "릴스", "메타 광고", "유튜브", "유튜브"]);
+});
+
+test("the voice gets the 대본 with each line closed, so it pauses there and no subtitle runs across two lines", () => {
+  const text = "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면\n일요일 밤에 채용공고 앱을 또 열고 있다면\n[관계] 근데 연봉이 막아 주는 건 딱 하나예요\n돈이 적어서 생기는 불만,\n그거 하나요\n지금 회사에서 내 하루, 몇 점이에요?";
+  assert.equal(spokenScript(text), "연봉 올려 옮겼는데 석 달 만에 또 지쳤다면, 일요일 밤에 채용공고 앱을 또 열고 있다면, 근데 연봉이 막아 주는 건 딱 하나예요. 돈이 적어서 생기는 불만, 그거 하나요. 지금 회사에서 내 하루, 몇 점이에요?");
+  // The checks still count the 대본 as written.
+  assert.equal(checkShortScript(text).chars, scriptLines(text).map(line => line.text).join(" ").length);
+});
+
+test("a found Short counts only when its title meets two words of the 검색어 (one when it has one)", () => {
+  // 시안 2 (2026-10-28): 「일이 안 맞는 신호」 brought two viral Shorts about something else.
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "오줌이 마려울 땐 이 포즈를 따라해보세요✨#shorts"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "사연) 신입 멘탈 미쳤네.. 존경스럽다.."), false);
+  // The re-search (10-29): one shared word let in every 「…라는 신호」 and 「안 맞는 궁합」.
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "남자/여자가 당신에게 관심이 없다는 신호 #짝사랑"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "커피 먹지말라는 7가지 몸의 신호"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "남ㅈㅏ에게 안 맞는 궁합은??"), false);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "일이 나랑 안 맞을 때 오는 신호"), true);
+  assert.equal(refMatchesQuery("일이 안 맞는 신호", "하는 일이 적성에 안 맞는 사람 특징"), true);
+  assert.equal(refMatchesQuery("Career change", "Career change at 35"), true);
+  assert.equal(refMatchesQuery("Career change", "My CAREER pivot"), false);
+  assert.equal(refMatchesQuery("일 돈", "아무 제목"), true);
+  // Latin and number words count whole: 「#shorts」 and 「2030」 are not 「MBTI」 or 「30대」.
+  assert.equal(refMatchesQuery("MBTI 유형", "Daily motivation tips #shorts"), false);
+  assert.equal(refMatchesQuery("30대 이직", "2030 공감"), false);
+  assert.equal(refMatchesQuery("30대 이직", "30대 이직 현실"), true);
+  // One word asked, one word met; decomposed (NFD) Korean reads like the usual form.
+  assert.equal(refMatchesQuery("퇴사", "퇴사 브이로그".normalize("NFD")), true);
+  assert.equal(refMatchesQuery("퇴사".normalize("NFD"), "점심 메뉴"), false);
 });
