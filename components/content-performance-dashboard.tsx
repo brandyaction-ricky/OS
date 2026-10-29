@@ -6,7 +6,7 @@ import {useContentWork} from "./content-work-provider";
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, recentAllRecordsOfType, updateRecord } from "@/lib/api-client";
+import { archiveRecord, createDocument, createRecord, listAllRecordsOfType, listMetricWindow, recentAllRecordsOfType, recentMetricWindow, updateRecord } from "@/lib/api-client";
 import { dedupeMetricSnapshots, fixedWeek, groupMetricDimension, metricDisplay, metricValue, summarizeMetrics } from "@/lib/content-metrics";
 import { isYoutubeMetricPlatform } from "@/lib/channel-metrics";
 import type { OsRecord } from "@/lib/record-types";
@@ -34,30 +34,47 @@ export function ContentPerformanceDashboard({ youtubeOnly = false }: { youtubeOn
   const [editing, setEditing] = useState<OsRecord | null>(null); const [open, setOpen] = useState(false);
   const [hypothesis, setHypothesis] = useState(""); const [hypothesisEdit, setHypothesisEdit] = useState<OsRecord | null>(null); const [learningTargetId, setLearningTargetId] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [reportId, setReportId] = useState("");
+  // Metrics come per date window (latest snapshot per video + daily rows), not as every hourly observation.
+  const [weekRecords, setWeekRecords] = useState<Record<string, OsRecord[]>>({}); const [reload, setReload] = useState(0);
+  const visibleMetrics = useCallback((metrics: OsRecord[]) => youtubeOnly ? metrics.filter(item => isYoutubeMetricPlatform(item.metadata.platform)) : metrics, [youtubeOnly]);
   const load = useCallback(async () => {
     if (demo) return;
-    setLoading(true);
-    const apply = (metrics: OsRecord[], decisions: OsRecord[], topics: OsRecord[]) => {
-      const visibleMetrics = youtubeOnly ? metrics.filter(item => isYoutubeMetricPlatform(item.metadata.platform)) : metrics;
-      setSnapshots(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion===1));
-      setRecords(visibleMetrics.filter(item=>item.metadata.channelSnapshotVersion!==1)); setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis" && (!youtubeOnly || ["all", "yt_long", "yt_shorts", "YouTube", "YouTube Shorts"].includes(String(item.metadata.platformFilter ?? "all")))));
+    const apply = (decisions: OsRecord[], topics: OsRecord[]) => {
+      setSources(topics); setHypotheses(decisions.filter((item) => item.metadata.kind === "content_hypothesis" && (!youtubeOnly || ["all", "yt_long", "yt_shorts", "YouTube", "YouTube Shorts"].includes(String(item.metadata.platformFilter ?? "all")))));
     };
-    try {
     // A revisit shows this tab's last figures at once; the fresh reads below replace them.
-    const recent = [recentAllRecordsOfType(accessToken, "content_metric"), recentAllRecordsOfType(accessToken, "decision"), recentAllRecordsOfType(accessToken, "content_topic")];
-    if (recent.every(Boolean)) { apply(recent[0]!, recent[1]!, recent[2]!); setLoading(false); }
-    const [metrics, decisions, topics] = await Promise.all([listAllRecordsOfType(accessToken, "content_metric"), listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "content_topic")]);
-    apply(metrics, decisions, topics);
-    } finally {setLoading(false);}
+    const recent = [recentAllRecordsOfType(accessToken, "decision"), recentAllRecordsOfType(accessToken, "content_topic")];
+    if (recent.every(Boolean)) apply(recent[0]!, recent[1]!);
+    const [decisions, topics] = await Promise.all([listAllRecordsOfType(accessToken, "decision"), listAllRecordsOfType(accessToken, "content_topic")]);
+    apply(decisions, topics);
   }, [accessToken, demo, youtubeOnly]);
   useEffect(() => { load().catch((reason) => setError(reason.message)); }, [load]);
-  const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
-  const scope = useMemo(() => records.filter((item) => (origin === "all" || linkedContentOrigin(item, allSources) === origin) && (sourceId === "all" || item.parent_id === sourceId) && (brand === "all" || item.brand === brand) && (platform === "all" || item.metadata.platform === platform) && (hierarchy === "all" || item.metadata.hierarchy === hierarchy)), [records, allSources, origin, sourceId, brand, platform, hierarchy]);
+  useEffect(() => {
+    if (demo) return;
+    let active = true;
+    const apply = (metrics: OsRecord[]) => { const visible = visibleMetrics(metrics); setSnapshots(visible.filter(item=>item.metadata.channelSnapshotVersion===1)); setRecords(visible.filter(item=>item.metadata.channelSnapshotVersion!==1)); };
+    const recent = recentMetricWindow(accessToken, from, to);
+    if (recent) { apply(recent); setLoading(false); } else setLoading(true);
+    listMetricWindow(accessToken, from, to).then(metrics => { if (active) apply(metrics); }).catch(reason => { if (active) setError(reason.message); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [accessToken, demo, from, to, reload, visibleMetrics]);
+  useEffect(() => {
+    if (demo) return;
+    let active = true;
+    for (const start of [weekA, weekB]) {
+      const week = fixedWeek(start);
+      if (week) void listMetricWindow(accessToken, week.start, week.end).then(metrics => { if (active) setWeekRecords(current => ({ ...current, [start]: visibleMetrics(metrics).filter(item => item.metadata.channelSnapshotVersion !== 1) })); }).catch(reason => { if (active) setError(reason.message); });
+    }
+    return () => { active = false; };
+  }, [accessToken, demo, weekA, weekB, reload, visibleMetrics]);
+  const perform = async (action: () => Promise<unknown>) => { setBusy(true); setError(""); try { await action(); setReload(value => value + 1); await load(); } catch (reason) { setError(reason instanceof Error ? reason.message : "저장하지 못했습니다."); } finally { setBusy(false); } };
+  const inScope = useCallback((item: OsRecord) => (origin === "all" || linkedContentOrigin(item, allSources) === origin) && (sourceId === "all" || item.parent_id === sourceId) && (brand === "all" || item.brand === brand) && (platform === "all" || item.metadata.platform === platform) && (hierarchy === "all" || item.metadata.hierarchy === hierarchy), [allSources, origin, sourceId, brand, platform, hierarchy]);
+  const scope = useMemo(() => records.filter(inScope), [records, inScope]);
   const filtered = useMemo(() => dedupeMetricSnapshots(scope.filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= from && date <= to; })), [scope, from, to]);
   const totals = summarizeMetrics(filtered);
   const daily = groupMetricDimension(filtered.filter((record) => record.metadata.metricMode !== "cumulative").map((record) => ({ ...record, metadata: { ...record.metadata, day: (record.starts_at ?? record.created_at).slice(0, 10) } })), "day").sort((a, b) => a.title.localeCompare(b.title));
   const groups = groupMetricDimension(filtered, dimension).sort((a, b) => (b.revenue ?? -1) - (a.revenue ?? -1));
-  const compare = [weekA, weekB].map((start) => { const week = fixedWeek(start); const data = week ? dedupeMetricSnapshots(scope.filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= week.start && date <= week.end; })) : []; return { week, count: data.length, totals: summarizeMetrics(data) }; });
+  const compare = [weekA, weekB].map((start) => { const week = fixedWeek(start); const data = week ? dedupeMetricSnapshots((weekRecords[start] ?? []).filter(inScope).filter((item) => { const date = (item.starts_at ?? item.created_at).slice(0, 10); return date >= week.start && date <= week.end; })) : []; return { week, count: data.length, totals: summarizeMetrics(data) }; });
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     await perform(async () => {

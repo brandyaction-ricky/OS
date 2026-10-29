@@ -262,6 +262,23 @@ async function readAllRecordsOfType(token: string | null, recordType: RecordType
   return records;
 }
 
+/** content_metric as the performance screens use it: per date window, the latest cumulative snapshot per
+ *  video plus daily rows (not every hourly observation). No dates = all history. */
+export function metricWindowPath(from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  return `/api/v1/content/metrics${params.size ? `?${params}` : ""}`;
+}
+export function recentMetricWindow(token: string | null, from?: string, to?: string) {
+  const hit = recentRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);
+  return hit ? decodedRecordTitles(hit.records) : undefined;
+}
+export async function listMetricWindow(token: string | null, from?: string, to?: string) {
+  const { records } = await sharedRead<{ records: OsRecord[] }>(metricWindowPath(from, to), token);
+  return decodedRecordTitles(records);
+}
+
 export async function listAllRecords(token: string | null, query = "limit=200") {
   return apiRequest<{ records: OsRecord[]; total: number }>(`/api/v1/records?${query}`, { token });
 }
