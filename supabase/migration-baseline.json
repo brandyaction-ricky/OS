@@ -897,8 +897,11 @@
       "sha256": "c566aca36b04e2da57027753632cb46b86d1efedfbc7bb6cecbfcf7f20617899",
       "purpose": "Official Threads API dispatch for reviewed personal text chains: server-only run/checkpoint records, atomic claim/completion RPCs, and source edit guard. No live activation.",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Not applied to DEV or Production. Local in-memory PostgreSQL fixture checked separately; real DEV RLS and Meta connection still require verification. No existing data moved or external post made."
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Owner separately approved the production DB addition and preparation switch on 2026-10-29. Applied this exact SQL only in one transaction with its history row and privilege checks. Readback: history 1, RLS enabled, public/authenticated access denied, service-only invoker RPCs 3, source guard 1, publication state rows 0. The recorded SQL matches this file. No existing data moved, external post made, or DEV migration applied. Local PostgreSQL fixture checks are separate from real Meta integration.",
+      "productionApprovedAt": "2026-10-29"
     },
     {
       "file": "20261029090000_document_rls_inline.sql",
