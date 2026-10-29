@@ -52,12 +52,17 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
     try { setItems(await client.feedback(projectId)); } catch (reason) { fail(reason); }
   }, [client, fail, projectId]);
   useEffect(() => { void loadFeedback(); }, [loadFeedback]);
+  // A new signed address restarts the download (and the playing spot), so it is asked for only when the shown final changes.
+  const finalKey = final ? `${final.v}:${final.at}` : "";
+  const shownFinal = useRef(final);
+  shownFinal.current = final;
   useEffect(() => {
     let active = true;
-    if (!page.client || !project || !final) { setSrc(null); return; }
-    page.client.finalUrl(project.id, final).then(url => { if (active) setSrc(url); }, () => { if (active) setSrc(null); });
+    const current = shownFinal.current;
+    if (!client || !projectId || !current) { setSrc(null); return; }
+    client.finalUrl(projectId, current).then(url => { if (active) setSrc(url); }, () => { if (active) setSrc(null); });
     return () => { active = false; };
-  }, [page.client, project, final]);
+  }, [client, projectId, finalKey]);
 
   const old = view === "video" && ver !== latest;
   // Open long-form items from earlier versions follow the latest one ('vN에서 넘어옴', 3차).
