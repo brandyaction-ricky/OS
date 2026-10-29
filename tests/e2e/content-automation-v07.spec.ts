@@ -1,7 +1,7 @@
 import { expect,test } from "@playwright/test";
 
 const pages=[
-  ["dashboard","자동화 현황"],["references","참고 자료"],["topics","주제 기획"],["cardnews","카드뉴스"],
+  ["dashboard","자동화 현황"],["references","레퍼런스 수집"],["topics","주제 기획"],["cardnews","카드뉴스"],
   ["shorts","쇼츠"],["threads","쓰레드"],["review","최종 확인"],
   ["calendar","발행"],["performance","반응·성과"],["requests","맡긴 일"],
   ["settings","자동화 설정"],
@@ -23,7 +23,7 @@ test("all automation screens render without horizontal overflow in desktop and m
 
 test("reference form keeps unavailable reactions distinct from a confirmed zero",async({page})=>{
   await page.goto("/automation/references");
-  await expect(page.getByRole("heading",{name:"참고 자료",level:1,exact:true})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"레퍼런스 수집",level:1,exact:true})).toBeVisible();
   await expect(page.getByText("나만 보임",{exact:false})).toBeVisible();
   await page.getByRole("button",{name:"+ 원문 등록"}).click();
   await expect(page.getByRole("combobox",{name:"조회 확인",exact:true})).toHaveValue("unknown");

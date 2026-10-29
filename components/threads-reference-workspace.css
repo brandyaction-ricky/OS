@@ -41,3 +41,13 @@
 .linear-shell .ui-v2.ca-v07 .tr-evidence-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(180px,1fr);gap:14px;padding:14px 0;border-top:1px solid var(--line-soft)}
 @media(max-width:900px){.linear-shell .ui-v2.ca-v07 .tr-reference,.linear-shell .ui-v2.ca-v07 .tr-evidence-row{grid-template-columns:1fr}.linear-shell .ui-v2.ca-v07 .tr-quality{padding:12px 0 0;border-left:0;border-top:1px solid var(--line-soft)}}
 @media(max-width:700px){.linear-shell .ui-v2.ca-v07 .tr-meaning-grid,.linear-shell .ui-v2.ca-v07 .tr-evidence-grid{grid-template-columns:1fr}.linear-shell .ui-v2.ca-v07 .tr-metric-inputs{grid-template-columns:repeat(2,minmax(0,1fr))}.linear-shell .ui-v2.ca-v07 .tr-list-head{align-items:flex-start;flex-direction:column;gap:4px}.linear-shell .ui-v2.ca-v07 .tr-comparison-input-row{grid-template-columns:1fr 1fr}.linear-shell .ui-v2.ca-v07 .tr-comparison-input-row>label:first-child{grid-column:1/-1}.linear-shell .ui-v2.ca-v07 .tr-pick{flex-wrap:wrap}.linear-shell .ui-v2.ca-v07 .tr-reference{padding:14px}}
+
+.linear-shell .ui-v2.ca-v07 .tr-pick-status{display:inline-block;margin-left:12px;font-size:13px;color:var(--muted)}
+.linear-shell .ui-v2.ca-v07 .tr-selected-guide{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:14px 16px;margin:12px 0;border:1px solid var(--accent);border-radius:10px;background:var(--card)}
+.linear-shell .ui-v2.ca-v07 .tr-selected-guide a{margin-left:auto;font-weight:700;color:var(--accent)}
+@media(max-width:700px){.linear-shell .ui-v2.ca-v07 .tr-pick-status{display:block;margin:6px 0 0}.linear-shell .ui-v2.ca-v07 .tr-selected-guide a{margin-left:0}}
+.linear-shell .ui-v2.ca-v07 .tr-pick .ca-v07-check{display:inline-flex;min-height:40px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font-weight:600;cursor:pointer}
+.linear-shell .ui-v2.ca-v07 .tr-pick .ca-v07-check input{width:18px;height:18px;accent-color:var(--accent);cursor:pointer}
+.linear-shell .ui-v2.ca-v07 .tr-reference.is-selected .tr-pick .ca-v07-check{border-color:var(--accent);color:var(--accent)}
+
+.linear-shell .ui-v2.ca-v07 .tr-inline-next{display:inline-flex;align-items:center;min-height:40px;margin-left:10px;color:var(--accent);font-weight:700}

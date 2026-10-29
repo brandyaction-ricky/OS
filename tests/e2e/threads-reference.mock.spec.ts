@@ -140,7 +140,8 @@ async function mockWorkspace(page: Page, noRecommendations = false) {
 test("qualified Korean references propose a topic and preserve human edits until explicitly replaced", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/references");
-  await expect(page.getByRole("button", { name: "추천 후보 2개", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "전체 4개", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "추천 후보 2개", exact: true }).click();
   await expect(page.locator(".tr-reference")).toHaveCount(2);
   const first = page.locator(".tr-reference").filter({ hasText: "The cost of a big plan" });
   await expect(first.getByRole("heading", { name: "계획을 줄이면 시작이 쉬워지는 이유" })).toBeVisible();
@@ -174,7 +175,7 @@ test("qualified Korean references propose a topic and preserve human edits until
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
   await page.goto("/automation/references");
   await page.locator(".tr-reference").filter({ hasText: "한 가지 일을 마치는 연습" }).getByRole("button", { name: "보관", exact: true }).click();
-  await expect(page.locator(".tr-reference")).toHaveCount(1);
+  await expect(page.locator(".tr-reference")).toHaveCount(3);
   expect(state.writes[1]).toEqual({ path: `topics/${SECOND}/archive-reference`, body: { version: 1 } });
   await page.goto(`/automation/topics?sel=${TOPIC}`);
   await page.getByText("선택한 참고 자료 1개", { exact: true }).click();
@@ -330,32 +331,46 @@ test("mobile topic planning keeps native controls compact and its next action vi
   expect(state.external).toEqual([]);
 });
 
-test("six likes and one comment are content reference only and legacy evidence stays pending", async ({ page }, testInfo) => {
+test("low-reaction and pending references remain selectable with their status visible", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page);
   await page.goto("/automation/references");
   await page.getByRole("button", { name: "내용 참고 1개", exact: true }).click();
   const weak = page.locator(".tr-reference");
   await expect(weak).toHaveCount(1);
-  await expect(weak.getByRole("checkbox")).toBeDisabled();
-  await expect(weak.locator(".tr-selection-reason")).toContainText("좋아요 100개");
+  await expect(weak.getByRole("checkbox")).toBeEnabled();
+  await expect(weak.locator(".tr-quality")).toContainText("좋아요 100개");
+  await expect(weak.locator(".tr-pick-status")).toContainText("선택 가능");
   await weak.getByText("원문·반응 근거 보기", { exact: true }).click();
   await expect(weak.locator(".tr-metrics dd").nth(1)).toHaveText("6");
   await expect(weak.locator(".tr-metrics dd").nth(2)).toHaveText("1");
   await page.screenshot({ path: testInfo.outputPath("weak-content-only.png"), fullPage: true });
+  await weak.getByRole("checkbox").check();
+  await expect(page.getByText("1개 선택됨", { exact: true })).toBeVisible();
+  await weak.getByRole("checkbox").uncheck();
   await expect(page.locator(".tr-selection")).toHaveCount(0);
   await page.getByRole("button", { name: "검증 대기 1개", exact: true }).click();
-  await expect(page.locator(".tr-reference").getByRole("checkbox")).toBeDisabled();
+  await expect(page.locator(".tr-reference").getByRole("checkbox")).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.locator(".tr-reference").getByRole("checkbox").check();
+  await expect(page.getByText("1개 선택됨", { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  await expect(page.locator(".tr-reference").getByRole("link", { name: "선택한 자료로 주제 만들기 ↓" })).toBeVisible();
+  await page.locator(".tr-reference").getByRole("link", { name: "선택한 자료로 주제 만들기 ↓" }).click();
+  await page.getByLabel("주제 후보 이름", { exact: true }).fill("내가 선택한 주제");
   await expect(page.locator(".tr-reference")).toContainText("Earlier collected example");
   await expect(page.locator(".tr-reference")).toContainText("한국어 내용 제목 확인 필요");
   await page.getByRole("button", { name: "전체 4개", exact: true }).click();
   await expect(page.locator(".tr-reference")).toHaveCount(4);
-  expect(state.writes).toEqual([]);
+  await page.getByRole("button", { name: "주제 후보로 가져오기" }).click();
+  await expect(page).toHaveURL(new RegExp(`/automation/topics\\?sel=${TOPIC}`));
+  expect(state.writes[0].body.referenceIds).toEqual([LEGACY]);
   expect(state.external).toEqual([]);
 });
 
 test("zero recommendations is an honest empty state and collection instructions require qualified candidates", async ({ page }, testInfo) => {
   const state = await mockWorkspace(page, true);
   await page.goto("/automation/references");
+  await page.getByRole("button", { name: "추천 후보 0개", exact: true }).click();
   await expect(page.locator(".ca-v07-empty")).toContainText("추천 후보 0개");
   await expect(page.locator(".ca-v07-empty")).toContainText("수를 채울 필요는 없습니다");
   await expect(page.locator(".tr-workspace").getByRole("alert")).toHaveCount(0);
@@ -402,7 +417,7 @@ test("incomplete evidence may be saved and comparison draft input is not discard
   expect(savedItem.koreanTitle).toBe("아직 비교 근거를 모으는 글");
   expect(savedItem.comparison?.posts).toEqual([{ url: "https://example.test/comparison-one", likes: 24, publishedAt: "2026-01-10" }]);
   await page.getByRole("button", { name: "내용 참고 2개", exact: true }).click();
-  await expect(page.locator(".tr-reference").filter({ hasText: "아직 비교 근거를 모으는 글" }).getByRole("checkbox")).toBeDisabled();
+  await expect(page.locator(".tr-reference").filter({ hasText: "아직 비교 근거를 모으는 글" }).getByRole("checkbox")).toBeEnabled();
   expect(state.writes).toHaveLength(1);
   expect(state.external).toEqual([]);
 });

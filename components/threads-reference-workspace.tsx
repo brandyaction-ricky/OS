@@ -96,7 +96,7 @@ export function collectionInstruction(scope: string, count: number, context: Ref
 
 export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }: { records: OsRecord[]; mutate: Mutate; collectionContext: ReferenceCollectionContext | null }) {
   const router = useRouter(), { demo } = useSession();
-  const [query, setQuery] = useState(""), [platform, setPlatform] = useState("all"), [qualityFilter, setQualityFilter] = useState<QualityFilter>("recommended");
+  const [query, setQuery] = useState(""), [platform, setPlatform] = useState("all"), [qualityFilter, setQualityFilter] = useState<QualityFilter>("all");
   const [selectedIds, setSelectedIds] = useState<string[]>([]), [topicTitle, setTopicTitle] = useState("");
   const [editor, setEditor] = useState<{ record: OsRecord | null; item: ThreadsReferenceItem } | null>(null);
   const [comparisonBasis, setComparisonBasis] = useState(""), [comparisonRows, setComparisonRows] = useState<ComparisonDraft[]>([]);
@@ -108,12 +108,12 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
   entries.forEach(({ quality }) => { counts[quality.status] += 1; });
   const filtered = entries.filter(({ item, quality }) => (qualityFilter === "all" || quality.status === qualityFilter) && (platform === "all" || item.platform === platform) &&
     [item.title, item.koreanTitle, item.summary, item.suggestedTopic, item.author, item.scene, item.readerQuestion, item.addedPerspective].join(" ").toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const selected = selectedIds.flatMap(id => entries.filter(({ record, quality }) => record.id === id && quality.status === "recommended"));
+  const selected = selectedIds.flatMap(id => entries.filter(({ record }) => record.id === id));
   const patch = (change: Partial<ThreadsReferenceItem>) => setEditor(current => current ? { ...current, item: { ...current.item, ...change } } : null);
   const clearSelection = () => { setSelectedIds([]); setTopicTitle(""); setRequestId(crypto.randomUUID()); };
   const toggleSelection = (id: string, checked: boolean) => {
     const entry = entries.find(({ record }) => record.id === id);
-    if (!entry || entry.quality.status !== "recommended" || (checked && selected.length >= 3)) return;
+    if (!entry || (checked && selected.length >= 20)) return;
     const next = checked ? [...selected.map(({ record }) => record.id), id] : selected.map(({ record }) => record.id).filter(value => value !== id);
     if (!next.length) setTopicTitle("");
     else if (!selected.length && checked) setTopicTitle(entry.item.suggestedTopic?.trim() || "");
@@ -140,17 +140,13 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
       if (editor.record) await mutate(`/api/v1/content/automation/topics/${editor.record.id}`, "PATCH", { expectedVersion: editor.record.version, title: reference.title, metadata: { reference_items: [reference] } });
       else await mutate("/api/v1/content/automation/topics", "POST", { title: reference.title, source: "reference", sourceRef: reference.url, kind: "threads_reference", editorial_workflow: "threads_reference_v1", reference_items: [reference], requestId });
       const quality = evaluateThreadsReference(reference);
-      if (editor.record && quality.status !== "recommended") {
-        const remaining = selected.filter(({ record }) => record.id !== editor.record!.id);
-        setSelectedIds(remaining.map(({ record }) => record.id)); if (!remaining.length) setTopicTitle("");
-      }
-      setQualityFilter(quality.status); setEditor(null); setNotice(`${quality.label}(으)로 저장했습니다. 주제에 사용할 추천 후보는 직접 선택해 주세요.`); setRequestId(crypto.randomUUID());
+      setQualityFilter(quality.status); setEditor(null); setNotice(`${quality.label}(으)로 저장했습니다. 원하는 자료는 검증 상태와 관계없이 선택할 수 있습니다.`); setRequestId(crypto.randomUUID());
     } catch (issue) { setError(issue instanceof Error ? issue.message : "참고 자료를 저장하지 못했습니다."); }
     finally { setBusy(false); }
   };
   const promote = async (event: FormEvent) => {
     event.preventDefault(); if (!selected.length || busy) return;
-    if (selected.length > 3 || selected.some(({ quality }) => quality.status !== "recommended")) { setError("검증을 마친 추천 후보를 최대 3개 선택해 주세요."); return; }
+    if (selected.length > 20) { setError("자료는 최대 20개까지 선택할 수 있습니다."); return; }
     setBusy(true); setError("");
     try {
       const response = await mutate("/api/v1/content/automation/topics", "POST", { title: topicTitle.trim(), source: "reference", referenceIds: selected.map(({ record }) => record.id), requestId });
@@ -169,7 +165,7 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
     <div className="ca-v07-toolbar"><input aria-label="참고 자료 검색" placeholder="한국어 제목·질문·관점 검색" value={query} onChange={event => setQuery(event.target.value)} />
       <select aria-label="참고 자료 플랫폼" value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">전체 플랫폼</option>{Object.entries(PLATFORM_LABELS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select>
       <button type="button" className="primary" onClick={() => openEditor(null)}>+ 원문 등록</button></div>
-    <p>한국어 정리와 독자의 질문을 비교하고, 검증을 마친 추천 후보만 주제 기획으로 가져옵니다. 내용 참고·검증 대기 자료도 수집함에 보관됩니다.</p>
+    <p>마음에 드는 자료의 ‘주제에 사용’을 선택하세요. 검증 상태와 관계없이 주제로 만들 수 있습니다. 선택하면 주제 만들기 버튼이 나타납니다.</p>
     <details className="ca-v07-brief"><summary>Aside에 원문 조사 맡기기</summary><div className="ca-v07-form-grid tr-collection-fields"><label>이번에 살펴볼 주제·범위<input value={collectionScope} maxLength={1000} placeholder="비워 두면 현재 정본과 타겟 기준으로 조사" onChange={event => setCollectionScope(event.target.value)} /></label>
       <label>추천 후보 수<select value={collectionCount} onChange={event => setCollectionCount(Number(event.target.value))}>{[1, 2, 3].map(count => <option key={count} value={count}>최대 {count}개</option>)}</select></label></div>
       <p>탐색 범위는 넓히되 기준을 통과한 글만 최대 3개 추천합니다. 추천 후보가 0개여도 정상입니다.</p>
@@ -217,21 +213,22 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
         <label>실제로 읽은 독자 반응·질문<textarea maxLength={3000} value={editor.item.audienceNote ?? ""} placeholder="댓글을 직접 읽고 의미 있는 반응과 반복되는 질문을 구체적으로 정리" onChange={event => patch({ audienceNote: event.target.value })} /></label></div>
       <div className="ca-v07-actions"><button type="button" disabled={busy} onClick={() => setEditor(null)}>취소</button><button className="primary" disabled={busy || demo}>{busy ? "저장 중…" : "내 참고 자료에 저장"}</button></div>
     </form> : null}
-    <div className="tr-list-head"><h2>내 참고 자료 <small>전체 {entries.length}개</small></h2><span>추천 후보만 선택 가능 · 최대 3개</span></div>
+    <div className="tr-list-head"><h2>내 레퍼런스 <small>전체 {entries.length}개</small></h2><span>원하는 자료 선택 → 주제 만들기</span></div>
     <div className="tr-quality-filters" role="group" aria-label="참고 자료 검증 상태">{(Object.keys(QUALITY_LABELS) as QualityFilter[]).map(key => <button key={key} type="button" aria-pressed={qualityFilter === key} onClick={() => setQualityFilter(key)}>{QUALITY_LABELS[key]} {counts[key]}개</button>)}</div>
+    {selected.length ? <div className="tr-selected-guide" role="status"><strong>{selected.length}개 선택됨</strong><span>선택한 자료를 확인하고 주제를 만들어 보세요.</span><a href="#tr-create-topic">선택한 자료로 주제 만들기 ↓</a></div> : null}
     {filtered.length ? <div className="tr-comparison">{filtered.map(({ record, item, quality }) => {
-      const checked = selected.some(entry => entry.record.id === record.id), unavailable = quality.status !== "recommended";
-      const reason = unavailable ? quality.reasons.join(" · ") || "추천 기준 확인이 필요합니다." : !checked && selected.length >= 3 ? "추천 후보는 최대 3개까지 선택할 수 있습니다." : "";
+      const checked = selected.some(entry => entry.record.id === record.id);
+      const reason = !checked && selected.length >= 20 ? "자료는 최대 20개까지 선택할 수 있습니다." : "";
       return <article className={`tr-reference${checked ? " is-selected" : ""}`} key={record.id}>
-        <div className="tr-pick"><div><label className="ca-v07-check"><input type="checkbox" aria-label={`${referenceTitle(item)} 선택`} aria-describedby={reason ? `selection-reason-${record.id}` : undefined} checked={checked} disabled={busy || unavailable || (!checked && selected.length >= 3)} onChange={event => toggleSelection(record.id, event.target.checked)} />주제에 사용</label>
+        <div className="tr-pick"><div><label className="ca-v07-check"><input type="checkbox" aria-label={`${referenceTitle(item)} 선택`} aria-describedby={reason ? `selection-reason-${record.id}` : undefined} checked={checked} disabled={busy || (!checked && selected.length >= 20)} onChange={event => toggleSelection(record.id, event.target.checked)} />주제에 사용</label>{checked ? <a className="tr-inline-next" href="#tr-create-topic">선택한 자료로 주제 만들기 ↓</a> : null}<span className="tr-pick-status">{quality.label}{quality.status === "recommended" ? " · 반응 기준 충족" : quality.status === "pending" ? " · 확인되지 않은 근거 있음 · 선택 가능" : " · 추천 기준 미충족 · 선택 가능"}</span>
           {reason ? <small id={`selection-reason-${record.id}`} className="tr-selection-reason">{reason}</small> : null}</div><div className="ca-v07-actions"><button type="button" disabled={busy} onClick={() => openEditor(record, item)}>수정</button><button type="button" disabled={busy || demo} title="수집 목록에서 숨깁니다. 주제에 가져온 근거는 유지됩니다." onClick={() => void archive(record)}>보관</button></div></div>
         <ReferenceFacts item={item} />
       </article>;
     })}</div> : <div className="ca-v07-empty">{qualityFilter === "recommended" && !counts.recommended ? <><strong>추천 후보 0개</strong><p>아직 추천 기준을 모두 통과한 원문이 없습니다. 수를 채울 필요는 없습니다.</p><p>검증 대기에서 부족한 근거를 보완하거나 내용 참고·전체에서 모은 자료를 살펴보세요.</p></> : entries.length ? "이 조건에 맞는 참고 자료가 없습니다." : "아직 모은 원문이 없습니다. 원문을 확인하고 첫 참고 자료를 등록하세요."}</div>}
-    {selected.length ? <form className="ca-v07-card ca-v07-form tr-selection" onSubmit={event => void promote(event)}><h2>선택한 원문 {selected.length}개로 주제 만들기</h2>
+    {selected.length ? <form id="tr-create-topic" className="ca-v07-card ca-v07-form tr-selection" onSubmit={event => void promote(event)}><h2>선택한 원문 {selected.length}개로 주제 만들기</h2>
       <ul>{selected.map(({ record, item }) => <li key={record.id}>{referenceTitle(item)}</li>)}</ul>
       <label>주제 후보 이름<input aria-label="주제 후보 이름" aria-describedby="tr-topic-name-help" required maxLength={240} value={topicTitle} onChange={event => { setTopicTitle(event.target.value); setRequestId(crypto.randomUUID()); }} placeholder="선택한 원문으로 다룰 질문" /></label><small id="tr-topic-name-help">우리가 다룰 질문 · 내부 기획 이름, 첫 줄 카피는 집필 단계</small>
-      <p>첫 원문의 제안을 채워 두었습니다. 이름은 직접 바꿀 수 있고, 원문을 더 선택해도 입력한 이름은 유지됩니다.</p>
+      <p>주제 후보 이름은 직접 바꿀 수 있습니다. 검증되지 않은 반응은 확인된 인기나 성과로 단정하지 않습니다.</p>
       <div className="tr-topic-suggestions">{selected.map(({ record, item }) => item.suggestedTopic ? <button type="button" key={record.id} disabled={busy} onClick={() => { setTopicTitle(item.suggestedTopic!); setRequestId(crypto.randomUUID()); }}>제안 사용: {item.suggestedTopic}</button> : null)}</div>
       <p>선택한 원문만 주제 기획으로 가져갑니다. 기획 메모를 정하고 제작을 시작하면 쓰레드를 집필할 수 있습니다.</p>
       <div className="ca-v07-actions"><button type="button" disabled={busy} onClick={clearSelection}>선택 해제</button><button className="primary" disabled={busy || demo || !topicTitle.trim()}>{busy ? "가져오는 중…" : "주제 후보로 가져오기"}</button><Link href="/automation/topics">주제 기획 보기 →</Link></div>
