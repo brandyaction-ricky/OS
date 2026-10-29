@@ -1,12 +1,20 @@
 // 숏폼 기획표 (2026-10-28): the same myin_storyboard.json as a longform, drawn 9:16 by the render PC's vertical copy of Logan's engine
-// (owner 2026-10-27: shorts are the longform engine in portrait). Two kinds of scene only: opening scenes of big type (acts) where one
-// sentence carries the point, and lib_ scenes from the diagrams that have a vertical layout, for relations (GPT 「숏폼 롱폼 엔진
-// 전환 — 시험 규칙」 §4–8). No reel, music or CTA voice. The OS checks what would break the render or the first screen.
-import { myinCueMisses, myinNorm, openingTextIssues, type MyinStoryboard } from "./myin-storyboard.ts";
+// (owner 2026-10-27: shorts are the longform engine in portrait). Opening scenes of big type (acts) on the first and the last screen
+// only, and between them lib_ scenes from the diagrams that have a vertical layout and Logan's persona card (owner 2026-10-29: text-only
+// screens lose viewers, at least 8 in 10 seconds are diagrams). No reel, music or CTA voice. The OS checks what would break the render,
+// the first screen and the diagram share.
+import { myinCueMisses, myinNorm, myinSceneStarts, openingTextIssues, type MyinStoryboard } from "./myin-storyboard.ts";
 
 /** A vertical diagram as the render PC's catalog lists it (lib/shortform-diagram-catalog.json): its slots and their letter limits. */
 export interface ShortDiagram { type: string; name: string; slots: string; spec: SlotSpec }
 interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; min?: number; max?: number }
+/** 인물 카드: Logan's persona scene (myin_persona.py), centred in the vertical frame by the render PC — for the first time the script
+ *  brings in a person (시안 2: 「6년 차 디자이너 수진 씨」). His drawer reads every person's name and desc. */
+export const SHORT_PERSONA: ShortDiagram = { type: "persona", name: "인물 카드", slots: "사람 1~2명, name ≤ 6자, desc ≤ 12자, prop(선택): hair · glasses · tie · bag",
+  spec: { kind: "object", fields: { people: { kind: "array", min: 1, max: 2, item: { kind: "object", fields: { name: { kind: "text", max: 6 }, desc: { kind: "text", max: 12 } } } } } } };
+/** Diagram screen time in a short (owner 2026-10-29: 8할 이상). A clip under 20 s is exempt: its first sentence alone passes 20 %. */
+export const SHORT_DIAGRAM_SHARE = 0.8;
+const SHARE_FROM_SECONDS = 20;
 
 // Big type in 1080 px: a slam grows a line ×1.28, so lines stay inside ~0.8 W (A1–A3 pilots: 777–805 px passed at 360 px).
 export const SHORT_LINE_MAX_PX = 860;
@@ -54,10 +62,13 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
   if (scenes.length < 2 || scenes.length > 60) issues.push(`장면은 2~60개예요(지금 ${scenes.length}개).`);
   const end = Number(raw.end);
   if (!Number.isFinite(end) || end < input.durationSeconds || end > input.durationSeconds + 3) issues.push(`end는 마지막 말이 끝난 뒤 0~3초 안의 초예요(낭독 ${input.durationSeconds.toFixed(1)}초).`);
-  const diagrams = new Map(input.diagrams.map((d) => [d.type, d]));
+  const diagrams = new Map([...input.diagrams, SHORT_PERSONA].map((d) => [d.type, d]));
   scenes.forEach((sc, n) => {
     const where = `[장면 ${n + 1}]`;
     if (sc.at === undefined && sc.at_time === undefined) issues.push(`${where} at(시작 문구)이 없어요.`);
+    if (sc.type === "opening" && n > 0 && n < scenes.length - 1) issues.push(`${where} 큰 글자(opening)는 첫 장면과 마지막 장면에만 써요. 이 구간은 세로 도식이나 인물 카드로 그려요.`);
+    if (sc.type === "persona" && !(Array.isArray(sc.people) && sc.people.length && sc.people.every((p) => typeof p?.name === "string" && typeof p?.desc === "string")))
+      issues.push(`${where} persona는 people(사람마다 name · desc)이 있어야 해요.`);
     if (sc.type === "opening") {
       const acts = Array.isArray(sc.acts) ? sc.acts : [];
       if (!acts.length) issues.push(`${where} opening에 acts가 없어요.`);
@@ -72,14 +83,14 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
         }
       });
     } else if (diagrams.has(sc.type)) issues.push(...slotIssues(diagrams.get(sc.type)!.spec, sc, `${where} ${sc.type}`));
-    else issues.push(`${where} "${sc.type}"는 세로로 그릴 수 없어요. 큰 글자는 opening, 관계는 아래 세로 도식 목록에서 골라요.`);
+    else issues.push(`${where} "${sc.type}"는 세로로 그릴 수 없어요. 큰 글자는 opening, 관계와 사람은 아래 세로 도식 목록에서 골라요.`);
   });
   // 헤드 카피 (숏폼 대본 정본, owner 2026-10-28: the most important): the first screen's big words are the confirmed ones.
   const first = scenes[0];
   const head = first?.type === "opening" && Array.isArray(first.acts) && first.acts[0] ? actLines(first.acts[0]).map(lineText).join(" ") : "";
   if (first?.type !== "opening") issues.push("첫 장면은 opening이에요 — 첫 화면에 헤드 카피를 크게 띄워요.");
   else if (input.headCopy.trim() && myinNorm(head) !== myinNorm(input.headCopy)) issues.push(`첫 장면 첫 막의 글자는 확정한 헤드 카피 「${input.headCopy}」 그대로예요(지금 「${head}」).`);
-  if (issues.length) return { issues: issues.slice(0, 40), story: null, fuzzy: [] as string[] };
+  if (issues.length) return { issues: issues.slice(0, 40), story: null, fuzzy: [] as string[], share: 0 };
 
   const story = { ...raw, end, cta: [] as { after: string; line: string }[],
     scenes: scenes.map((sc) => sc.type !== "opening" ? { bg: "white", ...timedSlots(sc, sceneStart(sc)) as Scene }
@@ -88,7 +99,23 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
   delete (story as Record<string, unknown>).music_cues;
   const cues = myinCueMisses(story, input.words);
   issues.push(...cues.misses, ...openingTextIssues(story, input.words, input.speech).map((issue) => issue.replace("쇼릴 전에는 자막이 없으니", "첫 장면에는 자막이 없으니")));
-  return { issues: issues.slice(0, 40), story: issues.length ? null : story, fuzzy: cues.fuzzy };
+  const share = diagramShare(story.scenes, input.words, input.durationSeconds);
+  if (input.durationSeconds >= SHARE_FROM_SECONDS && share < SHORT_DIAGRAM_SHARE)
+    issues.push(`도식 화면이 ${Math.round(share * 100)}%예요. ${SHORT_DIAGRAM_SHARE * 100}% 이상이 되게 첫 장면은 첫 문장까지만 두고, 그 뒤는 세로 도식 · 인물 카드로 그려요.`);
+  return { issues: issues.slice(0, 40), story: issues.length ? null : story, fuzzy: cues.fuzzy, share };
+}
+
+/** The part of the narration (0–1) under a diagram or persona scene: each scene runs from its start to the next found start. */
+function diagramShare(scenes: { type: string; at?: unknown; at_time?: unknown }[], words: [number, number, string][], total: number) {
+  const starts = myinSceneStarts(scenes, words);
+  let shown = 0;
+  scenes.forEach((sc, n) => {
+    const from = starts[n];
+    if (from === null || sc.type === "opening") return;
+    const to = starts.slice(n + 1).find((at) => at !== null) ?? total;
+    shown += Math.max(0, Math.min(to, total) - Math.min(from, total));
+  });
+  return total > 0 ? shown / total : 0;
 }
 
 /**
@@ -105,12 +132,13 @@ function shortAct(act: Act, k: number, sc: Scene) {
 }
 
 const sceneStart = (sc: Scene) => typeof sc.at === "string" ? { cue: sc.at } : { t: sc.at_time };
-/** A diagram's slots ({ text, … } at any depth) without a cue or t appear with the scene, like A1's items (the V layouts read every t). */
+/** A diagram's slots ({ text, … } or a persona's { name, … } at any depth) without a cue or t appear with the scene, like A1's items
+ *  (the V layouts and the persona drawer read every t). */
 function timedSlots(value: unknown, when: { cue?: unknown; t?: unknown }, root = true): unknown {
   if (Array.isArray(value)) return value.map((item) => timedSlots(item, when, false));
   if (!value || typeof value !== "object") return value;
   const o = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, timedSlots(item, when, false)]));
-  return !root && typeof o.text === "string" && !timed(o) ? { ...o, ...when } : o;
+  return !root && (typeof o.text === "string" || typeof o.name === "string") && !timed(o) ? { ...o, ...when } : o;
 }
 
 /** A diagram's limits as the OS checks them (slotIssues): "a.text ≤ 8자 · items 1~4개 · items.text ≤ 9자". */

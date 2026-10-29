@@ -521,7 +521,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 7
               },
               "t": {
                 "kind": "number",
@@ -717,7 +717,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 7
               },
               "t": {
                 "kind": "number",
@@ -858,7 +858,7 @@
   {
     "type": "lib_timeline",
     "name": "타임라인",
-    "slots": "시점 3~5개, 각 ≤ 6자, when ≤ 6자",
+    "slots": "시점 2~3개, 각 ≤ 6자, when ≤ 6자",
     "duration": 5.0,
     "scene": {
       "t0": 0.0,
@@ -877,11 +877,6 @@
           "text": "첫 회사",
           "t": 1.9,
           "when": "27살"
-        },
-        {
-          "text": "지금",
-          "t": 2.6,
-          "when": "37살"
         }
       ]
     },
@@ -898,7 +893,7 @@
         "items": {
           "kind": "array",
           "min": 1,
-          "max": 5,
+          "max": 3,
           "item": {
             "kind": "object",
             "fields": {
@@ -1594,7 +1589,7 @@
         },
         "link": {
           "kind": "text",
-          "max": 8
+          "max": 7
         }
       }
     }
@@ -1725,7 +1720,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 7
               },
               "t": {
                 "kind": "number",
@@ -1803,7 +1798,7 @@
         },
         "button": {
           "kind": "text",
-          "max": 8
+          "max": 7
         }
       }
     }
@@ -1941,7 +1936,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 7
               },
               "t": {
                 "kind": "number",
@@ -2032,7 +2027,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 5
               },
               "t": {
                 "kind": "number",
@@ -2309,7 +2304,7 @@
             "fields": {
               "text": {
                 "kind": "text",
-                "max": 8
+                "max": 7
               },
               "t": {
                 "kind": "number",
@@ -2507,7 +2502,7 @@
           "fields": {
             "text": {
               "kind": "text",
-              "max": 8
+              "max": 7
             },
             "t": {
               "kind": "number",
@@ -2523,7 +2518,7 @@
           "fields": {
             "text": {
               "kind": "text",
-              "max": 8
+              "max": 7
             },
             "t": {
               "kind": "number",
@@ -2588,7 +2583,7 @@
           "fields": {
             "text": {
               "kind": "text",
-              "max": 8
+              "max": 7
             },
             "t": {
               "kind": "number",
@@ -2611,7 +2606,7 @@
           "fields": {
             "text": {
               "kind": "text",
-              "max": 8
+              "max": 7
             },
             "t": {
               "kind": "number",

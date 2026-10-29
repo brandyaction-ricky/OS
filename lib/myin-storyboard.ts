@@ -119,6 +119,24 @@ export function myinCueMisses(story: MyinStoryboard, words: [number, number, str
   return { misses, fuzzy };
 }
 
+/** When each scene starts (seconds), found the way resolve() finds its at; at_time scenes keep theirs, an unfound one is null. */
+export function myinSceneStarts(scenes: { at?: unknown; at_time?: unknown }[], words: [number, number, string][]) {
+  const lookup = finder(words);
+  const offsets: number[] = [];
+  let length = 0;
+  for (const [, , word] of words) { offsets.push(length); length += myinNorm(word).length; }
+  let pos = 0;
+  return scenes.map((sc) => {
+    if (typeof sc.at_time === "number") return sc.at_time;
+    const hit = lookup(String(sc.at ?? ""), pos, 2500);
+    pos = (hit?.at ?? pos) + 1;
+    if (!hit) return null;
+    let k = 0;
+    while (k + 1 < offsets.length && offsets[k + 1] <= hit.at) k++;
+    return words[k]?.[0] ?? 0;
+  });
+}
+
 /** Shape and cue problems as a list the staff AI can fix (empty = passes), plus notes for Logan that do not block.
  *  catalogTypes: the lib_ diagrams the render PC reported (도식 창고); they count as known types. */
 // 로건 운영 시험 (2026-10-23) 제작 기본값: 본문 장면의 절반 이상이 도식 · 이미지(창고 lib_ 도식, v13 비유 도식, 사진이 붙은 장면),
