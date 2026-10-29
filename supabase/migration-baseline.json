@@ -908,8 +908,11 @@
       "sha256": "c142007effe5b1f71aa11d6c0d147113908d8b82f88559a170169441c3e27fbd",
       "purpose": "영상 성과: os_content_metric_window(from,to) returns the latest cumulative snapshot per video plus daily rows for a date window; window index on content_metric",
       "requiresApproval": true,
-      "appliedEnvironments": [],
-      "notes": "Speed request 2026-10-29. Additive: one security-invoker function and one partial index. Rollback-only run on DEV with sample rows: window picks the latest cumulative row per video, keeps daily rows and channel snapshots, drops rows outside the window. Read-only timing on Production of the same query for 30 days: ~0.32 s warm, 104 rows instead of 33,500. Not applied yet."
+      "productionApprovedAt": "2026-10-29",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Speed request 2026-10-29. Additive: one security-invoker function and one partial index. Rollback-only run on DEV with sample rows: window picks the latest cumulative row per video, keeps daily rows and channel snapshots, drops rows outside the window. Read-only timing on Production of the same query for 30 days: ~0.32 s warm, 104 rows instead of 33,500. Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (function security invoker, index present, history 1); the function took ~0.36 s for 30 days under the owner's row policies. Not applied to DEV."
     }
   ],
   "legacyMigrations": [
