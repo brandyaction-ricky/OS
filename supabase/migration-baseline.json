@@ -935,6 +935,17 @@
         "production"
       ],
       "notes": "Speed request 2026-10-29. Additive indexes only. Production read-only EXPLAIN: newest 300 rows scanned whole tables (record events ~38,000 rows, ~0.74 s cold; agent logs 0.28 s; document events 0.15 s). Owner approved Production on 2026-10-29 (\"둘 다 반영해\"). Applied to Production in one transaction with its schema history row and read back (3 indexes, history 1); newest-300 reads now ~2 ms. Not applied to DEV."
+    },
+    {
+      "file": "20261029120000_finance_tax_invoices.sql",
+      "sha256": "179bce6091e92f99ccfaa8dadfa9f2bf78acc6fa749f7f0f8c28f1bcdab1d9dd",
+      "purpose": "재무 요청 a5310134: os_fin_tax_invoices (홈택스 전자(세금)계산서 매출), os_fin_revenue_links (같은 매출·입금 확인 기록), os_fin_log_action accepts tax_invoices/vat",
+      "requiresApproval": true,
+      "productionApprovedAt": "2026-10-29",
+      "appliedEnvironments": [
+        "production"
+      ],
+      "notes": "Additive: two tables with the os_fin_* finance-access policies; os_fin_log_action view list widened (body otherwise identical; the live body was checked to be the original before replacing). Rollback-only run on DEV: duplicate approval number, total mismatch, tax on an exempt invoice and a second confirmed partner refused; a member without finance access cannot read or write; anon cannot read; download log accepts vat and refuses an unknown view. Owner approved Production on 2026-10-29 (\"재무 반영해\"). Applied to Production in one transaction with its schema history row and read back (RLS on both tables, 6 policies, no anon/public grants, log accepts tax_invoices/vat, history 1). Not applied to DEV."
     }
   ],
   "legacyMigrations": [

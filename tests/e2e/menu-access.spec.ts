@@ -36,7 +36,7 @@ test("finance menus stay discoverable but locked without existing finance access
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: /메뉴 직접 선택/ }).check();
   const finance = dialog.getByRole("group", { name: /^재무관리/ });
-  await expect(finance).toContainText("0/7");
+  await expect(finance).toContainText("0/8");
   await expect(finance).toContainText("권한 필요");
   for (const label of ["그룹 전체 선택", "개요", "매출내역", "정산입금", "통장 내역", "카드지출", "정기 결제", "예산 관리"]) {
     await expect(finance.getByRole("checkbox", { name: label, exact: true })).toBeDisabled();
@@ -54,24 +54,24 @@ test("eligible finance accounts can select, persist and reset individual finance
   await trigger.click();
   const dialog = page.getByRole("dialog");
   const finance = dialog.getByRole("group", { name: /^재무관리/ });
-  await expect(finance).toContainText("7/7");
+  await expect(finance).toContainText("8/8");
   await dialog.getByRole("radio", { name: /메뉴 직접 선택/ }).check();
   await expect(finance.getByRole("checkbox", { name: "카드지출", exact: true })).toBeEnabled();
   await finance.getByRole("checkbox", { name: "그룹 전체 선택", exact: true }).uncheck();
   await finance.getByRole("checkbox", { name: "카드지출", exact: true }).check();
-  await expect(finance).toContainText("1/7");
+  await expect(finance).toContainText("1/8");
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   await page.reload();
   await trigger.click();
   await expect(finance.getByRole("checkbox", { name: "카드지출", exact: true })).toBeChecked();
   await expect(finance.getByRole("checkbox", { name: "매출내역", exact: true })).not.toBeChecked();
-  await expect(finance).toContainText("1/7");
+  await expect(finance).toContainText("1/8");
   await dialog.getByRole("button", { name: "기본 권한으로", exact: true }).click();
   await dialog.getByRole("button", { name: "권한 저장", exact: true }).click();
   await page.reload();
   await trigger.click();
   await expect(dialog.getByRole("radio", { name: /기본 권한 사용/ })).toBeChecked();
-  await expect(finance).toContainText("7/7");
+  await expect(finance).toContainText("8/8");
 });
 
 test("revoked finance eligibility does not re-save stale finance menu selections", async ({ page }) => {

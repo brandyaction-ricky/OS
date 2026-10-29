@@ -113,6 +113,7 @@ export const NAV_STAGES: NavStage[] = [
     { label: "카드지출", href: "/finance/cards", icon: CreditCard, aliases: ["법인카드", "분류 규칙"], ready: true },
     { label: "정기 결제", href: "/finance/recurring", icon: Repeat, aliases: ["구독 관리"], ready: true },
     { label: "예산 관리", href: "/finance/budget", icon: BarChart3, aliases: ["고정비", "변동비", "인건비"], ready: true },
+    { label: "부가세 신고 참고 자료", href: "/finance/vat", icon: Receipt, aliases: ["부가세", "VAT", "세금계산서", "홈택스", "신고 참고"], ready: true },
   ] },
   { id: "development", label: "개발", icon: Code2, href: "/knowledge/development", pages: [
     { label: "수정 요청", href: "/knowledge/development", icon: Code2, aliases: ["개발 관리", "개발·배포 기록"], ready: true },

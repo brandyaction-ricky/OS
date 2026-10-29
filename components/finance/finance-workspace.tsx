@@ -8,6 +8,8 @@ import type { FinanceController } from "@/lib/finance/workspace.mjs";
 import { useSession } from "../session-provider";
 import { TossReadPanel } from "./toss-read-panel";
 import { TossSyncPanel } from "./toss-sync-panel";
+import { TaxInvoicePanel } from "./tax-invoice-panel";
+import { VatReference } from "./vat-reference";
 import "./finance.css";
 
 /** A persistent, client-only adapter for the handoff's seven finance views. */
@@ -69,7 +71,8 @@ export function FinanceWorkspace() {
     controller.current?.setUrl(url);
   }, [url]);
 
-  if (!validPage) return null;
+  const vatPage = pathname === "/finance/vat";
+  if (!validPage && !vatPage) return null;
   if (loading) return <p role="status">재무 접근 권한을 확인하고 있습니다.</p>;
   if (!allowed)
     return (
@@ -79,6 +82,8 @@ export function FinanceWorkspace() {
         <Link href="/home">내 할 일로 돌아가기</Link>
       </section>
     );
+  // 부가세 신고 참고 자료 is its own React page; the shared ledger app is not mounted for it.
+  if (vatPage) return demo ? <section className="panel empty-state" role="status"><h1>부가세 신고 참고 자료</h1><p>연습용 화면에서는 실제 결제·계산서가 없어 비어 있어요.</p></section> : <VatReference token={accessToken} />;
   return (
     <>
       {error ? (
@@ -96,6 +101,7 @@ export function FinanceWorkspace() {
         aria-label={demo?"재무관리 모의 작업공간":"재무관리 작업공간"}
       />
       {!demo&&["/finance/overview","/finance/sales","/finance/settlements"].includes(pathname)?<TossSyncPanel key={`sync:${actor}`} token={accessToken} onRefresh={()=>setRevision(value=>value+1)}/>:null}
+      {!demo&&(pathname==="/finance/sales"||pathname==="/finance/settlements")?<TaxInvoicePanel key={`tax:${actor}:${pathname}`} token={accessToken} mode={pathname==="/finance/sales"?"sales":"deposits"}/>:null}
       {!demo&&(pathname==="/finance/sales"||pathname==="/finance/settlements")?<TossReadPanel key={`${actor}:${pathname}`} token={accessToken} kind={pathname==="/finance/sales"?"transactions":"settlements"}/>:null}
     </>
   );

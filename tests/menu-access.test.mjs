@@ -106,9 +106,9 @@ test("admin cannot restrict administrators, inactive accounts, or elevate financ
   }
 });
 
-test("existing finance eligibility permits saving all seven finance menu choices", async () => {
+test("existing finance eligibility permits saving all eight finance menu choices", async () => {
   const financeMenus = navigation.NAV_STAGES.find(stage => stage.id === "finance").pages.map(page => page.href);
-  assert.equal(financeMenus.length, 7);
+  assert.equal(financeMenus.length, 8);
   const route = api({ finance: true });
   const response = await route.PATCH(patch({ allowedMenus: financeMenus }));
   assert.equal(response.status, 200);
