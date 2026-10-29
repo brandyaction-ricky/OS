@@ -646,7 +646,7 @@ export async function processMyinPrep() {
     const missingMusic = [...new Set(music)].filter((file) => !existsSync(path.join(bgmDir, file))).map((file) => `음악 파일 없음(음악 창고에 없는 곡): ${file}`);
     const ctaDir = path.join(videoDir, "cta");
     mkdirSync(ctaDir, { recursive: true });
-    for (const cta of job.cta) {
+    for (const cta of job.cta.filter((line) => line.url)) {
       const k = String(cta.index).padStart(2, "0");
       const raw = path.join(ctaDir, `cta_${k}_raw.wav`), pcm = path.join(ctaDir, `cta_${k}_48k.wav`);
       await fetchTo(cta.url, raw);
@@ -654,6 +654,11 @@ export async function processMyinPrep() {
       await runAsync(myinPython, ["-c", "import sys, stage_voice as SV; SV.tighten(sys.argv[1], sys.argv[2])", pcm, path.join(ctaDir, `cta_${k}.wav`)],
         { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
       writeFileSync(path.join(ctaDir, `cta_${k}.txt`), cta.tag);
+    }
+    // A render-PC voice run brings the lines without files: his stage_cta makes them like the narration (2026-10-29 로건).
+    if (job.cta.some((line) => !line.url)) {
+      const speaker = myinVoiceEnv({ paragraphs: [], fishVoice: job.fishVoice }, env);
+      await runAsync(speaker.python, ["stage_cta.py", "os_myin"], { cwd: myinDir, env: speaker.env });
     }
     if (job.siteCapture) await runAsync(myinPython, ["capture_site.py"], { cwd: myinDir, env });
     current.step = "drawing";
