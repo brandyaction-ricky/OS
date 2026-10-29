@@ -90,7 +90,12 @@ type MyinRun = z.infer<typeof runSchema>;
 
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
 const parse = (record: Pick<OsRecord, "metadata">) => {
-  const result = runSchema.safeParse(record.metadata);
+  // The 10-28 voice backfill also stored its request's "action" in words.voice (fixed 2026-10-29); reading leaves it out, so those
+  // runs open again and their next save writes them clean.
+  const metadata = record.metadata as Record<string, unknown> & { words?: { voice?: Record<string, unknown> } };
+  const voice = metadata?.words?.voice;
+  const stored = voice && "action" in voice ? { ...metadata, words: { ...metadata.words, voice: Object.fromEntries(Object.entries(voice).filter(([key]) => key !== "action")) } } : metadata;
+  const result = runSchema.safeParse(stored);
   if (!result.success) throw new ApiError(409, "MYIN_RUN_INVALID", "저장된 v13 작업을 읽을 수 없습니다.");
   return result.data;
 };
@@ -594,7 +599,9 @@ export async function myinVoiceBackfill(input: { runId?: string }, service: Serv
   return { uploadUrls: await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) => uploadUrl(service, YOUTUBE_VOICE_BUCKET, voicePartPath(prefix, n)))) };
 }
 export async function completeMyinVoiceBackfill(input: { runId: string; parts: number; bytes: number; sha256: string }, service: Service = createServiceSupabase()) {
-  const { runId, ...voice } = input;
+  // Named, not spread: the route hands the whole request (with its action), and runs are stored strictly.
+  const { runId, parts, bytes, sha256 } = input;
+  const voice = { parts, bytes, sha256 };
   const { record, run } = await runRecord(service, runId);
   if (!run.words || run.words.voice) return { runId: record.id, saved: false };
   await save(service, record, record.status, record.stage, { ...run, words: { ...run.words, voice: { path: voicePrefix(record, run, "backfill"), ...voice } } });
