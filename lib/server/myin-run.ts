@@ -19,6 +19,9 @@ import { digestVoiceValue, voiceRunId, YOUTUBE_VOICE_BUCKET, YOUTUBE_VOICE_TIMIN
 // keeps the wav (voice_pending); the render PC then runs his pipeline unchanged on those files — voice post-processing, words.json
 // and subtitles — and sends back one JSON bundle (words_pending → words_ready). The voice is frozen from here: Fish never reads a
 // line the same way twice, and every later cue is matched against this transcription.
+// 로건 사람 말투 음성 (2026-10-29, 회사 청취 비교 2번, OS 문서 「AI 베이직 목소리 — 사람 말투로 교체」 A안): with MYIN_VOICE_ON_RENDER_PC=1 a
+// new run skips both steps above and goes straight to words_pending; his stage_voice on the render PC asks Fish sentence by sentence
+// (two takes where the first one breaks, pitch and loudness matched) with the render PC's own key and the voice the OS sends.
 export const MYIN_RUN_KIND = "youtube_myin_v13";
 export const MYIN_VOICE_MODEL = "drama-3"; // pinned like Logan: Fish serves an unknown model name as 2.1 without an error
 const WORDS_LEASE_MS = 30 * 60_000;
@@ -32,6 +35,7 @@ const FINAL_LEASE_MS = 240 * 60_000;
 // 10 MB parts of 48 kHz mono 16-bit voice (≈96 KB/s): 18 hold about 31 minutes; longforms run 11–14. A longer voice is logged by the
 // render PC and its drafts stay there.
 export const MYIN_VOICE_PARTS = 18;
+export const myinVoiceOnRenderPc = () => process.env.MYIN_VOICE_ON_RENDER_PC === "1";
 type Service = ReturnType<typeof createServiceSupabase>;
 
 const hex = z.string().regex(/^[a-f0-9]{64}$/);
@@ -41,6 +45,8 @@ const runSchema = z.object({
   kind: z.literal(MYIN_RUN_KIND), runKey: hex, sourceId: z.string().uuid(), inputKey: hex, script: versionRef, scriptMarkdownHash: hex,
   // 숏폼 (2026-10-28): drawn 9:16 by the render PC's vertical copy of Logan's engine (MYIN_PKG_SHORT); no handouts, no staff-Mac drafts.
   layout: z.literal("short").optional(),
+  // 로건 사람 말투 음성 (2026-10-29): the render PC makes the voice itself, so the paragraphs never get OS files.
+  voiceOn: z.literal("render_pc").optional(),
   voiceModel: z.literal(MYIN_VOICE_MODEL), voiceReferenceFingerprint: hex,
   paragraphs: z.array(z.object({ index: z.number().int().min(0), textHash: hex, status: z.enum(["pending", "ready"]), path: z.string().optional(), bytes: z.number().int().positive().optional(),
     breath: z.array(z.number().int().min(0)).max(80).optional() }).strict()).min(1).max(150),
@@ -114,7 +120,7 @@ async function save(service: Service, record: OsRecord, status: string, stage: s
 export function presentMyinRun(record: OsRecord) {
   const run = parse(record);
   return { id: record.id, status: record.status, stage: record.stage, layout: run.layout ?? null, paragraphs: run.paragraphs.length,
-    paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, words: run.words ?? null,
+    paragraphsReady: run.paragraphs.filter((p) => p.status === "ready").length, voiceOnPc: Boolean(run.voiceOn), words: run.words ?? null,
     storyboard: run.storyboard ? { ...run.storyboard, path: undefined } : null, review: run.review ?? null,
     assetDecisions: Object.fromEntries(Object.entries(run.assets ?? {}).map(([file, value]) => [file, { decision: value.decision }])),
     ctaReady: run.cta ? `${run.cta.filter((c) => c.status === "ready").length}/${run.cta.length}` : null,
@@ -220,14 +226,16 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
   if (!process.env.FISH_API_KEY?.trim() || !voiceReference) throw new ApiError(503, "VOICE_WORKER_NOT_CONFIGURED", "Fish Audio 연결을 확인해 주세요.");
   const fingerprint = digestVoiceValue(voiceReference);
   const markdownHash = sha(input.markdown);
-  const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING)]);
+  // The way the voice is made is part of the run: the same script voiced on the render PC is a new run (new voice), not the old one.
+  const onPc = myinVoiceOnRenderPc();
+  const runKey = digestVoiceValue([MYIN_RUN_KIND, sourceId, input.inputKey, markdownHash, MYIN_VOICE_MODEL, fingerprint, JSON.stringify(MYIN_VOICE_TUNING), ...(onPc ? ["render_pc"] : [])]);
   const id = voiceRunId(runKey);
   const run: MyinRun = { kind: MYIN_RUN_KIND, runKey, sourceId, inputKey: input.inputKey, script: input.script, scriptMarkdownHash: markdownHash,
-    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0, ...(input.layout ? { layout: input.layout } : {}),
+    voiceModel: MYIN_VOICE_MODEL, voiceReferenceFingerprint: fingerprint, attempts: 0, ...(input.layout ? { layout: input.layout } : {}), ...(onPc ? { voiceOn: "render_pc" as const } : {}),
     paragraphs: input.spoken.map((text, index) => ({ index, textHash: sha(text), status: "pending" })) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id, record_type: "ai_job", title: `${input.state.source.title} · ${input.layout ? "숏폼 " : ""}v13 음성·받아쓰기`.slice(0, 240),
-    description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: "breath_pending",
+    description: "승인된 원고로 마이인 v13 음성을 만들고 렌더 PC가 받아쓰기·자막을 만드는 작업입니다.", status: "backlog", stage: onPc ? "words_pending" : "breath_pending",
     priority: "normal", brand: input.state.source.brand, team: input.state.source.team, owner_id: actor.id, parent_id: sourceId,
     created_by: actor.id, updated_by: actor.id, tags: ["유튜브", "마이인v13"], metadata: run,
   }).select("*").maybeSingle();
@@ -239,7 +247,7 @@ export async function createMyinRun(actor: RequestActor, sourceId: string) {
   if (existing.status !== "blocked") return presentMyinRun(existing as OsRecord);
   const prior = parse(existing as OsRecord);
   const resumed: MyinRun = { ...prior, attempts: 0 }; delete resumed.lease;
-  const stage = prior.paragraphs.every((p) => p.status === "ready") ? "words_pending"
+  const stage = prior.voiceOn || prior.paragraphs.every((p) => p.status === "ready") ? "words_pending"
     : prior.paragraphs.some((p) => p.status === "pending" && !p.breath) ? "breath_pending" : "voice_pending";
   return presentMyinRun(await save(createServiceSupabase(), existing as OsRecord, "backlog", stage, resumed));
 }
@@ -347,11 +355,13 @@ async function voiceFiles(service: Service, run: MyinRun) {
   const input = await assertCurrent(service, run);
   const paragraphs = [];
   for (const p of run.paragraphs) {
+    if (run.voiceOn) { paragraphs.push({ index: p.index, text: input.spoken[p.index] }); continue; }
     const { data, error } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUrl(p.path ?? "", 1_800);
     if (error || !data) throw new ApiError(503, "MYIN_SIGN_FAILED", "음성 파일 주소를 만들지 못했습니다.");
     paragraphs.push({ index: p.index, text: input.spoken[p.index], url: data.signedUrl });
   }
-  return { scriptMarkdown: input.markdown, paragraphs };
+  // The voice his stage_voice asks Fish for: the patched one makes every sentence itself, also for an older run that brings files.
+  return { scriptMarkdown: input.markdown, paragraphs, fishVoice: { referenceId: process.env.FISH_VOICE_REFERENCE_ID?.trim() ?? "", model: MYIN_VOICE_MODEL } };
 }
 
 /** A 숏폼 run goes only to a render PC whose worker has the vertical engine (it says `short`); an older worker keeps taking longforms. */

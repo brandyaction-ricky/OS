@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmMyinClips, createMyinRun, latestMyinRun, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceOnRenderPc, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     if (query.get("local")) return NextResponse.json({ local: await readLocalRenderStatus(actor.ownerId) }, { headers });
     const sound = query.get("sound");
     if (sound) return NextResponse.json(await myinSoundState(actor, z.string().uuid().parse(sound)), { headers });
-    return NextResponse.json({ run: await latestMyinRun(actor, z.string().uuid().parse(query.get("sourceId"))) }, { headers });
+    return NextResponse.json({ run: await latestMyinRun(actor, z.string().uuid().parse(query.get("sourceId"))), voiceOnPc: myinVoiceOnRenderPc() }, { headers });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_MYIN_INPUT", "콘텐츠를 확인해 주세요."));
     return apiErrorResponse(error);
