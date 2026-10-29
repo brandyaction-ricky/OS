@@ -6,6 +6,8 @@ import { decideYoutubeGate } from "@/lib/server/youtube-process-stages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// GPT 초안 (2026-10-29): this request may start GPT work after its response (next/server after), which takes several minutes.
+export const maxDuration = 800;
 const gateSchema = z.enum(["topic", "draft", "review"]);
 
 /** OK · 수정 요청 · 보류 · 결정 되돌리기 by the company approver (403 NOT_APPROVER for anyone else). */

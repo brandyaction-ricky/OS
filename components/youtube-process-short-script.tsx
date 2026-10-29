@@ -8,7 +8,8 @@ import { projectName, stepHref, topicEditable, type YpProject } from "@/lib/yout
 import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refPlatform, refReaction, refTexts, SHORT_REF_BAR_TEXT, SHORT_SCRIPT, shortResearchOpen, shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import type { YpShortFormula, YpShortRef, YpShortScript, YpShortTopicPick } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, hhmm, LockedStep, Subject, useGate, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
-import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
+import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 
 const blankRef: YpShortRef = { url: "", title: "", script: "" };
 
@@ -138,7 +139,7 @@ export function asideSocialInstruction(input: { topic: string; query: string; li
 export function ShortScriptScreen({ page, header }: { page: YpPage; header: ReactNode }) {
   const control = useGate(page, "draft");
   const { stage, form, dirty, setDirty, savedAt, save, edit, saved: savedFirst } = useShortForm(page);
-  const [send, setSend] = useState(false);
+  const [send, setSend] = useState<false | SendTab>(false);
   const [manual, setManual] = useState(false);
   const reload = page.reload;
   const onJobDone = useCallback(() => { setDirty(false); void reload(); }, [reload, setDirty]);
@@ -146,7 +147,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
   const shortRefs = useShortRefs(page);
   const project = page.bundle?.project;
   const can = Boolean(project && project.yp.stage === "draft" && editableFields(project, "draft") === "all");
-  const askAi = async () => { if (await savedFirst()) setSend(true); };
+  const askAi = async (tab: SendTab = "gpt") => { if (await savedFirst()) setSend(tab); };
   const applyDraft = async () => {
     if (!page.client || !project || !stage || !form?.aiDraft) return;
     try {
@@ -180,13 +181,14 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
       <Subject page={page} />
       {from ? <div className="yp-note yp-gray"><div><b>롱폼에서 온 주제</b> · <Link className="yp-lnk" href={`/content/shorts?project=${from.projectId}`}>{from.title}</Link> · {from.scene}</div></div> : null}
 
-      {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => void askAi()} />
+      {can ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => void askAi(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} />
         : !started && !manual ? <div className="yp-ways">
-          <button type="button" className="yp-way yp-rec" onClick={() => void askAi()}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{form.formula.trim() ? "주제를 정할 때 고른 공식으로 헤드 카피와 대본을 써 줘요" : "참고 영상에서 공식을 뽑아 헤드 카피와 대본을 써 줘요"}</span></button>
+          <button type="button" className="yp-way yp-rec" onClick={() => void askAi("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 쓰기</b><span>3~6분 · {form.formula.trim() ? "고른 공식으로 헤드 카피와 대본을 써요" : "참고 영상에서 공식을 뽑아 헤드 카피와 대본을 써요"}</span></button>
+          <button type="button" className="yp-way" onClick={() => void askAi("queue")}><b>내 AI에게 맡기기</b><span>내 AI 구독으로 써요</span></button>
           <button type="button" className="yp-way" onClick={() => { setManual(true); window.setTimeout(() => document.querySelector<HTMLInputElement>("[aria-label='헤드 카피']")?.focus(), 50); }}><b>직접 쓰기</b><span>아래 칸을 바로 채워요</span></button></div>
-        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => void askAi()}><Sparkles size={14} /> {form.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
-          {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.ai.by}</span> : null}</div>) : null}
-      {form.aiDraft && can ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 대본이 왔어요.</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
+        : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => void askAi()}><Sparkles size={14} /> {form.ai ? "다시 쓰기" : "AI로 쓰기"}</button>
+          {form.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(form.ai.by, form.ai.model)}</span> : null}</div>) : null}
+      {form.aiDraft && can ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>{isGptModel(form.ai?.model) ? "GPT 대본이 왔어요." : "AI 대본이 왔어요."}</b> 이미 쓴 내용이 있어 바로 넣지 않았어요.
         <button type="button" className="yp-lnk" onClick={() => void applyDraft()}>이 초안으로 바꾸기</button>
         <details><summary>초안 보기</summary><p style={{ fontSize: 13, margin: "6px 0" }}><b>헤드 카피</b> {form.aiDraft.headCopy}<br /><b>핵심 한 줄</b> {form.aiDraft.insight}</p><div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{form.aiDraft.text}</div></details></div></div> : null}
 
@@ -218,7 +220,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">참고 영상 <span className="yp-opt">선택</span></div><div className="yp-card-b">
         <ShortRefs page={page} form={form} can={can} refs={shortRefs.refs} working={shortRefs.working} onFetch={() => void shortRefs.fetch(savedFirst)} onEdit={edit} /></div></section></aside>
       </div>
-      <SendDialog page={page} task="short-script" open={send} onClose={() => setSend(false)} job={job} />
+      <SendDialog page={page} task="short-script" open={Boolean(send)} initialTab={send || undefined} onClose={() => setSend(false)} job={job} />
     </div> : null}
   </YpFrame>;
 }
@@ -398,7 +400,7 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
 
 /** 쇼츠 · 칼럼 › 숏폼 주제 (입구 A): the staff AI's candidates from this longform's 원고; each becomes its own 숏폼 at 주제. */
 export function ShortTopicsPanel({ page }: { page: YpPage }) {
-  const [send, setSend] = useState(false);
+  const [send, setSend] = useState<false | SendTab>(false);
   const [making, setMaking] = useState("");
   const reload = page.reload;
   const job = useStaffJob(page, "short-topics", useCallback(() => void reload(), [reload]));
@@ -415,15 +417,17 @@ export function ShortTopicsPanel({ page }: { page: YpPage }) {
   if (!project || !topics) return null;
   const items = topics.data.items;
   return <>
-    <YpSection n={1} title="숏폼 주제" gq="이 원고로 만들 숏폼은?" extra={items.length && !job.open ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> 내 AI로 다시 뽑기</button> : null}>
-      {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
+    <YpSection n={1} title="숏폼 주제" gq="이 원고로 만들 숏폼은?" extra={items.length && !job.open ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><Sparkles size={14} /> 다시 뽑기</button> : null}>
+      {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
+      {items.length && topics.data.ai ? <p className="yp-hint" style={{ margin: "0 0 6px" }}><span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(topics.data.ai.by, topics.data.ai.model)}</span></p> : null}
       {items.length ? <ul className="yp-hist">{items.map(item => <li key={item.id} style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
         <span style={{ flex: "1 1 260px", minWidth: 0 }}><b>{item.insight}</b><br /><span className="yp-muted" style={{ fontSize: 13 }}>{item.scene}</span></span>
         {item.made ? <Link className="yp-btn yp-sm" href={stepHref(0, item.made.projectId)}>숏폼 열기 →</Link>
           : <button type="button" className="yp-btn yp-sm yp-pri" disabled={Boolean(making)} onClick={() => void make(item.id)}>{making === item.id ? "만드는 중…" : "숏폼 만들기"}</button>}
       </li>)}</ul>
-        : job.open ? null : <div className="yp-ways" style={{ marginBottom: 0 }}><button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>원고에서 숏폼 주제 3개를 뽑아요</span></button></div>}
+        : job.open ? null : <div className="yp-ways" style={{ marginBottom: 0 }}><button type="button" className="yp-way yp-rec" onClick={() => setSend("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 뽑기</b><span>3~6분 · 원고에서 숏폼 주제 3개를 뽑아요</span></button>
+          <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기</b><span>내 AI 구독으로 뽑아요</span></button></div>}
     </YpSection>
-    <SendDialog page={page} task="short-topics" open={send} onClose={() => setSend(false)} job={job} />
+    <SendDialog page={page} task="short-topics" open={Boolean(send)} initialTab={send || undefined} onClose={() => setSend(false)} job={job} />
   </>;
 }
