@@ -1,15 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { Check, ChevronDown, LoaderCircle, LockKeyhole, RotateCcw, Settings2, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getMenuAccess, saveMenuAccess, type OsMember } from "@/lib/api-client";
+import { getMenuAccess, saveMenuAccess, saveMemberFinanceAccess, type OsMember } from "@/lib/api-client";
 import { roleLabel } from "@/lib/company-settings";
 import { availableMenuGroups, canOpenMenu, type MenuAccessPolicy } from "@/lib/menu-access";
 import { useHrEnabled } from "./hr/feature-context";
 import { NAV_STAGES } from "@/lib/navigation";
 
 const DEMO_STORAGE = "brandy-os-demo-menu-access-v1";
+const DEMO_FINANCE_STORAGE = "brandy-os-demo-finance-access-v1";
 const DEMO_MEMBERS: OsMember[] = [
   { id: "demo-marketer", email: "marketer@example.test", display_name: "가상 마케터", role: "member", team: "마케팅", is_active: true, affiliation: "", roles: [], onboarding: {}, finance_access: false },
   { id: "demo-accountant", email: "accountant@example.test", display_name: "가상 회계 담당", role: "lead", team: "경영지원", is_active: true, affiliation: "", roles: [], onboarding: {}, finance_access: true },
@@ -33,8 +33,13 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
   const [version, setVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState("");
+  const [financeOverrides, setFinanceOverrides] = useState<Record<string, boolean>>({});
+  const [accessSaving, setAccessSaving] = useState(false);
+  const [accessNotice, setAccessNotice] = useState("");
   const trigger = useRef<HTMLButtonElement | null>(null);
-  const accounts = (demo ? DEMO_MEMBERS : members).filter(member => member.is_active && member.account_connected !== false);
+  const accounts = (demo ? DEMO_MEMBERS : members)
+    .map(member => member.id in financeOverrides ? { ...member, finance_access: financeOverrides[member.id] } : member)
+    .filter(member => member.is_active && member.account_connected !== false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +49,9 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
         const stored = localStorage.getItem(DEMO_STORAGE);
         const data: unknown = stored ? JSON.parse(stored) : [];
         setPolicies(Array.isArray(data) ? data : []);
+        const financeData: unknown = JSON.parse(localStorage.getItem(DEMO_FINANCE_STORAGE) || "{}");
+        setFinanceOverrides(financeData && typeof financeData === "object" && !Array.isArray(financeData)
+          ? Object.fromEntries(Object.entries(financeData).filter(([, value]) => typeof value === "boolean")) : {});
         setReady(true);
       } else {
         const result = await getMenuAccess(token, isAdmin);
@@ -67,17 +75,43 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
     setVersion(policy?.version ?? 0);
     setModalError("");
     setNotice("");
+    setAccessNotice("");
     setSelected(member);
   };
 
   const close = useCallback(() => {
-    if (saving) return;
+    if (saving || accessSaving) return;
     setSelected(null);
     trigger.current?.focus();
-  }, [saving]);
+  }, [saving, accessSaving]);
+
+  const changeFinanceAccess = async (financeAccess: boolean) => {
+    if (!selected || !isAdmin || !ready || selected.role === "admin" || saving || accessSaving) return;
+    const member = selected;
+    setAccessSaving(true);
+    setModalError("");
+    setAccessNotice("");
+    try {
+      const result = demo ? { memberId: member.id, financeAccess }
+        : await saveMemberFinanceAccess(token, { memberId: member.id, financeAccess, expectedFinanceAccess: member.finance_access });
+      const next = { ...financeOverrides, [result.memberId]: result.financeAccess };
+      if (demo) localStorage.setItem(DEMO_FINANCE_STORAGE, JSON.stringify(next));
+      setFinanceOverrides(next);
+      const updated = { ...member, finance_access: result.financeAccess };
+      setSelected(updated);
+      const eligible = availableMenuGroups(memberProfile(updated), hrEnabled).flatMap(group => group.pages.map(page => page.href));
+      setAllowed(current => current.filter(href => eligible.includes(href)));
+      if (result.financeAccess) setMode("custom");
+      setAccessNotice(result.financeAccess
+        ? "민감정보 접근을 허용했습니다. 필요한 메뉴를 선택한 뒤 권한 저장을 눌러 주세요."
+        : "민감정보 접근을 해제했습니다. 재무·인사 자료 접근이 차단됩니다.");
+    } catch (reason) {
+      setModalError(reason instanceof Error ? reason.message : "민감정보 접근 권한을 저장하지 못했습니다.");
+    } finally { setAccessSaving(false); }
+  };
 
   const save = async () => {
-    if (!selected || !isAdmin || !ready || selected.role === "admin") return;
+    if (!selected || !isAdmin || !ready || selected.role === "admin" || accessSaving) return;
     setSaving(true);
     setModalError("");
     try {
@@ -119,13 +153,14 @@ export function MemberMenuAccess({ members, token, demo, isAdmin }: { members: O
         {!accounts.length ? <p className="account-menu-message">설정할 활성 로그인 계정이 없습니다.</p> : null}
       </div>
     </>}
-    {selected ? <MenuAccessDialog member={selected} allowed={allowed} mode={mode} saving={saving} ready={ready} error={modalError} onMode={setMode} onAllowed={setAllowed} onSave={() => void save()} onClose={close} /> : null}
+    {selected ? <MenuAccessDialog member={selected} allowed={allowed} mode={mode} saving={saving || accessSaving} ready={ready} error={modalError} accessNotice={accessNotice} onFinanceAccess={value => void changeFinanceAccess(value)} onMode={setMode} onAllowed={setAllowed} onSave={() => void save()} onClose={close} /> : null}
   </section>;
 }
 
-function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode, onAllowed, onSave, onClose }: {
+function MenuAccessDialog({ member, allowed, mode, saving, ready, error, accessNotice, onFinanceAccess, onMode, onAllowed, onSave, onClose }: {
   member: OsMember; allowed: string[]; mode: "default" | "custom"; saving: boolean; ready: boolean; error: string;
   onMode: (mode: "default" | "custom") => void; onAllowed: (menus: string[]) => void; onSave: () => void; onClose: () => void;
+  accessNotice: string; onFinanceAccess: (value: boolean) => void;
 }) {
   const hrEnabled = useHrEnabled();
   const dialog = useRef<HTMLElement>(null);
@@ -158,6 +193,11 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
       <div className="menu-access-scroll">
         <p id="menu-access-description">선택한 메뉴만 사이드바와 화면에서 사용할 수 있습니다. 홈과 내 계정은 항상 사용할 수 있습니다.</p>
         {isAdmin ? <p className="menu-access-info"><ShieldCheck size={17} />관리자는 모든 메뉴를 사용합니다. 관리 기능에 접근할 수 있도록 메뉴 제한을 적용하지 않습니다.</p> : <fieldset className="menu-access-mode" disabled={saving || !ready}><legend>설정 방식</legend><label><input type="radio" name="menu-access-mode" checked={mode === "default"} onChange={() => onMode("default")} />기본 권한 사용<small>역할·민감자료 권한에 맞는 메뉴 전체</small></label><label><input type="radio" name="menu-access-mode" checked={mode === "custom"} onChange={() => onMode("custom")} />메뉴 직접 선택<small>이 계정에 필요한 메뉴만 허용</small></label></fieldset>}
+        {!isAdmin ? <div className="menu-access-sensitive">
+          <label><input type="checkbox" checked={member.finance_access} disabled={saving || !ready} onChange={event => onFinanceAccess(event.target.checked)} />재무·인사 민감정보 접근 허용</label>
+          <p>관리자가 여기서 접근 권한을 직접 설정할 수 있습니다. 변경 즉시 저장되며, 아래 메뉴 선택의 저장·취소와 별도로 적용됩니다.</p>
+          {accessNotice ? <p role="status">{accessNotice}</p> : null}
+        </div> : null}
         <div className="menu-access-groups">
           {NAV_STAGES.filter(group => group.pages.length && (!group.requiresHr || hrEnabled)).map(group => group.requiresHr ? { ...group, pages: group.pages.filter(page => canOpenMenu(memberProfile(member), page.href)) } : group).map(group => {
             const hrefs = group.pages.map(page => page.href);
@@ -168,7 +208,7 @@ function MenuAccessDialog({ member, allowed, mode, saving, ready, error, onMode,
               <legend>{group.id === "content" ? "유튜브 공정" : group.label}<span>{count}/{hrefs.length}</span>{financeLocked ? <small className="menu-access-lock-badge"><LockKeyhole size={12} aria-hidden="true" />권한 필요</small> : null}</legend>
               <label className="menu-access-group-toggle"><input type="checkbox" checked={count === hrefs.length} ref={input => { if (input) input.indeterminate = count > 0 && count < hrefs.length; }} onChange={event => toggleGroup(hrefs, event.target.checked)} disabled={groupDisabled || group.id === "home" || (group.requiresHr && hrefs.length === 1)} />그룹 전체 선택</label>
               <div>{group.pages.map(page => <label key={page.href}><input type="checkbox" checked={selected.includes(page.href)} disabled={groupDisabled || page.href === "/home" || page.href === "/hr/my-leave"} onChange={event => toggleGroup([page.href], event.target.checked)} />{page.label}{page.href === "/home" || page.href === "/hr/my-leave" ? <small>항상 허용</small> : null}</label>)}</div>
-              {financeLocked ? <p id="menu-access-finance-help" className="menu-access-group-help">재무관리 메뉴를 선택하려면 팀원에서 이 계정의 ‘경영지원 민감정보 접근’을 먼저 허용해 주세요. 메뉴 선택만으로 재무자료 접근 권한이 부여되지는 않습니다.<Link href="/organization/members" onClick={onClose}>구성원 권한 관리 →</Link></p> : null}
+              {financeLocked ? <p id="menu-access-finance-help" className="menu-access-group-help">위의 ‘재무·인사 민감정보 접근 허용’을 켜면 여기서 필요한 재무 메뉴를 선택할 수 있습니다.</p> : null}
             </fieldset>;
           })}
         </div>

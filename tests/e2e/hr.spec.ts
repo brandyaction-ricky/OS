@@ -50,6 +50,29 @@ test("mobile drawer has no page overflow and Escape restores focus", async ({ pa
   await expect(open).toBeFocused();
 });
 
+test("leave cards preserve half-day calculation, keyboard selection and submitted type", async ({ page }) => {
+  await page.getByRole("button", { name: "＋ 휴가 입력", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("radio")).toHaveCount(8);
+  await expect(dialog.getByRole("radio", { name: /^연차/ })).toBeChecked();
+  await dialog.getByRole("radio", { name: /^기타/ }).check();
+  await expect(dialog.getByRole("textbox", { name: /사유/ })).toHaveAttribute("required", "");
+  const morning = dialog.getByRole("radio", { name: /^오전 반차/ });
+  await morning.check();
+  await morning.press("ArrowRight");
+  await expect(dialog.getByRole("radio", { name: /^오후 반차/ })).toBeChecked();
+  await expect(dialog.getByRole("textbox", { name: /사유/ })).not.toHaveAttribute("required", "");
+  await dialog.getByRole("textbox", { name: /시작일/ }).fill("2026-10-16");
+  await expect(dialog.getByRole("textbox", { name: /종료일/ })).toBeDisabled();
+  await expect(dialog.locator(".hr-calc")).toContainText("0.5일");
+  await dialog.getByRole("textbox", { name: /사유/ }).fill("가상 선택 카드 검증");
+  await dialog.getByRole("button", { name: "저장", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const saved = page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "확인", exact: true }) }).filter({ hasText: "2026-10-16" });
+  await expect(saved).toContainText("오후 반차");
+  await expect(saved).toContainText("0.5일");
+});
+
 test("rejection requires a reason and a new holiday blocks approval", async ({ page }) => {
   const row = page.getByRole("row").filter({ hasText: "직원 A", has: page.getByRole("button", { name: "확인", exact: true }) });
   await row.getByRole("button", { name: "확인", exact: true }).click();
