@@ -31,7 +31,9 @@ test("a 숏폼 fixes its topic from a 주제 후보 drawn from the references' f
   await confirm.click();
   // The demo keeps its data in the page: go on by the link, not a reload.
   await page.locator(".yp-foot").getByRole("link", { name: /이어서 하기 · 대본/ }).click();
-  await expect(page.getByText("주제를 정할 때 고른 공식으로 헤드 카피와 대본을 써 줘요")).toBeVisible();
+  // GPT 초안 (2026-10-29): the 대본 step offers GPT first, the staff member's own AI second, both with the formula just picked.
+  await expect(page.getByRole("button", { name: /GPT로 바로 쓰기/ })).toContainText("고른 공식으로 헤드 카피와 대본을 써요");
+  await expect(page.getByRole("button", { name: /내 AI에게 맡기기/ })).toBeVisible();
   expect(errors).toEqual([]);
 });
 

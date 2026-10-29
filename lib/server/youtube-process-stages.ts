@@ -19,6 +19,7 @@ import { callMyin, MYIN_BODY_MAX, MYIN_SLUG, myinSourceId, type MyinArticle } fr
 // The 숏폼 대본 modules import this one (and, through the YouTube search, the 틈새 board's ypUuid at load time), so they are loaded on use.
 const shortScriptModule = () => import("./youtube-process-short-script");
 const shortRefsModule = () => import("./youtube-process-short-refs");
+const gptJobsModule = () => import("./youtube-gpt-jobs");
 import { shortScriptMissing } from "@/lib/youtube-process/short-script";
 import { actOnGate, confirmActionSchema, confirmYoutubeGate, conflict, gateActionSchema, getYoutubeProject, notify, readFailed, saveProject } from "./youtube-process";
 
@@ -393,6 +394,8 @@ export async function requestYoutubeGate(actor: RequestActor, id: string, gate: 
   const result = await actOnGate(actor, id, gate, input, project => gateMissing(actor, project, gate));
   // The PD's own 기획안 컨펌 fixes the A · B · (C) pairs, as the 대표's OK did (4-4).
   if (gate === "draft" && input.action === "confirm") await (result.project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, result.project);
+  // GPT 초안 (2026-10-29): the 최종 검토 OK starts 업로드 자료 · SEO 칼럼 · 숏폼 주제 후보 on GPT (the route allows 800 s for it).
+  if (gate === "review" && input.action === "confirm" && result.project.yp.stage === "upload") (await gptJobsModule()).scheduleAutoDrafts(result.project, { id: actor.id, name: actor.name, team: actor.team });
   return result;
 }
 async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
@@ -406,6 +409,7 @@ async function fixConfirmedPlan(actor: RequestActor, project: YpProject) {
 export async function decideYoutubeGate(actor: RequestActor, id: string, gate: YpGate, input: z.infer<typeof confirmActionSchema>) {
   const project = await confirmYoutubeGate(actor, id, gate, input);
   if (gate === "draft" && input.action === "ok") await (project.yp.topic.type === "short" ? (await shortScriptModule()).fixConfirmedScript : fixConfirmedPlan)(actor, project);
+  if (gate === "review" && input.action === "ok" && project.yp.stage === "upload") (await gptJobsModule()).scheduleAutoDrafts(project, { id: actor.id, name: actor.name, team: actor.team });
   return project;
 }
 

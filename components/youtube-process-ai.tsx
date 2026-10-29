@@ -3,7 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Clock, Copy, Sparkles, X } from "lucide-react";
 import { apiRequest, ApiRequestError } from "@/lib/api-client";
 import { MyAiConnect } from "./my-ai-connect";
-import { CostTag } from "./cost-notice";
+import { CostTag, tokenEstimate } from "./cost-notice";
+import { modelName } from "@/lib/cost";
+import { GPT_TIERS, isGptTask, type GptTier } from "@/lib/youtube-process/gpt-draft";
 import { MY_AI_PROMPT, type StaffJobStatus } from "./youtube-production-steps";
 import type { YpPage } from "./youtube-process-frame";
 import type { YpPattern, YpPatterns } from "@/lib/youtube-process/stages";
@@ -64,6 +66,10 @@ export function useStaffJob(page: JobPage, task: Task, onDone: () => void) {
 export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>; onRetry: () => void }) {
   const current = job.status?.job;
   if (!current || current.status === "done" || current.status === "cancelled") return null;
+  // GPT 초안: the OS itself is working on it, so there is nothing to connect or wait for.
+  if (current.executor === "gpt") return current.status === "blocked"
+    ? <div className="yp-jobl yp-fail"><span className="yp-tag yp-bad">못 함</span><span>{current.failReason ?? "GPT가 끝내지 못했어요."}</span><span className="yp-sp" /><button type="button" className="yp-btn yp-sm" onClick={onRetry}>다시 만들기</button></div>
+    : <div className="yp-jobl yp-run"><span className="yp-tag yp-warn"><Sparkles size={12} aria-hidden="true" /> GPT 만드는 중</span><span>{current.issues.length ? "형식을 고치는 중이에요" : "3~6분 걸려요. 끝나면 이 칸에 들어가요"}</span></div>;
   const seen = since(job.status?.myAi.lastUsedAt ?? null);
   if (current.status === "backlog") return <>
     <div className="yp-jobl yp-wait"><span className="yp-tag yp-acc"><Clock size={12} aria-hidden="true" /> 내 AI 대기</span><span>{seen === null ? "내 AI가 아직 연결되지 않았어요" : `내 AI 마지막 확인: ${agoLabel(seen)}. 다음 확인 때 가져가요`}</span></div>
@@ -76,15 +82,20 @@ export function JobLine({ job, onRetry }: { job: ReturnType<typeof useStaffJob>;
 }
 
 /** S12-2 내 AI로 보내기: opening it makes nothing; [대기열에 두기] or [맨 앞에 넣고 문장 복사] makes the one job. */
-export function SendDialog({ page, task, open, onClose, job, defaults, extra, queryDefault }: {
+export type SendTab = "gpt" | "queue" | "now" | "paste";
+export function SendDialog({ page, task, open, onClose, job, defaults, extra, queryDefault, initialTab }: {
   page: JobPage; task: Task; open: boolean; onClose: () => void; job: ReturnType<typeof useStaffJob>; defaults?: { minutes: number };
+  /** Which way the dialog opens on: GPT 초안 tasks open on GPT unless the screen's 「내 AI에게 맡기기」 opened it. */
+  initialTab?: SendTab;
   /** 기획안 · 다시 뽑기: the 기획실 참고 영상 검색어 the OS searches before the job (the PD can change it). */
   queryDefault?: string;
   /** Fields the task needs beyond the project (다시 뽑기: slot · reason). */
   extra?: Record<string, unknown>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<"queue" | "now" | "paste">("queue");
+  const gptOk = isGptTask(task);
+  const [tab, setTab] = useState<SendTab>(gptOk ? "gpt" : "queue");
+  const [tier, setTier] = useState<GptTier>("precise");
   const [minutes, setMinutes] = useState(defaults?.minutes ?? 10);
   // 쇼츠 대본 · 칼럼: how many the PD asks for (owner request 2026-10-25; the 숏폼 정본 says 3~5 shorts per longform).
   const [count, setCount] = useState(task === "shorts" ? 3 : 1);
@@ -99,19 +110,20 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
-  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault]);
+  useEffect(() => { if (open) { dialog.current?.showModal(); setError(""); setCopied(false); if (defaults?.minutes) setMinutes(defaults.minutes); setQuery(current => current || queryDefault || ""); setTab(initialTab ?? (gptOk ? "gpt" : "queue")); } else dialog.current?.close(); }, [open, defaults?.minutes, queryDefault, initialTab, gptOk]);
   const info = TASK[task];
   const projectId = page.bundle?.project.id;
   const running = job.status?.job?.status === "active";
+  const byGpt = job.status?.job?.executor === "gpt";
   const waiting = job.status?.job?.status === "backlog";
   const connected = (job.status?.myAi.keys ?? 0) > 0;
-  const send = async (copy: boolean) => {
+  const send = async (copy: boolean, gpt?: GptTier) => {
     if (!projectId || !page.accessToken) return;
     setBusy(true); setError("");
     try {
-      await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token: page.accessToken,
-        body: JSON.stringify(task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
-          : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId, ...extra, ...(searches && query.trim() ? { query: query.trim() } : {}) }) });
+      const body = task === "script" ? { task, sourceId: projectId, targetMinutes: minutes, role, ...(attachments.trim() ? { attachments: attachments.trim() } : {}) }
+        : task === "shorts" || task === "column" ? { task, sourceId: projectId, count } : { task, sourceId: projectId, ...extra, ...(searches && query.trim() ? { query: query.trim() } : {}) };
+      await apiRequest("/api/v1/content/youtube-automation/ai-jobs", { method: "POST", token: page.accessToken, body: JSON.stringify(gpt ? { ...body, gpt } : body) });
       if (copy) { await navigator.clipboard.writeText(MY_AI_PROMPT).catch(() => undefined); setCopied(true); }
       await job.load();
       if (!copy) onClose();
@@ -127,14 +139,17 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
       onClose(); await page.reload?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : "넣지 못했어요."); } finally { setBusy(false); }
   };
-  const tabs: ["queue" | "now" | "paste", string][] = [["queue", "내 AI가 가져가게 두기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as ["paste", string]] : [])];
+  const tabs: [SendTab, string][] = [...(gptOk ? [["gpt", "GPT로 바로 (추천)"] as [SendTab, string]] : []), ["queue", gptOk ? "내 AI가 가져가게 두기" : "내 AI가 가져가게 두기 (추천)"], ["now", "바로 시키기"], ...(task === "script" ? [["paste", "직접 붙여 넣기"] as [SendTab, string]] : [])];
+  // A card plus its documents is about 60,000 letters in; the answer and its thinking at most 20,000 tokens.
+  const gptModel = GPT_TIERS[tier].model, gptCost = tokenEstimate(gptModel, 60_000, 20_000);
   return <dialog ref={dialog} className="yp-modal" aria-labelledby={`yp-ai-${task}`} onClose={onClose} style={{ maxWidth: 640 }}>
-    <div className="yp-modal-h"><span id={`yp-ai-${task}`}>내 AI로 보내기 · {info.name}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
+    <div className="yp-modal-h"><span id={`yp-ai-${task}`}>{gptOk ? info.name : `내 AI로 보내기 · ${info.name}`}</span><span className="yp-sp" /><button type="button" className="yp-ib" aria-label="닫기" onClick={onClose}><X size={14} /></button></div>
     <div className="yp-modal-b">
-      {waiting ? <div className="yp-note"><div>이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요.</div></div> : null}
+      {waiting ? <div className="yp-note"><div>{byGpt ? "GPT가 곧 만들기 시작해요." : "이미 보낸 작업이 있어요. 내 AI가 다음에 확인할 때 가져가요."}</div></div> : null}
       <dl className="yp-kv" style={{ gridTemplateColumns: "76px minmax(0,1fr)", fontSize: 13, marginBottom: 10 }}>
         <dt>결과</dt><dd>{info.result}</dd>
-        <dt>비용</dt><dd><CostTag kind="ai" />{youtube ? <> <CostTag kind="youtube" /></> : null} 내 AI 구독으로 처리돼요{youtube ? " · 참고 영상은 유튜브에서 찾아요" : ""}</dd></dl>
+        <dt>비용</dt><dd>{tab === "gpt" ? <><CostTag kind="paid" /> GPT 크레딧에서 나가요 · {modelName(gptModel)} 최대 약 {gptCost?.toLocaleString("ko-KR")}원</>
+          : <><CostTag kind="ai" /> 내 AI 구독으로 처리돼요</>}{youtube ? <> <CostTag kind="youtube" /> 참고 영상은 유튜브에서 찾아요</> : null}</dd></dl>
       {searches ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>참고 영상 검색어<span className="yp-gq">OS가 이 말로 유튜브를 찾아 조회수 5만 이상 · 구독자 대비 조회수 순으로 모아요 · 짧은 핵심어(예: 퇴사 고민)가 잘 찾아져요</span>
         <input className="yp-in" value={query} maxLength={60} onChange={event => setQuery(event.target.value)} placeholder="예) 퇴사 고민" /></label> : null}
       {task === "shorts" || task === "column" ? <label className="yp-lbl" style={{ display: "block", marginBottom: 10 }}>몇 편<span className="yp-gq">{task === "shorts" ? "영상 1편에 3~5편이 좋아요" : "편마다 다른 검색 질문을 겨냥해요"}</span>
@@ -145,9 +160,13 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
         <label className="yp-lbl" style={{ margin: 0, gridColumn: "1 / -1" }}>참고 자료 (선택) <span className="yp-gq">댓글 원문 등</span>
           <textarea className="yp-in" rows={3} value={attachments} onChange={event => setAttachments(event.target.value)} /></label>
       </div> : null}
-      {running ? <div className="yp-note"><div>내 AI가 쓰는 중이에요. 끝나면 이 칸에 들어가요.</div></div> : <>
+      {running ? <div className="yp-note"><div>{byGpt ? "GPT가 만드는 중이에요." : "내 AI가 쓰는 중이에요."} 끝나면 이 칸에 들어가요.</div></div> : <>
         <div className="yp-seg2 yp-aitabs" role="tablist">{tabs.map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? "yp-on" : ""} onClick={() => setTab(key)}>{label}</button>)}</div>
         <div style={{ marginTop: 10 }}>
+          {tab === "gpt" ? <div className="yp-kvbox"><b>GPT</b> <span className="yp-eta">3~6분</span><br />
+            <span className="yp-muted" style={{ fontSize: 12 }}>OS가 회사 GPT로 바로 만들어 이 칸에 넣어요. 내 AI 연결이 없어도 돼요.</span>
+            <div style={{ marginTop: 8 }}><select className="yp-in yp-sel1" aria-label="GPT 모델" value={tier} onChange={event => setTier(event.target.value as GptTier)}>
+              {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select></div></div> : null}
           {tab === "queue" ? <div className="yp-kvbox"><b>내 AI</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 연결되지 않았어요"}</span><br />
             <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 다음에 확인할 때 가져가 쓰고, 끝나면 칸에 넣어요. 지금 바로 해야 하면 [바로 시키기]를 눌러요.</span></div> : null}
           {tab === "now" ? <><ol className="yp-nowsteps"><li>[보내고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요. 그동안 대화는 열어 둬요</li></ol>
@@ -158,13 +177,14 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
               <label key={key} className="yp-lbl" style={{ display: "block" }}>{label}<textarea className="yp-in" rows={rows} value={paste[key]} onChange={event => setPaste(current => ({ ...current, [key]: event.target.value }))} /></label>)}
           </form> : null}
         </div>
-        {!connected ? <details className="yp-card" style={{ marginTop: 10 }}><summary style={{ padding: "8px 10px", cursor: "pointer" }}>내 AI 연결하기 (처음 한 번)</summary><div style={{ padding: "0 10px 10px" }}><MyAiConnect /></div></details> : null}
+        {!connected && tab !== "gpt" ? <details className="yp-card" style={{ marginTop: 10 }}><summary style={{ padding: "8px 10px", cursor: "pointer" }}>내 AI 연결하기 (처음 한 번)</summary><div style={{ padding: "0 10px 10px" }}><MyAiConnect /></div></details> : null}
       </>}
       {error ? <div className="yp-errline" role="alert">{error}</div> : null}
     </div>
     <div className="yp-modal-f">
       <button type="button" className="yp-btn" onClick={onClose}>{running ? "닫기" : "취소"}</button>
-      {running ? null : tab === "queue" ? <button type="button" className="yp-btn yp-pri" disabled={busy || waiting} onClick={() => void send(false)}><Sparkles size={14} /> 보내기</button>
+      {running ? null : tab === "gpt" ? <button type="button" className="yp-btn yp-pri" disabled={busy || (waiting && byGpt)} onClick={() => void send(false, tier)}><Sparkles size={14} /> GPT로 만들기</button>
+        : tab === "queue" ? <button type="button" className="yp-btn yp-pri" disabled={busy || waiting} onClick={() => void send(false)}><Sparkles size={14} /> 보내기</button>
         : tab === "now" ? <button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => waiting ? void navigator.clipboard.writeText(MY_AI_PROMPT).then(() => setCopied(true)) : void send(true)}><Copy size={14} /> {waiting ? "문장 복사" : "보내고 문장 복사"}</button>
           : <button type="button" className="yp-btn yp-pri" disabled={busy || Object.values(paste).some(value => !value.trim())} onClick={() => void submitPaste()}>결과 넣기</button>}
     </div>

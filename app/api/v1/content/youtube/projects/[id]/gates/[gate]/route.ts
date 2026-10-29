@@ -6,6 +6,8 @@ import { requestYoutubeGate } from "@/lib/server/youtube-process-stages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// GPT 초안 (2026-10-29): this request may start GPT work after its response (next/server after), which takes several minutes.
+export const maxDuration = 800;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; gate: string }> }) {
   try {

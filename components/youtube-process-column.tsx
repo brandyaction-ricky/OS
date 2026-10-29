@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, Clipboard, Code2, Download, ImagePlus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { checkColumnHtml, columnMeta, columnSlots, renderColumn, type ColumnFill } from "@/lib/seo-column";
 import { columnSignature, type YpColumnItem } from "@/lib/youtube-process/stages";
-import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
+import { draftTag } from "@/lib/youtube-process/gpt-draft";
 import { md, YpSection, type YpPage } from "./youtube-process-frame";
 
 const slotName = (slot: string) => slot === "hero" ? "대표 이미지" : slot === "video" ? "영상" : `이미지 ${slot}`;
@@ -25,7 +26,7 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
   const column = bundle.stages.column;
   const items = column.data.items;
   const videoUrl = bundle.stages.upload.data.run?.videoUrl ?? "";
-  const [send, setSend] = useState(false);
+  const [send, setSend] = useState<false | SendTab>(false);
   const [busy, setBusy] = useState("");
   const [pick, setPick] = useState<string | null>(null);
   const [pasting, setPasting] = useState<string | null>(null);
@@ -48,10 +49,10 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
 
   return <>
     <YpSection n={1} title="SEO 칼럼" gq={items.length ? `${items.length}편 · 편마다 다른 검색 질문` : "원고로 검색용 칼럼을 써요"} extra={<>
-      <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend(true)}><Sparkles size={14} /> {items.length ? "내 AI로 다시 쓰기" : "내 AI로 칼럼 쓰기"}</button>
+      <button type="button" className="yp-btn yp-sm yp-pri" disabled={page.demo || job.open} onClick={() => setSend("gpt")}><Sparkles size={14} /> {items.length ? "다시 쓰기" : "AI로 칼럼 쓰기"}</button>
       <button type="button" className="yp-btn yp-sm" onClick={() => setPasting(pasting === null ? "" : null)}><Plus size={14} /> HTML 붙여 넣기</button></>}>
-      {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [내 AI로 칼럼 쓰기]를 눌러 시작해요.</p>
+      {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
+      {!items.length ? <p className="yp-pempty">아직 칼럼이 없어요. [AI로 칼럼 쓰기]를 눌러 시작해요.</p>
         : <div className="yp-ftabs" role="tablist" aria-label="칼럼" style={{ padding: "0 0 10px" }}>{items.map((item, index) =>
           <button key={item.id} type="button" role="tab" aria-selected={current?.id === item.id} className={current?.id === item.id ? "yp-on" : ""} onClick={() => setPick(item.id)}>
             칼럼 {index + 1}{columnMeta(item.html).title ? ` · ${columnMeta(item.html).title.slice(0, 16)}` : ""}</button>)}</div>}
@@ -63,7 +64,7 @@ export function YoutubeColumnPanel({ page }: { page: YpPage }) {
       </div> : null}
     </YpSection>
     {current ? <ColumnItemView key={current.id} page={page} item={current} index={items.indexOf(current)} videoUrl={videoUrl} busy={busy} save={save} /> : null}
-    <SendDialog page={page} task="column" open={send} onClose={() => setSend(false)} job={job} />
+    <SendDialog page={page} task="column" open={Boolean(send)} initialTab={send || undefined} onClose={() => setSend(false)} job={job} />
   </>;
 }
 
@@ -117,7 +118,7 @@ function ColumnItemView({ page, item, index, videoUrl, busy, save }: { page: YpP
   const flagged = [...check.unsafe, ...check.issues];
 
   return <>
-    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `AI 초안 · ${ai.by} · ${md(ai.at)}${html !== ai.html ? " · 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
+    <YpSection n={2} title={`칼럼 ${index + 1}`} gq={ai ? `${draftTag(ai.by, ai.model)} · ${md(ai.at)}${html !== ai.html ? " · 고침" : ""}` : "붙여 넣은 칼럼"} extra={<>
       <button type="button" className="yp-btn yp-sm" onClick={() => setEditing(editing === null ? html : null)}><Code2 size={14} /> HTML 고치기</button>
       <button type="button" className="yp-ib" aria-label={`칼럼 ${index + 1} 빼기`} disabled={busy === "remove"} onClick={() => { if (window.confirm("이 칼럼을 뺄까요?")) void patch({ remove: true }, "remove"); }}><Trash2 size={14} /></button></>}>
       <dl className="yp-kv">

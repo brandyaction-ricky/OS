@@ -8,7 +8,8 @@ import type { ChannelConnection } from "@/lib/channel-types";
 import { projectName, stepHref } from "@/lib/youtube-process/project";
 import { DESC_TEMPLATE, descChecks, descWritten, finalPair, pinnedDraft, shortLinkProblem, SLOTS, UTM_DESTS, UTM_OPTIONS, utmBase, utmCode, utmUrl, type YpUpload } from "@/lib/youtube-process/stages";
 import { errorMessage } from "./youtube-process-data";
-import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { JobLine, SendDialog, useStaffJob, type SendTab } from "./youtube-process-ai";
+import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 import { CostTag } from "./cost-notice";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
@@ -25,7 +26,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
   const [form, setForm] = useState<YpUpload | null>(null);
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
-  const [send, setSend] = useState(false);
+  const [send, setSend] = useState<false | SendTab>(false);
   const [channels, setChannels] = useState<ChannelConnection[]>([]);
   const [owner, setOwner] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
@@ -169,14 +170,15 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <input ref={srtInput} type="file" hidden accept=".srt,application/x-subrip" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadSrt(file); }} />
         </YpSection>
         <YpSection n={3} title="설명란 · 고정 댓글" need>
-          {!form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : editable ? <div className="yp-ways">
-            <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>설명란 · 고정 댓글 · 다른 채널 문안을 만들어 줘요</span></button>
+          {!form.desc.trim() && !aiDraftWaiting ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : editable ? <div className="yp-ways">
+            <button type="button" className="yp-way yp-rec" onClick={() => setSend("gpt")}><b><Sparkles size={14} aria-hidden="true" /> GPT로 바로 만들기</b><span>3~6분 · 설명란 · 고정 댓글 · 다른 채널 문안까지</span></button>
+            <button type="button" className="yp-way" onClick={() => setSend("queue")}><b>내 AI에게 맡기기</b><span>내 AI 구독으로 만들어요</span></button>
             <button type="button" className="yp-way" onClick={() => edit({ desc: DESC_TEMPLATE })}><b>직접 쓰기</b><span>정해진 구역 순서가 들어간 칸에 바로 써요</span></button></div> : null) : <>
             <div className="yp-row-btns" style={{ margin: "0 0 6px" }}><button type="button" className="yp-btn yp-sm" onClick={() => void copy("desc", form.desc)}><Copy size={14} /> {copied === "desc" ? "복사됨" : "설명란 복사"}</button>
-              {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><RefreshCw size={14} /> 내 AI로 다시 만들기</button> : null}
-              {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {form.descBy.name}</span> : null}</div>
-            {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} /> : null}
-            {aiDraftWaiting && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>AI 초안이 왔어요.</b> 고친 설명란이 있어 바로 넣지 않았어요.
+              {editable ? <button type="button" className="yp-btn yp-sm" onClick={() => setSend("gpt")}><RefreshCw size={14} /> 다시 만들기</button> : null}
+              {form.descBy ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> {draftTag(form.descBy.name, form.descBy.model)}</span> : null}</div>
+            {job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(job.status?.job?.executor === "gpt" ? "gpt" : "queue")} /> : null}
+            {aiDraftWaiting && editable ? <div className="yp-note yp-purple" role="status"><Sparkles size={16} className="yp-i" aria-hidden="true" /><div><b>{isGptModel(form.descBy?.model) ? "GPT 초안이 왔어요." : "AI 초안이 왔어요."}</b> 고친 설명란이 있어 바로 넣지 않았어요.
               <button type="button" className="yp-lnk" onClick={() => edit({ desc: form.descBy!.draft, ...(form.pinnedDraft ? { pinned: form.pinnedDraft } : {}) }, true)}>이 초안으로 바꾸기</button>
               <details><summary>초안 보기</summary><pre style={{ whiteSpace: "pre-wrap", fontSize: 12 }}>{form.descBy!.draft}</pre></details></div></div> : null}
             <textarea className="yp-in yp-desc" rows={16} readOnly={!editable} value={form.desc} onChange={event => edit({ desc: event.target.value })} aria-label="설명란" />
@@ -221,7 +223,7 @@ function LongUploadScreen({ header, page }: { header: ReactNode; page: YpPage })
           <YtCard page={page} thumb={finalPair(plan, make, slot)?.thumb} path={make.thumbs[slot]?.path} title={finalPair(plan, make, slot)?.title ?? ""} /></div>)}
         <p className="yp-hint">A/B 테스트는 올린 뒤 스튜디오(PC)에서 이 후보로 걸어요. 제목 · 썸네일 문구는 최종 검토 전 <Link className="yp-lnk" href={stepHref(3, project.id)}>제작 › 최종 썸네일</Link>에서 바꿀 수 있어요.</p>
       </div></section></aside></div>
-      <SendDialog page={page} task="kit" open={send} onClose={() => setSend(false)} job={job} />
+      <SendDialog page={page} task="kit" open={Boolean(send)} initialTab={send || undefined} onClose={() => setSend(false)} job={job} />
     </div> : null}
   </YpFrame>;
 }

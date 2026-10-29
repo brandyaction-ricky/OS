@@ -30,6 +30,7 @@ import { doneShortRefs } from "./youtube-process-short-refs";
 import { assertShortFormulaInputs, assertShortScriptInputs, assertShortTopicsInputs, saveShortFormula, saveShortScript, saveShortTopics, shortFormulaCard, shortFormulaInputKey, shortScriptCard, shortScriptInputKey, shortScriptQuery, shortTopicsCard, shortTopicsInputKey } from "./youtube-process-short-script";
 import { refMatchesQuery } from "@/lib/youtube-process/short-script";
 import type { NicheVideo } from "@/lib/youtube-process/discover";
+import type { GptTier } from "@/lib/youtube-process/gpt-draft";
 
 /** The name a job carries: the adopted title, or a v1 project's confirmed A. */
 const jobTitle = (state: Awaited<ReturnType<typeof readPipeline>>) => isYoutubeV1(state.source) ? v1Title(v1Stages(state)) : state.writing.packageTitle || state.source.title;
@@ -53,6 +54,8 @@ const jobMetaSchema = z.object({
   model: z.string().optional(), issues: z.array(z.string()).optional(), failReason: z.string().optional(), doneAt: z.string().optional(),
   // 기획안 · 다시 뽑기: the market search behind the formulas, frozen when the job was asked for (like a 틈새 job's pool).
   market: z.custom<PackagingMarket>(value => Boolean(value && typeof value === "object")).optional(),
+  // GPT 초안 (2026-10-29): the OS itself does the card with the company's GPT credit; no staff AI may take it.
+  executor: z.literal("gpt").optional(), tier: z.enum(["precise", "saving"]).optional(),
 }).passthrough();
 type JobMeta = z.infer<typeof jobMetaSchema>;
 
@@ -104,7 +107,7 @@ export function publicStaffJob(job: OsRecord) {
   const m = meta(job);
   return { id: job.id, status: job.status, task: m.task, inputKey: m.inputKey, requestedAt: m.requestedAt, claimedAt: m.claimedAt ?? null,
     model: m.model ?? null, issues: m.issues ?? [], failReason: m.failReason ?? null, doneAt: m.doneAt ?? null, processing: job.status === "active" && leaseLive(m.lease),
-    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null };
+    targetMinutes: m.targetMinutes ?? null, role: m.role ?? null, slot: m.slot ?? null, executor: m.executor ?? "staff" };
 }
 
 async function saveJob(job: OsRecord, changes: { status?: string; stage?: string; metadata: JobMeta }) {
@@ -130,7 +133,7 @@ async function openJobs(ownerId: string, sourceId?: string, task?: JobMeta["task
  * own AI takes it. An open job of the same kind for the same input is reused,
  * and one for older input is cancelled. The job is named after the adopted title so it reads the same as the screen.
  */
-export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>) {
+export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof staffJobRequestSchema>, gpt?: { tier: GptTier }) {
   let source: OsRecord; let title: string; let inputKey: string;
   let myinRunId: string | undefined;
   let taskName: string = TASK_NAME[input.task];
@@ -225,7 +228,10 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
   const role = input.task === "script" ? input.role : undefined;
   for (const job of await openJobs(actor.id, input.sourceId, input.task)) {
     const m = meta(job);
-    if (m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
+    const sameDoer = Boolean(m.executor) === Boolean(gpt);
+    if (!sameDoer && job.status === "active" && leaseLive(m.lease))
+      throw new ApiError(409, "STAFF_AI_JOB_BUSY", m.executor ? "GPT가 만드는 중이에요. 끝난 뒤에 다시 해 주세요." : "내 AI가 쓰는 중이에요. 끝난 뒤에 다시 해 주세요.");
+    if (sameDoer && m.inputKey === inputKey && m.targetMinutes === targetMinutes && m.role === role && m.attachments === attachments && m.slot === slot && m.market?.query === marketFor?.query) return publicStaffJob(job);
     await saveJob(job, { status: "cancelled", metadata: { ...meta(job), failReason: "입력이 바뀌어 새 요청으로 바꿨어요." } });
   }
   const now = new Date().toISOString();
@@ -235,12 +241,13 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     .catch((error: unknown) => ({ query: marketFor!.query, at: now, refs: [], error: error instanceof ApiError ? error.message : "유튜브 검색을 하지 못했어요." })) : undefined;
   const metadata: JobMeta = { kind: STAFF_AI_JOB_KIND, task: input.task, sourceId: input.sourceId, inputKey, requestedAt: now, ...(market ? { market } : {}),
     ...(input.task === "scene-plan" ? { templateVersion: YOUTUBE_VISUAL_TEMPLATE_VERSION } : input.task === "storyboard" ? { myinRunId }
-      : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}) };
+      : { targetMinutes, role, ...(attachments ? { attachments } : {}), ...(slot ? { slot } : {}) }), ...(pool ? { pool } : {}),
+    ...(gpt ? { executor: "gpt" as const, tier: gpt.tier } : {}) };
   const { data, error } = await actor.supabase.from("os_records").insert({
     id: randomUUID(), record_type: "ai_job", title: `${title} · ${taskName}`.slice(0, 240),
-    description: "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
+    description: gpt ? "OS가 회사 GPT 크레딧으로 바로 처리하는 작업입니다." : "요청한 직원의 AI가 OS 연결로 가져가 처리하는 작업입니다.", status: "backlog", stage: "queued", priority: "normal",
     brand: source.brand, team: source.team, owner_id: actor.id, parent_id: input.sourceId, created_by: actor.id, updated_by: actor.id,
-    tags: ["유튜브", "직원AI"], metadata,
+    tags: ["유튜브", gpt ? "GPT" : "직원AI"], metadata,
   }).select("*").maybeSingle();
   if (error || !data) throw new ApiError(400, "STAFF_AI_JOB_CREATE_FAILED", "AI 작업을 만들지 못했습니다.");
   return publicStaffJob(data as OsRecord);
@@ -261,7 +268,7 @@ export async function staffJobStatus(actor: RequestActor, sourceId: string, task
 // ── The staff AI side (agent key) ──
 
 export async function listStaffJobs(agent: RequestActor) {
-  const jobs = (await openJobs(agent.ownerId)).filter(job => job.status === "backlog" || !leaseLive(meta(job).lease));
+  const jobs = (await openJobs(agent.ownerId)).filter(job => !meta(job).executor && (job.status === "backlog" || !leaseLive(meta(job).lease)));
   return { jobs: jobs.map(job => ({ jobId: job.id, task: meta(job).task, title: job.title, requestedAt: meta(job).requestedAt })),
     next: jobs.length ? "process_youtube_ai_job로 action=claim, job_id를 보내 가져가세요." : "지금 처리할 작업이 없어요." };
 }
@@ -402,9 +409,10 @@ async function myinCardDocIds(docs = MYIN_CARD_DOCS) {
   return Object.fromEntries(rows.filter(row => rows.filter(other => other.title === row.title).length === 1).map(row => [row.title as string, row.id as string]));
 }
 
-export async function claimStaffJob(agent: RequestActor, jobId: string) {
+export async function claimStaffJob(agent: RequestActor, jobId: string, byGpt = false) {
   const job = await ownJob(agent, jobId);
   const m = meta(job);
+  if (Boolean(m.executor) !== byGpt) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", m.executor ? "GPT가 만드는 작업이에요." : "직원 AI에게 보낸 작업이에요.");
   if (job.status !== "backlog" && !(job.status === "active" && !leaseLive(m.lease))) throw new ApiError(409, "STAFF_AI_JOB_TAKEN", "이미 처리 중이거나 끝난 작업입니다.");
   const minutes = LEASE_MINUTES[m.task];
   const take = async () => {

@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/http";
 import { creditCycle, sumCosts } from "@/lib/openai-credit";
+import { GPT_SAVING_BELOW_USD, type GptTier } from "@/lib/youtube-process/gpt-draft";
 
 /** This cycle's GPT API credit: OPENAI_ADMIN_KEY (read-only admin key of the organization the OS key belongs to), the grant and its renewal day. */
 export async function readOpenAiCredit(now = new Date()) {
@@ -26,4 +27,10 @@ export async function readOpenAiCredit(now = new Date()) {
     page = body.next_page;
   }
   return { configured: true as const, ...cycle, spent, remaining: Math.max(0, credit - spent) };
+}
+
+/** 정밀 unless this month's credit is nearly used up (an unreadable balance counts as plenty). */
+export async function creditTier(): Promise<GptTier> {
+  const credit = await readOpenAiCredit().catch(() => null);
+  return credit?.configured && (credit.remaining ?? 0) < GPT_SAVING_BELOW_USD ? "saving" : "precise";
 }

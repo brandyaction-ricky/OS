@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { scriptKey, type YpOutline } from "@/lib/youtube-process/stages";
 import { modelName } from "@/lib/cost";
-import { REVIEW2_GATE_NAME, REVIEW2_MODELS, type Review2Tier } from "@/lib/youtube-script-review2";
+import { GPT_TIERS, type GptTier } from "@/lib/youtube-process/gpt-draft";
+import { REVIEW2_GATE_NAME } from "@/lib/youtube-script-review2";
 import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import type { useYpBundle } from "./youtube-process-frame";
 
@@ -13,7 +14,7 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
   const review = page.bundle?.stages.review2;
   const cost = useCostConfirm();
   const [busy, setBusy] = useState(false);
-  const [tier, setTier] = useState<Review2Tier>("precise");
+  const [tier, setTier] = useState<GptTier>("precise");
   const data = review?.data;
   // A staff AI's 원고 starts the judgement on the server; until it lands the card waits for it (it takes a few minutes).
   const fresh = Boolean(outline.ai && Date.parse(outline.ai.at) > Date.now() - WAIT_MS && (!data?.at || data.at < outline.ai.at));
@@ -35,7 +36,7 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
   const run = async () => {
     if (!projectId || !page.client) return;
     const client = page.client;
-    const model = REVIEW2_MODELS[tier].model;
+    const model = GPT_TIERS[tier].model;
     const ok = await cost.confirm({ model, amount: tokenEstimate(model, 40_000 + outline.script.length, 20_000), upTo: true, detail: "원고와 정본 두 편(검수 · 말투)을 함께 보내요",
       note: "GPT 크레딧(매달 500달러)에서 나가요.", ok: "검수하기" });
     if (!ok) return;
@@ -55,8 +56,8 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
         : data.state === "failed" ? <span className="yp-tag yp-bad">⚠ 끝내지 못했어요</span> : <span className="yp-muted" style={{ fontSize: 12 }}>아직 받지 않았어요</span>}
       {data.state === "done" && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>{modelName(data.model)}{stale ? " · 원고가 바뀌었어요" : ""}</span> : null}
       <span className="yp-sp" />
-      {editable ? <select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as Review2Tier)}>
-        {(Object.keys(REVIEW2_MODELS) as Review2Tier[]).map(key => <option key={key} value={key}>{REVIEW2_MODELS[key].label} · {modelName(REVIEW2_MODELS[key].model)}</option>)}</select> : null}
+      {editable ? <select className="yp-in yp-sel1" aria-label="검수 모델" value={tier} disabled={Boolean(blocked)} onChange={event => setTier(event.target.value as GptTier)}>
+        {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select> : null}
       {editable ? <button type="button" className="yp-btn yp-sm" disabled={Boolean(blocked)} title={blocked || undefined} onClick={() => void run()}>{label} <CostTag kind="paid" /></button> : null}
     </div>
     {data.state === "failed" && !waiting ? <div className="yp-card-b" style={{ fontSize: 13 }}>{data.error}</div> : null}

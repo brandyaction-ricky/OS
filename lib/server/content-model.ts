@@ -3,7 +3,8 @@ import { ApiError } from "@/lib/http";
 export interface ContentModelRequest {
   prompt: string;
   model: string;
-  jsonSchema: Record<string, unknown>;
+  /** Omitted only for GPT: the answer is then any one JSON object (a staff-AI job card describes its own result shape). */
+  jsonSchema?: Record<string, unknown>;
   maxTokens: number;
   effort?: "low" | "medium" | "high" | "xhigh" | "max";
   timeoutMs?: number;
@@ -50,7 +51,7 @@ async function generateOpenAiContentText({ prompt, model, jsonSchema, maxTokens,
     headers: { authorization: `Bearer ${key}`, "content-type": "application/json" },
     // GPT-6 takes the same effort names (low · medium · high · xhigh · max; developers.openai.com, checked 2026-10-29).
     body: JSON.stringify({ model, input: [{ role: "user", content: prompt }], max_output_tokens: maxTokens, ...(effort ? { reasoning: { effort } } : {}),
-      text: { format: { type: "json_schema", name: "content_result", strict: true, schema: jsonSchema } }, store: false }),
+      text: { format: jsonSchema ? { type: "json_schema", name: "content_result", strict: true, schema: jsonSchema } : { type: "json_object" } }, store: false }),
   });
   const body = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) throw new ApiError(502, "OPENAI_GENERATION_FAILED", "OpenAI 콘텐츠 생성 요청에 실패했습니다.");
