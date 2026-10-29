@@ -7,6 +7,7 @@ import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
+import { applyFeedback, FeedbackRuleError, type FeedbackAction, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
@@ -25,7 +26,8 @@ export type YpShortPatch = { brief?: Partial<YpShortBrief>; scenes?: YpShortScen
 export interface YpBundle { project: YpProject; stages: YpStagesView; finals: YpFinalView[]; formulas?: YpStoredFormula[] }
 export interface YpFeedbackView {
   id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
-  kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: { by: string; text: string; at: string }[];
+  kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: FeedbackReply[];
+  doneBy?: string; doneAt?: string; confirmedBy?: string; confirmedAt?: string; deleted?: boolean; editedAt?: string;
 }
 export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
 export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
@@ -48,7 +50,7 @@ export interface YpClient {
   finalUrl(id: string, final: YpFinalView): Promise<string | null>;
   feedback(id: string): Promise<YpFeedbackView[]>;
   addFeedback(id: string, input: YpFeedbackInput): Promise<YpFeedbackView>;
-  actFeedback(id: string, itemId: string, expectedVersion: number, action: "resolve" | "reopen" | "decline" | "reply", text?: string): Promise<YpFeedbackView>;
+  actFeedback(id: string, itemId: string, expectedVersion: number, action: FeedbackAction, text?: string, replyId?: string): Promise<YpFeedbackView>;
   uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
   uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
   /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
@@ -118,7 +120,7 @@ function apiClient(token: string): YpClient {
       : final.path ? assetUrl(id, final.path) : null,
     feedback: async id => (await apiRequest<{ items: YpFeedbackView[] }>(`${base}/${id}/feedback`, { token })).items,
     addFeedback: async (id, input) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "POST", body: json(input) })).item,
-    actFeedback: async (id, itemId, expectedVersion, action, text = "") => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "PATCH", body: json({ itemId, expectedVersion, action, text }) })).item,
+    actFeedback: async (id, itemId, expectedVersion, action, text = "", replyId) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "PATCH", body: json({ itemId, expectedVersion, action, text, ...(replyId ? { replyId } : {}) }) })).item,
     uploadSession: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "session", ...input }) }),
     uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
@@ -417,10 +419,18 @@ function demoClient(): YpClient {
       demoFeedback.set(id, [...(demoFeedback.get(id) ?? []), item]);
       return structuredClone(item);
     },
-    actFeedback: async (id, itemId, _expected, action, text = "") => {
+    actFeedback: async (id, itemId, _expected, action, text = "", replyId) => {
       const items = demoFeedback.get(id) ?? [];
-      const next = items.map(item => item.id !== itemId ? item : { ...item, version: item.version + 1,
-        ...(action === "reply" ? { replies: [...item.replies, { by: "리키", text, at: new Date().toISOString() }] } : action === "decline" ? { status: "declined" as const, declinedWhy: text } : { status: action === "resolve" ? "done" as const : "open" as const }) });
+      const latest = (demoFinals.get(id) ?? []).at(-1)?.v ?? null;
+      let next: YpFeedbackView[];
+      try {
+        next = items.map(item => {
+          if (item.id !== itemId) return item;
+          const after = applyFeedback({ ...item }, { id: DEMO_ME, name: "리키", admin: true }, { action, text, replyId }, new Date().toISOString(), latest, item.target);
+          const cleared = { doneBy: undefined, doneAt: undefined, confirmedBy: undefined, confirmedAt: undefined, deleted: undefined, editedAt: undefined };
+          return { ...item, ...cleared, ...after, version: item.version + 1 };
+        });
+      } catch (reason) { if (reason instanceof FeedbackRuleError) throw demoError(reason.status, reason.code, reason.message); throw reason; }
       demoFeedback.set(id, next);
       return structuredClone(next.find(item => item.id === itemId)!);
     },

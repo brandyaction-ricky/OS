@@ -359,6 +359,8 @@
 .linear-shell .ui-v2.yp .yp-rep{margin:6px 0 0 10px;padding-left:8px;border-left:2px solid var(--line);font-size:12px;color:var(--text-2)}
 .linear-shell .ui-v2.yp .yp-rep b{color:var(--text)}
 .linear-shell .ui-v2.yp .yp-repin{display:flex;gap:6px;margin-top:6px}
+.linear-shell .ui-v2.yp .yp-repin{align-items:flex-start}
+.linear-shell .ui-v2.yp .yp-repin textarea{flex:1;min-height:56px;resize:vertical}
 .linear-shell .ui-v2.yp .yp-comp{border-top:1px solid var(--line);padding:10px 12px;background:var(--panel);border-radius:0 0 10px 10px}
 .linear-shell .ui-v2.yp .yp-comp-h{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:12px;flex-wrap:wrap}
 .linear-shell .ui-v2.yp .yp-comp-h .yp-at{font-weight:800;font-size:14px;font-variant-numeric:tabular-nums}
