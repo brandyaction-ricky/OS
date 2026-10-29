@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { apiRequest, listRecords } from "@/lib/api-client";
+import { apiRequest, listRecords, listMetricWindow } from "@/lib/api-client";
 import type { OsRecord } from "@/lib/record-types";
 import { summarizeTodayContent, type HomeChannel } from "@/lib/today-content";
 import { useSession } from "./session-provider";
@@ -21,12 +21,13 @@ export function TodayContentOperations({ blockedCount = 0 }: { blockedCount?: nu
         const [posts, comments, metrics, channels] = await Promise.all([
           listRecords(accessToken, "content_publish", "limit=200"),
           apiRequest<{ comments: Array<OsRecord & { canRespond: boolean }>; truncated: boolean }>("/api/v1/content/comments", { token: accessToken }),
-          listRecords(accessToken, "content_metric", "limit=200"),
+          // Only channel snapshots of the last day are counted; the window read skips every hourly YouTube observation.
+          listMetricWindow(accessToken, new Date(Date.now() - 86_400_000).toISOString().slice(0, 10), new Date().toISOString().slice(0, 10)),
           apiRequest<{ connections: HomeChannel[] }>("/api/v1/channels", { token: accessToken }),
         ]);
         if (active) {
-          setSummary(summarizeTodayContent(posts.records, comments.comments, metrics.records, channels.connections, profile?.id ?? ""));
-          setTruncated(posts.records.length === 200 || metrics.records.length === 200 || comments.truncated);
+          setSummary(summarizeTodayContent(posts.records, comments.comments, metrics, channels.connections, profile?.id ?? ""));
+          setTruncated(posts.records.length === 200 || comments.truncated);
           setError("");
         }
       } catch { if (active) { setSummary(null); setError("콘텐츠 현황을 불러오지 못했습니다. 채널 저장소·연결 상태를 확인해 주세요."); } }
