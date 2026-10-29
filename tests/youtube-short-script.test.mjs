@@ -20,10 +20,10 @@ const good = `퇴근하고 소파에 누워 휴대폰만 봐요
 지친 건 일이 많아서가 아니었어요
 오늘 몇 번 고르셨어요?`;
 
-test("a 30~45초 대본 passes; the [관계] · [사람] marks are screen hints, not spoken", () => {
+test("a 250~370자 대본 (약 24~36초 at 1.25배) passes; the [관계] · [사람] marks are screen hints, not spoken", () => {
   const check = checkShortScript(good);
   assert.deepEqual(check.problems, []);
-  assert.deepEqual([check.lines, check.chars >= 250 && check.chars <= 370, check.seconds >= 30 && check.seconds <= 45], [15, true, true]);
+  assert.deepEqual([check.lines, check.chars >= 250 && check.chars <= 370, check.seconds >= 24 && check.seconds <= 36], [15, true, true]);
   assert.deepEqual(scriptLines(good)[2], { text: "3년 차 마케터 지은 씨도 그랬어요", mark: "사람" });
   assert.deepEqual(checkShortScript("").problems, ["대본을 써 주세요"]);
 });
@@ -31,7 +31,7 @@ test("a 30~45초 대본 passes; the [관계] · [사람] marks are screen hints,
 test("length, the first line, long lines and the banned words are counted", () => {
   const lines = good.split("\n");
   assert.match(checkShortScript(lines.slice(0, 6).join("\n")).problems[0], /250자 이상/);
-  assert.match(checkShortScript([...lines, ...lines.slice(1, 6)].join("\n")).notes[0], /60초 쇼츠로만/);
+  assert.match(checkShortScript([...lines, ...lines.slice(1, 6)].join("\n")).notes[0], /기본\(370자\)보다 길어요 — 약 39초/);
   assert.match(checkShortScript([...lines, ...lines, ...lines].join("\n")).problems[0], /490자/);
   assert.ok(checkShortScript(["퇴근하고 집에 오면 소파에 누워 휴대폰만 계속 봐요", ...lines.slice(1)].join("\n")).problems.some(problem => /첫 문장이 2\d자/.test(problem)));
   assert.ok(checkShortScript([...lines.slice(0, 5), "메일 하나 열 때마다 뭘 먼저 할지 매번 새로 정했거든요 그래서요", ...lines.slice(6)].join("\n")).problems.some(problem => /6번째 줄이 3\d자/.test(problem)));
