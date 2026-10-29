@@ -10,11 +10,12 @@ export const dynamic = "force-dynamic";
 type AuditRecord = {
   title?: string | null;
   record_type?: string | null;
-  metadata?: Record<string, unknown> | null;
+  // Only metadata.kind is used; reading whole metadata for 300 events (AI jobs carry KB each) slowed 변경 기록.
+  kind?: string | null;
 };
 
 function auditSubjectType(record: AuditRecord | null | undefined) {
-  return record?.record_type === "ai_job" && record.metadata?.kind === "development_request"
+  return record?.record_type === "ai_job" && record.kind === "development_request"
     ? "development_request"
     : record?.record_type ?? "record";
 }
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     const cursor = readCursor(params.get("cursor"));
     const queryLimit = limit * 3;
     let recordQuery = service.from("os_record_events")
-      .select("id,record_id,actor_id,event_type,from_status,to_status,changed_fields,note,created_at,os_records(title,record_type,metadata)")
+      .select("id,record_id,actor_id,event_type,from_status,to_status,changed_fields,note,created_at,os_records(title,record_type,kind:metadata->>kind)")
       .order("created_at", { ascending: false }).limit(queryLimit);
     let documentQuery = service.from("os_document_events")
       .select("id,document_id,actor_id,from_status,to_status,note,created_at")
@@ -116,7 +117,7 @@ export async function GET(request: Request) {
       documentIds.length ? service.from("os_documents").select(`title,${POLICY_FIELDS}`).in("id", documentIds) : Promise.resolve({ data: [], error: null }),
       actorIds.length ? service.from("os_profiles").select("id,display_name,email").in("id", actorIds) : Promise.resolve({ data: [] }),
       agentKeyIds.length ? service.from("os_agent_keys").select("id,name").in("id", agentKeyIds) : Promise.resolve({ data: [] }),
-      agentRecordIds.length ? service.from("os_records").select("id,title,record_type,metadata").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
+      agentRecordIds.length ? service.from("os_records").select("id,title,record_type,kind:metadata->>kind").in("id", agentRecordIds) : Promise.resolve({ data: [] }),
     ]);
     let documents = documentLookup;
     if (documentIds.length && (documents.error?.code === "42703" || documents.error?.code === "PGRST204")) {
