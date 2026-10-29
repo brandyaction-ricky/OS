@@ -170,3 +170,13 @@ test("sensitive access gaps, shared knowledge categories and action confirmation
   assert.match(monitoring, /지식 문서 최대 25건/);
   assert.match(monitoring, /텔레그램을 운영 주소에 연결하거나 다시 연결/);
 });
+
+test("변경 기록 has created_at indexes and 회사 설정 keeps Telegram status answers for a minute", async () => {
+  const sql = await read("supabase/migrations/20261029110000_audit_time_indexes.sql");
+  for (const table of ["os_record_events", "os_document_events", "os_agent_audit_logs"]) assert.match(sql, new RegExp(`on public\\.${table} \\(created_at desc\\)`));
+  assert.doesNotMatch(sql, /\b(insert|update|delete|drop)\b/i);
+  const route = await read("app/api/v1/telegram/setup/route.ts");
+  assert.match(route, /telegramStatus\("getMe"\)/);
+  assert.match(route, /telegramStatus\("getWebhookInfo"\)/);
+  assert.equal(route.match(/statusCache\.clear\(\);/g)?.length, 2, "changing the webhook clears the kept answers");
+});
