@@ -31,7 +31,7 @@ import { canOpenMenu } from "@/lib/menu-access";
 import { useMenuAccess } from "./use-menu-access";
 import { useYoutubeCanConfirm, useYoutubeConfirmWaiting, useYoutubeV1Access } from "./use-youtube-confirm";
 import type { YoutubeV1Mode } from "@/lib/youtube-process/gate";
-import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_PAGES, YOUTUBE_V1_STEP_PAGES } from "@/lib/youtube-process/navigation";
+import { YOUTUBE_V1_CEO_STAGE, YOUTUBE_V1_STEP_PAGES, youtubeV1EntrySelected, youtubeV1StageId, youtubeV1Stages } from "@/lib/youtube-process/navigation";
 import { fullscreenScreen } from "@/lib/fullscreen-screen";
 import { roleLabel } from "@/lib/company-settings";
 import { DevelopmentRequestDrawer } from "./development-request-drawer";
@@ -74,8 +74,13 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const menuAccess = useMenuAccess(profile, accessToken, demo);
   const canConfirm = useYoutubeCanConfirm(youtubeV1Enabled, accessToken, demo, profile?.role === "admin");
   const confirmWaiting = useYoutubeConfirmWaiting(Boolean(youtubeV1Enabled && canConfirm), pathname);
-  // 유튜브 공정 v1 swaps the content pages and adds 대표 메뉴 on top; the old screens stay reachable by address.
-  const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...NAV_STAGES.map(item => item.id === "content" ? { ...item, pages: YOUTUBE_V1_PAGES } : item)] : NAV_STAGES;
+  // 유튜브 공정 v1: 대표 메뉴 on top, then the menu by what is made (owner 2026-10-29, A안); old screens stay reachable by address.
+  const navStages = youtubeV1Enabled ? [...(canConfirm ? [YOUTUBE_V1_CEO_STAGE] : []), ...youtubeV1Stages(NAV_STAGES)] : NAV_STAGES;
+  const activeStageId = youtubeV1Enabled ? youtubeV1StageId(navStages, pathname, params, stage.id, (page.navHref ?? page.href).split("?")[0]) : stage.id;
+  // Without 유튜브 공정 v1 the content group keeps the name it always showed.
+  const groupLabel = (item: { id: string; label: string }) => !youtubeV1Enabled && item.id === "content" ? "유튜브 공정" : item.label;
+  const activeStage = navStages.find(item => item.id === activeStageId) ?? stage;
+  const entrySelected = (href: string) => href.includes("?") ? youtubeV1EntrySelected(href, pathname, params) : href === (page.navHref ?? page.href);
   const visibleStages = navStages.filter(item => !item.requiresHr || hrEnabled).map(item => ({ ...item, pages: item.pages
     .filter(entry => entry.href !== "/hr/my-leave"
       && !(hrShell.legacyHidden && (!teamV1Enabled && entry.href === "/organization/members" || !teamV1Enabled && entry.href === "/organization/schedule"))
@@ -92,7 +97,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   const [theme, setTheme] = useState<DisplayTheme>("dark");
   const [guidanceOn, setGuidanceOn] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [stage.id]: true });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ [activeStageId]: true });
   // 대표 메뉴 starts open: it is a single, time-sensitive entry.
   const groupOpen = (id: string) => openGroups[id] ?? id === "ceo";
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
@@ -174,11 +179,11 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
   useEffect(() => {
     try {
       const stored = JSON.parse(window.localStorage.getItem(GROUPS_STORAGE_KEY) ?? "{}");
-      setOpenGroups({ ...Object.fromEntries(NAV_STAGES.map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === stage.id || (stage.id === "home" && item.id === "content")])), [stage.id]: true });
+      setOpenGroups({ ...Object.fromEntries([...NAV_STAGES, ...youtubeV1Stages(NAV_STAGES)].map(item => [item.id, typeof stored?.[item.id] === "boolean" ? stored[item.id] : item.id === activeStageId || (activeStageId === "home" && item.id === "content")])), [activeStageId]: true });
       setCollapsed(window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "true");
       setMenuGuide(window.localStorage.getItem(MENU_GUIDE_STORAGE_KEY) !== "seen");
-    } catch { setOpenGroups({ [stage.id]: true }); }
-  }, [stage.id]);
+    } catch { setOpenGroups({ [activeStageId]: true }); }
+  }, [activeStageId]);
 
   const toggleGroup = (id: string) => {
     const next = { ...openGroups, [id]: !openGroups[id] };
@@ -285,16 +290,16 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
         <nav className="unified-nav page-nav">
           {visibleStages.map(item => {
             const Icon = item.icon;
-            const active = pathname !== "/settings/account" && item.id === stage.id;
+            const active = pathname !== "/settings/account" && item.id === activeStageId;
             return <section className={`nav-section${active ? " active" : ""}`} key={item.id}>
               <Link className={`compact-group${active ? " active" : ""}`} href={item.pages[0].href} aria-label={item.label} title={item.label}><Icon size={20} /><span>{item.label}</span></Link>
-              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={item.id === "content" ? "유튜브 공정" : item.label} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
-                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{item.id === "content" ? "유튜브 공정" : item.label}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
+              {item.id !== "home" ? <button className="nav-section-trigger nav-group" data-ui="nav-group" aria-label={groupLabel(item)} onClick={() => toggleGroup(item.id)} aria-expanded={Boolean(active || groupOpen(item.id))} aria-controls={`nav-${item.id}`}>
+                <span className="nav-chevron" data-ui="nav-chevron" aria-hidden="true">{active || groupOpen(item.id) ? "▾" : "▸"}</span><span className="nav-icon"><Icon size={16} /></span><span className="nav-group-label">{groupLabel(item)}{item.id === "settings" && serverOk === false ? <small className="state-dot waiting" title="서버 확인 실패" aria-label="서버 확인 실패" /> : null}</span>{item.id === "ceo" ? <span className={`nav-group-count${confirmWaiting ? " is-alert" : ""}`} title={`컨펌 대기 ${confirmWaiting ?? 0}개`} aria-hidden="true">{confirmWaiting ?? ""}</span>
                   : <span className="nav-group-count" aria-hidden="true">{item.pages.length}</span>}
               </button> : null}
               <div id={`nav-${item.id}`} className="nav-section-pages" hidden={item.id !== "home" && !active && !groupOpen(item.id)}>
                 {item.pages.map((entry, index) => {
-                  const selected = entry.href === (page.navHref ?? page.href);
+                  const selected = entrySelected(entry.href);
                   const submenuOpen = selected || Boolean(openSubmenus[entry.href]);
                   const PageIcon = entry.icon;
                   return <div key={entry.href}>
@@ -337,7 +342,7 @@ export function AppShell({ children, hrEnabled = false, teamV1Enabled = false, y
       <div className="app-main">
         <header className="topbar" data-ui="topbar">
           <button ref={mobileTriggerRef} className="icon-button mobile-only" aria-label="메뉴 열기" aria-expanded={mobileOpen} aria-controls="main-navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></button>
-          <nav className="breadcrumbs" data-ui="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={youtubeV1Enabled && stage.id === "content" ? YOUTUBE_V1_PAGES[0].href : stage.href}>{stage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{page.label}</span></nav>
+          <nav className="breadcrumbs" data-ui="breadcrumbs" aria-label="현재 위치">{pathname !== "/settings/account" ? <><Link href={activeStage.href}>{activeStage.label}</Link><ChevronRight size={14} /></> : null}<span aria-current="page">{activeStage.pages.find(entry => entry.href.includes("?") && entrySelected(entry.href))?.label ?? page.label}</span></nav>
           <div className="topbar-actions">
             <button className="command-trigger" data-ui="search" aria-label="페이지·지식 검색" aria-haspopup="dialog" aria-expanded={paletteOpen} onClick={openPalette}><Search size={15} /><span>찾기</span><kbd data-ui="kbd"><Command size={11} />K</kbd></button>
             <button type="button" className={`display-control guidance-control${guidanceOn ? " active" : ""}`} data-ui={guidanceOn ? "guide-toggle-on" : "guide-toggle-off"} role="switch" aria-checked={guidanceOn} aria-label={`사용 가이드 ${guidanceOn ? "켜짐" : "꺼짐"}`} onClick={changeGuidance}><CircleHelp size={15} /><span>사용 가이드</span><em>{guidanceOn ? "ON" : "OFF"}</em></button>
