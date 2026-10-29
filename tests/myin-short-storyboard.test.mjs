@@ -83,3 +83,36 @@ test("the card lists the letter limits the OS checks before the catalog's note",
   assert.equal(list, "- lib_venn2 (두 원): a.text ≤ 6자 · b.text ≤ 6자 · mid.text ≤ 4자 — a · b ≤ 6자, mid ≤ 4자\n"
     + "- lib_strike_list (취소선목록): items 1~4개 · items.text ≤ 9자 — 항목 2~4개, 각 ≤ 12자, 마지막 keep");
 });
+
+// owner 2026-10-29: text-only screens lose viewers — big type on the first and the last screen only, at least 80 % diagrams.
+test("big type sits on the first and the last screen only, and a person can come in as a persona card", () => {
+  const middle = good();
+  middle.scenes.splice(1, 0, { type: "opening", at: "이번 주말에도", acts: [{ panel: "none", size: 100, lines: [[{ text: "이번 주말에도" }]] }] });
+  assert.match(checkShortStoryboard(middle, input).issues.join(" "), /\[장면 2\] 큰 글자\(opening\)는 첫 장면과 마지막 장면에만/);
+  const last = good();
+  last.scenes.push({ type: "opening", at: "같이 있는", acts: [{ panel: "none", size: 100, lines: [[{ text: "같이 있는 거죠" }]] }] });
+  assert.doesNotMatch(checkShortStoryboard(last, input).issues.join(" "), /큰 글자\(opening\)는/);
+  const person = good();
+  person.scenes[0].acts.pop();
+  person.scenes.splice(1, 0, { type: "persona", at: "이번 주말에도", people: [{ name: "민지 씨", desc: "3년 차 마케터", prop: "hair" }] });
+  const checked = checkShortStoryboard(person, input);
+  assert.deepEqual(checked.issues, []);
+  assert.deepEqual(checked.story.scenes[1].people[0], { name: "민지 씨", desc: "3년 차 마케터", prop: "hair", cue: "이번 주말에도" });
+  person.scenes[1].people = [{ name: "민지 씨는 마케터" }];
+  assert.match(checkShortStoryboard(person, input).issues.join(" "), /persona는 people\(사람마다 name · desc\)/);
+  assert.match(checkShortStoryboard(person, input).issues.join(" "), /people\.0\.name 「민지 씨는 마케터」은 6자 이하/);
+});
+
+test("a short of 20 s or more keeps diagrams on at least 80 % of the narration", () => {
+  const long = "둘 다 원할 땐? 이번 주말에도 친구를 만나고 싶어요. 가고 싶고 쉬고 싶은 마음이 같이 있는 거죠. 그런데 몸은 하나라서 토요일 오후에는 늘 하나만 고르게 되고 만나면 쉬지 못하고 쉬면 만나지 못하니까 마음 한쪽이 늘 비어 있어요.";
+  const longWords = long.split(" ").map((word, i) => [i * 0.7, i * 0.7 + 0.6, word]);
+  const longInput = { ...input, words: longWords, speech: long, durationSeconds: longWords.at(-1)[1] };
+  const opening = (acts) => ({ type: "opening", at: "둘 다 원할 땐", acts });
+  const head = { panel: "none", size: 110, lines: [[{ text: "둘 다 원하면" }], [{ text: "뭘 고르지", accent: true }]] };
+  const venn = (at) => ({ type: "lib_venn2", at, a: { text: "만나고 싶다", cue: "가고 싶고" }, b: { text: "쉬고 싶다", cue: "쉬고 싶은" }, mid: { text: "둘 다", cue: "같이 있는" } });
+  const quick = { title: "t", end: longInput.durationSeconds + 1, scenes: [opening([head]), venn("이번 주말에도")] };
+  assert.deepEqual(checkShortStoryboard(quick, longInput).issues, []);
+  assert.ok(checkShortStoryboard(quick, longInput).share > 0.85);
+  const slow = { ...quick, scenes: [opening([head, { cue: "이번 주말에도", panel: "none", size: 100, lines: [[{ text: "이번 주말에도", cue: "이번 주말에도" }], [{ text: "친구를 만나고 싶어요", cue: "친구를" }]] }]), venn("가고 싶고")] };
+  assert.match(checkShortStoryboard(slow, longInput).issues.join(" "), /도식 화면이 7\d%예요\. 80% 이상이 되게/);
+});
