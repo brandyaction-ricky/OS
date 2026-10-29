@@ -36,6 +36,9 @@ test("a judgement counts only with every gate 2~6 once; its result passes only w
   assert.equal(parseReview2(JSON.stringify({ gates: [gate(2, true), gate(3, true), gate(4, true), gate(5, true)], doubts: [] }), 3), null, "a missing gate");
   assert.equal(parseReview2(JSON.stringify({ gates: [gate(2, true), gate(2, true), gate(3, true), gate(4, true), gate(5, true), gate(6, true)], doubts: [] }), 3), null, "a gate twice");
   assert.equal(parseReview2("not json", 3), null);
+  // calibration 2026-10-29: GPT-6 Astra wrote 14 doubts on the owner's lecture — kept as the first five, not thrown away
+  const many = parseReview2(JSON.stringify({ gates: [gate(2, true), gate(3, true), gate(4, true), gate(5, true), gate(6, true)], doubts: Array.from({ length: 14 }, (_, i) => `의문 ${i}`) }), 3);
+  assert.deepEqual(many.doubts, ["의문 0", "의문 1", "의문 2", "의문 3", "의문 4"]);
 });
 
 test("the 원고 fingerprint ignores line endings and outer blanks and changes with the text", () => {

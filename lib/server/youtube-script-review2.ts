@@ -11,18 +11,19 @@ import { scriptCanonDocs } from "./youtube-script-canon";
 
 // 원고 「두 번째 검수」 (owner 2026-10-29, 방식 A): runs by itself when a staff AI's 원고 lands, and again from [다시 검수]. It only
 // shows its judgement; 다음: 제작 is not blocked until the owner decides so after it has been tried on her own live talks.
-const RUNNING_MS = 10 * 60_000;
+const RUNNING_MS = 12 * 60_000;
 type Who = { supabase: RequestActor["supabase"]; id: string; team: string };
 
 /** Judges the 구성안's current 원고 and saves the result in its own record (running first, so a second press does not pay twice). */
-export async function reviewScript(who: Who, project: YpProject, tier: Review2Tier, timeoutMs = 240_000) {
+// GPT-6 Astra on high effort took 216 s on a 6,700-letter 원고 and ran past 300 s on another (calibration 2026-10-29).
+export async function reviewScript(who: Who, project: YpProject, tier: Review2Tier, timeoutMs = 600_000) {
   if (!process.env.OPENAI_API_KEY?.trim()) throw new ApiError(503, "OPENAI_NOT_CONFIGURED", "OpenAI 연결이 아직 없어서 두 번째 검수를 할 수 없어요.");
   const stages = await readStages(who.supabase, project);
   const script = stages.outline.data.script;
   if (!script.trim()) throw new ApiError(409, "SCRIPT_EMPTY", "원고를 먼저 넣어 주세요.");
   const key = scriptKey(script), current = stages.review2;
   if (current.data.state === "running" && current.data.key === key && Date.now() - Date.parse(current.data.at) < RUNNING_MS) return current;
-  const model = REVIEW2_MODELS[tier].model;
+  const { model, effort } = REVIEW2_MODELS[tier];
   const base = { at: new Date().toISOString(), model, key, gates: [], doubts: [] };
   const running = await writeStage(who.supabase, who.id, who.team, project, "review2", current, { ...base, state: "running" } satisfies YpReview2);
   let data: YpReview2;
@@ -31,7 +32,7 @@ export async function reviewScript(who: Who, project: YpProject, tier: Review2Ti
     const pick = stages.plan.data.confirmed?.A;
     const { prefix, prompt, paragraphs } = review2Prompt({ review: canons["원고 검수 정본"], tone: canons["원고 말투 정본"] },
       { title: pick?.title || projectName(project), thumbCopy: pick?.thumb?.copy || pick?.thumb?.screen || "", script });
-    const text = await generateContentText({ model, cachedPrefix: prefix, prompt, jsonSchema: REVIEW2_SCHEMA, maxTokens: 32_000, effort: "high", timeoutMs });
+    const text = await generateContentText({ model, cachedPrefix: prefix, prompt, jsonSchema: REVIEW2_SCHEMA, maxTokens: 32_000, effort, timeoutMs });
     const result = parseReview2(text, paragraphs);
     data = result ? { ...base, state: "done", ...result } : { ...base, state: "failed", error: "GPT 답을 읽지 못했어요. 다시 검수해 주세요." };
   } catch (error) {
@@ -53,7 +54,8 @@ const autoTier = async (): Promise<Review2Tier> => {
   return credit?.configured && (credit.remaining ?? 0) < REVIEW2_SAVING_BELOW_USD ? "saving" : "precise";
 };
 
-/** After the response that saved a staff AI's 원고: the judgement must not hold up the AI's own complete call. */
+/** After the response that saved a staff AI's 원고: the judgement must not hold up the AI's own complete call (the routes that
+ * save one allow 800 s for it). */
 export function scheduleScriptReview(who: Who, project: YpProject) {
   if (!process.env.OPENAI_API_KEY?.trim()) return;
   after(() => autoTier().then(tier => reviewScript(who, project, tier)).then(() => undefined, (error) => console.error(`script review2 failed: ${project.id}: ${error instanceof Error ? error.message : error}`)));

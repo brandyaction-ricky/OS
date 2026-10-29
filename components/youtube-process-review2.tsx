@@ -6,7 +6,7 @@ import { REVIEW2_GATE_NAME, REVIEW2_MODELS, type Review2Tier } from "@/lib/youtu
 import { CostTag, tokenEstimate, useCostConfirm } from "./cost-notice";
 import type { useYpBundle } from "./youtube-process-frame";
 
-const WAIT_MS = 6 * 60_000;
+const WAIT_MS = 12 * 60_000;
 
 /** 구성안 원고 칸: GPT's 두 번째 검수 (관문 2~6). It only informs; 다음: 제작 is not blocked by it. */
 export function ScriptReview2({ page, outline, editable, dirty }: { page: ReturnType<typeof useYpBundle>; outline: YpOutline; editable: boolean; dirty: boolean }) {
@@ -50,7 +50,7 @@ export function ScriptReview2({ page, outline, editable, dirty }: { page: Return
   return <section className="yp-card" style={{ marginTop: 8 }} aria-label="GPT 두 번째 검수">
     <div className="yp-card-h">
       <b style={{ fontSize: 13 }}>GPT 두 번째 검수</b>
-      {waiting ? <span className="yp-tag">GPT가 읽는 중 · 3~4분</span>
+      {waiting ? <span className="yp-tag">GPT가 읽는 중 · 3~6분</span>
         : data.state === "done" ? <span className={`yp-tag ${data.pass ? "yp-ok" : "yp-bad"}`}>{data.pass ? "✓ 통과" : `고칠 곳 ${issues}곳`}</span>
         : data.state === "failed" ? <span className="yp-tag yp-bad">⚠ 끝내지 못했어요</span> : <span className="yp-muted" style={{ fontSize: 12 }}>아직 받지 않았어요</span>}
       {data.state === "done" && !waiting ? <span className="yp-muted" style={{ fontSize: 12 }}>{modelName(data.model)}{stale ? " · 원고가 바뀌었어요" : ""}</span> : null}

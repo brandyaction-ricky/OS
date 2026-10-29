@@ -7,6 +7,8 @@ import { canUseYoutubeStaffScript } from "@/lib/youtube-automation-gate";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// A saved staff-AI 원고 starts the GPT 두 번째 검수 after the response (next/server after), which can take several minutes.
+export const maxDuration = 800;
 const headers = { "cache-control": "no-store" };
 
 /**
