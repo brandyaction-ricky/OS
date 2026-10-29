@@ -32,10 +32,13 @@ const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨
 // Preview clips scale with the storyboard: one per metaphor scene plus the opening, about 1.5 minutes each (2026-10-26: 31 clips, 45 minutes).
 // ponytail: estimates, no per-scene progress — that needs the render PC to report it.
 // words: +4 min since 로건 호흡·타이밍 (2026-10-27) re-times the gaps between sentences with a transcription.
-const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5, final_pending: 20 };
+// final: about 8 minutes per minute of video at 60 fps (2026-10-28: 52 minutes for 13 minutes at 30 fps; 60 fps from 2026-10-29).
+const TYPICAL_MIN: Record<string, number> = { words_pending: 10, prep_pending: 5 };
+const finalMinutes = (run: MyinRun) => Math.ceil((run.words?.durationSeconds ?? 780) / 60 * 8);
 // ponytail: a 숏폼's minutes are guesses from the A1 pilot (40 s, one draft of the whole short); measure after the first ones.
 const SHORT_MIN: Record<string, number> = { words_pending: 6, prep_pending: 3, clips_pending: 5, final_pending: 8 };
-const typicalMinutes = (run: MyinRun) => run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5) : TYPICAL_MIN[run.stage];
+const typicalMinutes = (run: MyinRun) => run.layout === "short" ? SHORT_MIN[run.stage] : run.stage === "clips_pending" ? Math.ceil(((run.storyboard?.metaphors.length ?? 0) + 1) * 1.5)
+  : run.stage === "final_pending" ? finalMinutes(run) : TYPICAL_MIN[run.stage];
 // What a stop means, so a staff member knows whether pressing again can help (2026-10-26: three presses hit the same stop).
 const STOP: Record<string, string> = {
   WORKER_STAGE_FAILED: "영상 만드는 컴퓨터의 프로그램이 도중에 멈췄어요. 다시 해도 같은 이유로 멈출 수 있어요 — 다시 하기 전에 OS 담당자에게 알려 주세요.",
@@ -319,9 +322,9 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
           : <p className="yt-note">이 영상은 사운드 창고 전 패키지로 시작해 음악은 기획표대로 들어가요. 새로 시작하는 영상부터 여기서 고칠 수 있어요.</p>}
         {run.sound?.edited ? <small>{run.sound.edited.name} 사운드 수정 · {when(run.sound.edited.at)}</small> : null}
         <div className="yt-run"><div className="yt-run-head">
-          <span><strong>다 확인했으면 전체 영상을 만들어요</strong><br /><small>영상 만드는 컴퓨터에서 20분쯤 걸려요 · 저장하지 않은 사운드 변경은 들어가지 않아요</small></span>
+          <span><strong>다 확인했으면 전체 영상을 만들어요</strong><br /><small>영상 만드는 컴퓨터에서 {finalMinutes(run)}분쯤 걸려요 · 저장하지 않은 사운드 변경은 들어가지 않아요</small></span>
           <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => {
-            if (!window.confirm("지금 사진과 사운드로 1080p 전체 영상을 만들어요. 영상 만드는 컴퓨터에서 20분쯤 걸려요. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?")) return;
+            if (!window.confirm(`지금 사진과 사운드로 1080p 60fps 전체 영상을 만들어요. 영상 만드는 컴퓨터에서 ${finalMinutes(run)}분쯤 걸려요. 저장하지 않은 사운드 변경은 들어가지 않아요. 만들까요?`)) return;
             void act("final", () => post("/myin", "PATCH", { action: "final", runId: run.id }));
           }}>{busy === "final" ? "시작하는 중…" : "전체 영상 만들기"}</button></div></div>
       </> : null}
