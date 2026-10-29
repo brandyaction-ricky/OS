@@ -21,8 +21,9 @@ import { ShortTopicResearch } from "./youtube-process-short-script";
 
 const LAST_KEY = "brandy-yp-last-project";
 const VIEWS = ["topic", "draft", "outline"] as const;
-type Form = { title: string; kind: YpKind | null; target: string; note: string; refs: YpRef[]; assigneeId: string | null };
-const formOf = (project: YpProject): Form => ({ title: project.title, kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs, assigneeId: project.assigneeId });
+type Form = { title: string; kind: YpKind | null; target: string; note: string; refs: YpRef[]; purpose: "ad" | null; assigneeId: string | null };
+const formOf = (project: YpProject): Form => ({ title: project.title, kind: project.yp.topic.type, target: project.yp.topic.target, note: project.yp.topic.note, refs: project.yp.topic.refs,
+  purpose: project.yp.topic.purpose ?? null, assigneeId: project.assigneeId });
 const hhmm = (date: Date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 const md = (iso?: string) => { if (!iso) return ""; const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${hhmm(date)}`; };
 const daysSince = (iso?: string) => iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)) : 0;
@@ -60,7 +61,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   }, []);
   const [projects, setProjects] = useState<YpProject[]>([]);
   const [members, setMembers] = useState<YpMember[]>([]);
-  const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], assigneeId: null });
+  const [form, setForm] = useState<Form>({ title: "", kind: null, target: "", note: "", refs: [], purpose: null, assigneeId: null });
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   // 로건 피드백 10/26-1: a failed save left the old 「저장됨」 stamp, so it read as saved.
@@ -120,7 +121,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
 
   const save = useCallback(async (next: Form = form): Promise<YpProject | null> => {
     if (!client) return null;
-    const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, assigneeId: next.assigneeId };
+    const input: YpTopicInput = { title: next.title, kind: next.kind, target: next.target, note: next.note, refs: next.refs, purpose: next.kind === "short" ? next.purpose : null, assigneeId: next.assigneeId };
     const key = JSON.stringify(input);
     // One save at a time: a click during a save of the same content uses its result; newer content (a second reference added
     // meanwhile) waits and saves on top of it with its version — it used to go out with the old one and read as an error (로건 피드백 A-2).
@@ -152,7 +153,7 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
   }, [client, form, project, router, setProject]);
 
   const saveIfDirty = () => { if (dirty && editable) void save(); };
-  const open = (key: "title" | "kind" | "target" | "refs" | "note") => project ? topicFieldEditable(project, key) : projectParam === "new";
+  const open = (key: "title" | "kind" | "target" | "refs" | "note" | "purpose") => project ? topicFieldEditable(project, key) : projectParam === "new";
   const editAndSave = (patch: Partial<Form>) => { editRev.current += 1; const next = { ...form, ...patch }; setForm(next); setDirty(true); void save(next); };
 
   async function gate(action: "confirm" | "request" | "cancel", reply?: string) {
@@ -225,6 +226,12 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
               <span><b>{YP_KIND_LABEL[kind]}</b><small>{kind === "live" ? "촬영 · 편집" : kind === "anim" ? "작화 · 이미지 만들기 · 편집" : "15 ~ 60초 세로 영상"}</small></span>
             </label>)}
           </div>
+          {/* A 숏폼 is made for the feed (쇼츠 · 릴스) or as a Meta ad: its 참고 자료 and its script differ (주제 찾기, 2026-10-28). */}
+          {short ? <div className="yp-chips" role="radiogroup" aria-label="숏폼 쓰임" style={{ marginTop: 10 }}>
+            {([[null, "숏폼 · 릴스", "쇼츠 · 릴스 · 틱톡에 올려요"], ["ad", "광고", "메타 광고로 돌려요"]] as const).map(([purpose, name, hint]) =>
+              <button key={name} type="button" role="radio" aria-checked={form.purpose === purpose} className={`yp-chip${form.purpose === purpose ? " yp-on" : ""}`} disabled={!open("purpose")}
+                onClick={() => editAndSave({ purpose })}><b>{name}</b> <span className="yp-muted">{hint}</span></button>)}
+          </div> : null}
         </Field>
         <Field n={3} title="정밀 타겟" question="어떤 질문을 품은 사람이 볼까요?" need rev={rev("topic.target")}>
           <div className="yp-max720"><input className="yp-in" id="yp-topic-target" aria-label="정밀 타겟" placeholder="예) 내가 뭘 원하는지 모르겠다는 말을 자주 하는 사람" readOnly={!open("target")} value={form.target} onChange={event => edit({ target: event.target.value })} />

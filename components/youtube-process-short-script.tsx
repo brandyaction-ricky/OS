@@ -260,7 +260,7 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   return <div onBlur={() => { if (dirty && can) void save(); }}>
     {loaded.conflict ? <div className="yp-note yp-warn" role="alert"><div>참고 영상 · 공식을 다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => { setDirty(false); void reload(); }}>새로 불러오기</button></div></div> : null}
     {loaded.error ? <div className="yp-note yp-warn" role="alert"><div>{loaded.error}</div></div> : null}
-    <YpSection n={4} title="참고 영상" gq="키워드나 링크로 비슷한 영상을 찾아요" need>
+    <YpSection n={4} title="참고 영상" gq={project.yp.topic.purpose === "ad" ? "오래 켜진 메타 광고를 넣고 찾아요" : "키워드나 링크로 비슷한 영상을 찾아요"} need>
       <div className="yp-max720"><ShortRefs page={page} form={form} can={can} refs={shortRefs.refs} working={shortRefs.working} onFetch={() => void shortRefs.fetch(saved)} onEdit={edit} /></div>
     </YpSection>
     <YpSection n={5} title="공식 · 주제 후보" gq="먹힌 공식으로 어떤 주제를 할까요?" need
@@ -389,8 +389,10 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
       <div className="yp-row-btns"><button type="submit" className="yp-btn yp-sm yp-pri">넣기</button><button type="button" className="yp-btn yp-sm" onClick={() => { setAdding(false); setLink(blankRef); }}>취소</button></div></form>
       : <div className="yp-row-btns" style={{ marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={14} /> 링크 넣기</button>
-        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside("social")}><Copy size={14} /> {copied === "social" ? "복사했어요 · Aside에 붙여 넣기" : "릴스 · 틱톡 찾기 (Aside)"}</button>
-        <button type="button" className="yp-btn yp-sm" onClick={() => void copyAside("ad")}><Copy size={14} /> {copied === "ad" ? "복사했어요 · Aside에 붙여 넣기" : "메타 광고 찾기 (Aside)"}</button></div> : null}
+        {/* A 광고 숏폼 starts from Meta ads; the others from Reels · TikTok (주제 찾기, 2026-10-28). */}
+        {(project.yp.topic.purpose === "ad" ? ["ad", "social"] as const : ["social", "ad"] as const).map((kind, at) =>
+          <button key={kind} type="button" className={`yp-btn yp-sm${at === 0 && project.yp.topic.purpose === "ad" ? " yp-pri" : ""}`} onClick={() => void copyAside(kind)}><Copy size={14} />
+            {copied === kind ? " 복사했어요 · Aside에 붙여 넣기" : kind === "ad" ? " 메타 광고 찾기 (Aside)" : " 릴스 · 틱톡 찾기 (Aside)"}</button>)}</div> : null}
   </>;
 }
 

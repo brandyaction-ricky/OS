@@ -63,6 +63,8 @@ const FORMULA_SHAPE = `{ "name": "공식 이름(창고에서 찾을 이름)", "h
 
 // ── 레퍼런스 (§2-2): what both cards read — the render PC's fetched references (else the market titles), the PD's links, the 공식 창고 ──
 const READ_REFERENCES = `fetched는 렌더 PC가 받아 둔 레퍼런스이고, 반응도 기준(${SHORT_REF_BAR_TEXT})을 넘은 것과 숫자를 볼 수 없는 것(PD가 넣은 릴스 · 메타 광고, reaction="unknown")만 들어 있습니다. counts는 그 숫자입니다. 유튜브 쇼츠 · 틱톡 · 릴스 · 메타 광고가 섞여 있을 수 있고, 플랫폼이 달라도 같은 기준으로 고른 것입니다. unknown인 메타 광고는 게재 기간 · 버전 수(제목)를 보고 판단합니다. references(PD · Aside가 넣은 링크)의 script에는 화면을 못 받은 릴스의 헤드 카피 · 첫 문장이 적혀 있을 수 있습니다. thumbnail(썸네일), firstSeconds(첫 3초를 0.5초마다 찍은 6장 한 장), transcript(초 · 대사). **두 이미지를 반드시 내려받아 직접 보고 읽습니다. 가장 중요한 것은 첫 화면의 헤드 카피(firstSeconds의 큰 글자)이고, 다음이 썸네일 카피, 그다음이 첫 문장과 흐름입니다.** fetched가 없으면 market.rows(OS가 찾은 쇼츠 제목)만 있으니 쇼츠 페이지를 열어 썸네일과 첫 화면을 직접 보고, 못 보면 그렇다고 밝힙니다. references는 PD가 넣은 것이고 script가 있으면 실제로 한 말입니다. 같은 시청자 고민을 다룬 3~5개를 고르고 picked에 주소를 적습니다.`;
+// 광고 (주제 찾기 › 광고, 2026-10-28): 정본 §2-5 — the shape of an ad 숏폼 follows the 「숏폼 콘텐츠 스킬」 ad principles.
+const AD_NOTE = "이 숏폼은 메타 광고로 돌립니다(purpose: 광고). 참고 자료는 오래 켜진 메타 광고이고, 짜임은 「숏폼 콘텐츠 스킬」의 광고 원칙(구매 이유 하나 · 그 근거 · 할 행동)을 따릅니다. 할 행동(진단 페이지로 가기 등)은 마지막 줄에 시청자 말로 한 번만 씁니다 — §4의 「진단 안내는 대본에 넣지 않는다」는 광고에는 해당하지 않습니다. 자격 · 권위 소개는 광고에서도 쓰지 않습니다.";
 const DRAW_FORMULAS = "새 공식은 formulas에 적습니다 — 헤드 카피 공식(head) · 썸네일 카피 공식(cover) · 첫 문장 공식(hook) · 흐름 공식(flow) · 멈춘 이유. 원본의 단어 · 고유명사 · 숫자를 남기지 않고 빈칸으로 씁니다. 대사를 못 봤다면 흐름 공식에 그렇다고 밝힙니다. warehouse(회사 공식 창고, 많이 쓴 순)에 같은 공식이 있으면 새로 적지 않고 그 이름을 씁니다.";
 async function referenceInputs(service: Service, projectId: string, draft: YpShortScript, market?: PackagingMarket) {
   const warehouse = (await readShortFormulas(service)).sort((a, b) => b.uses - a.uses).slice(0, 30).map(({ name, head, cover, hook, flow, why, uses }) => ({ name, head, cover, hook, flow, why, uses }));
@@ -169,7 +171,8 @@ export async function shortFormulaCard(service: Service, state: Pipeline, leaseM
   const docs = await namedProcedures(service, [SHORT_SCRIPT_CANON]);
   const from = project.yp.shortFrom;
   const longform = from ? await longformScript(service, from.projectId) : "";
-  const inputs = { draftTopic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note,
+  const ad = project.yp.topic.purpose === "ad";
+  const inputs = { draftTopic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note, ...(ad ? { purpose: "광고" } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
     ...await referenceInputs(service, project.id, shortScript.data, market) };
   return `이 작업 하나만 처리합니다. 승인 · 업로드 · 게시 · 삭제는 하지 않습니다.
@@ -179,7 +182,7 @@ export async function shortFormulaCard(service: Service, state: Pipeline, leaseM
 1. 레퍼런스(§2-2): ${READ_REFERENCES}
 2. 공식 뽑기(§2-3): ${DRAW_FORMULAS}
 3. 주제 후보(topics) 정확히 3개: 후보마다 공식 하나(formula: formulas나 warehouse에 있는 이름)에 우리 시청자(audience)가 겪어 본 장면을 넣은 주제 한 줄(title, ${SHORT_TOPIC_MAX}자 이하) + 다 들은 사람이 기억할 통찰 한 줄(insight) + 멈추게 할 이유(why)입니다. 초안 주제의 방향은 지키되 그 말을 그대로 쓰지 않아도 됩니다. 후보끼리 통찰이 겹치지 않게, 되도록 서로 다른 공식으로 냅니다.${from ? " from(롱폼 원고)에서 온 숏폼이라 주제 후보도 from.script 안의 이야기에서만 냅니다." : ""}
-4. 레퍼런스의 제목 · 대사 문장을 주제 후보에 그대로 옮기지 않습니다.
+4. 레퍼런스의 제목 · 대사 문장을 주제 후보에 그대로 옮기지 않습니다.${ad ? `\n5. 광고: ${AD_NOTE} 주제 후보마다 광고가 약속할 한 가지가 보이게 냅니다.` : ""}
 
 ## 먼저 끝까지 열 문서
 ${docLines(docs, [SHORT_SCRIPT_CANON])}
@@ -237,8 +240,9 @@ export async function shortScriptCard(service: Service, state: Pipeline, leaseMi
   const refs = await referenceInputs(service, project.id, draft, market);
   // 주제 확정 (owner 2026-10-28): the formula the PD fixed the topic with, from the 주제 step's run or the 공식 창고.
   const chosen = draft.formula.trim() ? [...(draft.research?.formulas ?? []), ...(draft.ai?.formulas ?? []), ...await readShortFormulas(service)].find(item => item.name === draft.formula.trim()) : undefined;
+  const ad = project.yp.topic.purpose === "ad";
   const inputs = {
-    topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note,
+    topic: projectName(project), audience: project.yp.topic.target, note: project.yp.topic.note, ...(ad ? { purpose: "광고" } : {}),
     ...(chosen ? { chosen: { formula: chosen, insight: draft.insight } } : {}),
     ...(from ? { from: { longform: from.title, scene: from.scene, paragraph: from.paragraph, script: longform.slice(0, 40_000) } } : {}),
     ...refs,
@@ -256,7 +260,7 @@ ${chosen ? `1. 공식: chosen.formula는 PD가 주제 단계에서 참고 영상
 3. 공식 뽑기(§2-3): ${DRAW_FORMULAS}`}
 4. 대본(§3~§9): 고른 공식에 이 주제의 장면을 넣어 우리 말로 새로 씁니다. headCopy는 이 숏폼 첫 3초 화면 맨 위 큰 글자(${SHORT_SCRIPT.head}자 이하, 첫 문장과 같지 않아도 됨)입니다. 한 줄 = 한 문장 = 화면 한 장. 첫 줄은 hooks 중 하나와 같게. 비교 · 순서 · 선택이 있는 줄은 앞에 [관계], 인물이 처음 나오는 줄은 [사람]을 붙입니다.${from ? " 실제 사례 · 숫자는 from.script(롱폼 원고)에 있는 것만 씁니다." : ""}
 5. 기계 검사(§10)를 OS가 다시 셉니다: 전체 ${SHORT_SCRIPT.min}~${SHORT_SCRIPT.max}자(60초는 ${SHORT_SCRIPT.max60}자까지), 첫 문장 · 두 훅 ${SHORT_SCRIPT.first}자 이하, ${SHORT_SCRIPT.hard}자 넘는 줄 0개, ${SHORT_SCRIPT.line}자 넘는 줄 ${SHORT_SCRIPT.longLines}개까지, 바깥 지시어 · 「당신 · 여러분」 · 인사 · 예고 0건, 레퍼런스 제목 · 대본과 정본에서 10자 넘게 같은 구간 0건. 걸리면 고칠 점이 돌아옵니다.
-6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.
+6. 판정 검사(§10 1~6)는 새 대화에서 대본만 보고 답해 notes에 한 줄로 남깁니다.${ad ? `\n7. 광고: ${AD_NOTE}` : ""}
 
 ## 먼저 끝까지 열 문서
 ${docLines(docs, [SHORT_SCRIPT_CANON, TONE_CANON])}

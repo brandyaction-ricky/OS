@@ -15,6 +15,7 @@ const topicFields = {
   target: z.string().max(300),
   note: z.string().max(2000),
   refs: z.array(ref).max(50),
+  purpose: z.enum(["ad"]).nullable(),
   assigneeId: z.string().uuid().nullable(),
 };
 export const projectCreateSchema = z.object(topicFields).partial().strict();
@@ -97,7 +98,7 @@ export async function saveProject(actor: RequestActor, project: YpProject, expec
 
 export async function createYoutubeProject(actor: RequestActor, input: z.infer<typeof projectCreateSchema>) {
   await assertAssignee(actor, input.assigneeId);
-  const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [] };
+  const topic: YpTopic = { type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [], ...(input.purpose ? { purpose: input.purpose } : {}) };
   // 4-2: no PD picked means the person who wrote the topic.
   return insertProject(actor, input.title ?? "", input.assigneeId ?? actor.ownerId, newProjectMeta(topic, new Date().toISOString()));
 }
@@ -119,7 +120,8 @@ export async function updateYoutubeProject(actor: RequestActor, id: string, inpu
   const topic = project.yp.topic;
   const yp: YpMeta | undefined = keys.length ? {
     ...project.yp,
-    topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs },
+    topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
+      ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) },
     contentUpdatedAt: new Date().toISOString(),
   } : undefined;
   return saveProject(actor, project, expectedVersion, { title: fields.title, assigneeId, yp });

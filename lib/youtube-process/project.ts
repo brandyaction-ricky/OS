@@ -9,7 +9,8 @@ export interface YpGateInfo { state: YpGateState; round: number; requestedAt?: s
 /** A note the 대표 leaves on a step the PD confirmed; the PD is told and reads it on that step. */
 export interface YpGateNote { gate: YpGate; at: string; by: string; name: string; text: string }
 export interface YpRef { url: string; videoId?: string; title?: string }
-export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[] }
+/** purpose "ad": a 숏폼 made as a Meta ad (주제 찾기 › 광고, 2026-10-28); its references are ads and its script follows the ad principles. */
+export interface YpTopic { type: YpKind | null; target: string; note: string; refs: YpRef[]; purpose?: "ad" | null }
 export interface YpMeta {
   v: 1; stage: YpStage; topic: YpTopic; gates: Record<YpGate, YpGateInfo>; contentUpdatedAt: string; multiFrom?: string;
   /** 쇼츠 확정 by the PD (owner decision 2026-10-25): each confirmed clip's script as it was confirmed (clipSignature); a later change needs a new 확정. */
@@ -89,7 +90,7 @@ export function topicEditable(project: Pick<YpProject, "yp">) {
   return fields === "all" || fields.length > 0;
 }
 /** Topic edit keys (API and form) and the field keys the approver ticks. */
-export const TOPIC_FIELD_OF = { title: "topic.title", kind: "topic.type", target: "topic.target", refs: "topic.refs", note: "topic.note" } as const;
+export const TOPIC_FIELD_OF = { title: "topic.title", kind: "topic.type", target: "topic.target", refs: "topic.refs", note: "topic.note", purpose: "topic.type" } as const;
 export function topicFieldEditable(project: Pick<YpProject, "yp">, key: keyof typeof TOPIC_FIELD_OF) {
   const fields = editableFields(project, "topic");
   return fields === "all" || fields.includes(TOPIC_FIELD_OF[key]);

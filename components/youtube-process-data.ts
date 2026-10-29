@@ -10,7 +10,7 @@ import { columnMeta } from "@/lib/seo-column";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
-export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; assigneeId?: string | null }
+export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; assigneeId?: string | null }
 export interface YpStageView<K extends YpStageKind = YpStageKind> { id: string | null; version: number; data: YpStageData[K] }
 export type YpStagesView = { [K in YpStageKind]: YpStageView<K> };
 export interface YpFinalView { v: number; at: string; source: "myin" | "short" | "upload"; name: string; bytes: number; durationSeconds: number | null; runId?: string; path?: string; aspect?: "1:1" | "4:5" }
@@ -183,13 +183,15 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p6", "[예시] 처음 쓰는 사업계획서의 순서", "anim", "upload", 8, "demo-logan"),
   shortsDemo(demoProject("demo-p7", "[예시] 고객 인터뷰 질문 다섯 개", "live", "done", 13)),
   waitingDemo(demoProject("demo-p8", "[예시] 구독자 1만 명 전에 할 일", "anim", "topic", 1, "demo-logan")),
-  demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0),
+  adDemo(demoProject("demo-p9", "[예시] 강점 진단 결과지 30초 광고", "short", "make", 0)),
   demoProject("demo-p10", "[예시] 일이 안 맞을 때 먼저 볼 4칸 (릴스)", "short", "upload", 1),
   demoProject("demo-p11", "[예시] 만나고 싶은데 쉬고도 싶다면", "short", "make", 0),
   demoProject("demo-p12", "[예시] 주말 약속 피곤함", "short", "topic", 0),
 ];
 // 숏폼 made from a confirmed 대본 (2026-10-28) in the demo; demo-p9 keeps the older scene editor (made before the 대본 step).
 const CONFIRMED_SHORT_DEMOS = ["demo-p10", "demo-p11"];
+/** A 숏폼 made as an ad (주제 찾기 › 광고), so 내 영상 shows the 광고 tag. */
+const adDemo = (project: YpProject): YpProject => ({ ...project, yp: { ...project.yp, topic: { ...project.yp.topic, purpose: "ad" } } });
 /** One example 쇼츠 확정 record with a 대표 comment, so 대표 메뉴 › 컨펌 › 쇼츠 확정 has something to show in the demo. */
 function shortsDemo(project: YpProject): YpProject {
   const yp = shortsAction(project.yp, { action: "confirm", note: "[예시] 3편 확정", clips: [1, 2, 3].map(n => ({ id: `demo-clip-${n}`, title: `[예시] 쇼츠 ${n}`,
@@ -280,7 +282,7 @@ function demoClient(): YpClient {
   const bump = (project: YpProject, yp: YpProject["yp"] = project.yp) => put({ ...project, version: project.version + 1, updatedAt: new Date().toISOString(), yp });
   const add = (title: string, input: YpTopicInput, multiFrom?: string) => {
     const now = new Date().toISOString();
-    const meta = newProjectMeta({ type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [] }, now, multiFrom);
+    const meta = newProjectMeta({ type: input.kind ?? null, target: input.target ?? "", note: input.note ?? "", refs: input.refs ?? [], ...(input.purpose ? { purpose: input.purpose } : {}) }, now, multiFrom);
     const project: YpProject = { id: `demo-${crypto.randomUUID()}`, version: 1, title, assigneeId: input.assigneeId ?? DEMO_ME, ownerId: DEMO_ME, updatedAt: now, yp: meta.yp };
     demoStore = [project, ...demoProjects()];
     return project;
@@ -326,7 +328,8 @@ function demoClient(): YpClient {
       return put({
         ...project, version: project.version + 1, updatedAt: new Date().toISOString(),
         title: fields.title ?? project.title, assigneeId: assigneeId !== undefined ? assigneeId : project.assigneeId,
-        yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs } } : project.yp,
+        yp: content ? { ...project.yp, contentUpdatedAt: new Date().toISOString(), topic: { type: fields.kind !== undefined ? fields.kind : topic.type, target: fields.target ?? topic.target, note: fields.note ?? topic.note, refs: fields.refs ?? topic.refs,
+          ...((fields.purpose !== undefined ? fields.purpose : topic.purpose) ? { purpose: (fields.purpose !== undefined ? fields.purpose : topic.purpose)! } : {}) } } : project.yp,
       });
     },
     topicGate: (id, action, expectedVersion, reply) => gate(id, "topic", action, expectedVersion, reply),
