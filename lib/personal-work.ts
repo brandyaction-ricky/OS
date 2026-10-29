@@ -23,6 +23,9 @@ export function recordWorkHref(record: Pick<OsRecord, "id" | "record_type" | "me
     return projectHref({ id: record.id, yp: record.metadata.yp as YpMeta });
   // Its step records and feedback carry metadata.projectId and open that project's step.
   const step = String(record.metadata.packageKind ?? record.metadata.scriptKind ?? "");
+  // N03 (요청 8cb3c12e): a feedback notice opens that very item on 최종 검토.
+  if (typeof record.metadata.projectId === "string" && (record.record_type as string) === "content_feedback" && record.metadata.feedbackKind === "item")
+    return `${stepHref(4, record.metadata.projectId)}&feedback=${id}`;
   if (typeof record.metadata.projectId === "string" && ((record.record_type as string) === "content_feedback" || step.startsWith("yp_")))
     return stepHref(({ yp_plan: 1, yp_outline: 2, yp_make: 3, yp_upload: 5 } as Record<string, number>)[step] ?? 4, record.metadata.projectId);
   if (record.record_type.startsWith("content_")) {

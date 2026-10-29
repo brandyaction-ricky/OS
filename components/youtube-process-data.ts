@@ -7,7 +7,7 @@ import { applyGateAction, confirmTab, GateError, type YpApproverAction } from "@
 import { columnSignature, confirmPlan, draftMissing, emptyStage, outlineMissing, scriptFromPlan, scriptKey, thumbsMissing, withScriptVersion, type YpStageData, type YpStageKind, type YpStoredFormula } from "@/lib/youtube-process/stages";
 import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/short-script";
 import { columnMeta } from "@/lib/seo-column";
-import { applyFeedback, FeedbackRuleError, type FeedbackAction, type FeedbackReply } from "@/lib/youtube-process/feedback";
+import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
 
 export interface YpMember { id: string; name: string }
@@ -27,9 +27,9 @@ export interface YpBundle { project: YpProject; stages: YpStagesView; finals: Yp
 export interface YpFeedbackView {
   id: string; version: number; text: string; who: string; whoId: string; at: string; target: "video" | "A" | "B" | "C"; ver: number; t: number | null; range: [number, number] | null;
   kind: string; sug: string; reaction: boolean; status: "open" | "done" | "declined"; declinedWhy: string; fixedIn: number | null; replies: FeedbackReply[];
-  doneBy?: string; doneAt?: string; confirmedBy?: string; confirmedAt?: string; deleted?: boolean; editedAt?: string;
+  doneBy?: string; doneAt?: string; confirmedBy?: string; confirmedAt?: string; deleted?: boolean; editedAt?: string; marks?: FeedbackMark[]; files?: FeedbackFile[];
 }
-export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction">> & Pick<YpFeedbackView, "target" | "ver">;
+export type YpFeedbackInput = Partial<Pick<YpFeedbackView, "t" | "range" | "text" | "kind" | "sug" | "reaction" | "marks" | "files">> & Pick<YpFeedbackView, "target" | "ver">;
 export interface YpScheduleItem { project: YpProject; makeVersion: number; editDue: string; uploadPlan: string; log: { at: string; by: string; from: string; to: string; why: string; field?: string }[]; waiting: { gate: YpGate; requestedAt: string } | null }
 export interface YpLegacyTopic { id: string; title: string; updatedAt: string; step: string; assigneeId: string | null }
 export type YpAssetKind = "plan_thumb" | "thumb" | "final" | "srt" | "column";
@@ -51,6 +51,9 @@ export interface YpClient {
   feedback(id: string): Promise<YpFeedbackView[]>;
   addFeedback(id: string, input: YpFeedbackInput): Promise<YpFeedbackView>;
   actFeedback(id: string, itemId: string, expectedVersion: number, action: FeedbackAction, text?: string, replyId?: string): Promise<YpFeedbackView>;
+  /** N06: stores one reference image or PDF for a comment and returns what to attach. */
+  feedbackUpload(id: string, file: File): Promise<FeedbackFile>;
+  feedbackFileUrl(id: string, path: string): Promise<string>;
   uploadSession(id: string, input: { fileName: string; fileSize: number; mimeType: string; connectionOwnerId?: string }): Promise<{ uploadUrl: string; finalV: number }>;
   uploadComplete(id: string, input: { videoId: string; connectionOwnerId?: string }): Promise<{ videoId: string; videoUrl: string; thumbnail: string }>;
   /** The 대표's decision on a waiting step, or a note on one the PD confirmed (note · memo). */
@@ -121,6 +124,14 @@ function apiClient(token: string): YpClient {
     feedback: async id => (await apiRequest<{ items: YpFeedbackView[] }>(`${base}/${id}/feedback`, { token })).items,
     addFeedback: async (id, input) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "POST", body: json(input) })).item,
     actFeedback: async (id, itemId, expectedVersion, action, text = "", replyId) => (await apiRequest<{ item: YpFeedbackView }>(`${base}/${id}/feedback`, { token, method: "PATCH", body: json({ itemId, expectedVersion, action, text, ...(replyId ? { replyId } : {}) }) })).item,
+    feedbackUpload: async (id, file) => {
+      if (!FEEDBACK_FILE_TYPES[file.type]) throw new ApiRequestError("이미지(jpg·png·webp·gif)나 PDF만 올릴 수 있어요.", "FEEDBACK_FILE_TYPE", 400);
+      if (file.size > FEEDBACK_FILE_MAX) throw new ApiRequestError("10MB 이하 파일만 올릴 수 있어요.", "FEEDBACK_FILE_SIZE", 400);
+      const upload = await apiRequest<{ path: string; token: string; mimeType: string }>(`${base}/${id}/feedback?attach=1`, { token, method: "POST", body: json({ fileName: file.name, mimeType: file.type, fileSize: file.size }) });
+      await uploadContentMedia(upload.path, upload.token, file, upload.mimeType);
+      return { path: upload.path, name: file.name.slice(0, 160), mime: file.type, size: file.size };
+    },
+    feedbackFileUrl: async (id, path) => (await apiRequest<{ url: string }>(`${base}/${id}/feedback?file=${encodeURIComponent(path)}`, { token })).url,
     uploadSession: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "session", ...input }) }),
     uploadComplete: (id, input) => apiRequest(`${base}/${id}/upload`, { token, method: "POST", body: json({ action: "complete", ...input }) }),
     confirm: async (id, gate, action, expectedVersion, extra = {}) => (await apiRequest<{ project: YpProject }>(`/api/v1/content/youtube/confirm/${id}/${gate}`, { token, method: "POST", body: json({ action, expectedVersion, ...extra }) })).project,
@@ -415,10 +426,18 @@ function demoClient(): YpClient {
     feedback: async id => structuredClone(demoFeedback.get(id) ?? []),
     addFeedback: async (id, input) => {
       const item: YpFeedbackView = { id: crypto.randomUUID(), version: 1, text: input.text ?? "", who: "리키", whoId: DEMO_ME, at: new Date().toISOString(), target: input.target, ver: input.ver,
-        t: input.t ?? null, range: input.range ?? null, kind: input.kind ?? "", sug: input.sug ?? "", reaction: input.reaction ?? false, status: "open", declinedWhy: "", fixedIn: null, replies: [] };
+        t: input.t ?? null, range: input.range ?? null, kind: input.kind ?? "", sug: input.sug ?? "", reaction: input.reaction ?? false, status: "open", declinedWhy: "", fixedIn: null, replies: [],
+        marks: cleanMarks(input.marks), files: input.files ?? [] };
       demoFeedback.set(id, [...(demoFeedback.get(id) ?? []), item]);
       return structuredClone(item);
     },
+    feedbackUpload: async (_id, file) => {
+      if (!FEEDBACK_FILE_TYPES[file.type]) throw demoError(400, "FEEDBACK_FILE_TYPE", "이미지(jpg·png·webp·gif)나 PDF만 올릴 수 있어요.");
+      const path = `feedback/demo/${Date.now()}-${crypto.randomUUID()}.${FEEDBACK_FILE_TYPES[file.type]}`;
+      demoFiles.set(path, URL.createObjectURL(file));
+      return { path, name: file.name.slice(0, 160), mime: file.type, size: file.size };
+    },
+    feedbackFileUrl: async (_id, path) => demoFiles.get(path) ?? "",
     actFeedback: async (id, itemId, _expected, action, text = "", replyId) => {
       const items = demoFeedback.get(id) ?? [];
       const latest = (demoFinals.get(id) ?? []).at(-1)?.v ?? null;

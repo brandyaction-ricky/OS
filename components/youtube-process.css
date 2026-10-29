@@ -1161,3 +1161,15 @@
 .linear-shell .ui-v2.yp .yp-card.yp-pf-start{color:var(--text)}
 .linear-shell .ui-v2.yp .yp-pf-start.yp-pf-short{border-top:3px solid var(--purple)}
 .linear-shell .ui-v2.yp .yp-pf-start.yp-pf-ad{border-top:3px solid var(--cyan)}
+
+/* 영상 피드백 N04·N05: marks over the frame; while drawing they take the pointer instead of play/pause. */
+.linear-shell .ui-v2.yp .yp-marks{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+.linear-shell .ui-v2.yp .yp-marks.yp-drawing{pointer-events:auto;cursor:crosshair}
+.linear-shell .ui-v2.yp .yp-tools{display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.linear-shell .ui-v2.yp .yp-files{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.linear-shell .ui-v2.yp .yp-fbsearch{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 0}
+.linear-shell .ui-v2.yp .yp-fbsearch .yp-in{flex:1 1 140px;min-width:0}
+.linear-shell .ui-v2.yp .yp-compare{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.linear-shell .ui-v2.yp .yp-compare .yp-cside{position:relative;background:var(--media-bg);border-radius:8px;overflow:hidden;aspect-ratio:16/9}
+.linear-shell .ui-v2.yp .yp-compare .yp-cside video{width:100%;height:100%;display:block}
+.linear-shell .ui-v2.yp .yp-compare .yp-clabel{position:absolute;left:6px;top:6px;z-index:3;background:color-mix(in srgb,var(--media-shadow) 65%,transparent);color:var(--media-text);font-size:12px;padding:2px 6px;border-radius:6px}

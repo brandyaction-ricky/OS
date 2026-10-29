@@ -74,3 +74,51 @@ export function applyFeedback(state: FeedbackState, actor: FeedbackActor, input:
 
 /** A deleted item no longer waits for anyone; done and declined are closed as before. */
 export const feedbackClosed = (item: Pick<FeedbackState, "status" | "deleted">) => item.status !== "open" || item.deleted === true;
+
+// ---- N01~N07 (검토 편의 기능) ----------------------------------------------------------------------------------------
+
+/** N04 핀 · N05 화살표·사각형·자유그림. Points are fractions of the frame (0–1), so they fit any player size. */
+export type FeedbackMark = { type: "pin" | "arrow" | "rect" | "free"; points: [number, number][] };
+/** N06 참고 이미지·파일, stored privately under the project. */
+export type FeedbackFile = { path: string; name: string; mime: string; size: number };
+export const FEEDBACK_FILE_TYPES: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf" };
+export const FEEDBACK_FILE_MAX = 10 * 1024 * 1024;
+export const FEEDBACK_FILES_PER_ITEM = 5;
+export const feedbackFilePath = (projectId: string) => new RegExp(`^feedback/${projectId}/[0-9]{13}-[0-9a-f-]{36}\\.(jpg|png|webp|gif|pdf)$`);
+
+/** Keeps marks inside the frame and small: at most 20 shapes, 200 points each, numbers rounded to 0.001. */
+export function cleanMarks(raw: unknown): FeedbackMark[] {
+  if (!Array.isArray(raw)) return [];
+  const clamp = (value: unknown) => Math.round(Math.min(1, Math.max(0, Number(value) || 0)) * 1000) / 1000;
+  return raw.slice(0, 20).flatMap((mark: { type?: unknown; points?: unknown }) => {
+    if (!["pin", "arrow", "rect", "free"].includes(String(mark?.type)) || !Array.isArray(mark.points)) return [];
+    const points = (mark.points as unknown[]).slice(0, 200).filter(Array.isArray).map(point => [clamp((point as unknown[])[0]), clamp((point as unknown[])[1])] as [number, number]);
+    const need = mark.type === "pin" ? 1 : 2;
+    return points.length >= need ? [{ type: mark.type as FeedbackMark["type"], points: mark.type === "pin" ? points.slice(0, 1) : mark.type === "free" ? points : points.slice(0, 2) }] : [];
+  });
+}
+
+/** N03: people called with @이름 (display names may contain spaces only if written without them, e.g. @예시PD). */
+export function mentionedIds(text: string, members: { id: string; name: string }[]): string[] {
+  const squash = (value: string) => value.replace(/\s+/g, "");
+  const tokens = [...text.matchAll(/@([^\s@,.!?·]{1,30})/g)].map(match => squash(match[1]));
+  return [...new Set(members.filter(member => member.name && tokens.some(token => token === squash(member.name) || token.startsWith(squash(member.name)))).map(member => member.id))];
+}
+
+/** Who hears about a new reply: the author, everyone who replied before, and anyone @mentioned — never the replier. */
+export function replyRecipients(item: { whoId: string; replies: { byId: string }[] }, text: string, members: { id: string; name: string }[], actorId: string): string[] {
+  return [...new Set([item.whoId, ...item.replies.map(row => row.byId), ...mentionedIds(text, members)])].filter(id => id && id !== actorId);
+}
+
+export type FeedbackFilter = "all" | "open" | "done" | "declined";
+export const FEEDBACK_FILTER_LABEL: Record<FeedbackFilter, string> = { all: "전체", open: "미반영", done: "반영됨", declined: "반영 안 함" };
+/** N01 검색 (피드백·답글·쓴 사람) + N02 상태별 필터. A deleted item is found only under 전체. */
+export function feedbackMatches(item: { text: string; who: string; status: string; deleted?: boolean; replies: { text: string; by: string }[] }, query: string, filter: FeedbackFilter) {
+  if (filter !== "all" && (item.deleted || item.status !== filter)) return false;
+  const words = query.trim().toLocaleLowerCase("ko-KR").split(/\s+/).filter(Boolean);
+  const haystack = [item.text, item.who, ...item.replies.flatMap(row => [row.text, row.by])].join(" ").toLocaleLowerCase("ko-KR");
+  return words.every(word => haystack.includes(word));
+}
+
+/** N07: the B side's time for a given A time, with a manual offset for cuts of different length (never below 0). */
+export const compareTime = (aTime: number, offset: number, bDuration: number) => Math.max(0, Math.min(bDuration || Infinity, aTime + offset));
