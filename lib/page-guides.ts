@@ -30,7 +30,7 @@ export const PAGE_GUIDES: Record<string,PageGuideDefinition> = {
   "/automation/shorts": {steps:["컷 구성과 영상 파일을 준비합니다","커버와 설명을 확인합니다","MP4와 커버를 확인한 뒤 최종 확인으로 보냅니다"],next:"/automation/review"},
   "/automation/threads": {steps:["글타래 초안을 만듭니다","문장과 출처를 직접 확인합니다","완성한 글을 최종 확인으로 보냅니다"],next:"/automation/review"},
   "/automation/review": {steps:["확인 대기 콘텐츠를 고릅니다","필수 항목과 이미지 라이선스를 직접 확인합니다","발행 준비 또는 고칠 것으로 기록합니다"],next:"/automation/calendar"},
-  "/automation/calendar": {steps:["발행 일정에서 게시 시각을 확인합니다","게시한 콘텐츠는 발행 기록에 남깁니다","URL이 없거나 실패한 기록을 확인합니다"],next:"/automation/performance"},
+  "/automation/calendar": {steps:["승인된 콘텐츠를 선택합니다","쓰레드는 계정·원고를 확인하고 공식 API로 발행합니다","게시 결과와 남은 글을 확인합니다"],next:"/automation/performance"},
   "/automation/performance": {steps:["답할 댓글을 보고 초안을 직접 고칩니다","같은 기간·채널의 성과를 비교합니다","좋은 질문은 다음 주제 후보로 모읍니다"],next:"/automation/dashboard"},
   "/automation/requests": {steps:["대기 중인 AI 작업과 처리 순서를 확인합니다","내 컴퓨터에서 Claude in Chrome을 등록하고 실행합니다","도착한 결과를 검토하고 반영합니다"],next:"/automation/settings"},
   "/automation/settings": {steps:["실행 규칙에 Chrome 예약 시각을 기록합니다","공정별 스킬과 템플릿을 관리합니다","내 기본값을 저장하고 다음 실행부터 적용합니다"],next:"/automation/dashboard"},

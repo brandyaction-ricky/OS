@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import type { OsRecord } from "@/lib/record-types";
 import { evaluateThreadsReference, REFERENCE_POLICY, type ThreadsReferenceItem } from "@/lib/threads-reference";
 import { useSession } from "./session-provider";
+import { CostTag } from "./cost-notice";
 import "./threads-reference-workspace.css";
 
 const METRICS = [["views", "조회"], ["likes", "좋아요"], ["comments", "댓글"], ["reposts", "재공유"]] as const;
@@ -166,12 +167,13 @@ export function ThreadsReferenceWorkspace({ records, mutate, collectionContext }
       <select aria-label="참고 자료 플랫폼" value={platform} onChange={event => setPlatform(event.target.value)}><option value="all">전체 플랫폼</option>{Object.entries(PLATFORM_LABELS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select>
       <button type="button" className="primary" onClick={() => openEditor(null)}>+ 원문 등록</button></div>
     <p>마음에 드는 자료의 ‘주제에 사용’을 선택하세요. 검증 상태와 관계없이 주제로 만들 수 있습니다. 선택하면 주제 만들기 버튼이 나타납니다.</p>
-    <details className="ca-v07-brief"><summary>Aside에 원문 조사 맡기기</summary><div className="ca-v07-form-grid tr-collection-fields"><label>이번에 살펴볼 주제·범위<input value={collectionScope} maxLength={1000} placeholder="비워 두면 현재 정본과 타겟 기준으로 조사" onChange={event => setCollectionScope(event.target.value)} /></label>
+    <details className="ca-v07-brief"><summary>내 AI에 원문 조사 맡기기</summary><div className="ca-v07-form-grid tr-collection-fields"><label>이번에 살펴볼 주제·범위<input value={collectionScope} maxLength={1000} placeholder="비워 두면 현재 정본과 타겟 기준으로 조사" onChange={event => setCollectionScope(event.target.value)} /></label>
       <label>추천 후보 수<select value={collectionCount} onChange={event => setCollectionCount(Number(event.target.value))}>{[1, 2, 3].map(count => <option key={count} value={count}>최대 {count}개</option>)}</select></label></div>
       <p>탐색 범위는 넓히되 기준을 통과한 글만 최대 3개 추천합니다. 추천 후보가 0개여도 정상입니다.</p>
       <p>초기 운영 기준: Threads 조회 10만 회 이상 / Substack 좋아요 100개 이상이며 같은 저자의 비교 글 5개 이상 중앙값의 2배 이상. 본문 전체·독자 적합성·실제 댓글 반응도 확인합니다.</p>
       {collectionContext?.canonicalUrl ? <p><a href={sourceHref(collectionContext.canonicalUrl)} target="_blank" rel="noopener noreferrer">{collectionContext.canonicalTitle} ↗</a>{collectionContext.canonicalVersion ? ` · v${collectionContext.canonicalVersion}` : ""}</p> : <p role="status">{collectionContext?.error || "정본 연결을 확인해야 조사 지침을 복사할 수 있습니다."}</p>}
-      <button type="button" disabled={!collectionContext?.canonicalUrl} onClick={async () => { if (!collectionContext?.canonicalUrl) return; try { await navigator.clipboard.writeText(collectionInstruction(collectionScope, collectionCount, collectionContext)); setNotice("조사 지침을 복사했습니다. Aside에 붙여 넣어 실행하세요."); } catch { setError("복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요."); } }}>Aside 조사 지침 복사</button></details>
+      <p>복사한 지침은 Aside에 붙여 넣어 실행하세요.</p>
+      <div className="ca-v07-actions"><button type="button" disabled={!collectionContext?.canonicalUrl} onClick={async () => { if (!collectionContext?.canonicalUrl) return; try { await navigator.clipboard.writeText(collectionInstruction(collectionScope, collectionCount, collectionContext)); setNotice("조사 지침을 복사했습니다. Aside에 붙여 넣어 실행하세요."); } catch { setError("복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요."); } }}>내 AI에 보낼 조사 지침 복사</button><CostTag kind="ai"/></div></details>
     {demo ? <p className="ca-v07-note">데모 화면입니다. 입력 항목을 살펴볼 수 있으며 저장은 하지 않습니다.</p> : null}
     {notice ? <p role="status" className="ca-v07-notice">{notice}</p> : null}
     {error ? <p role="alert" className="ca-v07-error">{error}</p> : null}

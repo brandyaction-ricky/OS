@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { apiErrorResponse, ApiError, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentStatus, KnowledgeDocument } from "@/lib/types";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
@@ -135,9 +134,9 @@ export async function POST(request: Request) {
       .select("*")
       .single();
     if (error || !data) throw new ApiError(400, "DOCUMENT_CREATE_FAILED", "문서를 저장하지 못했습니다.", error?.message);
-    let indexing: "ready" | "queued" = "queued";
-    try { indexing = await indexDocument(data.id); } catch (indexError) { console.error("indexing failed", indexError); }
-    return NextResponse.json({ document: data, indexing }, { status: 201 });
+    // Saves only leave the index job the document trigger queued; /api/v1/indexing/night indexes one document at a time
+    // between 01:00 and 06:00 KST (owner 2026-10-29: indexing during the day slowed every screen).
+    return NextResponse.json({ document: data, indexing: "queued" }, { status: 201 });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT", "문서 내용을 확인해 주세요.", error.flatten()));
     return apiErrorResponse(error);
@@ -186,11 +185,7 @@ export async function PATCH(request: Request) {
       throw new ApiError(409, "KNOWLEDGE_ATTACHMENT_EXPIRED", "첨부 자료의 보관 시간이 지나 저장하지 못했습니다. 해당 자료를 다시 첨부해 주세요.");
     }
     if (error || !data) throw new ApiError(400, "DOCUMENT_UPDATE_FAILED", "문서를 수정하지 못했습니다.", error?.message);
-    let indexing: "ready" | "queued" = "queued";
-    if (input.content !== undefined) {
-      try { indexing = await indexDocument(data.id); } catch (indexError) { console.error("indexing failed", indexError); }
-    }
-    return NextResponse.json({ document: data, indexing });
+    return NextResponse.json({ document: data, indexing: "queued" });
   } catch (error) {
     if (error instanceof ZodError) return apiErrorResponse(new ApiError(400, "INVALID_DOCUMENT", "수정 내용을 확인해 주세요.", error.flatten()));
     return apiErrorResponse(error);

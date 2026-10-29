@@ -4,7 +4,6 @@ import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
 import { canReadKnowledgeDocument } from "@/lib/server/document-access";
 import { readableKnowledgePages } from "@/lib/server/knowledge-page-access";
-import { indexDocument } from "@/lib/server/indexing";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import type { DocumentProposal, KnowledgeDocument } from "@/lib/types";
 
@@ -108,7 +107,7 @@ export async function POST(request: Request) {
     if (input.action === "approve") {
       const { data, error: applyError } = await actor.supabase.rpc("os_apply_document_proposal", { p_proposal_id: proposal.id, p_note: input.note });
       if (applyError || !data) throw proposalError(applyError);
-      try { await indexDocument(document.id); } catch (indexError) { console.error("proposal indexing failed", indexError); }
+      // The applied version is indexed by the night runner (/api/v1/indexing/night), not during the request.
       return NextResponse.json({ proposal: { ...proposal, status: "approved", reviewer_id: actor.id }, document: data });
     }
     const status = input.action === "return" ? "returned" : "withdrawn";
