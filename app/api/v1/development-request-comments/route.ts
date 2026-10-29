@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
-import { developmentCommentCreateSchema, developmentCommentMetadata, developmentCommentQuerySchema } from "@/lib/development-comments";
+import { developmentCommentCreateSchema, developmentCommentMetadata, developmentCommentQuerySchema, developmentCommentUpdateSchema, developmentCommentView } from "@/lib/development-comments";
 import { authenticateRequest, type RequestActor } from "@/lib/server/auth";
 import { createServiceSupabase } from "@/lib/supabase/server";
 
@@ -63,6 +63,7 @@ async function assertReply(actor: RequestActor, requestId: string, replyTo: stri
   if (error) throw new ApiError(500, "COMMENT_REPLY_READ_FAILED", "답글 대상을 확인하지 못했습니다.");
   if (!data) throw new ApiError(404, "COMMENT_REPLY_NOT_FOUND", "답글을 남길 댓글이 없거나 다른 요청의 댓글입니다.");
   if (data.metadata?.replyTo) throw new ApiError(400, "COMMENT_REPLY_DEPTH_EXCEEDED", "답글에는 다시 답글을 남길 수 없습니다.");
+  if (data.metadata?.deletedAt) throw new ApiError(400, "COMMENT_REPLY_DELETED", "지운 댓글에는 답글을 남길 수 없습니다.");
 }
 
 export async function GET(request: Request) {
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
       .order("id", { ascending: true })
       .range(0, 199);
     if (error) throw new ApiError(500, "COMMENT_LIST_FAILED", "요청 대화를 불러오지 못했습니다.");
-    const comments = data ?? [];
+    const comments = (data ?? []).map(developmentCommentView);
     return NextResponse.json({ comments, truncated: comments.length === 200 }, { headers });
   } catch (error) { return respondError(error); }
 }
@@ -115,5 +116,33 @@ export async function POST(request: Request) {
     }).select("*").single();
     if (error || !data) throw new ApiError(500, "COMMENT_CREATE_FAILED", "댓글을 저장하지 못했습니다.");
     return NextResponse.json({ comment: data }, { status: 201, headers });
+  } catch (error) { return respondError(error); }
+}
+
+/** 내 댓글 고치기 · 지우기: the author changes the text or deletes it; the DB keeps the earlier text and refuses anyone else. */
+export async function PATCH(request: Request) {
+  try {
+    const actor = await authenticateRequest(request);
+    const input = developmentCommentUpdateSchema.parse(await parseJson(request, 16_000));
+    const { data: comment, error: readError } = await actor.supabase.from("os_records")
+      .select("*")
+      .eq("id", input.commentId)
+      .eq("record_type", "development_comment")
+      .eq("metadata->>kind", "development_comment")
+      .is("archived_at", null)
+      .maybeSingle();
+    if (readError) throw new ApiError(500, "COMMENT_READ_FAILED", "댓글을 확인하지 못했습니다.");
+    if (!comment) throw new ApiError(404, "COMMENT_NOT_FOUND", "댓글이 없거나 접근할 수 없습니다.");
+    if (comment.created_by !== actor.ownerId) throw new ApiError(403, "COMMENT_NOT_AUTHOR", "내가 남긴 댓글만 고치거나 지울 수 있습니다.");
+    if (comment.metadata?.deletedAt) throw new ApiError(409, "COMMENT_DELETED", "이미 지운 댓글입니다.");
+    const { data, error } = await actor.supabase.from("os_records")
+      .update(input.delete ? { metadata: { ...comment.metadata, deletedAt: "now" }, updated_by: actor.ownerId } : { description: input.body, updated_by: actor.ownerId })
+      .eq("id", comment.id)
+      .eq("version", comment.version)
+      .select("*")
+      .maybeSingle();
+    if (error) throw new ApiError(500, "COMMENT_UPDATE_FAILED", "댓글을 저장하지 못했습니다.");
+    if (!data) throw new ApiError(409, "COMMENT_CHANGED", "댓글이 그사이 바뀌었습니다. 새로고침한 뒤 다시 해 주세요.");
+    return NextResponse.json({ comment: developmentCommentView(data) }, { headers });
   } catch (error) { return respondError(error); }
 }
