@@ -126,8 +126,8 @@ test("direct ad fields and shot editor expose user-facing choices without claimi
   for(const label of ["장면 1","내레이션","사용할 소재","소재 확보 필요"])assert.ok(plan.includes(label));
 });
 
-test('all seventy portrait templates validate, scale to short cuts and reject unknown fields',()=>{
- assert.equal(catalog.DIAGRAM_CATALOG.length,70);
+test('all portrait templates validate, scale to short cuts and reject unknown fields',()=>{
+ assert.equal(catalog.DIAGRAM_CATALOG.length,75);
  for(const entry of catalog.DIAGRAM_CATALOG){
   const d=catalog.defaultDiagram(entry.type,3);
   assert.equal(contract.shortformDiagramSchema.safeParse(d).success,true,entry.type);

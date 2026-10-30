@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { checkShortStoryboard, shortDiagramList, shortLineWidth } from "../lib/myin-short-storyboard.ts";
 
 // 숏폼 기획표 (2026-10-28): opening (big type) and vertical lib_ diagrams only, the confirmed 헤드 카피 on the first screen, lines inside
@@ -62,6 +63,22 @@ test("only diagrams with a vertical layout, inside their letter limits", () => {
   assert.match(checkShortStoryboard(listed, { ...input, diagrams: [many] }).issues.join(" "), /items는 1~2개예요\(지금 3개\)/);
   story.scenes[1].type = "iceberg";
   assert.match(checkShortStoryboard(story, input).issues.join(" "), /"iceberg"는 세로로 그릴 수 없어요/);
+});
+
+test("the 2026-10-30 vertical diagrams need their required slots, and 공통점 찾기 the same mark once in every card", () => {
+  const catalog = JSON.parse(readFileSync(new URL("../lib/shortform-diagram-catalog.json", import.meta.url), "utf8"));
+  const withNew = { ...input, diagrams: catalog };
+  const swap = good();
+  swap.scenes[1] = { type: "lib_order_swap", at: "가고 싶고", first: { text: "만나기", cue: "가고 싶고" }, second: { text: "쉬기", cue: "쉬고 싶은" }, cue_swap: "같이 있는" };
+  assert.deepEqual(checkShortStoryboard(swap, withNew).issues, []);
+  delete swap.scenes[1].cue_swap;
+  assert.match(checkShortStoryboard(swap, withNew).issues.join(" "), /lib_order_swap cue_swap 칸이 없어요/);
+  const thread = good();
+  thread.scenes[1] = { type: "lib_common_thread", at: "가고 싶고", cards: [{ text: "혼자 끝까지 기획", mark: "혼자 끝까지", cue: "가고 싶고" },
+    { text: "혼자 끝까지 맡음", mark: "혼자 끝까지", cue: "쉬고 싶은" }], common: { text: "혼자 끝까지", cue: "같이 있는" } };
+  assert.deepEqual(checkShortStoryboard(thread, withNew).issues, []);
+  thread.scenes[1].cards[1].text = "끝까지 맡음";
+  assert.match(checkShortStoryboard(thread, withNew).issues.join(" "), /카드마다 같은 mark가 text 안에 꼭 한 번/);
 });
 
 test("a big line wider than the frame, a missing cue and a sentence with no text are sent back", () => {

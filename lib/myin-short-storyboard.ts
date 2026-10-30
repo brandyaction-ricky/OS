@@ -7,7 +7,8 @@ import { myinCueMisses, myinNorm, myinSceneStarts, openingTextIssues, type MyinS
 
 /** A vertical diagram as the render PC's catalog lists it (lib/shortform-diagram-catalog.json): its slots and their letter limits. */
 export interface ShortDiagram { type: string; name: string; slots: string; spec: SlotSpec }
-interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; min?: number; max?: number }
+/** required: slots the new vertical diagrams (2026-10-30 GPT) stop the render without; a cue_ slot may also come as its t_ time. */
+interface SlotSpec { kind: string; fields?: Record<string, SlotSpec>; item?: SlotSpec; min?: number; max?: number; required?: string[] }
 /** 인물 카드: Logan's persona scene (myin_persona.py), centred in the vertical frame by the render PC — for the first time the script
  *  brings in a person (시안 2: 「6년 차 디자이너 수진 씨」). His drawer reads every person's name and desc. */
 export const SHORT_PERSONA: ShortDiagram = { type: "persona", name: "인물 카드", slots: "사람 1~2명, name ≤ 6자, desc ≤ 12자, prop(선택): hair · glasses · tie · bag",
@@ -46,8 +47,12 @@ const lineText = (line: Piece[]) => line.map((piece) => String(piece.text ?? "")
 
 /** Letter limits and item counts of a diagram's slots (catalog spec), at any depth. */
 function slotIssues(spec: SlotSpec, value: unknown, where: string, path = ""): string[] {
-  if (spec.kind === "object" && value && typeof value === "object" && !Array.isArray(value))
-    return Object.entries(spec.fields ?? {}).flatMap(([key, child]) => slotIssues(child, (value as Record<string, unknown>)[key], where, path ? `${path}.${key}` : key));
+  if (spec.kind === "object" && value && typeof value === "object" && !Array.isArray(value)) {
+    const o = value as Record<string, unknown>;
+    const missing = (spec.required ?? []).filter((key) => o[key] === undefined && !(key.startsWith("cue_") && o[`t_${key.slice(4)}`] !== undefined));
+    return [...missing.map((key) => `${where} ${path ? `${path}.` : ""}${key} 칸이 없어요.`),
+      ...Object.entries(spec.fields ?? {}).flatMap(([key, child]) => slotIssues(child, o[key], where, path ? `${path}.${key}` : key))];
+  }
   if (spec.kind === "array" && Array.isArray(value)) {
     if (value.length < (spec.min ?? 1) || value.length > (spec.max ?? 6)) return [`${where} ${path}는 ${spec.min ?? 1}~${spec.max ?? 6}개예요(지금 ${value.length}개).`];
     return value.flatMap((item, i) => spec.item ? slotIssues(spec.item, item, where, `${path}.${i}`) : []);
@@ -93,7 +98,13 @@ export function checkShortStoryboard(value: unknown, input: { words: [number, nu
           if (px > SHORT_LINE_MAX_PX) issues.push(`${where} ${k + 1}번째 막 「${lineText(line)}」이 화면보다 넓어요(약 ${Math.round(px)}px, ${SHORT_LINE_MAX_PX}px까지) — 줄을 나누거나 size를 줄여요.`);
         }
       });
-    } else if (diagrams.has(sc.type)) issues.push(...slotIssues(diagrams.get(sc.type)!.spec, sc, `${where} ${sc.type}`));
+    } else if (diagrams.has(sc.type)) {
+      issues.push(...slotIssues(diagrams.get(sc.type)!.spec, sc, `${where} ${sc.type}`));
+      // 공통점 찾기 marks the same words in every card; the render PC stops when a card lacks them or has them twice.
+      const cards = sc.type === "lib_common_thread" && Array.isArray(sc.cards) ? sc.cards as Piece[] : [];
+      if (cards.length && (new Set(cards.map((c) => c?.mark)).size !== 1 || cards.some((c) => typeof c?.mark !== "string" || !c.mark || String(c.text ?? "").split(String(c.mark)).length !== 2)))
+        issues.push(`${where} lib_common_thread는 카드마다 같은 mark가 text 안에 꼭 한 번 들어가요.`);
+    }
     else issues.push(`${where} "${sc.type}"는 세로로 그릴 수 없어요. 큰 글자는 opening, 관계와 사람은 아래 세로 도식 목록에서 골라요.`);
   });
   // 헤드 카피 (숏폼 대본 정본, owner 2026-10-28: the most important): the first screen's big words are the confirmed ones.
