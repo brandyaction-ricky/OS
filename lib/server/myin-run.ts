@@ -53,7 +53,15 @@ const runSchema = z.object({
     breath: z.array(z.number().int().min(0)).max(80).optional() }).strict()).min(1).max(150),
   words: z.object({ path: z.string(), words: z.number().int().positive(), subtitleLines: z.number().int().min(0), durationSeconds: z.number().positive(), at: z.string().datetime(),
     // 내 컴퓨터로 시안: his processed voice.wav as the render PC made it, in parts (the voice bucket takes 12 MB a file).
-    voice: z.object({ path: z.string(), parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: hex }).strict().optional() }).strict().optional(),
+    voice: z.object({ path: z.string(), parts: z.number().int().min(1).max(MYIN_VOICE_PARTS), bytes: z.number().int().positive(), sha256: hex }).strict().optional(),
+    // 음성 확인 (로건 OS 요청 2026-10-30): a small MP3 of the same voice to listen to on stage 1 (the WAV is ~75 MB for 13 minutes).
+    preview: z.object({ path: z.string(), bytes: z.number().int().positive() }).strict().optional() }).strict().optional(),
+  // 음성 확인·수정 (로건 OS 요청 2026-10-30): memos left on stage 1 wait here for the render PC, which redoes only those sentences with his
+  // voice_fix (two new takes, the better one swapped in, the sentence added to his dictionary) and transcribes again; the check itself
+  // (or skipping it) is recorded and never blocks stage 2.
+  voiceFixes: z.array(z.object({ memo: z.string().min(1).max(300), say: z.string().max(300).optional(), read: z.string().max(100).optional(),
+    by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict()).max(20).optional(),
+  voiceCheck: z.object({ skipped: z.boolean(), by: z.string().uuid(), name: z.string(), at: z.string().datetime() }).strict().optional(),
   // Stage 2: the staff AI's storyboard (kept in the voice-timing bucket) and what Logan sees to confirm it.
   storyboard: z.object({ path: z.string(), scenes: z.number().int().positive(), model: z.string(), at: z.string().datetime(),
     metaphors: z.array(z.object({ scene: z.number().int(), type: z.string(), at: z.string() }).strict()),
@@ -133,6 +141,7 @@ export function presentMyinRun(record: OsRecord) {
     prepared: run.prepared ? { misses: run.prepared.misses, sheets: run.prepared.sheets.length, credits: run.prepared.credits, at: run.prepared.at } : null,
     clips: run.clips ? run.clips.items.map(({ name, label }) => ({ name, label })) : null, clipsReview: run.clipsReview ?? null, sound: run.sound ?? null,
     final: run.final ? { bytes: run.final.bytes, durationSeconds: run.final.durationSeconds, lufs: run.final.lufs, peak: run.final.peak, at: run.final.at } : null,
+    voiceFixes: (run.voiceFixes ?? []).map(({ memo, say, read, name }) => ({ memo, say: say ?? null, read: read ?? null, name })), voiceCheck: run.voiceCheck ?? null,
     lastErrorCode: run.lastError?.code ?? null, createdAt: record.created_at, local: run.local ? { by: run.local.by, name: run.local.name } : null, localReady: Boolean(run.words?.voice) && !run.layout,
     // 로건 피드백 10/26-8: when the render PC took this step, so the screen can say how long it has been working.
     workingSince: record.status === "in_progress" ? run.lease?.startedAt ?? null : null };
@@ -328,6 +337,7 @@ export async function processMyinVoiceStep(service: Service = createServiceSupab
 const tag = (lease: string) => lease.slice(0, 8);
 const bundlePath = (record: OsRecord, run: MyinRun, lease: string) => `${record.owner_id}/${run.sourceId}/${record.id}/myin-words-${tag(lease)}.json`;
 const voicePartPath = (prefix: string, n: number) => `${prefix}.part${String(n).padStart(2, "0")}.wav`;
+const previewPath = (prefix: string) => `${prefix}.preview.mp3`;
 
 /** Render PC: the paragraphs still to voice, for Logan's breath model (tools/voice_timing in the installed package). */
 export async function claimMyinBreath(service: Service = createServiceSupabase()) {
@@ -385,8 +395,10 @@ export async function claimMyinWords(service: Service = createServiceSupabase(),
     const prefix = voicePrefix(record, run, lease.token);
     const voiceUploadUrls = (await Promise.all(Array.from({ length: MYIN_VOICE_PARTS }, (_, n) =>
       service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(voicePartPath(prefix, n), { upsert: true })))).map(({ data }) => data?.signedUrl).filter(Boolean);
+    const { data: preview } = await service.storage.from(YOUTUBE_VOICE_BUCKET).createSignedUploadUrl(previewPath(prefix), { upsert: true });
     return { runId: record.id, lease: lease.token, ...voice, bundleUploadUrl: upload.signedUrl, ...(voiceUploadUrls.length === MYIN_VOICE_PARTS ? { voiceUploadUrls } : {}),
-      ...(run.layout ? { layout: run.layout } : {}) };
+      ...(preview ? { previewUploadUrl: preview.signedUrl } : {}), ...(run.layout ? { layout: run.layout } : {}),
+      ...(run.voiceFixes?.length ? { fixes: run.voiceFixes.map(({ memo, say, read }) => ({ memo, ...(say ? { say } : {}), ...(read ? { read } : {}) })) } : {}) };
   } catch (error) {
     await failed(service, record, run, error instanceof ApiError ? error.code : "MYIN_CLAIM_FAILED");
     throw error;
@@ -407,7 +419,7 @@ const bundleSchema = z.object({
 }).passthrough();
 
 /** Render PC: the bundle is up; the OS reads it back before the run moves on. */
-export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string } }, service: Service = createServiceSupabase()) {
+export async function completeMyinWords(input: { runId: string; lease: string; voice?: { parts: number; bytes: number; sha256: string }; preview?: { bytes: number } }, service: Service = createServiceSupabase()) {
   const { record, run } = await leased(service, input.runId, input.lease);
   const path = bundlePath(record, run, input.lease);
   const { data, error } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(path);
@@ -420,9 +432,14 @@ export async function completeMyinWords(input: { runId: string; lease: string; v
     throw new ApiError(422, "MYIN_PARAGRAPHS_MISMATCH", "영상 만드는 컴퓨터가 읽은 문단이 OS 원고와 다릅니다.");
   const next: MyinRun = { ...run, attempts: 0, words: { path, words: bundle.data.words.length,
     subtitleLines: (bundle.data.subtitlesAss.match(/^Dialogue:/gm) ?? []).length, durationSeconds: bundle.data.durationSeconds, at: new Date().toISOString(),
-    ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}) } };
-  delete next.lease; delete next.lastError;
+    ...(input.voice ? { voice: { path: voicePrefix(record, run, input.lease), ...input.voice } } : {}),
+    ...(input.preview ? { preview: { path: previewPath(voicePrefix(record, run, input.lease)), bytes: input.preview.bytes } } : {}) } };
+  delete next.lease; delete next.lastError; delete next.voiceFixes;
   await save(service, record, "done", "words_ready", next);
+  // A fixed voice replaces the one before it: those parts (~75 MB for 13 minutes) are removed so storage holds one voice per video.
+  const old = run.words?.voice;
+  if (old && input.voice && old.path !== next.words?.voice?.path)
+    await service.storage.from(YOUTUBE_VOICE_BUCKET).remove([...Array.from({ length: old.parts }, (_, n) => voicePartPath(old.path, n)), ...(run.words?.preview ? [run.words.preview.path] : [])]).catch(() => undefined);
   return { runId: record.id, stage: "words_ready" };
 }
 
@@ -441,6 +458,27 @@ export async function myinWordsReport(actor: RequestActor, runId: string) {
   if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
   const bundle = JSON.parse(await data.text()) as { subtitleQc?: string };
   return { subtitleQc: String(bundle.subtitleQc ?? "").slice(0, 20_000) };
+}
+
+const auditRow = z.object({ 문단: z.number(), 시각: z.number(), 문장: z.string(), 문제: z.array(z.string()), 점수: z.number(), 긴호흡: z.number() }).passthrough();
+/**
+ * 음성 확인 (로건 OS 요청 2026-10-30): the sentences worth a listen from the render PC's voice_audit (a break scored 0.8 or more, or 20+
+ * syllables without a comma), in time order, what the last fixes did, and the MP3 to listen with. Read here, not by the screen, so the
+ * page never downloads the whole transcription.
+ */
+export async function myinVoiceCheck(actor: RequestActor, runId: string) {
+  const { run } = await visibleRun(actor, runId);
+  if (!run.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
+  const service = createServiceSupabase();
+  const { data } = await service.storage.from(YOUTUBE_VOICE_TIMING_BUCKET).download(run.words.path);
+  if (!data) throw new ApiError(404, "MYIN_BUNDLE_MISSING", "받아쓰기 결과 파일을 찾지 못했습니다.");
+  const bundle = JSON.parse(await data.text()) as { audit?: unknown; fixes?: unknown };
+  const rows = z.array(auditRow).safeParse(bundle.audit);
+  const listen = rows.success ? rows.data.filter((row) => row.점수 >= 0.8 || row.긴호흡 > 0).sort((a, b) => a.시각 - b.시각).slice(0, 80)
+    .map((row) => ({ at: row.시각, sentence: row.문장.slice(0, 300), issues: row.문제.slice(0, 6).map((issue) => issue.slice(0, 80)), score: row.점수, long: row.긴호흡 })) : null;
+  const fixes = z.array(z.object({ memo: z.string(), ok: z.boolean(), report: z.string() }).passthrough()).safeParse(bundle.fixes);
+  return { sentences: rows.success ? rows.data.length : null, listen, fixes: fixes.success ? fixes.data.map(({ memo, ok, report }) => ({ memo, ok, report })) : [],
+    previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
 }
 
 // ── Stage 3: photos, music, CTA voice and the render PC's preparation with Logan's preview check ──
@@ -579,7 +617,34 @@ export async function myinDownloads(actor: RequestActor, runId: string) {
   const { run } = await visibleRun(actor, runId);
   if (!run.words) throw new ApiError(404, "MYIN_WORDS_NOT_READY", "받아쓰기·자막이 아직 없습니다.");
   const service = createServiceSupabase();
-  return { voice: run.words.voice ? await voiceDownload(service, run.words.voice) : null, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words.path) };
+  return { voice: run.words.voice ? await voiceDownload(service, run.words.voice) : null, wordsUrl: await sign(service, YOUTUBE_VOICE_TIMING_BUCKET, run.words.path),
+    previewUrl: run.words.preview ? await sign(service, YOUTUBE_VOICE_BUCKET, run.words.preview.path) : null };
+}
+
+/** 음성 확인·수정 (로건 OS 요청 2026-10-30): what may be asked of the render PC for one sentence. `read` is 「원래말=읽는소리」. */
+export const myinVoiceFixSchema = z.object({ memo: z.string().trim().min(1).max(300), say: z.string().trim().min(1).max(300).optional(),
+  read: z.string().trim().max(100).regex(/^[^=]+=[^=]+$/, "「원래말=읽는소리」로 써 주세요").optional() }).strict();
+/** Stage 1's memos go to the render PC together: it redoes those sentences only and transcribes again (words_pending → words_ready). */
+export async function requestMyinVoiceFix(actor: RequestActor, runId: string, fixes: z.infer<typeof myinVoiceFixSchema>[]) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  await assertCurrent(service, run);
+  if (record.stage !== "words_ready" || !run.words) throw new ApiError(409, "MYIN_VOICE_FIX_CLOSED", "받아쓰기·자막이 끝난 뒤, 기획표를 쓰기 전까지 고칠 수 있어요.");
+  // His voice_fix works on the sentence files the render PC's own voice leaves (2026-10-30 package); a 숏폼's package does not have it yet.
+  if (run.layout === "short" || !run.voiceOn) throw new ApiError(409, "MYIN_VOICE_FIX_UNAVAILABLE", "이 영상은 문장 하나만 다시 만들 수 없어요. 고칠 곳은 최종 검토 피드백에 남겨 주세요.");
+  if (!fixes.length) throw new ApiError(400, "MYIN_VOICE_FIX_EMPTY", "고칠 곳 메모를 하나 이상 남겨 주세요.");
+  const at = new Date().toISOString();
+  const next: MyinRun = { ...run, attempts: 0, voiceFixes: fixes.slice(0, 20).map((fix) => ({ ...fix, by: actor.id, name: actor.name, at })) };
+  delete next.voiceCheck;
+  return presentMyinRun(await save(service, record, "backlog", "words_pending", next));
+}
+/** 「음성 확인 완료」 or 「확인 없이 바로 넘어가기」: who and when, for the record; stage 2 opens either way. */
+export async function checkMyinVoice(actor: RequestActor, runId: string, skipped: boolean) {
+  const service = createServiceSupabase();
+  const { record, run } = await visibleRun(actor, runId);
+  if (record.stage !== "words_ready" || !run.words) throw new ApiError(409, "MYIN_VOICE_CHECK_CLOSED", "받아쓰기·자막이 끝난 뒤에 확인할 수 있어요.");
+  const next: MyinRun = { ...run, voiceCheck: { skipped, by: actor.id, name: actor.name, at: new Date().toISOString() } };
+  return presentMyinRun(await save(service, record, record.status, "words_ready", next));
 }
 
 /**

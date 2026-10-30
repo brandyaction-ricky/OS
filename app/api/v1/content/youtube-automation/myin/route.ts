@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z, ZodError } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
-import { confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceOnRenderPc, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
+import { checkMyinVoice, confirmMyinClips, createMyinRun, latestMyinRun, myinVoiceCheck, myinVoiceFixSchema, myinVoiceOnRenderPc, requestMyinVoiceFix, myinDownloads, myinOurImageUpload, myinOutputs, myinPhotos, myinPreviewSheets, myinSoundState, myinWordsReport, reopenMyinMaterials, reviewMyinStoryboard, saveMyinOurImage, saveMyinSound, setMyinDraftPlace, startMyinFinal, startMyinPrep } from "@/lib/server/myin-run";
 import { readLocalRenderStatus } from "@/lib/server/youtube-render-pc";
 import { checkMyinScreens, myinScreenCheck } from "@/lib/server/myin-screen-check";
 import { canUseYoutubeAutomationPilot } from "@/lib/youtube-automation-gate";
@@ -27,6 +27,9 @@ export async function GET(request: Request) {
     // 화면 자동 검사 (2026-10-29): GPT's look at this run's 점검 시트.
     const screen = query.get("screen");
     if (screen) return NextResponse.json(await myinScreenCheck(actor, z.string().uuid().parse(screen)), { headers });
+    // 음성 확인 (로건 OS 요청 2026-10-30): the sentences worth a listen, the last fixes and the MP3 to listen with.
+    const voiceCheck = query.get("voicecheck");
+    if (voiceCheck) return NextResponse.json(await myinVoiceCheck(actor, z.string().uuid().parse(voiceCheck)), { headers });
     // 1단계 파일 내려받기 (2026-10-28): the voice parts and the subtitle bundle.
     const downloads = query.get("downloads");
     if (downloads) return NextResponse.json(await myinDownloads(actor, z.string().uuid().parse(downloads)), { headers });
@@ -58,6 +61,8 @@ const patchSchema = z.discriminatedUnion("action", [
   // ④ 자료 준비 (2026-10-27): the full video after the sound check, ⑤ → ④ for another sound pass, and the sound plan itself.
   z.object({ action: z.literal("final"), runId: z.string().uuid() }),
   z.object({ action: z.literal("reopen"), runId: z.string().uuid() }),
+  z.object({ action: z.literal("voice_fix"), runId: z.string().uuid(), fixes: z.array(myinVoiceFixSchema).min(1).max(20) }),
+  z.object({ action: z.literal("voice_check"), runId: z.string().uuid(), skipped: z.boolean() }),
   z.object({ action: z.literal("sound"), runId: z.string().uuid(), plan: z.object({
     music: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), start: z.number().min(0).max(3600).optional() }).strict()).max(60),
     amb: z.array(z.object({ scene: z.number().int().min(1).max(200), key: z.string().min(1).max(80), dur: z.number().positive().max(600).optional(),
@@ -79,6 +84,8 @@ export async function PATCH(request: Request) {
       : input.action === "screen_check" ? await myinScreenCheck(actor, input.runId).then(() => checkMyinScreens(input.runId, input.tier)).then((stage) => ({ check: stage?.data ?? null }))
       : input.action === "final" ? { run: await startMyinFinal(actor, input.runId) }
       : input.action === "reopen" ? { run: await reopenMyinMaterials(actor, input.runId) }
+      : input.action === "voice_fix" ? { run: await requestMyinVoiceFix(actor, input.runId, input.fixes) }
+      : input.action === "voice_check" ? { run: await checkMyinVoice(actor, input.runId, input.skipped) }
       : input.action === "sound" ? { run: await saveMyinSound(actor, input.runId, input.plan) }
       : input.action === "our_image_url" ? await myinOurImageUpload(actor, input.runId, input.file, input.type)
       : input.action === "our_image" ? { run: await saveMyinOurImage(actor, input.runId, input.file, input.path) }

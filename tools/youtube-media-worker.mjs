@@ -16,7 +16,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { constants as fsConstants, appendFileSync,closeSync,copyFileSync, cpSync, existsSync, openSync, readSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, appendFileSync,closeSync,copyFileSync, cpSync, existsSync, openSync, readSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statfsSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -476,6 +476,36 @@ export function myinVoiceEnv(job, base = process.env) {
     env: { ...base, PATH: `/opt/homebrew/bin:${base.PATH ?? ""}`, PYTHONIOENCODING: "utf-8", FISH_API_KEY: key || "unused", FISH_VOICE_ID: voice || "unused" } };
 }
 
+/** Like runAsync, but never throws: what the process printed (stdout and stderr) and whether it ended well. */
+const runOut = (command, args, options) => new Promise((resolve) => {
+  const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], ...options });
+  let out = "";
+  child.stdout.on("data", (chunk) => { out += chunk; process.stdout.write(chunk); });
+  child.stderr.on("data", (chunk) => { out += chunk; process.stderr.write(chunk); });
+  child.on("error", (error) => resolve({ ok: false, out: error.message }));
+  child.on("exit", (code) => resolve({ ok: code === 0, out }));
+});
+/** His Korean report lines (「찾은 문장: …」 · 「목소리 업데이트: …」 or why not), without the model-loading noise. */
+export const fixReport = (out) => String(out).replace(/\r/g, "").split("\n").map((line) => line.trim())
+  .filter((line) => /[가-힣]/.test(line) && !/Loading weights|Redirects are currently/.test(line)).slice(-4).join("\n").slice(0, 600);
+
+/**
+ * 음성 사전 (로건 OS 요청 2026-10-30): voice_fix adds to the run's own copy of his dictionaries (읽기사전 · 어색문장모음). Until the OS keeps
+ * them, the new lines go back into the package so the next video reads them; lines already there win, nothing is removed.
+ */
+export function mergeVoiceDictionaries(fromDir, toDir) {
+  const read = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } };
+  const write = (file, value) => { const tmp = `${file}.tmp-${process.pid}`; writeFileSync(tmp, `${JSON.stringify(value, null, 1)}\n`); renameSync(tmp, file); };
+  const readings = read(path.join(fromDir, "읽기사전.json")), liveReadings = read(path.join(toDir, "읽기사전.json"));
+  const newReadings = readings && liveReadings ? Object.keys(readings).filter((key) => !(key in liveReadings)) : [];
+  if (newReadings.length) write(path.join(toDir, "읽기사전.json"), { ...liveReadings, ...Object.fromEntries(newReadings.map((key) => [key, readings[key]])) });
+  const tests = read(path.join(fromDir, "어색문장모음.json")), liveTests = read(path.join(toDir, "어색문장모음.json"));
+  const ids = new Set((liveTests?.items ?? []).map((item) => item.id));
+  const newTests = Array.isArray(tests?.items) && Array.isArray(liveTests?.items) ? tests.items.filter((item) => !ids.has(item.id)) : [];
+  if (newTests.length) write(path.join(toDir, "어색문장모음.json"), { ...liveTests, items: [...liveTests.items, ...newTests] });
+  return { readings: newReadings.length, tests: newTests.length };
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -500,8 +530,31 @@ export async function processMyinWords() {
     const script = path.join(voiceDir, "script.md");
     writeFileSync(script, job.scriptMarkdown);
     const { env } = speaker;
-    current.step = "narration";
-    await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+    // 음성 확인·수정 (로건 OS 요청 2026-10-30): memos from stage 1 redo only their sentences in this video's voice (his voice_fix); the
+    // rest stays. A video whose folder is gone, or an older package, is voiced again from the script instead.
+    const fixes = Array.isArray(job.fixes) ? job.fixes : [];
+    const timing = path.join(work, "tools", "voice_timing");
+    const fixed = [];
+    if (fixes.length && existsSync(path.join(voiceDir, "voice.wav")) && existsSync(path.join(timing, "voice_fix.py"))) {
+      current.step = "voice fix";
+      for (const fix of fixes) {
+        const result = await runOut(speaker.python, ["voice_fix.py", voiceJob, "--memo", fix.memo, ...(fix.say ? ["--say", fix.say] : []), ...(fix.read ? ["--read", fix.read] : [])], { cwd: timing, env });
+        fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
+      }
+      if (fixed.some((fix) => fix.ok)) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
+    } else {
+      for (const fix of fixes) fixed.push({ memo: fix.memo, ok: false, report: "이 영상의 음성 작업 폴더가 없어 음성을 처음부터 다시 만들었어요." });
+      current.step = "narration";
+      await runAsync(speaker.python, ["stage_voice.py", script, voiceJob], { cwd: path.join(work, "tools", "mindmap_pipeline"), env });
+    }
+    // 들어 볼 문장 (his voice_audit): every sentence scored for breaks and long runs, worst first; stage 1 lists the ones worth a listen.
+    let audit = null;
+    if (speaker.onPc && existsSync(path.join(timing, "voice_audit.py"))) {
+      current.step = "voice check";
+      const file = path.join(voiceDir, "audit.json");
+      const result = await runOut(speaker.python, ["voice_audit.py", voiceDir, file], { cwd: timing, env });
+      try { if (result.ok) audit = JSON.parse(readFileSync(file, "utf8")); } catch { audit = null; }
+    }
     const speech = readFileSync(path.join(voiceDir, "speech.txt"), "utf8");
     const spoken = speech.replace(/\r/g, "").split("\n").filter((line) => line.trim() && !line.startsWith("#SECTION"));
     if (spoken.length !== job.paragraphs.length || spoken.some((text, i) => text !== job.paragraphs[i].text))
@@ -514,14 +567,24 @@ export async function processMyinWords() {
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
-      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")) }));
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(fixed.length ? { fixes: fixed } : {}) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
     // A staff Mac's ③ drafts need this exact voice; without it (older OS, too long, upload trouble) they stay on the render PC.
     const voice = job.voiceUploadUrls ? await uploadVoiceParts(path.join(voiceDir, "voice.wav"), job.voiceUploadUrls).catch((error) => {
       console.error(`myin voice upload skipped: ${job.runId}: ${error.message}`); return null; }) : null;
-    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}) });
-    console.log(`myin words ready: ${job.runId}`);
+    // 음성 확인: a 64 kbps MP3 of the same voice to listen to on the screen (sent only to an OS that asked for it).
+    let preview = null;
+    if (job.previewUploadUrl) {
+      const mp3 = path.join(voiceDir, "preview.mp3");
+      try {
+        execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-i", path.join(voiceDir, "voice.wav"), "-ac", "1", "-c:a", "libmp3lame", "-b:a", "64k", mp3]);
+        await upload(job.previewUploadUrl, mp3, "audio/mpeg");
+        preview = { bytes: statSync(mp3).size };
+      } catch (error) { console.error(`myin voice preview skipped: ${job.runId}: ${error.message}`); }
+    }
+    await call({ action: "myin_complete", ...lease, ...(voice ? { voice } : {}), ...(preview ? { preview } : {}) });
+    console.log(`myin words ready: ${job.runId}${fixed.length ? ` (${fixed.filter((fix) => fix.ok).length}/${fixed.length} sentences fixed)` : ""}`);
   } catch (error) {
     console.error(`myin words failed: ${job.runId}: ${error.message}${error.cause ? ` · cause: ${error.cause.code ?? error.cause.message}` : ""}`);
     await call({ action: "myin_fail", ...lease, code: String(error.code ?? "WORKER_MYIN_FAILED") }).catch(() => {});
