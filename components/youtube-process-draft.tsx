@@ -8,6 +8,7 @@ import { GateBanner, gateAction, gateSub, hhmm, LockedStep, ReplyForm, Subject, 
 import { ThumbView } from "./youtube-process-media";
 import { JobLine, PatternsBox, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { ShortScriptScreen } from "./youtube-process-short-script";
+import { CardMakeScreen } from "./youtube-process-card";
 
 const id = () => crypto.randomUUID().slice(0, 12);
 const SlotTag = ({ index }: { index: number }) => {
@@ -80,6 +81,8 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
 
   // A 숏폼's 기획안 place is its 대본 (숏폼 대본 정본, 2026-10-28).
   if (project?.yp.topic.type === "short") return <ShortScriptScreen page={page} header={header} />;
+  // A 카드뉴스's 기획안 place is 카드 만들기 (설계서 2026-10-30).
+  if (project?.yp.topic.type === "card") return <CardMakeScreen page={page} header={header} />;
   const missing = form ? draftMissing(form) : "";
   const started = Boolean(form && (form.titles.some(row => row.text.trim()) || form.opening.trim() || form.body.trim() || form.closing.trim()));
   const action = page.bundle ? gateAction(page, "draft", 1, control, missing) : null;

@@ -278,8 +278,8 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     throw locked("숏폼 주제 후보는 내 AI가 쓰고, [숏폼으로 만들기]로만 바뀌어요.");
   } else if (kind === "cards") {
     if (project.yp.topic.type !== "card") throw locked("카드뉴스에서만 카드를 고칠 수 있어요.");
-    const { cardsPatchSchema, nextCards } = await cardsModule();
-    data = nextCards(project, stages.cards.data, cardsPatchSchema.parse(input.patch), actor, now);
+    const { cardsPatchSchema, nextCardsOnServer } = await cardsModule();
+    data = nextCardsOnServer(project, stages.cards.data, cardsPatchSchema.parse(input.patch), actor, now);
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
     if (stage !== "upload") throw locked("최종 검토 컨펌이 OK가 나야 업로드가 열려요.");

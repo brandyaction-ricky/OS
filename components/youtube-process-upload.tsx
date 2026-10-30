@@ -13,12 +13,14 @@ import { draftTag, isGptModel } from "@/lib/youtube-process/gpt-draft";
 import { CostTag } from "./cost-notice";
 import { GateBanner, hhmm, LockedStep, stepAction, Subject, useYpBundle, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 import { ShortExportScreen } from "./youtube-process-short";
+import { CardExportScreen } from "./youtube-process-card";
 import { YtCard } from "./youtube-process-media";
 
 /** S7 업로드, or 내보내기 for a 숏폼 (download, no YouTube upload). */
 export function YoutubeUploadScreen({ header }: { header: ReactNode }) {
   const page = useYpBundle();
-  return page.bundle?.project.yp.topic.type === "short" ? <ShortExportScreen header={header} page={page} /> : <LongUploadScreen header={header} page={page} />;
+  const kind = page.bundle?.project.yp.topic.type;
+  return kind === "card" ? <CardExportScreen header={header} page={page} /> : kind === "short" ? <ShortExportScreen header={header} page={page} /> : <LongUploadScreen header={header} page={page} />;
 }
 
 /** S7 업로드: UTM · SRT · 설명란 · 고정 댓글 (내 AI) · 공개 범위, then one [업로드] to YouTube (4-8 · 10-2). */

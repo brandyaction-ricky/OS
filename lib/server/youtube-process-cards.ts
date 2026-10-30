@@ -9,9 +9,10 @@ import { z } from "zod";
 import { ApiError } from "@/lib/http";
 import { createServiceSupabase } from "@/lib/supabase/server";
 import { CardSlideView } from "@/lib/cardnews/card-slide";
-import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardProblems, cardSignature, emptyCardDraft, type CardDraft } from "@/lib/cardnews/formats";
+import { CardError, cardsMissing, nextCards, pickedDraft } from "@/lib/cardnews/cards";
+import { CAPTION_MAX, CARD_FORMAT_IDS, CARD_MAX_SLIDES, CARD_SIZE, cardSignature, type CardDraft } from "@/lib/cardnews/formats";
 import { storedZip } from "@/lib/cardnews/zip";
-import { applyGateAction, editableFields, quietHours } from "@/lib/youtube-process/confirm";
+import { applyGateAction, quietHours } from "@/lib/youtube-process/confirm";
 import { newProjectMeta, projectName, type YpProject } from "@/lib/youtube-process/project";
 import { emptyStage, type YpCards, type YpCardSource } from "@/lib/youtube-process/stages";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
@@ -20,7 +21,6 @@ import { approverIds, getYoutubeProject, insertProject, notify, recordConfirmati
 import { readStages, writeStage } from "./youtube-process-stages";
 
 const SOURCE_MAX = 60_000;
-const locked = (message: string) => new ApiError(409, "STAGE_LOCKED", message);
 
 export const cardCreateSchema = z.discriminatedUnion("from", [
   z.object({ from: z.literal("none"), title: z.string().trim().min(2).max(200), target: z.string().trim().min(1).max(300), note: z.string().max(2000).default("") }).strict(),
@@ -88,36 +88,12 @@ export const cardsPatchSchema = z.object({
   exported: z.object({ url: z.string().url().max(500) }).strict(),
 }).partial().strict();
 
-export function nextCards(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string): YpCards {
-  if (patch.exported) {
-    if (project.yp.stage !== "upload" && project.yp.stage !== "done") throw locked("최종 검토 컨펌 뒤에 올린 주소를 남길 수 있어요.");
-    if (!/^https:\/\//.test(patch.exported.url)) throw new ApiError(400, "CARD_URL_INVALID", "https로 시작하는 주소를 넣어 주세요.");
-    return { ...current, exported: { at: now, by: actor.name, url: patch.exported.url } };
-  }
-  if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all") throw locked(project.yp.stage === "topic" ? "주제를 확정하면 카드를 만들 수 있어요." : "카드를 확정했어요. 고치려면 대표가 되돌리거나 PD가 다시 열어야 해요.");
-  let drafts = current.drafts;
-  if (patch.add) {
-    if (drafts.length >= 12) throw new ApiError(400, "CARD_DRAFTS_FULL", "초안은 12개까지 둘 수 있어요. 안 쓰는 초안을 지워 주세요.");
-    drafts = [...drafts, emptyCardDraft(patch.add, crypto.randomUUID().slice(0, 8), actor.name, now)];
-  }
-  if (patch.draft) {
-    const before = drafts.find(row => row.id === patch.draft!.id);
-    if (!before) throw new ApiError(404, "CARD_DRAFT_NOT_FOUND", "그 초안을 찾지 못했어요. 새로 불러와 주세요.");
-    drafts = drafts.map(row => row.id === before.id ? { ...patch.draft!, at: now, by: actor.name, ...(before.ai ? { ai: before.ai } : {}) } : row);
-  }
-  if (patch.remove) drafts = drafts.filter(row => row.id !== patch.remove);
-  const picked = patch.pick !== undefined ? patch.pick : current.picked;
-  if (picked && !drafts.some(row => row.id === picked)) throw new ApiError(404, "CARD_DRAFT_NOT_FOUND", "고른 초안을 찾지 못했어요.");
-  return { ...current, drafts, picked: patch.remove === picked ? "" : picked, ...(patch.focus !== undefined ? { focus: patch.focus } : {}) };
+export function nextCardsOnServer(project: YpProject, current: YpCards, patch: z.infer<typeof cardsPatchSchema>, actor: RequestActor, now: string) {
+  try { return nextCards(project, current, patch, actor.name, now, () => crypto.randomUUID().slice(0, 8)); }
+  catch (error) { throw error instanceof CardError ? new ApiError(error.status, error.code, error.message) : error; }
 }
+export { cardsMissing };
 
-export const pickedDraft = (cards: YpCards) => cards.drafts.find(row => row.id === cards.picked) ?? null;
-/** Why 카드 확정 cannot happen yet, or "". */
-export function cardsMissing(cards: YpCards) {
-  const draft = pickedDraft(cards);
-  if (!draft) return cards.drafts.length ? "쓸 초안을 하나 골라 주세요" : "포맷을 골라 초안을 만들어 주세요";
-  return cardProblems(draft).blocking[0] ?? "";
-}
 /** 카드 확정 fixes the picked draft (and how far it is from the AI's version). */
 export async function fixConfirmedCards(actor: RequestActor, project: YpProject) {
   const service = createServiceSupabase();

@@ -6,6 +6,7 @@ import { ArrowUpRight, ChevronDown, ChevronUp, Columns2, Download, Eraser, MapPi
 import { stepHref } from "@/lib/youtube-process/project";
 import { finalPair, SLOTS, type YpSlot } from "@/lib/youtube-process/stages";
 import { GateBanner, gateAction, gateSub, LockedStep, ReplyForm, Subject, useGate, useYpBundle, YpFrame } from "./youtube-process-frame";
+import { CardReviewScreen } from "./youtube-process-card";
 import type { YpFeedbackView } from "./youtube-process-data";
 import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
@@ -171,6 +172,8 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
   };
 
   const unresolved = openCount("video") + openCount("thumb");
+  // A 카드뉴스 is checked card by card, not watched (설계서 2026-10-30).
+  if (project?.yp.topic.type === "card") return <CardReviewScreen page={page} header={header} />;
   const action = page.bundle ? gateAction(page, "review", 4, control, finals.length ? "" : project?.yp.topic.type === "short" ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : null;
   const stamp = view === "video" ? (range ? `▷ ${fmt(range[0])}~${fmt(range[1])}` : `▷ ${fmt(time)}`) : `🖼 ${thumbTarget}`;
   const confirmed = page.bundle?.stages.plan.data.confirmed;
