@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, PenLine, Radar, Scissors, Settings, Smartphone, UploadCloud, Youtube } from "lucide-react";
+import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -11,6 +11,8 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
   { label: "링크관리", href: "/content/links", icon: Link2, aliases: ["단축 링크", "단축링크", "단축 URL", "링크 줄이기", "UTM", "UTM 링크", "링크 대장", "마이인 링크"], ready: true },
 ];
 /** The steps of one video: found by address (titles, breadcrumbs) and shown under 내 영상, never as their own menu. */
+/** 카드뉴스 정본 다듬기: in the 카드뉴스 menu, and found by address (title, breadcrumb, menu permission) like the steps. */
+export const CARD_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/card-canon", icon: SlidersHorizontal, aliases: ["카드뉴스 정본", "평가표", "시험 묶음", "정본 그라인딩"], ready: true };
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "기획", href: "/content/plan", navHref: "/content/projects", icon: PenLine, aliases: ["주제", "기획안", "구성안"], ready: true },
   { label: "제작", href: "/content/make", navHref: "/content/projects", icon: Film, aliases: ["최종본 올리기"], ready: true },
@@ -33,7 +35,9 @@ export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
   platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube),
   platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone),
   platformStage("yt-ad", "광고", "내 광고 영상", "ad", Megaphone),
-  platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal),
+  // 정본 다듬기 (정본 §9) sits beside the list: the same 시험 묶음 drawn under each 정본 version and scored.
+  { ...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal),
+    pages: [...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal).pages, CARD_CANON_PAGE] },
 ];
 const THREADS_FLOW: Record<string, string> = {
   "/automation/references": "스레드 글감 모으기", "/automation/topics": "주제 기획", "/automation/threads": "쓰레드 쓰기",
@@ -81,6 +85,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/schedule": "schedule",
   "/content/confirm": "confirm",
   "/content/links": "links",
+  "/content/card-canon": "card-canon",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];
 /** The new routes (and 단축 링크, 2026-10-26); /content/shorts is the existing screen and is not listed. */

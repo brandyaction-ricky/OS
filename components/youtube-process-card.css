@@ -31,3 +31,21 @@
 .linear-shell .ui-v2.yp .yp-pf-card { color: #d9822b; }
 .linear-shell .ui-v2.yp div.yp-pf-tabs { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 820px) { .linear-shell .ui-v2.yp div.yp-pf-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* 카드뉴스 정본 다듬기: the canon line, runs side by side, the 평가표 and 고칠 점. */
+.yp-grind-canon .yp-card-b { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.yp-grind-table { display: grid; gap: 8px; overflow-x: auto; align-items: stretch; }
+.yp-grind-head, .yp-grind-row-h { display: grid; gap: 4px; align-content: start; font-size: 13px; }
+.yp-grind-head small, .yp-grind-row-h small { color: var(--muted, #6b6f76); }
+.yp-grind-cell { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line, #e3e3e3); border-radius: 8px; background: none; text-align: left; font-size: 12px; cursor: pointer; }
+.yp-grind-cell.yp-on { border-color: var(--accent, #5e6ad2); box-shadow: 0 0 0 1px var(--accent, #5e6ad2); }
+.yp-grind-score { margin: 0 0 14px; }
+.yp-grind-form { display: grid; gap: 10px; margin: 14px 0; }
+.yp-grind-crit { display: grid; grid-template-columns: minmax(180px, 1.2fr) auto minmax(200px, 2fr); gap: 10px; align-items: center; }
+.yp-grind-crit > div:first-child { display: grid; gap: 2px; }
+.yp-grind-fix { display: grid; gap: 12px; padding-left: 0; list-style: none; margin: 0 0 12px; }
+.yp-grind-fix ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.yp-grind-fix .yp-bad { color: var(--danger, #d14343); font-weight: 700; }
+.yp-grind-fix .yp-warn { color: var(--warning, #b7791f); font-weight: 700; }
+.yp-grind-how { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted, #6b6f76); display: grid; gap: 4px; }
+.yp-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+@media (max-width: 820px) { .yp-grind-crit { grid-template-columns: 1fr; } }
