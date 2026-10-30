@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
+import { scenesFromScript, checkShortScript, headCopyProblem, parseCount, refCounts, refCountsLine, refHostOk, refMatchesQuery, refPlatform, refReaction, refTexts, scriptLines, shortResearchOpen, shortScriptMissing, shortTopicPickProblems, spokenScript } from "../lib/youtube-process/short-script.ts";
 import { emptyGates } from "../lib/youtube-process/project.ts";
 
 // 숏폼 대본 정본 §10 기계 검사 (owner direction 2026-10-28): the OS counts these when the staff AI submits and before the PD's 대본 확정.
@@ -134,4 +134,15 @@ test("a found Short counts only when its title meets two words of the 검색어 
   // One word asked, one word met; decomposed (NFD) Korean reads like the usual form.
   assert.equal(refMatchesQuery("퇴사", "퇴사 브이로그".normalize("NFD")), true);
   assert.equal(refMatchesQuery("퇴사".normalize("NFD"), "점심 메뉴"), false);
+});
+
+// 광고 A안 (owner decision 2026-10-30): an ad is made in the scene editor, and its confirmed 대본 starts the scenes.
+test("a confirmed 대본 becomes scenes in order, each saying its line, at most 20, the last taking what is left", () => {
+  const scenes = scenesFromScript("[사람] 퇴근하고도 일이 머리에 남아요\n\n[관계] 할 일은 두 개인데\n결정이 열 개예요", 30);
+  assert.deepEqual(scenes.map(scene => [scene.seconds, scene.text, scene.voice]),
+    [[10, "퇴근하고도 일이 머리에 남아요", "퇴근하고도 일이 머리에 남아요"], [10, "할 일은 두 개인데", "할 일은 두 개인데"], [0, "결정이 열 개예요", "결정이 열 개예요"]]);
+  const long = scenesFromScript(Array.from({ length: 30 }, (_, at) => `줄 ${at + 1}`).join("\n"), 60);
+  assert.equal(long.length, 15);
+  assert.equal(long[0].text, "줄 1 줄 2");
+  assert.deepEqual(scenesFromScript("", 30), []);
 });

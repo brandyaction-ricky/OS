@@ -51,7 +51,8 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   // 숏폼 (2026-10-28): one made from a confirmed 대본 is made like a longform, by the vertical engine; older ones keep the scene editor.
   const shortScript = bundle?.stages.shortScript.data.confirmed;
   // A 숏폼 goes to the automatic panel only with a confirmed 대본 text; one made in the older scene editor keeps it (2026-10-28 review).
-  const auto = anim || Boolean(short && shortScript?.text.trim());
+  // An ad is made in the scene editor (owner decision 2026-10-30, 광고 A안): its 광고 브리프 and the 9:16 · 1:1 · 4:5 sizes live there.
+  const auto = anim || Boolean(short && shortScript?.text.trim() && project?.yp.topic.purpose !== "ad");
 
   const save = async (patch: Record<string, unknown>, label: string) => {
     if (!page.client || !project || !make) return false;

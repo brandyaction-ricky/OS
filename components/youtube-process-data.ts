@@ -270,7 +270,7 @@ function demoFilledStages(project: YpProject): YpStagesView {
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
 const demoShort = (project: YpProject): YpShortView => demoShorts.get(project.id) ?? { id: `demo-short-${project.id}`, version: 1, scenes: [], aiScenes: null, appeals: [], ai: null, images: {}, render: null,
-  brief: { purpose: "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
+  brief: { purpose: project.yp.topic.purpose === "ad" ? "ad" : "organic", duration: 30, product: "", audience: project.yp.topic.target, goal: "", landingUrl: "", evidence: "", appeal: "" } };
 const demoFinals = new Map<string, YpFinalView[]>();
 const demoFeedback = new Map<string, YpFeedbackView[]>();
 const demoFiles = new Map<string, string>();

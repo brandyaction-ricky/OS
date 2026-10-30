@@ -7,10 +7,11 @@ import { ArrowDown, ArrowUp, Download, ExternalLink, ImagePlus, Plus, Sparkles, 
 import { apiRequest, uploadYoutubeFile } from "@/lib/api-client";
 import type { ChannelConnection } from "@/lib/channel-types";
 import { appealText, shortMissing, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
+import { scenesFromScript, scriptLines } from "@/lib/youtube-process/short-script";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import type { YpBundle, YpClient, YpFinalView, YpRenderView, YpShortPatch, YpShortView } from "./youtube-process-data";
-import { GateBanner, LockedStep, stepAction, Subject, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { GateBanner, LockedStep, stepAction, Subject, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 
 // 유튜브 공정 v1 숏폼 (owner decision 2026-10-21) on Codex's shortform render (PR #205): scenes with one image each become a
 // 720×1280 MP4 on the render PC; longform clips become vertical shorts with their subtitles.
@@ -71,6 +72,46 @@ const blank = (seconds: number): YpShortScene => ({ seconds, text: "", voice: ""
 const move = <T,>(list: T[], from: number, to: number) => { const next = [...list]; const [item] = next.splice(from, 1); next.splice(to, 0, item); return next; };
 
 /** 제작 of a 숏폼: 무엇을 만들까요 → 장면 (내 AI or 직접, one image each) → MP4 (render PC). Numbered after the sections before it. */
+/**
+ * 광고 브리프 on the 대본 step (로건 QA 10/30: it sat in 제작, after the script it should shape, so the script was rewritten). It is the
+ * same record 제작 edits; the 대본 AI reads it.
+ */
+export function AdBrief({ page, editable }: { page: YpPage; editable: boolean }) {
+  const client = page.client, id = page.bundle!.project.id, fail = page.fail;
+  const [brief, setBrief] = useState<YpShortBrief | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const version = useRef(0), rev = useRef(0), timer = useRef<number | null>(null), queue = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => { if (client) client.short(id).then(view => { version.current = view.version; setBrief(view.brief); }, fail); }, [client, id, fail]);
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  useLeaveGuard(dirty);
+  if (!brief) return null;
+  const save = (next: YpShortBrief) => {
+    if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+    const at = rev.current;
+    queue.current = queue.current.then(async () => {
+      if (!client) return;
+      try { const view = await client.saveShort(id, version.current, { brief: next }); version.current = view.version; if (rev.current === at) setDirty(false); } catch (reason) { fail(reason); }
+    });
+  };
+  const edit = (key: "product" | "audience" | "goal" | "landingUrl" | "evidence" | "appeal", value: string) => {
+    rev.current += 1; const next = { ...brief, [key]: value }; setBrief(next); setDirty(true);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => save(next), 1500);
+  };
+  const field = (key: Parameters<typeof edit>[0], label: string, placeholder: string, rows = 0) => <label className="yp-lbl" style={rows ? { gridColumn: "1 / -1" } : undefined}>{label}
+    {rows ? <textarea className="yp-in" rows={rows} value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />
+      : <input className="yp-in" value={brief[key]} readOnly={!editable} placeholder={placeholder} onChange={event => edit(key, event.target.value)} />}</label>;
+  return <div onBlur={() => { if (dirty) save(brief); }}><YpSection title="광고 브리프" gq="대본보다 먼저 정해요 · 제작에서도 이어서 써요" need>
+    <div className="yp-g2">
+      {field("product", "광고할 상품 · 서비스", "예) 강점 진단 결과지")}
+      {field("audience", "누구에게", "예) 퇴근 후에도 할 일이 머리에 남는 30대 직장인")}
+      {field("appeal", "구매 이유 (하나)", "예) 30분 만에 내 강점을 정리해 주는 결과지", 2)}
+      {field("goal", "보고 나서 할 행동", "예) 프로필 링크에서 진단 받기")}
+      {field("landingUrl", "연결할 페이지", "https://")}
+      {field("evidence", "실제 근거와 출처", "상품 정보 · 사용을 허락받은 후기 · 실제 화면과 그 출처", 3)}
+    </div></YpSection></div>;
+}
+
 export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: boolean; n0: number }) {
   const project = page.bundle!.project;
   const client = page.client, id = project.id, fail = page.fail, reloadBundle = page.reload;
@@ -178,6 +219,9 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
   };
 
   const ad = brief.purpose === "ad";
+  // 광고 A안 (owner decision 2026-10-30): the 대본 confirmed on the step before starts the scenes.
+  const confirmed = page.bundle?.stages.shortScript.data.confirmed?.text ?? "";
+  const fromScript = () => editScenes(scenesFromScript(confirmed, brief.duration), true);
   const missing = shortMissing(brief, scenes);
   if (scenes.some(scene => scene.diagram && !shortformDiagramSchema.safeParse(scene.diagram).success)) missing.push("도식 글자 칸을 모두 채워 주세요");
   const hasVoice = scenes.some(scene => scene.voice.trim());
@@ -216,7 +260,8 @@ export function ShortMake({ page, editable, n0 }: { page: YpPage; editable: bool
     <YpSection n={n0 + 2} title="장면" gq={`${brief.duration}초 · 장면마다 이미지 한 장`} need>
       {editable && project.yp.gates.review.state !== "wait" ? (job.open || job.status?.job?.status === "blocked" ? <JobLine job={job} onRetry={() => setSend(true)} />
         : !scenes.length ? <div className="yp-ways">
-          <button type="button" className="yp-way yp-rec" onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
+          {confirmed.trim() ? <button type="button" className="yp-way yp-rec" onClick={fromScript}><b>확정한 대본으로 채우기</b><span>대본 {scriptLines(confirmed).length}줄을 장면으로 나눠요. 이미지는 장면마다 넣어요</span></button> : null}
+          <button type="button" className={`yp-way${confirmed.trim() ? "" : " yp-rec"}`} onClick={() => setSend(true)}><b><Sparkles size={14} aria-hidden="true" /> 내 AI에게 맡기기</b><span>{ad ? "구매 이유 후보와 " : ""}장면 · 자막 · 내레이션 · 필요한 이미지를 채워 줘요 (10분쯤)</span></button>
           <button type="button" className="yp-way" onClick={() => editScenes([blank(Math.round(brief.duration / 3)), blank(Math.round(brief.duration / 3)), blank(0)], true)}><b>직접 쓰기</b><span>장면 세 개로 시작해요</span></button></div>
         : <div className="yp-row-btns" style={{ marginBottom: 10 }}><button type="button" className="yp-btn yp-sm" onClick={() => setSend(true)}><Sparkles size={14} /> {view.ai ? "내 AI로 다시 쓰기" : "내 AI에게 맡기기"}</button>
           {view.ai ? <span className="yp-aitag"><Sparkles size={11} aria-hidden="true" /> AI 초안 · {view.ai.by}</span> : null}</div>) : null}
