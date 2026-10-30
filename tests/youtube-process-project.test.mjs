@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   newProjectMeta, parseYoutubeRef, projectFromRecord, sameRef, projectHref, protectedYoutubeChange, recentProjects, searchProjects,
-  similarProjects, stepHref, topicEditable, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES,
+  similarProjects, stepHref, topicKeywords, topicEditable, topicFieldEditable, topicLines, topicMissing, YP_MAX_LINES,
 } from "../lib/youtube-process/project.ts";
 
 const project = (id, title, stage = "topic", days = 0, gate = "none") => {
@@ -89,4 +89,11 @@ test("the same video under different addresses counts as one reference", () => {
   assert.equal(sameRef(watch, parseYoutubeRef("https://youtu.be/dQw4w9WgXcQ?t=3")), true);
   assert.equal(sameRef(watch, parseYoutubeRef("https://m.youtube.com/shorts/dQw4w9WgXcQ")), true);
   assert.equal(sameRef(watch, parseYoutubeRef("https://youtu.be/aaaaaaaaaaa")), false);
+});
+
+// 로건 QA 10/30: the 기획안's market search used the whole topic sentence and found nothing.
+test("the search words are the topic's first three words, without [tags] or an object particle", () => {
+  assert.equal(topicKeywords("[QA테스트] 해야 할 일을 자꾸 미루는 건 게을러서가 아니에요"), "해야 할 일");
+  assert.equal(topicKeywords("퇴사 고민"), "퇴사 고민");
+  assert.equal(topicKeywords("「강점」이 뭔지 모를 때? 이렇게"), "강점 이 뭔지");
 });
