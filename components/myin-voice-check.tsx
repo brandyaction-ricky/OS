@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { apiRequest } from "@/lib/api-client";
 import { CostTag } from "./cost-notice";
@@ -84,6 +85,7 @@ export function MyinVoiceCheck({ runId, stage, fixable, pending, check, token, o
             <button type="button" className="text-button" disabled={Boolean(busy) || memos.length > 0} onClick={() => void act("skip", { action: "voice_check", skipped: true })}>확인 없이 바로 넘어가기</button></> : null}
         </div>
       </div> : null}
+      <p style={{ marginTop: 10 }}><Link className="yp-lnk" href="/content/voice-dictionary">음성 사전 보기 · 고치기 →</Link></p>
     </>}
   </details>;
 }
