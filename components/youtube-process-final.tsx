@@ -12,6 +12,7 @@ import { useSession } from "./session-provider";
 import { ApiRequestError } from "@/lib/api-client";
 import { compareTime, FEEDBACK_FILES_PER_ITEM, FEEDBACK_FILTER_LABEL, feedbackClosed, feedbackMatches, type FeedbackAction, type FeedbackFile, type FeedbackFilter, type FeedbackMark } from "@/lib/youtube-process/feedback";
 import { YtCard } from "./youtube-process-media";
+import { VoiceFeedbackBox } from "./youtube-process-voice-feedback";
 
 const fmt = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
 const KINDS = ["제목", "썸네일 문구", "이미지 연출", "기타"];
@@ -243,6 +244,7 @@ export function YoutubeFinalCheckScreen({ header }: { header: ReactNode }) {
         {short ? null : <div className="yp-ftabs yp-two"><button type="button" className={view === "video" ? "yp-on" : ""} onClick={() => setView("video")}>영상 <b>{openCount("video")}</b></button><button type="button" className={view === "thumb" ? "yp-on" : ""} onClick={() => setView("thumb")}>썸네일 <b>{openCount("thumb")}</b></button></div>}
         <div className="yp-fbsearch"><Search size={14} aria-hidden="true" /><input className="yp-in" value={query} onChange={event => setQuery(event.target.value)} placeholder="피드백·답글·쓴 사람 찾기" aria-label="피드백 찾기" />
           <div className="yp-seg2 yp-sm" role="group" aria-label="상태">{(Object.keys(FEEDBACK_FILTER_LABEL) as FeedbackFilter[]).map(key => <button key={key} type="button" className={filter === key ? "yp-on" : ""} aria-pressed={filter === key} onClick={() => setFilter(key)}>{FEEDBACK_FILTER_LABEL[key]}</button>)}</div></div>
+        {view === "video" && !short && !page.demo && project ? <VoiceFeedbackBox projectId={project.id} final={finals.find(item => item.v === ver)} items={items} token={page.accessToken} onSeek={seek} /> : null}
         {searching ? <div className="yp-fbl">{matched.length ? matched.map(item => <FeedbackItem key={item.id} item={item} open={open === item.id} latest={latest} onOpen={() => setOpen(open === item.id ? null : item.id)}
             onSeek={() => { if (item.target === "video") { setView("video"); seek(item.t ?? item.range?.[0] ?? 0); } else setThumbTarget(item.target as YpSlot); }} onAct={(action, value, replyId) => act(item, action, value, replyId)} onOpenFile={openFile} />)
           : <p className="yp-muted" style={{ padding: 8 }}>맞는 피드백이 없어요</p>}</div> :

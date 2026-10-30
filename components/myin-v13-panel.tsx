@@ -24,7 +24,7 @@ interface MyinRun { id: string; status: string; stage: string; layout?: "short" 
   clips: { name: string; label: string }[] | null; clipsReview: { name: string; note: string; at: string } | null;
   final: { bytes: number; durationSeconds: number; lufs: number; peak: number; at: string } | null; scriptChanged?: boolean; workingSince?: string | null;
   sound: { report: string; at: string; edited?: { name: string; at: string } } | null; local: { by: string; name: string } | null; localReady: boolean;
-  voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null }
+  voiceFixes?: MyinVoiceFixView[]; voiceCheck?: MyinVoiceCheckView | null; voiceFixable?: boolean; voiceChanged?: { at: string; count: number } | null }
 interface Outputs { clips: { label: string; url: string | null }[]; video: string | null; summary: string | null; deck: string | null; srt: string | null }
 
 const PHASE: Record<string, string> = { breath_pending: "영상 만드는 컴퓨터가 숨 자리 고르는 중", voice_pending: "음성 만드는 중", words_pending: "영상 만드는 컴퓨터가 받아쓰기·자막 만드는 중", words_ready: "받아쓰기·자막 완료",
@@ -234,7 +234,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         <button type="button" className="secondary-button compact" disabled={Boolean(saving)} onClick={() => void download("ass")}>{saving === "ass" ? "받는 중…" : "방송 자막 내려받기 (ASS)"}</button>
         {!run.localReady ? <small>이 영상의 음성은 영상 만드는 컴퓨터가 OS에 올린 뒤 받을 수 있어요.</small> : null}
       </div> : null}
-      {run?.words && run.voiceOnPc && !short ? <MyinVoiceCheck key={`${run.id}-${run.stage}-${run.voiceCheck?.at ?? ""}`} runId={run.id} stage={run.stage} pending={run.voiceFixes ?? []} check={run.voiceCheck ?? null} token={accessToken} onChanged={load}
+      {run?.words && run.voiceOnPc && !short ? <MyinVoiceCheck key={`${run.id}-${run.stage}-${run.voiceCheck?.at ?? ""}`} runId={run.id} stage={run.stage} fixable={Boolean(run.voiceFixable)} pending={run.voiceFixes ?? []} check={run.voiceCheck ?? null} token={accessToken} onChanged={load}
         askCost={(sentences) => cost.confirm({ model: myinVoice, amount: voiceEstimate("가".repeat(sentences * 120), myinVoice).krw, detail: `문장 ${sentences}개 · 문장마다 두 번 만들어 더 나은 것을 골라요`, ok: "확인하고 다시 만들기" })} /> : null}
       {run?.words ? <details className="yt-details" onToggle={(event) => { if ((event.target as HTMLDetailsElement).open && !qc) void showQc(); }}>
         <summary>자막 검사표 보기</summary>
@@ -341,6 +341,7 @@ export function MyinV13Panel({ sourceId, finalNote, embedded = false, onFinal, v
         {short ? null : run.sound ? <MyinSoundEditor runId={run.id} token={accessToken} editable={!busy} onSaved={load} />
           : <p className="yt-note">이 영상은 사운드 창고 전 패키지로 시작해 음악은 기획표대로 들어가요. 새로 시작하는 영상부터 여기서 고칠 수 있어요.</p>}
         {run.sound?.edited ? <small>{run.sound.edited.name} 사운드 수정 · {when(run.sound.edited.at)}</small> : null}
+        {run.voiceChanged ? <p className="yt-note yt-warn">최종 검토 피드백 {run.voiceChanged.count}곳의 음성을 다시 만들었어요 · {when(run.voiceChanged.at)}. 전체 영상을 다시 만들어야 새 음성이 들어가요.</p> : null}
         <div className="yt-run"><div className="yt-run-head">
           <span><strong>다 확인했으면 전체 영상을 만들어요</strong><br /><small>영상 만드는 컴퓨터에서 {finalMinutes(run)}분쯤 걸려요 · 저장하지 않은 사운드 변경은 들어가지 않아요</small></span>
           <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => {
