@@ -19,6 +19,8 @@ interface GrindView { bench: Bench; runs: BenchRun[]; canon: { id: string; versi
 const API = "/api/v1/content/youtube/card-grind";
 const day = (iso: string) => { const date = new Date(iso); return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`; };
 const SOURCE = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "주제만" } as const;
+/** 「상 3 · 중 2 · 하 1」: how many criteria got each grade. */
+const tally = (grades: Partial<Record<CardCriterion, CardGrade>>) => CARD_GRADES.map(grade => [grade, CARD_CRITERIA.filter(c => grades[c.n] === grade).length] as const).filter(([, n]) => n).map(([grade, n]) => `${grade} ${n}`).join(" · ");
 // ponytail: a GPT answer per 시험 원본 is about the 정본 + 원본 (≈28,000) in and 4,000 per format out; the same planning figure as 카드 만들기.
 const ESTIMATE = { input: 28_000, outputPerFormat: 4_000 };
 
@@ -167,7 +169,7 @@ function GrindCell({ run, result, me, active, onOpen }: { run: BenchRun; result?
   const blocking = cardProblems(result.draft).blocking.length;
   return <button type="button" className={`yp-grind-cell${active ? " yp-on" : ""}`} onClick={onOpen} aria-label={`${result.title} · 정본 ${run.canon} 채점`}>
     <span className="yp-card-strip">{draft.slides.slice(0, 3).map((_, index) => <CardPreview key={index} draft={draft} index={index} width={84} />)}</span>
-    <small>{blocking ? `자동 검사 ${blocking}` : "자동 검사 통과"} · {merged ? CARD_CRITERIA.map(c => merged[c.n]).join("") : "채점 전"}{run.scores[result.key]?.[me] ? " · 내 채점 ✓" : ""}</small>
+    <small>{blocking ? `자동 검사 ${blocking}` : "자동 검사 통과"} · {merged ? `채점 ${tally(merged)}` : "채점 전"}{run.scores[result.key]?.[me] ? " · 내 채점 ✓" : ""}</small>
   </button>;
 }
 
@@ -189,7 +191,7 @@ function ScorePanel({ run, result, me, busy, onClose, onSave }: { run: BenchRun;
         <div role="radiogroup" aria-label={c.name} className="yp-row-btns">{CARD_GRADES.map(grade => <button key={grade} type="button" role="radio" aria-checked={grades[c.n] === grade}
           className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades(current => ({ ...current, [c.n]: grade }))}>{grade}</button>)}</div>
         <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => { const text = event.target.value; setNotes(current => ({ ...current, [c.n]: text })); }} placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
-      {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} ${CARD_CRITERIA.map(c => score.grades[c.n] ?? "·").join("")}`).join(" · ")}</p> : null}
+      {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} (${tally(score.grades)})`).join(" · ")}</p> : null}
       <div className="yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={busy || !done || CARD_CRITERIA.some(c => grades[c.n] && grades[c.n] !== "상" && !notes[c.n]?.trim())}
         onClick={() => onSave(Object.fromEntries(Object.entries(grades)) as Record<string, CardGrade>, Object.fromEntries(Object.entries(notes).filter(([, note]) => note?.trim())) as Record<string, string>)}>{busy ? "저장하는 중…" : "채점 저장"}</button>
         {!done ? <small className="yp-muted">여섯 기준을 모두 골라요. ‘중’ · ‘하’는 이유를 한 줄 써요.</small> : null}</div>
