@@ -20,7 +20,9 @@ import { assertKitInputs, kitInputKey, kitJobCard, saveStaffKit } from "./youtub
 import { assertV1ColumnInputs, assertV1PlanInputs, assertV1RetitleInputs, assertV1ShortsInputs, displayName, isYoutubeV1, saveV1Column, saveV1Plan, saveV1Retitle, saveV1Shorts, v1ColumnCard, v1ColumnInputKey, v1PlanCard, v1PlanInputKey, v1RetitleCard, v1RetitleInputKey, v1ShortsCard, v1ShortsInputKey, v1ShortsSource, v1Stages, v1Title } from "./youtube-process-ai";
 import { SLOTS } from "@/lib/youtube-process/stages";
 import { packagingPick } from "@/lib/youtube-process/discover";
-import { projectName } from "@/lib/youtube-process/project";
+import { projectName, topicKeywords } from "@/lib/youtube-process/project";
+// A staff AI's result that does not fit its shape is answered in Korean (로건 QA 10/30: six English refusals in a row).
+import "@/lib/zod-ko";
 import { packagingReferences } from "./youtube-discover";
 import type { PackagingMarket } from "./youtube-process-ai";
 import { assertShortCopyOpen, assertShortJobOpen, checkShortResult, saveShortCopy, saveShortJob, shortCopyCard, shortCopyInputKey, shortJobCard, shortJobInputKey, shortJobInputs } from "./youtube-process-short";
@@ -162,7 +164,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1PlanInputs(state);
     source = state.source; title = jobTitle(state); inputKey = v1PlanInputKey(state);
-    const { project } = v1Stages(state); marketFor = { query: input.query || projectName(project), short: project.yp.topic.type === "short" };
+    const { project } = v1Stages(state); marketFor = { query: input.query || topicKeywords(projectName(project)), short: project.yp.topic.type === "short" };
   } else if (input.task === "shorts") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
@@ -180,7 +182,7 @@ export async function requestStaffJob(actor: RequestActor, input: z.infer<typeof
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");
     assertV1RetitleInputs(state, input.slot);
     source = state.source; title = jobTitle(state); inputKey = v1RetitleInputKey(state, input.slot, input.reason);
-    const { project } = v1Stages(state); marketFor = { query: input.query || projectName(project), short: project.yp.topic.type === "short" };
+    const { project } = v1Stages(state); marketFor = { query: input.query || topicKeywords(projectName(project)), short: project.yp.topic.type === "short" };
   } else if (input.task === "short") {
     const state = await readPipeline(actor, input.sourceId);
     if (!isYoutubeV1(state.source)) throw new ApiError(409, "NOT_YOUTUBE_PROJECT", "유튜브 공정 프로젝트에서만 보낼 수 있어요.");

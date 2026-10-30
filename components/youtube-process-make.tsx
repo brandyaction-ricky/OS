@@ -6,7 +6,7 @@ import { CalendarDays, Check, ChevronRight, Download, Film, FileText, Sparkles, 
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { myinCleanScript, myinScriptMarkdown } from "@/lib/myin-script";
 import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
-import { projectName, stepHref } from "@/lib/youtube-process/project";
+import { projectName, topicKeywords, stepHref } from "@/lib/youtube-process/project";
 import { finalPair, MAKE_STEPS, SLOTS, thumbsMissing, type YpMake, type YpSlot } from "@/lib/youtube-process/stages";
 import { MyinV13Panel } from "./myin-v13-panel";
 import { FormulaNote, JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
@@ -155,7 +155,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
           onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
         <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
-        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={projectName(project)} />
+        <SendDialog page={page} task="retitle" open={Boolean(redoAsk)} onClose={() => setRedoAsk(null)} job={redoJob} extra={redoAsk ?? undefined} queryDefault={topicKeywords(projectName(project))} />
       </YpSection>}</>}
     </> : null}
   </YpFrame>;

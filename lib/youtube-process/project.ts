@@ -87,6 +87,14 @@ export const mayTrash = (project: Pick<YpProject, "ownerId" | "assigneeId">, who
 
 /** Project name = first topic line (4-2); stays as the record title. */
 export const projectName = (project: Pick<YpProject, "title">) => topicLines(project.title)[0] ?? "새 영상";
+/**
+ * The search words a topic sentence starts with (로건 QA 10/30: the whole sentence as the YouTube search found nothing): [tags] and
+ * quotes dropped, up to the first stop, three words, an object · topic particle off a longer word. The PD can still change them.
+ */
+export function topicKeywords(title: string) {
+  const words = title.replace(/\[[^\]]*\]|[「」『』"“”‘’]/g, " ").split(/[?!.,…]/)[0].trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  return words.map(word => word.length > 1 ? word.replace(/(을|를|은|는|의|에서|으로)$/u, "") : word).join(" ").slice(0, 60);
+}
 
 /** Some topic field can change: while writing, on hold, or the fields ticked in 수정 요청 (8-1, editableFields). */
 export function topicEditable(project: Pick<YpProject, "yp">) {
