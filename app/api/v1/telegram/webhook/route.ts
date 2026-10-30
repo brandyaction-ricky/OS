@@ -516,11 +516,19 @@ async function handleOperatingBaselineView(supabase: ReturnType<typeof createSer
 }
 
 async function configureDigest(supabase: ReturnType<typeof createServiceSupabase>, message: TelegramMessage, profileId: string | null, text: string) {
-  const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/);
-  if (!match) return null;
+  const match = text.match(/^\/요약(켜기|끄기)(?:@\w+)?(?:\s+(\d{1,2}))?$/), share = text.match(/^\/회의공유\s*(켜기|끄기)(?:@\w+)?$/);
+  if (!match && !share) return null;
   if (!profileId) throw new ApiError(403, "TELEGRAM_PROFILE_REQUIRED", "OS 구성원 계정 연결 후 사용할 수 있습니다.");
   const { data: profile } = await supabase.from("os_profiles").select("role,is_active").eq("id", profileId).maybeSingle();
   if (!profile?.is_active || profile.role !== "admin") throw new ApiError(403, "TELEGRAM_ADMIN_REQUIRED", "관리자만 팀 요약을 설정할 수 있습니다.");
+  // /회의공유켜기: this chat receives each confirmed meeting's summary (lib/server/meeting-telegram.ts).
+  if (share) {
+    const on = share[1] === "켜기";
+    const { error } = await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", meeting_summary_enabled: on, enabled_by: profileId, updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });
+    if (error) throw new ApiError(500, "MEETING_SHARE_SETTING_FAILED", "회의 공유 설정을 저장하지 못했습니다.");
+    return on ? "이제 OS에서 회의를 확정하면 회의 정리를 이 방에 올립니다. (참석자만 보기 회의는 올리지 않아요)" : "회의 공유를 껐습니다.";
+  }
+  if (!match) return null;
   const enabled = match[1] === "켜기"; const hour = match[2] === undefined ? 9 : Number(match[2]);
   if (hour < 0 || hour > 23) throw new ApiError(400, "INVALID_DIGEST_HOUR", "요약 시간은 0~23시로 입력해 주세요.");
   const { error } = await supabase.from("os_telegram_chats").upsert({ external_chat_id: String(message.chat.id), chat_type: message.chat.type, title: message.chat.title ?? "", digest_enabled: enabled, digest_hour_kst: hour, enabled_by: profileId, updated_at: new Date().toISOString() }, { onConflict: "external_chat_id" });

@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { ApiError, apiErrorResponse, parseJson } from "@/lib/http";
 import { authenticateRequest } from "@/lib/server/auth";
+import { shareConfirmedMeeting } from "@/lib/server/meeting-telegram";
 import { teamV1Enabled } from "@/lib/team/gate";
 
 export const runtime = "nodejs";
@@ -32,6 +33,8 @@ export async function POST(request: Request) {
       if (error.code === "P0002") throw new ApiError(404, "TEAM_RECORD_NOT_FOUND", "기록을 찾지 못했습니다.");
       throw new ApiError(400, "TEAM_COMMAND_FAILED", "저장하지 못했습니다. 상태와 입력 내용을 확인해 주세요.");
     }
+    // A confirmed meeting's summary goes to the Telegram chats that asked for it; a failed send never undoes the confirm.
+    if (parsed.data.action === "meeting.review" && parsed.data.id) { const id = parsed.data.id, origin = new URL(request.url).origin; after(() => shareConfirmedMeeting(id, origin).catch(cause => console.warn("[telegram] meeting summary", cause))); }
     return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return apiErrorResponse(error); }
 }
