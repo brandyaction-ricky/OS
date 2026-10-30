@@ -39,7 +39,7 @@ export function v1Stages(state: Pick<Pipeline, "source" | "records">) {
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) as YpStageData[K] };
   };
-  return { project, plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript") };
+  return { project, plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), topicResearch: pick("topicResearch") };
 }
 /** The title the video goes out with: the A the 대표 confirmed, or the A changed on purpose in 제작 (S5). */
 export function v1Title(stages: ReturnType<typeof v1Stages>) {
@@ -221,13 +221,13 @@ export function patternProblems(patterns: { titlePatterns: z.infer<typeof titleP
 }
 export type PackagingMarket = { query: string; at: string; refs: PackagingRef[]; error?: string };
 /** What a card shows of the search: the top 20 titles, thumbnails on the top 8 (the 기획실 reads 20 titles and 8 images). */
-const marketInput = (market?: PackagingMarket) => market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
+export const marketInput = (market?: PackagingMarket) => market ? { query: market.query, ...(market.error ? { error: market.error } : {}),
   rows: market.refs.slice(0, 20).map((ref, index) => ({ title: ref.title, channel: ref.channel, views: ref.views, ratio: ref.ratio, url: ref.url, ...(index < 8 ? { thumbnail: ref.thumbnail } : {}) })) } : null;
 /** Reference videos with the thumbnail address the copy formula is read from. */
 const refsWithThumbs = (refs: ReturnType<typeof v1Stages>["project"]["yp"]["topic"]["refs"]) =>
   refs.map(ref => ({ title: ref.title ?? "", url: ref.url, thumbnail: ref.videoId ? `https://i.ytimg.com/vi/${ref.videoId}/hqdefault.jpg` : null }));
 /** The 패키징 정본 first: ten 기획 documents used to push it out of the eight a card lists. */
-async function packagingRefs(supabase: RequestActor["supabase"], also: ("appeal_candidates" | "topic_plan")[] = []) {
+export async function packagingRefs(supabase: RequestActor["supabase"], also: ("appeal_candidates" | "topic_plan")[] = []) {
   const lists = await Promise.all((["title_package", ...also] as const).map(action => procedureRefs(supabase, action).catch(() => [])));
   const docs = [...new Map(lists.flat().map(doc => [doc.id, doc])).values()];
   return [...docs.filter(doc => doc.title.includes("패키징")), ...docs.filter(doc => !doc.title.includes("패키징"))].slice(0, 8);
