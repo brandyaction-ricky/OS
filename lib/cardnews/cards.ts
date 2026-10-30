@@ -21,7 +21,7 @@ export function nextCards(project: Pick<YpProject, "yp">, current: YpCards, patc
     return { ...current, exported: { at: now, by, url: patch.exported.url } };
   }
   if (project.yp.stage !== "draft" || editableFields(project, "draft") !== "all")
-    throw new CardError("STAGE_LOCKED", project.yp.stage === "topic" ? "주제를 확정하면 카드를 만들 수 있어요." : "카드를 확정했어요. 고치려면 대표가 이 단계로 되돌려야 해요.");
+    throw new CardError("STAGE_LOCKED", project.yp.stage === "topic" ? "주제를 확정하면 카드를 만들 수 있어요." : "카드를 확정했어요. 고치려면 [다시 열기]를 눌러요.");
   let drafts = current.drafts;
   if (patch.add) {
     if (drafts.length >= CARD_DRAFTS_MAX) throw new CardError("CARD_DRAFTS_FULL", `초안은 ${CARD_DRAFTS_MAX}개까지 둘 수 있어요. 안 쓰는 초안을 지워 주세요.`, 400);

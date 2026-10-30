@@ -7,7 +7,7 @@ import test from "node:test";
 import { addCardSlide, CARD_FORMATS, cardProblems, cardSignature, emptyCardDraft, removeCardSlide } from "../lib/cardnews/formats.ts";
 import { cardsMissing, nextCards } from "../lib/cardnews/cards.ts";
 import { storedZip } from "../lib/cardnews/zip.ts";
-import { applyGateAction } from "../lib/youtube-process/confirm.ts";
+import { applyGateAction, canReopen } from "../lib/youtube-process/confirm.ts";
 import { flowOf, newProjectMeta } from "../lib/youtube-process/project.ts";
 import { emptyStage } from "../lib/youtube-process/stages.ts";
 
@@ -80,6 +80,9 @@ test("a 카드뉴스 goes 주제 → 카드 만들기 → 최종 검토 → 내�
   const yp = applyGateAction(cardProject(), "draft", "confirm", { actor: "pd", now: "2026-10-30T01:00:00Z" });
   assert.equal(yp.stage, "review");
   assert.equal(applyGateAction({ yp }, "review", "confirm", { actor: "pd", now: "2026-10-30T02:00:00Z" }).stage, "upload");
+  // The PD may reopen their own 카드 확정 while the card sits at 최종 검토.
+  assert.ok(canReopen({ yp }, "draft"));
+  assert.equal(applyGateAction({ yp }, "draft", "reopen", { actor: "pd", now: "2026-10-30T03:00:00Z" }).stage, "draft");
 });
 
 test("the ZIP of cards opens with every file", () => {

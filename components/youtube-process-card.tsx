@@ -15,7 +15,7 @@ import { CostTag } from "./cost-notice";
 import { useSession } from "./session-provider";
 import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { errorMessage, youtubeProcessClient } from "./youtube-process-data";
-import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
 
 const letters = (value: string) => [...value].length;
 const SOURCE_NAME = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "" } as const;
@@ -129,7 +129,6 @@ const draftLabel = (draft: CardDraft) => draft.ai ? draftTag(draft.ai.by, draft.
 
 /** 카드 만들기: pick formats, draft them (AI or by hand), compare, pick one, edit it on the preview, then 카드 확정. */
 export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNode }) {
-  const control = useGate(page, "draft");
   const stage = page.bundle?.stages.cards;
   const project = page.bundle?.project;
   const cards = stage?.data;
@@ -151,15 +150,23 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const version = useRef(0);
   useEffect(() => { if (stage) version.current = Math.max(version.current, stage.version); }, [stage]);
   const save = useCallback(async (patch: Record<string, unknown>) => {
-    if (!page.client || !project || !stage) return false;
+    if (!page.client || !project || !stage) return null;
     setBusy(true);
     try {
       const result = await page.client.saveStage(project.id, "cards", Math.max(version.current, stage.version), patch);
       version.current = result.stage.version;
       page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current);
-      return true;
-    } catch (reason) { page.fail(reason); return false; } finally { setBusy(false); }
+      return result.project;
+    } catch (reason) { page.fail(reason); return null; } finally { setBusy(false); }
   }, [page, project, stage]);
+  // 카드 확정 saves what was just typed first (the same flush every confirm step uses since 2026-10-30).
+  const control = useGate(page, "draft", async () => {
+    if (!dirty || !draft) return page.bundle?.project ?? null;
+    const saved = await save({ draft: bare(draft) });
+    if (saved) setDirty(false);
+    return saved;
+  });
+  useLeaveGuard(dirty);
   // Edits save themselves a moment after typing stops.
   useEffect(() => {
     if (!dirty || !draft) return;
@@ -172,7 +179,7 @@ export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNo
   const overList = Object.entries(over).filter(([index, fields]) => fields.length && Number(index) < (draft?.slides.length ?? 0))
     .map(([index, fields]) => `${Number(index) + 1}장 ${fields.map(key => slideSpec(draft!.format, draft!.slides[Number(index)].type)?.fields.find(field => field.key === key)?.label ?? key).join(" · ")} 칸이 넘쳐요`);
   const problems = draft ? cardProblems(draft) : { blocking: [], warnings: [] };
-  const missing = dirty || busy ? "저장하는 중이에요" : cardsMissing(cards) || overList[0] || "";
+  const missing = cardsMissing(draft ? { ...cards, drafts: cards.drafts.map(row => row.id === draft.id ? draft : row) } : cards) || overList[0] || "";
   const action = gateAction(page, "draft", 1, control, missing);
   const current = draft?.slides[slide] ? slide : 0;
   const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
