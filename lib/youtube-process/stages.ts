@@ -184,6 +184,8 @@ export const SPEC_OPTIONS: Record<YpKind, Record<"res" | "fps" | "ratio", string
   live: { res: ["4K (선명 · 기본)", "FHD 1080p", "QHD 1440p"], fps: ["30fps (기본)", "24fps", "60fps"], ratio: LONG_RATIOS },
   anim: { res: ["FHD 1080p (기본)", "4K (선명)", "QHD 1440p"], fps: ["60fps (기본)", "30fps", "24fps"], ratio: LONG_RATIOS },
   short: { res: ["720 × 1280", "1080 × 1920"], fps: ["30fps (기본)", "60fps"], ratio: ["9:16 세로"] },
+  // 카드뉴스 (설계서 2026-10-30): one size, no 구성안 screen reads these.
+  card: { res: ["1080 × 1350"], fps: ["—"], ratio: ["4:5 세로"] },
 };
 // 보낼 곳 (owner decision 2026-10-26: 회사 유튜브는 마이인 자사몰로, 영상마다 UTM을 따로): a MYIN page, or any https address.
 export const UTM_DESTS = [["정밀 진단", "https://www.myinlab.co.kr/services/n6"], ["무료 진단", "https://www.myinlab.co.kr/services/free"],
