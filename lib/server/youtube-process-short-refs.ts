@@ -45,7 +45,8 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   const query = script.query.trim() || projectName(project);
   // 반응도 기준 (owner 2026-10-28): only the Shorts over the bar, the most watched for their channel's size first. Two searches (the most
   // relevant and the most watched, ~204 quota units) find more of them than one.
-  const searches = await Promise.allSettled([packagingReferences(query, true), packagingReferences(query, true, "viewCount")]);
+  // An ad is referenced by Meta ads the PD (or Aside) put in, never by YouTube Shorts (로건 QA 10/30: 「메타 광고 찾기」 listed Shorts).
+  const searches = await Promise.allSettled(project.yp.topic.purpose === "ad" ? [] as ReturnType<typeof packagingReferences>[] : [packagingReferences(query, true), packagingReferences(query, true, "viewCount")]);
   const found = searches.flatMap(result => result.status === "fulfilled" ? result.value : [])
     .filter((ref, index, list) => list.findIndex(other => other.id === ref.id) === index);
   const market = packagingPick(found, true).filter(ref => ref.short && refReaction({ views: ref.views, followers: ref.subscribers, likes: ref.likes ?? null }) === "pass" && refMatchesQuery(query, ref.title))
@@ -57,6 +58,7 @@ export async function requestShortRefs(actor: RequestActor, projectId: string) {
   // Both searches failed (quota, key, timeout) and there is no link of the PD's: say why.
   const failed = searches.find((result): result is PromiseRejectedResult => result.status === "rejected");
   if (!items.length && failed && searches.every(result => result.status === "rejected")) throw failed.reason;
+  if (!items.length && project.yp.topic.purpose === "ad") throw new ApiError(409, "SHORT_REFS_EMPTY", "광고 링크를 먼저 넣어 주세요.");
   if (!items.length) throw new ApiError(409, "SHORT_REFS_EMPTY", `「${query}」로 찾은 쇼츠 중 기준(${SHORT_REF_BAR_TEXT})을 넘고 제목이 검색어와 맞는 영상이 없어요. 검색어를 바꾸거나 링크를 직접 넣어 주세요.`);
   const service = createServiceSupabase();
   const before = await latestJob(service, project.id);

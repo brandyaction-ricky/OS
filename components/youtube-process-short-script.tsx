@@ -226,7 +226,7 @@ export function ShortScriptScreen({ page, header }: { page: YpPage; header: Reac
           {form.ai?.notes ? <details className="yp-more-fields"><summary>내 AI가 남긴 메모</summary><p style={{ whiteSpace: "pre-line", fontSize: 13 }}>{form.ai.notes}</p></details> : null}
           {form.confirmed ? <p className="yp-hint">제작은 확정한 대본으로 시작해요. <Link className="yp-lnk" href={stepHref(3, project.id)}>제작으로 →</Link></p> : null}
         </YpSection>
-        <FormulaBox page={page} form={form} can={can} onChange={formula => edit({ formula })} />
+        <FormulaBox page={page} form={form} can={can} onChange={(formula, now) => edit({ formula }, now)} />
       </div>
       <aside className="yp-rside"><section className="yp-card"><div className="yp-card-h">참고 영상 <span className="yp-opt">선택</span></div><div className="yp-card-b">
         <ShortRefs page={page} form={form} can={can} refs={shortRefs.refs} working={shortRefs.working} onFetch={() => void shortRefs.fetch(savedFirst)} onEdit={edit} /></div></section></aside>
@@ -255,8 +255,11 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   const can = shortResearchOpen(project);
   // Formulas and 주제 후보 belong to 주제: once the topic is fixed they are read-only here (the 대본 keeps the chosen formula).
   const canPick = project.yp.stage === "topic" && topicEditable(project);
-  // References the AI may use: fetched, and not known to be under the 반응도 기준.
-  const found = Boolean(shortRefs.done?.items.some(item => (item.result?.ok || item.source === "pd") && refReaction(refCounts(item)) !== "below"));
+  // References the AI may use: fetched, or a link the PD saved (로건 QA 10/30: a Meta ad put in by hand never counted until a search
+  // found something) — neither known to be under the 반응도 기준.
+  const own = stage?.data.refs ?? [];
+  const found = Boolean(shortRefs.done?.items.some(item => (item.result?.ok || item.source === "pd") && refReaction(refCounts(item)) !== "below"))
+    || own.some(ref => refReaction({ views: ref.views ?? null, followers: ref.followers ?? null, likes: ref.likes ?? null }) !== "below");
   // What 주제 확정 checks is the saved formula, not one still being typed.
   const formula = stage?.data.formula.trim() ?? "";
   useEffect(() => { onState({ refs: found, formula }); }, [found, formula, onState]);
@@ -273,7 +276,7 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
   return <div onBlur={() => { if (dirty && can) void save(); }}>
     {loaded.conflict ? <div className="yp-note yp-warn" role="alert"><div>참고 영상 · 공식을 다른 사람이 먼저 고쳤어요. <button type="button" className="yp-lnk" onClick={() => { setDirty(false); void reload(); }}>새로 불러오기</button></div></div> : null}
     {loaded.error ? <div className="yp-note yp-warn" role="alert"><div>{loaded.error}</div></div> : null}
-    <YpSection n={4} title="참고 영상" gq={project.yp.topic.purpose === "ad" ? "오래 켜진 메타 광고를 넣고 찾아요" : "키워드나 링크로 비슷한 영상을 찾아요"} need>
+    <YpSection n={4} title="참고 영상" gq={project.yp.topic.purpose === "ad" ? "오래 켜진 메타 광고를 넣어요" : "키워드나 링크로 비슷한 영상을 찾아요"} need>
       <div className="yp-max720"><ShortRefs page={page} form={form} can={can} refs={shortRefs.refs} working={shortRefs.working} onFetch={() => void shortRefs.fetch(saved)} onEdit={edit} /></div>
     </YpSection>
     <YpSection n={5} title="공식 · 주제 후보" gq="먹힌 공식으로 어떤 주제를 할까요?" need
@@ -295,7 +298,7 @@ export function ShortTopicResearch({ project, onProject, onPick, onState }: {
         {research?.formulas.length ? <details className="yp-more-fields"><summary>뽑은 공식 {research.formulas.length}개</summary>
           <ol style={{ margin: "8px 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>{research.formulas.map(item => <li key={item.name} style={{ marginBottom: 6 }}><b>{item.name}</b><br />{formulaLines(item)}</li>)}</ol></details> : null}
         {research?.notes ? <details className="yp-more-fields"><summary>내 AI가 남긴 메모</summary><p style={{ whiteSpace: "pre-line", fontSize: 13 }}>{research.notes}</p></details> : null}
-        <FormulaBox page={page} form={form} can={canPick} drawn={false} label="공식 창고에서 직접 고르기" onChange={value => edit({ formula: value })} />
+        <FormulaBox page={page} form={form} can={canPick} drawn={false} label="공식 창고에서 직접 고르기" onChange={(value, now) => edit({ formula: value }, now)} />
       </div>
     </YpSection>
     <SendDialog page={page} task="short-formula" open={send} onClose={() => setSend(false)} job={job} />
@@ -309,17 +312,21 @@ const drawnFormulas = (form: YpShortScript) => [...(form.research?.formulas ?? [
   .filter((item, index, list) => list.findIndex(other => other.name === item.name) === index);
 
 /** Which formula the 대본 follows: the ones drawn for it and the company 공식 창고 (most used first), folded away until asked for. */
-function FormulaBox({ page, form, can, onChange, label = "쓴 공식", drawn = true }: { page: YpPage; form: YpShortScript; can: boolean; onChange: (formula: string) => void; label?: string; drawn?: boolean }) {
+function FormulaBox({ page, form, can, onChange, label = "쓴 공식", drawn = true }: { page: YpPage; form: YpShortScript; can: boolean; onChange: (formula: string, now?: boolean) => void; label?: string; drawn?: boolean }) {
   const warehouse = [...(page.bundle?.formulas ?? [])].sort((a, b) => b.uses - a.uses);
-  const lines = formulaLines;
+  // An ad has no thumbnail: its formulas show without the 썸네일 카피 line (로건 QA 10/30).
+  const ad = page.bundle?.project.yp.topic.purpose === "ad";
+  const lines = (item: Parameters<typeof formulaLines>[0]) => formulaLines(ad ? { ...item, cover: undefined } : item);
   const mine: YpShortFormula[] = drawn ? drawnFormulas(form) : [];
   return <details className="yp-more-fields"><summary>{label}{form.formula ? ` · ${form.formula}` : ""}</summary>
     {mine.length ? <ol style={{ margin: "8px 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>{mine.map(item => <li key={item.name} style={{ marginBottom: 6 }}>
       <b>{item.name}</b>{item.name === form.formula ? <span className="yp-tag yp-ok" style={{ marginLeft: 6 }}>이 대본</span> : null}<br />{lines(item)}</li>)}</ol> : null}
     <input className="yp-in" list="yp-formulas" value={form.formula} maxLength={40} readOnly={!can} placeholder="공식 창고에서 고르기" onChange={event => onChange(event.target.value)} aria-label={label} style={{ marginTop: 8 }} />
     <datalist id="yp-formulas">{warehouse.map(item => <option key={item.name} value={item.name} />)}</datalist>
+    {/* 로건 QA 10/30: clicking a formula did nothing — only typing its whole name picked it. */}
     {warehouse.length ? <ul className="yp-hist" style={{ maxHeight: 280, overflow: "auto", marginTop: 8 }}>{warehouse.slice(0, 50).map(item => <li key={item.name} style={{ alignItems: "flex-start" }}>
-      <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}><b>{item.name}</b> <span className="yp-muted">· {item.uses}번 씀</span><br />{lines(item)}</span></li>)}</ul> : null}
+      <span style={{ flex: 1, minWidth: 0, fontSize: 13 }}><b>{item.name}</b> <span className="yp-muted">· {item.uses}번 씀</span><br />{lines(item)}</span>
+      {item.name === form.formula ? <span className="yp-tag yp-ok">고른 공식</span> : can ? <button type="button" className="yp-btn yp-sm" onClick={() => onChange(item.name, true)}>이 공식으로</button> : null}</li>)}</ul> : null}
   </details>;
 }
 
@@ -333,6 +340,9 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
   const [nums, setNums] = useState({ views: "", likes: "", followers: "" });
   const [copied, setCopied] = useState("");
   const project = page.bundle!.project;
+  // 광고 (로건 QA 10/30): Meta ads are found by Aside in the PD's browser, not by the Shorts search, and an ad shows no views or likes.
+  const ad = project.yp.topic.purpose === "ad";
+  const adLink = ad || refPlatform(link.url.trim()) === "메타 광고";
   const add = () => {
     if (!refHostOk(link.url.trim())) { page.setError("유튜브 · 인스타그램 · 틱톡 · 메타 광고 라이브러리 주소를 넣어 주세요."); return; }
     if (form.refs.some(ref => ref.url === link.url.trim())) { page.setError("이미 넣은 영상이에요."); return; }
@@ -349,17 +359,19 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
       const input = { topic: projectName(project), query: form.query.trim(), links: form.refs.map(ref => ref.url), audience: project.yp.topic.target,
         count: Math.max(1, 12 - form.refs.length), page: `${window.location.origin}/content/plan?project=${project.id}${project.yp.stage === "draft" ? "&view=draft" : ""}` };
       await navigator.clipboard.writeText(kind === "ad" ? asideAdInstruction(input) : asideSocialInstruction(input));
-      setCopied(kind); window.setTimeout(() => setCopied(""), 4000);
+      setCopied(kind); window.setTimeout(() => setCopied(""), 8000);
     } catch { page.setError("복사하지 못했어요. 브라우저의 클립보드 권한을 확인해 주세요."); }
   };
   const items = refs?.status === "done" ? refs.items : [];
   return <>
-    {can ? <form className="yp-savebar" style={{ margin: 0 }} onSubmit={event => { event.preventDefault(); onFetch(); }}>
-      <input className="yp-in" style={{ flex: 1, minWidth: 0 }} value={form.query} maxLength={60} placeholder={projectName(project)} onChange={event => onEdit({ query: event.target.value })} aria-label="참고 영상 검색어" />
-      <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button></form> : null}
+    {can ? <form className="yp-savebar" style={{ margin: 0 }} onSubmit={event => { event.preventDefault(); if (ad) void copyAside("ad"); else onFetch(); }}>
+      <input className="yp-in" style={{ flex: 1, minWidth: 0 }} value={form.query} maxLength={60} placeholder={projectName(project)} onChange={event => onEdit({ query: event.target.value })} aria-label={ad ? "메타 광고 검색어" : "참고 영상 검색어"} />
+      {ad ? <button type="submit" className="yp-btn yp-sm yp-pri"><Copy size={14} /> 메타 광고 찾기 지시 복사</button>
+        : <button type="submit" className="yp-btn yp-sm yp-pri" disabled={working}><Search size={14} /> {working ? "가져오는 중" : refs ? "다시 찾기" : "찾기"}</button>}</form> : null}
+    {copied ? <p className="yp-note" role="status" style={{ margin: "8px 0 0" }}>복사했어요. 브라우저 AI(Aside) 창에 붙여 넣으면 {copied === "ad" ? "오래 켜진 메타 광고" : "릴스 · 틱톡"}를 찾아 아래 「직접 넣은 링크」에 넣어 줘요.</p> : null}
     {working ? <p className="yp-hint" role="status">참고 영상을 가져오는 중이에요. 영상이 많으면 5~10분 걸려요.</p>
       : refs && refs.status !== "done" ? <p className="yp-errline">가져오지 못했어요. 다시 찾아 주세요.</p> : refs?.error ? <p className="yp-errline">{refs.error}</p> : null}
-    <p className="yp-hint" style={{ margin: "6px 0 0" }}>반응도 기준: {SHORT_REF_BAR_TEXT}</p>
+    <p className="yp-hint" style={{ margin: "6px 0 0" }}>{ad ? "광고는 게재 기간이 길고 버전이 많을수록 잘 되는 광고예요. 30일 넘게 켜진 것을 넣어요." : `반응도 기준: ${SHORT_REF_BAR_TEXT}`}</p>
     {items.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginTop: 8 }}>{items.map(item => {
       const shown = open === item.url;
       const counts = refCounts(item);
@@ -376,7 +388,7 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
           <span>{reaction === "pass" ? <span className="yp-tag yp-ok">반응 높음</span> : reaction === "below" ? <span className="yp-tag yp-warn">기준 아래 · AI에 안 넘김</span>
             : <span className="yp-tag">숫자 없음</span>}{item.result && !item.result.ok ? <span className="yp-muted" style={{ fontSize: 12 }}> · 화면 못 받음</span> : null}</span>
         </button>;
-    })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>{can ? "키워드로 찾거나 링크를 넣어요" : "찾은 참고 영상이 없어요"}</p> : null}
+    })}</div> : !working && !form.refs.length ? <p className="yp-pempty" style={{ padding: "18px 8px" }}>{!can ? "찾은 참고 영상이 없어요" : ad ? "찾기 지시를 복사해 Aside에 붙여 넣거나, 광고 링크를 직접 넣어요" : "키워드로 찾거나 링크를 넣어요"}</p> : null}
     {/* The one opened: its first three seconds (the 헤드 카피) and its words, under the cards so the rows keep their places. */}
     {items.filter(item => item.url === open).map(item => <div key={item.url} style={{ display: "grid", gap: 6, fontSize: 12, marginTop: 10 }}>
           <b style={{ fontSize: 13 }}>{item.title || item.url}</b>
@@ -392,20 +404,19 @@ function ShortRefs({ page, form, can, refs, working, onFetch, onEdit }: {
         {can ? <button type="button" className="yp-ib" aria-label="빼기" onClick={() => onEdit({ refs: form.refs.filter((_, at) => at !== index) }, true)}><X size={14} /></button> : null}</li>)}</ul></> : null}
     {can ? adding ? <form style={{ display: "grid", gap: 6, marginTop: 10 }} onSubmit={event => { event.preventDefault(); add(); }}>
       <input className="yp-in" placeholder="영상 주소" aria-label="링크 주소" value={link.url} autoFocus onChange={event => setLink({ ...link, url: event.target.value })} />
-      <input className="yp-in" placeholder="제목 (선택)" aria-label="링크 제목" maxLength={200} value={link.title} onChange={event => setLink({ ...link, title: event.target.value })} />
-      <textarea className="yp-in" rows={2} maxLength={5000} placeholder="영상에서 한 말 (선택) — 헤드 카피 · 첫 문장" aria-label="영상에서 한 말" value={link.script} onChange={event => setLink({ ...link, script: event.target.value })} />
-      {/* A Reel the 영상 만드는 컴퓨터 cannot open is judged by the numbers on its page. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+      <input className="yp-in" placeholder={adLink ? "광고주 · 게재 시작 2026-09-01 · 버전 3개 (선택)" : "제목 (선택)"} aria-label="링크 제목" maxLength={200} value={link.title} onChange={event => setLink({ ...link, title: event.target.value })} />
+      <textarea className="yp-in" rows={2} maxLength={5000} placeholder={adLink ? "첫 3초 카피 · 본문 첫 줄 (선택)" : "영상에서 한 말 (선택) — 헤드 카피 · 첫 문장"} aria-label="영상에서 한 말" value={link.script} onChange={event => setLink({ ...link, script: event.target.value })} />
+      {/* A Reel the 영상 만드는 컴퓨터 cannot open is judged by the numbers on its page; a Meta ad shows none. */}
+      {adLink ? null : <><div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
         {([["views", "조회수"], ["likes", "좋아요"], ["followers", "팔로워"]] as const).map(([key, label]) => <input key={key} className="yp-in" inputMode="decimal" placeholder={`${label} (선택)`} aria-label={label}
           value={nums[key]} onChange={event => setNums({ ...nums, [key]: event.target.value })} />)}</div>
-      <span className="yp-hint" style={{ margin: 0 }}>숫자는 화면 그대로 적어도 돼요(예: 12.5만). 영상 만드는 컴퓨터가 읽은 숫자가 있으면 그걸 써요.</span>
+      <span className="yp-hint" style={{ margin: 0 }}>숫자는 화면 그대로 적어도 돼요(예: 12.5만). 영상 만드는 컴퓨터가 읽은 숫자가 있으면 그걸 써요.</span></>}
       <div className="yp-row-btns"><button type="submit" className="yp-btn yp-sm yp-pri">넣기</button><button type="button" className="yp-btn yp-sm" onClick={() => { setAdding(false); setLink(blankRef); }}>취소</button></div></form>
       : <div className="yp-row-btns" style={{ marginTop: 10, flexWrap: "wrap" }}>
         <button type="button" className="yp-btn yp-sm" onClick={() => setAdding(true)}><Plus size={14} /> 링크 넣기</button>
-        {/* A 광고 숏폼 starts from Meta ads; the others from Reels · TikTok (주제 찾기, 2026-10-28). */}
-        {(project.yp.topic.purpose === "ad" ? ["ad", "social"] as const : ["social", "ad"] as const).map((kind, at) =>
-          <button key={kind} type="button" className={`yp-btn yp-sm${at === 0 && project.yp.topic.purpose === "ad" ? " yp-pri" : ""}`} onClick={() => void copyAside(kind)}><Copy size={14} />
-            {copied === kind ? " 복사했어요 · Aside에 붙여 넣기" : kind === "ad" ? " 메타 광고 찾기 (Aside)" : " 릴스 · 틱톡 찾기 (Aside)"}</button>)}</div> : null}
+        {/* A 광고 숏폼 copies its Meta ad instruction from the box above; Reels · TikTok (and Meta ads for the others) from here. */}
+        {(ad ? ["social"] as const : ["social", "ad"] as const).map(kind =>
+          <button key={kind} type="button" className="yp-btn yp-sm" onClick={() => void copyAside(kind)}><Copy size={14} /> {kind === "ad" ? "메타 광고 찾기 지시 복사" : "릴스 · 틱톡 찾기 지시 복사"}</button>)}</div> : null}
   </>;
 }
 
