@@ -27,7 +27,9 @@ type Board = { boardId: string; clusters: NicheCluster[]; settled: NicheCluster[
 const inflight = new Map<string, Promise<Found>>();
 const meta = <T,>(record: OsRecord, key: string, fallback: T) => (record.metadata?.[key] ?? fallback) as T;
 const num = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
-const newVideoHref = (video: Pick<DiscoverVideo, "url" | "title" | "channelTitle">, extra?: { title: string; note: string }) => `/content/plan?project=new&view=topic&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(extra?.title ?? `${video.title} · ${video.channelTitle}`)}${extra ? `&title=${encodeURIComponent(extra.title)}&note=${encodeURIComponent(extra.note.slice(0, 600))}` : ""}`;
+/** A new video at 주제: one found video, or a 틈새's videos (up to 8) as its 참고 영상 with the 틈새's name and formula. */
+const newVideoHref = (videos: Pick<DiscoverVideo, "url" | "title" | "channelTitle">[], extra?: { title: string; note: string }) => `/content/plan?project=new&view=topic${videos.slice(0, 8)
+  .map(video => `&ref=${encodeURIComponent(video.url)}&refTitle=${encodeURIComponent(`${video.title} · ${video.channelTitle}`.slice(0, 120))}`).join("")}${extra ? `&title=${encodeURIComponent(extra.title)}&note=${encodeURIComponent(extra.note.slice(0, 600))}` : ""}`;
 /** A kept or channel-found video record in the shape of a search result; 매일 보는 채널's outliers keep their baseline. */
 const asVideo = (record: OsRecord): DiscoverVideo => {
   const baseline = meta<{ ratio?: unknown; medianViews?: unknown }>(record, "baseline", {}) ?? {};
@@ -39,7 +41,7 @@ const asVideo = (record: OsRecord): DiscoverVideo => {
 };
 const categoryName = (letter?: string) => { const found = DISCOVER_CATEGORIES.find(([key]) => key === letter); return found ? `${found[0]}. ${found[1]}` : ""; };
 
-const DEMO_VIDEOS: DiscoverVideo[] = ([
+export const DEMO_VIDEOS: DiscoverVideo[] = ([
   ["단점이 오히려 강점이 되는 사람들의 공통점", "예시 채널 A", 412_000, 38_000, 61_000], ["내 강점 찾는 법, 이 질문 하나면 됩니다", "예시 채널 B", 128_000, 9_100, 22_000],
   ["직장인 강점 진단, 해보고 놀란 이유", "예시 채널 C", 96_000, 210_000, 31_000], ["재능이 없다고 느낄 때 보는 영상", "예시 채널 D", 53_000, 12_000, 40_000],
   ["단점을 고치지 마세요 · 강점 심리학", "예시 채널 E", 230_000, 41_000, 52_000], ["잘하는 것과 좋아하는 것 사이에서", "예시 채널 F", 18_000, 160_000, 9_000],
@@ -198,7 +200,7 @@ export function YoutubeDiscoverScreen({ bare = false }: { bare?: boolean }) {
               {video.viewSubscriberRatio !== null ? <span className="yp-tag">구독자의 {ratioLabel(video.viewSubscriberRatio)}</span> : null}</span>
             <div className="yp-row-btns">
               {source !== "kept" ? <button type="button" className="yp-btn yp-sm" disabled={demo || keptIds.has(video.id) || saving === video.id} onClick={() => void keep(video)}>{keptIds.has(video.id) ? "담았어요" : saving === video.id ? "담는 중…" : keepFailed[video.id] ? "다시 담기" : "틈새 재료로 담기"}</button> : null}
-              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref(video)}>새 영상으로 만들기</Link></div>
+              <Link className="yp-btn yp-sm yp-pri" href={newVideoHref([video])}>새 영상으로 만들기</Link></div>
             {keepFailed[video.id] ? <span className="yp-errline" role="alert">담지 못했어요: {keepFailed[video.id]}</span> : null}
           </div></article>)}</div>
         : <p className="yp-pempty">{source === "kept" ? "담아 둔 영상이 없어요. 찾은 영상에서 [틈새 재료로 담기]를 눌러요." : source === "tracked" ? "매일 보는 채널에서 평소보다 크게 나온 영상이 생기면 여기에 모여요. ① 채널 모으기에서 채널을 넣어요."
@@ -233,7 +235,7 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
     setError("");
     if (decision === "plan" && niche.videos[0]) {
       if (!demo) { setBusy(niche.id); try { await apiRequest("/api/v1/content/youtube/niches", { method: "POST", token, body: JSON.stringify({ clusterId: niche.id, decision }) }); } catch (reason) { setError(errorMessage(reason)); setBusy(""); return; } }
-      router.push(newVideoHref(niche.videos[0], { title: niche.title, note: nicheNote(niche) })); return;
+      router.push(newVideoHref(niche.videos, { title: niche.title, note: nicheNote(niche) })); return;
     }
     if (demo) { setBoard(current => current && { ...current, clusters: current.clusters.map(row => row.id === niche.id ? { ...row, decision: decision ? { value: decision, at: new Date().toISOString(), by: "예시" } : undefined } : row) }); return; }
     setBusy(niche.id);
@@ -256,7 +258,7 @@ function NicheBoard({ token, demo, profile, onCount }: { token: string | null; d
       <ul className="yp-hist" style={{ margin: "8px 0" }}>{niche.videos.map(video => <li key={video.id}><span style={{ flex: 1, minWidth: 0 }}><a href={video.url} target="_blank" rel="noreferrer">{video.title}</a> <span className="yp-muted">— {video.channelTitle} · 조회 {compactCount(video.viewCount)}{video.ratio ? ` · 평소의 ${ratioLabel(video.ratio)}` : ""}</span></span></li>)}</ul>
       {niche.decision ? <div className="yp-row-btns"><span className="yp-muted">{niche.decision.by} · {ageLabel(niche.decision.at)} {DECISION[niche.decision.value]}</span>
         {board.clusters.some(row => row.id === niche.id) ? <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, null)}>되돌리기</button> : null}
-        {niche.decision.value === "plan" && niche.videos[0] ? <Link className="yp-btn yp-sm" href={newVideoHref(niche.videos[0], { title: niche.title, note: nicheNote(niche) })}>하나 더 만들기</Link> : null}</div>
+        {niche.decision.value === "plan" && niche.videos[0] ? <Link className="yp-btn yp-sm" href={newVideoHref(niche.videos, { title: niche.title, note: nicheNote(niche) })}>하나 더 만들기</Link> : null}</div>
         : <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm yp-pri" disabled={busy === niche.id} onClick={() => void decide(niche, "plan")}>새 영상으로 만들기</button>
           <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, "watch")}>더 지켜보기</button>
           <button type="button" className="yp-btn yp-sm" disabled={busy === niche.id} onClick={() => void decide(niche, "drop")}>안 하기</button></div>}

@@ -269,9 +269,18 @@ function demoFilledStages(project: YpProject): YpStagesView {
       { title: "[예시] 약속은 잡았는데 가기 싫을 때", insight: "만나고 싶은 마음과 쉬고 싶은 마음은 같이 있어도 돼요", formula: "[예시] 좋은 조건, 반대 감정", why: "약속을 잡고 나서 취소하고 싶어지는 날" },
       { title: "[예시] 주말 약속 뒤에 더 지치는 진짜 이유", insight: "지치는 건 사람 때문이 아니라 쉴 틈 없는 일정 때문이에요", formula: "[예시] 체력 문제가 아니에요", why: "주말이 끝나면 오히려 더 피곤한 장면" },
       { title: "[예시] 친구는 좋은데 약속은 부담될 때", insight: "부담은 친구가 아니라 약속의 개수에서 와요", formula: "[예시] 좋은 조건, 반대 감정", why: "좋은 사람과의 약속도 부담스러운 마음" }] };
+  // A 롱폼 at 주제 (2026-10-30): the staff AI's title formulas and 주제 후보 from its 참고 영상 wait for the PD.
+  const topicResearch = emptyStage("topicResearch", kind);
+  if (project.id === "demo-p1") topicResearch.research = { by: "리키", model: "예시", at: daysAgo(0), jobId: "demo-job", notes: "[예시] 터진 영상 셋 모두 흔한 오해를 제목에서 뒤집었어요.",
+    formulas: [{ formula: "[예시] [흔한 장면]하는 진짜 이유", desire: "내 피곤함이 내 탓이 아니라는 확인", channels: 3, refs: [
+      { title: "[예시] 퇴근하면 아무것도 못 하는 진짜 이유", url: "https://www.youtube.com/", channel: "예시 채널 A" }, { title: "[예시] 쉬어도 피곤한 진짜 이유", url: "https://www.youtube.com/", channel: "예시 채널 B" }] }],
+    topics: [
+      { title: "[예시] 일이 두 개뿐인데 저녁마다 지치는 진짜 이유", insight: "지치는 건 일의 양이 아니라 하루 종일 고르는 결정의 수 때문이에요", formula: "[예시] [흔한 장면]하는 진짜 이유", why: "퇴근하고 소파에 눕는 장면은 누구나 겪어요" },
+      { title: "[예시] 쉬는 날에도 머리가 쉬지 않는 진짜 이유", insight: "내 기준이 없으면 쉬는 날도 남의 순서로 보내요", formula: "[예시] [흔한 장면]하는 진짜 이유", why: "주말이 끝나면 더 피곤한 사람이 많아요" },
+      { title: "[예시] 할 일 목록을 지워도 개운하지 않은 진짜 이유", insight: "다 했다는 느낌은 개수가 아니라 내가 고른 일에서 와요", formula: "[예시] [흔한 장면]하는 진짜 이유", why: "목록을 다 지운 날의 허전함" }] };
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
-    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) }, screenCheck: { id: null, version: 0, data: emptyStage("screenCheck", kind) },
+    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) }, screenCheck: { id: null, version: 0, data: emptyStage("screenCheck", kind) }, topicResearch: { id: null, version: 0, data: topicResearch },
     cards: { id: null, version: 0, data: project.id === "demo-p13" ? demoCards() : emptyStage("cards", kind) } };
 }
 /** One 정리형 draft, so the 카드 만들기 screen has something to show in the demo. */

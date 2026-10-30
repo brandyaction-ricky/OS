@@ -46,7 +46,7 @@ export async function readStages(supabase: Supabase, project: YpProject): Promis
     const record = records.find(row => row.record_type === spec.recordType && row.metadata?.[spec.key] === spec.value);
     return { id: record?.id ?? null, version: record?.version ?? 0, data: stageData(kind, record?.metadata?.yp, project.yp.topic.type) };
   };
-  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), review2: pick("review2"), screenCheck: pick("screenCheck"), cards: pick("cards"), records };
+  const stages = { plan: pick("plan"), outline: pick("outline"), make: pick("make"), upload: pick("upload"), column: pick("column"), shortTopics: pick("shortTopics"), shortScript: pick("shortScript"), review2: pick("review2"), screenCheck: pick("screenCheck"), topicResearch: pick("topicResearch"), cards: pick("cards"), records };
   // 4-5: the first 원고 starts from the 기획안 영상 흐름.
   if (!stages.outline.id && stages.plan.data.opening) stages.outline.data = { ...stages.outline.data, script: scriptFromPlan(stages.plan.data) };
   return stages;
@@ -84,8 +84,8 @@ export async function readFinals(supabase: Supabase, projectId: string, make: Yp
 
 export async function youtubeProjectBundle(actor: RequestActor, id: string) {
   const project = await getYoutubeProject(actor, id);
-  const { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, cards } = await readStages(actor.supabase, project);
-  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, cards }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
+  const { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, topicResearch, cards } = await readStages(actor.supabase, project);
+  return { project, stages: { plan, outline, make, upload, column, shortTopics, shortScript, review2, screenCheck, topicResearch, cards }, finals: await readFinals(actor.supabase, project.id, make.data, project.yp.topic.type),
     ...(project.yp.topic.type === "short" ? { formulas: await (await shortScriptModule()).readShortFormulas(createServiceSupabase()) } : {}) };
 }
 
@@ -280,6 +280,8 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     if (project.yp.topic.type !== "card") throw locked("카드뉴스에서만 카드를 고칠 수 있어요.");
     const { cardsPatchSchema, nextCardsOnServer } = await cardsModule();
     data = nextCardsOnServer(project, stages.cards.data, cardsPatchSchema.parse(input.patch), actor, now);
+  } else if (kind === "topicResearch") {
+    throw locked("주제 후보는 내 AI가 쓰고, [이 주제로]는 주제 칸을 바꿔요.");
   } else {
     const patch = stagePatchSchemas.upload.parse(input.patch);
     if (stage !== "upload") throw locked("최종 검토 컨펌이 OK가 나야 업로드가 열려요.");

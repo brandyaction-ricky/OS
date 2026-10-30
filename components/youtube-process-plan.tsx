@@ -18,6 +18,8 @@ import { canReopen, editedSinceDecision, GATE_FIELDS, gateName } from "@/lib/you
 import { YoutubeDraftScreen } from "./youtube-process-draft";
 import { YoutubeOutlineScreen } from "./youtube-process-outline";
 import { ShortTopicResearch } from "./youtube-process-short-script";
+import { TopicFormulas, TopicRefSearch } from "./youtube-process-topic-research";
+import { noteWithPick } from "@/lib/youtube-process/topic-research";
 
 const LAST_KEY = "brandy-yp-last-project";
 const VIEWS = ["topic", "draft", "outline"] as const;
@@ -100,11 +102,11 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
     const [list, people] = await Promise.all([client.list(), client.members().catch(() => [] as YpMember[])]);
     setProjects(list); setMembers(people);
     if (projectParam === "new") {
-      // 주제 찾기 › [이 영상으로 새 프로젝트] opens here with the found video as the first reference.
-      const found = parseYoutubeRef(params.get("ref") ?? "");
-      const ref = found ? { ...found, title: params.get("refTitle")?.slice(0, 200) || undefined } : null;
+      // 주제 찾기 › [이 영상으로 새 프로젝트] opens here with the found video as the first reference; a 틈새 hands over all its videos.
+      const titles = params.getAll("refTitle");
+      const handed = params.getAll("ref").flatMap((url, index) => { const found = parseYoutubeRef(url); return found ? [{ ...found, title: titles[index]?.slice(0, 200) || undefined }] : []; });
       // 틈새 › [기획으로 넘기기] also hands over its name as the 주제 and the title formula as the first 전달 사항.
-      setLoading(false); setForm(current => ({ ...current, title: current.title || params.get("title")?.slice(0, 120) || "", note: current.note || params.get("note")?.slice(0, 2000) || "", assigneeId: current.assigneeId ?? profile?.id ?? null, refs: ref && !current.refs.some(row => row.url === ref.url) ? [ref, ...current.refs] : current.refs })); return;
+      setLoading(false); setForm(current => ({ ...current, title: current.title || params.get("title")?.slice(0, 120) || "", note: current.note || params.get("note")?.slice(0, 2000) || "", assigneeId: current.assigneeId ?? profile?.id ?? null, refs: [...handed.filter(ref => !current.refs.some(row => row.url === ref.url)), ...current.refs] })); return;
     }
     if (!force && loadedId.current === projectParam) return;
     const found = await client.get(projectParam);
@@ -259,10 +261,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
         </Field>
         {short ? project ? <ShortTopicResearch project={project} onProject={setProject} onPick={title => editAndSave({ title })} onState={setResearch} />
           : <p className="yp-hint">주제를 쓰면 참고 영상을 찾을 수 있어요.</p> : null}
-        {/* 참고 영상 · 전달 사항 are optional: folded until someone wants them (or they already hold something). 숏폼 finds its 참고 영상 above. */}
-        <details className="yp-more-fields" open={Boolean((!short && form.refs.length) || form.note || rev("topic.refs") || rev("topic.note"))}><summary>{short ? "전달 사항 더 쓰기 (선택)" : "참고 영상 · 전달 사항 더 쓰기 (선택)"}</summary>
-        {short ? null : <Field n={4} title="참고 영상" question="유튜브 링크" need={false} rev={rev("topic.refs")}>
+        {/* 롱폼 (owner 2026-10-30): 참고 영상 by keyword like the 숏폼's, then the staff AI's 공식 · 주제 후보. */}
+        {short ? null : <Field n={4} title="참고 영상" question="키워드로 찾거나 유튜브 링크를 붙여 넣어요" need={false} rev={rev("topic.refs")}>
           <div className="yp-max720">
+            <TopicRefSearch initial={lines[0] ?? ""} refs={form.refs} can={open("refs")} onAdd={ref => editAndSave({ refs: [...form.refs, ref] })} />
             {form.refs.length ? <ul className="yp-open-list">{form.refs.map((ref, index) => <li key={`${ref.url}-${index}`}>
               <a href={ref.url} target="_blank" rel="noreferrer">{ref.title ?? ref.url}</a><span className="yp-sp" />
               {open("refs") ? <>
@@ -288,7 +290,10 @@ function YoutubeTopicScreen({ header }: { header: ReactNode }) {
             {refError ? <div className="yp-errline" role="alert">{refError}</div> : null}
           </div>
         </Field>}
-        <Field n={short ? 6 : 5} title="전달 사항" question="더 설명할 게 있으면 써 주세요" need={false} rev={rev("topic.note")}>
+        {!short && project ? <TopicFormulas project={project} onPick={(topic, formula) => editAndSave({ title: topic.title, note: noteWithPick(form.note, topic, formula) })} /> : null}
+        {/* 전달 사항 is optional: folded until someone wants it (or it already holds something). */}
+        <details className="yp-more-fields" open={Boolean(form.note || rev("topic.note"))}><summary>전달 사항 더 쓰기 (선택)</summary>
+        <Field n={6} title="전달 사항" question="더 설명할 게 있으면 써 주세요" need={false} rev={rev("topic.note")}>
           <textarea className="yp-in yp-max720" id="yp-topic-note" rows={2} aria-label="전달 사항" readOnly={!open("note")} value={form.note} onChange={event => edit({ note: event.target.value })} />
         </Field>
         </details>
