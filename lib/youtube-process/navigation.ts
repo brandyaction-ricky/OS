@@ -13,6 +13,8 @@ export const YOUTUBE_V1_PAGES: NavPage[] = [
 /** The steps of one video: found by address (titles, breadcrumbs) and shown under 내 영상, never as their own menu. */
 /** 카드뉴스 정본 다듬기: in the 카드뉴스 menu, and found by address (title, breadcrumb, menu permission) like the steps. */
 export const CARD_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/card-canon", icon: SlidersHorizontal, aliases: ["카드뉴스 정본", "평가표", "시험 묶음", "정본 그라인딩"], ready: true };
+/** The same for 숏폼 대본 (설계서 §9: the second kind after 카드뉴스). */
+export const SHORT_CANON_PAGE: NavPage = { label: "정본 다듬기", href: "/content/short-canon", icon: SlidersHorizontal, aliases: ["숏폼 대본 정본", "숏폼 평가표", "숏폼 시험 묶음"], ready: true };
 export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "기획", href: "/content/plan", navHref: "/content/projects", icon: PenLine, aliases: ["주제", "기획안", "구성안"], ready: true },
   { label: "제작", href: "/content/make", navHref: "/content/projects", icon: Film, aliases: ["최종본 올리기"], ready: true },
@@ -36,7 +38,7 @@ const platformStage = (id: string, label: string, page: string, platform: string
 };
 export const YOUTUBE_V1_PLATFORM_STAGES: NavStage[] = [
   platformStage("yt-longform", "롱폼 유튜브", "내 롱폼 영상", "longform", Youtube),
-  platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone),
+  { ...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone), pages: [...platformStage("yt-short", "숏폼 · 릴스", "내 숏폼 영상", "short", Smartphone).pages, SHORT_CANON_PAGE] },
   platformStage("yt-ad", "광고", "내 광고 영상", "ad", Megaphone),
   // 정본 다듬기 (정본 §9) sits beside the list: the same 시험 묶음 drawn under each 정본 version and scored.
   { ...platformStage("yt-card", "카드뉴스", "내 카드뉴스", "card", GalleryHorizontal),
@@ -89,6 +91,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/confirm": "confirm",
   "/content/links": "links",
   "/content/card-canon": "card-canon",
+  "/content/short-canon": "short-canon",
   "/content/voice-dictionary": "voice-dictionary",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];

@@ -12,4 +12,5 @@ export const YOUTUBE_V1_GUIDES: Record<string, PageGuideDefinition> = {
   "/content/voice-dictionary": { steps: ["읽기 사전에 원래 말과 읽는 소리를 넣어요 (원고 · 자막은 그대로)", "「자동 수집 · 확인 필요」 줄은 맞음 · 고치기 · 지우기로 정리해요", "끊김 시험 문제는 음성 만드는 방식을 바꿀 때 모두 통과해야 하는 문장이에요"], next: "/content/projects" },
   "/content/links": { steps: ["브랜드·원본 주소·사용처를 넣고 유입 출처·마케팅 방식·캠페인명을 골라요 (없으면 바로 추가)", "[UTM 링크 만들기]를 누르면 링크 대장과 회사 문서에 남아요", "필요하면 [단축링크 만들기]로 마이인 단축 링크도 붙여요"], next: "/content/projects" },
   "/content/card-canon": { steps: ["시험 묶음에 원본 3~5개를 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 초안을 받아요", "칸을 눌러 평가표로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=card" },
+  "/content/short-canon": { steps: ["대본을 확정한 숏폼을 시험 묶음에 3~5개 넣어요", "[이 정본으로 다시 뽑기]로 지금 정본의 대본을 받아요", "칸을 눌러 정본 판정 검사 여섯 가지로 채점하고, 고칠 점을 보고 정본을 고쳐요"], next: "/content/projects?platform=short" },
 };
