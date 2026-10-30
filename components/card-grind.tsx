@@ -187,8 +187,8 @@ function ScorePanel({ run, result, me, busy, onClose, onSave }: { run: BenchRun;
       <div className="yp-grind-form">{CARD_CRITERIA.map(c => <div key={c.n} className="yp-grind-crit">
         <div><b>{c.n}. {c.name}</b><small className="yp-muted">상: {c.top}</small></div>
         <div role="radiogroup" aria-label={c.name} className="yp-row-btns">{CARD_GRADES.map(grade => <button key={grade} type="button" role="radio" aria-checked={grades[c.n] === grade}
-          className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades({ ...grades, [c.n]: grade })}>{grade}</button>)}</div>
-        <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => setNotes({ ...notes, [c.n]: event.target.value })} placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
+          className={`yp-btn yp-sm${grades[c.n] === grade ? " yp-pri" : ""}`} onClick={() => setGrades(current => ({ ...current, [c.n]: grade }))}>{grade}</button>)}</div>
+        <input className="yp-in" value={notes[c.n] ?? ""} maxLength={300} onChange={event => { const text = event.target.value; setNotes(current => ({ ...current, [c.n]: text })); }} placeholder={grades[c.n] && grades[c.n] !== "상" ? "이유 한 줄 (필수)" : "이유 한 줄"} aria-label={`${c.name} 이유`} /></div>)}</div>
       {others.length ? <p className="yp-hint">다른 사람 채점: {others.map(([, score]) => `${score.name} ${CARD_CRITERIA.map(c => score.grades[c.n] ?? "·").join("")}`).join(" · ")}</p> : null}
       <div className="yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={busy || !done || CARD_CRITERIA.some(c => grades[c.n] && grades[c.n] !== "상" && !notes[c.n]?.trim())}
         onClick={() => onSave(Object.fromEntries(Object.entries(grades)) as Record<string, CardGrade>, Object.fromEntries(Object.entries(notes).filter(([, note]) => note?.trim())) as Record<string, string>)}>{busy ? "저장하는 중…" : "채점 저장"}</button>
