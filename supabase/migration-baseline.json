@@ -957,6 +957,13 @@
         "production"
       ],
       "notes": "Owner approved Production on 2026-10-30 (\"둘다 반영해\"). Applied in one transaction with its schema history row and read back (five finance_read policies are active-member only, bank accounts still finance-only, staff check in os_fin_before_write, history 1). Not applied to DEV. Replaces finance_read on five tables, finance_update on card_transactions/recurring_overrides, finance_insert on recurring_overrides and the two finance-receipts storage policies; os_fin_before_write/os_fin_commit/os_fin_log_action are the live bodies (md5 checked on Production) plus staff lines. Rollback-only run on DEV: staff read card uses (bank/payments 0), save purpose+category through os_fin_commit, and are refused amount change, archive, insert, card edit, bank rule, bank CSV log; finance member still edits amounts; anon has no grant."
+    },
+    {
+      "file": "20261030120000_telegram_meeting_share.sql",
+      "sha256": "da14fc31b8d46e187f00ca50461bc1904424e3d74bdc74a254e030cda61f2757",
+      "purpose": "회의 확정 → 텔레그램: os_telegram_chats.meeting_share_business (방마다 받을 사업, /회의공유 마이인|에듀|회사)",
+      "requiresApproval": true,
+      "notes": "Additive: one nullable text column (myin/edu/company) on a service-role table; existing chats stay off. Not applied yet."
     }
   ],
   "legacyMigrations": [
