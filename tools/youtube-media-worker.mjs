@@ -506,6 +506,23 @@ export function mergeVoiceDictionaries(fromDir, toDir) {
   return { readings: newReadings.length, tests: newTests.length };
 }
 
+/** 음성 사전 (phase ④): the run's copy reads what the OS keeps; his notes (keys starting with _, the file's 설명) stay. */
+export function writeVoiceDictionaries(dir, dictionary) {
+  const read = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return {}; } };
+  const readings = read(path.join(dir, "읽기사전.json")), tests = read(path.join(dir, "어색문장모음.json"));
+  const notes = Object.fromEntries(Object.entries(readings).filter(([key]) => key.startsWith("_")));
+  writeFileSync(path.join(dir, "읽기사전.json"), `${JSON.stringify({ ...notes, ...dictionary.readings }, null, 1)}\n`);
+  writeFileSync(path.join(dir, "어색문장모음.json"), `${JSON.stringify({ ...tests, items: dictionary.tests }, null, 1)}\n`);
+}
+/** The run's dictionaries after the voice, as the OS keeps them (notes left out), so lines voice_fix added reach the OS. */
+export function readVoiceDictionaries(dir) {
+  const read = (file) => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { return null; } };
+  const readings = read(path.join(dir, "읽기사전.json")), tests = read(path.join(dir, "어색문장모음.json"));
+  if (!readings && !tests) return null;
+  return { readings: Object.fromEntries(Object.entries(readings ?? {}).filter(([key, value]) => !key.startsWith("_") && typeof value === "string")),
+    tests: Array.isArray(tests?.items) ? tests.items : [] };
+}
+
 /** Process one v13 words job; returns false when there is none (or this PC has no v13 package). */
 export async function processMyinWords() {
   if (!myinPkg) return false;
@@ -536,6 +553,7 @@ export async function processMyinWords() {
     const timing = path.join(work, "tools", "voice_timing");
     const fixed = [];
     const hasVoice = existsSync(path.join(voiceDir, "voice.wav")), hasTool = existsSync(path.join(timing, "voice_fix.py"));
+    if (job.dictionary && existsSync(timing)) writeVoiceDictionaries(timing, job.dictionary);
     if (fixes.length && hasVoice && hasTool) {
       current.step = "voice fix";
       for (const fix of fixes) {
@@ -543,7 +561,8 @@ export async function processMyinWords() {
           ...(fix.video ? ["--video", "--video_work", videoJob] : [])], { cwd: timing, env });
         fixed.push({ memo: fix.memo, ok: result.ok, report: fixReport(result.out) });
       }
-      if (fixed.some((fix) => fix.ok)) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
+      // Without the OS's dictionary (an older OS) new lines go back into the package instead.
+      if (fixed.some((fix) => fix.ok) && !job.dictionary) mergeVoiceDictionaries(timing, path.join(job.layout === "short" ? myinPkgShort : myinPkg, "tools", "voice_timing"));
     } else if (fixes.length) {
       // Never voice a whole video again for a memo: it stays as it was and the screen says why.
       const why = !hasTool ? "이 영상은 문장만 다시 만드는 도구가 없는 패키지로 시작했어요." : "영상 만드는 컴퓨터에 이 영상의 음성 작업 폴더가 없어요.";
@@ -573,7 +592,8 @@ export async function processMyinWords() {
     const bundle = path.join(out, "myin-words.json");
     writeFileSync(bundle, JSON.stringify({ words: JSON.parse(readFileSync(path.join(out, "words.json"), "utf8")),
       subtitlesAss: readFileSync(path.join(out, "subs_myin.ass"), "utf8"), subtitleQc: readFileSync(path.join(out, "subs_qc.md"), "utf8"),
-      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(fixed.length ? { fixes: fixed } : {}) }));
+      speech, durationSeconds: seconds(path.join(voiceDir, "voice.wav")), ...(Array.isArray(audit) ? { audit } : {}), ...(fixed.length ? { fixes: fixed } : {}),
+      ...(readVoiceDictionaries(timing) ? { dictionary: readVoiceDictionaries(timing) } : {}) }));
     current.step = "upload";
     await upload(job.bundleUploadUrl, bundle, "application/json");
     // A staff Mac's ③ drafts need this exact voice; without it (older OS, too long, upload trouble) they stay on the render PC.

@@ -1,4 +1,4 @@
-import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
+import { AtSign, BarChart3, CalendarDays, CheckCircle2, Eye, Film, GalleryHorizontal, LayoutGrid, Lightbulb, Link2, Megaphone, Mic, PenLine, Radar, Scissors, Settings, SlidersHorizontal, Smartphone, UploadCloud, Youtube } from "lucide-react";
 import type { NavPage, NavStage } from "../navigation";
 
 // Owner decision 2026-10-21: the side menu is 내 영상 · 스케줄 · 성과; the steps live inside a video (its progress line), so nobody
@@ -19,6 +19,9 @@ export const YOUTUBE_V1_STEP_PAGES: NavPage[] = [
   { label: "최종 검토", href: "/content/final-check", navHref: "/content/projects", icon: Eye, aliases: ["영상 피드백"], ready: true },
   { label: "업로드", href: "/content/upload", navHref: "/content/projects", icon: UploadCloud, aliases: ["유튜브 업로드", "설명란"], ready: true },
   { label: "쇼츠 · 칼럼", href: "/content/shorts", navHref: "/content/projects", icon: Scissors, aliases: ["쇼츠", "SEO 칼럼", "칼럼"], ready: true },
+  // 로건 OS 요청 2026-10-30: the dictionaries the render PC reads at every voice job — opened from 제작's 음성 확인, not a menu of its own
+  // (the side menu is the owner's decision).
+  { label: "음성 사전", href: "/content/voice-dictionary", navHref: "/content/projects", icon: Mic, aliases: ["읽기 사전", "발음 사전", "끊김 시험 문제", "음성 수정"], ready: true },
 ];
 // Owner decision 2026-10-29 (메뉴 A안 「만드는 것별」): what is made decides the menu. Shared work (주제 찾기 · 스케줄 · 성과 ·
 // 링크관리) sits under 공통; each platform lists its own videos; 스레드 gets the channel-automation flow, and the rest of the old
@@ -86,6 +89,7 @@ export const YOUTUBE_V1_SCREENS = {
   "/content/confirm": "confirm",
   "/content/links": "links",
   "/content/card-canon": "card-canon",
+  "/content/voice-dictionary": "voice-dictionary",
 } as const;
 export type YoutubeV1Screen = (typeof YOUTUBE_V1_SCREENS)[keyof typeof YOUTUBE_V1_SCREENS];
 /** The new routes (and 단축 링크, 2026-10-26); /content/shorts is the existing screen and is not listed. */

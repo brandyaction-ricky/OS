@@ -13,7 +13,9 @@ test("the switch is off unless YOUTUBE_V1_ENABLED is exactly true", () => {
 
 test("v1 menu is 내 영상 · 스케줄 · 성과 (owner decision 2026-10-21) and 단축 링크 (2026-10-26); the steps sit under 내 영상; 컨펌 under 대표 메뉴", () => {
   assert.deepEqual(YOUTUBE_V1_PAGES.map(page => page.label), ["내 영상", "스케줄", "성과", "링크관리"]);
-  assert.deepEqual(YOUTUBE_V1_STEP_PAGES.map(page => [page.href, page.navHref]), [["/content/plan", "/content/projects"], ["/content/make", "/content/projects"], ["/content/final-check", "/content/projects"], ["/content/upload", "/content/projects"], ["/content/shorts", "/content/projects"]]);
+  assert.deepEqual(YOUTUBE_V1_STEP_PAGES.map(page => [page.href, page.navHref]), [["/content/plan", "/content/projects"], ["/content/make", "/content/projects"], ["/content/final-check", "/content/projects"], ["/content/upload", "/content/projects"], ["/content/shorts", "/content/projects"],
+    // 음성 사전 (로건 OS 요청 2026-10-30): opened from 제작's 음성 확인 and by address, not a menu of its own.
+    ["/content/voice-dictionary", "/content/projects"]]);
   assert.ok(YOUTUBE_V1_PAGES.every(page => page.processNumber === undefined), "no legacy process bar on v1 screens");
   assert.equal(findStage("/content/confirm").id, "ceo");
   assert.equal(findStage("/content/confirm").label, "대표 메뉴");

@@ -38,3 +38,19 @@ test("mergeVoiceDictionaries adds only new readings and new break tests to the p
   assert.equal(worker.fixReport("W1030 ... Redirects are currently not supported\nLoading weights: 100%\n찾은 문장: 문단 1 · 문장 1 — 대신 듣고 보면서 알 수 있어요.\n목소리 업데이트: …/voice.wav"),
     "찾은 문장: 문단 1 · 문장 1 — 대신 듣고 보면서 알 수 있어요.\n목소리 업데이트: …/voice.wav");
 });
+
+// 음성 사전 (phase ④): the run's copy reads what the OS keeps, and its dictionaries go back with the bundle.
+test("writeVoiceDictionaries keeps his notes and readVoiceDictionaries leaves them out", async () => {
+  const { mkdtempSync, writeFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const worker = await import(`../tools/youtube-media-worker.mjs?dict-${Date.now()}`);
+  const dir = mkdtempSync(join(tmpdir(), "dict-run-"));
+  writeFileSync(join(dir, "읽기사전.json"), JSON.stringify({ _설명: "노트", GPT: "옛 값" }));
+  writeFileSync(join(dir, "어색문장모음.json"), JSON.stringify({ _설명: "노트2", items: [{ id: "old" }] }));
+  worker.writeVoiceDictionaries(dir, { readings: { GPT: "지피티" }, tests: [{ id: "a", text: "문장", bind: ["가|나"], was: "", from: "" }] });
+  assert.deepEqual(worker.readVoiceDictionaries(dir), { readings: { GPT: "지피티" }, tests: [{ id: "a", text: "문장", bind: ["가|나"], was: "", from: "" }] });
+  const { readFileSync } = await import("node:fs");
+  assert.equal(JSON.parse(readFileSync(join(dir, "읽기사전.json"), "utf8"))._설명, "노트");
+  assert.equal(JSON.parse(readFileSync(join(dir, "어색문장모음.json"), "utf8"))._설명, "노트2");
+});
