@@ -88,8 +88,11 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   const data: YpMake | undefined = make?.data;
   const editable = Boolean(project && (project.yp.stage === "make" || (project.yp.stage === "review" && project.yp.gates.review.state !== "wait")));
   const reviewFields = project ? editableFields(project, "review") : [];
-  const canFinal = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.final"));
-  const canThumb = editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
+  // 업로드 전 급한 수정 (로건 요청 2026-10-30): 컨펌 뒤에도 유튜브에 올리기 전까지 새 최종본 · 썸네일 파일은 올릴 수 있어요.
+  const late = project?.yp.stage === "upload" && bundle?.stages.upload.data.run?.status !== "done";
+  const canFinal = late || editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.final"));
+  const canThumb = late || editable && (project?.yp.stage === "make" || reviewFields === "all" || reviewFields.includes("make.thumbs"));
+  const confirmedAt = project?.yp.gates.review.state === "ok" ? project.yp.gates.review.decidedAt ?? "" : "";
   // 일정 is optional (owner decision 2026-10-25): making goes on without a date; the date only feeds 스케줄.
   const reason = !finals.length ? (short ? "최종본을 만들거나 올려 주세요" : "최종본을 올려 주세요") : data && !short ? thumbsMissing(data) : "";
   const action = bundle ? stepAction(page, 3, project?.yp.stage === "make" ? { kind: "button", label: "다음: 최종 검토", reason, busy: moving, onClick: () => void move() } : { kind: "status", status: "제작 끝남" }) : null;
@@ -135,7 +138,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </details> : <>
       <YpSection n={++n} title={auto ? "최종본 만들기" : "최종본 올리기"} gq={short ? "확정한 대본으로 자동으로 만들어요" : anim ? "원고로 영상을 자동으로 만들어요" : undefined} need>
-        {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>
+        {finals.length ? <ul className="yp-hist" style={{ marginBottom: 10 }}>{[...finals].reverse().map(final => <li key={final.v}><time>v{final.v}{final.v === finals.length ? " 최신" : ""}</time>{confirmedAt && final.at > confirmedAt ? <span className="yp-tag yp-warn">컨펌 뒤 올림</span> : null}
           <span>{final.source === "myin" ? "자동 제작" : final.name} · {md(final.at)} · {sizeLabel(final.bytes)}{final.durationSeconds ? ` · ${Math.floor(final.durationSeconds / 60)}분 ${Math.round(final.durationSeconds % 60)}초` : ""}</span></li>)}</ul> : null}
         {auto && page.demo ? <div className="yp-note yp-gray"><div>데모에서는 자동 제작을 하지 않아요.</div></div> : null}
         {auto && !page.demo ? <MyinV13Panel sourceId={project.id} title={projectName(project)} embedded onFinal={onFinal} short={short}
@@ -146,13 +149,14 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
             <b>{finals.length ? `최종본 v${finals.length} 저장됨` : auto ? "직접 만든 영상이 있으면 올려요" : "영상 파일을 올려 주세요"}</b>
             <span style={{ fontSize: 12 }}>mp4 · mov · m4v · webm</span>
             <div className="yp-row-btns" style={{ justifyContent: "center" }}><button type="button" className="yp-btn" onClick={() => finalInput.current?.click()}>{finals.length ? "새 버전 올리기" : "파일 올리기"}</button></div>
+            {late ? <span style={{ fontSize: 12 }}>최종 검토는 컨펌됐어요. 새 버전을 올리면 업로드 때 그 버전이 올라가요.</span> : null}
             {finalError ? <p className="yp-unsaved" role="alert" style={{ fontSize: 12, margin: "8px 0 0" }}>{finalError}</p> : null}</div> : null}
         <input ref={finalInput} type="file" hidden accept="video/mp4,video/quicktime,video/x-m4v,video/webm" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadFinal(file); }} />
       </YpSection>
       {short ? null : <YpSection n={++n} title="최종 썸네일" gq="A · B 필수, C 선택" need>
-        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot}
+        <div className="yp-g3">{SLOTS.map(slot => <FinalThumb key={slot} page={page} slot={slot} make={data} can={canThumb} fix={canThumb && !late} busy={busy === `thumb-${slot}`} job={redoJob} open={fixing === slot}
           onUpload={file => void uploadThumb(slot, file)} onFix={() => setFixing(slot)} onReset={() => void save({ pair: { slot, title: "", copy: "", reason: "" } }, "pair")} />)}</div>
-        {fixing && canThumb ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
+        {fixing && canThumb && !late ? <PairPanel key={fixing} page={page} slot={fixing} make={data} job={redoJob} saving={busy === "pair"} onClose={() => setFixing(null)}
           onSave={(title, copy, reasonText) => save({ pair: { slot: fixing, title, copy, reason: reasonText } }, "pair").then(ok => { if (ok) setFixing(null); })}
           onRedo={reasonText => setRedoAsk({ slot: fixing, reason: reasonText })} /> : null}
         <p className="yp-hint">jpg · png로 올려요. 마음에 안 들면 [고치기]에서 직접 고치거나 [공식대로 다시 뽑기]로 후보를 받아요. 바꾼 칸은 최종 검토에서 대표가 확인해요.</p>
@@ -162,7 +166,7 @@ export function YoutubeMakeScreen({ header }: { header: ReactNode }) {
   </YpFrame>;
 }
 
-function FinalThumb({ page, slot, make, can, busy, job, open, onUpload, onFix, onReset }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
+function FinalThumb({ page, slot, make, can, fix, busy, job, open, onUpload, onFix, onReset }: { page: YpPage; slot: YpSlot; make: YpMake; can: boolean; fix: boolean; busy: boolean; job: ReturnType<typeof useStaffJob>;
   open: boolean; onUpload: (file: File) => void; onFix: () => void; onReset: () => void }) {
   const input = useRef<HTMLInputElement>(null);
   const plan = page.bundle!.stages.plan.data;
@@ -178,10 +182,10 @@ function FinalThumb({ page, slot, make, can, busy, job, open, onUpload, onFix, o
     <div style={{ fontSize: 15, fontWeight: 600, lineHeight: 1.45 }}>{pair.title}</div>
     {pair.changed ? <p className="yp-hint" style={{ margin: 0 }}>컨펌본: {confirmed.title}{confirmed.thumb?.copy && confirmed.thumb.copy !== pair.copy ? ` · 「${confirmed.thumb.copy}」` : ""}{pair.reason ? <><br />바꾼 이유: {pair.reason}</> : null}</p> : null}
     {job.status?.job?.slot === slot ? <JobLine job={job} onRetry={onFix} /> : null}
-    {redo && can && !open ? <button type="button" className="yp-btn yp-sm" onClick={onFix}><Sparkles size={14} /> 공식대로 뽑은 후보 {redo.titles.length + redo.copies.length}개 보기</button> : null}
+    {redo && fix && !open ? <button type="button" className="yp-btn yp-sm" onClick={onFix}><Sparkles size={14} /> 공식대로 뽑은 후보 {redo.titles.length + redo.copies.length}개 보기</button> : null}
     {can ? <div className="yp-row-btns"><button type="button" className="yp-btn yp-sm" disabled={busy} onClick={() => input.current?.click()}>{busy ? "올리는 중…" : final ? "다시 올리기" : "이미지 올리기"}</button>
-      {!open ? <button type="button" className="yp-lnk" onClick={onFix}>고치기</button> : null}
-      {pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={onReset}>컨펌본으로 되돌리기</button> : null}
+      {fix && !open ? <button type="button" className="yp-lnk" onClick={onFix}>고치기</button> : null}
+      {fix && pair.changed ? <button type="button" className="yp-lnk" disabled={busy} onClick={onReset}>컨펌본으로 되돌리기</button> : null}
       {final ? <a className="yp-ib" aria-label="내려받기" href="#" onClick={async event => { event.preventDefault(); const url = await page.client?.assetUrl(page.bundle!.project.id, final.path); if (url) window.open(url, "_blank", "noopener"); }}><Download size={14} /></a> : null}</div> : null}
     <input ref={input} type="file" hidden accept="image/jpeg,image/png" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) onUpload(file); }} />
   </div>;

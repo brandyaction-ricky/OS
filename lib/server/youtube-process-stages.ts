@@ -7,7 +7,7 @@ import { narrationFromMarkdown } from "@/lib/youtube-narration-document";
 import { editableFields } from "@/lib/youtube-process/confirm";
 import { parseYoutubeRef, projectFromRecord, projectName, type YpGate, type YpKind, type YpProject } from "@/lib/youtube-process/project";
 import {
-  confirmPlan, draftMissing, hiddenTagsOf, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
+  confirmPlan, draftMissing, hiddenTagsOf, lateMakeOk, outlineMissing, PLAN_FIELD_KEY, scriptFromPlan, SLOTS, stageData, STAGE_RECORD, thumbsMissing, withScriptVersion,
   columnSignature, type YpColumn, type YpColumnItem, type YpColumnMyin, type YpMake, type YpOutline, type YpPlan, type YpStageKind, type YpStages, type YpUpload,
 } from "@/lib/youtube-process/stages";
 import { checkColumnHtml, cleanColumnHtml, columnForMyin, type ColumnFill } from "@/lib/seo-column";
@@ -124,8 +124,9 @@ function assertPlanEditable(project: YpProject, patch: Patch<"plan">) {
   if (!fields.length || keys.some(key => !fields.includes(PLAN_FIELD_KEY[key])))
     throw project.yp.gates.draft.state === "changes" ? new ApiError(409, "FIELD_LOCKED", "대표가 수정 요청에서 고른 칸만 고칠 수 있어요.") : locked("기획안은 대표 컨펌을 받아 확정됐어요.");
 }
-function assertMakeEditable(project: YpProject, patch: Patch<"make">) {
+function assertMakeEditable(project: YpProject, patch: Patch<"make">, uploaded: boolean) {
   if (project.yp.stage === "make") return;
+  if (lateMakeOk(project.yp.stage, uploaded, patch)) return;
   if (project.yp.stage !== "review") throw locked(project.yp.stage === "upload" || project.yp.stage === "done" ? "최종 검토 컨펌이 끝나 제작은 고칠 수 없어요." : "구성안을 마치면 제작이 열려요.");
   const fields = editableFields(project, "review");
   if (fields === "all") return;
@@ -265,7 +266,7 @@ export async function saveYoutubeStage(actor: RequestActor, id: string, kind: Yp
     data = nextOutline(stages.outline.data, patch, actor, now);
   } else if (kind === "make") {
     const patch = stagePatchSchemas.make.parse(input.patch);
-    assertMakeEditable(project, patch);
+    assertMakeEditable(project, patch, stages.upload.data.run?.status === "done");
     data = nextMake(stages.make.data, patch, actor, now, project.id);
   } else if (kind === "column") {
     const patch = stagePatchSchemas.column.parse(input.patch);
