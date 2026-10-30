@@ -12,7 +12,7 @@ import { readStages } from "./youtube-process-stages";
 
 // GPT 초안 (owner 2026-10-29, ③): the OS does a staff-AI job card itself with the company's GPT credit — the same job record, the
 // same card, the same checks and saves as a staff member's own AI, so a GPT 초안 lands where theirs would and is fixed the same way.
-const PREFACE = `아래 작업 카드는 직원 AI에게 주는 것과 같습니다. 이번에는 OS가 직접 당신에게 맡깁니다.
+export const PREFACE = `아래 작업 카드는 직원 AI에게 주는 것과 같습니다. 이번에는 OS가 직접 당신에게 맡깁니다.
 - 카드가 「먼저 끝까지 열 문서」로 적은 문서는 본문을 붙였습니다. 문서를 열라는 지시는 붙인 본문을 처음부터 끝까지 읽는 것으로 대신합니다.
 - OS 검색 · 문서 도구는 쓸 수 없습니다. 카드와 붙인 문서에 없는 사실 · 후기 · 수치는 지어내지 않습니다.
 - 답은 카드가 말하는 result 객체 하나를 JSON으로만 냅니다. action · job_id · lease · model은 쓰지 않고, 설명 문장도 붙이지 않습니다.
@@ -24,7 +24,7 @@ const gptActor = (owner: Owner) => ({ type: "agent", id: owner.id, ownerId: owne
   allowedStatuses: [], scopes: [], organizationId: null, mustChangePassword: false, supabase: createServiceSupabase() }) as unknown as RequestActor;
 
 /** The documents a card tells its AI to open, pasted in (each up to 40,000 letters, 160,000 in all). */
-async function cardDocs(instructions: string) {
+export async function cardDocs(instructions: string) {
   const ids = [...new Set([...instructions.matchAll(/doc_id: ([0-9a-f-]{36})/gi)].map((match) => match[1]))];
   if (!ids.length) return "";
   const { data } = await createServiceSupabase().from("os_documents").select("id,title,content_md").in("id", ids).neq("status", "archived");
@@ -37,7 +37,7 @@ async function cardDocs(instructions: string) {
 }
 
 /** GPT may answer { result: … } as the card's submit line shows; the saves want the object inside. */
-const unwrap = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) && "result" in value && Object.keys(value).length <= 4
+export const unwrap = (value: unknown) => value && typeof value === "object" && !Array.isArray(value) && "result" in value && Object.keys(value).length <= 4
   ? (value as { result: unknown }).result : value;
 
 /** Takes the job, asks GPT (a second try with the OS's format problems), and completes or fails it like a staff AI would. */
