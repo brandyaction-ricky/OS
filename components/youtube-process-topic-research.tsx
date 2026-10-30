@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Search, Sparkles } from "lucide-react";
 import { apiRequest } from "@/lib/api-client";
 import { BREAKOUT, compactCount, isBreakout, ratioLabel, type DiscoverVideo } from "@/lib/youtube-process/discover";
-import { projectName, topicEditable, type YpProject, type YpRef } from "@/lib/youtube-process/project";
+import { projectName, topicEditable, topicKeywords, type YpProject, type YpRef } from "@/lib/youtube-process/project";
 import type { YpShortTopicPick, YpTopicFormula } from "@/lib/youtube-process/stages";
 import { CostTag } from "./cost-notice";
 import { useSession } from "./session-provider";
@@ -83,6 +83,6 @@ export function TopicFormulas({ project, onPick }: { project: YpProject; onPick:
           <span className="yp-muted">{item.refs.slice(0, 4).map(ref => ref.title).join(" · ")}</span></li>)}</ol></details> : null}
       {research?.notes ? <details className="yp-more-fields"><summary>내 AI가 남긴 메모</summary><p style={{ whiteSpace: "pre-line", fontSize: 13 }}>{research.notes}</p></details> : null}
     </div>
-    <SendDialog page={page} task="topic-formula" open={send} onClose={() => setSend(false)} job={job} queryDefault={projectName(project)} />
+    <SendDialog page={page} task="topic-formula" open={send} onClose={() => setSend(false)} job={job} queryDefault={topicKeywords(projectName(project), project.yp.topic.target)} />
   </YpSection>;
 }

@@ -165,7 +165,7 @@ export function YoutubeDraftScreen({ header }: { header: ReactNode }) {
           setRefUrl(""); edit({ extraRefs: [...form.extraRefs, ref] }, true); }}>
           <input className="yp-in" placeholder="유튜브 영상 주소" aria-label="참고 영상 주소" value={refUrl} onChange={event => setRefUrl(event.target.value)} /><button type="submit" className="yp-btn">추가</button></form> : null}
       </div></section></aside></div>
-      <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? topicKeywords(projectName(project)) : undefined} />
+      <SendDialog page={page} task="plan" open={send} onClose={() => setSend(false)} job={job} queryDefault={project ? topicKeywords(projectName(project), project.yp.topic.target) : undefined} />
     </div> : null}
   </YpFrame>;
 }

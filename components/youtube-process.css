@@ -138,6 +138,8 @@
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-n{width:22px;height:22px;border-radius:6px;background:var(--panel-3);display:grid;place-items:center;font-size:12px;font-weight:700;color:var(--text-2);flex:none}
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-gq{color:var(--muted);font-size:13px}
 .linear-shell .ui-v2.yp .yp-fsec-h .yp-sp{flex:1}
+.linear-shell .ui-v2.yp .yp-warn-t{color:var(--warning)}
+.linear-shell .ui-v2.yp .yp-fsec-h .yp-gwarn{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--warning);font-size:13px}
 .linear-shell .ui-v2.yp .yp-fsec-b{padding:10px 16px 16px}
 .linear-shell .ui-v2.yp .yp-need{font-size:12px;font-weight:700;color:var(--danger);background:var(--danger-soft);border-radius:10px;padding:0 7px;min-height:20px;display:inline-flex;align-items:center}
 .linear-shell .ui-v2.yp .yp-opt{font-size:12px;font-weight:600;color:var(--muted);background:var(--panel-3);border-radius:10px;padding:0 7px;min-height:20px;display:inline-flex;align-items:center}

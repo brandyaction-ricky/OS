@@ -92,8 +92,13 @@ test("the same video under different addresses counts as one reference", () => {
 });
 
 // 로건 QA 10/30: the 기획안's market search used the whole topic sentence and found nothing.
-test("the search words are the topic's first three words, without [tags] or an object particle", () => {
-  assert.equal(topicKeywords("[QA테스트] 해야 할 일을 자꾸 미루는 건 게을러서가 아니에요"), "해야 할 일");
+// 로건 다시 요청 10/30: 「하루 일이 두」 found 귤 · 결혼 · 아기 videos — words with meaning, and who it is for from the 정밀 타겟.
+test("the search words are the topic's meaning words and the 정밀 타겟's last word", () => {
+  assert.equal(topicKeywords("[QA확인] 하루 일이 두 개뿐인데 저녁마다 지치는 이유", "일이 안 맞는 것 같은데 이유를 모르는 3~7년 차 직장인"), "저녁 지치는 직장인");
+  assert.equal(topicKeywords("[QA테스트] 해야 할 일을 자꾸 미루는 건 의지가 약해서가 아니다", "퇴근 후 무엇부터 할지 막힌 직장인"), "의지 미루는 직장인");
+  assert.equal(topicKeywords("만나고 싶은데 쉬고도 싶을 때", "주말마다 약속과 휴식 사이에서 고민하는 20대"), "주말 약속 20대");
+  assert.equal(topicKeywords("연봉 올리려면 이직해야 할까?"), "연봉 이직");
   assert.equal(topicKeywords("퇴사 고민"), "퇴사 고민");
-  assert.equal(topicKeywords("「강점」이 뭔지 모를 때? 이렇게"), "강점 이 뭔지");
+  assert.equal(topicKeywords("「강점」이 뭔지 모를 때? 이렇게"), "강점");
+  assert.equal(topicKeywords("하루"), "하루");
 });

@@ -61,9 +61,10 @@ export interface YpMake {
 export interface YpPairEdit { title: string; copy: string; reason: string; at: string; by: string }
 /** The formulas behind AI titles and copies (패키징 정본 작업 순서 2): the repeated words with [slots], how many references share them, and which. */
 export interface YpPattern { skeleton: string; count: string; examples?: string[]; thumbs?: number[] }
-export interface YpPatterns { titlePatterns: YpPattern[]; copyPatterns: { main: YpPattern[]; sub: YpPattern[] }; market?: { query: string; count: number } }
+/** market.off: most found videos share no word with the topic (「검색어를 바꿔 보세요」). */
+export interface YpPatterns { titlePatterns: YpPattern[]; copyPatterns: { main: YpPattern[]; sub: YpPattern[] }; market?: { query: string; count: number; off?: boolean } }
 export interface YpRedo extends Partial<YpPatterns> {
-  at: string; by: string; model: string; jobId: string; market?: { query: string; count: number };
+  at: string; by: string; model: string; jobId: string; market?: { query: string; count: number; off?: boolean };
   /** One-sentence formulas from the first 다시 뽑기 runs (before the patterns, 2026-10-25). */
   formula?: string; titleBasis?: string; copyFormula?: string; copyBasis?: string;
   titles: YpRedoPick[]; copies: YpRedoPick[];
@@ -194,6 +195,12 @@ export const SPEC_OPTIONS: Record<YpKind, Record<"res" | "fps" | "ratio", string
   // 카드뉴스 (설계서 2026-10-30): one size, no 구성안 screen reads these.
   card: { res: ["1080 × 1350"], fps: ["—"], ratio: ["4:5 세로"] },
 };
+/** 로건 QA 10/30: a value saved under an older label (「30fps (기본)」 before 60fps became the 애니 default) shows as its option now
+ * (「30fps」), so the list never holds two 「(기본)」. */
+export function specOption(kind: YpKind, key: "res" | "fps" | "ratio", saved: string) {
+  const options = SPEC_OPTIONS[kind][key], bare = (value: string) => value.replace(/\s*\(.*\)$/, "");
+  return options.find(option => option === saved) ?? options.find(option => bare(option) === bare(saved)) ?? saved;
+}
 // 보낼 곳 (owner decision 2026-10-26: 회사 유튜브는 마이인 자사몰로, 영상마다 UTM을 따로): a MYIN page, or any https address.
 export const UTM_DESTS = [["정밀 진단", "https://www.myinlab.co.kr/services/n6"], ["무료 진단", "https://www.myinlab.co.kr/services/free"],
   ["마이인 홈", "https://www.myinlab.co.kr/"], ["직접 입력", ""]] as const;
@@ -237,7 +244,9 @@ export const lateMakeOk = (stage: string, uploaded: boolean, patch: object) =>
   stage === "upload" && !uploaded && Object.entries(patch).every(([key, value]) => value === undefined || key === "addFinal" || key === "thumb");
 
 // ── 기획안 (S3) ──
-export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && (thumb.mode === "img" ? thumb.path : (thumb.copy?.trim() || thumb.screen?.trim())));
+// 로건 QA 10/30: only looking at the 「이미지」 tab of a card already written turned it back to empty — either one fills it (the card
+// shows the words while it has no image).
+export const thumbFilled = (thumb?: YpThumb | null) => Boolean(thumb && ((thumb.mode === "img" && thumb.path) || thumb.copy?.trim() || thumb.screen?.trim()));
 /** The one-line reason the 기획안 컨펌 request is not ready, or "" (시안 draftMissing). */
 export function draftMissing(plan: YpPlan) {
   for (const [index, name] of [[0, "첫째"], [1, "둘째"]] as const) if (!plan.titles[index]?.text.trim()) return `${name} 줄 제목(${slotOf(index)})을 써 주세요`;

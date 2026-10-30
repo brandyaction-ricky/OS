@@ -170,7 +170,9 @@ export function SendDialog({ page, task, open, onClose, job, defaults, extra, qu
             <div style={{ marginTop: 8 }}><select className="yp-in yp-sel1" aria-label="GPT 모델" value={tier} onChange={event => setTier(event.target.value as GptTier)}>
               {(Object.keys(GPT_TIERS) as GptTier[]).map(key => <option key={key} value={key}>{GPT_TIERS[key].label} · {modelName(GPT_TIERS[key].model)}</option>)}</select></div></div> : null}
           {tab === "queue" ? <div className="yp-kvbox"><b>내 AI</b><br /><span className="yp-eta">{job.status?.myAi.lastUsedAt ? `마지막 확인 ${agoLabel(since(job.status.myAi.lastUsedAt)!)}` : "아직 연결되지 않았어요"}</span><br />
-            <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 다음에 확인할 때 가져가 쓰고, 끝나면 칸에 넣어요. 지금 바로 해야 하면 [바로 시키기]를 눌러요.</span></div> : null}
+            <span className="yp-muted" style={{ fontSize: 12 }}>내 AI가 다음에 확인할 때 가져가 쓰고, 끝나면 칸에 넣어요. 지금 바로 해야 하면 [바로 시키기]를 눌러요.</span>
+            {/* 로건 QA 10/30: a 내 AI last seen hours ago may be off; say so before the PD sends and waits. */}
+            {(since(job.status?.myAi.lastUsedAt ?? null) ?? 0) > 60 ? <div className="yp-note yp-warn" role="status" style={{ marginTop: 8 }}><div>내 AI가 1시간 넘게 확인하지 않았어요. 컴퓨터의 Claude가 꺼져 있으면 보내도 가져가지 않아요. 지금 필요하면 {gptOk ? "[GPT로 바로]나 " : ""}[바로 시키기]로 해 주세요.</div></div> : null}</div> : null}
           {tab === "now" ? <><ol className="yp-nowsteps"><li>[보내고 문장 복사]를 눌러요</li><li>Claude(데스크톱 · 웹)에서 새 대화를 열고 붙여 넣어요</li><li>결과가 오면 이 칸에 들어가요. 그동안 대화는 열어 둬요</li></ol>
             <div className="yp-linkbox"><code>{MY_AI_PROMPT}</code></div>{copied ? <p className="yp-hint">복사했어요. Claude에 붙여 넣어 주세요.</p> : null}</> : null}
           {tab === "paste" ? <form onSubmit={event => { event.preventDefault(); void submitPaste(); }}>
@@ -206,7 +208,7 @@ export function FormulaNote({ name, patterns, fallback, basis }: { name: string;
 
 /** All the formulas behind an AI 기획안: title patterns, then main · sub copy patterns. */
 export function PatternsBox({ patterns }: { patterns: YpPatterns }) {
-  return <>{patterns.market ? <div className="yp-muted" style={{ fontSize: 12 }}>참고 영상: 「{patterns.market.query}」 시장 영상 {patterns.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순)</div> : null}
+  return <>{patterns.market ? <div className="yp-muted" style={{ fontSize: 12 }}>참고 영상: 「{patterns.market.query}」 시장 영상 {patterns.market.count}편 (조회수 5만+ · 구독자 대비 조회수 순){patterns.market.off ? <b className="yp-warn-t"> · 찾은 영상이 주제와 동떨어져 보여요. 검색어를 바꿔 다시 맡겨 보세요.</b> : null}</div> : null}
     <FormulaNote name="제목 공식" patterns={patterns.titlePatterns} />
     <FormulaNote name="썸네일 메인 카피 공식" patterns={patterns.copyPatterns.main} />
     <FormulaNote name="썸네일 서브 카피 공식" patterns={patterns.copyPatterns.sub} /></>;
