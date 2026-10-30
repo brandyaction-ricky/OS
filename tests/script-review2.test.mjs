@@ -17,6 +17,8 @@ test("the request is the rules and two canons first, then only the title, thumbn
   const { prefix, prompt, paragraphs } = review2Prompt({ review: "검수 정본 본문", tone: "말투 정본 본문" }, { title: "제목 A", thumbCopy: "카피 A", script });
   assert.equal(paragraphs, 3);
   assert.ok(prefix.includes("별도 판정") && prefix.includes("=== [원고 검수 정본] ===\n검수 정본 본문") && prefix.includes("=== [원고 말투 정본] ===\n말투 정본 본문"));
+  // 2026-10-30: a PD caught two job examples (개발 5년 차, 7년 차 디자이너) only after the render — gate 5 now judges them from the 원고.
+  assert.ok(prefix.includes("관문 5 직무 장면"));
   assert.ok(prompt.startsWith("=== 이 영상 ===\n제목: 제목 A\n썸네일 카피: 카피 A"));
   assert.ok(prompt.includes("[3] 셋째 문단이에요.") && !prompt.includes("문서 하나"), "the 출처 section is not spoken");
   assert.deepEqual(REVIEW2_SCHEMA.properties.gates.items.properties.gate.enum, [2, 3, 4, 5, 6]);
