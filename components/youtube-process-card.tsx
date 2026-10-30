@@ -1,0 +1,318 @@
+"use client";
+// 카드뉴스 (설계서 2026-10-30): 주제 → 카드 만들기 → 최종 검토 → 내보내기. Cards are written and seen in one place: the preview is the
+// same drawing the PNG uses (lib/cardnews/card-slide), so what the PD sees is what gets downloaded.
+import "./youtube-process-card.css";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ArrowRight, Copy, Download, GalleryHorizontal, Plus, Trash2 } from "lucide-react";
+import { CardSlideView } from "@/lib/cardnews/card-slide";
+import { cardsMissing } from "@/lib/cardnews/cards";
+import { addCardSlide, CARD_FORMAT_IDS, CARD_FORMATS, CARD_SIZE, cardProblems, removeCardSlide, slideSpec, type CardDraft, type CardFormatId } from "@/lib/cardnews/formats";
+import { draftTag } from "@/lib/youtube-process/gpt-draft";
+import { projectName, stepHref, type YpProject } from "@/lib/youtube-process/project";
+import { CostTag } from "./cost-notice";
+import { useSession } from "./session-provider";
+import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
+import { errorMessage, youtubeProcessClient } from "./youtube-process-data";
+import { GateBanner, gateAction, gateSub, LockedStep, stepAction, Subject, useGate, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+
+const letters = (value: string) => [...value].length;
+const SOURCE_NAME = { longform: "롱폼", short: "숏폼", threads: "스레드", none: "" } as const;
+
+/** One card at `width` px, drawn at 1080 × 1350 and scaled; reports the fields whose text runs past their lines. */
+export function CardPreview({ draft, index, width, onOver }: { draft: CardDraft; index: number; width: number; onOver?: (index: number, fields: string[]) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const report = useRef(onOver);
+  useEffect(() => { report.current = onOver; }, [onOver]);
+  useLayoutEffect(() => {
+    let live = true;
+    const measure = () => { if (!live || !box.current) return;
+      report.current?.(index, [...box.current.querySelectorAll<HTMLElement>("[data-card-field]")].filter(el => el.scrollHeight > el.clientHeight + 1).map(el => el.dataset.cardField ?? "")); };
+    measure();
+    void document.fonts?.ready.then(measure);
+    return () => { live = false; };
+  }, [draft, index]);
+  const scale = width / CARD_SIZE.width;
+  return <div className="yp-card-pv" style={{ width, height: Math.round(CARD_SIZE.height * scale) }} ref={box}>
+    <div style={{ transform: `scale(${scale})`, transformOrigin: "0 0", width: CARD_SIZE.width, height: CARD_SIZE.height }}><CardSlideView draft={draft} index={index} /></div>
+  </div>;
+}
+
+/** 주제 찾기 › 카드뉴스: a topic of its own (the other three ways in are buttons on a finished video or an approved Threads post). */
+export function CardStart() {
+  const { accessToken, demo } = useSession();
+  const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
+  const router = useRouter();
+  const [form, setForm] = useState({ title: "", target: "", note: "" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [projects, setProjects] = useState<YpProject[] | null>(null);
+  useEffect(() => { if (client) client.list().then(setProjects, reason => setError(errorMessage(reason))); }, [client]);
+  const start = async () => {
+    if (!client) return;
+    setBusy(true); setError("");
+    try { const made = await client.createCard({ from: "none", title: form.title.trim(), target: form.target.trim(), note: form.note.trim() }); router.push(stepHref(1, made.id)); }
+    catch (reason) { setError(errorMessage(reason)); setBusy(false); }
+  };
+  const open = (projects ?? []).filter(project => project.yp.topic.type === "card" && project.yp.stage !== "done");
+  const ready = form.title.trim().length >= 2 && form.target.trim().length > 0;
+  return <>
+    <form className="yp-card yp-pf-start yp-pf-card" onSubmit={event => { event.preventDefault(); if (ready) void start(); }}>
+      <div className="yp-card-h">카드뉴스 시작하기</div>
+      <div className="yp-card-b" style={{ display: "grid", gap: 10 }}>
+        <p className="yp-hint" style={{ margin: 0 }}>롱폼 · 숏폼 · 스레드에서 이어 만들 때는 그 글의 마지막 단계에서 [카드뉴스로 만들기]를 눌러요.</p>
+        <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>한 줄 주제</b><span className="yp-need">필수</span></span>
+          <input className="yp-in" value={form.title} maxLength={200} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="예) 월요일마다 무거운 사람의 공통점" aria-label="한 줄 주제" /></label>
+        <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>누구에게</b><span className="yp-need">필수</span></span>
+          <input className="yp-in" value={form.target} maxLength={300} onChange={event => setForm({ ...form, target: event.target.value })} placeholder="예) 일이 안 맞는 것 같은데 이유를 모르는 3~7년 차 직장인" aria-label="누구에게" /></label>
+        <label className="yp-field" style={{ margin: 0 }}><span className="yp-fld-h"><b>메모 · 근거</b><span className="yp-opt">선택</span></span>
+          <textarea className="yp-in" rows={3} value={form.note} maxLength={2000} onChange={event => setForm({ ...form, note: event.target.value })} placeholder="담을 내용, 근거 자료, 참고 카드뉴스 주소" aria-label="메모 · 근거" /></label>
+        {error ? <p className="yp-errline" role="alert">{error}</p> : null}
+        <div className="yp-row-btns"><button type="submit" className="yp-btn yp-pri" disabled={busy || !ready}>{busy ? "만드는 중…" : "카드 만들러 가기"} <ArrowRight size={14} aria-hidden="true" /></button></div>
+      </div>
+    </form>
+    <CardList title="만드는 중인 카드뉴스" projects={projects === null ? null : open} />
+  </>;
+}
+
+function CardList({ title, projects }: { title: string; projects: YpProject[] | null }) {
+  return <section className="yp-card" style={{ marginTop: 14 }}><div className="yp-card-h">{title} {projects ? projects.length : ""}</div>
+    <div className="yp-card-b">{projects === null ? <p className="yp-hint" role="status">불러오는 중이에요…</p>
+      : projects.length ? <ul className="yp-hist">{projects.map(project => <li key={project.id} style={{ alignItems: "center", gap: 10 }}>
+        <span style={{ flex: 1, minWidth: 0 }}><b>{projectName(project)}</b></span>
+        <Link className="yp-btn yp-sm" href={stepHref(project.yp.stage === "done" ? 5 : project.yp.stage === "topic" ? 0 : project.yp.stage === "draft" ? 1 : project.yp.stage === "review" ? 4 : 5, project.id)}>열기</Link></li>)}</ul>
+      : <p className="yp-pempty">아직 없어요.</p>}</div></section>;
+}
+
+/** [카드뉴스로 만들기] on a finished longform (쇼츠 · 칼럼) or 숏폼 (내보내기), with the 카드뉴스 already made from it. */
+export function CardFromProject({ page }: { page: YpPage }) {
+  const router = useRouter();
+  const project = page.bundle?.project;
+  const [made, setMade] = useState<YpProject[] | null>(null);
+  const [focus, setFocus] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (page.client && project) page.client.list().then(rows => setMade(rows.filter(row => row.yp.cardFrom?.id === project.id)), () => setMade([])); }, [page.client, project]);
+  if (!project || !["upload", "shorts", "done"].includes(project.yp.stage)) return null;
+  const make = async () => {
+    if (!page.client) return;
+    setBusy(true);
+    try { const card = await page.client.createCard({ from: "project", projectId: project.id, focus: focus.trim() }); router.push(stepHref(1, card.id)); }
+    catch (reason) { page.fail(reason); setBusy(false); }
+  };
+  return <YpSection title="카드뉴스로 만들기" gq="이 영상의 내용으로 인스타 카드뉴스를 만들어요">
+    {project.yp.topic.type !== "short" ? <label className="yp-field" style={{ margin: "0 0 8px" }}><span className="yp-fld-h"><b>이 부분 위주로</b><span className="yp-opt">선택</span></span>
+      <input className="yp-in" value={focus} maxLength={500} onChange={event => setFocus(event.target.value)} placeholder="예) 본론 2 · 결정이 많다는 이야기" aria-label="이 부분 위주로" /></label> : null}
+    <div className="yp-row-btns"><button type="button" className="yp-btn yp-pri" disabled={busy} onClick={() => void make()}><GalleryHorizontal size={14} aria-hidden="true" /> {busy ? "만드는 중…" : "카드뉴스로 만들기"}</button></div>
+    {made?.length ? <ul className="yp-hist" style={{ marginTop: 10 }}>{made.map(row => <li key={row.id}><span style={{ flex: 1 }}>{projectName(row)}</span><Link className="yp-lnk" href={stepHref(row.yp.stage === "draft" ? 1 : row.yp.stage === "review" ? 4 : 5, row.id)}>열기 →</Link></li>)}</ul> : null}
+  </YpSection>;
+}
+
+/** [카드뉴스로 만들기] on an approved Threads post (콘텐츠 자동화 › 쓰레드). */
+export function CardFromThreads({ itemId }: { itemId: string }) {
+  const { accessToken, demo } = useSession();
+  const client = useMemo(() => youtubeProcessClient(accessToken, demo), [accessToken, demo]);
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const make = async () => {
+    if (!client) return;
+    setBusy(true); setError("");
+    try { const card = await client.createCard({ from: "threads", itemId }); router.push(stepHref(1, card.id)); }
+    catch (reason) { setError(errorMessage(reason)); setBusy(false); }
+  };
+  return <span><button type="button" disabled={busy} onClick={() => void make()}>{busy ? "만드는 중…" : "카드뉴스로 만들기"}</button>{error ? <small role="alert"> {error}</small> : null}</span>;
+}
+
+const bare = (draft: CardDraft) => ({ id: draft.id, format: draft.format, slides: draft.slides, caption: draft.caption, hashtags: draft.hashtags });
+const draftLabel = (draft: CardDraft) => draft.ai ? draftTag(draft.ai.by, draft.ai.model) : "직접 쓴 초안";
+
+/** 카드 만들기: pick formats, draft them (AI or by hand), compare, pick one, edit it on the preview, then 카드 확정. */
+export function CardMakeScreen({ page, header }: { page: YpPage; header: ReactNode }) {
+  const stage = page.bundle?.stages.cards;
+  const project = page.bundle?.project;
+  const cards = stage?.data;
+  const editable = project?.yp.stage === "draft" && project.yp.gates.draft.state !== "ok";
+  const [chosen, setChosen] = useState<CardFormatId[]>([]);
+  const [send, setSend] = useState(false);
+  const [draft, setDraft] = useState<CardDraft | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [slide, setSlide] = useState(0);
+  const [over, setOver] = useState<Record<number, string[]>>({});
+  const picked = cards?.drafts.find(row => row.id === cards.picked) ?? null;
+  useEffect(() => { if (!dirty) setDraft(picked); }, [picked, dirty]);
+  useEffect(() => { if (cards?.recommend?.formats.length && !chosen.length) setChosen(cards.recommend.formats.slice(0, 3)); }, [cards?.recommend, chosen.length]);
+  const reload = page.reload;
+  const job = useStaffJob(page, "card", useCallback(() => { setDirty(false); void reload(); }, [reload]));
+  const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
+  // Saves follow one another (two formats written by hand, then typing): each goes on the version the last one left.
+  const version = useRef(0);
+  useEffect(() => { if (stage) version.current = Math.max(version.current, stage.version); }, [stage]);
+  const save = useCallback(async (patch: Record<string, unknown>) => {
+    if (!page.client || !project || !stage) return null;
+    setBusy(true);
+    try {
+      const result = await page.client.saveStage(project.id, "cards", Math.max(version.current, stage.version), patch);
+      version.current = result.stage.version;
+      page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current);
+      return result.project;
+    } catch (reason) { page.fail(reason); return null; } finally { setBusy(false); }
+  }, [page, project, stage]);
+  // 카드 확정 saves what was just typed first (the same flush every confirm step uses since 2026-10-30).
+  const control = useGate(page, "draft", async () => {
+    if (!dirty || !draft) return page.bundle?.project ?? null;
+    const saved = await save({ draft: bare(draft) });
+    if (saved) setDirty(false);
+    return saved;
+  });
+  useLeaveGuard(dirty);
+  // Edits save themselves a moment after typing stops.
+  useEffect(() => {
+    if (!dirty || !draft) return;
+    const timer = window.setTimeout(() => { void save({ draft: bare(draft) }).then(ok => { if (ok) setDirty(false); }); }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [dirty, draft, save]);
+  const edit = (next: CardDraft) => { setDraft(next); setDirty(true); };
+  if (!page.bundle || !project || !cards) return <YpFrame page={page} view={1} action={null} header={header} title="카드 만들기" sub="" />;
+
+  const overList = Object.entries(over).filter(([index, fields]) => fields.length && Number(index) < (draft?.slides.length ?? 0))
+    .map(([index, fields]) => `${Number(index) + 1}장 ${fields.map(key => slideSpec(draft!.format, draft!.slides[Number(index)].type)?.fields.find(field => field.key === key)?.label ?? key).join(" · ")} 칸이 넘쳐요`);
+  const problems = draft ? cardProblems(draft) : { blocking: [], warnings: [] };
+  const missing = cardsMissing(draft ? { ...cards, drafts: cards.drafts.map(row => row.id === draft.id ? draft : row) } : cards) || overList[0] || "";
+  const action = gateAction(page, "draft", 1, control, missing);
+  const current = draft?.slides[slide] ? slide : 0;
+  const spec = draft ? slideSpec(draft.format, draft.slides[current].type) : null;
+  const addBlank = async () => { for (const format of chosen) if (!(await save({ add: format }))) return; };
+
+  return <YpFrame page={page} view={1} action={action} header={header} title="카드 만들기"
+    sub={gateSub(project, "draft", "포맷을 골라 초안을 뽑고, 하나를 골라 다듬은 뒤 카드를 확정해요.", "카드를 확정했어요. 최종 검토에서 한 장씩 봐요.")}
+    todo={editable ? [{ label: "초안", done: cards.drafts.length > 0 }, { label: "고른 초안", done: Boolean(picked) }, { label: "글자 수 · 넘침", done: Boolean(draft) && !problems.blocking.length && !overList.length }] : undefined}>
+    <GateBanner page={page} gate="draft" />
+    <Subject page={page} />
+    {cards.source.kind !== "none" ? <details className="yp-card yp-card-src"><summary>원본 · {SOURCE_NAME[cards.source.kind]} 「{cards.source.title}」{cards.focus ? ` · 이 부분 위주로: ${cards.focus}` : ""}</summary>
+      <pre>{cards.source.text}</pre></details> : null}
+
+    {editable ? <YpSection n={1} title="포맷 고르기" gq="최대 3개를 한 번에 뽑아 나란히 비교해요">
+      <div className="yp-card-formats">{CARD_FORMAT_IDS.map(id => { const format = CARD_FORMATS[id]; const on = chosen.includes(id);
+        return <label key={id} className={`yp-card-format${on ? " yp-on" : ""}`}>
+          <input type="checkbox" aria-label={format.name} checked={on} disabled={!on && chosen.length >= 3} onChange={() => setChosen(on ? chosen.filter(row => row !== id) : [...chosen, id])} />
+          <span><b>{format.name}</b>{cards.recommend?.formats.includes(id) ? <span className="yp-tag yp-acc">추천</span> : null}<small>{format.when}</small>
+            <small>{format.slides.map(row => row.min === row.max ? `${row.label} ${row.min}` : `${row.label} ${row.min}~${row.max}`).join(" · ")}장</small></span></label>; })}</div>
+      {cards.recommend?.why ? <p className="yp-hint">추천 이유: {cards.recommend.why}</p> : null}
+      <div className="yp-row-btns">
+        <button type="button" className="yp-btn yp-pri" disabled={!chosen.length || job.open} onClick={() => setSend(true)}>AI로 초안 뽑기 ({chosen.length}개)</button><CostTag kind="paid" />
+        <button type="button" className="yp-btn" disabled={!chosen.length || busy} onClick={() => void addBlank()}>직접 쓰기</button></div>
+      <JobLine job={job} onRetry={() => setSend(true)} />
+      <SendDialog page={page} task="card" open={send} onClose={() => setSend(false)} job={job} extra={{ formats: chosen }} />
+    </YpSection> : null}
+
+    {cards.drafts.length ? <YpSection n={editable ? 2 : 1} title="초안 비교" gq={`${cards.drafts.length}개 · 표지와 앞 3장`}>
+      <div className="yp-card-rows">{cards.drafts.map(row => { const check = cardProblems(row); const mine = row.id === cards.picked;
+        return <div key={row.id} className={`yp-card-row${mine ? " yp-on" : ""}`}>
+          <div className="yp-card-row-h"><b>{CARD_FORMATS[row.format].name}</b><span className="yp-tag">{draftLabel(row)}</span><span className="yp-muted">{row.slides.length}장</span>
+            <span className={check.blocking.length ? "yp-tag yp-bad" : "yp-tag yp-ok"}>{check.blocking.length ? `고칠 곳 ${check.blocking.length}` : "글자 수 통과"}</span><span className="yp-sp" />
+            {mine ? <span className="yp-tag yp-acc">고른 초안</span> : editable ? <button type="button" className="yp-btn yp-sm" disabled={busy || dirty} onClick={() => void save({ pick: row.id })}>이걸로 하기</button> : null}
+            {editable && !mine ? <button type="button" className="yp-btn yp-sm" aria-label="초안 지우기" disabled={busy} onClick={() => { if (window.confirm("이 초안을 지울까요?")) void save({ remove: row.id }); }}><Trash2 size={13} /></button> : null}</div>
+          <div className="yp-card-strip">{row.slides.slice(0, 4).map((_, index) => <CardPreview key={index} draft={row} index={index} width={150} />)}</div>
+        </div>; })}</div>
+    </YpSection> : null}
+
+    {draft ? <YpSection n={editable ? 3 : 2} title={editable ? "고른 초안 다듬기" : "확정한 카드"} gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
+      <div className="yp-card-edit">
+        <div className="yp-card-list">{draft.slides.map((row, index) => <button type="button" key={index} className={index === current ? "yp-on" : ""} onClick={() => setSlide(index)} aria-label={`${index + 1}장 보기`}>
+          <CardPreview draft={draft} index={index} width={84} onOver={onOver} /><span>{index + 1} · {slideSpec(draft.format, row.type)?.label}{over[index]?.length ? " · 넘침" : ""}</span></button>)}</div>
+        <div className="yp-card-big"><CardPreview draft={draft} index={current} width={400} /></div>
+        <div className="yp-card-fields">
+          <h3>{current + 1}장 · {spec?.label}</h3>
+          {spec?.fields.map(field => { const value = draft.slides[current].fields[field.key] ?? ""; const n = letters(value);
+            const set = (text: string) => edit({ ...draft, slides: draft.slides.map((row, index) => index === current ? { ...row, fields: { ...row.fields, [field.key]: text } } : row) });
+            return <label key={field.key} className="yp-field"><span className="yp-fld-h"><b>{field.label}</b>{field.optional ? <span className="yp-opt">선택</span> : null}
+              <span className={n > field.max ? "yp-card-n yp-bad" : "yp-card-n"}>{n}/{field.max}</span>{over[current]?.includes(field.key) ? <span className="yp-tag yp-bad">넘침</span> : null}</span>
+              {field.max > 30 ? <textarea className="yp-in" rows={3} value={value} disabled={!editable} onChange={event => set(event.target.value)} />
+                : <input className="yp-in" value={value} disabled={!editable} onChange={event => set(event.target.value)} />}</label>; })}
+          {editable && spec ? <div className="yp-row-btns">
+            {spec.max > spec.min ? <button type="button" className="yp-btn yp-sm" onClick={() => edit(addCardSlide(draft, spec.type))}><Plus size={13} /> {spec.label} 장 더하기</button> : null}
+            {spec.max > spec.min ? <button type="button" className="yp-btn yp-sm" onClick={() => { edit(removeCardSlide(draft, current)); setSlide(Math.max(0, current - 1)); }}><Trash2 size={13} /> 이 장 빼기</button> : null}</div> : null}
+          <label className="yp-field"><span className="yp-fld-h"><b>캡션</b><span className="yp-card-n">{letters(draft.caption)}자</span></span>
+            <textarea className="yp-in" rows={5} value={draft.caption} disabled={!editable} onChange={event => edit({ ...draft, caption: event.target.value })} placeholder="첫 두 줄에 핵심을 써요" /></label>
+          <label className="yp-field"><span className="yp-fld-h"><b>해시태그</b><span className="yp-opt">3~5개 · 띄어 써요</span></span>
+            <input className="yp-in" value={draft.hashtags.map(tag => `#${tag}`).join(" ")} disabled={!editable}
+              onChange={event => edit({ ...draft, hashtags: event.target.value.split(/[\s,]+/).map(tag => tag.replace(/^#+/, "")).filter(Boolean).slice(0, 30) })} /></label>
+        </div>
+      </div>
+      {problems.blocking.length || overList.length || problems.warnings.length ? <ul className="yp-card-checks">
+        {[...problems.blocking, ...overList].map(text => <li key={text} className="yp-bad">{text}</li>)}
+        {problems.warnings.map(text => <li key={text} className="yp-warn">{text}</li>)}</ul> : null}
+    </YpSection> : editable && !cards.drafts.length ? <p className="yp-pempty">포맷을 고르고 초안을 뽑으면 여기서 카드를 다듬어요.</p> : null}
+  </YpFrame>;
+}
+
+const confirmedDraft = (page: YpPage) => { const cards = page.bundle?.stages.cards.data; return cards?.drafts.find(row => row.id === (cards.confirmed?.draftId ?? cards.picked)) ?? null; };
+
+/** 최종 검토: every card at once, the caption and what the checks point out, then the PD's 최종 검토 컨펌. */
+export function CardReviewScreen({ page, header }: { page: YpPage; header: ReactNode }) {
+  const control = useGate(page, "review");
+  const project = page.bundle?.project;
+  const draft = confirmedDraft(page);
+  const [over, setOver] = useState<Record<number, string[]>>({});
+  const onOver = useCallback((index: number, fields: string[]) => setOver(current => JSON.stringify(current[index] ?? []) === JSON.stringify(fields) ? current : { ...current, [index]: fields }), []);
+  if (!page.bundle || !project) return <YpFrame page={page} view={4} action={null} header={header} title="최종 검토" sub="" />;
+  const check = draft ? cardProblems(draft) : { blocking: ["확정한 카드가 없어요"], warnings: [] };
+  const overCount = Object.values(over).filter(fields => fields.length).length;
+  const action = gateAction(page, "review", 4, control, check.blocking[0] ?? (overCount ? `넘치는 카드가 ${overCount}장 있어요` : ""));
+  return <YpFrame page={page} view={4} action={action} header={header} title="최종 검토" sub={gateSub(project, "review", "카드를 한 장씩 보고 컨펌해요. 고칠 곳이 있으면 대표 노트를 보고 카드 만들기로 돌아가요.", "최종 검토를 마쳤어요. 내보내기에서 이미지를 내려받아요.")}>
+    {["topic", "draft"].includes(project.yp.stage) ? <LockedStep page={page} name="최종 검토" /> : <>
+      <GateBanner page={page} gate="review" />
+      <Subject page={page} />
+      {draft ? <>
+        <YpSection n={1} title="카드" gq={`${CARD_FORMATS[draft.format].name} · ${draft.slides.length}장`}>
+          <div className="yp-card-grid">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={260} onOver={onOver} />)}</div>
+        </YpSection>
+        <YpSection n={2} title="캡션 · 해시태그"><p className="yp-card-caption">{draft.caption || "캡션이 없어요"}</p><p className="yp-muted">{draft.hashtags.map(tag => `#${tag}`).join(" ")}</p></YpSection>
+        {check.blocking.length || check.warnings.length || overCount ? <ul className="yp-card-checks">{check.blocking.map(text => <li key={text} className="yp-bad">{text}</li>)}
+          {overCount ? <li className="yp-bad">넘치는 카드가 {overCount}장 있어요</li> : null}{check.warnings.map(text => <li key={text} className="yp-warn">{text}</li>)}</ul> : null}
+      </> : <p className="yp-pempty">확정한 카드가 없어요.</p>}
+    </>}
+  </YpFrame>;
+}
+
+const saveBlob = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = name; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 10_000); };
+
+/** 내보내기: the images and caption to post by hand (자동 발행 comes later, with its own approval), the address it went up at, then 끝내기. */
+export function CardExportScreen({ page, header }: { page: YpPage; header: ReactNode }) {
+  const project = page.bundle?.project;
+  const cards = page.bundle?.stages.cards;
+  const draft = confirmedDraft(page);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState("");
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (cards?.data.exported?.url) setUrl(cards.data.exported.url); }, [cards?.data.exported?.url]);
+  if (!page.bundle || !project || !cards) return <YpFrame page={page} view={5} action={null} header={header} title="내보내기" sub="" />;
+  const run = async (what: string, work: () => Promise<unknown>) => { setBusy(what); try { await work(); } catch (reason) { page.fail(reason); } finally { setBusy(""); } };
+  const caption = draft ? [draft.caption.trim(), draft.hashtags.map(tag => `#${tag}`).join(" ")].filter(Boolean).join("\n\n") : "";
+  const finish = () => run("finish", async () => { const next = await page.client!.move(project.id, "done", project.version); page.setBundle(current => current ? { ...current, project: next } : current); });
+  const action = stepAction(page, 5, project.yp.stage === "done" ? { kind: "status", status: "끝난 카드뉴스예요" }
+    : { kind: "button", label: "다 올렸으면 끝내기", reason: "", busy: busy === "finish", onClick: () => void finish() });
+  return <YpFrame page={page} view={5} action={action} header={header} title="내보내기" sub="이미지를 내려받아 인스타그램에 올리고, 올린 주소를 남긴 뒤 끝내요."
+    todo={project.yp.stage === "upload" ? [{ label: "이미지 내려받기", done: Boolean(cards.data.exported) || busy === "zip" }, { label: "올린 주소", done: Boolean(cards.data.exported) }] : undefined}>
+    {!["upload", "done"].includes(project.yp.stage) ? <LockedStep page={page} name="내보내기" /> : <>
+      <GateBanner page={page} gate="review" />
+      <Subject page={page} />
+      <YpSection n={1} title="이미지 · 캡션" gq={draft ? `${draft.slides.length}장 · 1080 × 1350` : ""}>
+        {draft ? <div className="yp-card-strip">{draft.slides.map((_, index) => <CardPreview key={index} draft={draft} index={index} width={120} />)}</div> : null}
+        <div className="yp-row-btns" style={{ marginTop: 10 }}>
+          <button type="button" className="yp-btn yp-pri" disabled={!draft || Boolean(busy)} onClick={() => void run("zip", async () => saveBlob(await page.client!.cardsFile(project.id, { zip: true }), `카드뉴스-${projectName(project).slice(0, 30)}.zip`))}>
+            <Download size={14} aria-hidden="true" /> {busy === "zip" ? "만드는 중…" : "이미지 묶음 내려받기"}</button>
+          <button type="button" className="yp-btn" disabled={!caption} onClick={() => void navigator.clipboard.writeText(caption).then(() => setCopied(true))}><Copy size={14} aria-hidden="true" /> {copied ? "복사했어요" : "캡션 복사"}</button></div>
+      </YpSection>
+      <YpSection n={2} title="올린 주소" gq="인스타그램 게시물 주소">
+        <div className="yp-row-btns"><input className="yp-in" style={{ flex: 1 }} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://www.instagram.com/p/…" aria-label="올린 주소" />
+          <button type="button" className="yp-btn" disabled={!/^https:\/\/\S+$/.test(url.trim()) || Boolean(busy) || url.trim() === cards.data.exported?.url}
+            onClick={() => void run("url", async () => { const result = await page.client!.saveStage(project.id, "cards", cards.version, { exported: { url: url.trim() } }); page.setBundle(current => current ? { ...current, project: result.project, stages: { ...current.stages, cards: result.stage } } : current); })}>
+            {busy === "url" ? "남기는 중…" : "주소 남기기"}</button></div>
+        {cards.data.exported ? <p className="yp-hint">남김 · {cards.data.exported.by}</p> : null}
+      </YpSection>
+    </>}
+  </YpFrame>;
+}

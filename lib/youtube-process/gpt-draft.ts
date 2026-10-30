@@ -8,8 +8,8 @@ export type GptTier = keyof typeof GPT_TIERS;
 /** The automatic runs switch to 절약 when this month's GPT credit left is under this (USD). */
 export const GPT_SAVING_BELOW_USD = 50;
 
-/** The staff-AI tasks GPT may do; the first three start by themselves at the 최종 검토 OK, 숏폼 대본 only from its button. */
-export const GPT_DRAFT_TASKS = ["kit", "column", "short-topics", "short-script"] as const;
+/** The staff-AI tasks GPT may do; the first three start by themselves at the 최종 검토 OK, 숏폼 대본 · 카드뉴스 초안 only from their buttons. */
+export const GPT_DRAFT_TASKS = ["kit", "column", "short-topics", "short-script", "card"] as const;
 export type GptDraftTask = (typeof GPT_DRAFT_TASKS)[number];
 export const GPT_AUTO_TASKS = ["kit", "column", "short-topics"] as const satisfies readonly GptDraftTask[];
 export const isGptTask = (task: string): task is GptDraftTask => (GPT_DRAFT_TASKS as readonly string[]).includes(task);

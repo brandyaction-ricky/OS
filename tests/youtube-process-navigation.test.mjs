@@ -44,13 +44,13 @@ test("each v1 screen has a three-step guide whose next page exists", () => {
   }
 });
 
-test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏폼 · 광고 + 스레드 + 자동화 관리, same addresses", async () => {
+test("side menu by what is made (owner 2026-10-29, A안): 공통 + 롱폼 · 숏폼 · 광고 · 카드뉴스 + 스레드 + 자동화 관리, same addresses", async () => {
   const { NAV_STAGES } = await import("../lib/navigation.ts");
   const { youtubeV1Stages, youtubeV1StageId, youtubeV1EntrySelected } = await import("../lib/youtube-process/navigation.ts");
   const stages = youtubeV1Stages(NAV_STAGES);
   const ids = stages.map(stage => stage.id);
-  assert.deepEqual(ids.slice(0, 6), ["content", "yt-longform", "yt-short", "yt-ad", "threads", "automation"]);
-  assert.deepEqual(stages.map(stage => stage.label).slice(0, 6), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "스레드", "자동화 관리"]);
+  assert.deepEqual(ids.slice(0, 7), ["content", "yt-longform", "yt-short", "yt-ad", "yt-card", "threads", "automation"]);
+  assert.deepEqual(stages.map(stage => stage.label).slice(0, 7), ["공통", "롱폼 유튜브", "숏폼 · 릴스", "광고", "카드뉴스", "스레드", "자동화 관리"]);
   assert.deepEqual(stages[0].pages.map(page => page.label), ["주제 찾기", "스케줄", "성과", "링크관리"]);
   const threads = stages.find(stage => stage.id === "threads");
   assert.equal(threads.pages[0].label, "스레드 글감 모으기", "레퍼런스 수집 says what it collects");

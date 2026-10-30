@@ -22,6 +22,7 @@ import { EditorialEvidencePanel, ThreadsEditorialWorkspace, editorialRouteLabel 
 import { ThreadsAsideHandoff } from "./threads-aside-handoff";
 import { ThreadsApiPublication } from "./threads-api-publication";
 import "./content-automation-v07.css";
+import { CardFromThreads } from "./youtube-process-card";
 
 const DemoCommentsWorkspace=dynamic(()=>import("./content-comments-workspace").then(module=>module.ContentCommentsWorkspace));
 
@@ -531,7 +532,9 @@ function ItemsView({page,data,mutate,refresh}:ViewProps&{page:AutomationPage;ref
         {channel==="threads"?<div className="ca-v07-actions">
           {own&&!isTeam(selected)&&selected.status!=="published"?<button type="button" disabled={busy} onClick={()=>void act("share",{version:selected.version})}>팀 검토함에 공유</button>:null}
           {isTeam(selected)&&selected.status!=="published"&&(data.team.canReview||own&&["draft","blocked"].includes(selected.status))?<button type="button" disabled={busy} onClick={()=>void act("unshare",{version:selected.version})}>공유 해제</button>:null}
-          {selected.status==="review"?<Link href={"/automation/review?sel="+selected.id}>검토 화면 →</Link>:null}</div>:null}
+          {selected.status==="review"?<Link href={"/automation/review?sel="+selected.id}>검토 화면 →</Link>:null}
+          {/* 카드뉴스 (설계서 2026-10-30): an approved post can become an Instagram 카드뉴스. */}
+          {["ready","scheduled","published"].includes(selected.status)?<CardFromThreads itemId={selected.id}/>:null}</div>:null}
         {!canEdit?<div className="ca-v07-note">팀 원고는 읽고 의견을 남길 수 있습니다. 수정·승인은 작성자와 지정 검토자만 합니다.</div>
           :statusLocked?<div className="ca-v07-note">확인 중이거나 확인된 버전입니다. 내용을 바꾸면 다시 최종 확인을 거쳐야 합니다. {selected.status!=="published"?<button disabled={busy} onClick={()=>void act("reopen")}>다시 고치기</button>:null}</div>:null}
         {channel==="threads"?<>

@@ -58,8 +58,8 @@ test("GPT gets the card's documents, answers once more with the OS's format prob
   assert.equal(ok.calls.failed.length, 0);
 });
 
-test("only the four derivative tasks take GPT, and a draft says whose it is", () => {
-  assert.deepEqual([...gptDraft.GPT_DRAFT_TASKS], ["kit", "column", "short-topics", "short-script"]);
+test("only the derivative tasks and the 카드뉴스 draft take GPT, and a draft says whose it is", () => {
+  assert.deepEqual([...gptDraft.GPT_DRAFT_TASKS], ["kit", "column", "short-topics", "short-script", "card"]);
   assert.deepEqual([...gptDraft.GPT_AUTO_TASKS], ["kit", "column", "short-topics"], "숏폼 대본 waits for the PD's topic and formula");
   assert.equal(gptDraft.isGptTask("script"), false, "the 원고 stays with the staff AI (원고 공정 정본 §12-1)");
   assert.equal(gptDraft.draftTag("유쓰", "gpt-6-astra"), "GPT 초안 · GPT-6 Astra");

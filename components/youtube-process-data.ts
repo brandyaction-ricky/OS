@@ -9,6 +9,8 @@ import { shortScriptMissing, type YpShortRefFetch } from "@/lib/youtube-process/
 import { columnMeta } from "@/lib/seo-column";
 import { applyFeedback, cleanMarks, FEEDBACK_FILE_MAX, FEEDBACK_FILE_TYPES, FeedbackRuleError, type FeedbackAction, type FeedbackFile, type FeedbackMark, type FeedbackReply } from "@/lib/youtube-process/feedback";
 import { cutsFromScenes, scenesFromCuts, shortsAction, type YpShortAppeal, type YpShortBrief, type YpShortScene } from "@/lib/youtube-process/short";
+import { CardError, cardsMissing, nextCards, type CardsPatch } from "@/lib/cardnews/cards";
+import { emptyCardDraft } from "@/lib/cardnews/formats";
 
 export interface YpMember { id: string; name: string }
 export interface YpTopicInput { title?: string; kind?: YpKind | null; target?: string; note?: string; refs?: YpRef[]; purpose?: "ad" | null; assigneeId?: string | null }
@@ -89,8 +91,13 @@ export interface YpClient {
   /** The 대본 step's latest 레퍼런스 받기 (null before the first), and [레퍼런스 받기] itself. */
   shortRefs(id: string): Promise<YpShortRefFetch | null>;
   fetchShortRefs(id: string): Promise<YpShortRefFetch>;
+  /** A new 카드뉴스 (설계서 2026-10-30): from a topic, a finished longform · 숏폼, or an approved Threads post. */
+  createCard(input: YpCardInput): Promise<YpProject>;
+  /** The cards drawn as images now: one PNG, or every card and the caption as a ZIP. */
+  cardsFile(id: string, query: { draft?: string; slide?: number; zip?: boolean }): Promise<Blob>;
   demo: boolean;
 }
+export type YpCardInput = { from: "none"; title: string; target: string; note?: string } | { from: "project"; projectId: string; focus?: string } | { from: "threads"; itemId: string };
 export interface YpConfirmExtra { fields?: string[]; memo?: string; reason?: string }
 
 const json = (body: unknown) => JSON.stringify(body);
@@ -171,6 +178,13 @@ function apiClient(token: string): YpClient {
     review2: (id, tier) => apiRequest(`${base}/${id}/review2`, { token, method: "POST", body: json({ tier }) }),
     shortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch | null }>(`${base}/${id}/short-refs`, { token })).refs,
     fetchShortRefs: async id => (await apiRequest<{ refs: YpShortRefFetch }>(`${base}/${id}/short-refs`, { token, method: "POST" })).refs,
+    createCard: async input => (await apiRequest<{ project: YpProject }>("/api/v1/content/youtube/cards", { token, method: "POST", body: json(input) })).project,
+    cardsFile: async (id, query) => {
+      const params = new URLSearchParams({ ...(query.draft ? { draft: query.draft } : {}), ...(query.zip ? { zip: "1" } : { slide: String(query.slide ?? 0) }) });
+      const response = await fetch(`${base}/${id}/cards?${params}`, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+      if (!response.ok) { const body = await response.json().catch(() => null); throw new ApiRequestError(body?.error?.message ?? `이미지를 만들지 못했어요. (${response.status})`, body?.error?.code ?? "REQUEST_FAILED", response.status); }
+      return response.blob();
+    },
     members: async () => (await listMembers(token)).members
       .filter(member => member.is_active && !member.is_shared_account && member.member_kind !== "partner")
       .map(member => ({ id: member.id, name: member.display_name })),
@@ -203,6 +217,7 @@ const demoProjects = () => demoStore ??= [
   demoProject("demo-p10", "[예시] 일이 안 맞을 때 먼저 볼 4칸 (릴스)", "short", "upload", 1),
   demoProject("demo-p11", "[예시] 만나고 싶은데 쉬고도 싶다면", "short", "make", 0),
   demoProject("demo-p12", "[예시] 주말 약속 피곤함", "short", "topic", 0),
+  { ...demoProject("demo-p13", "[예시] 월요일마다 무거운 사람의 공통점", "card", "draft", 0), yp: { ...demoProject("demo-p13", "", "card", "draft", 0).yp, cardFrom: { kind: "longform", id: "demo-p7", title: "[예시] 고객 인터뷰 질문 다섯 개" } } },
 ];
 // 숏폼 made from a confirmed 대본 (2026-10-28) in the demo; demo-p9 keeps the older scene editor (made before the 대본 step).
 const CONFIRMED_SHORT_DEMOS = ["demo-p10", "demo-p11"];
@@ -265,7 +280,18 @@ function demoFilledStages(project: YpProject): YpStagesView {
       { title: "[예시] 할 일 목록을 지워도 개운하지 않은 진짜 이유", insight: "다 했다는 느낌은 개수가 아니라 내가 고른 일에서 와요", formula: "[예시] [흔한 장면]하는 진짜 이유", why: "목록을 다 지운 날의 허전함" }] };
   return { plan: { id: null, version: 0, data: plan }, outline: { id: null, version: 0, data: outline }, shortTopics: { id: null, version: 0, data: shortTopics }, make: { id: null, version: 0, data: emptyStage("make", kind) }, upload: { id: null, version: 0, data: emptyStage("upload", kind) },
     column: { id: null, version: 0, data: emptyStage("column", kind) },
-    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) }, screenCheck: { id: null, version: 0, data: emptyStage("screenCheck", kind) }, topicResearch: { id: null, version: 0, data: topicResearch } };
+    shortScript: { id: null, version: 0, data: shortScript }, review2: { id: null, version: 0, data: emptyStage("review2", kind) }, screenCheck: { id: null, version: 0, data: emptyStage("screenCheck", kind) }, topicResearch: { id: null, version: 0, data: topicResearch },
+    cards: { id: null, version: 0, data: project.id === "demo-p13" ? demoCards() : emptyStage("cards", kind) } };
+}
+/** One 정리형 draft, so the 카드 만들기 screen has something to show in the demo. */
+function demoCards(): YpStageData["cards"] {
+  const draft = emptyCardDraft("list", "demo-d1", "리키", daysAgo(0));
+  const fill = [["월요일마다 무거운 사람의 공통점 3가지", "쉬어도 안 풀리는 피로는 신호일 수 있어요"], ["실수가 먼저 떠올라요", "칭찬받은 날에도 집에 오는 길엔 그때 왜 그렇게 말했지만 남아요."],
+    ["주말에도 일 생각이 나요", "쉬는 날인데 월요일 회의 장면이 머릿속에서 계속 돌아가요."], ["내가 고른 일이 없어요", "하루를 다 써도 내 기준으로 고른 일이 없으면 남는 게 없어요."],
+    ["지친 건 양이 아니라 고를 수 없어서예요", ""], ["이번 주에 내가 고를 일 하나를 적어 봐요", "저장해 두기"]];
+  draft.slides.forEach((slide, index) => { const [a, b] = fill[index] ?? ["", ""]; const keys = Object.keys(slide.fields); slide.fields = { [keys[0]]: a, ...(keys[1] ? { [keys[1]]: b } : {}) }; });
+  return { ...emptyStage("cards", "card"), source: { kind: "longform", title: "[예시] 고객 인터뷰 질문 다섯 개", text: "[예시] 원고 본문", at: daysAgo(0) },
+    drafts: [{ ...draft, caption: "[예시] 월요일이 유난히 무겁다면 이 세 가지를 먼저 봐요.", hashtags: ["직장인", "번아웃", "강점"] }], picked: "demo-d1" };
 }
 const demoStages = new Map<string, YpStagesView>();
 const demoShorts = new Map<string, YpShortView>();
@@ -322,7 +348,8 @@ function demoClient(): YpClient {
     if (action === "cancel" || action === "reopen") return { project: bump(project, gateApply(project, name, action, { actor: DEMO_ME, now })), created: [] };
     if (name !== "topic") {
       const stages = stagesOf(project);
-      const missing = name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
+      const missing = project.yp.topic.type === "card" ? (name === "draft" ? cardsMissing(stages.cards.data) : "")
+        : name === "draft" ? project.yp.topic.type === "short" ? shortScriptMissing(stages.shortScript.data) : draftMissing(stages.plan.data) : (demoFinals.get(id) ?? []).length ? "" : "최종본을 올려주세요";
       if (missing) throw demoError(400, "GATE_INCOMPLETE", missing);
       const yp = gateApply(project, name, action, { actor: DEMO_ME, now, reply });
       if (name === "draft" && action === "confirm") { const stages = stagesOf(project); demoStages.set(id, { ...stages, plan: { ...stages.plan, data: { ...stages.plan.data, confirmed: confirmPlan(stages.plan.data, now) } } }); }
@@ -344,6 +371,16 @@ function demoClient(): YpClient {
     get: async id => structuredClone(find(id)),
     bundle: async id => { const project = find(id); return structuredClone({ project, stages: stagesOf(project), finals: demoFinals.get(id) ?? [] }); },
     create: async input => structuredClone(add(input.title ?? "", input)),
+    createCard: async input => {
+      const now = new Date().toISOString();
+      const from = input.from === "project" ? find(input.projectId) : null;
+      const title = input.from === "none" ? input.title : from ? from.title : "[예시] 스레드 글";
+      const made = add(title, { kind: "card", target: input.from === "none" ? input.target : "원본과 같아요", note: input.from === "none" ? input.note ?? "" : "" });
+      const project = put({ ...made, yp: { ...gateApply(made, "topic", "confirm", { actor: DEMO_ME, now }), ...(from ? { cardFrom: { kind: from.yp.topic.type === "short" ? "short" as const : "longform" as const, id: from.id, title: from.title } } : {}) } });
+      demoStages.set(project.id, { ...stagesOf(project), cards: { id: null, version: 0, data: { ...emptyStage("cards", "card"), source: { kind: from ? (from.yp.topic.type === "short" ? "short" : "longform") : input.from === "threads" ? "threads" : "none", title, text: from ? "[예시] 원고" : "", at: now } } } });
+      return structuredClone(project);
+    },
+    cardsFile: async () => { throw demoError(400, "DEMO_NO_RENDER", "연습 화면에서는 이미지를 만들지 않아요. 미리보기로 확인해 주세요."); },
     update: async (id, expectedVersion, { assigneeId, ...fields }) => {
       const project = find(id);
       checkVersion(project.version, expectedVersion);
@@ -394,6 +431,10 @@ function demoClient(): YpClient {
         };
         data = { items: !p.item ? [...items, { id: crypto.randomUUID().slice(0, 8), html: p.html ?? "", fills: {}, ai: null }]
           : p.remove ? items.filter(item => item.id !== p.item) : items.map(item => item.id === p.item ? change(item) : item) } as YpStageData[typeof kind];
+      }
+      if (kind === "cards") {
+        try { data = nextCards(project, current.data as YpStageData["cards"], patch as CardsPatch, "리키", now, () => crypto.randomUUID().slice(0, 8)) as YpStageData[typeof kind]; }
+        catch (error) { throw error instanceof CardError ? demoError(error.status, error.code, error.message) : error; }
       }
       const stage = { id: current.id ?? `demo-${kind}-${id}`, version: current.version + 1, data } as YpStageView<typeof kind>;
       demoStages.set(id, { ...stages, [kind]: stage });

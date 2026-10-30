@@ -17,6 +17,8 @@ const TODO: Record<Exclude<YpProject["yp"]["stage"], "done">, [string, string]> 
 };
 // A 숏폼's 제작 holds what to make, the scenes and the MP4; it is handed out by download, not uploaded to YouTube here.
 const SHORT_TODO: Partial<typeof TODO> = { draft: ["참고 영상으로 공식을 뽑고 대본을 확정해요", "대본 쓰기"], make: ["무엇을 만들지 정하고 장면 · 영상을 만들어요", "숏폼 만들기"], upload: ["유튜브에 올리거나 MP4를 내려받아 올려요", "내보내기"] };
+// A 카드뉴스: cards written and designed in one step, checked, then handed out as images.
+const CARD_TODO: Partial<typeof TODO> = { draft: ["포맷을 골라 초안을 뽑고 카드를 확정해요", "카드 만들기"], review: ["카드를 한 장씩 보고 컨펌해요", "검토하기"], upload: ["이미지를 내려받아 올리고 주소를 남겨요", "내보내기"] };
 const GATE_OF: Partial<Record<YpProject["yp"]["stage"], YpGate>> = { topic: "topic", draft: "draft", review: "review" };
 
 export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
@@ -25,12 +27,12 @@ export function nextAction(project: Pick<YpProject, "id" | "yp">): YpNext {
   const index = stage === "done" ? -1 : YP_STAGE_INDEX[stage];
   const step = stage === "done" ? flow.length : Math.max(0, flow.findIndex(item => item.index === index));
   const base = { href: projectHref(project), step, total: flow.length, stepName: stage === "done" ? "완료" : stepName(index, project.yp.topic.type) };
-  if (stage === "done") return { ...base, tone: "done", text: "끝난 영상이에요", button: "보기" };
+  if (stage === "done") return { ...base, tone: "done", text: project.yp.topic.type === "card" ? "끝난 카드뉴스예요" : "끝난 영상이에요", button: "보기" };
   const gate = GATE_OF[stage];
   const info = gate ? gates[gate] : null;
   if (gate && info?.state === "wait") return { ...base, tone: "wait", text: `${gateName(gate, project.yp.topic.type)} 대기 중 · PD가 직접 컨펌해도 돼요`, button: "컨펌하기" };
   if (gate && info?.state === "changes") return { ...base, tone: "fix", text: `대표 수정 요청${info.fields?.length ? ` · 짚은 칸: ${info.fields.map(field => GATE_FIELDS[gate][field] ?? field).join(", ")}` : ` · ${info.memo ?? ""}`}`, button: "고치기" };
   if (gate && info?.state === "hold") return { ...base, tone: "hold", text: `보류됨${info.reason ? ` · ${info.reason}` : ""}`, button: "손보기" };
-  const [text, button] = (project.yp.topic.type === "short" ? SHORT_TODO[stage] : undefined) ?? TODO[stage];
+  const [text, button] = (project.yp.topic.type === "short" ? SHORT_TODO[stage] : project.yp.topic.type === "card" ? CARD_TODO[stage] : undefined) ?? TODO[stage];
   return { ...base, tone: "todo", text, button };
 }

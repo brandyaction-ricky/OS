@@ -9,7 +9,7 @@ test("주제 찾기 switches platforms and starts a 숏폼 or a 광고 from a �
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto("/content/projects?view=discover");
   const tabs = page.getByRole("tablist", { name: "무엇을 만드나요" });
-  await expect(tabs.getByRole("tab")).toHaveText([/롱폼/, /숏폼 · 릴스/, /광고/, /스레드/]);
+  await expect(tabs.getByRole("tab")).toHaveText([/롱폼/, /숏폼 · 릴스/, /광고/, /스레드/, /카드뉴스/]);
   await expect(page.locator(".yp-pf-bar")).toContainText("채널 평소 조회수의 2배");
   await tabs.getByRole("tab", { name: /스레드/ }).click();
   await expect(page.locator(".yp-pf-bar")).toContainText("조회 10만 이상");
@@ -31,6 +31,14 @@ test("주제 찾기 switches platforms and starts a 숏폼 or a 광고 from a �
   await expect(page).toHaveURL(/view=topic/);
   await expect(page.getByRole("radiogroup", { name: "숏폼 쓰임" }).getByRole("radio", { name: /숏폼 · 릴스/ })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("틱톡 · https://www.tiktok.com/@demo/video/1")).toBeVisible();
+  // 카드뉴스 (설계서 2026-10-30): a topic of its own goes straight to 카드 만들기 with the topic already confirmed.
+  await page.goto("/content/projects?view=discover&platform=card");
+  await page.getByLabel("한 줄 주제").fill("[시험] 월요일마다 무거운 사람의 공통점");
+  await page.getByLabel("누구에게").fill("3~7년 차 직장인");
+  await page.getByRole("button", { name: /카드 만들러 가기/ }).click();
+  await expect(page).toHaveURL(/view=draft/);
+  await expect(page.getByRole("heading", { name: "카드 만들기" })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "정리형" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/content/projects?view=discover&platform=ad");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

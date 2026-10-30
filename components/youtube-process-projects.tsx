@@ -97,7 +97,7 @@ export function YoutubeProjectsScreen() {
   if (discover) return <TopicHub />;
 
   return <>
-    <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">{platform ? `내 ${TOPIC_PLATFORMS[platform].label} 영상` : "내 영상"}</h1><span style={{ flex: 1 }} />
+    <div className="yp-mv-head"><h1 className="page-title" data-ui="page-title">{platform === "card" ? "내 카드뉴스" : platform ? `내 ${TOPIC_PLATFORMS[platform].label} 영상` : "내 영상"}</h1><span style={{ flex: 1 }} />
       <Link className="yp-btn yp-lg" href={platform ? `/content/projects?view=discover&platform=${platform}` : "/content/projects?view=discover&tab=discovery"}><Radar size={16} aria-hidden="true" /> 주제 찾기</Link>
       {/* A 숏폼 or 광고 starts from 주제 찾기 (its draft keywords make the project); a 롱폼 can start from one line here. */}
       {platform && platform !== "longform" ? null : <button type="button" className="yp-btn yp-pri yp-lg" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> 새 영상 만들기</button>}</div>

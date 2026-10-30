@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, AtSign, Megaphone, Smartphone, Youtube } from "lucide-react";
+import { ArrowRight, AtSign, GalleryHorizontal, Megaphone, Smartphone, Youtube } from "lucide-react";
 import { isTopicPlatform, projectPlatform, TOPIC_PLATFORM_ORDER, TOPIC_PLATFORMS, type TopicPlatform } from "@/lib/content-platforms";
 import { projectName, stageLabel, stepHref, type YpProject } from "@/lib/youtube-process/project";
 import { refHostOk } from "@/lib/youtube-process/short-script";
@@ -10,8 +10,9 @@ import { ContentAutomationV07 } from "./content-automation-v07";
 import { useSession } from "./session-provider";
 import { errorMessage, youtubeProcessClient } from "./youtube-process-data";
 import { YoutubeDiscoverScreen } from "./youtube-process-discover";
+import { CardStart } from "./youtube-process-card";
 
-const ICON = { longform: Youtube, short: Smartphone, ad: Megaphone, threads: AtSign } as const;
+const ICON = { longform: Youtube, short: Smartphone, ad: Megaphone, threads: AtSign, card: GalleryHorizontal } as const;
 
 /**
  * 주제 찾기 (owner 2026-10-28: one place for every platform's topics, so nobody mixes them up): pick what is being made first; each
@@ -20,6 +21,7 @@ const ICON = { longform: Youtube, short: Smartphone, ad: Megaphone, threads: AtS
  * - 숏폼 · 릴스 and 광고: start from a 초안 키워드 (and a link if there is one); the new 숏폼's 주제 step finds the 참고 영상, pulls the
  *   formulas and three 주제 후보, and the PD fixes the topic there.
  * - 스레드: the 참고 자료 inbox of 콘텐츠 자동화, the same screen as 콘텐츠 자동화 › 참고 자료.
+ * - 카드뉴스 (설계서 2026-10-30): a topic of its own; the other ways in are buttons on a finished video or an approved Threads post.
  */
 export function TopicHub() {
   const params = useSearchParams();
@@ -39,6 +41,7 @@ export function TopicHub() {
     <p className={`yp-pf-bar yp-pf-${platform}`}><b>{info.refs}</b><span>반응도 기준 · {info.bar}</span></p>
     {platform === "longform" ? <YoutubeDiscoverScreen bare />
       : platform === "threads" ? <ContentAutomationV07 page="references" embedded />
+      : platform === "card" ? <CardStart />
       : <ShortStart key={platform} platform={platform} />}
   </>;
 }

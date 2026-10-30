@@ -12,6 +12,7 @@ import { JobLine, SendDialog, useStaffJob } from "./youtube-process-ai";
 import { CostTag, useCostConfirm, useCostModels, voiceEstimate } from "./cost-notice";
 import type { YpBundle, YpClient, YpFinalView, YpRenderView, YpShortPatch, YpShortView } from "./youtube-process-data";
 import { GateBanner, LockedStep, stepAction, Subject, useLeaveGuard, YpFrame, YpSection, type YpPage } from "./youtube-process-frame";
+import { CardFromProject } from "./youtube-process-card";
 
 // 유튜브 공정 v1 숏폼 (owner decision 2026-10-21) on Codex's shortform render (PR #205): scenes with one image each become a
 // 720×1280 MP4 on the render PC; longform clips become vertical shorts with their subtitles.
@@ -363,6 +364,8 @@ export function ShortExportScreen({ header, page }: { header: ReactNode; page: Y
         </dl>
         <p className="yp-hint">광고 문구와 연결 페이지의 약속이 맞는지 올리기 전에 한 번 더 봐요.</p>
       </YpSection> : null}
+      {/* 카드뉴스 (설계서 2026-10-30): a confirmed 대본 also makes an Instagram 카드뉴스. */}
+      {view?.brief.purpose !== "ad" && project.yp.topic.purpose !== "ad" ? <CardFromProject page={page} /> : null}
     </> : null}
   </YpFrame>;
 }

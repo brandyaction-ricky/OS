@@ -4,13 +4,13 @@ import type { YpGate, YpGateInfo, YpMeta, YpProject, YpStage } from "./project";
 export const GATE_NAME: Record<YpGate, string> = { topic: "주제 컨펌", draft: "기획안 컨펌", review: "최종 검토 컨펌", shorts: "쇼츠 확정" };
 /** A 숏폼's 기획안 place is its 대본, and its topic is fixed from the references' formulas (주제 확정, 2026-10-28). */
 export const gateName = (gate: YpGate, kind: YpProject["yp"]["topic"]["type"]) =>
-  kind === "short" && gate === "draft" ? "대본 확정" : kind === "short" && gate === "topic" ? "주제 확정" : GATE_NAME[gate];
+  kind === "card" && gate === "draft" ? "카드 확정" : kind === "short" && gate === "draft" ? "대본 확정" : kind === "short" && gate === "topic" ? "주제 확정" : GATE_NAME[gate];
 // 쇼츠 확정 (owner decision 2026-10-25): the PD confirms the shorts scripts; the 대표 only reads the record and comments. The gate
 // keeps who confirmed and when (state ok); it is never requested or waited on, so the wait · hold lists and reminders never show it.
 const GATE_STAGE: Record<YpGate, YpStage> = { topic: "topic", draft: "draft", review: "review", shorts: "shorts" };
 const NEXT_STAGE: Record<YpGate, YpStage> = { topic: "draft", draft: "outline", review: "upload", shorts: "shorts" };
-/** A 숏폼 has no 구성안: its 대본 확정 opens 제작. */
-const nextStage = (gate: YpGate, yp: YpMeta): YpStage => gate === "draft" && yp.topic.type === "short" ? "make" : NEXT_STAGE[gate];
+/** A 숏폼 has no 구성안: its 대본 확정 opens 제작. A 카드뉴스 has no 제작 either: its 카드 확정 opens 최종 검토. */
+const nextStage = (gate: YpGate, yp: YpMeta): YpStage => gate === "draft" && yp.topic.type === "short" ? "make" : gate === "draft" && yp.topic.type === "card" ? "review" : NEXT_STAGE[gate];
 /** Fields the approver can tick in 수정 요청, per gate (S10-1). */
 export const GATE_FIELDS: Record<YpGate, Record<string, string>> = {
   topic: { "topic.title": "주제", "topic.type": "유형", "topic.target": "정밀 타겟", "topic.refs": "참고 영상", "topic.note": "전달 사항" },

@@ -1,7 +1,7 @@
 // 유튜브 공정 v1 project rules shared by the API, the screens and the demo store (지시서 6-2 · 8-1).
 import { editableFields } from "./confirm.ts";
 export type YpStage = "topic" | "draft" | "outline" | "make" | "review" | "upload" | "shorts" | "done";
-export type YpKind = "live" | "anim" | "short";
+export type YpKind = "live" | "anim" | "short" | "card";
 export type YpGate = "topic" | "draft" | "review" | "shorts";
 export type YpGateState = "none" | "wait" | "changes" | "hold" | "ok";
 /** self: the PD confirmed it themselves (owner decision 2026-10-26: every confirm is the PD's; the 대표 is told and leaves notes). */
@@ -21,21 +21,25 @@ export interface YpMeta {
   notes?: YpGateNote[];
   /** A 숏폼 made from a longform's 숏폼 주제 후보 (입구 A, 2026-10-28): the longform and the candidate, for the 대본 step. */
   shortFrom?: { projectId: string; title: string; topicId: string; scene: string; paragraph: string };
+  /** A 카드뉴스 made from a finished longform · 숏폼 or an approved Threads post (설계서 2026-10-30, 입구 넷): where its text came from. */
+  cardFrom?: { kind: "longform" | "short" | "threads"; id: string; title: string };
 }
 export interface YpShortsLogEntry { at: string; by: string; byName: string; kind: "confirm" | "comment"; text: string; count?: number }
 export interface YpProject { id: string; version: number; title: string; assigneeId: string | null; ownerId: string; updatedAt: string; yp: YpMeta }
 
 export const YP_FLOW = ["주제", "기획안", "구성안", "제작", "최종 검토", "업로드", "쇼츠 · 칼럼"] as const;
 export const YP_STAGE_INDEX: Record<YpStage, number> = { topic: 0, draft: 1, outline: 2, make: 3, review: 4, upload: 5, shorts: 6, done: 7 };
-export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션", short: "숏폼 (릴스 · 광고)" };
-export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션", short: "숏폼" };
+export const YP_KIND_LABEL: Record<YpKind, string> = { live: "롱폼 실사 촬영", anim: "롱폼 애니메이션", short: "숏폼 (릴스 · 광고)", card: "카드뉴스" };
+export const YP_KIND_SHORT: Record<YpKind, string> = { live: "실사", anim: "애니메이션", short: "숏폼", card: "카드뉴스" };
 /**
  * The steps a project goes through (index into YP_FLOW and the name shown). A 숏폼 (owner decision 2026-10-21) has no
  * 기획안 · 구성안 — what to make and the scenes sit in 제작 — and ends with 내보내기 instead of the YouTube upload and 쇼츠.
  * Its 기획안 place is the 대본 (숏폼 대본 정본, owner direction 2026-10-28: 주제 확정 and 대본 확정 decide a 숏폼).
+ * A 카드뉴스 (설계서 2026-10-30) writes and designs its cards in one step (카드 만들기, in the 기획안 place) and is handed out by download.
  */
 export function flowOf(kind: YpKind | null) {
   return kind === "short" ? [{ index: 0, name: "주제" }, { index: 1, name: "대본" }, { index: 3, name: "제작" }, { index: 4, name: "최종 검토" }, { index: 5, name: "내보내기" }]
+    : kind === "card" ? [{ index: 0, name: "주제" }, { index: 1, name: "카드 만들기" }, { index: 4, name: "최종 검토" }, { index: 5, name: "내보내기" }]
     : YP_FLOW.map((name, index) => ({ index, name: name as string }));
 }
 export const stepName = (index: number, kind: YpKind | null) => flowOf(kind).find(step => step.index === index)?.name ?? YP_FLOW[index] ?? "완료";
